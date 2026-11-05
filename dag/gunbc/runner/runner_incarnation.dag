@@ -1,6 +1,7 @@
 module gunbc.runner.runner_incarnation
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { Cons, Empty }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Terminal }
 import product.host_identity { HostIdentity }
@@ -194,6 +195,57 @@ type LocalRunnerSlotIncarnation {
   unit: NonEmptyStr
   unit_active: Bool
   registration_name: NonEmptyStr
+}
+
+// THE NAME A JIT INCARNATION REGISTERS UNDER IS NOT THE SLOT'S NAME, AND THE TWO WERE CONFLATED.
+// registration_name above is the slot's instance name ("srv1-02"), which is what a statically
+// configured runner registers as. The fleet's runners are JIT incarnations: the wrapper the ctrl
+// installer places at /opt/actions-runner/jit-runner.sh mints each one as
+//   RUNNER_NAME="${RUNNER_NAME_PREFIX}-$(date +%s)-$$"
+// (read on srv1 2026-11-04, line 59, sha256 b95e750463eb3530...), with RUNNER_NAME_PREFIX the slot's
+// instance name and $$ the wrapper's own pid, which systemd supervises as the unit's MainPID. So one
+// slot holds one registration per incarnation, and every incarnation before the current one stays in
+// the organization offline until GitHub removes it (roster 41694782240: 134 for srv1-02 in 24 hours).
+// An exact match on the slot name finds none of them, so a complete roster read that way reports
+// every JIT slot as having no registration -- the false absence the hand-installed reconcile also
+// produced, there by reading only the first 100 of 2,028 rows. The wrapper is not yet modeled
+// (gunbc.host.host_effect EnsureRunnerJitWrapper is a scaffold), so its name format is transcribed here
+// from the file it lives in, and a change to that line is a change to this parser.
+type JitRegistrationName {
+  minted_epoch: Int
+  wrapper_pid: Int
+}
+
+fn jit_name_number(token: String) -> Int? {
+  match parse_int(s: token) {
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+    Absent => none
+  }
+}
+
+// A name is this slot's JIT incarnation exactly when it is the slot's instance name, then exactly two
+// more '-'-separated tokens, each a non-negative integer. The token count is checked against the
+// instance name's own, so "srv1-02-1793731396-1395494" parses for srv1-02 and does not for srv1-0.
+fn parse_jit_registration_name(name: String, slot_instance: String) -> JitRegistrationName? {
+  let lead = concat(slot_instance, "-")
+  if !starts_with(s: name, prefix: lead) {
+    none
+  } else {
+    match split(s: name, delimiter: "-").skip(n: length(xs: split(s: slot_instance, delimiter: "-"))) {
+      Empty => none
+      Cons { head: _, tail: Empty } => none
+      Cons { head: _, tail: Cons { head: _, tail: Cons { head: _, tail: _ } } } => none
+      Cons { head: e, tail: Cons { head: p, tail: Empty } } =>
+        match jit_name_number(token: e) {
+          Absent => none
+          Present { value: epoch } =>
+            match jit_name_number(token: p) {
+              Absent => none
+              Present { value: pid } => Present { value: JitRegistrationName { minted_epoch: epoch, wrapper_pid: pid } }
+            }
+        }
+    }
+  }
 }
 
 fn runner_slot_incarnation(

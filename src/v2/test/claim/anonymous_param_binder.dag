@@ -176,11 +176,11 @@ fn apb_diag_at_authored_wildcard(d: Diagnostic) -> Bool {
   (d.reason == ^resolve_reason_anonymous_parameter_referenced)
     && match d.at {
       NodeLocus { anchor: a } =>
-        (match node_atom_identity_optional(node: a.at) {
+        (match node_atom_identity_optional(node: a.at.node) {
           Present { value: id } => id == pattern_wildcard_name()
           Absent => false
         })
-          && (match a.at.occurrence_id {
+          && (match a.at.node.occurrence_id {
             OccurrenceSynthetic => false
             _ => true
           })

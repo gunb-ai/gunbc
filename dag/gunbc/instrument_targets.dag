@@ -3,10 +3,9 @@ module gunbc.instrument_targets
 import extdeps.bazel.label { Label, PackageName, PackagePath, TargetName }
 import gunbc.build_target { BuildTarget, TestRule }
 import gunbc.native_serve_probe_plan {
-  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
-  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
+  NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
+  native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_deadline_exit,
 }
-import gunbc.native_census_verb { CensusVerbDemand }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -33,11 +32,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-    NativeCensusVerbProducer,
   SelfHostFrontierProducer,
-  GenericIdentityCensusProducer,
-  InterpolationHoleCensusProducer,
-  SharedTypeLeafCollisionCensusProducer,
   CardinalityRealizationProducer,
   RegenRoundCostProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
@@ -281,7 +276,7 @@ fn native_app_attest_entry() -> String {
 // drop gunbc.rung_drop.dag_emit_real_grammar_round_trips_off_floor, which names this label as the
 // route that still runs them; run by name, not a merge gate.
 // `gunbc test //gunbc/instruments:dag-emit-real-grammar-round-trips`.
-// THE NATIVE SERVE DOOR: std.compiler_entry NativeServeDriver exercised end to end. The seed emits
+// THE NATIVE SERVE DOOR: std.compiler_entry NativeIngressDriver exercised end to end. The seed emits
 // and builds the fixture service gunbc.instruments.native_serve_fixture, starts it on a loopback
 // port the OS chooses, sends gunbc.native_serve_probe's requests over real TCP and lets that module
 // judge the answers -- handler routes, the handler's own refusal, the door's 400 refusals, /livez
@@ -312,16 +307,16 @@ fn native_serve_binding() -> TargetBinding {
 }
 
 // THE FIXTURE'S PROBE DECLARES ALL THREE PHASES: its reader judges the peer-bound REST routes, the
-// refused launch and the stuck-ceiling exit, and the host runs exactly what this row says.
+// refused launches and the deadline exits, and the host runs exactly what this row says.
 fn native_serve_fixture_probe() -> NativeServeProbe {
   NativeServeProbe {
     reader: "dag/gunbc/native_serve_probe.dag"
-    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit]
+    phases: [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit]
   }
 }
 
-// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeServeDriver over
-// gunbc.auth.approval_device_crypto_serve, the natively emitted realization of the approval
+// THE DEVICE-CRYPTO VERIFIER SIDECAR: std.compiler_entry NativeIngressDriver over its binding
+// gunbc.auth.approval_device_crypto_ingress (handler gunbc.auth.approval_device_crypto_serve), the natively emitted realization of the approval
 // broker's device verifiers (gunbc.auth.approval_device_crypto_realization). The seed emits and
 // builds the service, starts it on a loopback port, sends the requests of
 // gunbc.instruments.native_serve_device_crypto_probe over real TCP and lets that module judge: the
@@ -334,7 +329,7 @@ fn native_serve_device_crypto_label() -> Label {
 }
 
 fn native_serve_device_crypto_entry() -> String {
-  "dag/gunbc/auth/approval_device_crypto_serve.dag"
+  "dag/gunbc/auth/approval_device_crypto_ingress.dag"
 }
 
 fn native_serve_device_crypto_binding() -> TargetBinding {
@@ -347,9 +342,9 @@ fn native_serve_device_crypto_binding() -> TargetBinding {
   }
 }
 
-// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeServeDriver over
+// THE STARTUP-FOLD CONTROL: std.compiler_entry NativeIngressDriver over
 // gunbc.instruments.native_serve_startup_refusal_fixture, whose startup fold (gunbc.native_serve
-// native_serve_startup_entry_function) refuses exactly when dropping each single obligation of
+// NativeServeStartup, named by its program descriptor) refuses exactly when dropping each single obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations made the handler receipt refuse. The seed
 // emits and builds it and launches it once with a valid revision; gunbc.instruments.native_serve_startup_refusal_probe
 // holds when the process exited by itself with the startup exit code, never bound, and named every dropped evidence. It
@@ -561,55 +556,6 @@ fn self_host_frontier_binding() -> TargetBinding {
   TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
 }
 
-// D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
-// `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
-// the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
-// Run by name, on no lane: its consumer is the D13 row-deletion change, which executes it at its own
-// head as part of its evidence rather than citing an earlier run.
-// `gunbc test //gunbc/instruments:dependency-demand-census`.
-fn dependency_demand_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "dependency-demand-census" } }
-}
-
-// THE DERIVED-NODE-IDENTITY STEP-2 INSTRUMENT (docs/plans/derived-node-identity-design.md section 7;
-// class gunbc.recurring_failure_mode generic_identity_decided_by_spelling). The seed's own
-// v1.tests.claim.generic_identity_census reads the typed graph and reports, per stored type node,
-// which generic-identity mark it carries. The standing is decided by the census's controls over
-// fixtures/generic_identity_census; the report beside it covers the v2.compiler.compile closure. It
-// states the populations it cannot reach in every run and never renders them as a count of none.
-// Run by name, on no lane: its consumers are the step-2 changes, each of which executes it at its
-// own head. `gunbc test //gunbc/instruments:generic-identity-census`.
-fn generic_identity_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "generic-identity-census" } }
-}
-
-// THE XL-2 STEP-2 INSTRUMENT: the interpolation hole-type census. For every interpolation hole in
-// the dag and src/v2 corpus, the seed's own v1.tests.claim.interpolation_hole_census records the
-// hole's identity (file, line, declaration, ordinal), its expression shape and the type v1 infer gave
-// the hole expression itself, flags each typed non-String hole v1 stringifies implicitly (the
-// explicit-conversion population DESIGN section 4 makes a decision input), and reads each
-// transport-block hole against its operation's declared inputs (XL-2 ruling 4). It is the v1 ORACLE:
-// v2 does not yet lex a hole, and PR2b's v2 infer owes agreement with every row. Completeness is an
-// identity join on (file, hole start offset), both ways, so an unreached hole is a located
-// UNOBSERVED row and an unexpected one UNLEXED, never a smaller count. Run by name, on no lane: its consumers are the XL-2
-// conversion decision and PR2b. `gunbc test //gunbc/instruments:interpolation-hole-census`.
-fn interpolation_hole_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "interpolation-hole-census" } }
-}
-
-// THE SHARED-TYPE LEAF-COLLISION CENSUS (gunbc.recurring_failure_mode
-// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). v1.tests.claim.shared_type_leaf_collision_census
-// joins type leaves whose declarers are both in one emitted closure and classifies independent
-// sharing (v1.compiler.emit_rust maybe_mark_shared_type per declaration). Different sharing is then
-// rustc-refused (break) or rustc-accepted (silent). The host walks SelfHostProducer and
-// V2NativeCliProducer through instrument_registry (entries from native_lane_runner, witnessed
-// against self_host_entry / v2_native_cli_entry) and every NativeClaimProgramProducer entry.
-// Standing is the fixture controls, not the live population.
-// `gunbc test //gunbc/instruments:shared-type-leaf-collision-census`.
-fn shared_type_leaf_collision_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "shared-type-leaf-collision-census" } }
-}
-
 // THE CARDINALITY REALIZATION STANDING (v2.test.claim.cardinality_realization_coverage). The host runs
 // the seed Rust emit over each specimen entry and the native v2 CLI over each specimen module, hands
 // typed outcome records to cardinality_realization_standing, and prints what it returns. Run by label
@@ -691,22 +637,6 @@ fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
 }
 
-fn dependency_demand_census_binding() -> TargetBinding {
-  TargetBinding { target: dependency_demand_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDemand } }
-}
-
-fn generic_identity_census_binding() -> TargetBinding {
-  TargetBinding { target: generic_identity_census_label() producer: GenericIdentityCensusProducer {} }
-}
-
-fn interpolation_hole_census_binding() -> TargetBinding {
-  TargetBinding { target: interpolation_hole_census_label() producer: InterpolationHoleCensusProducer {} }
-}
-
-fn shared_type_leaf_collision_census_binding() -> TargetBinding {
-  TargetBinding { target: shared_type_leaf_collision_census_label() producer: SharedTypeLeafCollisionCensusProducer {} }
-}
-
 fn cardinality_realization_binding() -> TargetBinding {
   TargetBinding { target: cardinality_realization_label() producer: CardinalityRealizationProducer {} }
 }
@@ -785,6 +715,16 @@ fn last_use_move_label() -> Label {
 // (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
 fn last_use_move_binding() -> TargetBinding {
   TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn derived_equality_routes_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "derived-equality-routes" } }
+}
+
+// The derived-equality fixtures on the emitted path: each `==` realized from its EqualityPlan agrees with
+// the answer the interpreted arm (v2.test.claim.derived_equality_routes) asserts.
+fn derived_equality_routes_binding() -> TargetBinding {
+  TargetBinding { target: derived_equality_routes_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/derived_equality_routes_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn exit_return_ownership_label() -> Label {
@@ -1258,12 +1198,11 @@ fn instrument_bindings() -> List<TargetBinding> {
     self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
-    shared_type_leaf_collision_census_binding(),
+    self_host_behavioral_equivalence_binding(), self_host_frontier_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
     credential_acquisition_systemd_rows_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), append_chain_ladder_binding(), last_use_move_binding(), exit_return_ownership_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), roster_rehome_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(), derived_equality_routes_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
@@ -1610,9 +1549,9 @@ fn native_serve_probe_runs_refused_launch(entry: String) -> Bool {
   }
 }
 
-fn native_serve_probe_runs_stuck_ceiling_exit(entry: String) -> Bool {
+fn native_serve_probe_runs_deadline_exit(entry: String) -> Bool {
   match native_serve_probe_for_entry(entry: entry) {
     Absent => false
-    Present { value: p } => native_serve_declares_stuck_ceiling_exit(probe: p)
+    Present { value: p } => native_serve_declares_deadline_exit(probe: p)
   }
 }

@@ -1,6 +1,7 @@
 module test.claim.printable_assembly_selection_witness
 
-import std.types { Bool, List, String, list_length }
+import std.types { Bool, List, String }
+import std.algebra { length }
 import extdeps.languages.json.emit { serialize_json }
 import product.printed_chassis.assembly_geometry { Clearance, Printed, Purchased, Metal }
 import product.printed_chassis.cassette { rear_socket_bolt_clearances }
@@ -100,7 +101,7 @@ test fn w_root_wire_round_trips_and_unknown_refuses() -> Bool {
 // reading still HAS roots (t10-plug-fit-ring decodes), which is what lets it refuse by naming its reading
 // instead of not existing; and an id that is not on the roster decodes to nothing.
 test fn w_the_duct_roots_are_enumerated_from_the_card_roster() -> Bool {
-  list_length(items: printed_assembly_roots) == 2 + list_length(items: duct_cards) * list_length(items: duct_root_kinds) + list_length(items: group_duct_plans) * list_length(items: group_root_kinds)
+  length(xs: printed_assembly_roots) == 2 + length(xs: duct_cards) * length(xs: duct_root_kinds) + length(xs: group_duct_plans) * length(xs: group_root_kinds)
     && all(duct_cards, c => all(duct_root_kinds, k =>
       match printed_assembly_root_from_wire(s: printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))) {
         Present { value: back } => printed_assembly_root_wire(root: back) == printed_assembly_root_wire(root: duct_card_root(card: c, kind: k))

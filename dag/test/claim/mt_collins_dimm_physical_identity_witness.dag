@@ -17,7 +17,8 @@ import gunbc.machine_intake.mtcollins1_dimm_connector_observation {
   UnitColourEvidence, NoColourObservationForUnit,
   PhysicalColourDiffersFromDiagramRole, ColourMeaningComparisonUnresolved,
 }
-import std.types { NonEmptyStr, list_length }
+import std.types { NonEmptyStr }
+import std.algebra { length }
 import std.nat { Nat }
 import extdeps.ampere.mt_collins_product_brief.memory_population {
   MtCollinsChannelConnectorPair, MtCollinsDimmPopulationRow,
@@ -100,9 +101,9 @@ test fn w_every_figure_connector_resolves() -> Bool {
 test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
   match sixteen_dimm_diagram_identity() {
     PopulationDiagramResolved { population: p, slots: slots, orientation: o, physical_gaps: gaps, photographed_colours: colours, user_guide_citation: citation, mirror_read: mirror } =>
-      list_length(items: slots) == p.dimm_count && p.dimm_count == 16
+      length(xs: slots) == p.dimm_count && p.dimm_count == 16
       && o.left_processor_socket == 0 && o.right_processor_socket == 1
-      && list_length(items: gaps) == 2
+      && length(xs: gaps) == 2
       && match colours.first() {
         Present { value: c } => c == "blue"
         Absent => false
@@ -121,7 +122,7 @@ test fn w_sixteen_dimm_join_keeps_orientation_and_physical_gaps() -> Bool {
 
 test fn w_bad_population_never_returns_partial_slots() -> Bool {
   let missing = match population_diagram_identity(population: MtCollinsDimmPopulationRow { dimm_count: 2, connectors: [1, 99] }) {
-    PopulationDiagramRefused { unresolved: us } => list_length(items: us) == 1
+    PopulationDiagramRefused { unresolved: us } => length(xs: us) == 1
     PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: _, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => false
     PopulationCountDisagrees { declared: _, listed: _ } => false
     PopulationConnectorRepeated { connectors: _ } => false
@@ -152,7 +153,7 @@ test fn w_operator_colour_report_is_unit_scoped_and_preserves_documentary_gaps()
       PhysicalColourDiffersFromDiagramRole { observation: o, observed_population_diagram: diagram, same_colour_diagram_role: role } =>
         o.physical_colour == "blue" && role.slot_number == 1
         && match diagram {
-          PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: gaps, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => list_length(items: gaps) == 2
+          PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: gaps, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => length(xs: gaps) == 2
           PopulationDiagramRefused { unresolved: _ } => false
           PopulationCountDisagrees { declared: _, listed: _ } => false
           PopulationConnectorRepeated { connectors: _ } => false

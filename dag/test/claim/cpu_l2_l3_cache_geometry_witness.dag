@@ -13,7 +13,7 @@ import extdeps.cpu.ampere {
 import std.logic { Bool }
 import std.nat { Nat }
 import std.measure { byte_size_count }
-import std.types { list_length }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -37,7 +37,7 @@ test fn w_ampere_catalog_rows_share_cited_l2_geometry() -> Bool {
 
 test fn w_ampere_l2_citations_cover_all_fields() -> Bool {
   let citations = ampere_altra_l2_cache_citations
-  list_length(items: citations) == 2
+  length(xs: citations) == 2
     && match citations.first() {
          Present { value: e } => e.authority == ampere_altra_max_rev_a1_datasheet_authority
          Absent => false
@@ -54,8 +54,8 @@ test fn w_ampere_l3_geometry_diverges_by_sku() -> Bool {
 }
 
 test fn w_ampere_l3_citations_diverge_by_family_datasheet() -> Bool {
-  list_length(items: altra_max_m12830_catalog.l3_cache_citations) == 2
-    && list_length(items: altra_q6430_catalog.l3_cache_citations) == 2
+  length(xs: altra_max_m12830_catalog.l3_cache_citations) == 2
+    && length(xs: altra_q6430_catalog.l3_cache_citations) == 2
     && match altra_max_m12830_catalog.l3_cache_citations.first() {
          Present { value: e } => e.authority == ampere_altra_max_rev_a1_datasheet_authority
          Absent => false

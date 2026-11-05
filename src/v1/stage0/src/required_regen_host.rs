@@ -3418,7 +3418,7 @@ const STAGE0_SRC_REL: &str = "src/v1/stage0/src";
 /// Workspace-relative directory holding the WHOLE SEED CRATE — `src`, `tests`, `testdata`,
 /// `Cargo.toml`, `build.rs`. The round-1 bootstrap restores this, not the mirror directory alone:
 /// what cargo compiles is the crate, so what round 1 must pin is the crate. See
-/// `base_crate_population`.
+/// `crate_population_at_commit`.
 const STAGE0_CRATE_REL: &str = "src/v1/stage0";
 
 struct CargoBuildObservation {
@@ -4106,17 +4106,46 @@ fn rebuild_scope_decision_with(
     .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
 }
 
-/// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
-/// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
-/// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
-/// reads the declaration transitively, so a hand file a root module declares is owned too.
-fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
-    let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
-    let root = lib_rs
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or_else(|| format!("refusal: shell root {} has no file stem", lib_rs.display()))?;
-    modules.push(root.to_string());
+/// The modules the host shell package declares PLUS each of its crate roots, read from the files
+/// that declare them: the rebuild-scope fold owns a mirror through this declaration alone, so a
+/// root file is a fact this read supplies (its stem), not a spelling the fold recognises. A
+/// package has one root per target: `lib.rs` AND the path of every `[[bin]]` in its manifest
+/// (the generated `main.rs` is the `gunbc` bin's root and no `mod` declares it, so reading
+/// `lib.rs` alone left it `MirrorHasNoOwningPackage`). `closure_modules` reads each root's
+/// declarations transitively, so a hand file any root declares is owned too. An unreadable
+/// manifest or bin root is returned, never rendered as an empty roster.
+fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String>, String> {
+    let package_dir = manifest
+        .parent()
+        .ok_or_else(|| format!("refusal: manifest {} has no directory", manifest.display()))?;
+    let mut roots = vec![lib_rs.to_path_buf()];
+    let text = std::fs::read_to_string(manifest)
+        .map_err(|e| format!("refusal: shell manifest {}: {e}", manifest.display()))?;
+    // ONE READER of the manifest's bin roster (`cli_run`), not a second TOML walk here.
+    match super::parse_stage0_cargo_manifest_bin_paths(&text) {
+        super::Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        } => {
+            for path in authored_relative_paths {
+                roots.push(package_dir.join(path));
+            }
+        }
+        super::Stage0CargoManifestBinParse::Refused { detail } => {
+            return Err(format!(
+                "refusal: shell manifest {}: {detail}",
+                manifest.display()
+            ));
+        }
+    }
+    let mut modules = Vec::new();
+    for root in &roots {
+        modules.extend(super::emitted_closure_compile_host::closure_modules(root)?);
+        let stem = root
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| format!("refusal: shell root {} has no file stem", root.display()))?;
+        modules.push(stem.to_string());
+    }
     Ok(modules)
 }
 
@@ -4240,18 +4269,32 @@ fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String
 }
 
 /// Return every journalled path to the byte recorded before the round, and report WHICH were put
-/// back (workspace-relative). The paths are returned rather than re-derived by a caller so that the
-/// journal keeps exactly one reader (§3): a round that seeded the base snapshot prints what its
-/// rollback restored, and the partition-rebuild decision is fed the same list — the paths whose
-/// mtime this restore moved are exactly the ones cargo will see as changed.
+/// back and WHICH were removed (workspace-relative). The paths are returned rather than re-derived by
+/// a caller so that the journal keeps exactly one reader (§3): a round that seeded the base snapshot
+/// prints what its rollback did, and the partition-rebuild decision is fed the rewritten list — the
+/// paths whose mtime this restore moved are exactly the ones cargo will see as changed. A removed
+/// path is NOT in that second list: the head's commit does not track it, so it is not a mirror whose
+/// new bytes round 2 must rebuild around.
+/// WHAT THE JOURNAL RESTORE DID, in the two actions it can take per entry. A journalled path is
+/// either put back by writing the bytes the round found there (`rewritten`), or taken away because
+/// the round found NOTHING there and the round itself created the file (`removed`, the
+/// `AbsentBeforeInstall` shape). They are kept apart because the receipt has to say which happened:
+/// a path the head's commit does not track is removed, and reporting that as a rewrite would claim
+/// the round restored a byte the head never had.
+#[derive(Debug, Default, Clone)]
+struct RegenJournalRestore {
+    rewritten: Vec<String>,
+    removed: Vec<String>,
+}
+
 fn restore_regen_convergence_journal_for_subject(
     workspace: &Path,
     subject: &RegenConvergenceCheckpointSubject,
-) -> Result<Vec<String>, String> {
+) -> Result<RegenJournalRestore, String> {
     let root = regen_convergence_journal_path(workspace);
     let manifest_path = root.join("journal.json");
     if !manifest_path.is_file() {
-        return Ok(Vec::new());
+        return Ok(RegenJournalRestore::default());
     }
     admit_subject_live_facts(workspace, subject)?;
     let manifest: RegenConvergenceJournal = serde_json::from_slice(
@@ -4311,7 +4354,7 @@ fn restore_regen_convergence_journal_for_subject(
                 .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
         }
     }
-    let mut restored: Vec<String> = Vec::new();
+    let mut restored = RegenJournalRestore::default();
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
         if matches!(
@@ -4334,7 +4377,7 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
-            restored.push(entry.relative_path.clone());
+            restored.rewritten.push(entry.relative_path.clone());
         } else if destination.exists() {
             fs::remove_file(&destination).map_err(|e| {
                 format!(
@@ -4342,6 +4385,12 @@ fn restore_regen_convergence_journal_for_subject(
                     destination.display()
                 )
             })?;
+            // THE PATH IS NAMED IN THE RETURN, NOT ONLY REMOVED. A journalled
+            // `AbsentBeforeInstall` entry is the shape a round-1 bootstrap leaves when the PR DELETED
+            // a path: the restore's action on it is removal, not a rewrite, and a teardown line that
+            // counted it among "paths rewritten to the head's own bytes" would describe an action
+            // that did not happen.
+            restored.removed.push(entry.relative_path.clone());
         }
     }
     fs::remove_dir_all(&root)
@@ -4460,9 +4509,11 @@ fn journal_paths_for_subject(
     fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
 }
 
-/// THE SEED CRATE'S OWN SOURCE POPULATION as committed in a base commit: every path git tracks
-/// under `src/v1/stage0`, keyed by its repo-relative path — mirrors at any depth, the
-/// hand-maintained files, and the hand-maintained directories.
+/// THE SEED CRATE'S OWN SOURCE POPULATION as committed at ONE COMMIT: every path git tracks under
+/// `src/v1/stage0`, keyed by its repo-relative path — mirrors at any depth, the hand-maintained
+/// files, and the hand-maintained directories. Called for the BASE commit by the bootstrap authority
+/// and for the HEAD commit by the same round, because the delta between those two populations is the
+/// fact the receipt has to state; one git spelling for both (DESIGN §3).
 ///
 /// There is deliberately NO filter here, and the two that used to be are the bug this replaces.
 /// `!rest.contains('/')` skipped every nested mirror (`cli_run/compile_clean.rs`,
@@ -4481,7 +4532,7 @@ fn journal_paths_for_subject(
 /// COMPILES, and the head's authored `.dag`/`.rs` authorities are what it REGENERATES — round 2
 /// installs the regeneration over the whole base surface, so a base byte here is transient and can
 /// never be published. What a base checkout can no longer do is hand the round half of each.
-fn base_crate_population(
+fn crate_population_at_commit(
     workspace: &Path,
     commit: &str,
 ) -> Result<BTreeMap<String, String>, String> {
@@ -4499,7 +4550,7 @@ fn base_crate_population(
         .map_err(|e| format!("git ls-tree {commit}: {e}"))?;
     if !output.status.success() {
         return Err(format!(
-            "BootstrapBaseMirrorUnreadable: git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
+            "git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -4542,6 +4593,76 @@ fn worktree_crate_population(stage0_crate: &Path) -> Result<BTreeSet<String>, St
     Ok(present)
 }
 
+/// THE BASE/HEAD PATH-SET DELTA, computed in ONE place from the three populations a round can see.
+///
+/// THREE SETS, and the round must not confuse them:
+/// - THE BASE POPULATION: every path the base commit tracks under the seed crate. That is the
+///   validated bootstrap input, and round 1 compiles ALL of it, with no filter of any kind. Every
+///   filter that used to sit here is the defect this replaces: the last one, `from_base ∩ worktree`,
+///   dropped the paths a PR had DELETED while still restoring base's `lib.rs`, which declares them,
+///   so round 1 compiled a crate that was neither base nor head. The two retained specimens, read
+///   from the heal logs and the object store (commands and counts in
+///   `gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`):
+///   PR #15418 heal run 41605027842 job 125813087856, base `5ff414e66015` tracks 303 crate paths and
+///   head `5b7b2bc2` tracks 300, the receipt printed `paths=300`, and rustc printed
+///   `error[E0583]: file not found for module v1_tests_claim_interpolation_hole_census` and the same
+///   for `v1_tests_claim_shared_type_leaf_collision_census`; PR #15540 heal run 41591786053 job
+///   125769944667, base `6e1c65a36bcb` 303 and head `3be90ce5363e` 302, receipt `paths=302`,
+///   `error[E0583]: file not found for module required_lane_resolution_census` at the NESTED path
+///   `src/v1/stage0/src/cli_run/required_lane_resolution_census.rs`.
+/// - THE HEAD'S TRACKED POPULATION, read from the head COMMIT. "The head deleted this path" is a
+///   fact about a commit; the filesystem cannot tell a deleted path from an untracked one.
+/// - THE WORKTREE'S ON-DISK POPULATION, a filesystem walk, which also sees UNTRACKED files. It is
+///   not an authority about the head. What it is good for is exactly one thing here: telling a truly
+///   absent path from a path some other process left behind, so the round never guesses.
+///
+/// `head_deleted` is base minus head-tracked. Those paths are restored for the compile and journalled
+/// `AbsentBeforeInstall`, so the round's own teardown removes them again: absence is the head's
+/// authority, and the final regenerated output never carries a module the head deleted.
+///
+/// A `head_deleted` path that is nevertheless PRESENT ON DISK is not a deleted path — it is an
+/// untracked file sitting at a path base names. Overwriting it would clobber bytes the head never
+/// tracked; deleting it would clobber them by inference. So the round REFUSES, typed and located, and
+/// moves nothing.
+///
+/// INTERRUPTION IS THE SAME JOURNAL, NOT A NEW ONE. A round killed after the write leaves the
+/// resurrected path on disk with the journal naming it `AbsentBeforeInstall`; the next round restores
+/// that journal BEFORE it bootstraps (`restore_regen_convergence_journal` at the head of the
+/// convergence loop), which removes it. If the subject has moved since the kill, that recovery refuses
+/// with `CheckpointSubjectMismatch` instead of guessing which on-disk files "look like" base's.
+struct BasePopulationDelta {
+    /// The exact validated bootstrap input: every path the base commit tracks under the crate.
+    restore: BTreeSet<String>,
+    /// Base tracks it, the head does not: restored for the compile, removed after it.
+    head_deleted: BTreeSet<String>,
+    /// The head tracks it, base does not: it stays at the head, journalled, and counted.
+    head_added: BTreeSet<String>,
+}
+
+fn base_population_delta(
+    from_base: &BTreeMap<String, String>,
+    head_tracked: &BTreeSet<String>,
+    in_worktree: &BTreeSet<String>,
+    base_commit: &str,
+    head_commit: &str,
+) -> Result<BasePopulationDelta, String> {
+    let base: BTreeSet<String> = from_base.keys().cloned().collect();
+    let head_deleted: BTreeSet<String> = base.difference(head_tracked).cloned().collect();
+    if let Some(path) = head_deleted.iter().find(|path| in_worktree.contains(*path)) {
+        return Err(format!(
+            "BootstrapBaseMirrorUntrackedCollision: {path} is tracked by the base commit \
+             {base_commit}, is not tracked by the head {head_commit}, and is present in the \
+             worktree; the round will neither overwrite it with base's bytes nor remove it by \
+             inference"
+        ));
+    }
+    Ok(BasePopulationDelta {
+        restore: base.clone(),
+        head_deleted,
+        head_added: head_tracked.difference(&base).cloned().collect(),
+    })
+}
+
 /// What the round-1 bootstrap did, in the receipt's vocabulary.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct BaseRestore {
@@ -4560,10 +4681,16 @@ struct BaseRestore {
     /// support file is exactly where a new hand-written call to a new generated method lives, and
     /// the compile is still whole-crate base because the generated side of that call is base's.
     paths_absent_at_base: usize,
+    /// How many paths the BASE tracks that the HEAD does not: the PR deleted them. Round 1 restores
+    /// them so the crate it compiles is base's crate and not a chimera, and the journal's
+    /// `AbsentBeforeInstall` entries remove them again before anything is published. Counted, never
+    /// silent: this is the delta the receipt could not previously show, and the two specimens in
+    /// `base_population_delta` are what hiding it cost.
+    head_deleted_paths: usize,
 }
 
 /// The receipt's base-mirror arm, in the shape its renderer takes. Split out so the HOST half of
-/// the line — which commit and which two counts reach the renderer — is checkable without loading a
+/// the line — which commit and which three counts reach the renderer — is checkable without loading a
 /// corpus. The RENDERER's half (the line's text, and its absence for a round that was never asked
 /// to bootstrap) is asserted in `dag/test/claim/self_host_regen_round_cost_witness.dag`
 /// `a_bootstrapped_receipt_names_the_base_commit_after_the_header` and
@@ -4571,11 +4698,12 @@ struct BaseRestore {
 /// run. A Rust control that renders through the interpreter pays a whole corpus load per call —
 /// measured at about 50 minutes of libtest time on srv1 at `b339f6fa0e6f`, the same front-end cost
 /// this repository's native-execution lane exists to remove — so rendering does not belong here.
-fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize) {
+fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize, usize) {
     (
         base.base_commit.clone(),
         base.paths_restored,
         base.paths_absent_at_base,
+        base.head_deleted_paths,
     )
 }
 
@@ -4584,23 +4712,36 @@ fn base_mirror_receipt_authority(base: &BaseRestore) -> (String, usize, usize) {
 /// seeds nothing, so `base_bootstrap` is `None` there, and passing that `None` to the renderer would
 /// select the `SeedBuiltFromHead` arm and print a receipt claiming round 1 built from the HEAD —
 /// fabricating a plausible output for the one run whose whole purpose is to say which bytes round 1
-/// compiled. So the child re-derives the commit and both counts from the same authority the parent
-/// used. No fallback and no `.ok()`: a base commit that cannot be named refuses the round with the
-/// typed `BootstrapBaseMirrorCommitUnresolved` diagnostic instead of dropping the line.
+/// compiled. So the child re-derives the commit and all three counts through the SAME
+/// `base_population_delta` the seeding image used, rather than a second copy of the set arithmetic:
+/// two spellings of that arithmetic is how the parent and the child could disagree about a delta
+/// neither one admits. No fallback and no `.ok()`: a base commit that cannot be named refuses the
+/// round with the typed `BootstrapBaseMirrorCommitUnresolved` diagnostic instead of dropping the line,
+/// and so does an untracked file sitting at a base-only path, which is the one case the delta refuses.
 fn round_one_receipt_base_authority(
     workspace: &Path,
     base_commit_env: Option<&str>,
-) -> Result<(String, usize, usize), String> {
+) -> Result<(String, usize, usize, usize), String> {
     let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
     let in_worktree = worktree_crate_population(&workspace.join(STAGE0_CRATE_REL))?;
-    let seeded = from_base
+    let head_commit = git_head_sha(workspace)?;
+    let head_tracked: BTreeSet<String> = crate_population_at_commit(workspace, &head_commit)?
         .keys()
-        .filter(|path| in_worktree.contains(*path))
-        .count();
-    let head_added = in_worktree
-        .difference(&from_base.keys().cloned().collect())
-        .count();
-    Ok((base_commit, seeded, head_added))
+        .cloned()
+        .collect();
+    let delta = base_population_delta(
+        &from_base,
+        &head_tracked,
+        &in_worktree,
+        &base_commit,
+        &head_commit,
+    )?;
+    Ok((
+        base_commit,
+        delta.restore.len(),
+        delta.head_added.len(),
+        delta.head_deleted.len(),
+    ))
 }
 
 /// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5, `gunbc.recurring_failure_mode`
@@ -4634,7 +4775,7 @@ fn round_one_receipt_base_authority(
 ///   depth, `tests/**`, `testdata/**`, `Cargo.toml`, `build.rs` — so that is what round 1 pins.
 ///   Restoring only top-level generated mirrors left a CRATE THAT IS NEITHER BASE NOR HEAD, and
 ///   that chimera refuses with its own E0599/E0308 while the fix sits unreachable in the tree:
-///   `base_crate_population` names the specimens.
+///   `crate_population_at_commit` names the specimens.
 /// - THE BASE SNAPSHOT EXISTS ONLY FOR THE COMPILE. `restore_regen_convergence_journal` — the round's
 ///   own teardown, the one reader of the journal (§3) — puts the head's own bytes back as soon as
 ///   round 1's seed build is no longer reading them.
@@ -4674,19 +4815,33 @@ fn bootstrap_round_one_from_base_mirror(
     let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
     let stage0_crate = workspace.join(STAGE0_CRATE_REL);
     let in_worktree = worktree_crate_population(&stage0_crate)?;
-    // RESTORE EVERYTHING BASE HAS THAT THE WORKTREE HAS; a path base has and the worktree lacks is a
-    // path the PR deleted (leaving it deleted is the head's authority), and one the worktree has and
-    // base lacks is a path the PR ADDED: it stays at the head, is still journalled, and is counted in
-    // the receipt rather than passed over silently — it is exactly where a new hand-written call to a
-    // new generated method lives, and the generated side of that call is still base's bytes.
-    let restore: BTreeSet<String> = from_base
+    // RESTORE THE EXACT VALIDATED BASE POPULATION: every path the base commit tracks under the
+    // crate, with NO filter of any kind. The rule used to be `from_base ∩ worktree`, and that
+    // intersection was a filter in the one place it mattered — it dropped exactly the paths the PR
+    // had DELETED while base's `lib.rs` went on declaring them, so round 1 compiled a crate that was
+    // neither base nor head and rustc refused with E0583. `base_population_delta` states the three
+    // sets, the two retained specimens, and the one case that still refuses: a base-only path
+    // present on disk as an untracked file, which the round neither overwrites nor removes.
+    //
+    // WHAT THIS DOES NOT DO IS RESURRECT A DELETION. A restored head-deleted path is journalled
+    // `AbsentBeforeInstall` by the same journal that snapshots every other staged path, so the
+    // round's own teardown removes it before the candidate is compared or published, and the
+    // emitter's population walk never sees a base byte for it.
+    let head_commit = git_head_sha(workspace)?;
+    let head_tracked: BTreeSet<String> = crate_population_at_commit(workspace, &head_commit)?
         .keys()
-        .filter(|path| in_worktree.contains(*path))
         .cloned()
         .collect();
-    let paths_absent_at_base = in_worktree
-        .difference(&from_base.keys().cloned().collect())
-        .count();
+    let delta = base_population_delta(
+        &from_base,
+        &head_tracked,
+        &in_worktree,
+        &base_commit,
+        &head_commit,
+    )?;
+    let restore = delta.restore;
+    let head_deleted_paths = delta.head_deleted.len();
+    let paths_absent_at_base = delta.head_added.len();
 
     // FETCH EVERY BASE BLOB ONCE AND WRITE ONLY THE PATHS WHOSE BYTES ACTUALLY DIFFER.
     //
@@ -4761,6 +4916,7 @@ fn bootstrap_round_one_from_base_mirror(
         // were already the same bytes, which is the #14876 shape and the reason no mtime moved.
         paths_rewritten: to_write.len(),
         paths_absent_at_base,
+        head_deleted_paths,
     })
 }
 
@@ -4843,7 +4999,8 @@ fn resolve_base_mirror_authority(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let population = base_crate_population(workspace, base_commit)?;
+    let population = crate_population_at_commit(workspace, base_commit)
+        .map_err(|e| format!("BootstrapBaseMirrorUnreadable: {e}"))?;
     if population.is_empty() {
         return Err(format!(
             "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no generated mirror \
@@ -4873,7 +5030,7 @@ struct SeedHandoff {
     built_exe: String,
     /// The round's checkpoint subject if the image that owns the round established one (a
     /// base-mirror round always has). Encoded explicitly as present or absent: a handoff without
-    /// the field is `HandoffUndecodable`, never a cue to recompute.
+    /// the field is `HandoffPredatesRoundSubject`, never a cue to recompute.
     round_subject: Option<RegenConvergenceCheckpointSubject>,
 }
 
@@ -4910,6 +5067,15 @@ enum SeedHandoffRefusal {
     },
     /// The carried observation does not decode.
     HandoffUndecodable {
+        value: String,
+    },
+    /// The carried observation is well formed up to the point where the round-subject field is
+    /// due and ends there: the image that wrote it predates that field (first written by 0256037,
+    /// #15855). Refused, never read as an absent subject. Distinct from `HandoffUndecodable` so it
+    /// can be counted: its remedy is known (merge the base into the head), an undecodable value's
+    /// is not.
+    HandoffPredatesRoundSubject {
+        missing_field: &'static str,
         value: String,
     },
     ReExecFailed {
@@ -4952,6 +5118,15 @@ impl std::fmt::Display for SeedHandoffRefusal {
                 f,
                 "refusal: HandoffUndecodable: {p}: {REGEN_ROUND_COST_REEXEC_ENV}={value:?}"
             ),
+            Self::HandoffPredatesRoundSubject {
+                missing_field,
+                value,
+            } => write!(
+                f,
+                "refusal: HandoffPredatesRoundSubject: {p}: the pre-exec image predates the \
+                 round-subject handoff (base 0256037): its handoff ends where `{missing_field}` \
+                 is due ({REGEN_ROUND_COST_REEXEC_ENV}={value:?}); merge the base into the head"
+            ),
             Self::ReExecFailed { path, cause } => write!(
                 f,
                 "refusal: ReExecFailed: {p}: the seed build replaced the running executable and \
@@ -4993,6 +5168,11 @@ impl SeedHandoff {
         let mut field = |key: &str| -> Result<String, SeedHandoffRefusal> {
             match it.next() {
                 Some(Some((k, v))) if k == key => Ok(v.to_string()),
+                // The input ends exactly where the subject field is due: the previous encoding.
+                None if key == "subject" => Err(SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                    missing_field: "subject",
+                    value: value.to_string(),
+                }),
                 _ => Err(bad()),
             }
         };
@@ -5360,7 +5540,7 @@ fn render_round_cost_receipt(
     rebuild_packages: &[String],
     executable_digest: &str,
     second_generation_candidate_digest: &str,
-    base_mirror_authority: Option<(&str, usize, usize)>,
+    base_mirror_authority: Option<(&str, usize, usize, usize)>,
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -5488,18 +5668,24 @@ fn render_round_cost_receipt(
             (
                 ctx.sym("base_mirror_authority"),
                 match base_mirror_authority {
-                    Some((commit, crate_paths, head_added_paths_kept)) => Value::Variant {
-                        type_name: ctx.sym("RoundOneMirrorAuthority"),
-                        variant_name: ctx.sym("FromBaseMirror"),
-                        fields: Rc::new(vec![
-                            (ctx.sym("commit"), str_value(commit)),
-                            (ctx.sym("crate_paths"), Value::Int(crate_paths as i64)),
-                            (
-                                ctx.sym("head_added_paths_kept"),
-                                Value::Int(head_added_paths_kept as i64),
-                            ),
-                        ]),
-                    },
+                    Some((commit, crate_paths, head_added_paths_kept, head_deleted_paths)) => {
+                        Value::Variant {
+                            type_name: ctx.sym("RoundOneMirrorAuthority"),
+                            variant_name: ctx.sym("FromBaseMirror"),
+                            fields: Rc::new(vec![
+                                (ctx.sym("commit"), str_value(commit)),
+                                (ctx.sym("crate_paths"), Value::Int(crate_paths as i64)),
+                                (
+                                    ctx.sym("head_added_paths_kept"),
+                                    Value::Int(head_added_paths_kept as i64),
+                                ),
+                                (
+                                    ctx.sym("head_deleted_paths"),
+                                    Value::Int(head_deleted_paths as i64),
+                                ),
+                            ]),
+                        }
+                    }
                     None => Value::Variant {
                         type_name: ctx.sym("RoundOneMirrorAuthority"),
                         variant_name: ctx.sym("SeedBuiltFromHead"),
@@ -6033,10 +6219,10 @@ fn regen_convergence_journal_exists(workspace: &Path) -> bool {
 fn restore_round_journal(
     workspace: &Path,
     established: Option<&RegenConvergenceCheckpointSubject>,
-) -> Result<Vec<String>, String> {
+) -> Result<RegenJournalRestore, String> {
     match established {
         Some(subject) => restore_regen_convergence_journal_for_subject(workspace, subject),
-        None if !regen_convergence_journal_exists(workspace) => Ok(Vec::new()),
+        None if !regen_convergence_journal_exists(workspace) => Ok(RegenJournalRestore::default()),
         None => Err(
             "CheckpointJournalWithoutRoundSubject: a convergence journal exists but this round \
              established no checkpoint subject; it was not written by this round, and the round \
@@ -7620,7 +7806,10 @@ fn install_convergence_stage(
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
     let changed_mirrors: Vec<String> = basenames
         .iter()
         .chain(base_rewritten_mirrors)
@@ -8415,11 +8604,13 @@ pub fn run_regen_round_cost(
         // distinguish a base byte from a head byte without re-running anything.
         println!(
             "regen-round-cost: round 1 builds the whole {STAGE0_CRATE_REL} crate from the base \
-             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={}",
+             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={} \
+             head_deleted_paths={}",
             restored.base_commit,
             restored.paths_restored,
             restored.paths_rewritten,
-            restored.paths_absent_at_base
+            restored.paths_absent_at_base,
+            restored.head_deleted_paths
         );
         Some(restored)
     } else {
@@ -8513,16 +8704,19 @@ pub fn run_regen_round_cost(
     // unwinds what the parent seeded.
     let base_rewritten_mirrors: Vec<String> = if base_mirror {
         v1_rt::trace_mark("round.base_snapshot_revert.begin".to_string());
-        let rewritten = restore_round_journal(&workspace, round_subject.as_ref())?;
-        let reverted = rewritten.len();
+        let revert = restore_round_journal(&workspace, round_subject.as_ref())?;
+        let (rewritten, removed) = (revert.rewritten, revert.removed);
         v1_rt::trace_mark("round.base_snapshot_revert.done".to_string());
         // THE RECEIPT NAMES WHAT IT PUT BACK, so a reader can tell a round that returned the head's
         // bytes from one that quietly kept compiling base's into the candidate. The count is the
         // paths the restore actually rewrote: a journalled path the seed never moved already holds
         // the head's bytes, and rewriting it would be mtime churn cargo reads as a change.
         println!(
-            "regen-round-cost: round 1 ended the base snapshot; {reverted} journalled paths were \
-             rewritten to the head's own bytes (the rest already held them)"
+            "regen-round-cost: round 1 ended the base snapshot; {} journalled paths were rewritten \
+             to the head's own bytes, {} were removed because the head's commit does not track them \
+             (the rest already held them)",
+            rewritten.len(),
+            removed.len()
         );
         // THE CHANGED SET THE REBUILD DECISION READS INCLUDES THESE. Round 1 compiled base's
         // bytes; this restore just moved the head's differing mirrors under the built artifacts, so
@@ -9023,7 +9217,10 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
 
     // ONE AUTHORITY FOR THE RECEIPT'S BASE ARM, read by whichever image reports. The parent holds
     // what its own seed did. The handoff child seeds nothing (the handoff rule), so it DERIVES the
@@ -9032,16 +9229,17 @@ pub fn run_regen_round_cost(
     // output in the one run whose purpose is to record which bytes round 1 compiled. No `.ok()`
     // anywhere: a base commit that cannot be named refuses the round with its typed
     // `BootstrapBaseMirrorCommitUnresolved` diagnostic rather than dropping the line silently.
-    let receipt_base_authority: Option<(String, usize, usize)> = match base_bootstrap.as_ref() {
-        Some(restored) => Some(base_mirror_receipt_authority(restored)),
-        None if base_mirror => Some(round_one_receipt_base_authority(
-            &workspace,
-            std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
-                .ok()
-                .as_deref(),
-        )?),
-        None => None,
-    };
+    let receipt_base_authority: Option<(String, usize, usize, usize)> =
+        match base_bootstrap.as_ref() {
+            Some(restored) => Some(base_mirror_receipt_authority(restored)),
+            None if base_mirror => Some(round_one_receipt_base_authority(
+                &workspace,
+                std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV)
+                    .ok()
+                    .as_deref(),
+            )?),
+            None => None,
+        };
     let rendered = render_round_cost_receipt(
         source_roots,
         &host,
@@ -9060,7 +9258,9 @@ pub fn run_regen_round_cost(
         &second_generation_candidate_digest,
         receipt_base_authority
             .as_ref()
-            .map(|(commit, seeded, head_added)| (commit.as_str(), *seeded, *head_added)),
+            .map(|(commit, seeded, head_added, head_deleted)| {
+                (commit.as_str(), *seeded, *head_added, *head_deleted)
+            }),
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -9080,7 +9280,7 @@ pub fn run_regen_round_cost(
         // exactly the run that answers it, and the rendered receipt would claim the head instead.
         base_mirror_commit: receipt_base_authority
             .as_ref()
-            .map(|(commit, _, _)| commit.clone()),
+            .map(|(commit, _, _, _)| commit.clone()),
     })
 }
 
@@ -9110,7 +9310,12 @@ mod heal_round_one_base_mirror_tests {
     /// file, and a hand-maintained directory. HEAD carries the damage the PR came to repair
     /// (the `Nat` refusal spelled in the generated mirror), its own hand-authored repair, and a
     /// mirror base has no form of.
-    fn base_mirror_fixture() -> (PathBuf, PathBuf, String) {
+    /// THE FIXTURE, parameterized by the one shape the bootstrap authority had never seen: a module
+    /// the BASE tracks and the HEAD DELETES. `deleted` is a path relative to the crate's `src`
+    /// directory; when it is `Some`, base carries that file and the head removes it in its own commit,
+    /// which is exactly the PR shape that made round 1 compile a base/head chimera (PR #15418, PR
+    /// #15540). When it is `None` the fixture is byte-for-byte the one every existing test uses.
+    fn base_mirror_fixture_with_deleted(deleted: Option<&str>) -> (PathBuf, PathBuf, String) {
         let root = std::env::temp_dir().join(format!(
             "gunbc-heal-base-mirror-{}-{}",
             std::process::id(),
@@ -9183,6 +9388,25 @@ mod heal_round_one_base_mirror_tests {
             "// base build identity source\n",
         )
         .unwrap();
+        // A MODULE THE HEAD WILL DELETE, in a NESTED directory: the shape of PR #15540, whose lost
+        // path was `src/v1/stage0/src/cli_run/required_lane_resolution_census.rs`. Base's crate is
+        // incomplete without it, and the head's tree is incomplete with it -- which is the whole
+        // difficulty the authority has to get right in both directions.
+        if let Some(retired) = deleted {
+            fs::write(
+                stage0.join(retired),
+                "// base bytes for a module the head deletes\n",
+            )
+            .unwrap();
+            // A SECOND NESTED MODULE THE HEAD KEEPS UNEDITED: the survivor is the control that the
+            // round's journal and restore leave an untouched file alone, bytes AND mtime. A module
+            // the head edits cannot show that, because the round rewrites it in both directions.
+            fs::write(
+                stage0.join("cli_run").join("fixture_survivor.rs"),
+                "// base bytes for a module the head keeps exactly as they are\n",
+            )
+            .unwrap();
+        }
         // The `.dag` sources are OUTSIDE the crate the authority owns: they are what the round
         // regenerates FROM, so the pull request's edits there must survive the bootstrap.
         fs::create_dir_all(root.join("dag")).unwrap();
@@ -9242,7 +9466,156 @@ mod heal_round_one_base_mirror_tests {
         write_fixture_stage_plan(&root);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "head"]);
+        if let Some(retired) = deleted {
+            git(&["rm", "-q", &format!("{STAGE0_SRC_REL}/{retired}")]);
+            git(&["commit", "-qm", "head deletes a module"]);
+        }
         (root, stage0, base_commit)
+    }
+
+    /// The fixture as every existing test has always used it: no head-deleted module.
+    fn base_mirror_fixture() -> (PathBuf, PathBuf, String) {
+        base_mirror_fixture_with_deleted(None)
+    }
+
+    /// The fixture WITH a head-deleted nested module: base tracks it, the head removes it.
+    fn base_mirror_deletion_fixture() -> (PathBuf, PathBuf, String) {
+        base_mirror_fixture_with_deleted(Some("cli_run/fixture_retired.rs"))
+    }
+
+    /// The crate's tracked population AT A COMMIT, read straight from git. A test that reused the
+    /// set the code under test computes could only prove the writer agrees with itself; this reads
+    /// the commit, which is the thing the authority is supposed to agree with.
+    fn fixture_crate_paths_at_commit(root: &Path, commit: &str) -> Vec<String> {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args([
+                "ls-tree",
+                "-r",
+                "--name-only",
+                commit,
+                "--",
+                STAGE0_CRATE_REL,
+            ])
+            .output()
+            .expect("git ls-tree runs");
+        assert!(
+            output.status.success(),
+            "git ls-tree {commit} -- {STAGE0_CRATE_REL}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout)
+            .expect("path list is utf8")
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The blob a commit holds for one path, read straight from git.
+    fn fixture_blob_at_commit(root: &Path, commit: &str, path: &str) -> String {
+        let output = Command::new("git")
+            .current_dir(root)
+            .args(["show", &format!("{commit}:{path}")])
+            .output()
+            .expect("git show runs");
+        assert!(
+            output.status.success(),
+            "git show {commit}:{path}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).expect("blob is utf8")
+    }
+
+    /// THE DELETION SHAPE, ASSERTED IN BOTH DIRECTIONS. Base tracks a nested module the head
+    /// DELETES, plus a second nested module the head keeps byte-for-byte. Round 1 must compile
+    /// BASE's crate — every path base tracks present with base's bytes, the deleted one included —
+    /// and the round's own teardown must put the tree back to HEAD: the deleted module absent
+    /// again, the survivor untouched down to its mtime.
+    ///
+    /// THIS TEST IS ALSO THE CONTROL FOR THE RULE IT REPLACES, and it was written and run against
+    /// that rule BEFORE the rule was changed: there it fails at the first assertion, because the
+    /// old authority restored only the paths base and the worktree shared, a path the head deleted
+    /// is by definition absent from the worktree, so it was never written, and base's restored
+    /// `lib.rs` went on declaring a module with no file. That is the E0583 in the heal runs of PR
+    /// #15418 (run 41605027842, head 5b7b2bc2, base 5ff414e6, `lib.rs` lines 755 and 832) and PR
+    /// #15540 (run 41591786053, head 3be90ce5, base 6e1c65a3, the lost path nested under `cli_run/`).
+    /// The old rule is NOT re-implemented here: a second copy of it would be a second authority,
+    /// and the red comes from the run at the pre-fix revision instead.
+    #[test]
+    fn a_head_deleted_module_is_restored_for_round_one_and_removed_after_it() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let survivor = stage0.join("cli_run").join("fixture_survivor.rs");
+        let survivor_bytes = read(&survivor);
+        let survivor_mtime = fs::metadata(&survivor)
+            .expect("survivor metadata")
+            .modified()
+            .expect("survivor mtime");
+        assert!(
+            !retired.exists(),
+            "the fixture's head must not carry the module its commit deleted"
+        );
+
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &fixture_subject(&root))
+            .expect("the round-1 bootstrap runs");
+
+        // ROUND 1 SEES BASE'S CRATE, PATH FOR PATH.
+        for path in fixture_crate_paths_at_commit(&root, &base_commit) {
+            let on_disk = root.join(&path);
+            assert!(
+                on_disk.is_file(),
+                "round 1 left {path} absent, so the crate it compiled was neither base's nor                  head's: base declares this path and the tree does not have it"
+            );
+            assert_eq!(
+                read(&on_disk),
+                fixture_blob_at_commit(&root, &base_commit, &path),
+                "round 1 left {path} short of the base commit it claims to compile"
+            );
+        }
+        assert!(
+            retired.is_file(),
+            "round 1 did not restore the module the head deleted"
+        );
+
+        // THE ROUND'S OWN TEARDOWN PUTS THE TREE BACK TO HEAD.
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the round ends its snapshot");
+        assert!(
+            !retired.exists(),
+            "a module the head deleted survived the round into the tree the emitter walks:              {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .removed
+                .iter()
+                .any(|path| path.starts_with(STAGE0_CRATE_REL)
+                    && path.ends_with("/fixture_retired.rs")),
+            "the restore did not report the resurrected path among the paths it REMOVED: \
+             {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .removed
+                .iter()
+                .all(|path| path.ends_with("/fixture_retired.rs")),
+            "a path other than the head-deleted one was removed, which would mean the round \
+             deleted something the head tracks: {put_back_paths:?}"
+        );
+        assert_eq!(
+            read(&survivor),
+            survivor_bytes,
+            "the round changed a module neither base nor the head touched"
+        );
+        assert_eq!(
+            fs::metadata(&survivor)
+                .expect("survivor metadata")
+                .modified()
+                .expect("survivor mtime"),
+            survivor_mtime,
+            "the round rewrote a module neither side touched, bumping an mtime cargo's              path-dependency fingerprint reads as a change (PR #14876): {put_back_paths:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// The subject a round journals under. The three digests are fixed for one fixture: what the
@@ -9369,7 +9742,7 @@ mod heal_round_one_base_mirror_tests {
         let put_back_paths =
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round ends its snapshot");
-        let put_back = put_back_paths.len();
+        let put_back = put_back_paths.rewritten.len() + put_back_paths.removed.len();
         // THE DECISION'S CHANGED SET IS THESE PATHS, NOT AN MTIME SCAN (RFM
         // `heal_partition_guard_infers_changed_mirrors_from_mtimes_not_rewritten_paths`): the restore
         // names each file it moved under the built artifacts, workspace-relative, so the rebuild
@@ -9377,12 +9750,13 @@ mod heal_round_one_base_mirror_tests {
         // bytes) must not appear.
         assert!(
             put_back_paths
+                .rewritten
                 .iter()
                 .any(|path| path.starts_with(STAGE0_CRATE_REL) && path.ends_with("/std_logic.rs")),
             "the restore did not name the hand-maintained file it moved: {put_back_paths:?}"
         );
         assert!(
-            put_back_paths.iter().all(|path| !path.ends_with("/build.rs")),
+            put_back_paths.rewritten.iter().all(|path| !path.ends_with("/build.rs")),
             "the restore named a path it never moved (its bytes were identical): {put_back_paths:?}"
         );
         // The journal covers exactly what the seed MOVED. A path whose base bytes already equal the
@@ -9532,6 +9906,7 @@ mod heal_round_one_base_mirror_tests {
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &subject)
                 .expect("the round's teardown restores what the parent seeded")
+                .rewritten
                 .len(),
             restored.paths_rewritten,
             "the teardown did not return every path the parent seed moved ({}), so the child touched \
@@ -9938,7 +10313,7 @@ mod heal_round_one_base_mirror_tests {
             &fixture_subject(&root),
         )
         .expect("the bootstrap runs");
-        let (commit, seeded, head_added) = base_mirror_receipt_authority(&restored);
+        let (commit, seeded, head_added, head_deleted) = base_mirror_receipt_authority(&restored);
         assert_eq!(
             commit,
             base_commit.as_str(),
@@ -9946,10 +10321,215 @@ mod heal_round_one_base_mirror_tests {
              round's stated source is not the authority it actually used"
         );
         assert_eq!(
-            (seeded, head_added),
-            (5, 2),
+            (seeded, head_added, head_deleted),
+            (5, 2, 0),
             "the receipt's counts moved off the fixture's population, so the line it feeds no \
-             longer describes what the seed built"
+             longer describes what the seed built. The third count is the new one: this fixture has \
+             no head-deleted path, so it must read zero rather than borrow another fixture's number."
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE PATH-SET DELTA IS IN THE RECEIPT, not hidden in the writer's arithmetic. The #15418 heal
+    /// log printed `paths=300` while the base commit it named tracked 303 crate paths, and nothing in
+    /// that line separated the three paths the head had deleted from paths that were never in base at
+    /// all -- the two cases print identically until a count of the deletions exists next to the count
+    /// of head additions. The fixture's population is exact, so the row is checked against it.
+    #[test]
+    fn the_receipt_names_the_paths_the_head_deleted() {
+        let (root, _stage0, base_commit) = base_mirror_deletion_fixture();
+        let restored = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect("the bootstrap runs");
+        let (commit, seeded, head_added, head_deleted) = base_mirror_receipt_authority(&restored);
+        assert_eq!(
+            commit,
+            base_commit.as_str(),
+            "the receipt would name something other than the commit the step named"
+        );
+        assert_eq!(
+            (seeded, head_added, head_deleted),
+            (7, 2, 1),
+            "base tracks seven crate paths here, the head tracks eight of which two are new and one \
+             is base-only; a receipt that does not carry that delta cannot distinguish a deleted \
+             module from a path base never had"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// AN UNTRACKED FILE AT A BASE-ONLY PATH REFUSES THE ROUND AND MOVES NOTHING. The path is in
+    /// base's population, absent from the head's tracked set, and PRESENT on disk. The round cannot
+    /// tell that from a head deletion whose bytes some other process left behind, and both readings
+    /// are destructive in different ways: overwriting the file clobbers bytes the head never tracked,
+    /// deleting it clobbers them by inference. So the round refuses, typed and located, before it
+    /// journals or writes anything -- which is also why the refusal carries both commit ids: the
+    /// reader has to be able to see which side of the delta the path sits on.
+    #[test]
+    fn an_untracked_file_at_a_base_only_path_refuses_and_moves_nothing() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let untracked_bytes = "// not base's bytes, and not tracked by either commit\n";
+        fs::write(&retired, untracked_bytes).expect("plant the untracked file");
+        let before = mtimes_under(&root.join(STAGE0_CRATE_REL));
+        let error = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect_err("a base-only path present on disk as an untracked file must refuse the round");
+        assert!(
+            error.contains("BootstrapBaseMirrorUntrackedCollision")
+                && error.contains("cli_run/fixture_retired.rs"),
+            "the refusal is not the typed, located one: {error}"
+        );
+        assert!(
+            error.contains(&base_commit) && error.contains(&git_head_sha(&root).expect("head sha")),
+            "the refusal names the path but not the two commits whose delta put it on the \
+             deleted side: {error}"
+        );
+        assert_eq!(
+            read(&retired),
+            untracked_bytes,
+            "the round overwrote a file the head does not track"
+        );
+        assert_eq!(
+            mtimes_under(&root.join(STAGE0_CRATE_REL)),
+            before,
+            "the round moved a file before refusing"
+        );
+        assert!(
+            !regen_convergence_journal_path(&root).exists(),
+            "the round journalled before refusing, so a later round would restore a state that \
+             never existed"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// CLEANUP AFTER A FORCED FAILURE. `std_logic.rs` is made unwritable, so the bootstrap writes
+    /// some base bytes and then refuses mid-round: by that point the head-deleted module is back on
+    /// disk, which is exactly the state a failure leaves. Every failure arm of the round ends in the
+    /// same journal restore this test calls, so the assertion is about the journal's lifecycle and
+    /// not about one error arm: absence comes back, and the head's own bytes come back for every file
+    /// the round managed to rewrite. The file that refused is never touched by the restore either --
+    /// it still holds the head's bytes, and the mode the fixture gave it survives.
+    #[test]
+    fn a_forced_failure_after_the_bootstrap_restores_absence_and_the_heads_bytes() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        let rewritten = stage0.join("cli_run").join("fixture_partition.rs");
+        let std_logic = stage0.join("std_logic.rs");
+        let head_partition = read(&rewritten);
+        let head_std_logic = read(&std_logic);
+        fs::set_permissions(&std_logic, fs::Permissions::from_mode(0o444))
+            .expect("make one base-tracked file unwritable");
+
+        let error = bootstrap_round_one_from_base_mirror(
+            &root,
+            Some(&base_commit),
+            &fixture_subject(&root),
+        )
+        .expect_err("an unwritable base-tracked file must refuse the bootstrap");
+        // THE REFUSAL IS LOCATED, NOT TYPED: the write arm spells `write {path}: {cause}` (an existing
+        // property of this function, not widened or narrowed by this change), so the assertion names
+        // the path and the cause rather than a prefix that does not exist.
+        assert!(
+            error.contains(&format!("write {}:", std_logic.display()))
+                && error.contains("Permission denied"),
+            "the refusal is not the located write refusal this fixture forces: {error}"
+        );
+        assert!(
+            retired.is_file(),
+            "the fixture did not reach the state a mid-round failure leaves, so the cleanup below \
+             would be asserting nothing: {error}"
+        );
+
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the failure path restores the journal");
+        assert!(
+            !retired.exists(),
+            "a module the head deleted survived a FAILED round into the tree the next stage walks: \
+             {put_back_paths:?}"
+        );
+        assert_eq!(
+            read(&rewritten),
+            head_partition,
+            "a file the round rewrote before failing did not come back to the head's bytes"
+        );
+        assert_eq!(
+            read(&std_logic),
+            head_std_logic,
+            "the file whose write refused was changed anyway"
+        );
+        assert_eq!(
+            fs::metadata(&std_logic)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o222,
+            0,
+            "the restore wrote through a mode the head had, so the next round sees a tree the head \
+             never had"
+        );
+        assert!(
+            put_back_paths
+                .removed
+                .iter()
+                .any(|path| path.ends_with("/cli_run/fixture_retired.rs")),
+            "the restore did not report the resurrected path among the paths it REMOVED: \
+             {put_back_paths:?}"
+        );
+        assert!(
+            put_back_paths
+                .rewritten
+                .iter()
+                .any(|path| path.ends_with("/cli_run/fixture_partition.rs")),
+            "the file the round rewrote before failing is not among the paths the restore put \
+             back: {put_back_paths:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// INTERRUPTION AND RECOVERY. A process that dies after the bootstrap and before the round's own
+    /// teardown leaves the journal behind, and the next round begins by restoring it -- the head of
+    /// the round body calls `restore_regen_convergence_journal` before anything else. That recovery
+    /// can only match if the bootstrap left the journal's subject re-derivable, and it does: the
+    /// subject is the starting commit, the digest of the `.dag` sources under the entry root, and the
+    /// digest of the transaction plan, none of which a base-mirror bootstrap touches, because it
+    /// writes only inside `src/v1/stage0`. This test calls the subject-carrying form because the
+    /// fixture's subject is fixed rather than computed; the production call is the same function with
+    /// the subject the next round would carry.
+    #[test]
+    fn a_round_that_died_after_the_bootstrap_leaves_a_journal_the_next_round_can_recover() {
+        let (root, stage0, base_commit) = base_mirror_deletion_fixture();
+        let retired = stage0.join("cli_run").join("fixture_retired.rs");
+        bootstrap_round_one_from_base_mirror(&root, Some(&base_commit), &fixture_subject(&root))
+            .expect("the bootstrap runs");
+        assert!(
+            retired.is_file(),
+            "the round did not reach the state a crash would interrupt"
+        );
+        assert!(
+            regen_convergence_journal_path(&root).exists(),
+            "no journal was left behind, so there is no interruption to recover from"
+        );
+
+        let put_back_paths =
+            restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
+                .expect("the next round's head restores the stale journal");
+        assert!(
+            !retired.exists(),
+            "the resurrected module survived the interruption into the tree the next round builds: \
+             {put_back_paths:?}"
+        );
+        assert!(
+            !regen_convergence_journal_path(&root).exists(),
+            "the recovery left its journal behind, so a third round would restore a state that no \
+             longer exists"
         );
         let _ = fs::remove_dir_all(&root);
     }
@@ -10050,6 +10630,7 @@ mod heal_round_one_base_mirror_tests {
         assert_eq!(
             restore_regen_convergence_journal_for_subject(&root, &fixture_subject(&root))
                 .expect("the round's teardown runs")
+                .rewritten
                 .len(),
             0,
             "the teardown wrote back paths the seed never moved"
@@ -11979,7 +12560,21 @@ mod host_shell_scope_modules_tests {
         std::fs::write(dir.join("deeper.rs"), "").unwrap();
         std::fs::write(dir.join("sibling.rs"), "").unwrap();
         std::fs::write(dir.join("stray.rs"), "").unwrap();
-        let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
+        // A second target root: `main.rs` is the `[[bin]]` root no `mod` declares, and it declares
+        // `bin_child` itself. Reading lib.rs alone owns neither.
+        std::fs::write(dir.join("main.rs"), "mod bin_child;\n").unwrap();
+        std::fs::write(dir.join("bin_child.rs"), "").unwrap();
+        // A second `[[bin]]` under `bin/`, as `infer_semantics_witness` is in the seed: a changed
+        // file there refused `MirrorHasNoOwningPackage` (#15175 heal, run 41934097748).
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin/witness.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[[bin]]\nname = \"x\"\npath = \"main.rs\"\n\n[[bin]]\nname = \"witness\"\npath = \"bin/witness.rs\"\n",
+        )
+        .unwrap();
+        let modules =
+            host_shell_scope_modules(&dir.join("lib.rs"), &dir.join("Cargo.toml")).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         for owned in [
             "cli_run",
@@ -11989,6 +12584,9 @@ mod host_shell_scope_modules_tests {
             "deeper",
             "sibling",
             "lib",
+            "main",
+            "bin_child",
+            "witness",
         ] {
             assert!(
                 modules.iter().any(|m| m == owned),
@@ -13119,7 +13717,8 @@ mod round_checkpoint_subject_tests {
         let root = std::env::temp_dir().join(format!("gunbc-round-journal-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        assert_eq!(restore_round_journal(&root, None), Ok(Vec::new()));
+        let nothing = restore_round_journal(&root, None).expect("no journal restores nothing");
+        assert!(nothing.rewritten.is_empty() && nothing.removed.is_empty());
         let journal = regen_convergence_journal_path(&root);
         fs::create_dir_all(&journal).unwrap();
         fs::write(journal.join("journal.json"), b"{}").unwrap();
@@ -13131,13 +13730,37 @@ mod round_checkpoint_subject_tests {
         );
     }
 
-    /// RED: a handoff in the previous encoding (no subject) refuses at decode, and so does one with
-    /// a trailing field; neither is read as a cue to recompute.
+    /// RED: a handoff in the previous encoding (no subject) refuses at decode with its own typed
+    /// arm naming the missing field and the remedy; a truncated subject and a trailing field stay
+    /// `HandoffUndecodable`. None is read as a cue to recompute.
     #[test]
     fn a_handoff_without_the_subject_refuses() {
         let old = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B";
+        let refused = SeedHandoff::decode(old)
+            .err()
+            .expect("the old encoding must refuse");
+        assert_eq!(
+            refused,
+            SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                missing_field: "subject",
+                value: old.to_string(),
+            }
+        );
+        let rendered = refused.to_string();
+        assert!(
+            rendered.starts_with("refusal: HandoffPredatesRoundSubject: ")
+                && rendered.contains("predates the round-subject handoff")
+                && rendered.contains("merge the base into the head"),
+            "{rendered}"
+        );
+        // An old encoding that carried an unreadable cpu reading is the same arm.
         assert!(matches!(
-            SeedHandoff::decode(old),
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=unreadable;source=T;built_exe=B"),
+            Err(SeedHandoffRefusal::HandoffPredatesRoundSubject { .. })
+        ));
+        // Ending earlier than the subject field is not this arm: it is not a well-formed old handoff.
+        assert!(matches!(
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=5;source=T"),
             Err(SeedHandoffRefusal::HandoffUndecodable { .. })
         ));
         let truncated = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B;subject=present";

@@ -1,6 +1,7 @@
 module gunbc.derived_obligation_row
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.witness.witness_deferral_freeze { frozen_path_deferral_covers }
 import gunbc.ci.ci_layer_roots { WitnessExclusionRow, witness_exclusion_frontier }
@@ -199,7 +200,7 @@ fn all_witnesses_outside_gate_closure(ws: List<WitnessSubject>) -> Bool {
 // witness is frozen, so a mixed row reads as excluded rather than claiming a stronger declared
 // never-executed standing than its population supports.
 fn interpreted_standing_of(ws: List<WitnessSubject>, unverified_premise: DeclarationRef) -> PathExecution {
-  if list_length(items: ws) == 0 {
+  if length(xs: ws) == 0 {
     NoWitnessNamesIt {
       note: "no witness in the corpus names this obligation" as NonEmptyStr
     }

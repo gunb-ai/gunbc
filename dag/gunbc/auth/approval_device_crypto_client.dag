@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_crypto_client
 
 import std.types { String, Int, Bool, List, NonEmptyStr, Port }
 import std.native_realization_proof { NativeRealizationProof }
-import std.measure { Second, second }
+import std.measure { Second, second, Millisecond, millisecond }
 import gunbc.native_serve { native_serve_startup_deadline }
 import extdeps.http.client
 import extdeps.http.client { http_client_max_time_flag }
@@ -20,7 +20,7 @@ import std.decl_ref { decl_ref }
 import extdeps.shell
 import std.optional { Present, Absent }
 import gunbc.auth.approval_device_crypto_realization {
-  approval_device_crypto_deployed_digest_env_name,
+  approval_device_crypto_deployed_digest_env_name, device_crypto_native_ingress,
   DeviceCryptoAdmission, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, DeviceCryptoRequirement, device_crypto_proof_of, DeviceCryptoExpectation, DeviceCryptoEchoJoin, DeviceCryptoEchoJoined, DeviceCryptoEchoRefused, device_crypto_echo_join,
 }
 import gunbc.auth.approval_device_wire { WireDecoded, WireRefused }
@@ -59,6 +59,13 @@ import gunbc.auth.approval_device_crypto_wire {
 // verifier handler in process (see gunbc.auth.approval_device_crypto_serve); the folds they frame stay.
 data approval_device_crypto_sidecar_port: Port = 8086
 data approval_device_crypto_sidecar_host: NonEmptyStr = "127.0.0.1"
+
+// THE SIDECAR'S PER-REQUEST BUDGETS, the CPU and wall limits its deployment binding is launched with
+// (gunbc.auth.approval_device_crypto_ingress, rendered by gunbc.live_deploy.emit). They are the 30 s the
+// native door has always served it under; the native realization enforces their minimum as one deadline
+// and exits after a crossing for systemd to restart it (gunbc.plans.converged_ingress M2a).
+data approval_device_crypto_sidecar_cpu_limit: Millisecond = millisecond(count: 30000)
+data approval_device_crypto_sidecar_wall_limit: Millisecond = millisecond(count: 30000)
 
 // The one fact of where the sidecar listens: the endpoint is derived from the typed port, so a change to the port
 // changes the URL. The listener's bind is the unit's (PR4: gunbc.live_deploy) and names this same symbol.
@@ -135,13 +142,15 @@ fn sidecar_post_expecting(path: NonEmptyStr, request: String, expectation: Devic
   sidecar_reply_from(exit_code: r.exit_code, stdout: r.body, stderr: r.stderr, expectation: expectation)
 }
 
-// THE SIDECAR'S STARTUP WINDOW IS ITS OWN DECLARED BOUND, read from the authority its rendered main reads: a
-// native-serve driver without a native_serve_startup_bound waits gunbc.native_serve native_serve_startup_deadline before it
-// is refused, and the verifier sidecar (gunbc.auth.approval_device_crypto_serve) declares none. So that deadline is how long
-// "restart returned" may precede "listening", and the readback admits connection-refused for exactly that long. A sidecar
-// that later declares native_serve_startup_bound must change this one function to read it.
+// THE SIDECAR'S STARTUP WINDOW IS ITS OWN DECLARED BOUND, read from the authority its rendered main reads: the
+// startup bound of its program descriptor (gunbc.auth.approval_device_crypto_realization device_crypto_native_ingress),
+// which the main's readiness wait is bounded by. So that bound is how long "restart returned" may precede "listening",
+// and the readback admits connection-refused for exactly that long.
 fn device_crypto_sidecar_startup_bound() -> Second {
-  native_serve_startup_deadline
+  match device_crypto_native_ingress.startup {
+    Present { value: st } => st.bound
+    Absent => native_serve_startup_deadline
+  }
 }
 
 fn sidecar_post_within_startup(endpoint: NonEmptyStr, path: NonEmptyStr, request: String, startup: Second, expectation: DeviceCryptoExpectation) -> SidecarReply {

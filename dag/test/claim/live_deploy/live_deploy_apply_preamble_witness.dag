@@ -24,8 +24,8 @@
 // itself falsifiable: a fold that kept running legs after a refusal would report the same final state.
 module test.claim.live_deploy.live_deploy_apply_preamble_witness
 
-import std.types { String, Bool, List, NonEmptyStr, Int, list_length }
-import std.algebra { list_map }
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.algebra { list_map, length }
 import std.optional { Optional, Absent, Present }
 import extdeps.exec.command { argv_words }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
@@ -58,7 +58,7 @@ data preamble_principal: NonEmptyStr = "gunbc-publish" as NonEmptyStr
 
 // How many grant legs the fixture's roster produces. EVERY count below is derived from this, so the
 // claims do not hard-code a roster length that a sibling can change.
-data preamble_grant_count: Int = list_length(items: ci_deploy_srv1_access.privileged_commands)
+data preamble_grant_count: Int = length(xs: ci_deploy_srv1_access.privileged_commands)
 
 // stage + visudo-check + install + policy-final, then one leg per grant, then ONE principal leg
 // (the script's `id || useradd` is a single leg — see the Either arm).
@@ -172,8 +172,8 @@ test fn the_legs_are_written_in_the_scripts_order() -> Bool {
     // the four sudoers commands, in order, before anything else
   string_contains(s: joined, pattern: "sudoers-stage,sudoers-visudo-check,sudoers-install,sudoers-policy-final,")
     // one grant leg per roster row, and the principal leg LAST
-    && list_length(items: names) == preamble_leg_count
-    && list_length(items: names) == 4 + preamble_grant_count + 1
+    && length(xs: names) == preamble_leg_count
+    && length(xs: names) == 4 + preamble_grant_count + 1
     && string_contains(s: joined, pattern: "principal-check || principal-ensure")
 }
 

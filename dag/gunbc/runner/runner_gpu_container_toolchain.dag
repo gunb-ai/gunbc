@@ -1969,7 +1969,7 @@ data gpu_container_provision_subordinate_write_bound: String =
 //
 // 75 is EX_TEMPFAIL (sysexits.h): a temporary condition for which retrying is the remedy, which is exactly
 // what a lock conflict is. The corpus cites the same convention in codex_harness_turn_busy_exit and
-// native_serve_stuck_exit_code; neither row is imported, because an exit contract belongs to the subsystem
+// native_serve_deadline_exit_code; neither row is imported, because an exit contract belongs to the subsystem
 // that reports it and this write's exit status should not depend on the codex harness.
 data gpu_container_provision_subordinate_lock_wait: Second = second(count: 120)
 

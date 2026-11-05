@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_cell_effect
 
-import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { length }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd.unit_file {
   SystemdSliceDirective,
@@ -353,7 +354,7 @@ fn fabric_cell_plan_effects(
     FabricCellSliceEnsure { slice_unit: _, directives: _ } => acc
     FabricCellDirectoryEnsure { path: _, owner: _ } => concat(acc, [e])
   })
-  if list_length(items: address_effects) == 0 {
+  if length(xs: address_effects) == 0 {
     []
   } else {
     concat(boundary_effects, concat([fabric_cell_base_directory_effect()], directory_effects))
@@ -369,7 +370,7 @@ fn fabric_cell_realization(
   actions: List<MemberAction<FabricCellMember, String>>,
 ) -> FabricCellRealization {
   let refusals = fabric_cell_plan_refusals(actions: actions)
-  if list_length(items: refusals) > 0 {
+  if length(xs: refusals) > 0 {
     CellPlanRefused { refusals: refusals }
   } else {
     CellPlanRealizable { effects: fabric_cell_plan_effects(actions: actions) }
@@ -379,5 +380,5 @@ fn fabric_cell_realization(
 fn fabric_cell_realization_refusal_count(
   actions: List<MemberAction<FabricCellMember, String>>,
 ) -> Int {
-  list_length(items: fabric_cell_plan_refusals(actions: actions))
+  length(xs: fabric_cell_plan_refusals(actions: actions))
 }

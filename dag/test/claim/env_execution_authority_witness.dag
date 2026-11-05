@@ -1,6 +1,7 @@
 module test.claim.env_execution_authority_witness
 
-import std.types { String, List, list_length }
+import std.types { String, List }
+import std.algebra { length }
 import std.logic { Bool }
 import std.env_binding { EnvBinding, EnvSet, EnvUnset }
 import extdeps.tools.env {
@@ -33,7 +34,7 @@ test fn an_assignment_occupies_one_argv_element() -> Bool {
 // accepts as an assignment-shaped argument and silently does not unset anything.
 test fn an_unset_occupies_two_argv_elements() -> Bool {
   env_binding_argv(binding: EnvUnset { name: "A" }) == ["-u", "A"]
-    && list_length(items: env_binding_argv(binding: EnvSet { name: "A", value: "b" })) == 1
+    && length(xs: env_binding_argv(binding: EnvSet { name: "A", value: "b" })) == 1
 }
 
 // THE DISCRIMINATOR THAT MATTERS. `NAME=` sets the variable to the empty string; `-u NAME` removes

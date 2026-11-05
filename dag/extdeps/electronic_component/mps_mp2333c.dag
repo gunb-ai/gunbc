@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.monolithic_power_systems { monolithic_power_systems }
-import std.measure { millivolt, ampere, hertz }
+import std.measure { millivolt, ampere }
 import extdeps.electronic_component.types {
   ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
   RegulatorSupplyInput, SwitchNode, RegulatorGround, BootstrapSupply, EnableInput, SoftStartProgram, FeedbackInput, PowerGoodOpenDrain,
@@ -64,9 +64,6 @@ data mp2333cgtl: ElectronicComponentRow = ElectronicComponentRow {
     ],
     input: MillivoltRange { minimum: millivolt(count: 4200), maximum: millivolt(count: 18000) },
     continuous_output_current: ampere(count: 3),
-    switching_frequency: hertz(count: 650000),
-    high_side_on_resistance_milliohm: 75,
-    low_side_on_resistance_milliohm: 40,
   } },
   vendor_application_statements: [
     "a fully integrated, high-frequency, synchronous, rectified, step-down, switch-mode converter with internal power MOSFETs, achieving 3A of continuous output current over a wide input range",

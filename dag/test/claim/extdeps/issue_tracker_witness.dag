@@ -70,7 +70,7 @@ import extdeps.google.issue_tracker {
   issue_results_assignee_display,
   issue_assignee_input_is_email,
 }
-import std.types { list_length }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -543,7 +543,7 @@ test fn w_query_text_term_matches_comment_bodies() -> Bool {
 
 test fn w_query_text_term_with_no_match_derives_nothing() -> Bool {
   let q = Query { terms: [QueryText { text: "zzz-no-such-text-zzz" }] }
-  list_length(items: query_run(issues: fixture_issues, query: q)) == 0
+  length(xs: query_run(issues: fixture_issues, query: q)) == 0
 }
 
 // SUBSCRIPTION FACTS DRIVE THE DERIVATION, NOT THE ISSUE: adding the owner's star on 101 moves

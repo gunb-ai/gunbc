@@ -651,6 +651,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::NativeEffectRealizationRefused { .. } => {
             "NativeEffectRealizationRefused"
         }
+        CompilerDiagnostic::NativeIngressProgramRefused { .. } => "NativeIngressProgramRefused",
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { .. } => {
             "EffectSummaryIncompleteAtFunctionValue"
         }
@@ -669,6 +670,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityMemberUnjudgeable { .. } => "EqualityMemberUnjudgeable",
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => "EqualityOnInadmissibleType",
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => "EqualityOptionalityMismatch",
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => {
+            "EqualityInstantiationBlindGenericSite"
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => {
+            "CollectionKeyReachesEqualityRoute"
+        }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
@@ -784,6 +791,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             "{entry}: {}",
             refusals.iter().cloned().collect::<Vec<_>>().join("; ")
         ),
+        CompilerDiagnostic::NativeIngressProgramRefused {
+            program, reasons, ..
+        } => format!(
+            "{program}: {}",
+            reasons.iter().cloned().collect::<Vec<_>>().join("; ")
+        ),
         CompilerDiagnostic::EffectSummaryIncompleteAtFunctionValue { caller, .. } => caller.clone(),
         CompilerDiagnostic::EffectSummaryIncompleteAtLocalBinding { caller, .. } => caller.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
@@ -799,6 +812,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::EqualityOnInadmissibleType { type_name, .. } => type_name.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { optional_side, .. } => {
             optional_side.clone()
+        }
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { declaration, .. } => {
+            declaration.clone()
+        }
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { declaration, .. } => {
+            declaration.clone()
         }
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => {
             "(occurrence-transport-refusal)".to_string()
@@ -899,6 +918,8 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::EqualityOnFunctionMember { .. } => None,
         CompilerDiagnostic::EqualityOnInadmissibleType { .. } => None,
         CompilerDiagnostic::EqualityOptionalityMismatch { .. } => None,
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => None,
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => None,
         CompilerDiagnostic::FieldNotFound { .. } => None,
         CompilerDiagnostic::FrontierOccurrenceBudgetExceeded { .. } => None,
         CompilerDiagnostic::GeneratedProviderUnavailable { .. } => None,
@@ -915,6 +936,7 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::MissingField { .. } => None,
         CompilerDiagnostic::ModuleFilenameCollision { .. } => None,
         CompilerDiagnostic::NativeEffectRealizationRefused { .. } => None,
+        CompilerDiagnostic::NativeIngressProgramRefused { .. } => None,
         CompilerDiagnostic::NonExhaustiveMatch { .. } => None,
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => None,
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => None,
