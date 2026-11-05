@@ -15,6 +15,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.expressions { Expression, ContextAccess, FunctionCall, StringLiteral, LogicalAnd, Equals, NotEquals, Github, HashFiles, serialize_expression }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_command_with_words, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
@@ -143,8 +144,13 @@ data heal_publisher_round_outcome_file: String = heal_publisher_round_outcome_di
 // round of ANY conclusion -- a clean tree and a cancelled round both reach this job -- and until now the
 // conclusion was never read: what the job did was decided only by whether candidate blob files landed.
 // Reading it is half of what makes a green here mean something.
+// THE NAME THE TRIGGERING ROUND'S CONCLUSION ARRIVES UNDER, spelled once: the step env block binds
+// it and the decision script reads it, and a script that read a different name would silently always
+// take the else arm.
+data heal_publisher_trigger_conclusion_env_name: String = "HEAL_TRIGGER_RUN_CONCLUSION"
+
 fn heal_publisher_trigger_conclusion_env() -> List<Kv> {
-  [kv(key: "HEAL_TRIGGER_RUN_CONCLUSION", value: yaml_string(s: "${{ github.event.workflow_run.conclusion }}"))]
+  [kv(key: heal_publisher_trigger_conclusion_env_name, value: yaml_string(s: "${{ github.event.workflow_run.conclusion }}"))]
 }
 
 data heal_publisher_build_step_name: String = "Build the publisher this job runs from the default branch"
@@ -277,105 +283,135 @@ fn heal_publisher_round_outcome_download_step() -> Step {
 fn heal_publisher_round_outcome_decision_statements() -> List<Node> {
   [
     bash_build_assign_lit(name: "outcome_record", text: heal_publisher_round_outcome_file),
-    bash_build_assign(name: "round_blobs", value: bash_build_word_cmdsubst(body: bash_build_with_redir_stderr_to_file(
-      inner: bash_build_command_with_words(words: [
-        bash_build_word_lit(text: "ls"),
-        bash_build_word_lit(text: heal_publisher_candidate_directory),
-        bash_build_word_concat_from_nodes(parts: [
-          bash_build_word_lit(text: "/" + heal_repair_candidate_blob_file_prefix as String + "*"),
+    // WHAT ARRIVED, asked without the shell's glob (the emitter quotes literal words, so `dir/blob-*`
+    // would reach find as text): -name matches inside find, and -print -quit stops at the first hit --
+    // this arm only needs "did any arrive", not how many. The count of what the ROUND saw comes from the
+    // record, which is the whole point of comparing the two.
+    bash_build_assign(
+      name: "round_blobs",
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "find"),
+          bash_build_word_lit(text: heal_publisher_candidate_directory),
+          bash_build_word_lit(text: "-maxdepth"),
+          bash_build_word_lit(text: "1"),
+          bash_build_word_lit(text: "-name"),
+          bash_build_word_lit(text: heal_repair_candidate_blob_file_prefix as String + "*"),
+          bash_build_word_lit(text: "-print"),
+          bash_build_word_lit(text: "-quit"),
         ]),
-      ]),
-      path: bash_build_word_lit(text: "/dev/null"),
-    ))),
-    bash_build_assign(name: "recorded_blobs", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "sed"),
-      bash_build_word_lit(text: "-n"),
-      bash_build_word_concat_from_nodes(parts: [
-        bash_build_word_lit(text: "s/^" + heal_round_outcome_blobs_field as String),
-        bash_build_word_lit(text: "/p"),
-      ]),
-      bash_build_word_var(name: "outcome_record"),
-    ]))),
-    // (1) blobs arrived: the ordinary route, unchanged.
+        redir: ^bash_production_fold_redir_stderr_null,
+      )),
+    ),
+    // WHAT THE RECORD SAYS, read by field name: an empty answer means the record has no such line, which
+    // is how "the round ended without closing its record" is told apart from a real zero.
+    bash_build_assign(
+      name: "recorded_blobs",
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "sed"),
+          bash_build_word_lit(text: "-n"),
+          bash_build_word_concat_from_nodes(parts: [
+            bash_build_word_lit(text: "s/^"),
+            bash_build_word_lit(text: heal_round_outcome_blobs_field as String),
+            bash_build_word_lit(text: "/p"),
+          ]),
+          bash_build_word_lit(text: "$outcome_record"),
+        ]),
+        redir: ^bash_production_fold_redir_stderr_null,
+      )),
+    ),
     bash_build_if_else_from_stmts(
-      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "round_blobs")]),
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_lit(text: "-n"),
+        bash_build_word_var(name: "round_blobs"),
+      ]),
       then_stmts: [
         bash_build_command_with_words(words: [
           bash_build_word_lit(text: "echo"),
-          bash_build_word_lit(text: "::notice::round outcome: candidate blobs present; the gated publication steps go on"),
+          bash_build_word_lit(text: "::notice::gunbc.heal_publisher_workflow: the triggering heal round delivered candidate blob files present in the workspace; the gated build, admit, federation and publication steps go on"),
         ]),
       ],
       else_stmts: [
-        // (5) no record at all.
         bash_build_if_else_from_stmts(
           cond: bash_build_test_bracket(words: [
             bash_build_word_lit(text: "!"),
             bash_build_word_lit(text: "-f"),
-            bash_build_word_var(name: "outcome_record"),
+            bash_build_word_lit(text: "$outcome_record"),
           ]),
           then_stmts: [
+            // NO RECORD IS NOT A CLEAN ROUND. Today this is exactly where thirteen runs said nothing at
+            // all and the job printed SUCCESS. A round that left neither a candidate nor a record is
+            // refused, because there is no way to tell a refused round from a vanished one.
             bash_build_command_with_words(words: [
               bash_build_word_lit(text: "echo"),
-              bash_build_word_lit(text: "::error::round outcome: NO RECORD from the triggering heal run. Either the producer half of the round-outcome transport did not run, or this trigger predates it (added 2026-11-05). A green here would assert nothing, so it refuses."),
+              bash_build_word_lit(text: "::error::gunbc.heal_publisher_workflow: NO RECORD of the triggering heal round: the round left no candidate and no round outcome record, so nothing here can say what it did (the record route was added 2026-11-05; a round from before it cannot be told apart from a lost one). Publication refuses rather than reporting a green that admits nothing"),
             ]),
             bash_build_exit(code: "1"),
           ],
           else_stmts: [
-            // (4) the record names no count: the round never closed it.
             bash_build_if_else_from_stmts(
               cond: bash_build_test_bracket(words: [
                 bash_build_word_lit(text: "-z"),
                 bash_build_word_var(name: "recorded_blobs"),
               ]),
               then_stmts: [
+                // The record exists and was never closed: the round was killed, or its finalisation step
+                // failed. A record whose count line is missing is a defect about the ROUND, not a tree
+                // fact, and it is refused.
                 bash_build_command_with_words(words: [
                   bash_build_word_lit(text: "echo"),
-                  bash_build_word_lit(text: "::error::round outcome: the record carries no blob count, so the round ended without closing it. Treated as a lost emission until proven otherwise."),
+                  bash_build_word_lit(text: "::error::gunbc.heal_publisher_workflow: the round outcome record exists but never received its blobs= line, so the round ended without closing its own record (killed, or its finalisation step failed). Publication refuses rather than reading an unclosed record as a clean tree"),
                 ]),
                 bash_build_exit(code: "1"),
               ],
               else_stmts: [
-                // (3) blobs recorded, none delivered.
                 bash_build_if_else_from_stmts(
+                  // STRING COMPARE, NOT ARITHMETIC: a recorded value that is not a number is suspicious by
+                  // definition, and `-gt` would error on it and drop the case into the clean-tree arm.
+                  // Anything that is not exactly zero, number or not, is refused with the value shown.
                   cond: bash_build_test_bracket(words: [
                     bash_build_word_var(name: "recorded_blobs"),
-                    bash_build_word_lit(text: "-gt"),
+                    bash_build_word_lit(text: "!="),
                     bash_build_word_lit(text: "0"),
                   ]),
                   then_stmts: [
+                    // THE CASE THIS ROUTE EXISTS FOR: the round wrote blobs and the runner died before the
+                    // upload, so the candidate download found nothing while the record says otherwise.
                     bash_build_command_with_words(words: [
                       bash_build_word_lit(text: "echo"),
                       bash_build_word_concat_from_nodes(parts: [
-                        bash_build_word_lit(text: "::error::round outcome: LOST EMISSION - the round recorded "),
+                        bash_build_word_lit(text: "::error::gunbc.heal_publisher_workflow: LOST EMISSION -- the round outcome record says blobs="),
                         bash_build_word_var(name: "recorded_blobs"),
-                        bash_build_word_lit(text: " candidate blob file(s) and no candidate artifact arrived. See gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost."),
+                        bash_build_word_lit(text: " but the candidate artifact delivered none: the emission died with the runner. Publication refuses; a refused round that uploads nothing must not become a green"),
                       ]),
                     ]),
                     bash_build_exit(code: "1"),
                   ],
                   else_stmts: [
-                    // (2) nothing written: a clean tree, or an early stop. The conclusion decides which.
+                    // blobs=0 with nothing delivered: the ordinary case (23 of the 25 rounds measured on
+                    // 2026-11-04). The conclusion separates a round that completed cleanly from one that
+                    // stopped early, and which one it was is said out loud instead of left implied by a
+                    // skipped step.
                     bash_build_if_else_from_stmts(
                       cond: bash_build_test_bracket(words: [
-                        bash_build_word_var(name: "HEAL_TRIGGER_RUN_CONCLUSION"),
+                        bash_build_word_var(name: heal_publisher_trigger_conclusion_env_name),
                         bash_build_word_lit(text: "="),
                         bash_build_word_lit(text: "success"),
                       ]),
                       then_stmts: [
                         bash_build_command_with_words(words: [
                           bash_build_word_lit(text: "echo"),
-                          bash_build_word_lit(text: "::notice::round outcome: the round succeeded and wrote no candidate blob: a clean tree. Nothing was owed, and that is what this green asserts."),
+                          bash_build_word_lit(text: "::notice::gunbc.heal_publisher_workflow: the round closed its record with blobs=0 and the triggering run succeeded: there was no repair to publish. This is a clean tree, and the gated steps below are skipped by that fact"),
                         ]),
                       ],
                       else_stmts: [
                         bash_build_command_with_words(words: [
                           bash_build_word_lit(text: "echo"),
                           bash_build_word_concat_from_nodes(parts: [
-                            bash_build_word_lit(text: "::notice::round outcome: the trigger concluded "),
-                            bash_build_word_concat_from_nodes(parts: [
-                              bash_build_word_lit(text: "${HEAL_TRIGGER_RUN_CONCLUSION:-unknown}"),
-                            ]),
-                            bash_build_word_lit(text: " and the round wrote no candidate blob: it stopped before producing one. Nothing to publish, and no emission lost."),
+                            bash_build_word_lit(text: "::notice::gunbc.heal_publisher_workflow: the round closed its record with blobs=0 while the triggering run concluded "),
+                            bash_build_word_var(name: heal_publisher_trigger_conclusion_env_name),
+                            bash_build_word_lit(text: ": it stopped before producing a candidate. Nothing was lost; nothing is published"),
                           ]),
                         ]),
                       ],
@@ -395,7 +431,7 @@ fn heal_publisher_round_outcome_decision_step() -> Step {
   RunStep {
     name: Present { value: "Say what the triggering heal round left behind, and refuse what was lost" },
     id: none,
-    run: bash_emit_stmts(statements: heal_publisher_round_outcome_decision_statements(), set_e: false),
+    run: heal_publisher_round_outcome_rendered(statements: heal_publisher_round_outcome_decision_statements(), set_e: false),
     shell: none,
     env: Present { value: heal_publisher_trigger_conclusion_env() },
     working_directory: none,
@@ -1296,5 +1332,17 @@ fn heal_publisher_workflow_yml_of_admitted_row(profile: RepositoryCiProfile) -> 
   }
   }
   }
+  }
+}
+
+// THE STRING SEAM for the decision script, with its own marker -- the discipline, and why the token is
+// minted here instead of borrowed, are recorded at gunbc.heal_workflow heal_round_outcome_rendered.
+data heal_publisher_round_outcome_render_refused_poison: String = "__GUNBC_HEAL_PUBLISHER_ROUND_OUTCOME_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.heal_publisher_workflow round-outcome decision script; this marker is not valid shell, so the publication fails loudly rather than publishing on an unfinished decision (DESIGN 5: refuse, never widen)\n"
+
+fn heal_publisher_round_outcome_rendered(statements: List<Node>, set_e: Bool) -> String {
+  match bash_emit_stmts(statements: statements, set_e: set_e) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: ds } =>
+      join([heal_publisher_round_outcome_render_refused_poison, " reasons: ", diagnostics_reason_lexemes(diagnostics: ds)], "")
   }
 }

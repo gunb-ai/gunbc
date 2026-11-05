@@ -4,17 +4,21 @@ import gunbc.heal_workflow {
   heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused,
   heal_workflow_bound_steps, heal_candidate_step, heal_candidate_upload_step, heal_round_outcome_seed_step,
   heal_round_outcome_write_step, heal_round_outcome_upload_step, heal_round_outcome_producer_directory,
+  heal_round_outcome_seed_line,
+  heal_round_outcome_rendered, heal_round_outcome_render_refused_poison,
 }
 import gunbc.heal_publication { heal_publication_candidate_directory_env }
 import gunbc.heal_publication_boundary {
   heal_repair_candidate_artifact_name, heal_repair_candidate_blob_file_prefix, heal_round_outcome_artifact_name,
   heal_round_outcome_directory_name, heal_round_outcome_file_name, heal_round_outcome_blobs_field,
-  heal_round_outcome_blobs_not_counted,
+  heal_round_outcome_not_closed_marker,
 }
 import gunbc.heal_publisher_workflow {
   heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,  heal_publisher_round_outcome_download_step, heal_publisher_round_outcome_decision_step,
   heal_publisher_round_outcome_decision_statements, heal_publisher_round_outcome_directory,
-  heal_publisher_round_outcome_file,
+  heal_publisher_trigger_conclusion_env_name,
+  heal_publisher_round_outcome_file, heal_publisher_round_outcome_rendered,
+  heal_publisher_round_outcome_render_refused_poison,
   heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
   heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy,
   heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
@@ -88,6 +92,7 @@ import gunbc.ci.repository_seed_steps {
   seed_pin_verification_statements, seed_pin_verifier_job,
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build { bash_build_stmt_list_from_nodes }
 import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, Steps, interpolate }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
@@ -2113,6 +2118,9 @@ fn publisher_row_with_unfoldable_seed_build() -> RepositoryCiProfile {
 //     -> `the_round_outcome_record_is_never_a_publishable_candidate`
 //   route the record through any transport other than the candidate's own artifact actions
 //     -> `the_record_travels_the_same_transport_as_the_candidate`
+//   answer a record-script render refusal with an empty or no-op script, or drop the reasons that ride
+//   behind the marker
+//     -> `a_refused_record_script_is_a_loud_marker_never_an_empty_script`
 
 // THE GATE A STEP CARRIES, rendered, or the empty string for a step that carries none. Read from the step
 // itself: a witness that re-derived the gate from the step's NAME would keep passing when the gate moved.
@@ -2162,11 +2170,12 @@ test fn the_round_records_its_outcome_whatever_the_round_did() -> Bool {
   reached == 4
     && step_gate_condition(step: heal_round_outcome_write_step()) == "always()"
     && step_gate_condition(step: heal_round_outcome_upload_step()) == "always()"
-    // The record carries the count field under the one name the publisher also reads, and the seed value
-    // that says "the round never closed this record" is a distinct value, not a zero: zero is a fact about
-    // the tree, and folding the two would turn a killed round into a clean one.
+    // CLOSED MEANS THE FIELD LINE EXISTS, so the seed must not carry it: a seed that did would make a
+    // record from a round killed before its finalisation read as a closed one, and the lost emission
+    // would be reported as a clean tree. Zero is a fact about the tree; "never closed" is a fact about
+    // the round, and one value must not spell both.
     && string_contains(s: heal_round_outcome_producer_directory, pattern: heal_round_outcome_directory_name as String)
-    && heal_round_outcome_blobs_not_counted as String != "0"
+    && !string_contains(s: heal_round_outcome_seed_line, pattern: heal_round_outcome_blobs_field as String)
     && heal_round_outcome_blobs_field as String != ""
 }
 
@@ -2224,16 +2233,24 @@ test fn a_lost_emission_is_a_red_not_a_green() -> Bool {
     && string_contains(s: script, pattern: "NO RECORD")
     && string_contains(s: script, pattern: "2026-11-05")
     // the refusal for a record the round never closed
-    && string_contains(s: script, pattern: "without closing it")
+    && string_contains(s: script, pattern: "without closing its own record")
     // the two greens, each named so a green asserts one of them
     && string_contains(s: script, pattern: "clean tree")
-    && string_contains(s: script, pattern: "stopped before producing one")
+    && string_contains(s: script, pattern: "stopped before producing a candidate")
     // the ordinary route, unchanged
-    && string_contains(s: script, pattern: "candidate blobs present")
-    // read through the one field name, and the trigger's conclusion as an input
+    && string_contains(s: script, pattern: "candidate blob files present")
+    // every refusal exits non-zero: an annotation on a step that then exits zero is the same silent
+    // green in another font
+    && string_contains(s: script, pattern: "exit 1")
+    // read through the one field name, the one record path and the one conclusion name -- the script, the
+    // record and the step's env block must not spell these separately
     && string_contains(s: script, pattern: heal_round_outcome_blobs_field as String)
-    && string_contains(s: script, pattern: "HEAL_TRIGGER_RUN_CONCLUSION")
-    && string_contains(s: script, pattern: "exit")
+    && string_contains(s: script, pattern: heal_publisher_round_outcome_file)
+    && string_contains(s: script, pattern: heal_publisher_trigger_conclusion_env_name)
+    // CLOSEDNESS IS FIELD ABSENCE, NOT A WORD: the script decides from whether the field line exists, so
+    // it must not branch on the seed's text. A script that did would report a record whose field line was
+    // truncated or garbled as a closed, clean round.
+    && !string_contains(s: script, pattern: heal_round_outcome_not_closed_marker as String)
 }
 
 // A SECOND TRANSPORT MUST STAY UNPUBLISHABLE. The candidate gate is the only thing between an artifact and
@@ -2263,6 +2280,24 @@ test fn the_record_travels_the_same_transport_as_the_candidate() -> Bool {
   step_action_repo(step: heal_round_outcome_upload_step()) == step_action_repo(step: heal_candidate_upload_step())
     && step_action_repo(step: heal_publisher_round_outcome_download_step()) == step_action_repo(step: heal_publisher_download_step())
     && step_action_repo(step: heal_round_outcome_upload_step()) != ""
+}
+
+// A REFUSED RECORD SCRIPT IS A LOUD MARKER, NEVER AN EMPTY SCRIPT. Both record scripts go through a
+// String seam, because a step's `run:` field is a String; a seam is exactly where a `bash_emit` refusal
+// could quietly become "a step that runs nothing", which is a green that asserts nothing. The input is the
+// one construction the emitter refuses by rule -- `bash_build_stmt_list_from_nodes([])`, which plants
+// ^bash_build_refused_empty_stmt_list instead of a statement. A seam that answered a refusal with "" or
+// with a no-op, or that dropped the reasons that ride behind the marker, turns this red. The seam class is
+// the one gunbc.shell_command_text names in its next-rung trigger (carry a typed refusal Outcome through
+// the seam so no artifact is ever written carrying a marker), so the limit is recorded, not remembered.
+test fn a_refused_record_script_is_a_loud_marker_never_an_empty_script() -> Bool {
+  let refused = [bash_build_stmt_list_from_nodes(stmts: [])]
+  let producer = heal_round_outcome_rendered(statements: refused, set_e: false)
+  let publisher = heal_publisher_round_outcome_rendered(statements: refused, set_e: false)
+  starts_with(s: producer, prefix: heal_round_outcome_render_refused_poison)
+    && starts_with(s: publisher, prefix: heal_publisher_round_outcome_render_refused_poison)
+    && string_length(s: producer) > string_length(s: heal_round_outcome_render_refused_poison)
+    && string_length(s: publisher) > string_length(s: heal_publisher_round_outcome_render_refused_poison)
 }
 
 // THE PUBLISHER'S REFUSAL CARRIES THE IDENTITY OF WHAT REFUSED, AT THE ENTRYPOINT THE CALLER USES. The row is

@@ -14,6 +14,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
   bash_build_command_with_words, bash_build_with_redir, bash_build_with_redir_to_file,
@@ -61,7 +62,7 @@ import gunbc.heal_candidate {
 }
 import gunbc.heal_publication_boundary {
   heal_repair_candidate_artifact_name, heal_round_outcome_artifact_name, heal_round_outcome_directory_name,
-  heal_round_outcome_file_name, heal_round_outcome_blobs_field, heal_round_outcome_blobs_not_counted,
+  heal_round_outcome_file_name, heal_round_outcome_blobs_field, heal_round_outcome_not_closed_marker,
   heal_repair_candidate_blob_file_prefix
 }
 
@@ -276,38 +277,75 @@ data heal_round_outcome_producer_directory: String = "${{ runner.temp }}/" + hea
 
 data heal_round_outcome_producer_file: String = heal_round_outcome_producer_directory + "/" + heal_round_outcome_file_name as String
 
-// SEEDED BEFORE THE ROUND RUNS. `blobs=not-counted` is replaced only by the round's own finalisation, so
-// the surviving file answers one of two questions: how many blobs the round left behind, or that the
-// round ended without closing its record. Either answer beats the absence of an answer, which is what
-// the publisher is left with today.
-data heal_round_outcome_seed_line: String = heal_round_outcome_blobs_field as String + heal_round_outcome_blobs_not_counted as String + "\\n"
+// WHERE THE MATCHING PATHS GO BEFORE THEY ARE COUNTED. It sits BESIDE the record directory, not in it:
+// the record directory is the uploaded artifact, and the artifact carries the record and nothing else.
+data heal_round_outcome_blob_list_file: String = "${{ runner.temp }}/" + heal_round_outcome_directory_name as String + "-blob-list"
+
+// SEEDED BEFORE THE ROUND RUNS, AND DELIBERATELY WITHOUT THE FIELD LINE: the surviving file then answers
+// one of two questions -- how many blobs the round left behind, or that the round ended without closing
+// its record. A seed that carried the field would make an unclosed record read as a closed one, and a
+// round killed between the seed and its finalisation would be reported as a clean tree. The trailing
+// backslash-n is what printf in the emitted script turns into a newline (v2.test.claim.bash_program_fold
+::bash_program_fold_sample_set_e_golden spells its own line ends the same way).
+data heal_round_outcome_seed_line: String = heal_round_outcome_not_closed_marker as String + "\\n"
 
 // COUNTED IN THE ROUND'S OWN SHELL, NOT IN THE WORKFLOW EXPRESSION LANGUAGE: a count is arithmetic over
 // real files and the expression language has no arithmetic. This is why the candidate command is built
 // the same way, through the bash fold.
 fn heal_round_outcome_count_statements() -> List<Node> {
   [
-    bash_build_assign_lit(name: "heal_round_outcome_exit", text: "0"),
+    // THE COUNT IS TAKEN WITH FIND'S OWN PATTERN MATCHING, NOT THE SHELL'S. The bash emitter quotes every
+    // literal word (v2.test.claim.bash_program_fold ::bash_program_metachars_quoted_matches_golden_holds),
+    // so an unquoted `dir/blob-*` would reach `ls` as text and match nothing: a record that always says
+    // zero is worse than no record, because the publisher would read a LOST emission as a clean tree. With
+    // `-name`, the quoted pattern is matched by find itself, which is what it means.
+    bash_build_if_else_from_stmts(
+      cond: bash_build_test_bracket(words: [
+        bash_build_word_lit(text: "-d"),
+        bash_build_word_lit(text: heal_candidate_directory),
+      ]),
+      then_stmts: [
+        bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(words: [
+            bash_build_word_lit(text: "find"),
+            bash_build_word_lit(text: heal_candidate_directory),
+            bash_build_word_lit(text: "-maxdepth"),
+            bash_build_word_lit(text: "1"),
+            bash_build_word_lit(text: "-name"),
+            bash_build_word_lit(text: heal_repair_candidate_blob_file_prefix as String + "*"),
+          ]),
+          path: bash_build_word_lit(text: heal_round_outcome_blob_list_file),
+        ),
+      ],
+      // NO CANDIDATE DIRECTORY IS THE ORDINARY CLEAN CASE, not an error: the round refused before writing
+      // anything. The list is still written, empty, so the count below is a real zero and not a missing
+      // file the record would have to guess about.
+      else_stmts: [
+        bash_build_with_redir_to_file(
+          inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf")]),
+          path: bash_build_word_lit(text: heal_round_outcome_blob_list_file),
+        ),
+      ],
+    ),
     bash_build_assign(
       name: "heal_round_outcome_blobs",
-      value: bash_build_word_cmdsubst(body: bash_build_with_redir(
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir_from_file(
         inner: bash_build_command_with_words(words: [
-          bash_build_word_lit(text: "ls"),
-          bash_build_word_concat_from_nodes(parts: [
-            bash_build_word_lit(text: heal_candidate_directory),
-            bash_build_word_lit(text: "/" + heal_repair_candidate_blob_file_prefix as String + "*"),
-          ]),
+          bash_build_word_lit(text: "wc"),
+          bash_build_word_lit(text: "-l"),
         ]),
-        redir: ^bash_production_fold_redir_stderr_null,
-      ))
+        path: bash_build_word_lit(text: heal_round_outcome_blob_list_file),
+      )),
     ),
+    // THE FIELD IS WRITTEN BY CONCATENATION, NOT BY A SHELL EXPANSION INSIDE A LITERAL: a literal word
+    // carrying `${...}` is emitted quoted and would land in the record as the text `${...}`.
     bash_build_with_redir_to_file(
       inner: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "printf"),
         bash_build_word_lit(text: "%s\\n"),
         bash_build_word_concat_from_nodes(parts: [
           bash_build_word_lit(text: heal_round_outcome_blobs_field as String),
-          bash_build_word_lit(text: "${heal_round_outcome_blobs:-0}"),
+          bash_build_word_var(name: "heal_round_outcome_blobs"),
         ]),
       ]),
       path: bash_build_word_lit(text: heal_round_outcome_producer_file),
@@ -323,10 +361,7 @@ fn heal_round_outcome_write_step() -> Step {
   RunStep {
     name: Present { value: "Close the round outcome record" },
     id: none,
-    run: bash_emit_stmts(statements: heal_round_outcome_count_statements().concat([
-      bash_build_test_bracket(words: [bash_build_word_var(name: "heal_round_outcome_exit"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")]),
-      bash_build_exit(code: "1"),
-    ]), set_e: false),
+    run: heal_round_outcome_rendered(statements: heal_round_outcome_count_statements(), set_e: true),
     shell: none,
     env: none,
     working_directory: none,
@@ -340,7 +375,7 @@ fn heal_round_outcome_seed_step() -> Step {
   RunStep {
     name: Present { value: "Open the round outcome record" },
     id: none,
-    run: bash_emit_stmts(statements: [
+    run: heal_round_outcome_rendered(statements: [
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_lit(text: heal_round_outcome_producer_directory)]),
       bash_build_with_redir_to_file(
         inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: heal_round_outcome_seed_line)]),
@@ -793,4 +828,23 @@ data heal_workflow_group_template: ExpressionTemplate = {
     LiteralText { text: heal_workflow_group_prefix },
     Interpolation { expression: heal_pull_number_fallback }
   ]
+}
+
+// THE STRING SEAM for the record scripts, with its own marker. The record scripts are built as bash
+// grammar trees and rendered by v2.workflow.bash_emit, but a step's run: field is a plain String, so a
+// refused render has to become text. It becomes a marker that is not valid shell, carrying why: the
+// discipline of v2.workflow.bash_emit bash_emit_program_sequence_refused_poison and
+// gunbc.machine_intake.sol_hold ::sol_hold_rendered. This module mints its OWN token rather than
+// borrowing theirs, for the reason sol_hold records -- a borrowed constant drags the borrower's closure
+// into every consumer. These are plain-String refusal seams of the kind gunbc.shell_command_text names
+// in its next-rung trigger (carry a typed refusal Outcome through the seam, so no artifact is ever
+// written carrying a marker); recorded here rather than remembered.
+data heal_round_outcome_render_refused_poison: String = "__GUNBC_HEAL_ROUND_OUTCOME_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.heal_workflow round-outcome script; this marker is not valid shell, so the round fails loudly rather than running a partial record (DESIGN 5: refuse, never widen)\n"
+
+fn heal_round_outcome_rendered(statements: List<Node>, set_e: Bool) -> String {
+  match bash_emit_stmts(statements: statements, set_e: set_e) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: ds } =>
+      join([heal_round_outcome_render_refused_poison, " reasons: ", diagnostics_reason_lexemes(diagnostics: ds)], "")
+  }
 }

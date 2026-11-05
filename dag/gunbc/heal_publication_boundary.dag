@@ -138,16 +138,17 @@ data heal_round_outcome_directory_name: NonEmptyStr = "heal-round-outcome"
 
 data heal_round_outcome_file_name: NonEmptyStr = "heal-round-outcome.txt"
 
-// The marker's only field, named where both halves read and write it: how many candidate blob files
-// existed when the marker was written. The seed written before the round runs carries
-// `heal_round_outcome_blobs_not_counted`, and only the round's finalisation step replaces it with a
-// count -- so a marker that still says not-counted says the round ended without closing its own record,
-// which is its own defect and not a clean tree. How the round TERMINATED is not carried here: the
-// publisher reads that from the triggering run's conclusion, which is what the round's own gated steps
+// The record's only field, named where both halves read and write it: how many candidate blob files the
+// round left when it closed the record. CLOSED MEANS A LINE BEGINNING WITH THIS FIELD EXISTS. The record
+// is seeded before the round runs, with `heal_round_outcome_not_closed_marker` and no field line at all,
+// and only the round's own finalisation step writes the field -- so an unreadable field means the round
+// ended without closing its record (a killed or truncated record reads the same way, which is the safe
+// direction: it is refused, not reported as a clean tree). How the round TERMINATED is not carried here:
+// the publisher reads that from the triggering run's conclusion, which is what the round's own gated steps
 // already act on.
 data heal_round_outcome_blobs_field: NonEmptyStr = "blobs="
 
-data heal_round_outcome_blobs_not_counted: NonEmptyStr = "not-counted"
+data heal_round_outcome_not_closed_marker: NonEmptyStr = "round outcome opened; not closed"
 
 // A blob travels under its own identity, so the name the publisher reads is derived from a decoded
 // object id and can never carry a path component the candidate chose.
