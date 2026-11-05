@@ -103,7 +103,7 @@ import gunbc.fleet.fleet_converge_producer_run {
   ProducerRunSelected, ProducerRunNone, fleet_converge_producer_run_select,
   RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, fleet_converge_producer_run_scan_step,
 }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
+import gunbc.runner.runner_slot_allocation { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }

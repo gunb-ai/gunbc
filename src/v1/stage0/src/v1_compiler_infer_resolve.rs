@@ -24,10 +24,11 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
 pub use crate::v1_compiler_infer_env::{
     authored_name, bare_name_miss_diagnostic, declaration_ref_of_declaration_node,
     env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
-    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
-    symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
-    TypeBinding, TypeEnv, TypeRefMeasureBinding, UnitVariantContribution, UnitVariantPhantomLookup,
+    is_recursive_type_for, lookup_binding_by_name, lookup_type, lookup_type_by_name,
+    lookup_type_for, lookup_unit_variant_phantom_type, substitute_type_slots,
+    substitute_type_slots_scoped, symbol_index_lookup, type_ref_measure_binding_authority,
+    width_resolution_declaration, TypeBinding, TypeEnv, TypeRefMeasureBinding,
+    UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -465,6 +466,45 @@ pub fn node_is_type_parameter_reference(n: Rc<Node>) -> bool {
     }
 }
 
+pub fn ground_ungrounded_alias_leaf(
+    resolved: Rc<Node>,
+    brand: String,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
+    {
+        let ground = resolve_node_bounded(resolved, env.clone(), module_name.clone(), 0, false)
+            .resolved
+            .clone();
+        if (ground.connective.clone() != Connective::NoConnective) {
+            ground
+        } else {
+            match crate::v1_compiler_infer_env::lookup_binding_by_name(env.clone(), brand) {
+                Some(b) => match b.alias_rhs.clone() {
+                    Some(rhs) => {
+                        let expanded = resolve_node_bounded(
+                            rhs.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                            0,
+                            false,
+                        )
+                        .resolved
+                        .clone();
+                        if (expanded.connective.clone() != Connective::NoConnective) {
+                            expanded
+                        } else {
+                            ground
+                        }
+                    }
+                    _ => ground,
+                },
+                _ => ground,
+            }
+        }
+    }
+}
+
 pub fn expand_nominal_alias_rhs(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
     if node_is_type_parameter_reference(n.clone()) {
         n.clone()
@@ -508,15 +548,12 @@ pub fn expand_nominal_alias_rhs_by_name(
                         .clone(),
                     }
                 } else {
-                    resolve_node_bounded(
+                    ground_ungrounded_alias_leaf(
                         resolved.clone(),
+                        brand.clone(),
                         env.clone(),
                         module_name.clone(),
-                        0,
-                        false,
                     )
-                    .resolved
-                    .clone()
                 };
                 if ((((brand.clone() != "".to_string())
                     && (brand.clone()
@@ -3244,6 +3281,7 @@ pub fn resolve_expr_types(
                 op,
                 algebra_field: af,
                 operand: od,
+                derived: eqp,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -3268,6 +3306,7 @@ pub fn resolve_expr_types(
                             op: op.clone(),
                             algebra_field: af.clone(),
                             operand: od.clone(),
+                            derived: eqp.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),

@@ -644,6 +644,51 @@ fn node_edge_same_occurrence(x: Edge, y: Edge) -> Bool {
   (x.label == y.label) && node_same_occurrence(a: x.target, b: y.target)
 }
 
+// A POSITION THAT NAMES ONE AUTHORED NODE says so in its type. A bare Node member is a value: a
+// composite reaching it compares it as node_equal_ignoring_provenance. NodeOccurrence carries the
+// node itself and answers `==` as node_same_occurrence: the same authored occurrence. It is not
+// std.occurrence_identity NodeOccurrenceIdentity, which is the id alone and identifies only the
+// root (and every synthetic node shares OccurrenceSynthetic); this carries the whole node and
+// compares the id at every node of both trees.
+//
+// THE SYNTHETIC FALLBACK IS DELIBERATE. Every synthetic node has the occurrence OccurrenceSynthetic,
+// so two synthetic NodeOccurrences are the same occurrence exactly when they are structurally equal.
+// Keying on the root id alone would instead make every synthetic occurrence equal to every other,
+// which is a silent false equality; node_same_occurrence degrades to structure there, as derived
+// `==` did.
+type NodeOccurrence {
+  node: Node
+}
+
+fn node_occurrence(node: Node) -> NodeOccurrence {
+  NodeOccurrence { node: node }
+}
+
+fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
+  node_same_occurrence(a: a.node, b: b.node)
+}
+
+// THE EQUALITY ROUTES FOR THESE CARRIERS LIVE IN ONE TABLE: v1.compiler.infer
+// equality_route_declarations, which the seed checker folds into every equality plan. They are NOT
+// copied here. A row is (the carrier, the function that compares it, whether a bare operand of that
+// type may be compared at all); these three carriers -- Node, Edge, NodeOccurrence -- are its rows,
+// and node_equal_ignoring_provenance / node_edge_equal_ignoring_provenance / node_occurrence_eq above
+// are the functions it names.
+//
+// WHY THE TABLE SITS IN THE SEED AND NOT BESIDE ITS CARRIERS. The only consumer that reads it is the
+// seed checker, which computes the equality plan (v1.compiler.infer equality_route_for,
+// equality_root_refused_leaf_names, read by equality_operand_walk); DESIGN section 3 will not admit a
+// second copy here next to a table with one reader, and DESIGN section 3c will not admit a declaration
+// with no consumer at all. So the table sits with its consumer: no module of the seed imports v2 today,
+// and a crossing would be admitted only by v2.std.cross_tree.import_model cross_tree_import_admitted, which
+// needs a row for both namespaces in gunbc.source_layout (DESIGN section 3's only structural law is
+// acyclicity -- it is not a ban on the direction, and nothing here claims one). TRIGGER: the v2 checker computes the
+// equality plan; at that point this region gains the data declaration beside the carriers it routes and
+// v1.compiler.infer deletes its, in one change -- the table never exists in both trees. The gap that
+// keeps the v2 checker from computing a plan today is gunbc.rung_drop
+// native_equality_operand_judgment, and its guard (v2.test.claim.derived_equality_routes
+// v2_eval_constructs_no_record_value_frontier_holds) goes red on the day it closes.
+
 
 
 type Node {
