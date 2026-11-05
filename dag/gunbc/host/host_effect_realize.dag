@@ -240,7 +240,7 @@ import gunbc.ci.ci_deploy_access {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, DeploymentDependencyStep, EnsuredPackage, EnsuredOwnershipMarker }
 import gunbc.fabric.fabric_storage_placement { FabricStorageOwnershipMarkerSpec }
-import extdeps.access.posix { FileMode, file_mode_octal }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, tailscale_serve_off_command }
 import gunbc.live_deploy.member_identity { ReleaseEffectPlan }
 import gunbc.runner.runner_slot_population_census {
@@ -6556,34 +6556,8 @@ type TreeEntryKind =
 type TreeMetadataEntry {
   path: String
   kind: TreeEntryKind
-  mode: String
-  owner: String
-  group: String
-}
-
-// find %m prints the permission bits without leading zeros; the install argv builders spell modes as
-// three-digit operands ("0644"; coreutils_directory_mode_operand). One canonical spelling for every
-// comparison, derived from both sources of truth by the same rule.
-fn tree_mode_canonical(text: String) -> String {
-  if text != "0" && starts_with(s: text, prefix: "0") {
-    tree_mode_canonical(text: substring(s: text, start: 1, end: string_length(s: text)))
-  } else {
-    text
-  }
-}
-
-fn tree_metadata_text_is_octal_digits(text: String) -> Bool {
-  text != "" && tree_metadata_all_octal_digits(text: text)
-}
-
-// The empty tail is the SUCCESS case of the walk (every character checked passed), not a refusal;
-// the emptiness of the whole text is decided by the caller above, once.
-fn tree_metadata_all_octal_digits(text: String) -> Bool {
-  if text == "" { true }
-  else {
-    string_contains(s: "01234567", pattern: substring(s: text, start: 0, end: 1))
-      && tree_metadata_all_octal_digits(text: substring(s: text, start: 1, end: string_length(s: text)))
-  }
+  mode: FileMode
+  owner: PosixOwnerNames
 }
 
 // find prints %s in DECIMAL (only %m is octal); conflating the two would name every ordinary
@@ -6657,20 +6631,25 @@ fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetada
 // observation count guard turns into a refusal. Targets are kept exactly as the filesystem stored
 // them: no prefix, no escaping, no dereference.
 fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optional<TreeMetadataEntry> {
-  if !tree_metadata_text_is_octal_digits(text: f.mode) {
-    Absent
-  } else if !tree_metadata_text_is_decimal_digits(text: f.size) {
+  if !tree_metadata_text_is_decimal_digits(text: f.size) {
     Absent
   } else if f.rel == "" || f.owner == "" || f.group == "" {
     Absent
-  } else if f.kind == "f" && f.link_target == "" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeRegular, mode: f.mode, owner: f.owner, group: f.group } }
-  } else if f.kind == "d" && f.link_target == "" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeDirectory, mode: f.mode, owner: f.owner, group: f.group } }
-  } else if f.kind == "l" && f.link_target != "" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: f.mode, owner: f.owner, group: f.group } }
   } else {
-    Absent
+    let names = PosixOwnerNames { user: f.owner as NonEmptyStr, group: f.group as NonEmptyStr }
+    match file_mode_of_octal_text(text: f.mode) {
+      Absent => Absent
+      Present { value: m } =>
+        if f.kind == "f" && f.link_target == "" {
+          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeRegular, mode: m, owner: names } }
+        } else if f.kind == "d" && f.link_target == "" {
+          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeDirectory, mode: m, owner: names } }
+        } else if f.kind == "l" && f.link_target != "" {
+          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: m, owner: names } }
+        } else {
+          Absent
+        }
+    }
   }
 }
 
@@ -6690,7 +6669,7 @@ fn tree_entry_kind_letter(kind: TreeEntryKind) -> String {
 }
 
 fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
-  let head = join([entry.path, "|", tree_entry_kind_letter(kind: entry.kind), "|", entry.mode, "|", entry.owner, "|", entry.group], "")
+  let head = join([entry.path, "|", tree_entry_kind_letter(kind: entry.kind), "|", file_mode_octal(mode: entry.mode), "|", entry.owner.user as String, "|", entry.owner.group as String], "")
   match entry.kind {
     TreeLink { link_target: t } => join([head, "|", t], "")
     _ => head
@@ -6716,21 +6695,29 @@ data tree_installed_symlink_mode: String = "0777"
 // compared -- the source is the operator's checkout and the install normalizes both to the shared
 // spellings above -- but the source's KINDS and TARGETS are, because those are what a copy that
 // followed a link, or an enumeration that dropped one, would get wrong.
-fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyStr) -> List<TreeMetadataEntry> {
-  list_map(
-    xs: entries,
-    f: e => TreeMetadataEntry {
-      path: e.path,
-      kind: e.kind,
-      mode: match e.kind {
-        TreeRegular {} => tree_mode_canonical(text: install_file_shared_mode as String)
-        TreeDirectory {} => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
-        TreeLink { link_target: _t } => tree_mode_canonical(text: tree_installed_symlink_mode)
-      },
-      owner: owner as String,
-      group: owner as String,
+fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyStr) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: install_file_shared_mode as String) {
+    Absent => Absent
+    Present { value: file_m } => match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+      Absent => Absent
+      Present { value: dir_m } => match file_mode_of_octal_text(text: tree_installed_symlink_mode) {
+        Absent => Absent
+        Present { value: link_m } => Present { value: list_map(
+          xs: entries,
+          f: e => TreeMetadataEntry {
+            path: e.path,
+            kind: e.kind,
+            mode: match e.kind {
+              TreeRegular {} => file_m
+              TreeDirectory {} => dir_m
+              TreeLink { link_target: _t } => link_m
+            },
+            owner: PosixOwnerNames { user: owner, group: owner },
+          }
+        ) }
+      }
     }
-  )
+  }
 }
 
 // THE FIRST DISAGREEMENT between the expected and the installed tree, named, or Absent. Missing
@@ -7045,14 +7032,18 @@ fn approval_broker_tree_install_observed(
                 match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
                   TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
                   TreeMetadataObserved { entries: installed_entries } =>
-                    match tree_metadata_disagreement(expected: tree_installed_expectation(entries: source_metadata, owner: owner), observed: installed_entries) {
-                      Present { value: why } =>
-                        TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
-                      Absent =>
-                        approval_broker_tree_receipt_write(
-                          owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-                          metadata_lines: tree_metadata_lines(entries: tree_installed_expectation(entries: source_metadata, owner: owner)),
-                          files: count(installed), transport: transport)
+                    match tree_installed_expectation(entries: source_metadata, owner: owner) {
+                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                      Present { value: expected } =>
+                        match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
+                          Present { value: why } =>
+                            TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
+                          Absent =>
+                            approval_broker_tree_receipt_write(
+                              owner: owner, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                              metadata_lines: tree_metadata_lines(entries: expected),
+                              files: count(installed), transport: transport)
+                        }
                     }
                 }
               }
@@ -10965,21 +10956,6 @@ fn microvm_controller_source_root() -> String {
 // THE W6 STEP NAME AS TEXT, so a refusal from the vertical says which of its
 // named legs refused (TreeInstallStep is a closed sum; the mapping is here and
 // nowhere else -- the count lives only in the sum above).
-fn microvm_controller_tree_step_name(step: TreeInstallStep) -> String {
-  match step {
-    TreeStepRevision => "revision"
-    TreeStepSourceObserve => "source-observe"
-    TreeStepInstallDirectory => "install-directory"
-    TreeStepInstallFile => "install-file"
-    TreeStepInstallBinary => "install-binary"
-    TreeStepInstallLink => "install-link"
-    TreeStepReadback => "readback"
-    TreeStepMetadataReadback => "metadata-readback"
-    TreeStepDigest => "digest"
-    TreeStepReceipt => "receipt"
-  }
-}
-
 // THE FOLD. Plan, then run each step in order over the transport; the first
 // non-zero exit or refusal stops the fold and becomes NotConverged naming that
 // step. Converged carries the LAST leg's evidence (the daemon reload), the way
@@ -11056,7 +11032,7 @@ fn realize_microvm_controller_install_on_host(
                         stderr: prior_err,
                       }
                     TreeInstallRefused { step: step, reason: why } => FoldFailed {
-                      reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", microvm_controller_tree_step_name(step: step), ": ", why], ""),
+                      reason: join([microvm_controller_run_edge, " step '", name, "' refused at ", tree_install_step_name(step: step), ": ", why], ""),
                     }
                   }
               }
