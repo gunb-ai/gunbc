@@ -743,8 +743,9 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
 // WHY THE REFUSAL IS NAMED BY WHAT DECIDED IT. v2.std.find_witness folds a Bool, so on refusal it can
 // only report "no candidate matched"; the old code renamed that by the POSITION it was asked at, which
 // told a reader where the question was asked and nothing about which question answered no. Nine
-// gunbc.recurring_failure_mode rows then cited `arrow_body_does_not_inhabit_declared_return` for nine
-// different mechanisms, and no row could say which shape refused for which reason. The decision comes
+// gunbc.recurring_failure_mode rows then cited one position-named reason -- the old
+// `arrow body does not inhabit the declared return` symbol, retired by this change -- for nine different
+// mechanisms, and no row could say which shape refused for which reason. The decision comes
 // from the same two nodes the fold just compared, through the one verdict in
 // v2.std.exact_structural_equality_zip_fold_predicate, so there is one decision and not two. The class of
 // the refusal travels with the reason it produced: nothing re-derives it from the symbol later.
