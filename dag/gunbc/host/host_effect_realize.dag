@@ -6546,10 +6546,8 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectEl
 // THE ENTRY GRAMMAR, BY CONSTRUCTION: the kind is a declared sum -- a TreeLink CANNOT exist
 // without its stored target and a TreeRegular/TreeDirectory CANNOT carry one -- so the cross-field
 // agreement find's letters impose is checked once, in the parser (the only producer that reads the
-// wire), and is unwritable everywhere else. The type letters never live in the entry.
-// carries the link's stored target for a symlink and the empty string for anything else. The parser
-// enforces the cross-field rule (an "l" entry has a non-empty target, an "f"/"d" entry has none),
-// so no second type-level mirror of "is this a link" is needed -- one carrier, one grammar (§2).
+// wire), and is unwritable everywhere else. The type letters never live in the entry: they enter
+// only through the parser, which maps find's f/l/d onto the sum.
 type TreeEntryKind =
   | TreeRegular
   | TreeDirectory
@@ -6685,8 +6683,8 @@ fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMeta
 // is a different canonical text, and agreement is spelled once.
 fn tree_entry_kind_letter(kind: TreeEntryKind) -> String {
   match kind {
-    TreeRegular => "f"
-    TreeDirectory => "d"
+    TreeRegular {} => "f"
+    TreeDirectory {} => "d"
     TreeLink { link_target: _t } => "l"
   }
 }
@@ -6725,8 +6723,8 @@ fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyS
       path: e.path,
       kind: e.kind,
       mode: match e.kind {
-        TreeRegular => tree_mode_canonical(text: install_file_shared_mode as String)
-        TreeDirectory => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
+        TreeRegular {} => tree_mode_canonical(text: install_file_shared_mode as String)
+        TreeDirectory {} => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
         TreeLink { link_target: _t } => tree_mode_canonical(text: tree_installed_symlink_mode)
       },
       owner: owner as String,
@@ -6743,17 +6741,37 @@ fn tree_metadata_list_contains(lines: List<String>, line: String) -> Bool {
 // entries are named first -- they are the silently-dropped-kind defect this read exists to catch --
 // then extras. Paths are unique on both sides (one filesystem, one entry each), so set agreement on
 // the canonical text is full agreement.
+// The first line that fails to pair, in a MERGE WALK over the two lists already ordered by path
+// -- linear, because both sides are sorted and a release tree can be a whole venv (DESIGN 6: a
+// proven quadratic fold is always fixed; n being small here is not time-stable).
 fn tree_metadata_disagreement(expected: List<TreeMetadataEntry>, observed: List<TreeMetadataEntry>) -> Optional<String> {
   let expected_lines = list_map(xs: sort_tree_metadata(entries: expected), f: e => tree_metadata_entry_line(entry: e))
   let observed_lines = list_map(xs: sort_tree_metadata(entries: observed), f: e => tree_metadata_entry_line(entry: e))
-  match fold(expected_lines, init: none, f: (acc, line) => match acc { Present { value: _ } => acc, Absent => if tree_metadata_list_contains(lines: observed_lines, line: line) { none } else { Present { value: line } } }) {
-    Present { value: missing } => Present { value: join(["missing entry ", missing], "") }
-    Absent =>
-      match fold(observed_lines, init: none, f: (acc, line) => match acc { Present { value: _ } => acc, Absent => if tree_metadata_list_contains(lines: expected_lines, line: line) { none } else { Present { value: line } } }) {
-        Present { value: extra } => Present { value: join(["unexpected installed entry ", extra], "") }
-        Absent => none
+  tree_metadata_merge_disagreement(expected: expected_lines, observed: observed_lines, i: 0, j: 0)
+}
+
+fn tree_metadata_merge_disagreement(expected: List<String>, observed: List<String>, i: Int, j: Int) -> Optional<String> {
+  if i >= count(expected) {
+    if j >= count(observed) { none } else { Present { value: join(["unexpected installed entry ", observed[j]], "") } }
+  } else if j >= count(observed) {
+    Present { value: join(["missing entry ", expected[i]], "") }
+  } else {
+    let e = expected[i]
+    let o = observed[j]
+    match tree_path_compare(a: tree_metadata_line_path(line: e), b: tree_metadata_line_path(line: o)) {
+      Equal => if e == o {
+        tree_metadata_merge_disagreement(expected: expected, observed: observed, i: i + 1, j: j + 1)
+      } else {
+        Present { value: join(["missing entry ", e, " (the installed line at this path is ", o, ")"], "") }
       }
+      Less => Present { value: join(["missing entry ", e], "") }
+      Greater => Present { value: join(["unexpected installed entry ", o], "") }
+    }
   }
+}
+
+fn tree_metadata_line_path(line: String) -> String {
+  split(s: line, delimiter: "|")[0]
 }
 
 type TreeMetadataObservation
@@ -6791,7 +6809,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 // the sorted spine.
 fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadataEntry>) -> List<String> {
   let from_files = flat_map(files, f => tree_path_prefixes(path: f.path))
-  let from_entries = flat_map(metadata, e => if e.kind is TreeDirectory { list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path) } else { tree_path_prefixes(path: e.path) })
+  let from_entries = flat_map(metadata, e => match e.kind { TreeDirectory {} => list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path) _ => tree_path_prefixes(path: e.path) })
   tree_sorted_unique_paths(xs: concat(from_files, from_entries))
 }
 
@@ -6799,7 +6817,7 @@ fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadata
 // regular files and binaries, and folded AGAIN over the same order at readback -- a stable order,
 // from one read of the source, is what makes the two passes comparable).
 fn tree_symlink_entries(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
-  fold(entries, init: [], f: (acc, e) => if e.kind is TreeLink { acc.append(e) } else { acc })
+  fold(entries, init: [], f: (acc, e) => match e.kind { TreeLink { link_target: _t } => acc.append(e) _ => acc })
 }
 
 fn approval_broker_tree_install(

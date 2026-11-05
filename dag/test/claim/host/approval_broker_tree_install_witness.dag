@@ -246,7 +246,7 @@ fn es_head(es: List<TreeMetadataEntry>) -> TreeMetadataEntry {
 }
 
 fn es_skip_none_head(es: List<TreeMetadataEntry>) -> TreeMetadataEntry {
-  fold(es, init: TreeMetadataEntry { path: "", kind: TreeRegular, mode: "", owner: "", group: "" }, f: (acc, e) => if e.kind is TreeLink { e } else { acc })
+  fold(es, init: TreeMetadataEntry { path: "", kind: TreeRegular, mode: "", owner: "", group: "" }, f: (acc, e) => match e.kind { TreeLink { link_target: _l } => e _ => acc })
 }
 
 test fn the_metadata_grammar_refuses_what_it_cannot_name() -> Bool {
