@@ -16,6 +16,8 @@ import gunbc.auth.approval_status_wire {
   parse_filed_approval_status, filed_approval_status_text, submission_filed_text, submission_body_admits_poll,
   StatusNotFiled, StatusPending, StatusApproved, StatusDenied, StatusUnreadable,
 }
+import gunbc.auth.approval_gate { approval_filing_from_post, ApprovalFiled, ApprovalFilingRefused }
+import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv2_deploy_dashboard_instance, ProdRoleRealization, ProdRoleUnheld }
 import gunbc.deployment_risk { ProdRoleHeldBy, NoProdRole, srv2_deploy_deployment }
 import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
@@ -302,4 +304,42 @@ test fn status_text_round_trips_through_the_same_grammar() -> Bool {
       StatusPending { expires_at: e } => e == "2026-09-16T21:00:00Z"
       _ => false
     }
+}
+
+// THE FILING DECISION IS TRANSPORT-FIRST, and these four fixtures are the discriminating pair: the
+// SAME body is a refusal over a non-2xx and an admission over a 2xx, so neither the status alone nor
+// the body alone decides. The first is the 2026-11-05 failure verbatim -- the broker wrote the
+// submission, could not publish over ntfy because the publisher token was gone, and answered 503 with
+// a body that still read filed=yes; the gate read the body alone, believed the filing, and spent its
+// whole poll window waiting for a decision nobody had been asked to make.
+test fn filing_decision_refuses_a_503_whose_body_says_filed() -> Bool {
+  match approval_filing_from_post(success: false, body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 but the publisher token is unavailable: absent")) {
+    ApprovalFilingRefused { reason } =>
+      string_contains(s: reason, pattern: "did not answer 2xx")
+        && string_contains(s: reason, pattern: "publisher token is unavailable")
+    ApprovalFiled => false
+  }
+}
+
+test fn filing_decision_admits_the_poll_over_a_2xx_that_says_filed() -> Bool {
+  match approval_filing_from_post(success: true, body: submission_filed_text(filed: true, reason: "approval submission: filed esc-1 and notified (apns device d)")) {
+    ApprovalFiled => true
+    ApprovalFilingRefused { reason: _ } => false
+  }
+}
+
+test fn filing_decision_refuses_a_2xx_whose_body_does_not_say_filed() -> Bool {
+  match approval_filing_from_post(success: true, body: submission_filed_text(filed: false, reason: "approval submission: requester not enrolled: bad tag")) {
+    ApprovalFilingRefused { reason } => string_contains(s: reason, pattern: "requester not enrolled")
+    ApprovalFiled => false
+  }
+}
+
+// A curl that never reached the broker (exit 6/7/28: no resolve, no connect, timed out) has no body
+// at all; an empty body must never be read as a filing either.
+test fn filing_decision_refuses_a_transport_failure_with_no_body() -> Bool {
+  match approval_filing_from_post(success: false, body: "") {
+    ApprovalFilingRefused { reason } => string_contains(s: reason, pattern: "did not answer 2xx")
+    ApprovalFiled => false
+  }
 }
