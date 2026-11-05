@@ -51,7 +51,7 @@ import gunbc.fleet.printer_job_start {
 }
 
 
-import gunbc.auth.access_credential_source { AccessTokenSource }
+import gunbc.auth.access_token_source { AccessTokenSource }
 import gunbc.auth.approval_gate { approval_instant_now }
 
 // THE ONLY MODULE THAT STARTS A PRINTER JOB, and the only one that uploads a project in order to start

@@ -9,7 +9,7 @@ import gunbc.fleet.printer_job_monitor {observe_job,JobRunning,JobPaused,JobFail
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer}
 import gunbc.fleet.printer_report {report_once_using_session}
 import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
-import gunbc.auth.access_credential_source {AccessTokenSource}
+import gunbc.auth.access_token_source {AccessTokenSource}
 import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_record}
 import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 
