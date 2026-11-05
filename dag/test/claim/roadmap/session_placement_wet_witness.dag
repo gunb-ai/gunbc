@@ -1569,6 +1569,9 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
     Absent => 0
     Present { value: s } => retire_fixture_generation(stores: s)
   }
+  // Bound BEFORE `first`: the row's claim is about the state the pass FOUND. Bind it after and the claim is
+  // about the state the pass LEFT, which is the wrong assertion (and the pass leaves the slot terminal).
+  let launching_when_found = slot_is_launching(dir: dir)
   let first = match stores {
     Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
     Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
@@ -1577,7 +1580,7 @@ test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkee
     Absent => 0
     Present { value: s } => retire_fixture_generation(stores: s)
   }
-  charged && opened && released && slot_is_launching(dir: dir) && (before > 0)
+  charged && opened && released && launching_when_found && (before > 0)
     && (match first {
       SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: d } =>
         (u == unit_a()) && string_contains(s: d, pattern: "no release was issued") && string_contains(s: d, pattern: "charge was already returned")
@@ -1703,7 +1706,9 @@ test fn a_launching_slot_whose_holder_is_observed_alive_is_kept_even_though_the_
   charged && opened && released && charge_back
     && slot_is_launching(dir: dir)
     && kept(s: s)
-    && string_contains(s: keep_text, pattern: "observed alive")
+    // The phrase is the model's own, capitals and all: the arm writes "the holder is OBSERVED ALIVE" because
+    // that is the reading it is refusing to overrule, and string_contains is case-sensitive.
+    && string_contains(s: keep_text, pattern: "holder is OBSERVED ALIVE")
     && !slot_is_terminal(dir: dir)
 }
 
