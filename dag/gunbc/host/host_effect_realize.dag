@@ -6543,14 +6543,14 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectEl
 // A source entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) fails
 // the count guard in observe_tree_entry_metadata and the install REFUSES: this read never widens by
 // dropping what it cannot parse.
-type TreeEntryKind
-  = RegularEntryKind
-  | SymlinkEntryKind { target: String }
-  | DirectoryEntryKind
-
+// THE ENTRY GRAMMAR, FLAT: kind_text is exactly one of find's type letters "f", "l", "d"; target
+// carries the link's stored target for a symlink and the empty string for anything else. The parser
+// enforces the cross-field rule (an "l" entry has a non-empty target, an "f"/"d" entry has none),
+// so no second type-level mirror of "is this a link" is needed -- one carrier, one grammar (§2).
 type TreeMetadataEntry {
   path: String
-  kind: TreeEntryKind
+  kind_text: String
+  target: String
   mode: String
   owner: String
   group: String
@@ -6568,10 +6568,16 @@ fn tree_mode_canonical(text: String) -> String {
 }
 
 fn tree_metadata_text_is_octal_digits(text: String) -> Bool {
-  if text == "" { false }
+  text != "" && tree_metadata_all_octal_digits(text: text)
+}
+
+// The empty tail is the SUCCESS case of the walk (every character checked passed), not a refusal;
+// the emptiness of the whole text is decided by the caller above, once.
+fn tree_metadata_all_octal_digits(text: String) -> Bool {
+  if text == "" { true }
   else {
     string_contains(s: "01234567", pattern: substring(s: text, start: 0, end: 1))
-      && tree_metadata_text_is_octal_digits(text: substring(s: text, start: 1, end: text.length()))
+      && tree_metadata_all_octal_digits(text: substring(s: text, start: 1, end: string_length(s: text)))
   }
 }
 
@@ -6613,27 +6619,36 @@ fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWa
 // parser's does. The starting point's own row (find %P prints the empty string for it) is not an
 // entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
 fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetadataEntry> {
-  if line.length() == 0 || starts_with(s: line, prefix: "|") {
+  if line == "" || starts_with(s: line, prefix: "|") {
     Absent
   } else {
     match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
       Absent => Absent
-      Present { value: f } =>
-        if !tree_metadata_text_is_octal_digits(text: f.mode)
-          || !tree_metadata_text_is_octal_digits(text: f.size)
-          || f.rel.length() == 0
-          || f.owner.length() == 0
-          || f.group.length() == 0 {
-          Absent
-        } else {
-          match f.kind {
-            "f" => Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: RegularEntryKind, mode: f.mode, owner: f.owner, group: f.group } }
-            "d" => Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: DirectoryEntryKind, mode: f.mode, owner: f.owner, group: f.group } }
-            "l" => if f.target.length() == 0 { Absent } else { Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: SymlinkEntryKind { target: f.target }, mode: f.mode, owner: f.owner, group: f.group } } }
-            _ => Absent
-          }
-        }
+      Present { value: f } => tree_metadata_entry_of_fields(f: f, sub: sub)
     }
+  }
+}
+
+// THE GRAMMAR, ONE FLAT DECISION CHAIN: mode and size are octal digits; rel, owner, and group are
+// non-empty; the type letter is one of f/d/l AND agrees with the target field -- f/d carry the bare
+// sentinel `t=`, an l carries `t=` followed by the stored target, which is kept WITHOUT the prefix.
+// Anything else the filesystem can name (a device, a fifo, a socket) has no letter here and falls
+// through to Absent, which the count guard turns into a refusal.
+fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optional<TreeMetadataEntry> {
+  if !tree_metadata_text_is_octal_digits(text: f.mode) {
+    Absent
+  } else if !tree_metadata_text_is_octal_digits(text: f.size) {
+    Absent
+  } else if f.rel == "" || f.owner == "" || f.group == "" {
+    Absent
+  } else if f.kind == "f" && f.target == "t=" {
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "f", target: "", mode: f.mode, owner: f.owner, group: f.group } }
+  } else if f.kind == "d" && f.target == "t=" {
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "d", target: "", mode: f.mode, owner: f.owner, group: f.group } }
+  } else if f.kind == "l" && string_length(s: f.target) > 1 && starts_with(s: f.target, prefix: "t=") {
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "l", target: substring(s: f.target, start: 2, end: string_length(s: f.target)), mode: f.mode, owner: f.owner, group: f.group } }
+  } else {
+    Absent
   }
 }
 
@@ -6645,11 +6660,8 @@ fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMeta
 // receipt's metadata digest hashes. A link's stored target lives IN the line, so a re-pointed link
 // is a different canonical text, and agreement is spelled once.
 fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
-  match entry.kind {
-    RegularEntryKind => join([entry.path, "|f|", entry.mode, "|", entry.owner, "|", entry.group], "")
-    SymlinkEntryKind { target: t } => join([entry.path, "|l|", entry.mode, "|", entry.owner, "|", entry.group, "|", t], "")
-    DirectoryEntryKind => join([entry.path, "|d|", entry.mode, "|", entry.owner, "|", entry.group], "")
-  }
+  let head = join([entry.path, "|", entry.kind_text, "|", entry.mode, "|", entry.owner, "|", entry.group], "")
+  if entry.kind_text == "l" { join([head, "|", entry.target], "") } else { head }
 }
 
 fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
@@ -6676,11 +6688,13 @@ fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyS
     xs: entries,
     f: e => TreeMetadataEntry {
       path: e.path,
-      kind: e.kind,
-      mode: match e.kind {
-        RegularEntryKind => tree_mode_canonical(text: install_file_shared_mode as String)
-        DirectoryEntryKind => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
-        SymlinkEntryKind { target: _ } => tree_mode_canonical(text: tree_installed_symlink_mode)
+      kind_text: e.kind_text,
+      target: e.target,
+      mode: match e.kind_text {
+        "f" => tree_mode_canonical(text: install_file_shared_mode as String)
+        "d" => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
+        "l" => tree_mode_canonical(text: tree_installed_symlink_mode)
+        _ => tree_mode_canonical(text: tree_installed_symlink_mode)
       },
       owner: owner as String,
       group: owner as String,
@@ -6727,7 +6741,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
             if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
               let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
-              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if l.length() > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
+              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
               if lines != count(parsed) {
                 TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as <rel>|<type>|<mode>|<owner>|<group>|<size>|<link>; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
               } else { TreeMetadataObserved { entries: concat(es, parsed) } }
@@ -6744,10 +6758,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 // the sorted spine.
 fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadataEntry>) -> List<String> {
   let from_files = flat_map(files, f => tree_path_prefixes(path: f.path))
-  let from_entries = flat_map(metadata, e => match e.kind {
-    DirectoryEntryKind => list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path)
-    _ => tree_path_prefixes(path: e.path)
-  })
+  let from_entries = flat_map(metadata, e => if e.kind_text == "d" { list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path) } else { tree_path_prefixes(path: e.path) })
   tree_sorted_unique_paths(xs: concat(from_files, from_entries))
 }
 
@@ -6755,7 +6766,7 @@ fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadata
 // regular files and binaries, and folded AGAIN over the same order at readback -- a stable order,
 // from one read of the source, is what makes the two passes comparable).
 fn tree_symlink_entries(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
-  fold(entries, init: [], f: (acc, e) => match e.kind { SymlinkEntryKind { target: _ } => acc.append(e), _ => acc })
+  fold(entries, init: [], f: (acc, e) => if e.kind_text == "l" { acc.append(e) } else { acc })
 }
 
 fn approval_broker_tree_install(
