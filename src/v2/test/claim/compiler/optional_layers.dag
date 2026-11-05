@@ -25,10 +25,10 @@ import v2.std.inhabitance {
   InhabitanceRefused,
   InhabitanceUndecidable,
   Inhabits,
-  PositionDirectCallArgument,
   declared_type_inhabitance,
   inhabitance_pair_undecidable_reason
 }
+import v2.std.diagnostic { PositionDirectCallArgument }
 import v2.std.symbol_index { empty_symbol_index }
 
 import v2.std.node { node_same_occurrence, Atom, ComputationNode, Edge, Instantiation, Node, Positional, Symbol, TypeNode, NotADeclaration }
@@ -59,7 +59,7 @@ fn ol_list_of(element: Node) -> Node {
 
 fn ol_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
   DeclaredTypeObligation {
-    position: PositionDirectCallArgument,
+    position: PositionDirectCallArgument { argument_ordinal_path: [] },
     parameter_identity: ^ol_param,
     declared: declared,
     produced: produced,
