@@ -6,7 +6,7 @@ import std.durable_compare_and_set { CasSlotObservation, CasExpectation, CasComm
 import std.effect_grant { Read, Write, Execute }
 import gunbc.host_state_root { HostStateTree, host_state_tree_path }
 import gunbc.durable_cas_file_store {
-  SlotStore, file_slot_store, listed_slot_store, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused,
+  SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_store_absent_detail,
   slot_observe, slot_commit, CasGenerationPublication, DeclaredModeCreateOnly,
   admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
 }
@@ -44,15 +44,28 @@ type RequestApiKeyStore sole_constructor {
   publication: CasGenerationPublication
 }
 
-fn request_api_key_store(tree: HostStateTree) -> Result<RequestApiKeyStore, String> {
-  let publication = match managed_directory_entry_mode(d: request_api_key_store_directory(tree: tree)) {
-    ManagedEntryModeDerived { mode: mode } => DeclaredModeCreateOnly { mode: mode }
-    ManagedEntryModeRefused { member: _, path: _, reason: why } => { return Err { value: why as String } }
+fn request_api_key_store_publication(tree: HostStateTree) -> Result<CasGenerationPublication, String> {
+  match managed_directory_entry_mode(d: request_api_key_store_directory(tree: tree)) {
+    ManagedEntryModeDerived { mode: mode } => Ok { value: DeclaredModeCreateOnly { mode: mode } }
+    ManagedEntryModeRefused { member: _, path: _, reason: why } => Err { value: why as String }
   }
-  match listed_slot_store(member: request_api_key_store_member as String, root: request_api_key_store_path(tree: tree)) {
+}
+
+fn request_api_key_store(tree: HostStateTree) -> Result<RequestApiKeyStore, String> {
+  let publication = match request_api_key_store_publication(tree: tree) {
+    Err { value: why } => { return Err { value: why } }
+    Ok { value: publication } => publication
+  }
+  request_api_key_store_admitted(publication: publication,
+    admission: listed_slot_store(member: request_api_key_store_member as String, root: request_api_key_store_path(tree: tree)))
+}
+
+// The admission is the listing's answer, supplied here so a witness can hand each arm in hermetically.
+fn request_api_key_store_admitted(publication: CasGenerationPublication, admission: SlotStoreAdmission) -> Result<RequestApiKeyStore, String> {
+  match admission {
+    SlotStoreAbsent { member: m, root: r } => Err { value: slot_store_absent_detail(member: m, root: r) }
     SlotStoreRefused { detail: why } => Err { value: why }
     SlotStoreListed { root: root } => Ok { value: RequestApiKeyStore { slots: file_slot_store(root: root), publication: publication } }
-    SlotStoreAbsent { member: m, root: r } => Err { value: join(["the ", m, " store's directory at ", r, " was never created -- admission answers absence, and an absent store is not an empty store"], "") }
   }
 }
 
