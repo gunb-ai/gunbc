@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_acceptance_inbox
 
 import std.types { Set }
-import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapAcceptanceReceipt, replay_acceptance_history }
+import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked }
 import gunbc.roadmap.roadmap_status { line_ticket }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoad,
@@ -82,50 +82,51 @@ fn inbox_parent_state(
   }
 }
 
-// The latest revoked receipt for the node in the replayed state; none means never recorded.
+// The latest revoked receipt for the node, read from the loaded events themselves. Admissibility of
+// the history is already judged once, by frontier_sets_projection, before this runs; this is a read
+// of AcceptanceRevoked events, not a second replay.
 fn inbox_prior_reading(
-  revoked: List<RoadmapAcceptanceReceipt>,
+  events: List<RoadmapAcceptanceEvent>,
   node: RoadmapNodeId,
 ) -> PriorReceiptReading {
   fold(
-    revoked,
+    events,
     init: NoReceiptEverRecorded,
-    f: fn(acc, r) {
-      if r.node == node { PriorReceiptRevoked { receipt: r } } else { acc }
+    f: fn(acc, e) {
+      match e {
+        AcceptanceRecorded { receipt: _ } => acc
+        AcceptanceRevoked { exact_prior_receipt: r, disposition: _, reason: _, revoked_by: _, revoked_on: _ } =>
+          if r.node == node { PriorReceiptRevoked { receipt: r } } else { acc }
+      }
     },
   )
 }
 
 fn roadmap_acceptance_inbox(history: RoadmapAcceptanceEventHistoryLoad) -> AcceptanceInbox {
-  match frontier_sets_projection(history: history) {
-    FrontierSetsProjectionRefused { detail: detail } =>
+  match history {
+    RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
       AcceptanceInboxProjectionRefused { detail: detail }
-    FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
-      match history {
-        RoadmapAcceptanceEventHistoryLoadRefused { detail: detail } =>
+    RoadmapAcceptanceEventHistoryLoaded { events: events } =>
+      match frontier_sets_projection(history: history) {
+        FrontierSetsProjectionRefused { detail: detail } =>
           AcceptanceInboxProjectionRefused { detail: detail }
-        RoadmapAcceptanceEventHistoryLoaded { events: events } =>
-          match replay_acceptance_history(events: events) {
-            Absent =>
-              AcceptanceInboxProjectionRefused { detail: "acceptance-history-unreplayable" }
-            Present { value: state } => {
-              let accepted_set = roadmap_node_id_set(ids: accepted)
-              let withheld_set = roadmap_node_id_set(ids: withheld)
-              let edges = declared_roadmap_edges()
-              AcceptanceInboxProjected {
-                rows: declared_roadmap_nodes()
-                  |> filter(n => node_has_ticket(rn: n) && !set_contains(accepted_set, n.node))
-                  |> map(n => AcceptanceInboxRow {
-                    node: n,
-                    status: if set_contains(withheld_set, n.node) { InboxWithheld } else { InboxAwaiting },
-                    parents: edges
-                      |> filter(e => e.child == n.node)
-                      |> map(e => inbox_parent_state(parent: e.parent, accepted: accepted_set, withheld: withheld_set)),
-                    prior: inbox_prior_reading(revoked: state.revoked, node: n.node),
-                  }),
-              }
-            }
+        FrontierSetsProjected { accepted: accepted, withheld: withheld } => {
+          let accepted_set = roadmap_node_id_set(ids: accepted)
+          let withheld_set = roadmap_node_id_set(ids: withheld)
+          let edges = declared_roadmap_edges()
+          AcceptanceInboxProjected {
+            rows: declared_roadmap_nodes()
+              |> filter(n => node_has_ticket(rn: n) && !set_contains(accepted_set, n.node))
+              |> map(n => AcceptanceInboxRow {
+                node: n,
+                status: if set_contains(withheld_set, n.node) { InboxWithheld } else { InboxAwaiting },
+                parents: edges
+                  |> filter(e => e.child == n.node)
+                  |> map(e => inbox_parent_state(parent: e.parent, accepted: accepted_set, withheld: withheld_set)),
+                prior: inbox_prior_reading(events: events, node: n.node),
+              }),
           }
+        }
       }
   }
 }
