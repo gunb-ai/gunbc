@@ -4,13 +4,19 @@ import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplate, Inputs, Github, LiteralText, Interpolation, LogicalOr, interpolate, serialize_template }
 
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count }
 import std.optional { Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
+  bash_build_command_with_words, bash_build_with_redir, bash_build_with_redir_to_file,
+  bash_build_word_cmdsubst, bash_build_exit, bash_build_assign_lit, bash_build_assign, bash_build_test_bracket,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, PullRequest, PullRequestActivity, Opened, Synchronize, Reopened,
@@ -51,7 +57,10 @@ import gunbc.heal_candidate {
   heal_candidate_base_ref_env,
   heal_candidate_run_id_env
 }
-import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+import gunbc.heal_publication_boundary {
+  heal_repair_candidate_artifact_name, heal_round_outcome_artifact_name, heal_round_outcome_directory_name,
+  heal_round_outcome_file_name, heal_round_outcome_blobs_field, heal_round_outcome_blobs_not_counted
+}
 
 // THE PULL REQUEST'S OWN HALF OF HEAL, IN ITS OWN WORKFLOW (gunbc#10958 Phase A).
 //
@@ -250,6 +259,121 @@ fn heal_seed_build_artifacts_step() -> Step {
   }
 }
 
+// THE ROUND'S OWN RECORD OF HOW IT ENDED, WRITTEN OUTSIDE THE CHECKOUT AND UPLOADED UNDER ITS OWN
+// ARTIFACT NAME. This module's upload step is correctly unconditional about the CANDIDATE -- the
+// producer writes a manifest even for a clean tree -- but every other step in this job is gated on the
+// round having produced a candidate, so a round that stops before writing one ends with no trace of
+// what it did. That is the producer half of the sighting recorded in
+// gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost: a round
+// can write blob files, refuse at a later phase, and its emission dies with the runner. Two transports,
+// two names: this record can never be a publishable candidate, because the publisher's build, admit,
+// federation and publication steps are gated on the candidate artifact under its own name and on blob
+// files under theirs.
+data heal_round_outcome_producer_directory: String = "${{ runner.temp }}/" + heal_round_outcome_directory_name as String
+
+data heal_round_outcome_producer_file: String = heal_round_outcome_producer_directory + "/" + heal_round_outcome_file_name as String
+
+// SEEDED BEFORE THE ROUND RUNS. `blobs=not-counted` is replaced only by the round's own finalisation, so
+// the surviving file answers one of two questions: how many blobs the round left behind, or that the
+// round ended without closing its record. Either answer beats the absence of an answer, which is what
+// the publisher is left with today.
+data heal_round_outcome_seed_line: String = heal_round_outcome_blobs_field as String + heal_round_outcome_blobs_not_counted as String + "\\n"
+
+// COUNTED IN THE ROUND'S OWN SHELL, NOT IN THE WORKFLOW EXPRESSION LANGUAGE: a count is arithmetic over
+// real files and the expression language has no arithmetic. This is why the candidate command is built
+// the same way, through the bash fold.
+fn heal_round_outcome_count_statements() -> List<Node> {
+  [
+    bash_build_assign_lit(name: "heal_round_outcome_exit", text: "0"),
+    bash_build_assign(
+      name: "heal_round_outcome_blobs",
+      value: bash_build_word_cmdsubst(body: bash_build_with_redir(
+        inner: bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "ls"),
+          bash_build_word_concat_from_nodes(parts: [
+            bash_build_word_lit(text: heal_candidate_directory),
+            bash_build_word_lit(text: "/" + heal_repair_candidate_blob_file_prefix as String + "*"),
+          ]),
+        ]),
+        redir: ^bash_production_fold_redir_stderr_null,
+      ))
+    ),
+    bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "printf"),
+        bash_build_word_lit(text: "%s\\n"),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: heal_round_outcome_blobs_field as String),
+          bash_build_word_lit(text: "${heal_round_outcome_blobs:-0}"),
+        ]),
+      ]),
+      path: bash_build_word_lit(text: heal_round_outcome_producer_file),
+    ),
+  ]
+}
+
+// `always()` IS THE POINT. Every other step in this job is gated on the round having produced a
+// candidate, which is right for publishing and fatal for knowing: when that gate closes the job ends
+// with no record of the round. This step runs whatever the round did to it, and re-raises the round's
+// own exit code so the record never rewrites history -- a round that failed still fails.
+fn heal_round_outcome_write_step() -> Step {
+  RunStep {
+    name: Present { value: "Close the round outcome record" },
+    id: none,
+    run: bash_emit_stmts(statements: heal_round_outcome_count_statements().concat([
+      bash_build_test_bracket(words: [bash_build_word_var(name: "heal_round_outcome_exit"), bash_build_word_lit(text: "="), bash_build_word_lit(text: "0")]),
+      bash_build_exit(code: "1"),
+    ]), set_e: false),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn heal_round_outcome_seed_step() -> Step {
+  RunStep {
+    name: Present { value: "Open the round outcome record" },
+    id: none,
+    run: bash_emit_stmts(statements: [
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_lit(text: heal_round_outcome_producer_directory)]),
+      bash_build_with_redir_to_file(
+        inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: heal_round_outcome_seed_line)]),
+        path: bash_build_word_lit(text: heal_round_outcome_producer_file),
+      ),
+    ], set_e: true),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// A SECOND ARTIFACT, UPLOADED UNCONDITIONALLY, UNDER A NAME THE PUBLICATION STEPS NEVER MATCH.
+fn heal_round_outcome_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the round outcome record" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: heal_round_outcome_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: heal_round_outcome_producer_directory)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+        kv(key: "retention-days", value: yaml_int(n: heal_candidate_artifact_retention_days))
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: Present { value: true },
+    timeout_minutes: none
+  }
+}
+
 // THE SUBJECT FACTS ARRIVE AS ENVIRONMENT VALUES, NEVER INTERPOLATED INTO A SCRIPT. A branch name is
 // pull-request-controlled text; spliced into a command it would be shell, and read from the
 // environment it is a value the producer refuses if it is empty.
@@ -349,6 +473,11 @@ fn heal_workflow_bound_steps() -> List<HealBoundStep> {
       step_name: "Regenerate the seed-build artifacts without loading the registry",
     },
     HealBoundStep {
+      step: heal_round_outcome_seed_step(),
+      role: capability_neutral,
+      step_name: "Open the round outcome record",
+    },
+    HealBoundStep {
       step: heal_candidate_step(),
       role: capability_neutral,
       step_name: "Produce the sealed repair candidate",
@@ -357,6 +486,16 @@ fn heal_workflow_bound_steps() -> List<HealBoundStep> {
       step: heal_candidate_upload_step(),
       role: capability_neutral,
       step_name: "Upload the sealed repair candidate",
+    },
+    HealBoundStep {
+      step: heal_round_outcome_write_step(),
+      role: capability_neutral,
+      step_name: "Close the round outcome record",
+    },
+    HealBoundStep {
+      step: heal_round_outcome_upload_step(),
+      role: capability_neutral,
+      step_name: "Upload the round outcome record",
     },
   ]
 }

@@ -1,6 +1,7 @@
 module gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost
 
 import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
 import gunbc.rung_climb { ClimbableButUnbuilt }
@@ -35,10 +36,20 @@ data a_refused_round_uploads_no_candidate_and_its_emission_is_lost: RecurringFai
 
     "CEILING, derived: MechanicallyPreventable. Whether a round refused and what it wrote are both facts the runner already holds at the instant of refusal; carrying the second fact out under a name the publisher never reads needs no new judgement, no new model, and no new capability anywhere else in the system. It is a property of the workflow, which is what makes the rung mechanical rather than structural.",
 
+    "MEASURED AGAIN, FROM THE PUBLISHER SIDE (2026-11-04 21:06Z to 2026-11-05). The class recurs where the consumer is the one left guessing. Thirteen consecutive heal-publish runs FAILED with their Admit step executing, and the last Admit that EXECUTED and passed was run 41909205210 at 20:42:51Z; across 25 earlier heal-publish runs, 23 skipped both Admit and Publish and still reported SUCCESS. The failure path is ordinary: actions/download-artifact logs "Found 0 artifact(s)", then "Total of 0 artifact(s) downloaded", then "Download artifact has finished successfully" (job 126921178053 of run 41929113822, whose trigger 41919581962 was CANCELLED), and every step that could have said so is gated on candidate blob files having landed. So the publisher reported success while admitting it had seen nothing -- and the TRIGGERING RUN'S CONCLUSION, present in every one of those runs, was read by nobody. A green that asserts nothing is this row's defect seen from the far end: the emission is gone, and the consumer cannot even ask which kind of nothing it is looking at.",
+
+    "WHAT IS BUILT NOW, AND THE HALF THAT IS NOT (2026-11-05). The second transport exists in the model: gunbc.heal_workflow opens a one-file round outcome record under runner.temp before the round runs, closes it with `if: always()` carrying how many candidate blob files the round had written, and uploads it under gunbc.heal_publication_boundary heal_round_outcome_artifact_name; gunbc.heal_publisher_workflow fetches it UNGATED and says which kind of nothing arrived, refusing a lost emission (blobs recorded, none delivered), a record the round never closed, and the absence of any record. So THE FACT THAT A ROUND WROTE BLOBS NOW SURVIVES THE ROUND, and a publisher green names which case it is. WHAT REMAINS UNBUILT is the bytes themselves: a refused round's candidate tree still dies with the runner, so the question WHICH BYTES differ still cannot be answered from CI -- only the count and the refusal can. Uploading that tree as EVIDENCE under a distinct name is the unbuilt half, and it is named here rather than remembered, together with why it was not built in this change: the size, retention and exposure of carrying refused bytes out of every failed round were never weighed, and the publisher's question -- which kind of nothing -- is answered by the count without them.",
+
+    "THE CONSTRAINT THAT STILL BINDS THE UNBUILT HALF. The two transports must stay distinct: an evidence artifact the publisher is willing to PUBLISH FROM would let a refused round publish, which is the failure this row exists to prevent, not to enable. The built transport honours that by construction -- publication is still gated on the candidate artifact under its own name and on blob files under theirs, and the record has neither name -- and dag/test/claim/repository_ci_profile_witness the_round_outcome_record_is_never_a_publishable_candidate reddens if a rename or a widened gate ever breaks it.",
+
     "NEXT TRIGGER, named as a capability: upload the round candidate as EVIDENCE under a distinct artifact name when the round refuses, while publishing only on convergence. The two transports must stay distinct -- an evidence artifact the publisher is willing to read would let a refused round publish, which is the failure this row exists to prevent, not to enable. This row records the class only: the job roster and the workflows are closed to growth without a ruling, so nothing in this change builds the trigger.",
 
     "BOUNDED AGAINST NEIGHBOURS: [[roster_is_its_own_denominator]] is a denominator defect, where the enumeration IS the population so the instrument reading it cannot notice the population is short; here the population exists, is complete, and is destroyed before anyone can read it, which is a transport defect. [[a_v1_unit_test_red_on_main_runs_in_no_required_lane]] is a fact observed in no required lane: there the evidence persists and nobody runs the check, here the check runs, produces the evidence, and the evidence is deleted. [[a_check_and_its_subject_are_removed_in_one_edit]] is a control and its subject leaving together; here the control is not removed at all -- it is unreachable on exactly the path where it is needed.",
   ],
 
-  evidence: [],
+  evidence: [
+    decl_ref(module_path: "gunbc.heal_publication_boundary", decl_name: "heal_round_outcome_artifact_name"),
+    decl_ref(module_path: "gunbc.heal_workflow", decl_name: "heal_round_outcome_write_step"),
+    decl_ref(module_path: "gunbc.heal_publisher_workflow", decl_name: "heal_publisher_round_outcome_decision_step"),
+  ],
 }

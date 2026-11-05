@@ -15,6 +15,20 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.expressions { Expression, ContextAccess, FunctionCall, StringLiteral, LogicalAnd, Equals, NotEquals, Github, HashFiles, serialize_expression }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
+  bash_build_command_with_words, bash_build_with_redir_to_file, bash_build_with_redir_stderr_to_file,
+  bash_build_word_cmdsubst, bash_build_if_else_from_stmts, bash_build_test_bracket,
+  bash_build_exit, bash_build_assign_lit, bash_build_assign, bash_build_annotate,
+}
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
+  bash_build_command_with_words, bash_build_with_redir_stderr_to_file,
+  bash_build_word_cmdsubst, bash_build_if_else_from_stmts, bash_build_test_bracket,
+  bash_build_exit, bash_build_assign_lit, bash_build_assign,
+}
+import v2.workflow.bash_emit { bash_emit_stmts }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowRunTriggered, WorkflowRunCompletedActivity,
@@ -121,6 +135,22 @@ data heal_publisher_seed_route_without_a_composition_refusal_reason: String = "R
 
 data heal_publisher_candidate_directory: String = "heal-candidate"
 
+// WHERE THE PUBLISHER PUTS THE ROUND'S OWN OUTCOME RECORD: a directory of its own, NOT the candidate
+// directory. The gate globs the candidate directory for blob files under their own prefix, so a record
+// parked beside them would read as a candidate. Separate names are what keep a second transport
+// informative without making it publishable.
+data heal_publisher_round_outcome_directory: String = heal_round_outcome_directory_name as String
+
+data heal_publisher_round_outcome_file: String = heal_publisher_round_outcome_directory + "/" + heal_round_outcome_file_name as String
+
+// THE TRIGGERING ROUND'S CONCLUSION, AS AN INPUT THIS JOB CAN ACT ON. The publisher already runs for a
+// round of ANY conclusion -- a clean tree and a cancelled round both reach this job -- and until now the
+// conclusion was never read: what the job did was decided only by whether candidate blob files landed.
+// Reading it is half of what makes a green here mean something.
+fn heal_publisher_trigger_conclusion_env() -> List<Kv> {
+  [kv(key: "HEAL_TRIGGER_RUN_CONCLUSION", value: yaml_string(s: "${{ github.event.workflow_run.conclusion }}"))]
+}
+
 data heal_publisher_build_step_name: String = "Build the publisher this job runs from the default branch"
 
 // THE STEP NAME THE SEED ROUTE INSTALLS THE TOOLCHAIN UNDER. Step display names are this emitter's to
@@ -197,6 +227,182 @@ fn heal_publisher_download_step() -> Step {
       ]
     },
     env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE SECOND TRANSPORT, FETCHED. Same action, same run, a different artifact name -- and, unlike the
+// candidate download, this one tolerates finding nothing: for a trigger that predates the round-outcome
+// transport there is genuinely nothing to fetch, and the step BELOW decides whether that is tolerable.
+// It is a separate step rather than a second pattern on the candidate download because the candidate
+// download's failure IS a failure (its own comment says so) and a record that may legitimately be absent
+// must not ride along with that.
+fn heal_publisher_round_outcome_download_step() -> Step {
+  UsesStep {
+    name: Present { value: "Download the round outcome record the triggering heal run left" },
+    id: none,
+    uses: download_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "pattern", value: yaml_string(s: heal_round_outcome_artifact_name as String)),
+        kv(key: "path", value: yaml_string(s: heal_publisher_round_outcome_directory)),
+        kv(key: "run-id", value: yaml_string(s: "${{ github.event.workflow_run.id }}")),
+        kv(key: "github-token", value: yaml_string(s: "${{ github.token }}"))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: Present { value: true },
+    timeout_minutes: none
+  }
+}
+
+// WHAT THE ROUND LEFT BEHIND, SAID OUT LOUD, WITH THE TWO KINDS OF NOTHING THAT HURT REFUSED.
+// Five answers, each named in the job log so a green asserts one of them:
+//   blobs arrived                -> the ordinary route; the credential-gated steps go on publishing.
+//   no blobs, record says zero   -> a clean tree (the round succeeded and owed nothing), or a round that
+//                                   stopped before writing one. Green, and the log says which.
+//   no blobs, record says some   -> THE EMISSION WAS LOST: the round wrote candidate blobs and no
+//                                   candidate artifact arrived. That is
+//                                   gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost
+//                                   seen from the publisher, and it used to read as a green. Red.
+//   record says not-counted      -> the round ended without closing its own record. Red: a half-written
+//                                   record is a defect, not an absence.
+//   no record at all             -> the producer half did not run for this trigger. Red, with the
+//                                   dissolution stated in the message: triggers older than the
+//                                   round-outcome transport (2026-11-05) have no record to fetch.
+// THE REFUSALS ARE A `::error::` ANNOTATION PLUS A NON-ZERO EXIT. An annotation on a step that then exits
+// zero is the same silent green in a different font, and a bare exit code says nothing to whoever reads
+// the run. The triggering conclusion arrives as an INPUT (it was never read before): it separates "the
+// tree was clean" from "the round stopped early" without re-deriving either from the absence of bytes,
+// which is the circularity this record exists to break.
+fn heal_publisher_round_outcome_decision_statements() -> List<Node> {
+  [
+    bash_build_assign_lit(name: "outcome_record", text: heal_publisher_round_outcome_file),
+    bash_build_assign(name: "round_blobs", value: bash_build_word_cmdsubst(body: bash_build_with_redir_stderr_to_file(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "ls"),
+        bash_build_word_lit(text: heal_publisher_candidate_directory),
+        bash_build_word_concat_from_nodes(parts: [
+          bash_build_word_lit(text: "/" + heal_repair_candidate_blob_file_prefix as String + "*"),
+        ]),
+      ]),
+      path: bash_build_word_lit(text: "/dev/null"),
+    ))),
+    bash_build_assign(name: "recorded_blobs", value: bash_build_word_cmdsubst(body: bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "sed"),
+      bash_build_word_lit(text: "-n"),
+      bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_lit(text: "s/^" + heal_round_outcome_blobs_field as String),
+        bash_build_word_lit(text: "/p"),
+      ]),
+      bash_build_word_var(name: "outcome_record"),
+    ]))),
+    // (1) blobs arrived: the ordinary route, unchanged.
+    bash_build_if_else_from_stmts(
+      cond: bash_build_test_bracket(words: [bash_build_word_lit(text: "-n"), bash_build_word_var(name: "round_blobs")]),
+      then_stmts: [
+        bash_build_command_with_words(words: [
+          bash_build_word_lit(text: "echo"),
+          bash_build_word_lit(text: "::notice::round outcome: candidate blobs present; the gated publication steps go on"),
+        ]),
+      ],
+      else_stmts: [
+        // (5) no record at all.
+        bash_build_if_else_from_stmts(
+          cond: bash_build_test_bracket(words: [
+            bash_build_word_lit(text: "!"),
+            bash_build_word_lit(text: "-f"),
+            bash_build_word_var(name: "outcome_record"),
+          ]),
+          then_stmts: [
+            bash_build_command_with_words(words: [
+              bash_build_word_lit(text: "echo"),
+              bash_build_word_lit(text: "::error::round outcome: NO RECORD from the triggering heal run. Either the producer half of the round-outcome transport did not run, or this trigger predates it (added 2026-11-05). A green here would assert nothing, so it refuses."),
+            ]),
+            bash_build_exit(code: "1"),
+          ],
+          else_stmts: [
+            // (4) the record names no count: the round never closed it.
+            bash_build_if_else_from_stmts(
+              cond: bash_build_test_bracket(words: [
+                bash_build_word_lit(text: "-z"),
+                bash_build_word_var(name: "recorded_blobs"),
+              ]),
+              then_stmts: [
+                bash_build_command_with_words(words: [
+                  bash_build_word_lit(text: "echo"),
+                  bash_build_word_lit(text: "::error::round outcome: the record carries no blob count, so the round ended without closing it. Treated as a lost emission until proven otherwise."),
+                ]),
+                bash_build_exit(code: "1"),
+              ],
+              else_stmts: [
+                // (3) blobs recorded, none delivered.
+                bash_build_if_else_from_stmts(
+                  cond: bash_build_test_bracket(words: [
+                    bash_build_word_var(name: "recorded_blobs"),
+                    bash_build_word_lit(text: "-gt"),
+                    bash_build_word_lit(text: "0"),
+                  ]),
+                  then_stmts: [
+                    bash_build_command_with_words(words: [
+                      bash_build_word_lit(text: "echo"),
+                      bash_build_word_concat_from_nodes(parts: [
+                        bash_build_word_lit(text: "::error::round outcome: LOST EMISSION - the round recorded "),
+                        bash_build_word_var(name: "recorded_blobs"),
+                        bash_build_word_lit(text: " candidate blob file(s) and no candidate artifact arrived. See gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost."),
+                      ]),
+                    ]),
+                    bash_build_exit(code: "1"),
+                  ],
+                  else_stmts: [
+                    // (2) nothing written: a clean tree, or an early stop. The conclusion decides which.
+                    bash_build_if_else_from_stmts(
+                      cond: bash_build_test_bracket(words: [
+                        bash_build_word_var(name: "HEAL_TRIGGER_RUN_CONCLUSION"),
+                        bash_build_word_lit(text: "="),
+                        bash_build_word_lit(text: "success"),
+                      ]),
+                      then_stmts: [
+                        bash_build_command_with_words(words: [
+                          bash_build_word_lit(text: "echo"),
+                          bash_build_word_lit(text: "::notice::round outcome: the round succeeded and wrote no candidate blob: a clean tree. Nothing was owed, and that is what this green asserts."),
+                        ]),
+                      ],
+                      else_stmts: [
+                        bash_build_command_with_words(words: [
+                          bash_build_word_lit(text: "echo"),
+                          bash_build_word_concat_from_nodes(parts: [
+                            bash_build_word_lit(text: "::notice::round outcome: the trigger concluded "),
+                            bash_build_word_concat_from_nodes(parts: [
+                              bash_build_word_lit(text: "${HEAL_TRIGGER_RUN_CONCLUSION:-unknown}"),
+                            ]),
+                            bash_build_word_lit(text: " and the round wrote no candidate blob: it stopped before producing one. Nothing to publish, and no emission lost."),
+                          ]),
+                        ]),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    ),
+  ]
+}
+
+fn heal_publisher_round_outcome_decision_step() -> Step {
+  RunStep {
+    name: Present { value: "Say what the triggering heal round left behind, and refuse what was lost" },
+    id: none,
+    run: bash_emit_stmts(statements: heal_publisher_round_outcome_decision_statements(), set_e: false),
+    shell: none,
+    env: Present { value: heal_publisher_trigger_conclusion_env() },
+    working_directory: none,
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
@@ -695,6 +901,18 @@ fn heal_publisher_bound_steps(
                   },
                   HealPublisherBoundStep {
                     step: heal_publisher_download_step(),
+                    role: capability_neutral,
+                  },
+                  // UNGATED ON PURPOSE, and ahead of every credentialed step. Everything else in this job
+                  // runs only when candidate blob files landed, which is the right gate for spending a
+                  // credential and the wrong one for knowing what happened: when it closes, the job
+                  // reports success while admitting it saw nothing.
+                  HealPublisherBoundStep {
+                    step: heal_publisher_round_outcome_download_step(),
+                    role: capability_neutral,
+                  },
+                  HealPublisherBoundStep {
+                    step: heal_publisher_round_outcome_decision_step(),
                     role: capability_neutral,
                   },
                 ],
