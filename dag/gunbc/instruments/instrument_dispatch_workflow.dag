@@ -1,5 +1,6 @@
 module gunbc.instruments.instrument_dispatch_workflow
 
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
 import std.types { Bool, Int, List, String }
 import std.algebra { list_append, list_map, length }
 import std.optional { Present }
@@ -663,12 +664,13 @@ fn instrument_dispatch_upload_step() -> Step {
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: instrument_dispatch_artifact_name)),
-        kv(key: "path", value: yaml_string(s: instrument_dispatch_upload_path())),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: instrument_dispatch_retention_days)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: instrument_dispatch_artifact_name,
+        path: instrument_dispatch_upload_path(),
+        retention_days: Present { value: instrument_dispatch_retention_days },
+        compression_level: none,
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: "always()" },

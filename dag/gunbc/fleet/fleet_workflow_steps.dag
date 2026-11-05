@@ -17,6 +17,7 @@ module gunbc.fleet.fleet_workflow_steps
 // constructors, because its build is one cargo invocation with no artifact handoff, and reusing
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count, minute }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
@@ -536,13 +537,13 @@ fn ci_release_bins_upload_step() -> Step {
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: ci_release_bins_artifact_name)),
-        kv(key: "path", value: yaml_string(s: release_bins_staging_paths())),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 3)),
-        kv(key: "compression-level", value: yaml_int(n: 0))
-      ]
+      value: workflow_artifact_upload_with(
+        name: ci_release_bins_artifact_name,
+        path: release_bins_staging_paths(),
+        retention_days: Present { value: 3 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: none,

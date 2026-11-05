@@ -925,7 +925,7 @@ jobs:
         with:
           name: fleet-keypair-mint-receipt-boot_medium_reader_ssh_key
           path: target/boot-medium-reader-key-mint.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 10
@@ -944,7 +944,7 @@ jobs:
         with:
           name: fleet-keypair-mint-receipt-mtcollins1_ssh_host_key
           path: target/mtcollins1-ssh-host-key-mint.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 10
@@ -1734,7 +1734,7 @@ jobs:
         with:
           name: r2-bucket-admin-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-bucket-admin-mint-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_bucket_admin_mint'
         timeout-minutes: 10
@@ -1754,7 +1754,7 @@ jobs:
         with:
           name: r2-bucket-ensure
           path: target/r2-bucket-ensure-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_bucket_ensure'
         timeout-minutes: 10
@@ -1773,7 +1773,7 @@ jobs:
         with:
           name: r2-object-write-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-write-mint-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_object_write_mint'
         timeout-minutes: 10
@@ -1792,7 +1792,7 @@ jobs:
         with:
           name: r2-workspace-object-read-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-read-mint-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_workspace_object_read_mint'
         timeout-minutes: 10
@@ -1811,7 +1811,7 @@ jobs:
         with:
           name: r2-workspace-object-write-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-write-mint-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_workspace_object_write_mint'
         timeout-minutes: 10
@@ -1830,7 +1830,7 @@ jobs:
         with:
           name: hetzner-cloud-server-read-receipt
           path: target/hetzner-cloud-server-read-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'hetzner_cloud_server_read'
         timeout-minutes: 10
@@ -1847,7 +1847,7 @@ jobs:
         with:
           name: export-host-reader-converge-receipt
           path: target/export-host-reader-converge.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'export_host_reader_converge'
         timeout-minutes: 10
@@ -1864,7 +1864,7 @@ jobs:
         with:
           name: boot-medium-reader-probe-receipt
           path: target/boot-medium-reader-probe.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'boot_medium_reader_probe'
         timeout-minutes: 10
@@ -1883,7 +1883,7 @@ jobs:
         with:
           name: flex-pass-receipt
           path: target/flex-pass-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'flex_pass'
         timeout-minutes: 10
@@ -1921,7 +1921,7 @@ jobs:
         with:
           name: r2-cache-object-read-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-read-mint-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_cache_object_read_mint'
         timeout-minutes: 10
@@ -1940,7 +1940,7 @@ jobs:
         with:
           name: r2-cache-object-write-mint-receipt
           path: /tmp/r2-mint-receipts/${{ github.run_id }}-${{ github.run_attempt }}/r2-*-object-write-mint-receipt.txt
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'r2_cache_object_write_mint'
         timeout-minutes: 10
@@ -2138,7 +2138,7 @@ jobs:
         with:
           name: microvm-runner-group-ensure-receipts
           path: artifacts/microvm-runner-group-ensure-*
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'microvm_runner_group_ensure'
         timeout-minutes: 10
@@ -2169,7 +2169,7 @@ jobs:
         with:
           name: qualification-attempt-receipts
           path: artifacts/qualification-attempt-*
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'qualification_attempt'
       - name: Upload the service runner lost-boot sweep receipt
@@ -2178,7 +2178,7 @@ jobs:
         with:
           name: service-runner-lost-boot-sweep-receipts
           path: artifacts/service-runner-lost-boot-sweep-*
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'service_runner_lost_boot_sweep'
         timeout-minutes: 10
@@ -2199,7 +2199,7 @@ jobs:
         with:
           name: service-runner-lost-boot-sweep-dry-run-receipts
           path: artifacts/service-runner-lost-boot-sweep-*
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run'
         timeout-minutes: 10
@@ -3076,7 +3076,7 @@ jobs:
         with:
           name: mtcollins1-boot-receipts
           path: artifacts/mtcollins1-boot-*
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
         if: always() && github.event.inputs.mode == 'mtcollins1_boot'
         timeout-minutes: 10
