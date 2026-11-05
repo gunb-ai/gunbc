@@ -135,10 +135,6 @@ data container_stats_error_responses_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-fn container_stats_error_closure_frontier_rows() -> List<FrontierRow> {
-  container_stats_error_responses_frontier_rows
-}
-
 fn container_stats_memory_usage(stats: ContainerStats) -> ByteSize {
   stats.memory_stats.usage
 }
@@ -151,22 +147,3 @@ fn container_stats_online_cpus(stats: ContainerStats) -> Nat {
   stats.cpu_stats.online_cpus
 }
 
-data memory_stats_working_set_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_field_ref(
-      module_path: "extdeps.docker.container_stats",
-      decl_name: "MemoryStats",
-      field_name: "usage",
-    ),
-    reason: "MemoryStats.usage includes page cache (inactive_file); true working-set = usage - stats.inactive_file from Docker stats sub-map",
-    dissolution: unbound_dissolution(description: "B2 models stats sub-map with inactive_file and policy uses working_set not raw usage"),
-  )
-]
-
-data blkio_value_unit_ambiguity_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.docker.container_stats", decl_name: "BlkioValue"),
-    reason: "BlkioValue.value: Nat carries parent-dependent units (bytes under io_service_bytes_recursive, time under io_service_time_recursive, count under io_serviced_recursive); flat Nat smuggles unit invisible to type system (fail-closed unit-modeling); Docker wire format is the constraint; remedy = typed per-list accessors returning ByteSize|Nanosecond|Nat or parent-tagged union",
-    dissolution: unbound_dissolution(description: "typed or tagged union models for BlkioValue land in extdeps/docker"),
-  )
-]

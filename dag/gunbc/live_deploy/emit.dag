@@ -383,21 +383,41 @@ fn ingress_limit_arg_text(name: String, limit: EvaluationLimit) -> String {
 // gunbc.plans.converged_ingress). There is no serve verb: the entry is the binding module, the
 // function its constructor, and every per-host value is a typed argument of that constructor --
 // which handler, the listener in its one text encoding, the release, and the per-request budgets.
+// ONE SOURCE FOR THE INGRESS ARGV TEXT. The ExecStart weaves the binary and
+// --arg release_revision around these two segment lists; the plan serve-entry verdict's argument
+// digest (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) digests the same
+// segments, minus the binary and the revision, which the record binds separately. A renamed, added
+// or reordered ingress flag moves the digest and the unit together -- the swap's identity binding
+// cannot drift from what the unit actually binds (DESIGN §3: one fact, one place).
+fn live_deploy_ingress_argv_segments(entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr, listener: HttpIngressListener) -> List<String> {
+  [
+    " run",
+    deployment_serve_source_root_flags_text(),
+    " --entry ", entry as String, " --function ", binding_function as String,
+    " --arg handler=", handler as String,
+    " --arg listener=", http_ingress_listener_text(listener: listener),
+  ]
+}
+
+fn live_deploy_ingress_limit_argv_segments(cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit) -> List<String> {
+  [
+    ingress_limit_arg_text(name: "cpu_limit_ms", limit: cpu_limit),
+    ingress_limit_arg_text(name: "wall_limit_ms", limit: wall_limit),
+  ]
+}
+
 fn live_deploy_ingress_execstart(
   binary: String, entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr,
   listener: HttpIngressListener, revision: ReleaseRevisionBinding,
   cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit,
 ) -> NonEmptyStr {
-  join([
-    binary, " run",
-    deployment_serve_source_root_flags_text(),
-    " --entry ", entry as String, " --function ", binding_function as String,
-    " --arg handler=", handler as String,
-    " --arg listener=", http_ingress_listener_text(listener: listener),
-    " --arg release_revision=", release_revision_execstart_text(binding: revision),
-    ingress_limit_arg_text(name: "cpu_limit_ms", limit: cpu_limit),
-    ingress_limit_arg_text(name: "wall_limit_ms", limit: wall_limit),
-  ], "") as NonEmptyStr
+  join(concat([binary], concat(
+    live_deploy_ingress_argv_segments(entry: entry, binding_function: binding_function, handler: handler, listener: listener),
+    concat(
+      [" --arg release_revision=", release_revision_execstart_text(binding: revision)],
+      live_deploy_ingress_limit_argv_segments(cpu_limit: cpu_limit, wall_limit: wall_limit),
+    ),
+  )), "") as NonEmptyStr
 }
 
 // THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
@@ -507,15 +527,34 @@ fn live_deploy_serve_unit_emission_at(
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.
+// ONE PRODUCER FOR THE PRINCIPAL SERVE UNIT'S INGRESS CHOICE. The unit
+// live_deploy_serve_unit_file_over installs and the plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) both read the handler,
+// listener and binding function from here -- choosing another listener kind or moving the handler
+// moves the unit and the digest together (DESIGN §3: one fact, one place).
+type ServeUnitIngressArgs {
+  binding_function: NonEmptyStr,
+  handler: NonEmptyStr,
+  listener: HttpIngressListener,
+}
+
+fn live_deploy_serve_unit_ingress_args(service: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> ServeUnitIngressArgs {
+  ServeUnitIngressArgs {
+    binding_function: roadmap_ingress_function,
+    handler: service.serve_function,
+    listener: HttpIngressTcp { host: service.listen.host, port: service.listen.port as Int },
+  }
+}
+
 fn live_deploy_serve_unit_file_over(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
 ) -> SystemdUnitFile {
-  let svc = spec.service
+  let args = live_deploy_serve_unit_ingress_args(service: spec.service)
   live_deploy_serve_unit_file_over_listener(
     spec: spec, revision: revision, oidc_env: oidc_env,
     description: "gunbc roadmap HTTP server (gunbc run, ingress binding)" as NonEmptyStr,
-    function: svc.serve_function,
-    listener: HttpIngressTcp { host: svc.listen.host, port: svc.listen.port as Int },
+    function: args.handler,
+    listener: args.listener,
   )
 }
 
