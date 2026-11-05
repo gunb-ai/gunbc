@@ -1,6 +1,6 @@
 module test.claim.network_mac_witness
 
-import std.types { Int, String, Bool, List, NonEmptyStr, list_length }
+import std.types { Int, String, Bool, List, NonEmptyStr }
 import extdeps.network.mac {
   Eui48Address, mac_address, render_mac_address, parse_mac_address,
   MacParseResult, MacParsed, MacParseFailed,

@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, list_length }
+import std.algebra { length }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, refused_retry_exhausted_reason,
 }
@@ -139,7 +140,7 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
     SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>
       continuation_from_request_pending(prior: prior, cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, interrupted: interrupted)
     SessionRecoveryPending { causes: causes, resumes_made: made, wakes_made: wakes, interrupted_calls: interrupted, resume_round: _ } =>
-      if list_length(items: interrupted) > 0 {
+      if length(xs: interrupted) > 0 {
         ContinuationHold {
           reason: join([
             "the prior attempt ", prior.attempt_key, " is recovery-needed but not resumable: tool calls ", join(interrupted, ", "),
@@ -174,7 +175,7 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
 // Hold, until that effect's outcome is established. A sweep that could not read the clock Holds naming
 // that -- a re-delivery instant cannot be guessed at, and refusing the instant is not ending the request.
 fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, interrupted: List<String>) -> ContinuationDecision {
-  if list_length(items: interrupted) > 0 {
+  if length(xs: interrupted) > 0 {
     ContinuationHold {
       reason: join([
         "the prior attempt ", prior.attempt_key, " is request-pending but not resumable: tool calls ", join(interrupted, ", "),

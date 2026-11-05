@@ -1,8 +1,8 @@
 module test.claim.host.microvm_controller_install_typed_witness
 
-import std.types { Bool, String, List, NonEmptyStr, Int, list_length }
+import std.types { Bool, String, List, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { list_at_optional }
+import std.algebra { list_at_optional, length }
 import std.content_hash { content_hash_validate_lower_hex_length }
 import gunbc.host.host_effect_realize {
   MicrovmControllerInstallStep, MicrovmControllerInstallReady, MicrovmControllerInstallRefused,
@@ -89,7 +89,7 @@ fn microvm_w5_nth_name(index: Int) -> String {
 // pipeline actually ran (tree copy 1, vmm 7, image 5, dirs 4, units 5-7,
 // executor 3, grant 6, reload 1).
 test fn microvm_w5_plan_is_constructible_with_every_leg() -> Bool {
-  list_length(items: microvm_w5_steps()) >= 28
+  length(xs: microvm_w5_steps()) >= 28
 }
 
 // GREEN (1): no step's words carry a shell control word.
@@ -107,7 +107,7 @@ test fn microvm_w5_file_bodies_are_stdin_payloads_not_words() -> Bool {
   let unit_bodies_in_argv = any(microvm_w5_steps(), s =>
     string_contains(s: microvm_controller_step_text(step: s), pattern: "[Unit]")
       || string_contains(s: microvm_controller_step_text(step: s), pattern: "[Service]"))
-  list_length(items: with_stdin) >= 6 && !unit_bodies_in_argv
+  length(xs: with_stdin) >= 6 && !unit_bodies_in_argv
 }
 
 // GREEN (2): THE W5 INVARIANT, and it is not vacuous -- the one systemctl verb
@@ -135,10 +135,10 @@ test fn microvm_w5_installs_are_elevated_and_the_download_is_not() -> Bool {
   // Only legs whose words THIS module spells: the tree leg is named "…tree
   // install" too, but its argv belongs to W6's vertical and it spells no words
   // of ours, so it is out of scope for an elevation claim about this module.
-  let installs = filter(microvm_w5_named("install"), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
+  let installs = filter(microvm_w5_named("install"), s => length(xs: microvm_controller_step_words(step: s)) > 0)
   let downloads = filter(microvm_w5_steps(), s => microvm_controller_step_name(step: s) == "vmm tarball download")
-  list_length(items: installs) >= 6
-    && list_length(items: downloads) == 1
+  length(xs: installs) >= 6
+    && length(xs: downloads) == 1
     && all(installs, s => string_contains(s: microvm_controller_step_text(step: s), pattern: "sudo"))
     && all(downloads, s => !string_contains(s: microvm_controller_step_text(step: s), pattern: "sudo"))
 }
@@ -147,7 +147,7 @@ test fn microvm_w5_installs_are_elevated_and_the_download_is_not() -> Bool {
 // order. A check quietly dropped when the shell lines became steps fails this.
 test fn microvm_w5_grant_keeps_all_six_legs_in_order() -> Bool {
   let grant = filter(microvm_w5_names(), n => string_contains(s: n, pattern: "dispatch grant"))
-  list_length(items: grant) == 6
+  length(xs: grant) == 6
     && string_contains(s: nth_text(items: grant, index: 0), pattern: "(stage)")
     && string_contains(s: nth_text(items: grant, index: 1), pattern: "visudo check")
     && string_contains(s: nth_text(items: grant, index: 2), pattern: "install (pending)")
@@ -165,7 +165,7 @@ test fn microvm_w5_grant_is_installed_0440() -> Bool {
 // GREEN (3d): the daemon reload is LAST. The retired script ran it last because
 // a reload before a unit write leaves the manager unaware of that unit.
 test fn microvm_w5_daemon_reload_is_last() -> Bool {
-  let n = list_length(items: microvm_w5_steps())
+  let n = length(xs: microvm_w5_steps())
   n > 0 && string_contains(s: microvm_w5_nth_name(index: n - 1), pattern: "daemon-reload")
 }
 
@@ -182,7 +182,7 @@ test fn microvm_w5_carries_no_second_tree_copy() -> Bool {
 // (apply.dag microvm_controller_vmm_receipt_present) checks both names appear.
 test fn microvm_w5_vmm_receipt_observes_both_binaries() -> Bool {
   let receipt = filter(microvm_w5_steps(), s => microvm_controller_step_name(step: s) == "vmm receipt")
-  list_length(items: receipt) == 1
+  length(xs: receipt) == 1
     && all(receipt, s =>
       string_contains(s: microvm_controller_step_text(step: s), pattern: "firecracker")
       && string_contains(s: microvm_controller_step_text(step: s), pattern: "jailer"))
@@ -197,7 +197,7 @@ test fn microvm_w5_digest_checks_carry_no_expected_hex_in_words() -> Bool {
   // command text, because an installed image path embeds the demo image's
   // identity, which is itself a 64-hex value that belongs in the words.
   let checks = microvm_w5_named("digest")
-  list_length(items: checks) >= 3
+  length(xs: checks) >= 3
     && all(checks, s => !any(microvm_controller_step_words(step: s), w =>
       content_hash_validate_lower_hex_length(text: w, expected_hex_digits: microvm_w5_digest_width)))
 }
@@ -224,9 +224,9 @@ data microvm_w5_cataloged_programs: List<String> = [
 ]
 
 test fn microvm_w5_every_leg_inhabits_a_cataloged_argv_program() -> Bool {
-  let legs = filter(microvm_w5_steps(), s => list_length(items: microvm_controller_step_words(step: s)) > 0)
+  let legs = filter(microvm_w5_steps(), s => length(xs: microvm_controller_step_words(step: s)) > 0)
   let programs = map(legs, s => nth_text(items: microvm_controller_step_words(step: s), index: 0))
-  list_length(items: legs) >= 20
+  length(xs: legs) >= 20
     && all(programs, pr => any(microvm_w5_cataloged_programs, c => c == pr))
     && !any(programs, pr => pr == "sh" || pr == "bash" || pr == "dash" || pr == "env")
 }
@@ -262,9 +262,9 @@ test fn microvm_w5_no_elevated_leg_names_a_checkout_relative_path() -> Bool {
     MicrovmControllerArgvStep { command: c } => if argv_command_is_sudo_elevated(command: c) { filter(argv_words(command: c), w => starts_with(s: w, prefix: "/fixture/checkout/")) } else { [] }
     _ => []
   })
-  list_length(items: microvm_w5_steps()) > 0
-    && all(microvm_w5_steps(), s => list_length(items: microvm_w5_elevated_relative_words(step: s)) == 0)
-    && list_length(items: elevated_sources) >= 3
+  length(xs: microvm_w5_steps()) > 0
+    && all(microvm_w5_steps(), s => length(xs: microvm_w5_elevated_relative_words(step: s)) == 0)
+    && length(xs: elevated_sources) >= 3
 }
 
 // RED: the same reader reports an elevated install whose source is checkout-relative, built by the
@@ -276,7 +276,7 @@ test fn microvm_w5_an_elevated_relative_source_is_reported() -> Bool {
       mode: "0644" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr,
       source: "target/microvm-controller-stage/firecracker", dest: "/opt/gunbc/x")),
   )
-  list_length(items: microvm_w5_elevated_relative_words(step: planted)) == 1
+  length(xs: microvm_w5_elevated_relative_words(step: planted)) == 1
 }
 
 // RED AT THE PLAN: a relative checkout root refuses before any step exists.
@@ -312,6 +312,6 @@ test fn microvm_w5_no_content_write_leaves_a_stage_file() -> Bool {
   let unit_and_script_writes = filter(microvm_w5_steps(), s =>
     microvm_controller_step_stdin(step: s) != "" && !string_contains(s: microvm_controller_step_name(step: s), pattern: "dispatch grant"))
   all(staging, s => string_contains(s: microvm_controller_step_name(step: s), pattern: "dispatch grant"))
-    && list_length(items: unit_and_script_writes) >= 5
+    && length(xs: unit_and_script_writes) >= 5
     && all(unit_and_script_writes, s => string_contains(s: microvm_controller_step_text(step: s), pattern: "/dev/stdin"))
 }

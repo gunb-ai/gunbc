@@ -1,5 +1,6 @@
 module gunbc.harness.harness_shell_job
 
+import std.algebra { length }
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, Timestamp }
 import std.algebra { trim }
 import extdeps.posix.process
@@ -199,7 +200,7 @@ fn harness_command_table_line(job: HarnessShellJob) -> String {
 }
 
 fn harness_command_table(jobs: List<HarnessShellJob>) -> String {
-  if list_length(items: jobs) == 0 {
+  if length(xs: jobs) == 0 {
     "COMMAND TABLE: (no jobs)"
   } else {
     join(
@@ -331,7 +332,7 @@ fn harness_wait_until_any(jobs: List<HarnessShellJob>, remaining: Second) -> Har
   match harness_first_running_now_finished(before: jobs, after: stamped) {
     Present { value: done } => WaitLoopFinished { jobs: stamped, finished: done }
     Absent =>
-      if list_length(items: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
+      if length(xs: filter(stamped, j => harness_job_is_running(job: j))) == 0 {
         WaitLoopNoRunningJob { jobs: stamped }
       } else if measure_le(a: remaining, b: second(count: 0)) {
         WaitLoopExpired { jobs: stamped }
@@ -481,7 +482,7 @@ fn harness_kill_running_job(job: HarnessShellJob) -> HarnessJobKill {
 }
 
 fn harness_hand_in_blocked_by_running_jobs(jobs: List<HarnessShellJob>) -> String? {
-  if list_length(items: filter(jobs, j => harness_job_is_running(job: j))) == 0 {
+  if length(xs: filter(jobs, j => harness_job_is_running(job: j))) == 0 {
     none
   } else {
     Present {

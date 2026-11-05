@@ -1,6 +1,7 @@
 module test.claim.harness_session_recovery_witness
 
-import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.algebra { length }
+import std.types { Bool, String, List, Int, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.http.header_dump { HeaderDumpRead }
@@ -83,7 +84,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
         && (match validation_of(request: validated_request()) { SessionValidated => true SessionInterrupted { unrecorded_call_ids: _ } => false _ => false })
         && (match session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38)) {
           SessionRecoveryPending { causes, resumes_made, wakes_made: _, interrupted_calls, resume_round } =>
-            resumes_made == 0 && resume_round == 38 && list_length(items: interrupted_calls) == 0
+            resumes_made == 0 && resume_round == 38 && length(xs: interrupted_calls) == 0
               && any(causes, c => c.contains("req_2ae5021ab9c56e6eb7fe1707af067e27"))
           SessionRecoveryNone => false
           SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => false
@@ -96,7 +97,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
 // resumes the SAME attempt's session; it neither mints a new attempt nor ends the lineage.
 test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
   match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
-    ContinuationResume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && list_length(items: causes) == 1
+    ContinuationResume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
     _ => false
   }
 }
@@ -246,7 +247,7 @@ test fn patient_claim_due_resumes_the_same_attempt() -> Bool {
   let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
   match decision_at(lines: lines, now: next) {
     ContinuationResume { reason, attempt_key, ordinal, causes } =>
-      attempt_key == "a1" && ordinal == 1 && list_length(items: causes) == 1
+      attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
         && reason.contains("not spent by a re-delivery") && reason.contains("429")
     _ => false
   }
@@ -447,7 +448,7 @@ test fn the_restore_gate_is_true_only_for_a_resumable_request_pending_lineage() 
   let interrupted = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: true, interrupted_calls: ["c1"], resume_round: 7 }
   let non_resumable = SessionRecoveryRequestPending { cause: "engine refusal", since: 1000, re_deliveries: 0, wakes_made: 0, last_delivery_at: 1000, resumable: false, interrupted_calls: [], resume_round: 7 }
   let ok = match session_recovery_resumability(recovery: pending) { ResumabilityResumable => true _ => false }
-  let int_ok = match session_recovery_resumability(recovery: interrupted) { ResumabilityRequestPendingInterrupted { interrupted_calls: c } => list_length(items: c) == 1 _ => false }
+  let int_ok = match session_recovery_resumability(recovery: interrupted) { ResumabilityRequestPendingInterrupted { interrupted_calls: c } => length(xs: c) == 1 _ => false }
   let nr_ok = match session_recovery_resumability(recovery: non_resumable) { ResumabilityRequestPendingNotResumable => true _ => false }
   let none_ok = match session_recovery_resumability(recovery: SessionRecoveryNone) { ResumabilityNotRequestPending => true _ => false }
   let pend_ok = match session_recovery_resumability(recovery: SessionRecoveryPending { causes: ["x"], resumes_made: 0, wakes_made: 0, interrupted_calls: [], resume_round: 1 }) { ResumabilityNotRequestPending => true _ => false }

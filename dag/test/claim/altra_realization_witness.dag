@@ -1,6 +1,7 @@
 module test.claim.altra_realization_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import product.altra_motherboard.realization {
@@ -146,7 +147,7 @@ test fn w_clock_requirements_have_no_physical_providers() -> Bool {
     } else {
       if row_covers_requirement(row: row, req: ClockReferenceGeneration)
         || row_covers_requirement(row: row, req: ClockReferenceDistribution) {
-        list_length(items: row.providers) == 0
+        length(xs: row.providers) == 0
       } else {
         true
       }
@@ -326,7 +327,7 @@ test fn w_clock_obligations_name_outstanding_compatibility_not_selection() -> Bo
 }
 
 test fn w_board_functional_obligations_include_physical_population_gaps() -> Bool {
-  list_length(items: board_functional_obligations()) == 7
+  length(xs: board_functional_obligations()) == 7
     && fold(board_functional_obligations(), init: true, f: fn(acc, r) {
       acc && match r {
         HostNetworkConnectivity => true

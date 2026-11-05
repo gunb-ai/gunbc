@@ -1,5 +1,6 @@
 module test.claim.roadmap.reviewer_placement_wet_witness
 
+import std.algebra { length }
 import extdeps.shell
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
 import std.measure { kibibyte, kibibyte_count, ByteSize, byte_size_count, kibibyte_to_byte_size }
@@ -219,7 +220,7 @@ fn settlement_of(p: SessionSettlePass) -> SessionSettlement {
 
 fn settlement_count(p: SessionSettlePass) -> Int {
   match p {
-    SessionSettlePassRan { settlements } => list_length(items: settlements)
+    SessionSettlePassRan { settlements } => length(xs: settlements)
     SessionSettlePassRefused { detail: _ } => 0
   }
 }

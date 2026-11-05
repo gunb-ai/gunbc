@@ -15,6 +15,7 @@ import gunbc.host.memory_stall_refusal {
   memory_stall_progress_cpu_share_floor,
 }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -192,7 +193,7 @@ fn row_value_matches(row: SeedMirrorRow) -> Bool {
 }
 
 fn seed_marker_occurrences(path: String) -> Int {
-  list_length(items: seed_text(path: path) |> split(delimiter: seed_mirror_marker)) - 1
+  length(xs: seed_text(path: path) |> split(delimiter: seed_mirror_marker)) - 1
 }
 
 fn rows_homed_in(path: String) -> Int {
