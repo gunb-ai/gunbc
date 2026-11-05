@@ -267,6 +267,82 @@ test fn reaped_worktree_with_live_branch_restores_from_branch_head() -> Bool {
     && !(match continuation_plan(obs: Present { value: o }) { StartInitial { reason: _ } => true, _ => false })
 }
 
+// A REAPED WORKTREE WHOSE LEDGER SEGMENTS ARE SUPPLIED. The verification/review/goal-audit segments live in
+// the ATTEMPTS LEDGER, not the worktree, so a reap does NOT hide them. These witnesses prove the reaped
+// decision READS them (review 91383): complete -> AlreadyComplete, in-flight -> AlreadyRunning, failed ->
+// restore -- instead of the old blanket restore that answered "continue" for finished or in-motion lineages.
+fn pri_reaped_ledger(
+  verification: WorkflowSegment?,
+  review: WorkflowSegment?,
+  goal_audit: WorkflowSegment?,
+) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    node_id: "n1",
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worktree: WorktreeAbsent { reason: "git could not read the worktree head: no such directory" },
+    branch_head: BranchLive,
+    worker_terminal: true,
+    capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
+    verification: verification,
+    review: review,
+    goal_audit: goal_audit,
+    recovery: SessionRecoveryNone,
+  }
+}
+
+// A LINEAGE THAT FINISHED BEFORE ITS WORKTREE WAS REAPED IS COMPLETE, NOT RESTORABLE. Its ledger already
+// records verification green + review approved + goal audit approved; its CONTINUE is a no-op and NOTHING
+// spawns. RED CONTROL (review 91383): this must NOT be a NextAttempt -- starting a fresh attempt on finished
+// work is exactly the defect the reviewer found (the reap used to make the plan answer "continue").
+test fn reaped_worktree_with_completed_ledger_is_already_complete_not_a_spawn() -> Bool {
+  let o = pri_reaped_ledger(
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
+    review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
+    goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
+  )
+  (match continuation_plan(obs: Present { value: o }) {
+    AlreadyComplete { reason } => reason.contains("COMPLETE")
+    _ => false
+  })
+    // RED CONTROL: finished work never spawns a new attempt, and is never mistaken for a first attempt.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { StartInitial { reason: _ } => true, _ => false })
+}
+
+// A VERDICT STILL IN MOTION SURVIVES THE REAP AND IS JOINED, NOT DOUBLED. Its review is still running, so a
+// CONTINUE joins the in-flight verdict instead of starting a second attempt beside it. RED CONTROL (review
+// 91383): this must NOT be a NextAttempt -- that double-spawn is what the module's "the live check IS the
+// guard" forbids, and a reap used to hide it. This is the discriminator against the restore arm.
+test fn reaped_worktree_with_a_verdict_in_flight_joins_not_double_spawns() -> Bool {
+  let o = pri_reaped_ledger(
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
+    review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentActive, detail: "running"),
+    goal_audit: none,
+  )
+  (match continuation_plan(obs: Present { value: o }) {
+    AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("reaped") && reason.contains("no attempt spawns beside it")
+    _ => false
+  })
+    // RED CONTROL: an in-flight verdict is never doubled by a new attempt.
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// A FAILED VERDICT STILL RESTORES. The ledger shows the lineage stopped short (verification red), so even with
+// the worktree reaped CONTINUE restores a fresh attempt from the live branch head -- the reap neither turns a
+// genuine continue into a join nor refuses it. RED CONTROL: not a completion, and not a join.
+test fn reaped_worktree_with_a_failed_verdict_still_restores_from_branch_head() -> Bool {
+  let o = pri_reaped_ledger(
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red"),
+    review: none,
+    goal_audit: none,
+  )
+  continued_on(plan: continuation_plan(obs: Present { value: o }), pattern: "verification failed: sandbox render red")
+    // RED CONTROL: a failed verdict is not a completion and not a join -- it is a genuine continue-from-branch.
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyComplete { reason: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
 // A GONE BRANCH LEAVES NOTHING TO RESTORE ONTO -- the typed BranchAbsent refusal (a Refuse, never a spawn
 // onto a base ref). RED CONTROL: this must NOT continue (spawning onto a gone branch would fabricate a base).
 test fn reaped_worktree_with_gone_branch_is_a_typed_branch_absent_refusal() -> Bool {
