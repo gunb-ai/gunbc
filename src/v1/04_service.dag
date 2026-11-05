@@ -22,7 +22,8 @@ import v1.std.core { Unmarked,
   expr_var_name_at, expr_call_func_at, field_access_field_at, field_access_base,
   method_receiver, param_node_type_expr,
   authored_name_at,
-  is_rest_transport
+  is_rest_transport,
+  ParsedModuleItemKind, ModuleItemDataValue
 }
 
 import v1.compiler.infer_types {
@@ -665,12 +666,27 @@ type ServiceEndpointSupply
   = EndpointNotDeclared
   | EndpointLiteral { value: String }
   | EndpointOperationParameter { name: String, declared_type: Node }
+  // A bare identifier that NO rest operation declares as an input, and that names one of the
+  // module's OWN `data` declarations whose value is a non-empty string literal. This is the
+  // interpreter's answer read the same way it reads it: `find_service_config_string` falls back to
+  // module scope when no parameter binds the name, so the host a call uses IS that declared text --
+  // and until now the emitter reached its placeholder chain for exactly that declaration, so the
+  // compiled host was a guess the interpreted call never made. Consumers: the lens mints it the
+  // `String` the data declares (falling through is the same inference the module-scope reader
+  // already produced), and the emitter writes the value into the constructor as the default base.
+  // The boundary is `module_data_string_literal`: an imported name or a computed value is not this
+  // answer and keeps `EndpointModuleExpression`'s disclosed chain, because an emitted constructor
+  // can carry only text this module itself wrote.
+  | EndpointModuleDataLiteral { name: String, value: String }
   | EndpointModuleExpression
-  // A bare identifier that some rest operation does not declare as a `String` input: not admitted, so
-  // both consumers leave it on today's path. It carries no list of the operations that lack the input,
-  // because nothing reads one -- the lens refuses by falling through, not by reporting. A located
-  // diagnostic naming those operations arrives with the diagnostic that reads them, not before.
-  | EndpointParameterNameUnbound { name: String }
+  // A bare identifier with no answer: not an input of every rest operation, and (either because some
+  // operation binds it as an input while others do not, or because no module data declaration of
+  // that name carries a string literal the constructor could carry) not a module declaration either.
+  // Not admitted, so both consumers leave it on today's path. It carries no name and no list of the
+  // operations that lack the input, because nothing reads either -- the lens refuses by falling
+  // through, not by reporting. A located diagnostic naming them arrives with the diagnostic that
+  // reads them, not before.
+  | EndpointParameterNameUnbound
 
 // The declared type of `name` as an input of `op`, when that operation declares it AND spells it
 // `String` -- `type_is_kernel_string` is the kernel-name reader inference already uses, so no
@@ -685,9 +701,37 @@ fn operation_input_string_type(op: Node, name: String, source_indices: Map<Strin
   }
 }
 
+// THE MODULE'S DATA DECLARATIONS, TAKEN ONCE. Both consumers build the list
+// `service_endpoint_supply` asks about through THIS filter, because if each pared its own item
+// list down in its own way, the two readers could disagree about which declarations exist -- the
+// same fork, one level down, that this whole authority exists to close.
+fn service_data_values(items: List<Node>) -> List<Node> {
+  items |> filter(i => i.module_item_kind == ModuleItemDataValue)
+}
+
+// The non-empty string literal a module data declaration of `name` carries, when it carries one.
+// Empty text is no host -- the same reading `service_endpoint_supply` gives a literal `endpoint:
+// ""`, so no consumer re-tests the placeholder on its own. A computed value is not statically
+// known, and refusing to guess it here is what keeps the emitter from writing a host nobody
+// declared: the declaration stays on `EndpointModuleExpression`'s disclosed chain instead.
+fn module_data_string_literal(data_values: List<Node>, name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match data_values |> filter(d => authored_name_at(source_indices: source_indices, node: d) == name) |> first() {
+    Present { value: d } =>
+      match d.body {
+        Present { value: v } =>
+          match v.expr_data {
+            ExprLiteral { value: LitStr { value: text } } => if text == "" { none } else { Present { value: text } }
+            _ => none
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 // `operations` is the service item's operation children. Consumers pass the service's WHOLE
 // operation list -- never the one operation being rendered -- for the reason stated above.
-fn service_endpoint_supply(service: Node, operations: List<Node>, source_indices: Map<String, NewlineIndex>) -> ServiceEndpointSupply {
+fn service_endpoint_supply(service: Node, operations: List<Node>, data_values: List<Node>, source_indices: Map<String, NewlineIndex>) -> ServiceEndpointSupply {
   match service_config_endpoint(n: service, source_indices: source_indices) {
     Absent => EndpointNotDeclared
     Present { value: endpoint_node } =>
@@ -704,14 +748,35 @@ fn service_endpoint_supply(service: Node, operations: List<Node>, source_indices
         ExprVar { binding_kind: _ } =>
           let name = expr_var_name_at(texpr: endpoint_node, source_indices: source_indices)
           let rest_operations = operations |> filter(op => service_operation_is_rest(op: op, service: service, source_indices: source_indices))
-          if count(rest_operations) == 0 {
-            // No rest operation reads a base URL, so this declaration binds nothing here and the
-            // expression keeps the judgment it has today.
-            EndpointModuleExpression
+          // COUNTED ONCE, ABOVE THE FORK. `count` consumes its operand, and this judgment reads the
+          // rest-operation list on both sides of the branch; writing `count(...)` twice is two
+          // consumers of one node, which this language refuses.
+          let rest_count = count(rest_operations)
+          let unbound = rest_operations |> filter(op => operation_input_string_type(op: op, name: name, source_indices: source_indices) == none)
+          let unbound_count = count(unbound)
+          if rest_count == 0 {
+            // No rest operation reads a base URL. The name is still read where the interpreter reads
+            // it -- module scope -- so a module `data` declaration of that name IS the answer; with
+            // nothing else in scope to mean it, the spelling keeps the judgment it has today.
+            match module_data_string_literal(data_values: data_values, name: name, source_indices: source_indices) {
+              Present { value: text } => EndpointModuleDataLiteral { name: name, value: text }
+              Absent => EndpointModuleExpression
+            }
           } else {
-            let unbound = rest_operations |> filter(op => operation_input_string_type(op: op, name: name, source_indices: source_indices) == none)
-            if count(unbound) > 0 {
-              EndpointParameterNameUnbound { name: name }
+            if unbound_count > 0 {
+              // NOT an input of every rest operation. Before any chain reaches this name, the
+              // interpreter's own fallback decides it: `find_service_config_string` evaluates the
+              // expression in module scope when no parameter binds it, so a `data` declaration of that
+              // name carrying a string literal IS the host the interpreted call uses -- and that is
+              // unambiguous only when NO rest operation binds the name as an input. A name some
+              // operation declares while others do not is one spelling with two live readings, and it
+              // stays exactly as unadmitted as it was before this arm existed.
+              let binds_in_some = unbound_count != rest_count
+              match module_data_string_literal(data_values: data_values, name: name, source_indices: source_indices) {
+                Present { value: text } =>
+                  if binds_in_some { EndpointParameterNameUnbound } else { EndpointModuleDataLiteral { name: name, value: text } }
+                Absent => EndpointParameterNameUnbound
+              }
             } else {
               match rest_operations |> first() {
                 Present { value: first_rest } =>

@@ -1,7 +1,8 @@
 // dag/test/claim/service_endpoint_supply_fixtures.dag — THE FIXTURE SOURCE TEXT for
-// `test.claim.service_endpoint_supply_test`, its parse probe and its emit control, in ONE module
-// so the three cannot drift: the witness asserts what these declarations mean, the parse probe
-// asserts these declarations still parse, the emit control asserts what the emitter does with them.
+// its parse probe, its resolve rung and its emit control, in ONE module
+// so they cannot drift: the parse probe asserts these declarations still parse and read back as
+// authored, the resolve rung asserts a parameter-bound one RESOLVES, and the emit control asserts
+// what the emitter does with them.
 // Nothing here imports the compiler -- only `std.types` -- so a consumer that wants just the text
 // pays just the parse closure.
 //

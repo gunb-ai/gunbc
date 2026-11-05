@@ -1,7 +1,7 @@
 // dag/test/claim/service_endpoint_supply_module_resolve.dag — THE RUNG THIS CUT WAS MISSING.
 //
-// `test.claim.service_endpoint_supply_test` calls `v1.compiler.infer_service.service_endpoint_supply`
-// on PARSED FIXTURE NODES; `test.claim.service_endpoint_supply_emit_control` compiles fixture SOURCE
+// `test.claim.service_endpoint_supply_fixture_parse_test` reads fixture declarations back after a
+// real parse, and `test.claim.service_endpoint_supply_emit_control` compiles fixture SOURCE
 // TEXT through the emit check. Neither path DEMANDS a module that declares a parameter-bound endpoint
 // as one of its own items, and that demand is the only place where `config { endpoint: <name> }` is
 // resolved at all: resolution walks the service's minted `svc_endpoint` property, and with the

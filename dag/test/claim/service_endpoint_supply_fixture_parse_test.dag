@@ -1,9 +1,13 @@
 // dag/test/claim/service_endpoint_supply_fixture_parse_test.dag — EXECUTED HALF OF THE
-// ENDPOINT-SUPPLY CONTROL. `test.claim.service_endpoint_supply_test` asserts what the fixtures
-// MEAN, through `v1.compiler.infer_service.service_endpoint_supply` and the emitter; that file's
-// entry closure reaches the v1 compiler's type layer and so cannot be resolved as an entry today
-// (recorded: `gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup` says these
-// controls "sit in the non-executing wet population; CI does not run them"). This file keeps the part
+// ENDPOINT-SUPPLY CONTROL. What the fixtures MEAN is asserted where a claim can actually run:
+// this probe reads the fixture declarations back after a real parse,
+// `test.claim.service_endpoint_supply_module_resolve` demands that a parameter-bound endpoint
+// RESOLVE, and `test.claim.service_endpoint_supply_emit_control` compiles fixture source and reads
+// the emitted lines back. A direct call of `v1.compiler.infer_service.service_endpoint_supply` on
+// parsed fixtures does NOT run: its entry closure reaches the v1 compiler's type layer and cannot
+// be resolved as an entry today (recorded: `gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup`
+// says controls importing that layer "sit in the non-executing wet population; CI does not run
+// them"), so no claim file restates the authority's answer as if it executed. This file keeps the part
 // that DOES execute: it parses every fixture with the real parser and reads it back through the same
 // low-level readers the authority composes from -- all of them `v1.std.core`, none of them the type
 // layer -- so a fixture that stopped parsing, a transport that stopped reading as rest, or an input

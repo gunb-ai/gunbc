@@ -60,12 +60,24 @@ test fn the_parameter_endpoint_emits_the_bound_input_as_the_base_holds() -> Bool
 
 
 
+// WHAT THE CONSTRUCTOR CARRIES, NOT ONLY WHAT THE CALL READS. The per-call line above reads
+// `self.base_url`, so it cannot see where the field came from: before the module-data admission, a
+// declaration whose endpoint names a module `data` string literal compiled `new()` to
+// `base_url: "http://localhost".to_string()` -- a host nobody configured, while the interpreted call
+// walked to `https://api.example.com` (the fabricated default the PR's failure-mode row names). So
+// this cell pins BOTH halves: the `url` line, and the constructor line carrying the DECLARED text;
+// and it forbids the placeholder outright. At the old emitter rule the constructor line is absent and
+// the forbidden substring is present -- the red the review asked for, in the cell that used to pass
+// by asserting only `self.base_url`.
 test fn the_module_supplied_endpoint_emits_the_struct_field_as_the_base_holds() -> Bool {
   compile_dag_rust_emit_check(
     emitted_module_data_endpoint_source,
     "src/sepa_module_data.rs",
-    ["let url = format!(\"{}/items\", self.base_url);"],
-    base_written_as_a_word
+    [
+      "let url = format!(\"{}/items\", self.base_url);",
+      "base_url: \"https://api.example.com\".to_string(),"
+    ],
+    base_written_as_a_word |> concat(["http://localhost"])
   )
 }
 
