@@ -1,0 +1,40 @@
+module gunbc.ci.workflow_artifact_upload
+
+import std.types { String, NonEmptyStr, Int, List }
+import extdeps.languages.yaml.types { YamlKeyValue }
+import extdeps.github.action.upload_artifact {
+  MissingFilesBehavior, NoFilesWarn, NoFilesError, UploadArtifactInputs, upload_artifact_with,
+}
+
+// WHETHER AN UPLOAD THAT FINDS NO FILES FAILS ITS STEP. This is this repository's policy over the action's
+// if-no-files-found input (extdeps.github.action.upload_artifact MissingFilesBehavior), and the policy is that it
+// fails. An upload step usually collects a producer's receipt under always(): a producer that passed without
+// writing its receipt is the one case only this input can catch, and on any run whose producer already failed,
+// failing the upload as well loses nothing (DESIGN 5). Upstream defaults to warn, which passes silently.
+//
+// So the refusing arm carries nothing, and the warn arm cannot be written without a reason. A row that needs warn
+// states why on the row, where a reviewer reads it, and a row that states nothing gets error. This type is the one
+// place that choice is made; every upload step in the emitted workflows renders through
+// workflow_artifact_upload_with, so no row spells "warn" or "error" itself.
+type ArtifactAbsence
+  = AbsenceRefused
+  | AbsenceExpected { reason: NonEmptyStr }
+
+fn artifact_absence_behavior(absence: ArtifactAbsence) -> MissingFilesBehavior {
+  match absence {
+    AbsenceRefused => NoFilesError
+    AbsenceExpected { reason: _ } => NoFilesWarn
+  }
+}
+
+// THE `with:` ENTRIES OF ONE UPLOAD STEP. retention_days and compression_level are passed through as the step
+// chooses them; absent means the upstream default.
+fn workflow_artifact_upload_with(name: String, path: String, retention_days: Int?, compression_level: Int?, absence: ArtifactAbsence) -> List<YamlKeyValue> {
+  upload_artifact_with(inputs: UploadArtifactInputs {
+    name: name,
+    path: path,
+    if_no_files_found: artifact_absence_behavior(absence: absence),
+    retention_days: retention_days,
+    compression_level: compression_level,
+  })
+}

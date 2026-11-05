@@ -1,0 +1,81 @@
+module test.claim.runner.revision_request_store_absent_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.host_state_root { HostStateTree, isolated_host_state_tree }
+import gunbc.durable_cas_file_store { SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent }
+import gunbc.auth.request_api_key_store {
+  RequestApiKeyStore, request_api_key_store_member, request_api_key_store_path,
+  request_api_key_store_publication, request_api_key_store_admitted,
+}
+import gunbc.runner.runner_revision_request_context { revision_request_store_member, revision_request_store_path, revision_request_context_admitted }
+
+// Each store's admission is SUPPLIED at the function that folds it: an absent store refuses naming
+// its own member and root, a listed store admits (the positive control in each claim), and the two
+// absent stores revision_request_context can meet refuse distinctly. The tree is never touched.
+fn fixture_tree() -> HostStateTree {
+  isolated_host_state_tree(dir: "/nonexistent/gunbc-revision-request-store-absent-fixture" as NonEmptyStr)
+}
+
+fn names_absent_store(answer: String, member: String, root: NonEmptyStr) -> Bool {
+  answer.contains(join(["the ", member, " store's own directory was never created at ", root as String], ""))
+}
+
+fn key_store_answer(admission: SlotStoreAdmission) -> Result<RequestApiKeyStore, String> {
+  match request_api_key_store_publication(tree: fixture_tree()) {
+    Err { value: why } => Err { value: why }
+    Ok { value: publication } => request_api_key_store_admitted(publication: publication, admission: admission)
+  }
+}
+
+fn absent_key_store_refusal() -> String {
+  let root = request_api_key_store_path(tree: fixture_tree())
+  match key_store_answer(admission: SlotStoreAbsent { member: request_api_key_store_member as String, root: root }) {
+    Err { value: why } => why
+    Ok { value: _ } => ""
+  }
+}
+
+fn absent_request_store_refusal() -> String {
+  let tree = fixture_tree()
+  match key_store_answer(admission: SlotStoreListed { root: request_api_key_store_path(tree: tree) }) {
+    Err { value: _ } => ""
+    Ok { value: keys } => match revision_request_context_admitted(keys: keys,
+      admission: SlotStoreAbsent { member: revision_request_store_member as String, root: revision_request_store_path(tree: tree) }) {
+      Err { value: why } => why
+      Ok { value: _ } => ""
+    }
+  }
+}
+
+test fn an_absent_api_key_store_refuses_naming_its_member_and_root_and_a_listed_one_admits() -> Bool {
+  let root = request_api_key_store_path(tree: fixture_tree())
+  names_absent_store(answer: absent_key_store_refusal(), member: request_api_key_store_member as String, root: root)
+    && (match key_store_answer(admission: SlotStoreListed { root: root }) { Ok { value: _ } => true Err { value: _ } => false })
+}
+
+test fn an_absent_request_store_refuses_the_context_naming_its_member_and_root_and_a_listed_one_admits() -> Bool {
+  let tree = fixture_tree()
+  let root = revision_request_store_path(tree: tree)
+  let listed = match key_store_answer(admission: SlotStoreListed { root: request_api_key_store_path(tree: tree) }) {
+    Err { value: _ } => false
+    Ok { value: keys } => match revision_request_context_admitted(keys: keys, admission: SlotStoreListed { root: root }) {
+      Ok { value: context } => context.request_root == root
+      Err { value: _ } => false
+    }
+  }
+  names_absent_store(answer: absent_request_store_refusal(), member: revision_request_store_member as String, root: root) && listed
+}
+
+// The cause this change restores: the two stores revision_request_context admits in sequence must
+// not refuse with one sentence.
+test fn the_two_absent_stores_refuse_distinctly() -> Bool {
+  let keys = absent_key_store_refusal()
+  let requests = absent_request_store_refusal()
+  keys != "" && requests != "" && keys != requests
+}
+
+// INHABITANCE of the supplied boundary: the real listed_slot_store answering SlotStoreAbsent with the
+// caller's member and root is test.claim.durable_cas_file_store_wet_witness
+// an_admission_of_a_never_created_store_answers_absent_naming_the_member_and_the_store_by_real_execution.
+// It needs real filesystem effects: Filesystem.List has no hermetic mock case.

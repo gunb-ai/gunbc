@@ -6,8 +6,8 @@ import gunbc.fleet.printer_workflow_artifact {printer_starts_path,printer_starts
 import gunbc.host_state_root {HostStateTree}
 import gunbc.managed_directory {DirectoryOwnerGroupWritableSetgid,DeclaredDirectoryMode}
 import gunbc.owned_directory {OwnedDirectoryTarget}
-import gunbc.durable_cas_file_store {listed_slot_store,SlotStoreListed,SlotStoreRefused}
-import std.process {ProcessExit,ExitSuccess,exit_failure}
+import gunbc.durable_cas_file_store {listed_slot_store,SlotStoreListed,SlotStoreAbsent,SlotStoreRefused,slot_store_absent_detail}
+import std.process {ProcessExit,ExitSuccess,exit_failure,ExitFailure}
 import std.integer { int_to_decimal_string }
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
 import std.durable_exclusive_hold {DurableHoldOwnerRef,DurableHoldReleaseRef,HoldSlotHeld,durable_hold_owner_equal}
@@ -18,7 +18,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldDeadHolderReleaseStoreUnavailable,FileHoldDeadHolderReleaseKeyNotAddressable,
   file_hold_nonholder_release_assess,FileHoldNonHolderReleaseAssessment,FileHoldNonHolderReleasePlanned,FileHoldNonHolderReleaseNotEligible,file_hold_ref,
 }
-import gunbc.process_hold_identity {process_hold_text,process_hold_marker,process_hold_decode,text_at,self_process_identity,SelfIdentified,SelfUnidentified,holder_process_liveness}
+import gunbc.process_hold_identity {process_hold_text,process_hold_owner_read,ProcessHoldOwnerRead,ProcessHoldOwnerNamesNoProcess,ProcessHoldOwnerProcessUndecodable,self_process_identity,SelfIdentified,SelfUnidentified,holder_process_liveness}
 import gunbc.build_cache.build_cache_instance {ProcessIdentity}
 import std.optional {Present,Absent}
 import std.types {Timestamp}
@@ -164,6 +164,7 @@ fn printer_execution_hold_store(tree:HostStateTree) -> PrinterExecutionHoldStore
 
 fn printer_execution_hold_member(tree:HostStateTree) -> PrinterExecutionHoldStoreReading {
   match listed_slot_store(member:printer_execution_hold_slots.member as String,root:printer_execution_hold_path(tree:tree)) {
+    SlotStoreAbsent {member:m,root:r}=>PrinterExecutionHoldStoreUnready {detail:slot_store_absent_detail(member:m,root:r)}
     SlotStoreRefused {detail:d}=>PrinterExecutionHoldStoreUnready {detail:d}
     SlotStoreListed {root:r}=>match observe_file_hold(root:r,key:hold_key) {
       HoldSlotHeld {generation:_,owner:o}=>if durable_hold_owner_equal(left:o,right:printer_execution_hold_fence.owner as DurableHoldOwnerRef) { PrinterExecutionHoldStoreUnready {detail:"the legacy hold was copied here but its hand-over has not completed; gunbc.fleet.printer_state_layout completes it"} } else { PrinterExecutionHoldStoreReady {store:PrinterExecutionHoldStore {root:r}} }
@@ -200,14 +201,10 @@ type PrinterExecutionHoldHolder
   | PrinterExecutionHoldHolderUnobservable { cause:NonEmptyStr }
 
 fn printer_execution_hold_holder(holder:DurableHoldOwnerRef) -> PrinterExecutionHoldHolder {
-  let halves = split(s:holder as String,delimiter:process_hold_marker)
-  if count(halves) != 2 || text_at(xs:halves,i:0) == "" {
-    PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner names no process this module can observe (it was written without one, or not by this module)" as NonEmptyStr }
-  } else {
-    match process_hold_decode(text:concat("boot=",text_at(xs:halves,i:1))) {
-      Present{value:h}=>PrinterExecutionHoldHolderProcess { escalation_id:text_at(xs:halves,i:0) as NonEmptyStr, process:h.process, pid_namespace:h.pid_namespace }
-      Absent=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner carries a process part this module cannot decode" as NonEmptyStr }
-    }
+  match process_hold_owner_read(owner:holder as String) {
+    ProcessHoldOwnerNamesNoProcess=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner names no process this module can observe (it was written without one, or not by this module)" as NonEmptyStr }
+    ProcessHoldOwnerProcessUndecodable=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner carries a process part this module cannot decode" as NonEmptyStr }
+    ProcessHoldOwnerRead{head:id,holder:h}=>PrinterExecutionHoldHolderProcess { escalation_id:id, process:h.process, pid_namespace:h.pid_namespace }
   }
 }
 // HOW THIS ROOT OBSERVES ITS HOLDER'S LIVENESS. A holder that names a process is answered from
@@ -554,6 +551,50 @@ fn printer_hold_release_request(tree:HostStateTree) -> PrinterHoldReleaseRequest
     PrinterExecutionHoldStoreReady {store:store}=>printer_hold_release_request_at(store:store,approvals_root:approval_decision_store_root)
   }
 }
+
+// THE FILER MEETS THE HOLD WHERE IT LIVES. Before the layout move, the hold is the flat-layout slot in the parent
+// (printer_execution_hold_legacy_state LegacyHoldLive), and the member store above is Unready for as long as it is, so a
+// request filed only through the member store could never be filed for the one hold that needed it (run 41949183448).
+// The legacy slot is a hold store rooted at the parent: same slot key, same pinned operator-observation card (the root
+// is part of the card's escalation id), same refusals -- a holder that names a process is refused, not carded.
+// Every other unready state still refuses.
+fn printer_hold_release_request_for_tree(tree:HostStateTree,approvals_root:NonEmptyStr) -> PrinterHoldReleaseRequest {
+  match printer_execution_hold_legacy_state(tree:tree) {
+    LegacyHoldLive {names:_}=>printer_hold_release_request_at(store:printer_execution_hold_legacy_store(tree:tree),approvals_root:approvals_root)
+    LegacyHoldAbsent=>printer_hold_release_request(tree:tree)
+    LegacyHoldFenced {generation:_}=>printer_hold_release_request(tree:tree)
+    LegacyHoldUnreadable {detail:_}=>printer_hold_release_request(tree:tree)
+  }
+}
+
+fn printer_execution_hold_legacy_store(tree:HostStateTree) -> PrinterExecutionHoldStore { PrinterExecutionHoldStore {root:printer_starts_path(tree:tree)} }
+
+// THE LEGACY SLOT'S RELEASE, taken by the layout step BEFORE it fences (gunbc.fleet.printer_state_layout
+// legacy_writer_exclusion_causes). It IS printer_hold_enter against the flat slot, so the dead-holder recovery, the live
+// refusal and the operator-observation release are the ones a converge meets, with no second copy of them: a holder
+// observed dead is recovered, one observed live refuses, and one that names no process is released only on the
+// operator's approved observation of THIS root, slot, holder and generation (the card the request above files). The
+// body handed to the hold does nothing, so a won slot is released at once and left Free for the fence to take.
+// A slot the fence already holds is not released here (the layout step resumes it).
+type LegacyHoldRelease = LegacyHoldReleased | LegacyHoldReleaseRefused {cause:String}
+
+data printer_legacy_hold_release_escalation: NonEmptyStr = "printer-state-layout-legacy-hold-release" as NonEmptyStr
+
+fn printer_legacy_hold_release_noop(hold:PrinterExecutionHold) -> ProcessExit { ExitSuccess }
+
+fn printer_legacy_hold_release(tree:HostStateTree,approvals_root:NonEmptyStr) -> LegacyHoldRelease {
+  let store = printer_execution_hold_legacy_store(tree:tree)
+  match printer_execution_hold_legacy_state(tree:tree) {
+    LegacyHoldFenced {generation:_}=>LegacyHoldReleased
+    LegacyHoldAbsent=>LegacyHoldReleased
+    LegacyHoldUnreadable {detail:d}=>LegacyHoldReleaseRefused {cause:d}
+    LegacyHoldLive {names:_}=>match printer_hold_enter(store:store,escalation_id:printer_legacy_hold_release_escalation,use:printer_legacy_hold_release_noop,approvals_root:approvals_root) {
+      ExitSuccess=>LegacyHoldReleased
+      ExitFailure {code:_,reason:r}=>LegacyHoldReleaseRefused {cause:r}
+    }
+  }
+}
+
 
 // ROOT-, SLOT- AND STORE-PARAMETERIZED (DESIGN.md §6b: one generalization, not a copy per root), so
 // the witnesses run THIS code against throwaway roots exactly as `printer_hold_enter` does.

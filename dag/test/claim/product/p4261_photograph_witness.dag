@@ -71,7 +71,7 @@ import std.measure {
   positive_measure_count,
 }
 import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
-import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.e1_b { p4261_e1_layout, fsv20100v_device_code }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
 import product.p4261.photograph_store {
   BoardPhotographStore,
@@ -87,6 +87,13 @@ import product.p4261.report { judgment_words }
 import product.p4261.findings { ImageReadingsJudged }
 import product.p4261.k1_a { p4261_k1_layout }
 
+import product.electrical.identification {
+  InstalledComponent,
+  MarkingReading,
+}
+import extdeps.electronic_component.onsemi_fsv20100v {
+  onsemi_schottky_fsv20100v,
+}
 // WHICH FRAMES THE STORE HOLDS, by how they came to be. These live HERE and not in
 // product.electrical.photograph: nothing in the product layer needs to count frames by origin, and a
 // function that only a test reads is test code, which belongs with the test (DESIGN §3c). The split still
@@ -190,7 +197,7 @@ fn same_name_two_frames(board: PhysicalAssetIdentity) -> List<Photograph> {
 // fixture is a board and not a bag of parts; `components` is empty so a count below means what it says.
 fn fixture_board(readings: List<DesignatorReading>) -> CarrierLayoutObservation {
   let base = p4261_e1_layout
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: base.asset, design: base.design, revision: base.revision, markings: base.markings, module_receptacles: base.module_receptacles,
     backplane_connectors: base.backplane_connectors, j20: base.j20, j20_calipers: base.j20_calipers, edge_high_speed_connectors: base.edge_high_speed_connectors,
     management_io_survey: base.management_io_survey, management_io: base.management_io, components: [], measured: base.measured, input: base.input,
@@ -225,6 +232,128 @@ fn first_generated_image() -> Photograph? {
 // checked here because it cannot be -- the field is std.measure's `FiniteByteSize`, whose count has no
 // zero constructor, so a store-wide sweep would be validation standing where construction was
 // available (DESIGN §5).
+// ---- FSV20100V: a marking row must cite the frame its reading came from ---------------------
+// The store join cannot see these. p089 is in the store too, so a row that cites the frame it was NOT
+// read from still resolves, and a row with the right digest and a box over the wrong body is still a
+// false checkable citation. These tests pin the four FSV20100V rows to what the receipts record for
+// them (inventory_bottom.csv and per_photo_readings.jsonl, under docs/plans/2026-11-03-p4261-e1-atlas/
+// on p4261/e1-atlas-handoff). The expectations are quoted from those receipts, not copied from the
+// model's own tree (§5), and each names the receipt line a reviewer can check it against.
+data b4_03_top_pair_frame: Sha256Digest = Sha256Digest { hex: "db40a1c3f694256e912169d91e247308c670e7ee6870be30420ec14332848f14" as Sha256DigestHex }
+data b4_02_bottom_pair_frame: Sha256Digest = Sha256Digest { hex: "8f5cdfc7d68b9020cd351281399b53cc910e88897c062a46cca4a8b86fc79849" as Sha256DigestHex }
+
+// The body boxes as the per-photo receipts give them, position by position.
+data d2_p1_body_box: PixelRegion = PixelRegion { left: 910, top: 1212, width: 294, height: 198 }
+data d8_p1_body_box: PixelRegion = PixelRegion { left: 915, top: 1017, width: 289, height: 184 }
+data d2_p5_body_box: PixelRegion = PixelRegion { left: 2000, top: 1306, width: 165, height: 255 }
+data d8_p5_body_box: PixelRegion = PixelRegion { left: 2190, top: 1306, width: 160, height: 255 }
+
+fn e1_installed_at(designator: NonEmptyStr) -> InstalledComponent? {
+  first_where(xs: p4261_e1_layout.components, keep: c => c.component.local_identity == designator)
+}
+
+fn e1_marking_at(designator: NonEmptyStr) -> MarkingReading? {
+  match e1_installed_at(designator) {
+    Absent => Absent
+    Present { value: row } => match row.identification {
+      IdentifiedByMarking { row: _, marking } => Present { value: marking }
+      _ => Absent
+    }
+  }
+}
+
+// The citation of a row's marking, in two parts: which bytes, and which rectangle of them. Both are
+// pinned, because a correct digest with a box over the wrong body would still read as checkable.
+fn e1_frame_cited_by(designator: NonEmptyStr) -> Sha256Digest? {
+  match e1_citation_of(designator) {
+    Absent => Absent
+    Present { value: InStore { content, region: _ } } => Present { value: content }
+    Present { value: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } => Absent
+  }
+}
+
+fn e1_region_cited_by(designator: NonEmptyStr) -> PixelRegion? {
+  match e1_citation_of(designator) {
+    Absent => Absent
+    Present { value: InStore { content: _, region } } => region
+    Present { value: BytesNotInStore { taken_on: _, locator: _, obligation: _ } } => Absent
+  }
+}
+
+fn e1_citation_of(designator: NonEmptyStr) -> PhotographCitation? {
+  match e1_marking_at(designator) {
+    Absent => Absent
+    Present { value: reading } => match reading.evidence {
+      OperatorPhotograph { citation } => Present { value: citation }
+      _ => Absent
+    }
+  }
+}
+
+fn cites(designator: NonEmptyStr, want: Sha256Digest) -> Bool {
+  match e1_frame_cited_by(designator) {
+    Absent => false
+    Present { value: got } => got == want
+  }
+}
+
+fn boxes(designator: NonEmptyStr, want: PixelRegion) -> Bool {
+  match e1_region_cited_by(designator) {
+    Absent => false
+    Present { value: got } => got == want
+  }
+}
+
+fn prints(designator: NonEmptyStr, want: String) -> Bool {
+  match e1_marking_at(designator) {
+    Absent => false
+    Present { value: reading } => reading.text == want
+  }
+}
+
+// The join the claim rests on: the device code read off this body must BE the mark the vendor row
+// prints. Projected exactly (fsv20100v_device_code accepts only the two receipt transcriptions), so
+// neither a corrupted print nor a row paired with the wrong component can keep the identification.
+fn joins_vendor_mark(designator: NonEmptyStr) -> Bool {
+  match e1_marking_at(designator) {
+    Absent => false
+    Present { value: reading } => match fsv20100v_device_code(reading: reading) {
+      Absent => false
+      Present { value: code } => match onsemi_schottky_fsv20100v.top_marking {
+        Absent => false
+        Present { value: printed } => code == printed
+      }
+    }
+  }
+}
+
+test fn the_fsv_rows_cite_the_frame_their_readings_came_from() -> Bool {
+  count(filter(["D2_P1", "D8_P1"], d => !cites(designator: d, want: b4_03_top_pair_frame))) == 0
+    && count(filter(["D2_P5", "D8_P5"], d => !cites(designator: d, want: b4_02_bottom_pair_frame))) == 0
+}
+
+// A correct digest is not enough: the box has to sit on the body the receipt named for that position.
+test fn the_fsv_rows_box_the_bodies_their_receipts_named() -> Bool {
+  count(filter(["D2_P1"], d => !boxes(designator: d, want: d2_p1_body_box))) == 0
+    && count(filter(["D8_P1"], d => !boxes(designator: d, want: d8_p1_body_box))) == 0
+    && count(filter(["D2_P5"], d => !boxes(designator: d, want: d2_p5_body_box))) == 0
+    && count(filter(["D8_P5"], d => !boxes(designator: d, want: d8_p5_body_box))) == 0
+}
+
+// Text is what the receipt records, character for character. Stated as equality rather than "the
+// printed marking appears in the reading", because std has no substring primitive and a hand-rolled
+// matcher in a witness would be a second authority over the text (§3).
+test fn the_fsv_rows_say_exactly_what_the_receipts_say() -> Bool {
+  count(filter(["D2_P1", "D8_P1"], d => !prints(designator: d, want: "FSV20100V / JC03 / ON logo"))) == 0
+    && count(filter(["D2_P5", "D8_P5"], d => !prints(designator: d, want: "(ON logo) JC03 FSV20100V"))) == 0
+}
+
+// Two exact strings pinned separately would still let an edit pair the right receipt with the wrong
+// component row. This one test is what closes that: the observed code and the vendor's mark must join.
+test fn the_observed_device_code_joins_the_vendor_mark_on_all_four() -> Bool {
+  count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => !joins_vendor_mark(designator: d))) == 0
+}
+
 test fn the_store_holds_the_atlas_receipts() -> Bool {
   let held = rows_for(board: p4261_e1_layout.asset)
   count(held) == 201
@@ -541,17 +670,59 @@ test fn a_gap_names_the_bytes_it_lacks_and_what_would_close_it() -> Bool {
 test fn the_real_e1_judges_every_image_reading() -> Bool {
   match board_image_reading_grounding(p4261_e1_layout) {
     FromStore { read, checkable, broken, gaps } =>
-      // PIECE 1'S FRONTIER, PINNED TO THE NUMBER. On this branch every image reading on the E1 names a frame
-      // the store does not hold: the 2026-10-15 to 10-31 bench sessions left text locators and their bytes
-      // never reached us, so 94 rows are read, none are checkable, none are broken, and all 94 are
-      // BytesNeverStored gaps. The atlas pass (piece 3) is what moves rows across this line, on purpose and
-      // in its own PR; when it lands these numbers move with it and the report changes from all-gap to
-      // part-grounded. Asking only "read > 0 and nothing broken" would have stayed green either way -- which
-      // is precisely the crossing the piece boundary exists to make visible.
-      read == 94
-        && checkable == 0
+      // THE FRONTIER, PINNED TO THE NUMBER, AND THE ARITHMETIC THAT SAYS WHERE IT COMES FROM. The
+      // 2026-11-03 atlas pass moved the E1 from all-gap to part-grounded: of the board's readings, 310
+      // cited a frame the photograph store holds by content hash and 146 still cited bytes that never
+      // reached the store -- the 2026-10-15 to 10-31 bench sessions left text locators and their bytes
+      // were never supplied. That was 456 read, 310 checkable, 146 gaps, 0 broken.
+      //
+      // The 2026-11-03b body pass adds exactly the 66 sightings in product.p4261.e1_body_sightings:
+      // each is one component whose identification cites one frame, and every one of those frames is a
+      // row of the store, because the generator refuses a sighting whose digest is not there rather
+      // than inventing one. So 456 + 66 = 522 read, 310 + 66 = 376 checkable, and the 146 gaps are
+      // untouched -- no new reading cites bytes we do not have, and none is broken.
+      //
+      // Pinned by probe as before: equality holds at exactly these values, so dropping a body row, or
+      // pointing one at a frame the store lacks, turns this red rather than quietly re-greening. The
+      // last conjunct keeps the honest part of the claim: the board is not fully grounded, 146 readings
+      // still name bytes we do not have, and the obligation on every gap is what says so.
+      //
+      // The 2026-11-04 FSV20100V pass moves THREE of those gaps into the checkable column and ADDS no
+      // reading. D2_P1, D8_P1 and D8_P5 were MarkingUnresolved rows whose MarkingReading cited
+      // e1_unlocated_frame ("the atlas names no frame for this row"); each now cites the frame its own
+      // receipt names -- b4_03 for the _P1 pair, b4_02 for D8_P5 -- and that frame is a row of the
+      // store, so the citation is checkable. D2_P5's marking row already cited p089, which the store
+      // holds: re-citing it to b4_02 changes WHICH photograph the reading rests on (grain A says cite
+      // the photo the reading came from, and p089 cuts the last glyph), not which column it stands in.
+      // So 522 read is unchanged, 376 + 3 = 379 checkable, 146 - 3 = 143 gaps, still 0 broken.
+      // Measured, not arithmetic alone: one process asserting every candidate value passes exactly one
+      // test per family, and checkable + count(broken) + count(gaps) == read holds (citation_verdict is
+      // exhaustive over Checkable | Gap | Broken). The four DesignatorReading rows are untouched --
+      // three of them are still gaps and are the next PR's re-citation targets, which will move this
+      // line again; D2_P5's designator row is checkable on p089 and stays.
+      //
+      // The 2026-11-04 C3_F1 correction REMOVES two readings, and both were gaps: read 522 -> 520 and
+      // gaps 143 -> 141, checkable untouched at 379. C3_F1's DesignatorReading cited
+      // e1_unlocated_frame_closing -- a frame no receipt of its designator registers -- and its
+      // InstalledComponent carried a MarkingReading under MarkingUnresolved whose text was the three
+      // neighbours' marking, copied and stored as if read. Neither rested on bytes the store holds, so
+      // removing them lowers the frontier rather than raising it: a row that should never have existed
+      // was counting as a reading. Deleted rows move this number DOWN, which is the direction that
+      // catches a quiet deletion today. Measured at probe, one candidate per family, with
+      // checkable + count(broken) + count(gaps) == read holding at 520.
+      //
+      // The same day's stored-frame evidence for J3 did not add a reading, it replaced one: grain A
+      // allows one modelled reading per part, so the bench row whose bytes never arrived (a gap) gives
+      // way to a row citing frame _22, boxed, which the store holds. read stays 520 -- one out, one in
+      // -- while checkable 379 -> 380 and gaps 141 -> 140. That is the movement worth pinning: a
+      // citation invented rather than read would have landed back in gaps, a second reading for J3
+      // would have raised read, and a quiet deletion would have lowered it. The other two frames the
+      // operator named are carried by the receipts' authority rather than by extra rows, which is where
+      // corroboration belongs when the board is allowed one reading per part.
+      read == 520
+        && checkable == 380
         && count(broken) == 0
-        && count(gaps) == 94
+        && count(gaps) == 140
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0

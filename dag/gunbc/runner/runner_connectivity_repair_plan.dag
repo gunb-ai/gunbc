@@ -1,6 +1,7 @@
 module gunbc.runner.runner_connectivity_repair_plan
 
-import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { length }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
@@ -75,7 +76,7 @@ type RunnerRepairApplyPlan
   | RepairExecute { slot: RunnerSlotIdentity, steps: List<RunnerRepairEffectStep> }
 
 fn repair_effect_step_count(steps: List<RunnerRepairEffectStep>) -> Int {
-  list_length(items: steps)
+  length(xs: steps)
 }
 
 fn replace_repair_steps(

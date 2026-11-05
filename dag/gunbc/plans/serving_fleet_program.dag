@@ -199,7 +199,7 @@ data serving_fleet_rows: List<ServingFleetRow> = [
   ServingFleetRow {
     id: SfpD3, section: SfpRouter, title: "Authz and stream-end callouts",
     owner: SfpOwnedBy { symbol: "std.compiler_entry::CompilerEntryDriver" },
-    summary: "The NativeServeDriver arm, as a separate srv1 unit beside the device-crypto sidecar.",
+    summary: "A natively realized ingress binding (std.compiler_entry NativeIngressDriver over a NativeIngressProgram, gunbc.plans.converged_ingress M2a), as a separate srv1 unit beside the device-crypto sidecar.",
     standing: SfpUnstarted, standing_note: "", pr: "unstarted",
     done: "every RouterCapability arm exercised by a witness, and the real callouts driven by the streaming proxy harness.",
     depends_on: [SfpD2, SfpD6], related: []

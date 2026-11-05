@@ -160,7 +160,8 @@ module gunbc.machine_intake.mtcollins1_virtual_media_readout_observation
 // sentence, which no hash can do and which is why the quoted values above are quoted from the
 // capture rather than paraphrased from memory.
 
-import std.types { Bool, Int, NonEmptyStr, List, EpochMs, HttpStatus, list_length }
+import std.types { Bool, Int, NonEmptyStr, List, EpochMs, HttpStatus }
+import std.algebra { length }
 import extdeps.ietf.http_semantics { HttpMethod }
 import std.optional { Present, Absent, optional_present, optional_absent }
 import std.list { list_member, first_where }
@@ -481,7 +482,7 @@ fn ladder_is_get_only(readout: B0VirtualMediaReadout) -> Bool {
 fn b0_media_route_admission(readout: B0VirtualMediaReadout) -> BmcMediaRouteAdmission {
   match readout.transfer_protocol_readout {
     ReadoutRead { protocols: protocols } =>
-      if list_length(items: protocols) == 0 {
+      if length(xs: protocols) == 0 {
         RouteUnsettledUnread {
           cause: "VirtualMedia answered and admitted no protocol at all: nothing was admitted, which is not an admission of NFS and so selects neither route",
         }

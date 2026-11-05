@@ -81,8 +81,8 @@ module gunbc.provisioning.ubuntu_autoinstall_seed
 // consequence here is the console stanza, which is DERIVED from the strategy rather than stored beside it
 // — so a strategy name cannot quietly change what the seed promises.
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { list_append }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_append, length }
 import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.decl_ref { decl_ref }
@@ -96,6 +96,7 @@ import extdeps.debian.debconf {
   RefusedAtTheMint,
   debconf_answer_record,
   debconf_selection_answer,
+  debconf_selection_file,
   debconf_selection_kind,
   debconf_selection_kind_spelling,
   debconf_selection_label,
@@ -136,7 +137,12 @@ import extdeps.os.ubuntu_autoinstall {
 // be bound. Importing the fold rather than restating its output is what makes "the document the machine was
 // given" answerable — a local string that merely resembles the payload proves nothing about the document.
 import gunbc.os_install_emit { AutoinstallUserData, autoinstall_user_data }
-import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
+// The two callees below are spelled in the import lists that own them. The class is recorded in
+// gunbc.recurring_failure_mode.bare_name_resolved_by_proximity_standing_in_for_resolution: an
+// unimported bare name is bound by proximity, which resolve accepts and the effect join does not
+// ('no established callee identity'), and that refusal is what had been failing the drift lane.
+// These two sites, and one in gunbc.fleet.fleet_converge_workflow, are its receipts (gunbc#15751).
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line, ssh_ed25519_key_identity }
 import extdeps.storage.types {
   BareDevice,
   CachedMirror,
@@ -1528,7 +1534,7 @@ fn admit_admin_access_authorisation(
   match keys_are_the_admitted_authorisation(keys: authorised_keys) {
     False => Absent
     True =>
-      match list_length(items: authorised_keys) == 0 {
+      match length(xs: authorised_keys) == 0 {
         True =>
           match console_entry {
             ConsoleEntryUnlocked { reason: _ } =>
@@ -1552,7 +1558,7 @@ fn admit_admin_access_authorisation(
 }
 
 fn authorised_key_count(authorisation: AdminAccessAuthorisation) -> Int {
-  list_length(items: authorisation.authorised_keys)
+  length(xs: authorisation.authorised_keys)
 }
 
 // The keyboard layout the seed states. This axis EXISTS because the upstream payload requires a
@@ -1676,10 +1682,10 @@ fn disk_selection_provenance(
     chosen: bound_disk_identity(
       device: admitted,
       matched: candidate_count(selector: selector, observed: observed),
-      observed: list_length(items: observed),
+      observed: length(xs: observed),
     ),
     matched: candidate_count(selector: selector, observed: observed),
-    observed: list_length(items: observed),
+    observed: length(xs: observed),
   }
 }
 
@@ -2104,7 +2110,7 @@ fn audit_ubuntu_autoinstall_seed(
     False =>
       match entry.console_entry {
         ConsoleEntryLocked =>
-          match list_length(items: entry.authorised_keys) {
+          match length(xs: entry.authorised_keys) {
             0 =>
               SeedRefused {
                 cause: NoEntrypointAtAll,
@@ -2143,7 +2149,7 @@ fn key_only_posture_admits_no_entry(
   match credential {
     PasswordHandle { handle: _ } => false
     PasswordUnset =>
-      match list_length(items: entry.authorised_keys) {
+      match length(xs: entry.authorised_keys) {
         0 => true
         n => false
       }
@@ -2683,7 +2689,7 @@ fn admin_password_hash_receipt(
 // the string, and nothing else.
 fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefusalCause> {
   let segments = (crypt_digest as String).split(sep: "$")
-  let count = list_length(items: segments)
+  let count = length(xs: segments)
   // ONE LAYOUT FOR THE WHOLE WALK: every position-sensitive arm receives this value rather than deriving a
   // position of its own, because two derivations is exactly how two arms came to disagree about where the salt
   // lives (see crypt_layout).

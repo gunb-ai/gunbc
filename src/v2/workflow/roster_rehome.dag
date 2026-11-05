@@ -30,6 +30,9 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import std.filesystem { path_parent_directory }
 import v2.workflow.roster_import_sweep {
+  RosterStageDiagnostic,
+  roster_stage_diagnostic,
+  roster_stage_diagnostic_text,
   ImportDeclFact,
   RosterHeldLock,
   RosterHomeClosure,
@@ -57,7 +60,9 @@ import v2.workflow.roster_import_sweep {
   roster_target_refusal,
   roster_target_unchanged,
   RosterLockAcquired,
-  RosterLockRefused
+  RosterLockRefused,
+  RosterLockBusy,
+  roster_lock_refusal_row
 }
 
 // DECLARED-TO-DECLARED REHOMING (NAMESPACE-XL, tidy-ant-251's approved design, 2026-10-20). A wave of
@@ -135,9 +140,9 @@ type RehomeRefusal
   | RehomeAliasUnsupported
   | RehomeExtentMismatch
   | RehomeNoImportAnchor
-  | RehomeTokenizeRefused
-  | RehomeParseRefused
-  | RehomeNormalizeRefused
+  | RehomeTokenizeRefused { diagnostic: RosterStageDiagnostic }
+  | RehomeParseRefused { diagnostic: RosterStageDiagnostic }
+  | RehomeNormalizeRefused { diagnostic: RosterStageDiagnostic }
   | RehomeUnreadable
   | RehomeGrammarUnprepared
   | RehomeWriteFailed
@@ -156,9 +161,9 @@ fn rehome_refusal_text(r: RehomeRefusal) -> String {
     RehomeAliasUnsupported => "rehome-alias-unsupported"
     RehomeExtentMismatch => "rehome-extent-mismatch"
     RehomeNoImportAnchor => "rehome-no-import-anchor"
-    RehomeTokenizeRefused => "tokenize-refused"
-    RehomeParseRefused => "parse-refused"
-    RehomeNormalizeRefused => "normalize-refused"
+    RehomeTokenizeRefused { diagnostic: d } => "tokenize-refused " + roster_stage_diagnostic_text(d: d)
+    RehomeParseRefused { diagnostic: d } => "parse-refused " + roster_stage_diagnostic_text(d: d)
+    RehomeNormalizeRefused { diagnostic: d } => "normalize-refused " + roster_stage_diagnostic_text(d: d)
     RehomeUnreadable => "unreadable"
     RehomeGrammarUnprepared => "grammar-unprepared"
     RehomeWriteFailed => "write-failed"
@@ -409,13 +414,13 @@ fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
 // The file's splices for one row, given the pair verdict and the new home's closure (both read once per run).
 fn rehome_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> RehomeOutcome {
   match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-    Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeTokenizeRefused }
+    Rejected { diagnostics: d } => RehomeRefused { reason: RehomeTokenizeRefused { diagnostic: roster_stage_diagnostic(d: d) } }
     Accepted { value: stream, diagnostics: _ } =>
       match parse_module_prepared(tokens: stream, prepared: prepared) {
-        Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeParseRefused }
+        Rejected { diagnostics: d } => RehomeRefused { reason: RehomeParseRefused { diagnostic: roster_stage_diagnostic(d: d) } }
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-            Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeNormalizeRefused }
+            Rejected { diagnostics: d } => RehomeRefused { reason: RehomeNormalizeRefused { diagnostic: roster_stage_diagnostic(d: d) } }
             Accepted { value: scoped, diagnostics: _ } =>
               rehome_parsed(text: text, tokens: stream.all, parse_root: artifact.tree, spans: artifact.span_index, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
           }
@@ -900,6 +905,7 @@ fn rehome_apply_exit(root_dir: String, paths_csv: String, name: String, from_hom
   let row = rehome_row_of(name: name, from_home: from_home, to_home: to_home)
   let report = match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { reason: r } => "REFUSE * " + roster_refusal_text(reason: r) + "\n"
+    RosterLockBusy { reason: r, holder: h, detail: d } => roster_lock_refusal_row(acquisition: RosterLockBusy { reason: r, holder: h, detail: d })
     RosterLockAcquired { held: held } => {
       let out = rehome_apply_locked(held: held, paths_csv: paths_csv, row: row)
       if roster_lock_release(held: held) { out } else { out + "REFUSE * apply-lock-not-released\n" }
