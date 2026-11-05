@@ -1,0 +1,132 @@
+module test.claim.runner.runner_restart_leg_witness
+
+// Boundary values supplied here; no other test file is imported (#15852's connectivity witness stalled for
+// 90 minutes importing a label witness that dragged fleet_converge_workflow's test closure -- so the JIT
+// fixtures are replicated rather than shared). This witnesses the composition the PR adds:
+// runner_lifecycle_restart_leg threads the REAL observed main process into the connectivity join (so
+// jit_registration_for_pid actually runs -- review 90917) and gates the restart on the verdict through the
+// single decide authority. It is decide-only: no timer, network, or shell is bound.
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat, nat_range_inclusive }
+import std.measure { second }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, StartObserved }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.fleet.fleet_runner_connectivity {
+  OrganizationRunnerRosterEvidence, RosterObserved, runner_slot_incarnation, committed_incarnation_main_process_unread,
+}
+import extdeps.github.ci_runner { GitHubSelfHostedRunnerRegistration, GitHubRunnerOnline, GitHubRunnerOffline }
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
+import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost }
+import gunbc.runner.runner_connectivity_restart { RestartLegDecision, RestartLegPermit, RestartLegRefuse }
+import gunbc.runner.runner_lifecycle_realize { runner_lifecycle_restart_leg }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── boundary fixtures (replicated, self-contained) ──────────────────────────────────────────────
+data srv4_healthy_labels: List<NonEmptyStr> = ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr]
+
+fn jit_row(id: Nat, name: String, online: Bool) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: id,
+    name: name as NonEmptyStr,
+    status: if online { GitHubRunnerOnline } else { GitHubRunnerOffline },
+    busy: false,
+    ephemeral: Present { value: true },
+    version: Present { value: "2.334.0" as NonEmptyStr },
+    os: "Linux" as NonEmptyStr,
+    labels: srv4_healthy_labels,
+  }
+}
+
+data jit_other_slot_rows: List<GitHubSelfHostedRunnerRegistration> = map(nat_range_inclusive(lo: 1, hi: 100), i => jit_row(id: 7000 + i, name: concat("srv4-02-1793600000-", to_string(i)), online: false))
+data jit_ghost_rows: List<GitHubSelfHostedRunnerRegistration> = [
+  jit_row(id: 8101, name: "srv4-01-1793700000-111", online: false),
+  jit_row(id: 8102, name: "srv4-01-1793700660-222", online: false),
+]
+
+// The real main the ObserveRunnerLocalState realization reads over FleetSsh: pid 333, absolute start one
+// second after the current row's minted epoch (1793701320) -- inside the declared mint-to-exec bound, so a
+// genuine same-boot match, not a recycled pid.
+fn real_main() -> RunnerUnitMainProcess {
+  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 333, start_time: "t" as NonEmptyStr }, absolute_start: StartObserved { started_at: 1793701321 } }
+}
+
+fn roster_with_current_row(online: Bool) -> OrganizationRunnerRosterEvidence {
+  RosterObserved { observed_on: "2026-11-05" as NonEmptyStr, registrations: concat(jit_other_slot_rows, concat(jit_ghost_rows, [jit_row(id: 8103, name: "srv4-01-1793701320-333", online: online)])) }
+}
+fn roster_ghosts_only() -> OrganizationRunnerRosterEvidence {
+  RosterObserved { observed_on: "2026-11-05" as NonEmptyStr, registrations: concat(jit_other_slot_rows, jit_ghost_rows) }
+}
+
+fn leg(main: RunnerUnitMainProcess, roster: OrganizationRunnerRosterEvidence, lost: LostAgentObservation) -> RestartLegDecision {
+  runner_lifecycle_restart_leg(
+    incarnation: runner_slot_incarnation(host: operator_host_srv4, slot_index: 1, unit_active: true),
+    main: main, roster: roster, receipt: ReceiptAbsent, lost: lost,
+  )
+}
+
+fn no_lost() -> LostAgentObservation { JobNotLost { job_id: 126894416098, reason: "the job is progressing" } }
+fn lost_job() -> LostAgentObservation { LostAgentDetected { job_id: 126894416098, over_by: second(count: 3600) } }
+
+// POSITIVE CONTROL (item 1 + item 5 together): with the REAL main read, the join names pid 333's row, which
+// is OFFLINE -> Detached -> the restart leg permits it. Before this change every caller handed the join the
+// unread sentinel, so it could never reach a Detached verdict and could never permit a restart.
+test fn a_real_main_reading_a_detached_slot_permits_the_restart() -> Bool {
+  match leg(main: real_main(), roster: roster_with_current_row(online: false), lost: no_lost()) {
+    RestartLegPermit { slot: _, why: _ } => true
+    RestartLegRefuse { why: _ } => false
+  }
+}
+
+// DISCRIMINATING RED (the review-90917 defect): the SAME slot and roster, but with the main process NOT
+// read (the sentinel every prior caller passed). The join cannot tell the current incarnation from its two
+// dead ghosts, so the verdict is Unknown and the leg REFUSES -- proving the sentinel is why jit_registration_for_pid
+// never ran, and that could-not-see is never a permission.
+test fn an_unread_main_process_refuses_the_restart_never_acts_on_unknown() -> Bool {
+  match leg(main: committed_incarnation_main_process_unread, roster: roster_ghosts_only(), lost: no_lost()) {
+    RestartLegPermit { slot: _, why: _ } => false
+    RestartLegRefuse { why: _ } => true
+  }
+}
+
+// POSITIVE CONTROL (self-inflicted-wedge guard): a real main that reads pid 333 ONLINE is Healthy -> refuse.
+test fn a_healthy_slot_is_never_restarted_without_a_lost_job() -> Bool {
+  match leg(main: real_main(), roster: roster_with_current_row(online: true), lost: no_lost()) {
+    RestartLegPermit { slot: _, why: _ } => false
+    RestartLegRefuse { why: _ } => true
+  }
+}
+
+// DISCRIMINATING RED (review 90967): a HEALTHY slot is NOT restarted just because some job somewhere in the
+// org is stranded. A lost-agent detection requires a null runner, so it names NO slot -- it cannot say this
+// healthy slot is the one the job belongs to, so it must not override the healthy verdict. This is the exact
+// permissive path the pre-fix code took; asserting Refuse here is what catches the defect.
+test fn a_stranded_job_does_not_restart_a_healthy_slot() -> Bool {
+  match leg(main: real_main(), roster: roster_with_current_row(online: true), lost: lost_job()) {
+    RestartLegPermit { slot: _, why: _ } => false
+    RestartLegRefuse { why: _ } => true
+  }
+}
+
+// DISCRIMINATING RED (review 90967): a slot we could not read (Unknown) is likewise NOT restarted on the
+// strength of a slot-less stranded-job signal. could-not-see is never a permission, and a detection that
+// names no slot cannot supply one.
+test fn a_stranded_job_does_not_restart_an_unknown_slot() -> Bool {
+  match leg(main: committed_incarnation_main_process_unread, roster: roster_ghosts_only(), lost: lost_job()) {
+    RestartLegPermit { slot: _, why: _ } => false
+    RestartLegRefuse { why: _ } => true
+  }
+}
+
+// POSITIVE CONTROL (item 4 reclaim, done right): a Detached slot -- which the VERDICT itself names as
+// reclaimable -- is reclaimed, and a stranded job corroborates it. The permission comes from the verdict that
+// can name the slot; the lost-agent read deepens the reason, it does not open the door.
+test fn a_stranded_job_corroborates_the_reclaim_of_a_detached_slot() -> Bool {
+  match leg(main: real_main(), roster: roster_with_current_row(online: false), lost: lost_job()) {
+    RestartLegPermit { slot: _, why: _ } => true
+    RestartLegRefuse { why: _ } => false
+  }
+}

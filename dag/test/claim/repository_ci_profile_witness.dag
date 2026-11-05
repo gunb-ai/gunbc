@@ -30,6 +30,7 @@ import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloo
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
+import std.algebra { list_head }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -62,7 +63,7 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.repository_mirror_frontier { repository_mirror_frontier_rows }
 import gunbc.ci.repository_compose_overlay {
   command,
-  word, heal_seal_env }
+  word, heal_seal_env, private_root_assign_stmt }
 import gunbc.action_use_admission {
   checkout_ref_admitted_in_jobs, checkout_ref_value_refusals, job_step_ids,
   seed_pin_verifier_producer, seed_pin_verifier_job_id, seed_pin_verifier_output_name,
@@ -1042,7 +1043,7 @@ test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool
 // record of why it is allowed to be unread here. What is NOT asserted, and cannot be from inside a claim:
 // that the DECL names the roster lists exist. std.roster_frontier builds them as typed `decl_ref` literals,
 // and the authority that resolves those against the live declaration index is the decl-ref census instrument
-// (gunbc.native_census_verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
+// (the retired census verb, dispatched through gunbc/instrument_targets.dag, manual dispatch), which per
 // gunbc.recurring_failure_mode.declaration_reference_cites_a_declaration_nothing_resolved refuses an
 // unresolved identity BY NAME; resolving refs inside claim evaluation is the repo's declared stall
 // (gunbc.guarantee_stall::decl_ref_host_resolver_awaits_native_claim_evaluation_stall), so no Bool here can
@@ -1183,6 +1184,35 @@ test fn the_seal_step_is_invoked_through_the_rows_roots() -> Bool {
       string_contains(s: text, pattern: "'--source-root' 'overlay/dag'") &&
       !(string_contains(s: text, pattern: "'--source-root' 'dag'"))
     ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
+// THE COMPOSED ROOT MUST BE COMPOSABLE BY THE SHELL THAT COMPOSES IT. The compose step assigns PRIVATE_ROOT
+// from a command substitution. When that substitution's body was wrapped in a subshell the rendering came
+// out `PRIVATE_ROOT=$(('cd' '..'; 'pwd'))`, and bash reads the adjacent `((` as the opening of an arithmetic
+// expression: "syntax error: operand expected", the step dies before the overlay exists, and the section 4c
+// step behind it can only report that the composed root is absent. gunbc-private's CI found it on 2026-11-03
+// (runs 41593920495 and 41593920470) and no `gunbc` emission could, because only a mirror row composes an
+// overlay. The renderer refuses the carrier shape (v2.test.claim.bash_command_fold carries those rows); this
+// control holds the property the mirror's step needs on the bytes the emitter produces, from the isolated
+// statement AND from the emitted mirror workflow. The subshell carrier's own structural shape is a separate,
+// already recorded program row (gunbc.plans.convergence_coverage_program cc-structural-carriers, F37).
+test fn the_mirrors_compose_step_is_bash_that_parses() -> Bool {
+  let assignment = match bash_emit_stmts(statements: [private_root_assign_stmt()], set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ""
+  }
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(s: assignment, pattern: "PRIVATE_ROOT=$(") &&
+      string_contains(s: assignment, pattern: "'realpath' '..'") &&
+      !(string_contains(s: assignment, pattern: "$((")) &&
+      !(string_contains(s: assignment, pattern: "))")) &&
+      string_contains(s: text, pattern: "PRIVATE_ROOT=$(")
   }
 }
 

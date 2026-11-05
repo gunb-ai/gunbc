@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtjade1_first_dpc_population_plan_witness
 
-import std.types { Bool, list_length }
+import std.types { Bool }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   DimmSlot0,
@@ -42,7 +43,7 @@ test fn w_jade_first_dpc_is_sixteen_slot0_positions() -> Bool {
     && dimms_per_channel_count(topology: jade_first_dpc_topology) == 1
     && dimms_per_channel_count(topology: TwoDimmsPerChannel) == 2
     && jade_first_dpc_dimm_count() == 16
-    && list_length(jade_first_dpc_slots) == 16
+    && length(jade_first_dpc_slots) == 16
     && jade_first_dpc_slot() == DimmSlot0
 }
 
@@ -102,11 +103,11 @@ test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4
 test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
   match jade_first_dpc_silk_standing {
     ConnectorSilkFromGsgTable11 { prefix: HashNumberPrefix, socket0: a, socket1: b, citation: _ } =>
-      list_length(a) == 8
-        && list_length(b) == 8
-        && list_length(jade_first_dpc_printed_slot_labels) == jade_first_dpc_dimm_count()
-        && list_length(mt_jade_gsg_one_dpc_empty_slot_labels) == jade_first_dpc_dimm_count()
-        && list_length(jade_first_dpc_slots) == jade_first_dpc_dimm_count()
+      length(a) == 8
+        && length(b) == 8
+        && length(jade_first_dpc_printed_slot_labels) == jade_first_dpc_dimm_count()
+        && length(mt_jade_gsg_one_dpc_empty_slot_labels) == jade_first_dpc_dimm_count()
+        && length(jade_first_dpc_slots) == jade_first_dpc_dimm_count()
     ConnectorSilkFromGsgTable11 { prefix: SlotLabelKindNotEstablished { basis: _ }, socket0: _, socket1: _, citation: _ } => false
   }
 }

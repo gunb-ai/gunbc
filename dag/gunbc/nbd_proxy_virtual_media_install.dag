@@ -45,18 +45,32 @@ import gunbc.provisioning.seeded_install_media_publish {
   SeededImageRecordDiverged,
   SeededImageUnobservable,
 }
-import gunbc.os_install_mechanism {
-  OsInstallMechanism,
-  VirtualMediaInstall,
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  OsInstallMechanismRefusalCause,
-  OsInstallMechanismRefused,
-  OsInstallMechanismSelected,
-  OsInstallMechanismSolution,
-  srv3_install_mechanism_solution,
-  install_boot_target_for,
+import gunbc.boot_artifact_delivery {
+  BootArtifactDelivery,
+  BootDeliveryPlanAdmitted,
+  BootDeliveryPlanIncoherence,
+  BootDeliveryPlanIncoherent,
+  BootDeliveryPlanned,
+  BootDeliveryRefusalCause,
+  BootDeliveryRefused,
+  BootDeliverySolution,
+  BootControlTarget,
+  MegaRacRestRemoteMedia,
+  OpenBmcConfigfsUsbGadget,
+  OpenBmcNbdProxyWebsocket,
+  PxeChainBoot,
+  RedfishVirtualMediaPull,
+  UefiHttpBoot,
+  admit_boot_delivery_plan,
+  redfish_boot_target_of_control,
 }
+import gunbc.os_install_arm {
+  OsInstallArmNetworkBoot,
+  OsInstallArmNotRealizable,
+  OsInstallArmVirtualMediaIso,
+  os_install_arm_of,
+}
+import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
 import gunbc.host.host_effect {
   RedfishAction,
   BmcController,
@@ -84,8 +98,38 @@ type OsInstallActuatorStep
     }
   | ActuatorForceRestart { reset_type: RedfishResetType }
 
+// The arms THIS actuator can sequence. The route authority plans six; the Redfish pull, the nbd-proxy and
+// the PXE chain have step sequences here, and the rest (MegaRAC REST, configfs USB gadget, UEFI HTTP) are
+// refused by os_install_actuator_arm_of rather than mapped onto a neighbour.
+type OsInstallActuatorArm
+  = ActuatorArmRedfishVirtualMedia
+  | ActuatorArmNbdProxy
+  | ActuatorArmPxe
+
+type OsInstallActuatorArmStanding
+  = ActuatorArmRealizable { arm: OsInstallActuatorArm }
+  | ActuatorArmNotRealizable { delivery: BootArtifactDelivery }
+
+// Realizability is gunbc.os_install_arm's single answer; this actuator only refines its ISO arm into the
+// two step sequences (Redfish insert-media vs nbd-proxy serve) that the shared answer deliberately merges.
+fn os_install_actuator_arm_of(delivery: BootArtifactDelivery) -> OsInstallActuatorArmStanding {
+  match os_install_arm_of(delivery: delivery) {
+    OsInstallArmVirtualMediaIso =>
+      match delivery {
+        RedfishVirtualMediaPull { params: _ } => ActuatorArmRealizable { arm: ActuatorArmRedfishVirtualMedia }
+        OpenBmcNbdProxyWebsocket { params: _ } => ActuatorArmRealizable { arm: ActuatorArmNbdProxy }
+        PxeChainBoot { evidence: _ } => ActuatorArmNotRealizable { delivery: delivery }
+        MegaRacRestRemoteMedia { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
+        OpenBmcConfigfsUsbGadget { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
+        UefiHttpBoot { params: _ } => ActuatorArmNotRealizable { delivery: delivery }
+      }
+    OsInstallArmNetworkBoot => ActuatorArmRealizable { arm: ActuatorArmPxe }
+    OsInstallArmNotRealizable { refusal: _ } => ActuatorArmNotRealizable { delivery: delivery }
+  }
+}
+
 type OsInstallActuatorPlan {
-  mechanism: OsInstallMechanism
+  arm: OsInstallActuatorArm
   steps: List<OsInstallActuatorStep>
 }
 
@@ -109,20 +153,27 @@ fn nbd_proxy_serve_step(export: NbdProxyServeInterface) -> OsInstallActuatorStep
   }
 }
 
-fn os_install_actuator_steps(mechanism: OsInstallMechanism, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
-  let boot_target = install_boot_target_for(mechanism: mechanism)
-  match mechanism {
-    VirtualMediaInstall => [
+// arm and boot_control are two facts of ONE admitted plan, so they are never supplied independently: the only
+// production caller derives both from the plan it admitted (os_install_actuator_plan_standing_for), and the
+// witness fixture is the supplied-values boundary for the step-shape claims.
+fn os_install_actuator_steps(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> admit_callers: [
+  decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan"),
+  decl_ref(module_path: "test.claim.nbd_proxy_virtual_media_install", decl_name: "actuator_steps_fixture"),
+  decl_ref(module_path: "test.claim.os_install_actuator_selection", decl_name: "actuator_steps_fixture"),
+] {
+  let boot_target = redfish_boot_target_of_control(control: boot_control)
+  match arm {
+    ActuatorArmRedfishVirtualMedia => [
       ActuatorRedfishInsertMedia,
       boot_once_step(target: boot_target),
       force_restart_step(),
     ]
-    NbdProxyVirtualMediaInstall => [
+    ActuatorArmNbdProxy => [
       nbd_proxy_serve_step(export: export),
       boot_once_step(target: boot_target),
       force_restart_step(),
     ]
-    PxeHttpInstall => [
+    ActuatorArmPxe => [
       ActuatorPxeNetworkBootStaging,
       boot_once_step(target: boot_target),
       force_restart_step(),
@@ -130,10 +181,12 @@ fn os_install_actuator_steps(mechanism: OsInstallMechanism, export: NbdProxyServ
   }
 }
 
-fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServeInterface) -> OsInstallActuatorPlan {
+fn os_install_actuator_plan(arm: OsInstallActuatorArm, boot_control: BootControlTarget, export: NbdProxyServeInterface) -> OsInstallActuatorPlan admit_callers: [
+  decl_ref(module_path: "gunbc.nbd_proxy_virtual_media_install", decl_name: "os_install_actuator_plan_standing_for")
+] {
   OsInstallActuatorPlan {
-    mechanism: mechanism,
-    steps: os_install_actuator_steps(mechanism: mechanism, export: export),
+    arm: arm,
+    steps: os_install_actuator_steps(arm: arm, boot_control: boot_control, export: export),
   }
 }
 
@@ -153,7 +206,9 @@ data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeIn
 // The actuator plan carries the refusal rather than erasing it: a host whose firmware justifies
 // no delivery mechanism has no actuator step sequence, and must not be handed a plausible one.
 type OsInstallActuatorPlanRefusal
-  = ActuatorMechanismRefused { cause: OsInstallMechanismRefusalCause }
+  = ActuatorBootDeliveryRefused { cause: BootDeliveryRefusalCause }
+  | ActuatorBootDeliveryPlanIncoherent { cause: BootDeliveryPlanIncoherence }
+  | ActuatorArmRefused { delivery: BootArtifactDelivery }
   | ActuatorStepsUnrealized { refusals: List<ActuatorStepRefusal> }
 
 type OsInstallActuatorPlanStanding
@@ -161,28 +216,38 @@ type OsInstallActuatorPlanStanding
   | ActuatorPlanRefused { cause: OsInstallActuatorPlanRefusal }
 
 fn os_install_actuator_plan_standing_for(
-  solution: OsInstallMechanismSolution,
+  solution: BootDeliverySolution,
   export: NbdProxyServeInterface,
   image: SeededImageResolution,
 ) -> OsInstallActuatorPlanStanding {
   match solution {
-    OsInstallMechanismSelected { mechanism: m } =>
-      match os_install_actuator_plan(mechanism: m, export: export) {
-        p =>
-          match actuator_plan_realization(steps: p.steps, image: image) {
-            ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
-            ActuatorPlanUnrealized { refusals: rs } =>
-              ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
+    BootDeliveryPlanned { plan: unadmitted } =>
+      match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: x } =>
+          ActuatorPlanRefused { cause: ActuatorBootDeliveryPlanIncoherent { cause: x } }
+        BootDeliveryPlanAdmitted { plan: bp } =>
+          match os_install_actuator_arm_of(delivery: bp.delivery) {
+            ActuatorArmRealizable { arm: a } =>
+              match os_install_actuator_plan(arm: a, boot_control: bp.boot_control, export: export) {
+                p =>
+                  match actuator_plan_realization(steps: p.steps, image: image) {
+                    ActuatorPlanRealized { intents: xs } => ActuatorPlanReady { plan: p, intents: xs }
+                    ActuatorPlanUnrealized { refusals: rs } =>
+                      ActuatorPlanRefused { cause: ActuatorStepsUnrealized { refusals: rs } }
+                  }
+              }
+            ActuatorArmNotRealizable { delivery: d } =>
+              ActuatorPlanRefused { cause: ActuatorArmRefused { delivery: d } }
           }
       }
-    OsInstallMechanismRefused { cause: c } =>
-      ActuatorPlanRefused { cause: ActuatorMechanismRefused { cause: c } }
+    BootDeliveryRefused { cause: c } =>
+      ActuatorPlanRefused { cause: ActuatorBootDeliveryRefused { cause: c } }
   }
 }
 
 fn srv3_os_install_actuator_plan_standing(image: SeededImageResolution) -> OsInstallActuatorPlanStanding {
   os_install_actuator_plan_standing_for(
-    solution: srv3_install_mechanism_solution,
+    solution: srv3_boot_delivery_solution,
     export: srv3_nbd_proxy_export_placeholder,
     image: image,
   )

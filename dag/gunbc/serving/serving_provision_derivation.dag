@@ -3,9 +3,7 @@ module gunbc.serving.serving_provision_derivation
 import std.types { String, NonEmptyStr, List, Port }
 import std.optional { Present, Absent }
 import std.content_hash { Sha256Digest }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import gunbc.serving.rented_ninfer_source { RentedArtifactSource, NinferEngineRelease }
 import extdeps.vllm.local_inference_lab_build { VllmEngineRelease }
 import extdeps.vllm.lil_serve { LilServeLaunch }
@@ -182,15 +180,3 @@ fn serving_provision_derive(recipe: ServingRecipe) -> ServingProvisionDerivation
   }
 }
 
-data serving_provision_derivation_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "ServingProvisionDerivation"),
-    reason: "the vllm arm derives (2026-10-25): the launch argv is modeled (gunbc.serving.srv1_serving_launch, dissolving what was ServingProvisionRefusedEngineVllm), but nothing EXECUTES the derived inputs — verify/install/start of the lab vLLM build on a host is still unmodeled, and the arm never falls back to ninfer",
-    dissolution: unbound_dissolution(description: "a host-convergence step executes ServingProvisionDerivedVllm on srv1 and reads the container inspect and engine banner back against it — the same trigger gunbc.serving.srv1_serving_launch srv1_serving_unmodeled_frontier_rows carries for the relaunch route"),
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.serving.serving_provision_derivation", decl_name: "serving_provision_derive"),
-    reason: "serving_provision_derive has no executing production caller: the InferenceServingProvision spine row names it as an authority, but no converge-loop step evaluates it on a recipe a host is handed yet, so only test.claim.serving witnesses run it",
-    dissolution: unbound_dissolution(description: "a host-convergence step evaluates the InferenceServingProvision phase on the host's ServingRecipe and reads the placement back — sufficient to delete this row"),
-  ),
-]

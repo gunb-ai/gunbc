@@ -1,7 +1,8 @@
 module gunbc.roadmap.roadmap_belt_actuate
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_state_external_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at }
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptAlignmentBinding, AttemptAuditVerdict, AttemptCommitOutcomeLast, AttemptContinuationTurn, AttemptDiffWindow, AttemptDirectoryPublication, AttemptDirectoryReview, AttemptDirectorySupervisor, AttemptEnvironmentAdmission, AttemptKeyRecord, AttemptLaunchIdentity, AttemptOracleIdentity, AttemptOraclePinRefused, AttemptOracleRevision, AttemptProcessFingerprint, AttemptPublicationReceipt, AttemptReviewVerdict, AttemptSpawnFailure, AttemptSpawnOrigin, AttemptStateListingRead, AttemptStateListingUnreadable, AttemptStateMember, AttemptStateReady, AttemptStateUnready, AttemptSupervisorVerdict, AttemptValidationReceipt, AttemptVerificationReceipt, AttemptVerificationSelection, AttemptWorkerEvents, attempt_state_directory_presence, attempt_state_external_directory, attempt_log_member_path, attempt_state_list, attempt_state_observe, attempt_state_observe_at, attempt_state_observe_current, attempt_state_open, attempt_state_open_current, attempt_state_presence_at, attempt_state_presence_current, attempt_state_provision, attempt_state_provision_path, attempt_state_read_at, attempt_state_read_current, attempt_state_verification_receipt_read_at, attempt_state_verification_selection_observe_at, attempt_state_write, attempt_state_write_at, attempt_append_log_host_create, AttemptAppendLogCreateRefused, AttemptAppendLogHostUnready, AttemptAppendLogHostLegacyRefused, AttemptAppendLogCreated, AttemptAppendLogAlreadyExists, attempt_state_external_path }
+import gunbc.durable_append_log_store { LegacyFramingMismatch, LegacyDuplicateClaim }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, CursorDispatchProvider, ReplayDispatchProvider, DispatchCliProvider, dispatch_attempt_private_git_dir, dispatch_worker_git_pointer_files, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds }
 import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
 import gunbc.roadmap.roadmap_attempt_request_binding {
   AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous, attempt_launch_request_for_origin,
@@ -9,13 +10,14 @@ import gunbc.roadmap.roadmap_attempt_request_binding {
 }
 import gunbc.roadmap.roadmap_nesting { roadmap_memberships }
 
-import std.algebra { trim, skip }
+import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
@@ -23,6 +25,11 @@ import gunbc.roadmap.roadmap_attempt_metering {
   MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history, roadmap_operator_node_closed, AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable }
+import gunbc.roadmap.roadmap_node_terminality { BeltNodeLineageTerminal, LineageOpen, LineageTerminal, LineageTerminalUnreadable, belt_node_lineage_terminal_read }
+import gunbc.roadmap.roadmap_event_carrier { RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read, CarrierClosed, RoadmapEventsRead, EventsRead, EventsReadRefused }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope, RoadmapNodeStanding, roadmap_issue_state, roadmap_standing_is_retired }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
 import gunbc.roadmap.roadmap_status { signoff_accepts, line_ticket, node_title }
 import gunbc.roadmap.roadmap_review_role {
@@ -70,6 +77,8 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt,
   prepared_attempt_launch_alternative,
   prepared_attempt_process_fingerprint,
+  prepared_attempt_executor_origin,
+  DispatchExecutorOrigin,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command, dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
@@ -88,7 +97,6 @@ import gunbc.roadmap.roadmap_belt {
   BeltReconcile,
   belt_reconcile,
   belt_reconcile_refusal_count,
-  roadmap_belt_default_capacity,
   roadmap_belt_production_spawn_mode,
   DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
   belt_reconcile_upsert_count,
@@ -150,7 +158,7 @@ import gunbc.harness.harness_backend {
   HarnessBackendRoster, HarnessRosterServing, HarnessRosterNoneServing,
   harness_observe_roster, harness_declines_detail,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane, dispatch_attempt_events_initialize_for_instance, DispatchAttemptEventsInitialized, DispatchAttemptEventsInitializationFailed }
+import gunbc.roadmap.roadmap_dispatch_actuator { HostExecArgv, DispatchLiveSession, DispatchSpawnCommands, DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer, dispatch_attempt_unit_name, attempt_unit_observation, worker_process_from_attempt_unit, DispatchSpawnPlan, DispatchSpawnReady, DispatchSpawnRefused, dispatch_spawn_commands_for_launch, dispatch_capability_program, dispatch_attempt_key, dispatch_attempt_identity_mint, DispatchAttemptMinted, DispatchAttemptIdentityRefused, dispatch_verification_checkout_path_for_instance, git_worktree_add_detached_argv_for_instance, dispatch_current_attempt_events_projection_argv_for_instance, dispatch_branch_name, DispatchAttemptRef, dispatch_attempt_refs, dispatch_attempt_evidence, git_for_each_ref_dispatch_argv, git_for_each_ref_dispatch_argv_for_instance, dispatch_tmux_session_scope, dispatch_provider_label, dispatch_actuator_selection, DispatchActuatorSelection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused, dispatch_tmux_session_name, tmux_ls_argv, tmux_ls_argv_for_instance, tmux_kill_session_argv, tmux_kill_session_argv_for_instance, dispatch_live_sessions_from_entries, dispatch_live_sessions_with_process, dispatch_session_cleanup_for_live_session, DispatchStopRunningProcess, DispatchClearRetainedSession, DispatchClearSignaledSession, DispatchCleanupRefused, dispatch_session_cleanup, dispatch_session_cleanup_action, dispatch_session_cleanup_allowed, dispatch_session_cleanup_detail, tmux_attempt_panes_argv_for_instance, worker_process_from_attempt_pane }
 import extdeps.tmux {
   classify_tmux_session_list,
   TmuxSessionsListed,
@@ -370,6 +378,9 @@ import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_f
 }
 import extdeps.github.github { Repository }
 import gunbc.roadmap.roadmap_dispatch_destination {
+  DispatchExecutorOriginRead,
+  DispatchExecutorOriginUnreadable,
+  dispatch_executor_origin_of_document,
   DispatchDestinationResolved,
   DispatchDestinationMissing,
   node_dispatch_destination,
@@ -608,6 +619,11 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
 }
 import gunbc.roadmap.roadmap_session_placement { attempt_worker_unit_observe_for_instance, SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores, session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused, session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon, session_placement_record_write, SessionPlacementWritten, SessionPlacementWriteFailed, session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable, SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused, session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire, session_worker_unit_lifecycle_for_instance }
+import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
+  attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_json,
+  AttemptSlotsCutoverPassRecord, AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded,
+  AttemptSlotsCutoverRecordUnwritten, AttemptSlotsCutoverStoresUnresolved, AttemptSlotsCutoverNotRun,
+}
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
@@ -877,6 +893,7 @@ fn belt_attempt_state_initialize_for_instance(
   binding: AlignmentBinding,
   request: AttemptLaunchRequest,
   process_fingerprint: NonEmptyStr,
+  executor: DispatchExecutorOrigin,
 ) -> AttemptStateInitialization {
   match attempt_state_open(instance: instance, node: node.node as String, attempt_key: attempt_key) {
     AttemptStateUnready { detail } =>
@@ -909,17 +926,36 @@ fn belt_attempt_state_initialize_for_instance(
                             FilesystemWriteRefused { path: _, error: e } =>
                               AttemptStateInitializationFailed { step: "attempt-launch-write", detail: e }
                             FilesystemWritten { path: _ } =>
-                              match dispatch_attempt_events_initialize_for_instance(
+                              match attempt_append_log_host_create(
                                 instance: instance,
-                                node_id: node.node,
+                                node: node.node as String,
                                 attempt_key: attempt_key,
+                                member: AttemptWorkerEvents,
                               ) {
-                                DispatchAttemptEventsInitializationFailed { detail: events_detail } =>
+                                AttemptAppendLogHostUnready { detail: events_detail } =>
                                   AttemptStateInitializationFailed {
                                     step: "attempt-events-initialize",
                                     detail: events_detail,
                                   }
-                                DispatchAttemptEventsInitialized =>
+                                AttemptAppendLogCreateRefused { detail: events_detail } =>
+                                  AttemptStateInitializationFailed {
+                                    step: "attempt-events-initialize",
+                                    detail: events_detail,
+                                  }
+                                AttemptAppendLogAlreadyExists { path: existing_path } =>
+                                  AttemptStateInitializationFailed {
+                                    step: "attempt-events-initialize",
+                                    detail: "events member already exists at: " + existing_path + " (stale file from a prior attempt, refusing to project it as this attempt's stream)",
+                                  }
+                                AttemptAppendLogHostLegacyRefused { cause: c } =>
+                                  AttemptStateInitializationFailed {
+                                    step: "attempt-events-initialize",
+                                    detail: match c {
+                                      LegacyFramingMismatch { entry: e } => "append-log legacy framing mismatch on entry: " + e
+                                      LegacyDuplicateClaim { entries: es } => "append-log legacy duplicate claim on entries: " + join(es, ", ")
+                                    },
+                                  }
+                                AttemptAppendLogCreated { path: _, created_mode: _ } =>
                                   match attempt_state_write(
                                     store: store,
                                     member: AttemptValidationReceipt,
@@ -956,6 +992,7 @@ fn belt_attempt_state_initialize_for_instance(
                                             instance: instance,
                                             node: node,
                                             attempt_key: attempt_key,
+                                            executor: executor,
                                           ) {
                                             SpawnOriginRecorded =>
                                               match attempt_request_binding_commit_for_instance(instance: instance, node_id: node.node, attempt_key: attempt_key, request: request) {
@@ -996,6 +1033,7 @@ fn belt_persist_spawn_origin_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   attempt_key: String,
+  executor: DispatchExecutorOrigin,
 ) -> SpawnOriginRecord {
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason } =>
@@ -1023,6 +1061,7 @@ fn belt_persist_spawn_origin_for_instance(
             identity: identity,
             base_ref: instance.dispatch_base_ref,
             base_sha: revision as NonEmptyStr,
+            executor: executor,
           }
           match attempt_state_write_at(instance: instance, node: node.node as String, attempt_key: attempt_key, member: AttemptSpawnOrigin, content: dispatch_spawn_origin_json(origin: origin)) {
             FilesystemWritten { path: _ } => SpawnOriginRecorded
@@ -1553,6 +1592,69 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
     SessionStoresUnresolved { detail } => SessionSettlePassRefused { detail: detail }
     SessionStoresResolved { stores } =>
       belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
+  }
+}
+
+// THE ATTEMPT-SLOT CUTOVER PASS. A frontier row in the cutover module pointed at this name and is retired
+// by the change that lands the name -- the route exists, so a row tracking its absence would be a lie.
+// One slot root moved
+// under a live instance (gunb-ai/gunbc#14633) while a slot in it was still launching, and the settle pass
+// enumerates only the instance's CURRENT store, so that slot is invisible to every settle pass forever --
+// a lease no pass can reach keeps its charge (srv1's 2026-10-14 lease, 22 GiB, is that case). This pass is
+// the one modeled route that carries such a slot back into the store the settle pass reads.
+//
+// IT IS BOUND BEFORE THE SETTLEMENT BINDING IN THE TICK, so a carry lands in time for the same tick's
+// settlement to see what it carried. The ordering is not load-bearing for correctness: the carry is
+// idempotent (create-only under ExpectSlotAbsent), so a slot that missed one tick's settlement is settled
+// by the next.
+//
+// THE ANSWER IS RECORDED, NOT LOGGED. The census and the carry are written as a record in the instance's
+// records directory -- the same home session_placement_record_write uses -- because "what the pass read" is
+// the evidence an operator needs before anything retires the old root, and because a pass whose reading
+// nothing can re-read is a pass nobody can audit. A record write that fails does NOT stop the settle pass:
+// settlement releases holds on the strength of the slot CAS and the holder evidence, and blocking it
+// because a second record could not be written would keep a lease held to protect a note. What the failure
+// does stop is any clean reading of THIS pass: the tick receipt carries the unwritten arm as a refusal, so
+// the status route shows that the pass ran and its evidence did not land, instead of showing a clean pass.
+//
+// IT NEVER RELEASES ANYTHING. A census is not a release trigger (the guard written into
+// gunbc.compute.attempt_lifecycle.attempt_slot_keys, repeated in gunbc.roadmap.roadmap_session_placement):
+// releases go through the settle pass's fenced CAS on the lease reference and the generation read from the
+// slot. This pass only moves a slot from a root no pass reads into the root that they do. A reference whose
+// charge was already returned -- by an operator release, say -- is not this pass's business: the carry is a
+// file operation, and the settle pass that follows answers its release with ComputeNothingToRelease, which
+// gunbc.compute.host_capacity says is not a ledger failure.
+fn belt_attempt_slots_cutover_pass(instance: HostDashboardInstance) -> AttemptSlotsCutoverPassOutcome {
+  match session_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail: d } => AttemptSlotsCutoverStoresUnresolved { detail: d }
+    SessionStoresResolved { stores } =>
+      belt_attempt_slots_cutover_record_write(
+        stores: stores,
+        record: attempt_slots_cutover_pass_for_instance(instance_id: instance.instance_id, target: stores.slots),
+      )
+  }
+}
+
+// The write, in the belt, because this is where the host effect lives: the cutover module owns the path,
+// the shape and the meaning, and mints no filesystem effect of its own. Same write route as a placement
+// record (Filesystem.Write with .success / .error). The record value is carried through BOTH arms -- a
+// failed write loses the file, never the reading.
+fn belt_attempt_slots_cutover_record_write(stores: SessionPlacementStores, record: AttemptSlotsCutoverPassRecord) -> AttemptSlotsCutoverPassOutcome {
+  let path = attempt_slots_cutover_record_path(stores: stores, instance_id: record.instance_id)
+  let w = Filesystem.Write(path: path, content: serialize_json(v: attempt_slots_cutover_record_json(record: record)))
+  if w.success { AttemptSlotsCutoverRecorded { path: path, record: record } } else { AttemptSlotsCutoverRecordUnwritten { path: path, error: w.error, record: record } }
+}
+
+// The tick's standing for this pass, in the shape the receipt already carries for every other pass.
+// Recorded is Recorded; an unwritten record and an unresolved store are Refused with the reason, because "I
+// ran and my evidence did not land" must not read as "I ran cleanly"; NotRun is Deferred, which is what a
+// withheld tick owes a reader.
+fn belt_slots_cutover_pass_outcome(outcome: AttemptSlotsCutoverPassOutcome) -> BeltPassOutcome {
+  match outcome {
+    AttemptSlotsCutoverRecorded { path: _, record: _ } => BeltPassRecorded
+    AttemptSlotsCutoverRecordUnwritten { path: p, error: e, record: _ } => BeltPassRefused { reason: join(["attempt-slot cutover record could not be written at ", p, ": ", e], "") }
+    AttemptSlotsCutoverStoresUnresolved { detail: d } => BeltPassRefused { reason: join(["attempt-slot cutover pass refused: the instance's placement stores are unresolved: ", d], "") }
+    AttemptSlotsCutoverNotRun { reason: r } => BeltPassDeferred { reason: join(["attempt-slot cutover pass did not run: ", r], "") }
   }
 }
 
@@ -2122,6 +2224,7 @@ fn belt_provider_preflight_for_instance(
         step: "cursor-provider-preflight",
         detail: "cursor dispatch is not yet wired on this actuator path",
       }
+    ReplayDispatchProvider => ProviderPreflightOk
     GunbcHarnessProvider =>
       match harness_observe_roster() {
         HarnessRosterServing { serving: _, declined: _, unresolved: _ } => ProviderPreflightOk
@@ -3403,6 +3506,7 @@ fn belt_spawn_admitted(
         binding: binding,
         request: request,
         process_fingerprint: process_fingerprint,
+        executor: prepared_attempt_executor_origin(prepared: prepared),
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -3982,6 +4086,7 @@ type BeltTickReceipt {
   teardown_pass: BeltPassOutcome,
   seat_discharge_pass: BeltPassOutcome,
   discovery_pass: BeltPassOutcome,
+  slots_cutover_pass: BeltPassOutcome,
 }
 
 type BeltTickReceiptRead
@@ -4008,7 +4113,9 @@ type BeltTickReceiptRead
 // longer reports those passes. It reports the passes it still runs -- spawn and teardown -- and the
 // discovery pass that hands outstanding obligations to their units. What each attempt's obligations
 // did is that attempt's own receipt (belt_attempt_obligation_receipt_path).
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v8"
+// v9 adds slots_cutover_pass. A receipt written under v8 has no such member, so it decodes as unreadable
+// rather than as a receipt whose cutover standing is unknown.
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v9"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -4147,7 +4254,10 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
 }
 
 fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltTickReceiptRead {
-  match belt_pass_outcome_from_member(doc: doc, key: "spawn_pass") {
+  match belt_pass_outcome_from_member(doc: doc, key: "slots_cutover_pass") {
+    BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
+    BeltPassOutcomeDecoded { outcome: slots_cutover_pass } =>
+      match belt_pass_outcome_from_member(doc: doc, key: "spawn_pass") {
     BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
     BeltPassOutcomeDecoded { outcome: spawn_pass } =>
       match belt_pass_outcome_from_member(doc: doc, key: "teardown_pass") {
@@ -4173,12 +4283,14 @@ fn belt_tick_receipt_decode_passes(doc: JsonValue, observed_at: String) -> BeltT
                         teardown_pass: teardown_pass,
                         seat_discharge_pass: seat_discharge_pass,
                         discovery_pass: discovery_pass,
+                        slots_cutover_pass: slots_cutover_pass,
                       })
                   }
               }
           }
          }
       }
+    }
   }
 }
 
@@ -4308,7 +4420,8 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     belt_pass_outcome_key(o: receipt.spawn_pass), "|",
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
     belt_pass_outcome_key(o: receipt.seat_discharge_pass), "|",
-    belt_pass_outcome_key(o: receipt.discovery_pass),
+    belt_pass_outcome_key(o: receipt.discovery_pass), "|",
+    belt_pass_outcome_key(o: receipt.slots_cutover_pass),
   ], "")
 }
 
@@ -4391,6 +4504,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
     json_kv(key: "seat_discharge_pass", value: belt_pass_outcome_json(o: receipt.seat_discharge_pass)),
     json_kv(key: "discovery_pass", value: belt_pass_outcome_json(o: receipt.discovery_pass)),
+    json_kv(key: "slots_cutover_pass", value: belt_pass_outcome_json(o: receipt.slots_cutover_pass)),
   ])
 }
 
@@ -4532,6 +4646,7 @@ type BeltTickResult {
   teardown_outcomes: List<BeltTeardownOutcome>,
   discovery: BeltDiscovery,
   seat_discharge: SeatDischargePass,
+  slots_cutover: AttemptSlotsCutoverPassOutcome,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -4727,6 +4842,7 @@ fn belt_tick_launch_pass_refused(
 
 fn belt_tick_launch_pass_observed(
   standing: LaunchHostStanding,
+  capacity: BeltCapacity,
   state: SpawnMode,
   frontier: SpawnFrontier,
   graph: LaunchGraphStanding,
@@ -4738,7 +4854,7 @@ fn belt_tick_launch_pass_observed(
     state: state,
     frontier: frontier,
     live: classified.running,
-    cap: roadmap_belt_default_capacity,
+    cap: capacity,
   )
   BeltLaunchPass {
     reconcile: r,
@@ -4766,10 +4882,10 @@ fn belt_tick_launch_pass(
       belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: r)
     Absent =>
       match standing {
-        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity: _, mode: _ } =>
+        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity, mode: _ } =>
           match sessions {
             LaunchSessionsObserved { live: _ } =>
-              belt_tick_launch_pass_observed(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, live: tmux_live)
+              belt_tick_launch_pass_observed(standing: standing, capacity: capacity, state: state, frontier: frontier, graph: graph, merged: merged, live: tmux_live)
             LaunchSessionsUnobserved { reason } =>
               belt_tick_launch_pass_refused(standing: standing, state: state, frontier: frontier, graph: graph, merged: merged, host_refusal: LaunchSessionsUnobservable { reason: reason })
             LaunchSessionsPending =>
@@ -4820,6 +4936,9 @@ fn belt_tick_for_instance(
       ObserveRefused { reason: _ } => []
     },
   )
+  // THE CUTOVER PASS IS BOUND FIRST, so a carry reaches the store this same tick's settlement enumerates,
+  // and its answer reaches the receipt whether or not the record landed.
+  let slots_cutover = belt_attempt_slots_cutover_pass(instance: instance)
   let spawn_outcomes = belt_tick_spawn_after_settlement(
     instance: instance,
     settled: belt_session_settlement_pass(instance: instance),
@@ -4837,6 +4956,7 @@ fn belt_tick_for_instance(
         teardown_outcomes: teardown_outcomes,
         seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
+        slots_cutover: slots_cutover,
       }
     TickPassesRun =>
       BeltTickResult {
@@ -4847,6 +4967,7 @@ fn belt_tick_for_instance(
         teardown_outcomes: teardown_outcomes,
         seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
+        slots_cutover: slots_cutover,
       }
   }
 }
@@ -5069,13 +5190,14 @@ fn belt_run_once_in(
         teardown_outcomes: [],
         seat_discharge: belt_compute_seat_discharge_pass(instance: instance),
         discovery: belt_discover_for_instance(instance: instance),
+        slots_cutover: AttemptSlotsCutoverNotRun { reason: "the roadmap authority projection refused, so this tick runs no actuation pass" },
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
       belt_tick_for_instance(
         instance: instance,
         state: roadmap_belt_production_spawn_mode,
         frontier: spawn_frontier(doc: doc, merged: authored_merged_prs()),
-        cap: roadmap_belt_default_capacity,
+        cap: belt_capacity_of_instance(instance),
         spawn_workdir: spawn_workdir,
       )
   }
@@ -5846,7 +5968,7 @@ fn belt_provider_event_projection_observe_for_instance(
     AttemptStateReady { store } =>
       belt_provider_event_projection_observe_at(
         instance: instance,
-        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+        events_path: attempt_log_member_path(store: store, member: AttemptWorkerEvents),
       )
   }
 }
@@ -6359,7 +6481,7 @@ fn belt_workflow_attempt_evidence_for_key(
     AttemptStateReady { store } =>
       belt_provider_event_projection_observe_at(
         instance: instance,
-        events_path: attempt_state_external_path(store: store, member: AttemptWorkerEvents),
+        events_path: attempt_log_member_path(store: store, member: AttemptWorkerEvents),
       )
   }
   let spawn_failure = attempt_state_read_at(instance: instance, node: attempt.node_id, attempt_key: current_key, member: AttemptSpawnFailure)
@@ -7132,6 +7254,23 @@ fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNo
             }
         }
     }
+  }
+}
+
+// THE ATTEMPT'S EXECUTOR ORIGIN, read back from the same spawn-origin record the belt wrote once at spawn. Every
+// way of not reading it is Unreadable, which the metering mint refuses: an attempt whose origin cannot be read is
+// never treated as a real one.
+fn belt_spawn_executor_origin_observe(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> DispatchExecutorOriginRead {
+  let provision = attempt_state_provision(instance: instance, node: node_id as String, attempt_key: attempt_key)
+  let path = attempt_state_provision_path(provision: provision, member: AttemptSpawnOrigin)
+  match attempt_state_read_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: AttemptSpawnOrigin) {
+    FilesystemReadRefused { error } =>
+      DispatchExecutorOriginUnreadable { reason: join(["the spawn origin could not be read: ", path, " (", error, ")"], "") }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap: _ } => DispatchExecutorOriginUnreadable { reason: join(["the spawn origin at ", path, " is not JSON"], "") }
+        JsonDocumentParsed { value: doc } => dispatch_executor_origin_of_document(doc: doc)
+      }
   }
 }
 
@@ -8523,46 +8662,70 @@ fn belt_commit_record_member(doc: JsonValue, key: String) -> String? {
   }
 }
 
-// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record for another attempt is unexplained
-// state and refuses; a record at another head, with no head, or from before the record named its head
-// settles nothing here, so the capture of this head is owed; at this head, the kind's disposition decides.
-fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+// THE ONE DECODE OF THE COMMIT STEP'S RECORD for one attempt: its schema, subject and kind are checked here, once,
+// and the record's head and detail come back with the kind. A record for another attempt is unexplained state and
+// refuses; a v1 record predates the head binding. Read by the head-grain capture standing below and by the replay
+// recording capture (gunbc.dispatch_replay_capture), which takes the settled head as the attempt's result commit.
+type BeltCommitRecordDecode
+  = CommitRecordDecoded { kind: BeltCommitOutcomeKind, outcome: String, head_sha: String?, detail: String }
+  | CommitRecordPredatesHead
+  | CommitRecordRefused { reason: String }
+
+fn belt_commit_record_decode(content: String, node_id: String, attempt_key: String) -> BeltCommitRecordDecode {
   match parse_json_document(s: content) {
     JsonDocumentUnreadable { gap } =>
-      CommitStepRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
+      CommitRecordRefused { reason: join(["the commit step's record is ", json_document_gap_text(gap: gap)], "") }
     JsonDocumentParsed { value: doc } =>
       match belt_commit_record_member(doc: doc, key: "schema") {
-        Absent => CommitStepRefused { reason: "the commit step's record names no schema" }
+        Absent => CommitRecordRefused { reason: "the commit step's record names no schema" }
         Present { value: schema } =>
           if schema == belt_commit_outcome_schema_v1 {
-            CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+            CommitRecordPredatesHead
           } else if schema != belt_commit_outcome_schema {
-            CommitStepRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
+            CommitRecordRefused { reason: join(["the commit step's record is ", schema, ", not ", belt_commit_outcome_schema], "") }
           } else if belt_commit_record_member(doc: doc, key: "node_id") != Present { value: node_id }
             || belt_commit_record_member(doc: doc, key: "attempt_key") != Present { value: attempt_key } {
-            CommitStepRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
+            CommitRecordRefused { reason: join(["the commit step's record at attempt ", attempt_key, "'s address names another subject, which is unexplained state"], "") }
           } else {
             match belt_commit_record_member(doc: doc, key: "outcome") {
-              Absent => CommitStepRefused { reason: "the commit step's record names no outcome" }
+              Absent => CommitRecordRefused { reason: "the commit step's record names no outcome" }
               Present { value: outcome } =>
                 match belt_commit_outcome_kind_of_key(key: outcome) {
-                  Absent => CommitStepRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
+                  Absent => CommitRecordRefused { reason: join(["the commit step's record names outcome ", outcome, ", which the commit step does not write"], "") }
                   Present { value: kind } =>
-                    match belt_commit_record_member(doc: doc, key: "head_sha") {
-                      Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
-                      Present { value: settled } =>
-                        if settled != head_sha {
-                          CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
-                        } else {
-                          let said = join(["the commit step's last run at this head ended ", outcome, ": ", match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" }], "")
-                          match belt_commit_outcome_kind_capture_disposition(k: kind) {
-                            CommitSettlesCapture => CommitStepSettled
-                            CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
-                            CommitRefusesCapture => CommitStepRefused { reason: said }
-                          }
-                        }
+                    CommitRecordDecoded {
+                      kind: kind,
+                      outcome: outcome,
+                      head_sha: belt_commit_record_member(doc: doc, key: "head_sha"),
+                      detail: match belt_commit_record_member(doc: doc, key: "detail") { Present { value: d } => d  Absent => "" },
                     }
                 }
+            }
+          }
+      }
+  }
+}
+
+// THE RECORD SETTLES ONLY THE SUBJECT AND HEAD IT NAMES. A record at another head, with no head, or from before the
+// record named its head settles nothing here, so the capture of this head is owed; at this head, the kind's
+// disposition decides.
+fn belt_commit_record_standing_of_text(content: String, node_id: String, attempt_key: String, head_sha: String) -> BeltCommitRecordStanding {
+  match belt_commit_record_decode(content: content, node_id: node_id, attempt_key: attempt_key) {
+    CommitRecordRefused { reason } => CommitStepRefused { reason: reason }
+    CommitRecordPredatesHead =>
+      CommitStepOwed { reason: "the commit step's record predates its head binding, so which head it settled is unknown" }
+    CommitRecordDecoded { kind, outcome, head_sha: settled_head, detail } =>
+      match settled_head {
+        Absent => CommitStepOwed { reason: join(["the commit step's last run ended ", outcome, " at a head it could not observe"], "") }
+        Present { value: settled } =>
+          if settled != head_sha {
+            CommitStepOwed { reason: join(["the commit step last ran at ", settled, ", not at this head"], "") }
+          } else {
+            let said = join(["the commit step's last run at this head ended ", outcome, ": ", detail], "")
+            match belt_commit_outcome_kind_capture_disposition(k: kind) {
+              CommitSettlesCapture => CommitStepSettled
+              CommitLeavesCaptureOwed => CommitStepOwed { reason: said }
+              CommitRefusesCapture => CommitStepRefused { reason: said }
             }
           }
       }
@@ -9147,6 +9310,77 @@ fn belt_exec_with_diff_window_env(
   )
 }
 
+// ONE ENTRY IS COMPILED ONCE. A claim run pays the entry's whole compile (measured ~9 min, 22 GiB on srv1,
+// 2026-11-04) before it evaluates any function, and claim_batch evaluates a function list against that one
+// compile. So the claims of one entry are ONE compute run over all its functions, not one run per function:
+// the per-function runs repeated the same compile (DESIGN section 2) and made the obligation's cost scale
+// with the function count instead of the entry count. The unit list keeps the first claim of each entry
+// (and every non-claim validation, in order); belt_claims_of_entry names the claims that run covers.
+fn belt_is_claim_of_entry(v: ValidationOperation, entry: FilePath) -> Bool {
+  match v {
+    GunbcClaimValidation { entry: e, function: _ } => e == entry
+    _ => false
+  }
+}
+
+fn belt_claims_of_entry(validations: List<ValidationOperation>, entry: FilePath) -> List<ValidationOperation> {
+  filter(validations, v => belt_is_claim_of_entry(v: v, entry: entry))
+}
+
+fn belt_validation_units(validations: List<ValidationOperation>) -> List<ValidationOperation> {
+  fold(validations, init: [] as List<ValidationOperation>, f: fn(units, v) {
+    match v {
+      GunbcClaimValidation { entry, function: _ } =>
+        if count(belt_claims_of_entry(validations: units, entry: entry)) > 0 { units } else { units |> append(v) }
+      _ => units |> append(v)
+    }
+  })
+}
+
+fn belt_claim_function_names(covered: List<ValidationOperation>) -> List<String> {
+  flat_map(covered, v => match v {
+    GunbcClaimValidation { entry: _, function } => [function as String]
+    _ => [] as List<String>
+  })
+}
+
+// EACH COVERED CLAIM KEEPS ITS OWN VERDICT. claim_batch prints one line per function (`PASS f`, `FAIL f ...`,
+// `UNOBSERVED f ...`, `PANICKED f ...`); a claim passed only if its own `PASS f` line is present AND the run
+// ended succeeded. A function with no line of its own is not a pass (no observation is never green), and one
+// failing function never turns another's line red or green: each execution is read from its own line.
+fn belt_claim_lines(document: String, function: NonEmptyStr) -> List<String> {
+  let f = function as String
+  filter(split(s: document, delimiter: "\n"), l =>
+    belt_line_is_status_of(line: l, status: "PASS", name: f)
+      || belt_line_is_status_of(line: l, status: "FAIL", name: f)
+      || belt_line_is_status_of(line: l, status: "UNOBSERVED", name: f)
+      || belt_line_is_status_of(line: l, status: "PANICKED", name: f))
+}
+
+// A status line belongs to a claim only on the whole name: the bare line, or the name then a space.
+// A name that merely begins with another claim's name (holds / holds_after_merge) is not that claim.
+fn belt_line_is_status_of(line: String, status: String, name: String) -> Bool {
+  line == join([status, " ", name], "")
+    || starts_with(s: line, prefix: join([status, " ", name, " "], ""))
+}
+
+fn belt_claim_passed(document: String, function: NonEmptyStr) -> Bool {
+  count(filter(belt_claim_lines(document: document, function: function), l => starts_with(s: l, prefix: "PASS "))) == 1
+    && count(belt_claim_lines(document: document, function: function)) == 1
+}
+
+fn belt_claim_stdout(document: String, function: NonEmptyStr) -> String {
+  let ls = belt_claim_lines(document: document, function: function)
+  if count(ls) == 0 { document } else { join(ls, "\n") }
+}
+
+fn belt_covered_claims_all_passed(covered: List<ValidationOperation>, document: String) -> Bool {
+  count(filter(covered, v => match v {
+    GunbcClaimValidation { entry: _, function } => !belt_claim_passed(document: document, function: function)
+    _ => true
+  })) == 0
+}
+
 fn belt_run_validation_operations(
   instance: HostDashboardInstance,
   subject: VerificationSubject,
@@ -9157,7 +9391,7 @@ fn belt_run_validation_operations(
   source_roots: ClaimSourceRootLayout,
 ) -> BeltValidationRun {
   fold(
-    validations,
+    belt_validation_units(validations: validations),
     init: BeltValidationRun {
       executions: [],
       verdict: ValidationPassed {
@@ -9178,9 +9412,8 @@ fn belt_run_validation_operations(
               subject: subject,
               acc: acc,
               prior: prior,
-              validation: validation,
+              covered: belt_claims_of_entry(validations: validations, entry: entry),
               entry: entry,
-              function: function,
               oracle_identity: oracle_identity,
               diff_window_path: diff_window_path,
             )
@@ -9314,12 +9547,12 @@ fn belt_run_claim_through_compute(
   subject: VerificationSubject,
   acc: BeltValidationRun,
   prior: String,
-  validation: ValidationOperation,
+  covered: List<ValidationOperation>,
   entry: FilePath,
-  function: NonEmptyStr,
   oracle_identity: ContentHash,
   diff_window_path: String?,
 ) -> BeltValidationRun {
+  let function = join(belt_claim_function_names(covered: covered), ",") as NonEmptyStr
   let window_path = match diff_window_path { Present { value: p } => p  Absent => "" }
   if window_path == "" {
     BeltValidationRun {
@@ -9367,14 +9600,21 @@ fn belt_run_claim_through_compute(
     }
     let ending = provide_result_ending(r: result)
     let record = provide_result_host_record(r: result)
-    let execution = ValidationExecution {
+    let run_exit = match work_ending_decode(word: ending) { Present { value: e } => match e { WorkEndedSucceeded => 0  WorkEndedFailed => 1  WorkEndedRefusedByInfrastructure => 1  WorkEndedCancelled => 1  WorkEndedOutputMismatch => 1 }  Absent => 1 }
+    let executions = map(covered, validation => ValidationExecution {
       validation: validation,
       command: command,
-      exit_code: match work_ending_decode(word: ending) { Present { value: e } => match e { WorkEndedSucceeded => 0  WorkEndedFailed => 1  WorkEndedRefusedByInfrastructure => 1  WorkEndedCancelled => 1  WorkEndedOutputMismatch => 1 }  Absent => 1 },
-      stdout: document,
+      exit_code: match validation {
+        GunbcClaimValidation { entry: _, function: f } => if run_exit == 0 && belt_claim_passed(document: document, function: f) { 0 } else { 1 }
+        _ => 1
+      },
+      stdout: match validation {
+        GunbcClaimValidation { entry: _, function: f } => belt_claim_stdout(document: document, function: f)
+        _ => document
+      },
       stderr: if host_record_was_written(h: record) { "" } else { host_record_wire(h: record) },
       computation: citation,
-    }
+    })
     if match citation { Present { value: _ } => false  Absent => true } {
       BeltValidationRun {
         executions: acc.executions,
@@ -9387,7 +9627,7 @@ fn belt_run_claim_through_compute(
       }
     } else if !host_record_was_written(h: record) {
       BeltValidationRun {
-        executions: acc.executions |> append(execution),
+        executions: concat(acc.executions, executions),
         verdict: ValidationRefused {
           cause: ValidationCommandRefused {
             program: "gunbc-compute",
@@ -9400,21 +9640,28 @@ fn belt_run_claim_through_compute(
         Present { value: e } =>
           match e {
             WorkEndedSucceeded =>
-              BeltValidationRun {
-                executions: acc.executions |> append(execution),
-                verdict: ValidationPassed {
-                  command: if prior == "" { wire } else { join([prior, "; ", wire], "") },
-                  oracle_identity: oracle_identity,
-                },
+              if belt_covered_claims_all_passed(covered: covered, document: document) {
+                BeltValidationRun {
+                  executions: concat(acc.executions, executions),
+                  verdict: ValidationPassed {
+                    command: if prior == "" { wire } else { join([prior, "; ", wire], "") },
+                    oracle_identity: oracle_identity,
+                  },
+                }
+              } else {
+                BeltValidationRun {
+                  executions: concat(acc.executions, executions),
+                  verdict: ValidationFailed { command: wire, exit_code: 1, detail: document },
+                }
               }
             WorkEndedFailed =>
               BeltValidationRun {
-                executions: acc.executions |> append(execution),
+                executions: concat(acc.executions, executions),
                 verdict: ValidationFailed { command: wire, exit_code: 1, detail: document },
               }
             _ =>
               BeltValidationRun {
-                executions: acc.executions |> append(execution),
+                executions: concat(acc.executions, executions),
                 verdict: ValidationRefused {
                   cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
                 },
@@ -9422,7 +9669,7 @@ fn belt_run_claim_through_compute(
           }
         Absent =>
           BeltValidationRun {
-            executions: acc.executions |> append(execution),
+            executions: concat(acc.executions, executions),
             verdict: ValidationRefused {
               cause: ValidationCommandRefused { program: "gunbc-compute", reason: join(["the claim run ended ", ending, ": ", document], "") },
             },
@@ -11042,8 +11289,21 @@ fn belt_launch_host_standing_for_page_over(
   }
 }
 
+// THE BELT CAPACITY FOR ONE INSTANCE, BUILT FROM THE PER-INSTANCE FIGURE. The single authority for the
+// number is the instance row's HostDashboardInstance.belt_max_concurrent; this wraps it as the BeltCapacity
+// the belt and its launch admission take. No production reader of the old shared constant remains -- the
+// launch standing (and so launch_gate_capacity -> belt_free_slots_int) and the timer's reconcile fold all
+// carry this instance-built capacity.
+fn belt_capacity_of_instance(instance: HostDashboardInstance) -> BeltCapacity {
+  // A total Nat -> Int conversion: the field is a Nat (no negative width), and BeltCapacity.max_concurrent
+  // is an Int because the launch-admission fold (belt_free_slots_int) and json_int consume it as an Int.
+  BeltCapacity { max_concurrent: nat_to_int(n: instance.belt_max_concurrent) }
+}
+
 fn belt_launch_host_standing_for_instance(instance: HostDashboardInstance, mode: SpawnMode) -> LaunchHostStanding {
-  belt_launch_host_standing_for_instance_with_capacity(instance: instance, mode: mode, capacity: roadmap_belt_default_capacity)
+  belt_launch_host_standing_for_instance_with_capacity(
+    instance: instance, mode: mode, capacity: belt_capacity_of_instance(instance)
+  )
 }
 
 fn belt_launch_host_standing(instance: HostDashboardInstance) -> LaunchHostStanding {
@@ -14402,6 +14662,10 @@ fn belt_tick_receipt_from_result(
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_discovery_pass_outcome(discovery: result.discovery)
     }),
+    slots_cutover_pass: (match result.wholesale {
+      TickPassesWithheld { refusal } => BeltPassRefused { reason: join(["attempt-slot cutover pass withheld: ", launch_refusal_reason(r: refusal)], "") }
+      TickPassesRun => belt_slots_cutover_pass_outcome(outcome: result.slots_cutover)
+    }),
   }
 }
 
@@ -14682,6 +14946,13 @@ type BeltAttemptObligationRun
 // bounded by the number of kinds and never re-runs a kind it already ran (the strictly-downstream
 // rule of gunbc.roadmap.roadmap_belt_obligation belt_attempt_next_after, by construction here).
 fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltAttemptObligationRun {
+  // The acceptance history depends only on the store: load it ONCE for this pass and hand the
+  // loaded value to the terminality read (review 90991; DESIGN §2 shared-value rule).
+  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
+    LineageTerminal { why } => BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: join(["the node's lineage is terminal, so it owes nothing: ", why], "") }
+    LineageTerminalUnreadable { reason: r } => BeltAttemptObligationsRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["lineage terminality is unreadable, so nothing is provably owed: ", r], "") }
+    LineageOpen => {
   let folded = fold(belt_attempt_obligation_order, init: BeltAttemptObligationsFold { read: belt_attempt_progress_read(instance: instance, node_id: node_id, attempt_key: attempt_key), steps: [] }, f: fn(acc, kind) {
     match acc.read {
       BeltAttemptProgressFound { progress } =>
@@ -14701,6 +14972,8 @@ fn belt_attempt_obligations_run(instance: HostDashboardInstance, node_id: String
       if count(folded.steps) == 0 { BeltAttemptObligationsNotCurrent { node_id: node_id, attempt_key: attempt_key, reason: reason } } else { BeltAttemptObligationsRan { node_id: node_id, attempt_key: attempt_key, steps: folded.steps } }
     BeltAttemptProgressRefused { reason } =>
       BeltAttemptObligationsRefused { node_id: node_id, attempt_key: attempt_key, reason: join(["the attempt's evidence could not be observed: ", reason, if count(folded.steps) == 0 { "" } else { join([" (after ", to_string(count(folded.steps)), " obligation(s) ran)"], "") }], "") }
+  }
+    }
   }
 }
 
@@ -14960,15 +15233,27 @@ type BeltDiscovery
   | BeltDiscoveryRefused { reason: String }
 
 // PURE: which attempts are owed something, in observation order, and the bounded prefix to queue.
-fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>) -> List<WorkflowAttemptProgress> {
-  attempts |> filter(p => count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0)
+// THE ONE TERMINALITY RULE rules discovery too: a terminal lineage has nothing to discover, and an
+// attempt whose terminality is UNREADABLE is not owed either — what cannot be proven owed is not
+// enqueued (the next discovery retries it). The caller supplies the fact; this stays a pure filter.
+fn belt_discovery_owed(attempts: List<WorkflowAttemptProgress>, node_terminal_of: fn(WorkflowAttemptProgress) -> Bool) -> List<WorkflowAttemptProgress> {
+  attempts |> filter(p => !node_terminal_of(p) && count(belt_attempt_outstanding(provider: p.provider, segments: p.segments)) > 0)
 }
 
 fn belt_discover_for_instance(instance: HostDashboardInstance) -> BeltDiscovery {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } => BeltDiscoveryRefused { reason: join(["the attempts ledger is unobservable, so no outstanding obligation can be discovered: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let owed = belt_discovery_owed(attempts: attempts)
+      // One acceptance-history load for the whole pass — the closure below runs per attempt, and
+      // the history does not depend on the attempt (review 90991; DESIGN §6 cost-shape rule).
+      let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+      let owed = belt_discovery_owed(
+        attempts: attempts,
+        node_terminal_of: fn(p) { match belt_node_lineage_terminal_read(instance: instance, node_id: p.node_id, history: history) {
+          LineageOpen => false
+          LineageTerminal { why: _ } => true
+          LineageTerminalUnreadable { reason: _ } => true
+        } })
       BeltDiscovered {
         owed: count(owed),
         enqueues: concat(

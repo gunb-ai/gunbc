@@ -1,8 +1,9 @@
 module extdeps.network.ipv4
 
-import std.types { list_length, Int, String, Bool, NonEmptyStr, List, range }
+import std.types { Int, String, Bool, NonEmptyStr, List, range }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { length }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -124,7 +125,7 @@ type OctetResult =
 
 fn parse_octet_at(parts: List<String>, position: Int) -> OctetResult {
   match parts |> get(position) {
-    Absent => OctetErr { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } }
+    Absent => OctetErr { error: Ipv4WrongOctetCount { observed_count: length(xs: parts) } }
     Present { value: raw } =>
       match parse_int(s: raw) {
         Absent => OctetErr { error: Ipv4OctetNotNumeric { position: position, raw: raw } }
@@ -140,8 +141,8 @@ fn parse_octet_at(parts: List<String>, position: Int) -> OctetResult {
 
 fn parse_ipv4_address(text: String) -> Ipv4ParseResult {
   let parts = split(s: text, delimiter: ".")
-  if list_length(items: parts) != 4 {
-    Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: list_length(items: parts) } }
+  if length(xs: parts) != 4 {
+    Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: length(xs: parts) } }
   } else {
     match parse_octet_at(parts: parts, position: 0) {
       OctetErr { error: e0 } => Ipv4ParseFailed { error: e0 }

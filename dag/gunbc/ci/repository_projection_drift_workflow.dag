@@ -1,5 +1,6 @@
 module gunbc.ci.repository_projection_drift_workflow
 
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { byte_size_count, minute_count }
 import std.optional { Optional, Present, Absent }
@@ -62,6 +63,7 @@ import gunbc.ci.repository_compose_overlay {
   overlay_note,
   seal_ran_and_repo_alive
 }
+import gunbc.toolchain_home_standing { admit_workflow_toolchain_homes, toolchain_home_refusal_reason }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   seed_build_step,
@@ -289,16 +291,13 @@ fn projection_drift_steps(
             id: none,
             uses: upload_artifact_action,
             with: Present {
-              value: [
-                kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name)),
-                kv(
-                  key: "path",
-                  value: yaml_string(
-                    s: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", heal_repair_candidate_artifact_name, "/"], "")
-                  )
-                ),
-                kv(key: "if-no-files-found", value: yaml_string(s: "error"))
-              ]
+              value: workflow_artifact_upload_with(
+                name: heal_repair_candidate_artifact_name,
+                path: join(["${{ runner.temp }}/", seal.compose_dir_name as String, "/target/", heal_repair_candidate_artifact_name, "/"], ""),
+                retention_days: none,
+                compression_level: none,
+                absence: AbsenceRefused,
+              )
             },
             env: none,
             if_condition: Present { value: seal_ran_and_repo_alive() },

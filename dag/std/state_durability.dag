@@ -9,9 +9,9 @@ import std.types {
   Int,
   List,
   NonEmptyStr,
-  String,
-  list_length,
+  String
 }
+import std.algebra { length }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data state_durability_boundary_contract: Disposition = Terminal {
@@ -237,7 +237,7 @@ fn state_durability_definition_linkage_admission_verdict(
   let unavailable = state_durability_definition_linkage_unavailable_assertions(
     verdicts: verdicts,
   )
-  if list_length(unavailable) > 0 {
+  if length(unavailable) > 0 {
     StateDefinitionLinkageAdmissionBlocked {
       assertions: unavailable,
     }
@@ -258,7 +258,7 @@ fn state_durability_definition_linkage_refusal<Target, ReadbackSubject>(
           realization: admission.realization,
           capability: admission.capability_version,
           assertions: assertions,
-          count: list_length(assertions),
+          count: length(assertions),
         },
       }
     StateDefinitionLinkageAdmissionPermitted => none

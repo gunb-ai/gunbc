@@ -15,6 +15,7 @@ import v2.std.node { node_same_occurrence,
   Atom,
   Node,
   TypeNode,
+  NodeOccurrence
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -26,7 +27,7 @@ data expr_refusal_log_leaf: Node = Node {
 }
 
 data expr_refusal_log_variable: SizeVariable = SizeVariable {
-  source: expr_refusal_log_leaf
+  source: NodeOccurrence { node: expr_refusal_log_leaf }
 }
 
 data expr_refusal_effect_operation: DeclarationRef = DeclarationRef {
@@ -70,7 +71,7 @@ test fn valid_log_base_two_projects_log_cost() -> Bool {
       argument: size_of(variable: expr_refusal_log_variable)
     )
   ) {
-    LogCost { variable: v } => node_same_occurrence(a: v.source, b: expr_refusal_log_leaf)
+    LogCost { variable: v } => node_same_occurrence(a: v.source.node, b: expr_refusal_log_leaf)
     _ => false
   }
 }

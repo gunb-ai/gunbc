@@ -4,6 +4,7 @@ import std.types { List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { ampere, millivolt, volt }
 import gunbc.fleet.fleet_asset_identity { p4261_k1_a }
+import product.electrical.photograph { BytesNotInStore }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
@@ -156,7 +157,7 @@ data k1_design: ElectricalDesignIdentity = "p4261-k1-a" as ElectricalDesignIdent
 
 data k1_listing: EvidenceRef = SellerListingPhotograph { listing: "eBay item 168742238639", read_on: "2026-10-04" }
 
-data k1_label_photo: EvidenceRef = OperatorPhotograph { taken_on: "2026-10-16", locator: "K1 label photograph sent in the session" }
+data k1_label_photo: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-16", locator: "K1 label photograph sent in the session")
 
 fn k1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
   component_instance_identity(design: k1_design, local_identity: local)
@@ -179,8 +180,19 @@ fn k1_marking(text: NonEmptyStr) -> MarkingReading {
 // trace. No baseline was recorded for any of these, so none joins its points.
 data k1_bench: BenchConditions = BenchConditions { power: Unpowered, module: ModuleUnrecorded }
 
-fn k1_photo(locator: NonEmptyStr) -> EvidenceRef {
-  OperatorPhotograph { taken_on: "2026-10-19", locator: locator }
+// The K1's frames are not in a photograph store at all yet: the operator's K1 shots have not arrived, so
+// every citation of one is a gap with the obligation that closes it. Naming the gap in the helper's own name
+// keeps a reader from mistaking a K1 receipt for a checkable one.
+data k1_unstored_bytes_obligation: NonEmptyStr = "the operator supplies the K1 frames; they are hashed into a k1 photograph store and this citation repoints at the stored row"
+
+fn k1_unstored_photo(taken_on: NonEmptyStr, locator: NonEmptyStr) -> EvidenceRef {
+  OperatorPhotograph {
+    citation: BytesNotInStore {
+      taken_on: taken_on,
+      locator: locator,
+      obligation: k1_unstored_bytes_obligation,
+    }
+  }
 }
 
 fn k1_said(verbatim: NonEmptyStr) -> EvidenceRef {
@@ -191,11 +203,11 @@ fn k1_point(local: NonEmptyStr, name: NonEmptyStr) -> ElectricalTerminalRef {
   terminal_ref(component: k1_component(local: local), terminal: name as TerminalIdentity)
 }
 
-data k1_arrow_photo: EvidenceRef = k1_photo(locator: "K1 photograph of U1_P5 with an arrow toward the '200' resistor and an oval beside the right-hand column, sent in the session")
+data k1_arrow_photo: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-19", locator: "K1 photograph of U1_P5 with an arrow toward the '200' resistor and an oval beside the right-hand column, sent in the session")
 
-data k1_pin22_photo: EvidenceRef = k1_photo(locator: "K1 photograph of U1_P5 with a line from the right-hand column's seventh lead from the top (pin 22), sent in the session")
+data k1_pin22_photo: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-19", locator: "K1 photograph of U1_P5 with a line from the right-hand column's seventh lead from the top (pin 22), sent in the session")
 
-data k1_pin21_photo: EvidenceRef = k1_photo(locator: "K1 photograph of U1_P5 with a thick line at pin 22 and a thin line from pin 21 to the beige part, sent in the session")
+data k1_pin21_photo: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-19", locator: "K1 photograph of U1_P5 with a thick line at pin 22 and a thin line from pin 21 to the beige part, sent in the session")
 
 data k1_u1_p5: ComponentInstanceIdentity = k1_component(local: "U1_P5")
 
@@ -401,7 +413,7 @@ data k1_designator_readings: List<DesignatorReading> = [
   DesignatorReading { specimen: k1_converter_far, designator: "U2_P2", evidence: k1_converter_area_photo_1031 },
 ]
 
-data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
+data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation { ambiguous_designators: [],
   asset: p4261_k1_a,
   design: k1_design,
   revision: p4261_k1,
@@ -455,11 +467,21 @@ data p4261_k1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
   measured: Present { value: k1_measured },
   input: Absent,
   unresolved: [
-    UnresolvedPart { designator: Present { value: "U4" }, marking: Absent, obligation: "the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage, so it takes several rails; consistent with an FPGA, a management SoC or a PCIe switch. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad. The E1's U4, read that way 2026-10-21, is Intel's Cyclone 10 GX 10CX085YF672E6G (e1 components); the K1's own stays unread", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed. On the E1 (2026-10-21) the 2x5 is J68, populated, and the shrouded connector is J24, a keyed two-row five-position female receptacle beside U53 (e1 components)", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Present { value: "2FA17 / RW186 (two), RW251" }, obligation: "three small BGAs beside U4: two-line marks in Micron's FBGA format, undecoded; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading", evidence: k1_listing },
-    UnresolvedPart { designator: Present { value: "U522" }, marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
-    UnresolvedPart { designator: Absent, marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U4" },
+        marking: Absent, obligation: "the one heatsinked device (bottom-centre, below J4): marking hidden under a finned heatsink held by two plastic push-pins, with its own local power stage, so it takes several rails; consistent with an FPGA, a management SoC or a PCIe switch. Read by removing the push-pin heatsink, unpowered, and refitting it with a new pad. The E1's U4, read that way 2026-10-21, is Intel's Cyclone 10 GX 10CX085YF672E6G (e1 components); the K1's own stays unread", evidence: k1_listing },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Absent, obligation: "a 2x5 pin header and a small shrouded connector below U4: function unread; candidates for JTAG or a UART console, unconfirmed. On the E1 (2026-10-21) the 2x5 is J68, populated, and the shrouded connector is J24, a keyed two-row five-position female receptacle beside U53 (e1 components)", evidence: k1_listing },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Present { value: "2FA17 / RW186 (two), RW251" }, obligation: "three small BGAs beside U4: two-line marks in Micron's FBGA format, undecoded; a neighbouring code (RW187) is identified elsewhere as Micron serial NOR boot flash, so configuration or firmware flash is the leading reading", evidence: k1_listing },
+    UnresolvedPart {
+        identity: ReadDesignator { designator: "U522" },
+        marking: Absent, obligation: "marking not legible in the listing close-up", evidence: k1_listing },
+    UnresolvedPart {
+        identity: Unlabelled { },
+        marking: Absent, obligation: "the 28-pin TSSOP below the lower capacitor: marking not legible in the close-up", evidence: k1_listing },
   ],
   designator_readings: k1_designator_readings,
 }
@@ -476,13 +498,13 @@ data converter_said_1023_k1: EvidenceRef = OperatorStatement { stated_on: "2026-
 
 data converter_said_1024: EvidenceRef = OperatorStatement { stated_on: "2026-10-24", verbatim: "1. 8.3k on both 2. 4k, 12k, 12k, 12k 3. I see BDFP 528 - the top two left pins In this picture are connected to 4r7 directly" }
 
-data converter_photo_1024: EvidenceRef = OperatorPhotograph { taken_on: "2026-10-24", locator: "bench-session photograph on the K1: the 8-lead package beside the 4R7 by U100, marked 'BDFP / 528', two of its leads at the inductor end running toward the inductor's pad (converter_said_1024, item 3)" }
+data converter_photo_1024: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-24", locator: "bench-session photograph on the K1: the 8-lead package beside the 4R7 by U100, marked 'BDFP / 528', two of its leads at the inductor end running toward the inductor's pad (converter_said_1024, item 3)")
 
-data k1_converter_area_photo_1031: EvidenceRef = k1_photo(locator: "Andonstar frame, upload a84251b4 (taken 2026-10-31): a 4R7 with the 8-lead converter to its right, one large ceramic and a via at the top right, four empty pads under the inductor, the U2_P2, D6_P2, Q5_P2, U50 and U550 silkscreens around it; cleaned, nothing broken or singed")
+data k1_converter_area_photo_1031: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-31", locator: "Andonstar frame, upload a84251b4 (taken 2026-10-31): a 4R7 with the 8-lead converter to its right, one large ceramic and a via at the top right, four empty pads under the inductor, the U2_P2, D6_P2, Q5_P2, U50 and U550 silkscreens around it; cleaned, nothing broken or singed")
 
-data k1_u4_area_photo_1031: EvidenceRef = k1_photo(locator: "upload 55f5fd51 (taken 2026-10-31): U4's heatsink with the board right of and below it: U21, U69 and U53 beside the heatsink, J24 and the J68 header to the right, V1_TFP, U1_2, U104, U105 and U5_2 above; below the heatsink the three inductors beside U4: 2R2 at the left with U9_P2 and V9_P2 beside it, the 4R7 nearest U4 with U100 above-left of it and the U10_P2 silkscreen below-left, the farther 4R7 with Q6_P2 at its left and Q5_P2, U2_P2, D6_P2, U50 and U550 below it, U1_TNE and U95 to its right, and 1R0 with U1_P2 at the bottom left")
+data k1_u4_area_photo_1031: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-31", locator: "upload 55f5fd51 (taken 2026-10-31): U4's heatsink with the board right of and below it: U21, U69 and U53 beside the heatsink, J24 and the J68 header to the right, V1_TFP, U1_2, U104, U105 and U5_2 above; below the heatsink the three inductors beside U4: 2R2 at the left with U9_P2 and V9_P2 beside it, the 4R7 nearest U4 with U100 above-left of it and the U10_P2 silkscreen below-left, the farther 4R7 with Q6_P2 at its left and Q5_P2, U2_P2, D6_P2, U50 and U550 below it, U1_TNE and U95 to its right, and 1R0 with U1_P2 at the bottom left")
 
-data k1_two_4r7_photo_1031: EvidenceRef = k1_photo(locator: "upload 16b4e93a (taken 2026-10-31): the two 4R7s one above the other with three '330' polymers at the left; each 4R7 has an 8-lead package just below it with two large ceramics to that package's right; the upper 4R7 (nearest U4) has U100 above-left of it and the U10_P2 silkscreen beside the package below it, the lower 4R7 has Q6_P2 at its left and Q5_P2, U2_P2, D6_P2 and U50 below; J68 and U1_TNE to the right")
+data k1_two_4r7_photo_1031: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-31", locator: "upload 16b4e93a (taken 2026-10-31): the two 4R7s one above the other with three '330' polymers at the left; each 4R7 has an 8-lead package just below it with two large ceramics to that package's right; the upper 4R7 (nearest U4) has U100 above-left of it and the U10_P2 silkscreen beside the package below it, the lower 4R7 has Q6_P2 at its left and Q5_P2, U2_P2, D6_P2 and U50 below; J68 and U1_TNE to the right")
 
 data k1_converter_near: ComponentInstanceIdentity = k1_component(local: "8-lead converter below the 4R7 nearest U4 (the U10_P2 silkscreen beside it, U100 above), marked BDFP 528")
 
@@ -554,7 +576,7 @@ data k1_near_converter_lead_resistances: List<ResistanceObservation> = [
   near_converter_lead_read_k1(number: 8, name: "FB", display: DisplayValue { ohms: 50000, approximate: false }, certainty: StatedPlainly),
 ]
 
-data k1_converter_lead_row_photo_1031: EvidenceRef = k1_photo(locator: "Andonstar frame at the same magnification, upload e59be0a7 (taken 2026-10-31, 'the k1, a bit cleaner'): the near-U4 converter's body with its marking legible, 'BDFP' over '528', the four inductor-side leads clean with distinct gaps between them, a small yellow ceramic above them, and the same white ring around the via and white line beside the chip as on the E1, so those are silkscreen")
+data k1_converter_lead_row_photo_1031: EvidenceRef = k1_unstored_photo(taken_on: "2026-10-19", locator: "Andonstar frame at the same magnification, upload e59be0a7 (taken 2026-10-31, 'the k1, a bit cleaner'): the near-U4 converter's body with its marking legible, 'BDFP' over '528', the four inductor-side leads clean with distinct gaps between them, a small yellow ceramic above them, and the same white ring around the via and white line beside the chip as on the E1, so those are silkscreen")
 
 // THE K1'S NEAR-U4 CONVERTER WAS LIFTED (2026-11-01), by a slip of the plan rather than of the probe:
 // the operator, practising the lift with the iron, took U10_P2 off the K1 instead of the E1. The part is
