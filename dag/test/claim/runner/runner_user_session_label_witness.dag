@@ -100,7 +100,7 @@ import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_conv
 import extdeps.github.actions { Workflow }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with, runner_user_session_receipt_unreadable }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, runner_user_session_run_scan_step }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
+import gunbc.runner.runner_slot_allocation { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
