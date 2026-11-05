@@ -203,11 +203,13 @@ fn attempt_slots_cutover_run_ref() -> DeclarationRef {
 // named sum already exists (DESIGN 2: a String leaf hiding named parts is anemic modeling). The spelling
 // belongs at a presentation edge; there is none here, so the sum is carried as itself.
 //
-// NO GENERATION IN THE READING. It used to carry one, spelled as a bare Int, and nothing ever bound it:
-// every use site matches the field with _, because the classification compares payload BYTES and the
-// carry's guard compares the attempt's IDENTITY (raced.identity == source_record.identity), not a number.
-// A field no consumer reads is an unfenced second copy of a fact the store owns (DESIGN 3c), so it is
-// gone. The generations that ARE load-bearing enter through attempt_lifecycle's own read
+// NO GENERATION IN THE READING. It used to carry one, spelled as a bare Int, and no CONSUMER ever read
+// it: every use site in the module and in the belt matches the field with _, because the classification
+// compares payload BYTES and the carry's guard compares the attempt's IDENTITY (raced.identity ==
+// source_record.identity), not a number. The one place that did bind it was a witness helper,
+// census_target_held_at, asking the census what generation the target side read as; that check now reads
+// the store directly, so the field leaves with it. A field no consumer reads is an unfenced second copy
+// of a fact the store owns (DESIGN 3c), so it is gone. The generations that ARE load-bearing enter through attempt_lifecycle's own read
 // (AttemptSlotHeld { record, generation: CasGeneration }) and through the CAS commit
 // (CasCommitted { committed.generation }); the carry outcome and the record below carry exactly those, as
 // the CasGeneration carrier, and the Int appears only at that wire edge.
