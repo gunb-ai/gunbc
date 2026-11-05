@@ -5275,7 +5275,7 @@ type BeltOccurrencePopulation
   = OccurrencePopulationObserved { occurrences: List<DispatchAttemptOccurrence> }
   | OccurrencePopulationRefused { reason: String }
 
-// Attempt workers live on the system manager; supervisors remain user-manager transients.
+// Attempt workers live on the system manager (the gunbc-attempt-* units this census enumerates).
 fn belt_occurrence_unit_names() -> List<String>? {
   let attempts = systemd.Systemctl.ListUnitsAllLoaded(pattern: "gunbc-attempt-*" as NonEmptyStr)
   if !attempts.success {
@@ -8167,7 +8167,7 @@ fn belt_commit_outcome_receipt_json(r: BeltCommitOutcomeReceipt) -> JsonValue {
 }
 
 // THE PERSISTED OUTCOME'S NAME IS SPELLED ONCE, as the AttemptCommitOutcomeLast row of the attempt-state
-// store: the persist pass writes it and the supervisor's history line reads it through that one member.
+// store: the persist pass writes it and the commit-record-standing reader reads it through that one member.
 
 // THE COMMIT STEP'S OUTCOME KINDS, spelled once. The persisted record carries an outcome's kind, never
 // its payload, so the writer (belt_commit_outcome_receipt, belt_commit_outcome_json_value) and the
