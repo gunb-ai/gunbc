@@ -1,0 +1,1 @@
+{"id": "4ebc95d0c29acebe", "event": {"schema": "roadmap-event/v3", "node": "shell-dag-ci-fmt-gate-line", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "", "kind": "claimed", "recorded_at": "2026-11-05T16:18:48Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
