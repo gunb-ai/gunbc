@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool { attempt_exit_entry_parts, Atte
 import extdeps.systemd.service_exec { exec_word_render, ExecWordRendered, ExecWordRefused }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, srv1_lab_dashboard_instance, srv1_dashboard_lab_id }
-import gunbc.roadmap.roadmap_session_attempt_slots_root { SessionAttemptSlotsStore, session_attempt_slot_store_handle, WorkerAttemptSlots, session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { SessionAttemptSlotsStore, session_attempt_slot_store_handle, WorkerAttemptSlots, session_attempt_slots_store, session_attempt_slots_path, session_attempt_slots_directory, SessionAttemptSlotsStoreReady, SessionAttemptSlotsStoreUnready, session_reviewer_slots_store, SessionReviewerSlotsStoreReady, SessionReviewerSlotsStoreUnready, session_reviewer_slots_path, ReviewerAttemptSlots, WorkerSlotLane, ReviewerSlotLane, session_attempt_slot_store_admit, SessionSlotLaneAdmitted, SessionSlotLaneCrossed }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs, FilePath }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import gunbc.systemd_unit_invocation_liveness {
@@ -1876,5 +1876,41 @@ test fn an_operator_settle_of_a_slot_with_no_ledger_seat_closes_the_slot_and_suc
   if !launched_without_a_ledger_seat(dir: dir) { false } else {
     let s = operator_settle(dir: dir)
     operator_release_succeeded(s: s) && slot_is_terminal(dir: dir) && (released_unit(s: s) == "")
+  }
+}
+// THE CROSSING GUARD, WITNESSED FROM BOTH SIDES ON REAL MINTS (review 87553). The lane-typed ref is
+// the whole defense of the merged settlement entry: a pass states the lane it acts as, and the minted
+// lane in the store must match. A WORKER ref handed to the reviewer lane lands refused with the
+// mismatch named; a REVIEWER ref handed to the worker lane lands refused the other way; and each
+// truthful pairing is admitted with the store handle in hand. The refusal is the point -- an admit of
+// the crossed pair would mean the worker settlement read, or released, the reviewer's attempt ledger.
+test fn a_worker_store_ref_refuses_the_reviewer_lane_and_the_reverse() -> Bool {
+  let dir = fresh_dir(tag: "lane-cross")
+  let _made = shell.Mkdir.Parents(path: session_reviewer_slots_path(instance: instance_at(dir: dir)) as FilePath)
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: worker_stores } => match session_reviewer_slots_store(instance: instance_at(dir: dir)) {
+      SessionReviewerSlotsStoreReady { store } => {
+        let reviewer_ref = ReviewerAttemptSlots(store)
+        let worker_crossed = match session_attempt_slot_store_admit(ref: worker_stores.slots, acting_as: ReviewerSlotLane, acting_for: srv1_dashboard_lab_id) {
+          SessionSlotLaneCrossed { detail } => string_contains(s: detail, pattern: "acts as reviewer")
+          SessionSlotLaneAdmitted { store: _ } => false
+        }
+        let reviewer_crossed = match session_attempt_slot_store_admit(ref: reviewer_ref, acting_as: WorkerSlotLane, acting_for: srv1_dashboard_lab_id) {
+          SessionSlotLaneCrossed { detail } => string_contains(s: detail, pattern: "acts as worker")
+          SessionSlotLaneAdmitted { store: _ } => false
+        }
+        let worker_admitted = match session_attempt_slot_store_admit(ref: worker_stores.slots, acting_as: WorkerSlotLane, acting_for: srv1_dashboard_lab_id) {
+          SessionSlotLaneAdmitted { store } => store.root == session_attempt_slots_path(instance: instance_at(dir: dir))
+          SessionSlotLaneCrossed { detail: _ } => false
+        }
+        let reviewer_admitted = match session_attempt_slot_store_admit(ref: reviewer_ref, acting_as: ReviewerSlotLane, acting_for: srv1_dashboard_lab_id) {
+          SessionSlotLaneAdmitted { store } => store.root == session_reviewer_slots_path(instance: instance_at(dir: dir))
+          SessionSlotLaneCrossed { detail: _ } => false
+        }
+        worker_crossed && reviewer_crossed && worker_admitted && reviewer_admitted
+      }
+      SessionReviewerSlotsStoreUnready { detail: _ } => false
+    }
   }
 }

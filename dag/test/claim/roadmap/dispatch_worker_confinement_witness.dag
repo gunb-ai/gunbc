@@ -171,8 +171,8 @@ test fn the_worker_unit_stops_with_its_process_and_writes_its_exit_record() -> B
 // no role keeps RemainAfterExit.
 test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_repo_root() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
-  let supervisor = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/supervisor", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr)
+  let props = dispatch_review_unit_properties(instance: inst, granted: inst.dispatch_worker_memory_max, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
+  let supervisor = dispatch_review_unit_properties(instance: inst, granted: inst.dispatch_worker_memory_max, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/supervisor", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/s" as NonEmptyStr)
   has_property(props: props, needle: "ReadWritePaths=/state/a/review")
     && !has_property(props: props, needle: "/.git/worktrees")
     && !has_property(props: props, needle: "ReadWritePaths=/i/attempt-exit-spool")
