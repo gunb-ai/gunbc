@@ -53,7 +53,7 @@ fn physics() -> List<MarkdownBlock> {
     p(text: "A component settles where the heat it makes equals the heat the air carries away: roughly inlet temperature plus a rise that grows with its power and shrinks with the airflow across it. That leaves four levers. Make less heat (fewer runners, lower clock or power cap; costs throughput). Move more air (fan duty, or shrouds, placement and blockage; costs noise or hardware work). Start cooler (room or inlet temperature, never measured). Tolerate more: not ours to move, since part limits are the vendor's and the standard's."),
     p(text: "So the question the repository must answer before anyone touches a fan: for this assembled host, at this room temperature and workload, which combination of load, clock and fan program keeps every part inside its limit at an acceptable noise level? If none does, the answer is derate or change hardware, stated by the model rather than discovered from a hot DIMM."),
     p(text: "That thermal question is the parent problem and the final acceptance. The incident also showed that the fleet could not answer it safely: it could not see the machines without an administrator login, and it could not change them without unscoped raw writes. srv3 and srv4 are simulated production that is still being qualified, so the temptation is to treat them as development machines and open a shell. The rule here is the opposite: a need for host access is first an operational gap to close, by asking what production-grade observation should have answered the question. Thesis: a restricted machine is operable only when the fleet can observe it without mutation, escalate diagnosis deliberately, and converge a qualified safe state without relying on an unrestricted shell."),
-    p(text: "The program therefore has two workstreams that must not absorb each other. Workstream A, observation and access (section 5), is a prerequisite: it is how the thermal work sees and diagnoses. Workstream B, thermal policy and convergence (section 7), is the objective, and it is the first concrete consumer that keeps A from becoming decorative (DESIGN §3c). srv3 and srv4 are the incident specimen and the first end-to-end subjects, not the final scope (section 6)."),
+    p(text: "The program therefore has two workstreams that must not absorb each other. Workstream A, observation and access (section 5), is a prerequisite: it is how the thermal work sees and diagnoses. Workstream B, thermal policy and convergence (section 8), is the objective, and it chooses from the power and thermal model of section 7, and it is the first concrete consumer that keeps A from becoming decorative (DESIGN §3c). srv3 and srv4 are the incident specimen and the first end-to-end subjects, not the final scope (section 6)."),
   ]
 }
 
@@ -115,7 +115,7 @@ fn knowledge() -> List<MarkdownBlock> {
 fn findings() -> List<MarkdownBlock> {
   [
     h2(text: "4. Defects to fix regardless"),
-    p(text: "None of these depends on the incident decisions in section 8. They stay subordinate to the thermal question: each is fixed because it blocked or falsified an answer to it."),
+    p(text: "None of these depends on the incident decisions in section 9. They stay subordinate to the thermal question: each is fixed because it blocked or falsified an answer to it."),
     h3(text: "A. The CPU power figure is the wrong number"),
     p(text: "extdeps.cpu.ampere::altra_max_m12830_catalog records tdp_watts 183. Ampere lists 183 W as usage power; the M128-30 TDP is 250 W. Every consumer understates worst-case heat by 67 W, and product.cooling_qualification passes the W1 with 67 W of fictional margin. Fix: carry design power (250 W, cited) and usage power (183 W, with its workload basis) as two facts; cooling and power-supply checks read design power."),
     h3(text: "B. Memory has no temperature or power facts, and the power arithmetic counts dies"),
@@ -220,15 +220,36 @@ fn coverage() -> List<MarkdownBlock> {
   ]
 }
 
+fn power_model() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Power and thermal model, modeled before anything converges"),
+    p(text: "Operator objective, 2026-11-05: no DIMM in the owned fleet rises above 85 °C, under any admitted workload. 85 °C is where DDR4 leaves its normal band and must refresh twice as often (section 3), so this is the line where the part starts paying more power for the same work and loses retention margin. It is a hard constraint: a candidate that predicts more is excluded before ranking, never traded against throughput or noise (DESIGN §3d). The control target sits below 85 °C by a margin derived from the DIMM sensor's cited accuracy and the measured thermal time constant, not picked."),
+    h3(text: "Why this is hard now: Strata workers"),
+    p(text: "Strata workers are being added across the fleet. Strata with CPU-computed experts streams expert weights from DRAM for every token (srv3's cell runs pool workers beside two RTX 2000 Ada cards, gunbc.serving.strata_ada_pair_cell::srv3_strata_flags), so it is sustained, near-peak memory traffic: the workload that heats DIMMs most, on hosts that already reached 100 to 110 °C with CI alone at full width. CI and Strata therefore draw on one thermal budget per host. A host's schedulable capacity is bounded by its thermal envelope, not by its cores or its memory size, and placement must see that envelope; otherwise every new Strata worker is a fresh incident. This changes strategy outside this plan: how many workers a host is offered for, which workloads share a host, and whether some chassis can carry Strata at all."),
+    h3(text: "The model, in dependency order"),
+    p(text: "Each node lands as a model before any stage consumes it (DESIGN §6). Homes are existing modules where one exists; a new home is named only where none does."),
+    ol(items: [
+      li(text: "P1. Limits as cited facts. DIMM bands (normal to 85 °C, extended to 95 °C with doubled refresh, out of spec above), DIMM sensor accuracy, CPU and regulator limits, each with CitedFigureStanding. Homes: extdeps.memory.samsung, extdeps.cpu.ampere, the board module. Absorbs B2's limit rows."),
+      li(text: "P2. Heat made, as functions, not constants. CPU power as a function of clock or power cap and utilisation (Ampere's usage power and TDP, not one figure). DIMM power as a function of traffic, rank and die count and temperature, by the DDR4 current-based method (background, activate, read and write, refresh) with the part's IDD values from its datasheet, replacing product.node_power_envelope::memory_power's per-chip constant, which has no traffic or temperature term. Accelerator and board power. Home: product.node_power_envelope, extended rather than forked."),
+      li(text: "P3. Heat removed, measured per host. Steady-state rise of each DIMM, the SoC and the regulators above inlet as a function of chassis and CPU fan duty, with the time constant (the SoC went from 85 to 105 °C in about 3 minutes). This is the causal model that product.mt_collins_power_policy::mt_collins_causal_model leaves unestablished; it is an observation receipt in the gunbc fleet layer, produced by a controlled sweep through workstream A, never an authored constant."),
+      li(text: "P4. Workload profiles, measured. For each workload class (CI runner, Strata worker with CPU experts, Strata GPU cell, idle): CPU power, memory traffic and accelerator power per unit of admitted work. Measured on a converged host under representative load; an unmeasured class stays SelectionNeedsEvidence, not a guess."),
+      li(text: "P5. One decision subject. Variables: runner width, Strata worker count, clock or power cap, fan program, memory throttle where the firmware exposes it, workload mix per host. Hard constraints: DIMM ≤ 85 °C less margin, CPU and regulator limits, PSU capacity. Objective: accepted work per host, with the CI and Strata weighting set by the operator. product.fleet_operating_point and product.mt_collins_power_policy already answer this question for two deployments with two shapes; P5 reconciles them into one std.decision subject instantiated per site rather than adding a third (DESIGN §6b root generalization)."),
+      li(text: "P6. Placement consumes the envelope. Fabric selection and runner admission treat a host's remaining thermal headroom, predicted by P2 to P4, as a supply constraint, so admitting a Strata worker that would push a DIMM past the target is refused at admission rather than discovered in a temperature log. Home: product.fabric.selection and gunbc.fabric.fabric_executor_class::CapacityClassAdmission."),
+      li(text: "P7. Run-time guard, in lever order. When a DIMM approaches the target, act in the priority order of section 8's memory heat levers: raise chassis air, then shed or move memory-heavy work through P6, then throttle; firmware automatic stays the last resort on a lost reading. This is B4's fan policy and P6's admission working as one loop, not a third policy."),
+    ]),
+    p(text: "If P5 excludes every candidate at the capacity the fleet needs, the answer is a hardware change (DIMM air shrouds, a different chassis, one DIMM per channel, lower-rank DIMMs), stated by the model with the evidence that excluded each candidate."),
+  ]
+}
+
 fn workstream_b() -> List<MarkdownBlock> {
   [
-    h2(text: "7. Workstream B: thermal policy and convergence"),
+    h2(text: "8. Workstream B: thermal policy and convergence"),
     ol(items: [
       li(text: "B1. Baseline srv3/srv4 through A1 and A3: every temperature, fan speed and duty, memory-error counts, clock caps, runner load, BMC event log. Record the overnight runner and clock caps as incident overrides with end conditions. Decide the home of the section 6 standing."),
       li(text: "B2. Correct the facts: findings A and B, and the height and margin checks of C."),
       li(text: "B3. Complete each host's cooling assembly: fan parts, placement and direction, splitter topology, controller groups, air paths. srv3/srv4 first, then srv1/srv2, Butch (srv14), H11 (host-6ce85c), mtcollins1."),
       li(text: "B4. One fan policy: adopt the decoded two-group program as the starting candidate, drive the chassis group from the hottest of SoC, DIMMs and regulators, make an unknown reading mean full speed, and retire the overlapping policies (finding D)."),
-      li(text: "B5. Choose the operating point: extend product.fleet_operating_point so runner width, clock or power cap, accelerator power and fan program are chosen together against component limits and the noise ceiling, through std.decision. Outcomes are std.decision's (SelectedWithin, SelectionNeedsEvidence, all candidates excluded by hard constraints, which is the hardware-change answer), not a new thermal result type (DESIGN §3d)."),
+      li(text: "B5. Choose the operating point through the one power and thermal decision subject of section 7 (P5), so runner width, Strata worker count, clock or power cap, accelerator power, memory throttle and fan program are chosen together against component limits, the DIMM 85 °C constraint first, and the noise ceiling. Outcomes are std.decision's (SelectedWithin, SelectionNeedsEvidence, all candidates excluded by hard constraints, which is the hardware-change answer), not a new thermal result type (DESIGN §3d)."),
       li(text: "B6. Project the chosen point into each controller family and the host OS, with operations typed by actuator group (finding H), applied in thermally safe order (cooling raised before heat admission), read back independently, persistence tested across reboot and BMC reset."),
       li(text: "B7. Qualify srv3/srv4 under sustained representative load: stabilized temperatures, throttling, memory errors and BMC event-log changes."),
       li(text: "B8. Repeat B3 to B7 for every identity whose section 6 standing is active or commissioning."),
@@ -248,7 +269,7 @@ fn workstream_b() -> List<MarkdownBlock> {
 
 fn decisions() -> List<MarkdownBlock> {
   [
-    h2(text: "8. Operator decisions"),
+    h2(text: "9. Operator decisions"),
     p(text: "The incident's five questions with a recommendation each. Every answer is interim until B5 can produce a measured one."),
     ol(items: [
       li(text: "Runner cap (keep 12, change, restore 19): keep 12 as a recorded incident override with an end condition; the lasting number comes from B5."),
@@ -257,12 +278,16 @@ fn decisions() -> List<MarkdownBlock> {
       li(text: "CPU fan at 50%: not as policy. 35% was too little at full load and 3.0 GHz; the CPU group should follow its own curve and the DIMMs should be cooled by the chassis group."),
       li(text: "Scope and read back every fan change: yes (finding H, B6)."),
       li(text: "New: may fleet_health_check run on a schedule (A2)? Recommended yes. A new scheduled job needs operator sign-off under the closed job roster; a manual dispatch mode does not."),
+      li(text: "Decided 2026-11-05: DIMMs stay at or below 85 °C fleet-wide, as a hard constraint (section 7)."),
+      li(text: "New: the P5 objective weighting between CI throughput and Strata serving. Recommended: no fixed weight until P4 has measured both; until then Strata placement on srv3/srv4 is admitted only where P6 can show headroom, and CI keeps its 12-runner override."),
+      li(text: "New: whether the noise ceiling (60% sustained duty) stays a hard constraint or becomes a cost once DIMM safety needs more air. Recommended: a cost; the DIMM limit outranks it."),
+      li(text: "New: Strata rollout on hosts without a measured P3 envelope. Recommended: hold, or admit at reduced width with the guard of P7 live, never at full width blind."),
     ]),
   ]
 }
 
 fn host_thermal_operating_point_body() -> List<MarkdownBlock> {
-  concat(concat(concat(concat(concat(concat(concat(concat(incident(), physics()), inventory()), knowledge()), findings()), access()), coverage()), workstream_b()), decisions())
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(incident(), physics()), inventory()), knowledge()), findings()), access()), coverage()), power_model()), workstream_b()), decisions())
 }
 
 data host_thermal_operating_point_plan: Plan = Plan {
@@ -270,7 +295,7 @@ data host_thermal_operating_point_plan: Plan = Plan {
   title: "Host thermal operating point: srv3/srv4 running too hot, worked through observation and access to a chosen, converged and qualified thermal operating point across the owned fleet",
   body: host_thermal_operating_point_body(),
   retirement: PlanRetiresWhen {
-    condition: unbound_dissolution(description: "Retire when every owned identity carries exactly one thermal standing, every active one has an operating point chosen by product.fleet_operating_point from cited part limits and measured host evidence, converged per actuator group with independent readback and qualified under sustained load, the overlapping fan policies are retired into one, and tier 1 and tier 2 reads run without an administrator credential."),
+    condition: unbound_dissolution(description: "Retire when every owned identity carries exactly one thermal standing, every active one has an operating point chosen by the one power and thermal decision subject (section 7 P5, reconciling product.fleet_operating_point and product.mt_collins_power_policy) from cited part limits, measured host and workload evidence, with no DIMM above 85 °C under sustained CI and Strata load, placement refusing work beyond the thermal headroom of its host, converged per actuator group with independent readback and qualified under sustained load, the overlapping fan policies are retired into one, and tier 1 and tier 2 reads run without an administrator credential."),
   },
   projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
 }
