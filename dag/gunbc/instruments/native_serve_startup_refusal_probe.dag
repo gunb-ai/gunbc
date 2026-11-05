@@ -46,7 +46,7 @@ fn missing_evidence(stderr: String) -> List<String> {
   filter(map(device_crypto_obligations, o => device_crypto_obligation_evidence(o: o) as String), e => (split(s: stderr, delimiter: e) |> count) < 2)
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
   let refused_status = native_serve_first_status(statuses: refused_statuses)
   let refused_stderr = native_serve_first_text(items: refused_stderrs)
   if refused_status == -1 {
