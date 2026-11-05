@@ -1,8 +1,8 @@
 module gunbc.host.host_reset_return
 
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
-import std.algebra { trim }
+import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
+import std.algebra { trim, length }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash {
   ContentHash,
@@ -174,7 +174,7 @@ fn reset_observer_selections_for(
   subject_roster: List<NonEmptyStr>,
   peer_roster: List<NonEmptyStr>,
 ) -> List<ResetObserverSelection> {
-  if list_length(peer_roster) == 0 {
+  if length(peer_roster) == 0 {
     [ObserverSelectionRefused { cause: NoPeerAvailable { subject: subject } }]
   } else {
     map(
@@ -211,7 +211,7 @@ fn reset_observer_selections(subject_roster: List<NonEmptyStr>, peer_roster: Lis
 // options is a mode nobody can select, which is a silent removal of a capability rather than a
 // diagnostic about one.
 fn reset_dispatch_pairings(subject_roster: List<NonEmptyStr>, peer_roster: List<NonEmptyStr>) -> ResetDispatchAssignment {
-  if list_length(subject_roster) == 0 {
+  if length(subject_roster) == 0 {
     DispatchAssignmentRefused { cause: NoResetSubjectRostered }
   } else {
     reset_dispatch_assignment(

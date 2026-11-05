@@ -1,7 +1,8 @@
 module test.claim.host.host_axis_caps_witness
 
 import std.logic { Bool }
-import std.types { NonEmptyStr, String, List, Int, list_length }
+import std.types { NonEmptyStr, String, List, Int }
+import std.algebra { length }
 import gunbc.host.host_axis_caps {
   CapMember,
   control_shadow_residue_paths,
@@ -77,7 +78,7 @@ test fn caps_idempotence_zero_effects() -> Bool {
     && caps_teardown_count(desired: d, observed: d) == 0
     && caps_refusal_count(desired: d, observed: d) == 0
     && match caps_effects(desired: d, observed: d) {
-         EffectsReady { effects: e } => list_length(items: e) == 0
+         EffectsReady { effects: e } => length(xs: e) == 0
          ApplyRefused { refusals: _ } => false
        }
 }
@@ -105,7 +106,7 @@ test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
   caps_refusal_count(desired: d, observed: observed) == 1
     && caps_teardown_count(desired: d, observed: observed) == 0
     && match caps_effects(desired: d, observed: observed) {
-         ApplyRefused { refusals: r } => list_length(items: r) == 1
+         ApplyRefused { refusals: r } => length(xs: r) == 1
          EffectsReady { effects: _ } => false
        }
     && caps_teardown_count(

@@ -55,7 +55,7 @@ module gunbc.host.host_name_resolution
 // those two fields now names the code that reads it; an earlier draft named `observed` here and read it
 // nowhere, which is the §3c red rather than a modelling choice.
 
-import std.types { String, Bool, List, Int, NonEmptyStr, list_length }
+import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra {
   Cons,
@@ -67,6 +67,7 @@ import std.algebra {
   skip,
   zip_eq,
   non_empty_to_list,
+  length
 }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
@@ -244,8 +245,8 @@ fn host_part_is(labels: List<DnsLabel>) -> List<DnsLabel>? {
 fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
   let name_labels = resolvable_name_labels(name: name)
   let zone_labels = zone.suffix.labels
-  let name_count = list_length(items: name_labels)
-  let zone_count = list_length(items: zone_labels)
+  let name_count = length(xs: name_labels)
+  let zone_count = length(xs: zone_labels)
   // Guarded to zero rather than allowed negative: the suffix test below is correct either way (a zone at
   // least as long as the name can never be a proper suffix of it, and `zip_eq` against a prefix of length
   // <= 0 is only ever true against an empty name), but a negative label count is not a value any callee

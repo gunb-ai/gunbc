@@ -91,6 +91,7 @@ import gunbc.worker_turn_snapshot_custody {
   claude_worker_turn_snapshot_custody,
   cursor_worker_turn_snapshot_custody,
 }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -148,7 +149,7 @@ test fn the_captured_rate_limit_line_decodes_both_windows_in_basis_points() -> B
   match claude_code_stream_line(line: receipt_rate_limit_allowed) {
     ClaudeCodeRateLimitEventLine { info } =>
       info.status as String == "allowed"
-        && list_length(items: info.windows) == 2
+        && length(xs: info.windows) == 2
         && any(info.windows, w => w.name as String == "five_hour" && basis_point_count(bp: w.utilization) == 100)
         && any(info.windows, w => w.name as String == "seven_day" && basis_point_count(bp: w.utilization) == 4500)
     ClaudeCodeResultLine { result: _ } => false

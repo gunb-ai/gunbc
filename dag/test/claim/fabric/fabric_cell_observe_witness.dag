@@ -1,6 +1,7 @@
 module test.claim.fabric.fabric_cell_observe_witness
 
-import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
@@ -302,8 +303,8 @@ test fn witness_observer_conserves_every_expected_address() -> Bool {
     probe: FabricCellHostProbe { host: operator_host_srv3, namespaces: [], addresses: [] },
     slot: observe_slot(),
   )
-  list_length(items: full.observations) == list_length(items: fabric_cell_resource_addresses())
-    && list_length(items: empty.observations) == list_length(items: fabric_cell_resource_addresses())
+  length(xs: full.observations) == length(xs: fabric_cell_resource_addresses())
+    && length(xs: empty.observations) == length(xs: fabric_cell_resource_addresses())
 }
 
 // LAW 7 -- TWO ENUMERATIONS THAT DISAGREE REFUSE RATHER THAN LETTING THE FIRST WIN. The same rule
@@ -375,7 +376,7 @@ test fn witness_observer_unknown_name_is_foreign_never_a_minted_slot() -> Bool {
   ) {
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
-      list_length(items: ss) == 1
+      length(xs: ss) == 1
         && fold(ss, init: false, f: (acc, s) => acc || fabric_cell_discovered_subject_wire(s: s) == "foreign:fabric-cells-root:srv3-99")
   }
 }
@@ -450,7 +451,7 @@ test fn witness_observer_duplicate_listed_names_are_one_subject() -> Bool {
     ])
   ) {
     DiscoveryRefused { host: _, cause: _ } => false
-    DiscoveryEnumerated { host: _, subjects: ss } => list_length(items: ss) == 1
+    DiscoveryEnumerated { host: _, subjects: ss } => length(xs: ss) == 1
   }
 }
 
@@ -464,7 +465,7 @@ test fn witness_observer_distinct_listed_names_stay_distinct() -> Bool {
     ])
   ) {
     DiscoveryRefused { host: _, cause: _ } => false
-    DiscoveryEnumerated { host: _, subjects: ss } => list_length(items: ss) == 2
+    DiscoveryEnumerated { host: _, subjects: ss } => length(xs: ss) == 2
   }
 }
 
@@ -495,11 +496,11 @@ test fn witness_observer_converged_probe_classifies_as_satisfied() -> Bool {
     expected_slots: expected,
     readback: readback,
   )
-  list_length(items: expected) > 0
-    && list_length(items: classified.unexpected) == 0
+  length(xs: expected) > 0
+    && length(xs: classified.unexpected) == 0
     && fold(classified.standings, init: true, f: (acc, s) => acc && standing_is_satisfied(s: s))
-    && list_length(items: classified.standings)
-      == list_length(items: expected) * list_length(items: fabric_cell_resource_addresses())
+    && length(xs: classified.standings)
+      == length(xs: expected) * length(xs: fabric_cell_resource_addresses())
 }
 
 // EVERY GIVEN SLOT FULLY PROVISIONED: the converged_probe shape, quantified over a slot list.
@@ -687,7 +688,7 @@ test fn witness_observer_other_hosts_committed_name_is_not_this_hosts_expected_c
   ) {
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
-      list_length(items: ss) == 1
+      length(xs: ss) == 1
         && fold(ss, init: true, f: (acc, sub) => acc && !discovered_is_expected(s: sub))
         && fold(ss, init: false, f: (acc, sub) => acc || discovered_is_cross_host(s: sub))
   }
@@ -782,7 +783,7 @@ test fn witness_observer_converged_projection_is_an_observed_population() -> Boo
 test fn witness_observer_refused_root_enumeration_refuses_both_populations() -> Bool {
   let projection = fabric_cell_observe(probe: converged_probe_with_unreadable_root())
   let discovery_refusals = fabric_cell_discovery_refusals(discovery: projection.discovery)
-  list_length(items: discovery_refusals) == 1
+  length(xs: discovery_refusals) == 1
     && count_refused(os: fabric_cell_readback_observations(r: projection.expected_readback)) > 0
     && population_is_refused(p: admit_fabric_cell_probe(probe: converged_probe_with_unreadable_root()))
 }
@@ -796,7 +797,7 @@ fn fabric_cell_readback_observations(r: FabricCellHostReadback) -> List<FabricCe
 // double-count one subject in the plan identity. The converged probe's own root listing holds
 // exactly the expected cell, and it contributes no refusal.
 test fn witness_observer_expected_cell_is_not_double_counted_from_discovery() -> Bool {
-  list_length(items: fabric_cell_discovery_refusals(
+  length(xs: fabric_cell_discovery_refusals(
     discovery: fabric_cell_discovered_subjects(probe: converged_probe())
   )) == 0
 }
@@ -859,14 +860,14 @@ test fn witness_observer_unconsumed_probe_entries_refuse_rather_than_vanishing()
       }],
     ),
   })
-  list_length(items: refusals) == 2
+  length(xs: refusals) == 2
 }
 
 // AND THE PROBE THAT MATCHES THE AUTHORITY LEAVES NOTHING OVER. The control: without it the row
 // above passes on an implementation that refuses every supplied entry, which would make a correct
 // probe unusable.
 test fn witness_observer_matching_probe_leaves_nothing_unconsumed() -> Bool {
-  list_length(items: fabric_cell_unconsumed_probe_refusals(probe: converged_probe())) == 0
+  length(xs: fabric_cell_unconsumed_probe_refusals(probe: converged_probe())) == 0
 }
 
 // AND AN UNCONSUMED ENTRY REACHES THE POPULATION, not merely a list nobody reads. The seam again:
@@ -998,7 +999,7 @@ test fn witness_observer_unexpected_committed_slot_refuses_the_population() -> B
     addresses: converged_probe().addresses,
   }
   let refusals = fabric_cell_projection_refusals(projection: fabric_cell_observe(probe: probe))
-  list_length(items: refusals) == 1
+  length(xs: refusals) == 1
     && population_is_refused(p: admit_fabric_cell_probe(probe: probe))
 }
 
@@ -1009,8 +1010,8 @@ test fn witness_observer_unexpected_committed_slot_refuses_the_population() -> B
 test fn witness_observer_cross_host_artifact_is_not_the_foreign_refusal() -> Bool {
   let cross = refusal_identities(host: operator_host_srv4, entries: ["srv3-06"])
   let foreign = refusal_identities(host: operator_host_srv4, entries: ["srv3-99"])
-  list_length(items: cross) == 1
-    && list_length(items: foreign) == 1
+  length(xs: cross) == 1
+    && length(xs: foreign) == 1
     && !fold(cross, init: false, f: (acc, c) =>
          acc || fold(foreign, init: false, f: (seen, g) => seen || c == g))
 }
@@ -1039,14 +1040,14 @@ test fn witness_observer_unconsumed_refusals_are_order_independent() -> Bool {
   let b = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 100 }
   let forward = stray_probe_identities(first: a, second: b)
   let reverse = stray_probe_identities(first: b, second: a)
-  list_length(items: forward) == 2 && identity_lists_equal(a: forward, b: reverse)
+  length(xs: forward) == 2 && identity_lists_equal(a: forward, b: reverse)
 }
 
 // AND DUPLICATES OF ONE SUBJECT ARE ONE REFUSAL, which is the same population question asked the
 // other way: an order that is stable but double-counts is no better than one that reorders.
 test fn witness_observer_duplicate_unconsumed_probes_are_one_refusal() -> Bool {
   let a = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 99 }
-  list_length(items: stray_probe_identities(first: a, second: a)) == 1
+  length(xs: stray_probe_identities(first: a, second: a)) == 1
 }
 
 fn stray_probe_identities(first: RunnerSlotIdentity, second: RunnerSlotIdentity) -> List<String> {
@@ -1077,7 +1078,7 @@ fn stray_probe_identities(first: RunnerSlotIdentity, second: RunnerSlotIdentity)
 }
 
 fn identity_lists_equal(a: List<String>, b: List<String>) -> Bool {
-  list_length(items: a) == list_length(items: b)
+  length(xs: a) == length(xs: b)
     && join(a, "\n") == join(b, "\n")
 }
 
@@ -1094,7 +1095,7 @@ test fn witness_observer_unexpected_slice_unit_is_conserved_as_a_subject() -> Bo
   ])) {
     DiscoveryRefused { host: _, cause: _ } => false
     DiscoveryEnumerated { host: _, subjects: ss } =>
-      list_length(items: ss) == 1
+      length(xs: ss) == 1
         && fold(ss, init: false, f: (acc, s) =>
              acc || fabric_cell_discovered_subject_wire(s: s) == "foreign:fabric-slices:fabric-cell-srv3-99.slice")
   }
@@ -1112,7 +1113,7 @@ test fn witness_observer_committed_slice_is_the_same_subject_as_its_cell() -> Bo
     enumerated(ns: FabricCellSliceNamespace, entries: [fabric_cell_slice_name(slot: observe_slot())]),
   ])) {
     DiscoveryRefused { host: _, cause: _ } => false
-    DiscoveryEnumerated { host: _, subjects: ss } => list_length(items: ss) == 1
+    DiscoveryEnumerated { host: _, subjects: ss } => length(xs: ss) == 1
   }
 }
 
@@ -1179,7 +1180,7 @@ test fn witness_observer_another_hosts_slice_ancestor_remains_foreign() -> Bool 
     DiscoveryEnumerated { host: _, subjects: ss } =>
       fold(ss, init: false, f: (seen, s) => seen || fabric_cell_discovered_subject_wire(s: s)
         == "foreign:fabric-slices:fabric-cell-srv3.slice")
-        && list_length(items: fabric_cell_projection_refusals(projection: projection)) == 1
+        && length(xs: fabric_cell_projection_refusals(projection: projection)) == 1
   }
 }
 
@@ -1215,7 +1216,7 @@ test fn witness_observer_slice_ancestors_are_order_independent_and_deduplicated(
     DiscoveryEnumerated { host: _, subjects: left } => match b {
       DiscoveryRefused { host: _, cause: _ } => false
       DiscoveryEnumerated { host: _, subjects: right } =>
-        list_length(items: left) == 2 && identity_lists_equal(
+        length(xs: left) == 2 && identity_lists_equal(
           a: map(left, s => fabric_cell_discovered_subject_wire(s: s)),
           b: map(right, s => fabric_cell_discovered_subject_wire(s: s)),
         )
