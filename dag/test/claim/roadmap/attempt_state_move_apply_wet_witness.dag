@@ -347,7 +347,7 @@ test fn the_move_refuses_unless_the_legacy_writer_is_observed_stopped_and_masked
   ready
     && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
     && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "still loadable")
-    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "is not stopped")
+    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "could not be read")
     && !undeclared.success && string_contains(s: undeclared.stderr, pattern: "no legacy dispatcher unit is declared")
     && untouched
     && moved.success
