@@ -160,6 +160,20 @@ type InhabitanceUndecidableReason
   | UndecidableArgumentTypeNotDerived
   | UndecidableWherePredicateSubjectUnmodelled
 
+// THE VERDICT ON ONE DECLARED/PRODUCED POSITION, read with a type-variable census in hand. This is the
+// three-valued judgement that lets a variable undecide ONLY its own position: a sibling that is concrete
+// and refuses still DISAGREES, and a pair whose every position AGREES (each variable sits over the very
+// same variable, each concrete sibling matches) is decided rather than left undecided. UNDECIDED is the
+// only verdict that can carry the pair into InhabitanceUndecidable. Mirrors v1's
+// application_arguments_inhabitance accumulator (#15441: a refused argument outranks an undecided one,
+// which outranks an inhabited one); v1 is not imported -- this is the v2 inhabitance relation's own fold.
+// The refusal itself stays a single authority (DESIGN.md §3): a disagreeing position falls to the concrete
+// comparison, not to a new reason invented here.
+type PositionVerdict
+  = PositionAgree
+  | PositionDisagree
+  | PositionUndecided
+
 type InhabitanceVerdict
   = Inhabits { homomorphism: HomomorphismWitness }
   // `find_witness_reason` is the DECISION that refused: which arm of the one structural comparison
@@ -266,17 +280,6 @@ fn inhabitance_node_undecidable_reason(
   }
 }
 
-fn inhabitance_pair_undecidable_reason_declared_then_produced(
-  declared: Node,
-  produced: Node,
-  type_variables: List<Symbol>
-) -> Optional<InhabitanceUndecidableReason> {
-  match inhabitance_node_undecidable_reason(n: declared, type_variables: type_variables) {
-    Present { value: reason } => optional_present(value: reason)
-    Absent => inhabitance_node_undecidable_reason(n: produced, type_variables: type_variables)
-  }
-}
-
 // THE NOMINAL HEAD OF A TYPE: the declaration an Instantiation applies (its first positional target), or
 // the node itself. Absent when the head is not a declaration reference (a type variable, a kernel atom).
 fn inhabitance_declaration_head(t: Node) -> Optional<QualifiedName> {
@@ -318,42 +321,120 @@ fn inhabitance_concrete_pair_disagrees(declared: Node, produced: Node) -> Bool {
   }
 }
 
-// THREE-VALUED PER POSITION: a type variable undecides only ITS OWN POSITION, never its siblings. A pair
-// DISAGREES when some position that mentions no variable is concretely refused, or two distinct nominal
-// heads meet; a position that mentions a variable and agrees in head is read argument by argument. A
-// disagreeing sibling wins over an undecided position (`Map<K, String>` at `Map<K, Int>` refuses on V
-// whatever K is); where no sibling disagrees the pair stays undecided, because the variable's position
-// may still disagree once instantiated.
-fn inhabitance_positions_disagree(declared: Node, produced: Node, type_variables: List<Symbol>) -> Bool {
-  if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
+// THREE-VALUED PER POSITION: a type variable undecides only ITS OWN POSITION, never its siblings. A
+// position DISAGREES when two distinct nominal heads meet, or a position that mentions no variable is
+// concretely refused by the same find_witness fold declared_type_inhabitance_exact runs. A position that
+// mentions a variable is read argument by argument, and a bare variable sitting over the very same
+// variable AGREES (whatever it later instantiates to, both sides get the same type). A DISAGREEING
+// SIBLING WINS OVER AN UNDECIDED POSITION (`Map<K, String>` at `Map<K, Int>` refuses on the value position
+// whatever K is); a pair with no disagreement and no undecided position is AGREED (`Map<K, Int>` at
+// `Map<K, Int>` inhabits whatever K is), so it is not left undecided. Only a position that genuinely
+// cannot be read -- a variable over a different variable or over a concrete type, an arity that runs out,
+// a head that is not a declaration reference -- is UNDECIDED, and only UNDECIDED carries the pair to
+// InhabitanceUndecidable.
+fn inhabitance_position_verdict(
+  declared: Node,
+  produced: Node,
+  type_variables: List<Symbol>
+) -> PositionVerdict {
+  if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
+    PositionDisagree
+  } else if inhabitance_node_mentions_type_variable(n: declared, type_variables: type_variables)
     || inhabitance_node_mentions_type_variable(n: produced, type_variables: type_variables) {
-    if inhabitance_declaration_heads_differ(declared: declared, produced: produced) {
-      true
-    } else {
-      match declaration_denotation_of_type(t: declared) {
-        Absent => false
-        Present { value: dd } =>
-          match declaration_denotation_of_type(t: produced) {
-            Absent => false
-            Present { value: pd } =>
-              inhabitance_argument_lists_disagree(declared: dd.type_arguments, produced: pd.type_arguments, type_variables: type_variables)
-          }
-      }
+    // A variable is on at least one side. Two distinct heads already refused above; here the heads agree
+    // (or one side has no nominal head). Read the two sides by their decomposition.
+    match declaration_denotation_of_type(t: declared) {
+      Absent =>
+        match declaration_denotation_of_type(t: produced) {
+          // Both sides are bare (an atom, or a connective that is not a declaration reference). If they are
+          // the same atom they are the same variable -- agree; otherwise the variable's own position cannot
+          // be read, so it stays undecided.
+          Absent => inhabitance_bare_atom_verdict(declared: declared, produced: produced)
+          // Bare against a decomposition: cannot be read, so the position is undecided.
+          Present { value: _ } => PositionUndecided
+        }
+      Present { value: dd } =>
+        match declaration_denotation_of_type(t: produced) {
+          Absent => PositionUndecided
+          Present { value: pd } =>
+            inhabitance_argument_list_verdict(
+              declared: dd.type_arguments, produced: pd.type_arguments, type_variables: type_variables
+            )
+        }
     }
   } else {
-    inhabitance_concrete_pair_disagrees(declared: declared, produced: produced)
+    // Neither side mentions a variable: the position is concrete and the structural comparison decides it.
+    if inhabitance_concrete_pair_disagrees(declared: declared, produced: produced) {
+      PositionDisagree
+    } else {
+      PositionAgree
+    }
   }
 }
 
-fn inhabitance_argument_lists_disagree(declared: List<Node>, produced: List<Node>, type_variables: List<Symbol>) -> Bool {
+// THE ATOM IDENTITY of a node, when its connective is a bare Atom. Absent otherwise (an instantiation, or a
+// non-type node). Used to ask whether two bare sides are the same variable.
+fn inhabitance_atom_identity(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ => Absent
+  }
+}
+
+// TWO BARE SIDES THAT BOTH CARRY A VARIABLE: the same atom is the same variable and AGREES (both sides
+// instantiate it together); a different atom is a variable over a different variable, or a variable over a
+// concrete type -- undecided, never a refusal for the wrong reason.
+fn inhabitance_bare_atom_verdict(declared: Node, produced: Node) -> PositionVerdict {
+  match inhabitance_atom_identity(n: declared) {
+    Absent => PositionUndecided
+    Present { value: di } =>
+      match inhabitance_atom_identity(n: produced) {
+        Absent => PositionUndecided
+        Present { value: pi } =>
+          if di == pi {
+            PositionAgree
+          } else {
+            PositionUndecided
+          }
+      }
+  }
+}
+
+// A DISAGREEING CHILD OUTRANKS AN UNDECIDED CHILD, which outranks an agreed one. This is the one place the
+// precedence lives, so a refusal can never be masked by an undecided sibling further along the list.
+fn inhabitance_verdict_combine(left: PositionVerdict, right: PositionVerdict) -> PositionVerdict {
+  if left == PositionDisagree || right == PositionDisagree {
+    PositionDisagree
+  } else if left == PositionUndecided || right == PositionUndecided {
+    PositionUndecided
+  } else {
+    PositionAgree
+  }
+}
+
+// ZIP the argument lists. Equal length: fold the position verdicts with the precedence above. Unequal
+// length is not read here -- the exact structural comparison owns arity (its argument_count_differs arm),
+// so a length mismatch is left UNDECIDED to fall through to that one authority rather than inventing a
+// second refusal.
+fn inhabitance_argument_list_verdict(
+  declared: List<Node>,
+  produced: List<Node>,
+  type_variables: List<Symbol>
+) -> PositionVerdict {
   match declared {
-    Empty => false
+    Empty =>
+      match produced {
+        Empty => PositionAgree
+        Cons { head: _, tail: _ } => PositionUndecided
+      }
     Cons { head: d, tail: dt } =>
       match produced {
-        Empty => false
+        Empty => PositionUndecided
         Cons { head: p, tail: pt } =>
-          inhabitance_positions_disagree(declared: d, produced: p, type_variables: type_variables)
-            || inhabitance_argument_lists_disagree(declared: dt, produced: pt, type_variables: type_variables)
+          inhabitance_verdict_combine(
+            left: inhabitance_position_verdict(declared: d, produced: p, type_variables: type_variables),
+            right: inhabitance_argument_list_verdict(declared: dt, produced: pt, type_variables: type_variables)
+          )
       }
   }
 }
@@ -363,11 +444,14 @@ fn inhabitance_pair_undecidable_reason(
   produced: Node,
   type_variables: List<Symbol>
 ) -> Optional<InhabitanceUndecidableReason> {
-  if inhabitance_declaration_heads_differ(declared: declared, produced: produced)
-    || inhabitance_positions_disagree(declared: declared, produced: produced, type_variables: type_variables) {
-    Absent
-  } else {
-    inhabitance_pair_undecidable_reason_declared_then_produced(declared: declared, produced: produced, type_variables: type_variables)
+  // Only an UNDECIDED position carries the pair to InhabitanceUndecidable. An AGREED pair (every variable
+  // over the same variable, every concrete sibling matching) and a DISAGREEING pair (some concrete sibling
+  // refuses) both fall to the concrete comparison below the caller, which accepts the first and refuses the
+  // second through the exact structural arms -- the disagreement never becomes a second refusal authority.
+  match inhabitance_position_verdict(declared: declared, produced: produced, type_variables: type_variables) {
+    PositionUndecided => optional_present(value: UndecidableGenericFormal)
+    PositionAgree => Absent
+    PositionDisagree => Absent
   }
 }
 
