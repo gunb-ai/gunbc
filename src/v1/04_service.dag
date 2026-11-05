@@ -666,7 +666,11 @@ type ServiceEndpointSupply
   | EndpointLiteral { value: String }
   | EndpointOperationParameter { name: String, declared_type: Node }
   | EndpointModuleExpression
-  | EndpointParameterNameUnbound { name: String, missing_from: List<String> }
+  // A bare identifier that some rest operation does not declare as a `String` input: not admitted, so
+  // both consumers leave it on today's path. It carries no list of the operations that lack the input,
+  // because nothing reads one -- the lens refuses by falling through, not by reporting. A located
+  // diagnostic naming those operations arrives with the diagnostic that reads them, not before.
+  | EndpointParameterNameUnbound { name: String }
 
 // The declared type of `name` as an input of `op`, when that operation declares it AND spells it
 // `String` -- `type_is_kernel_string` is the kernel-name reader inference already uses, so no
@@ -689,12 +693,11 @@ fn service_endpoint_supply(service: Node, operations: List<Node>, source_indices
     Present { value: endpoint_node } =>
       match endpoint_node.expr_data {
         // AN EMPTY LITERAL IS THE ABSENT CASE, and only this function is allowed to know it.
-        // `parse_config_fields` (v1.compiler.parse) MINTS `endpoint: ""` -- an empty string literal --
-        // as the config's endpoint when the block carries none, and the grammar goes further: a service
-        // with no `config` block, an empty one, or one that omits `endpoint`, is REJECTED outright (the
-        // executed case `the_grammar_requires_a_declared_endpoint_holds` keeps that fact honest). So an
-        // empty literal is the only way "no host was declared" reaches a reader, and saying so HERE is
-        // what keeps the emitter from baking an empty host where it used to fall through to the
+        // `parse_config_fields` (v1.compiler.parse) MINTS `endpoint: ""` -- an empty string literal,
+        // its `?? Node { name: "" }` path -- as the config's endpoint when the block carries none, which
+        // is measured rather than read: a `config` block omitting `endpoint` parses with no diagnostic at
+        // all, so this empty literal is the ONLY way "no host was declared" reaches a reader. Saying so
+        // HERE is what keeps the emitter from baking an empty host where it used to fall through to the
         // transport's `base_url` -- and keeps any consumer from re-testing the placeholder on its own.
         ExprLiteral { value: LitStr { value: text } } =>
           if text == "" { EndpointNotDeclared } else { EndpointLiteral { value: text } }
@@ -708,7 +711,7 @@ fn service_endpoint_supply(service: Node, operations: List<Node>, source_indices
           } else {
             let unbound = rest_operations |> filter(op => operation_input_string_type(op: op, name: name, source_indices: source_indices) == none)
             if count(unbound) > 0 {
-              EndpointParameterNameUnbound { name: name, missing_from: unbound |> map(op => authored_name_at(source_indices: source_indices, node: op)) }
+              EndpointParameterNameUnbound { name: name }
             } else {
               match rest_operations |> first() {
                 Present { value: first_rest } =>

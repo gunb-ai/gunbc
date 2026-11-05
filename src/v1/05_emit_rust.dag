@@ -18454,7 +18454,7 @@ fn emit_rest_url_line(transport: Node, op_name: String, base: String, source_ind
   match transport_path_template(t: transport, source_indices: source_indices) {
     Present { value: path_node } => match path_node.expr_data {
       ExprLiteral { value: LitStr { value: path_str } } =>
-        concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", base);")
+        concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", ", base, ");")
       ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
           ExprLiteral { value: LitStr { value: text } } => Text { value: text }
@@ -18478,15 +18478,15 @@ fn emit_rest_url_line(transport: Node, op_name: String, base: String, source_ind
           }
         })
         if args |> count == 0 {
-          concat("let url = format!(\"{}", fmt_str, "\", base);")
+          concat("let url = format!(\"{}", fmt_str, "\", ", base, ");")
         } else {
           let args_str = args |> join(separator: ", ")
-          concat("let url = format!(\"{}", fmt_str, "\", base, ", args_str, ");")
+          concat("let url = format!(\"{}", fmt_str, "\", ", base, ", ", args_str, ");")
         }
       }
       _ => "compile_error!(\"transport path must be a string literal or interpolation\");"
     }
-    Absent => concat("let url = format!(\"{}/{}\", base, \"",
+    Absent => concat("let url = format!(\"{}/{}\", ", base, ", \"",
       emit_ident(name: op_name, target: Rust), "\");")
   }
 }

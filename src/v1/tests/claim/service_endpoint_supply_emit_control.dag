@@ -1,0 +1,60 @@
+module v1.tests.claim.service_endpoint_supply_emit_control
+
+// THE EMITTER'S BASE EXPRESSION, GREEN BY EXECUTION.
+//
+// `emit_rest_url_base` / `emit_rest_url_line` in v1.compiler.emit_rust decide what the generated
+// `let url = format!(...)` uses as its base: the bound operation input when the service's `config`
+// endpoint names one, and the struct's own field otherwise. Reading that decision in the .dag text is
+// not evidence -- DESIGN §5 says a `.contains()` grep over the seed is not a consumer -- so these cells
+// COMPILE a fixture and read the generated file back.
+//
+// The vehicle is the host builtin `compile_dag_rust_emit_check` (v1_interpreter's emit host), the same
+// one `gunbc.test.claim.pipeline_transport_emit_rest_shell_witness` uses. It is used rather than a call
+// into v1.compiler.emit_rust for two reasons: an entry whose demanded closure reaches the compiler's
+// type layer cannot be resolved as an entry at all today (the ownership refusal recorded in
+// gunbc.recurring_failure_mode.binder_renaming_changes_variant_field_lookup, which this cut's specimen
+// row extends), and the builtin drives the emitter the compiler itself drives, not a reimplementation.
+//
+// MIRROR CAVEAT, stated so no receipt claims more than it reads (§4b): the builtin runs the emitter
+// COMPILED INTO THE BINARY IN USE, i.e. the generated stage0 mirror. At a head whose mirror has not yet
+// been regenerated for a seed emitter edit, these cells read the PREVIOUS emitter. They are therefore
+// evidence at the head where the mirror matches the seed -- which is the head that lands, because the
+// candidate mirror bytes are carried in the PR. `the_module_supplied_endpoint_emits_the_struct_field`
+// is the fixture-grammar control: it holds every other fact fixed and moves only the binding's scope,
+// so a difference between it and the parameter cell is the binding, not the fixture.
+
+import std.types { String }
+import v1.tests.claim.service_endpoint_supply_fixtures {
+  emitted_literal_endpoint_source, emitted_parameter_endpoint_source, emitted_module_data_endpoint_source
+}
+
+// The signature of the defect this file exists to keep red: the base joined as the WORD `base` instead
+// of as a value, which leaves the generated method referring to a binding that does not exist.
+data base_written_as_a_word: List<String> = [", base);", ", base,"]
+
+test fn the_literal_endpoint_emits_the_struct_field_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    emitted_literal_endpoint_source,
+    "src/sepa_literal.rs",
+    ["let url = format!(\"{}/items\", self.base_url);"],
+    base_written_as_a_word
+  )
+}
+
+test fn the_parameter_endpoint_emits_the_bound_input_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    emitted_parameter_endpoint_source,
+    "src/sepa_parameter.rs",
+    ["let url = format!(\"{}/v1/token\", request_url);"],
+    base_written_as_a_word |> concat(["self.base_url"])
+  )
+}
+
+test fn the_module_supplied_endpoint_emits_the_struct_field_as_the_base_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    emitted_module_data_endpoint_source,
+    "src/sepa_module_data.rs",
+    ["let url = format!(\"{}/items\", self.base_url);"],
+    base_written_as_a_word
+  )
+}

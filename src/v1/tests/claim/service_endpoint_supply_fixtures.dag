@@ -132,8 +132,9 @@ data member_access_endpoint_source: String = fixture_lines(lines: [
 // A `config` block that carries NO `endpoint` field -- the only route to the authority's
 // EndpointNotDeclared answer. It PARSES: parse_config_fields finds no such property and mints one
 // whose name is empty (its `?? Node { name: "" }` path), which is what the authority's first arm
-// reads. Written line by line like every fixture here, because brace-containing text in a single
-// string literal is tokenized as structure and the item then never closes.
+// reads. Written line by line like every fixture here: a whole service in one string literal is
+// unreadable in review, and a `data` item ends at its initializer -- a trailing `;` is not punctuation
+// here, it is reported as `expected item declaration` at that character.
 data config_without_endpoint_source: String = fixture_lines(lines: [
   "module probe.noendpoint",
   "service Probe {",
@@ -199,4 +200,89 @@ data shadowed_parameter_endpoint_source: String = fixture_lines(lines: [
 data malformed_service_source: String = fixture_lines(lines: [
   "service",
   "Broken"
+])
+
+// The three services the EMIT controls compile and read back. They are separate from the endpoint
+// shape fixtures because their point is the generated `url` line: same transport, same path, and the
+// base expression is the only thing that varies between them. The read path is the module's own
+// emitted file (`src/<name>.rs`), which the emit check refuses to invent.
+data emitted_literal_endpoint_source: String = fixture_lines(lines: [
+  "module sepa_literal",
+  "",
+  "import extdeps.transports.rest { RestResult }",
+  "",
+  "service test.Svc {",
+  "  config {",
+  "    endpoint: \"https://api.example.com\"",
+  "  }",
+  "  operation GetItems {",
+  "    output {",
+  "      items: List<String>",
+  "    }",
+  "    transport rest { method: GET, path: \"/items\" }",
+  "    response {",
+  "      200 => List<String>",
+  "    }",
+  "    mock_response {",
+  "      200 => [\"a\"] \"items\"",
+  "    }",
+  "  }",
+  "}"
+])
+
+data emitted_parameter_endpoint_source: String = fixture_lines(lines: [
+  "module sepa_parameter",
+  "",
+  "import extdeps.transports.rest { RestResult }",
+  "",
+  "service test.Svc {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetToken {",
+  "    input {",
+  "      request_url: String",
+  "    }",
+  "    output {",
+  "      value: String",
+  "    }",
+  "    transport rest { method: POST, path: \"/v1/token\" }",
+  "    response {",
+  "      200 => String",
+  "    }",
+  "    mock_response {",
+  "      200 => \"t\" \"value\"",
+  "    }",
+  "  }",
+  "}"
+])
+
+// The same declaration with the name supplied by the MODULE instead of by the operation: a declared
+// input is absent, so the authority answers EndpointModuleExpression and the base stays the struct
+// field. Its point is to hold the fixture grammar fixed while only the binding's scope moves -- if
+// this one compiles and the parameter one does not, the difference is the binding and nothing else.
+data emitted_module_data_endpoint_source: String = fixture_lines(lines: [
+  "module sepa_module_data",
+  "",
+  "import extdeps.transports.rest { RestResult }",
+  "",
+  "data request_url: String = \"https://api.example.com\"",
+  "",
+  "service test.Svc {",
+  "  config {",
+  "    endpoint: request_url",
+  "  }",
+  "  operation GetItems {",
+  "    output {",
+  "      items: List<String>",
+  "    }",
+  "    transport rest { method: GET, path: \"/items\" }",
+  "    response {",
+  "      200 => List<String>",
+  "    }",
+  "    mock_response {",
+  "      200 => [\"a\"] \"items\"",
+  "    }",
+  "  }",
+  "}"
 ])
