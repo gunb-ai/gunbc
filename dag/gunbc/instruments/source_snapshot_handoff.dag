@@ -44,7 +44,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import std.fabric_storage {
@@ -301,7 +301,7 @@ fn prepare_snapshot_workspace() -> SnapshotWorkspaceStanding {
       listen_port: 18099,
       source_anchor_ref: "refs/heads/main" as NonEmptyStr,
       actuation: DashboardActuating,
-      provision_transport: DashboardLocalProvision,
+      actuator_host: "srv1" as NonEmptyStr,
     )
     match fabric_store_open(members: fabric_storage_slots, instance: scenario_instance, entry_mode: none) {
       FabricStoreUnready { area: a, detail: d } =>
