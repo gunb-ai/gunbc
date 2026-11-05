@@ -485,16 +485,27 @@ test fn every_named_exception_reaches_the_board() -> Bool {
 
 
 // (This is where a test used to sit which asked every rule-admitted row to state a label it had
-// read in full. It is gone, and the reason is worth keeping: `rests_on: RuleRead` now has no field
-// in which to claim a half-read label, so the state it refused has no constructor and a witness
-// would only be checking that a record equals itself. The mutant that used to prove that test --
-// writing `RuleRead { legibility: Partial { } }` into a row -- is now refused by the compiler,
-// and that refusal is what the PR reports. The held path closed the same way and by the same means:
-// an exact held row carries an authority and no legibility field at all, and a row that was only
-// partly read is a candidate arm that mints no Designator, so there is nowhere to write 'exact name,
-// partly read' either. What the types cannot reach is the CROSS-ROW direction, and the
-// four tests below are what covers it: a reading for every exception, a photograph-dated reading for a
-// photograph authority, and a candidate's proposed name kept off the board.)
+// read in full. It is gone, and the reason is worth keeping: `rests_on` is a `ReceiptBasis`, whose
+// `RuleRead` arm carries no field at all (e1_position_receipts.dag:67), so a row the base rule
+// reached has nowhere to write 'the label was only partly read'. The state has no constructor, so a
+// witness for it would only be checking that a record equals itself. What proves it is a mutation
+// rather than a test, and this is the version that runs: `RuleRead { why: "..." }` written into a
+// row -- `why` being a real field on the sibling `NamedException`, so the mutant is a plausible row
+// in every respect except the arm it sits on -- refused by the compiler with
+// `error: field 'why' not found in type 'RuleRead'`. Its control writes the same field on
+// `NamedException`, where it IS declared, and the tree compiles and the entry passes; without that
+// control the refusal would prove only that the name is unknown somewhere. An earlier draft of this
+// comment described a `legibility: Partial { }` being written instead; no `legibility` field exists
+// in the model any more, and justifying a current refusal with a retired field is how the next
+// reader starts hunting for a field that does not exist. The held path closed the same way, by the
+// same means:
+// an exact held row carries the authority that licenses every character of its spelling, and a row
+// only partly read is a candidate arm, which mints no `Designator` -- so 'exact name, partly read'
+// has no constructor there either. What the types cannot reach is the CROSS-ROW direction, and the
+// four tests that follow are what covers it: `the_held_arms_carry_only_what_they_may`,
+// `no_board_row_names_a_designator_the_receipts_never_saw`,
+// `every_body_sighting_is_at_a_position_the_authority_admitted`, and
+// `the_pass_row_counts_are_a_change_detector`.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
   // The two held shapes are not interchangeable, and neither is allowed to be silently true here. An
