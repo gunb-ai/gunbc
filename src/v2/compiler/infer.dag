@@ -7367,6 +7367,11 @@ fn infer_transform_cast_optional(node: Node, entries: Map<Node, List<InferredFac
               Present { value: operand_facts } =>
                 match operand_facts.grounding {
                   GroundingNotDerived { node: _, site: _ } => optional_absent()
+                  // A CAST OWS A VALUE to its target: the operand produces none, so the cast refuses with
+                  // the fact's own reason rather than silently crossing nothing (a value demand, like the
+                  // application and the return).
+                  GroundingNoValue { node: n } =>
+                    optional_present(value: outcome_rejected(infer_branch_else_less_as_value_diagnostic(node: n)))
                   DerivedGrounding { grounding: g } =>
                     optional_present(value: bind_outcome(
                       o: coercion_cast_crossing(
