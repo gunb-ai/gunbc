@@ -5164,3 +5164,26 @@ fn roster_rename_controls_report() -> String {
     Accepted { value: prepared, diagnostics: _ } => roster_rename_controls_ran(verdicts: roster_rename_controls_verdicts_all(prepared: prepared, lex: dag_prepared_lex()))
   }
 }
+
+// SINGLE-FUNCTION ENTRIES for the stage-refusal RED and its positive control (`gunbc run --function <name>`), so they run
+// without the whole controls label. Each returns "<name> HELD" or "<name> FAIL <why>". Companions are empty: the RED's text
+// is refused at tokenize or parse, before any companion is consulted, and the positive's text has no renamed call.
+fn roster_stage_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "stage-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = roster_stage_span_control(companions: [], prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "stage-red HELD" } else { "stage-red FAIL " + f }
+  }
+}
+
+fn roster_stage_positive_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "stage-positive FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match roster_rename_outcome(companions: [], text: "module c.rename\n\nfn f() -> Int {\n  1\n}\n", prepared: prepared, lex: dag_prepared_lex()) {
+        RosterRefused { reason: r } => "stage-positive FAIL refused " + roster_refusal_text(reason: r)
+        _ => "stage-positive HELD"
+      }
+  }
+}

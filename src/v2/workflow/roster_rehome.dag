@@ -1208,3 +1208,24 @@ fn rehome_control_pair_inhabited(prepared: PreparedGrammar, lex: PreparedLexRule
     RehomePairSame => "CONTROL-FAIL rehome pair-inhabited: the real Int pair read as the same shape\n"
   }
 }
+
+// SINGLE-FUNCTION ENTRIES for the rehome stage-refusal RED and its positive control.
+fn rehome_stage_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "rehome-stage-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = rehome_control_stage_located(prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "rehome-stage-red HELD" } else { "rehome-stage-red FAIL " + f }
+  }
+}
+
+fn rehome_stage_positive_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "rehome-stage-positive FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match rehome_text(path: "control/user.dag", text: "module c.user\n\nfn f() -> Int {\n  1\n}\n", prepared: prepared, lex: dag_prepared_lex(), row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+        RehomeRefused { reason: r } => "rehome-stage-positive FAIL refused " + rehome_refusal_text(r: r)
+        _ => "rehome-stage-positive HELD"
+      }
+  }
+}
