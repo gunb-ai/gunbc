@@ -85,7 +85,7 @@ import extdeps.posix.test_utility {
 }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
-import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command }
+import extdeps.tools.findutils { find_untrusted_entries_command, find_other_children_exec_command , find_tree_entry_metadata_printf}
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
 import gunbc.host.host_converge { SliceControlUnit, SliceControlPlanNotOwed, SliceControlPlanDerived, SliceControlPlanRefused, slice_control_plan_for }
 import std.algebra { FreeSemigroup, non_empty_to_list }
@@ -6781,7 +6781,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
               let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
               let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
               if lines != count(parsed) {
-                TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as <rel>|<type>|<mode>|<owner>|<group>|<size>|<link>; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
+                TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as ", find_tree_entry_metadata_printf(), "; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
               } else { TreeMetadataObserved { entries: concat(es, parsed) } }
             }
         }

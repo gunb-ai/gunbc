@@ -235,6 +235,16 @@ fn metadata_entries() -> List<TreeMetadataEntry> {
 // Fixture-side mode spelling, through the SAME posix authority production uses; the all-false
 // fallback is visible test scaffolding, never a production default -- an unparseable fixture mode
 // shows up as a claim failure, not a silent pass.
+// Unwrap the expectation like production does; the Absent arm carries a visibly impossible
+// sentinel, so an unreadable shared-mode constant makes every claim that reads it FAIL loudly
+// rather than pass vacuously.
+fn expectation_of(sources: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
+  match tree_installed_expectation(entries: sources, owner: deploy_owner) {
+    Present { value: xs } => xs
+    Absent => [TreeMetadataEntry { path: "EXPECTATION-UNREADABLE", kind: TreeRegular, mode: fm("000"), owner: PosixOwnerNames { user: "x" as NonEmptyStr, group: "x" as NonEmptyStr } }]
+  }
+}
+
 fn fm(text: String) -> FileMode {
   match file_mode_of_octal_text(text: text) {
     Present { value: m } => m
@@ -281,7 +291,7 @@ test fn the_expectation_fixes_kind_target_shared_mode_and_deploy_owner() -> Bool
     TreeMetadataEntry { path: "dag/link", kind: TreeLink { link_target: "../bin/gunbc" as NonEmptyStr }, mode: fm("700"), owner: PosixOwnerNames { user: "briansrls" as NonEmptyStr, group: "staff" as NonEmptyStr } },
     TreeMetadataEntry { path: "dag/lib", kind: TreeDirectory, mode: fm("600"), owner: PosixOwnerNames { user: "briansrls" as NonEmptyStr, group: "staff" as NonEmptyStr } },
   ]
-  let expected = tree_installed_expectation(entries: sources, owner: deploy_owner)
+  let expected = expectation_of(sources: sources)
   tree_metadata_lines(entries: expected) == join(["dag/gunbc/x.dag|f|0644|gunbc|gunbc", "\n", "dag/lib|d|0755|gunbc|gunbc", "\n", "dag/link|l|0777|gunbc|gunbc|../bin/gunbc", "\n"], "")
 }
 
@@ -323,7 +333,7 @@ test fn a_vanishing_or_materialized_symlink_is_red() -> Bool {
     TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } },
     TreeMetadataEntry { path: "dag/link", kind: TreeLink { link_target: "../bin/gunbc" as NonEmptyStr }, mode: fm("777"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } },
   ]
-  let expected = tree_installed_expectation(entries: src, owner: deploy_owner)
+  let expected = expectation_of(sources: src)
   let vanished = src_skip(src: src, unwanted: "dag/link")
   let materialized = concat(
     left: src_skip(src: src, unwanted: "dag/link"),
@@ -339,7 +349,7 @@ test fn a_repointed_remodeled_or_reowned_entry_is_red() -> Bool {
     TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } },
     TreeMetadataEntry { path: "dag/link", kind: TreeLink { link_target: "../bin/gunbc" as NonEmptyStr }, mode: fm("777"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } },
   ]
-  let expected = tree_installed_expectation(entries: src, owner: deploy_owner)
+  let expected = expectation_of(sources: src)
   let repointed = concat(
     left: src_skip(src: src, unwanted: "dag/link"),
     right: [TreeMetadataEntry { path: "dag/link", kind: TreeLink { link_target: "/tmp/evil" as NonEmptyStr }, mode: fm("777"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }]
