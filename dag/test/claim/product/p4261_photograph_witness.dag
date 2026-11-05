@@ -89,6 +89,13 @@ import product.p4261.k1_a { p4261_k1_layout }
 
 import product.electrical.identification {
   marking_text,
+  // The channels, not the rendering: these four rows are checked on what was read as letters and what was
+  // recorded as the maker's mark, so the witness projects the spans instead of comparing a rendered string.
+  sole_glyph_span,
+  glyph_spans_in,
+  content_spans,
+  glyph_text_eq,
+  PrintedLogo,
   InstalledComponent,
   MarkingReading,
 }
@@ -346,9 +353,42 @@ test fn the_fsv_rows_box_the_bodies_their_receipts_named() -> Bool {
 // Text is what the receipt records, character for character. Stated as equality rather than "the
 // printed marking appears in the reading", because std has no substring primitive and a hand-rolled
 // matcher in a witness would be a second authority over the text (§3).
+// What the receipts record for these four is the LETTERS on the body, and rev 6 keeps the vendor's mark in a
+// channel of its own: `PrintedLogo { span: "ON logo", whose: "onsemi -- the ON mark" }`. So the check is made
+// on the channels -- the sole glyph span, and the one logo beside it -- and not on the rendering. Pinning the
+// rendering would re-assert the pre-rev-6 single-line text, in which "ON logo" sat inside the glyphs, and that
+// was a misclassification: those words are the bench naming a mark, not glyphs printed on the part.
 test fn the_fsv_rows_say_exactly_what_the_receipts_say() -> Bool {
-  count(filter(["D2_P1", "D8_P1"], d => !prints(designator: d, want: "FSV20100V / JC03 / ON logo"))) == 0
-    && count(filter(["D2_P5", "D8_P5"], d => !prints(designator: d, want: "(ON logo) JC03 FSV20100V"))) == 0
+  count(filter(["D2_P1", "D8_P1"], d => !prints_glyphs(designator: d, want: "FSV20100V / JC03"))) == 0
+    && count(filter(["D2_P5", "D8_P5"], d => !prints_glyphs(designator: d, want: "JC03 FSV20100V"))) == 0
+    // The logo is recorded on all four, and it is the maker's mark and nothing else: one PrintedLogo span,
+    // attributed to onsemi, and exactly one span of glyphs -- so the identification rests on the letters.
+    && count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => !carries_onsemi_logo(designator: d))) == 0
+}
+
+fn prints_glyphs(designator: NonEmptyStr, want: NonEmptyStr) -> Bool {
+  match e1_marking_at(designator) {
+    Absent => false
+    Present { value: reading } => match sole_glyph_span(c: reading.content) {
+      Absent => false
+      Present { value: g } => glyph_text_eq(a: g.text, b: want)
+    }
+  }
+}
+
+fn carries_onsemi_logo(designator: NonEmptyStr) -> Bool {
+  match e1_marking_at(designator) {
+    Absent => false
+    Present { value: reading } => {
+      let spans = content_spans(c: reading.content)
+      count(glyph_spans_in(spans: spans)) == 1
+        && count(filter(spans, s => match s {
+             PrintedLogo { span, whose, sighting: _ } =>
+               glyph_text_eq(a: span, b: "ON logo") && glyph_text_eq(a: whose, b: "onsemi -- the ON mark")
+             _ => false
+           })) == 1
+    }
+  }
 }
 
 // Two exact strings pinned separately would still let an edit pair the right receipt with the wrong
