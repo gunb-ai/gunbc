@@ -1,7 +1,7 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
-import gunbc.live_deploy.serve_binary { AdmittedServeBinarySource, HostSeedInstall, SeedBuiltAtRevision, SourceUndeclared, fixed_serve_binary_path }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
@@ -75,7 +75,6 @@ type DesiredDeployment {
   names: DeploymentNames
   selected_identity: DeclarationRef
   admitted_branch: NonEmptyStr
-  serve_binary_source: AdmittedServeBinarySource
 }
 
 fn desired_module_path() -> String {
@@ -100,7 +99,6 @@ fn selected_deployment_spec(row: DesiredDeployment) -> DeploymentSpec {
     instance: row.instance,
     target: row.target,
     names: row.names,
-    source: row.serve_binary_source,
   )
 }
 
@@ -112,10 +110,6 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
     names: srv1_live_deployment_names(instance: instance),
     selected_identity: srv1_production_selected_identity(),
     admitted_branch: production_admitted_branch,
-    // srv1's serve binary is srv1_gunbc_serve_binary -- the host seed install at the host-layout
-    // path. The lane that stands up STAGE says so; the serve-unit emitter matches on this and
-    // spells the seed CLI grammar only for a source that can answer it.
-    serve_binary_source: HostSeedInstall,
   }
 }
 
@@ -129,12 +123,6 @@ fn srv1_lab_desired_deployment() -> DesiredDeployment {
     names: srv1_lab_deployment_names(instance: instance),
     selected_identity: srv1_lab_selected_identity(),
     admitted_branch: dispatch_base_branch(instance: instance),
-    // The lab's serve binary is BUILT IN PLACE from the instance's admitted revision
-    // (source_seed.serve_binary_origin == BuildInPlaceFromAdmittedRevision, declared on the
-    // dashboard instance row in gunbc.roadmap.roadmap_dashboard_instance) -- a seed build
-    // from this repository, so the seed CLI grammar is named; the revision it was built at
-    // has its one home on the instance's admitted_revision, not on this record.
-    serve_binary_source: SeedBuiltAtRevision,
   }
 }
 
@@ -164,15 +152,6 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
     admitted_branch: production_admitted_branch,
-    // srv2's serve binary is the operator-declared cargo release path (srv2_deploy_serve_binary).
-    // The PATH SAYS where a cargo build of this repository would land; no modeled lane records
-    // anything BUILDING it at the admitted revision — the in-place build lane
-    // (gunbc.live_deploy.serve_binary_build, ServeBinaryBuild) covers the lab instance root and
-    // names no srv2 root. The honest name is undeclared, and the serve-unit emitter refuses it
-    // TYPED rather than assuming the seed grammar for a binary of unrecorded provenance
-    // (DESIGN section 5). Follow-up that dissolves this refusal: add srv2 to the in-place build
-    // lane, then this row becomes SeedBuiltAtRevision like the lab row.
-    serve_binary_source: SourceUndeclared { reason: "srv2_deploy serve binary is srv2_deploy_serve_binary, an operator-declared cargo release path; the in-place build lane (ServeBinaryBuild) does not cover srv2, so no lane records what builds it" },
   }
 }
 

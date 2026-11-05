@@ -1,6 +1,7 @@
 module gunbc.live_deploy.serve_binary
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, FilePath }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, DashboardServeBinaryOrigin, dashboard_instance_serve_binary_origin, dashboard_instance_apply_workdir }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInstalled, release_locus_binary_path }
 
 // WHICH BINARY A SERVICE RUNS IS A TWO-ARMED FACT, AND THE TYPE HOLDS BOTH ARMS. A service either runs one
@@ -23,21 +24,20 @@ fn serve_binary_path(binary: ServeBinarySource, release_root: String, revision: 
   }
 }
 
-// WHICH ARGUMENT GRAMMAR THE ADMITTED BINARY SPEAKS IS DECIDED AT ADMISSION, NOT AT EMISSION.
+// WHICH ARGUMENT GRAMMAR THE ADMITTED BINARY SPEAKS IS DERIVED, NEVER HAND-PICKED.
 // The serve unit's ExecStart spells the seed CLI (`<binary> run --source-root ... --entry ... --arg
-// handler=...`), words only a binary built from THIS repo -- the host seed install, or a seed build
-// staged at an admitted revision by gunbc.live_deploy.serve_binary_build -- can answer. Comparing the
-// admitted path against the host_layout seed path would be a proxy (DESIGN section 4d): a seed binary
-// built in place at the admitted revision lives at another path and speaks the same grammar. So the
-// lane that admits the binary declares the source it actually stood up, and the emitter matches on
-// this sum (DESIGN section 5: the unjustified state is refused at construction or emit, not assumed).
+// handler=...`), words only a binary built from THIS repo can answer. Whether the admitted binary IS
+// such a build is a fact the instance already carries -- its serve-binary origin
+// (gunbc.roadmap.roadmap_dashboard_instance DashboardServeBinaryOrigin, read by
+// dashboard_instance_serve_binary_origin): an in-place seed build by the build lane, or a built binary
+// staged under the instance's own apply workdir (the cargo release output of that checkout, copied to
+// the serve path by the ensure lane). Anything else names a binary no modeled lane says built it.
+// Rows never spell an arm by hand and the admitted path is never compared against a layout constant
+// (a proxy, DESIGN section 4d); serve_source_from_instance is the ONE reader that derives this sum
+// from the instance fact (DESIGN section 3: one place per fact; section 5: unrecorded provenance is
+// refused typed, not assumed).
 type AdmittedServeBinarySource
-  = HostSeedInstall
-  // A seed build stood up by the in-place build lane (gunbc.live_deploy.serve_binary_build)
-  // from the instance's admitted revision. The revision is NOT named on the record: the
-  // instance's admitted_revision is its one home, and the grammar verdict does not read it --
-  // naming it here would be a second spelling of a fact the row already cites (DESIGN 3).
-  | SeedBuiltAtRevision
+  = SeedBuiltAtRevision
   | SourceUndeclared { reason: NonEmptyStr }
 
 // A fixed path no revision can change, minted only here (sole_constructor), so a renderer that has no revision in hand
@@ -53,6 +53,23 @@ type AdmittedFixedServeBinary sole_constructor {
 
 fn admit_fixed_serve_path(path: NonEmptyStr, source: AdmittedServeBinarySource) -> AdmittedFixedServeBinary {
   AdmittedFixedServeBinary { path: path, source: source }
+}
+
+// THE ONE READER of the instance's serve-binary origin for grammar purposes. The revision an arm was
+// built at is NOT named here: instance.admitted_revision is its one home (DESIGN section 3).
+fn serve_source_from_instance(instance: HostDashboardInstance) -> AdmittedServeBinarySource {
+  match dashboard_instance_serve_binary_origin(instance: instance) {
+    // Stood up by the in-place build lane (gunbc.live_deploy.serve_binary_build) from this repository.
+    BuildInPlaceFromAdmittedRevision => SeedBuiltAtRevision
+    // A declared built binary UNDER THE INSTANCE'S OWN APPLY WORKDIR is that checkout's cargo release
+    // output -- the ensure lane (roadmap_dashboard_instance_apply dashboard_ensure_declared_serve_binary)
+    // stages it at the serve path -- so it is a build of this repository and speaks the seed grammar.
+    // Any other declared path names a binary no modeled lane records building: refuse typed (DESIGN 5).
+    DeclaredBuiltBinary { path } =>
+      if starts_with(s: path as String, prefix: join([dashboard_instance_apply_workdir(instance: instance) as String, "/"], ""))
+        then SeedBuiltAtRevision
+        else SourceUndeclared { reason: join(["declared built binary ", path as String, " lives outside the instance apply_workdir; no modeled lane records what built it"], "") }
+  }
 }
 
 fn fixed_serve_binary_path(binary: AdmittedFixedServeBinary) -> String {

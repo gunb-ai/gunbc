@@ -1505,11 +1505,10 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 fn deployment_service_config(
   instance: HostDashboardInstance,
   names: DeploymentNames,
-  source: AdmittedServeBinarySource,
 ) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
-    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr, source: source),
+    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr, source: serve_source_from_instance(instance: instance)),
     serve_entry: roadmap_serve_entry_file,
     provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: instance.serve_function,
@@ -1547,7 +1546,6 @@ fn deployment_spec_for(
   instance: HostDashboardInstance,
   target: DeploymentHostTarget,
   names: DeploymentNames,
-  source: AdmittedServeBinarySource,
 ) -> DeploymentSpec {
   let holding = role_singleton_holding_under(realization: realization, instance: instance)
   DeploymentSpec {
