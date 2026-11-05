@@ -381,9 +381,16 @@ fn inhabitance_atom_identity(n: Node) -> Optional<Symbol> {
   }
 }
 
-// TWO BARE SIDES THAT BOTH CARRY A VARIABLE: the same atom is the same variable and AGREES (both sides
-// instantiate it together); a different atom is a variable over a different variable, or a variable over a
-// concrete type -- undecided, never a refusal for the wrong reason.
+// TWO BARE SIDES THAT BOTH CARRY A VARIABLE: AGREES only when the two identity symbols are EQUAL, which in
+// v2 means the SAME BINDER, not the same spelling. A type variable is identified by its Atom identity
+// symbol, and distinct binders are MINTED DISTINCT -- v2.std.anonymous_binder fresh_type_variable and
+// fresh_constructor_use_variable embed an origin prefix and the use node's occurrence id into the lexeme
+// (e.g. `<constructor-use@N:L>`), so a callee's `T` and a caller's separately-scoped `T` reach inhabitance
+// as two different symbols and this comparison does NOT agree them. (That spelling-vs-binder hazard is
+// gunbc.recurring_failure_mode type_variable_identified_by_spelling_in_v2; the comparison is on the whole
+// minted identity, never the extracted label, which is why it sits on the safe side of it -- the same basis
+// inhabitance_node_mentions_type_variable already uses.) A different symbol is a variable over a different
+// binder, or a variable over a concrete type -- undecided, never a refusal for the wrong reason.
 fn inhabitance_bare_atom_verdict(declared: Node, produced: Node) -> PositionVerdict {
   match inhabitance_atom_identity(n: declared) {
     Absent => PositionUndecided

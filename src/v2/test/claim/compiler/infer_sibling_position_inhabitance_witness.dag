@@ -158,7 +158,7 @@ fn skp_obligation(declared: Node, produced: Node) -> DeclaredTypeObligation {
     produced: produced,
     produced_declared_carrier: Absent,
     application: node_synthetic(kind: TypeNode { connective: Conj }, children: []),
-    type_variables: [^skp_t]
+    type_variables: [^skp_t, ^skp_u]
   }
 }
 
@@ -214,6 +214,19 @@ test fn skp_relation_variable_with_agreeing_siblings_inhabits_holds() -> Bool {
   skp_inhabits(
     declared: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int)),
     produced: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int))
+  )
+}
+
+// THE AGREEMENT CONDITION, THE ONLY NEW BEHAVIOUR: a variable position may be AGREED only for the SAME
+// BINDER, so two DISTINCT binders -- T at U, both in the census, whatever their source spelling -- are NOT
+// Inhabits. In v2 a same-spelled-different-scope pair is minted to two distinct symbols
+// (v2.std.anonymous_binder), which is exactly the situation this claim pins: the value position agrees (Int
+// at Int) but the variable position cannot be read (T at U), so the pair is UNDECIDED, never Inhabits. This
+// is where any unsoundness in an Undecided->Agree widening would live, so it is asserted as Undecided.
+test fn skp_relation_distinct_binders_not_inhabits_holds() -> Bool {
+  skp_undecided(
+    declared: skp_pair_of(first: skp_atom(identity: ^skp_t), second: skp_atom(identity: ^dag_binding_type_int)),
+    produced: skp_pair_of(first: skp_atom(identity: ^skp_u), second: skp_atom(identity: ^dag_binding_type_int))
   )
 }
 
