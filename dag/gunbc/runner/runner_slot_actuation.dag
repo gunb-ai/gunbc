@@ -31,6 +31,7 @@ import extdeps.systemd.systemctl {
 }
 import extdeps.procps.ps { ps_unit_comm_listing_argv, ps_unit_runs_command, ps_unit_runs_any_process }
 import gunbc.runner.runner_disk_reclaim { SlotActivityObservation, SlotHasLiveWorker, SlotIdle, SlotActivityUnobserved }
+import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
@@ -263,13 +264,34 @@ type SlotRestartPlan
   = RestartSteps { steps: List<List<String>> }
   | RestartRefused { reason: String }
 
-fn slot_restart_plan(r: SlotActuationReading) -> SlotRestartPlan {
+// THE BUSY CONSULT (review 91071, the #15819 class): every mutating op in this lane is required to consult
+// the slot's busy standing BEFORE it touches anything (the RunnerSlotBusyStanding contract, gunbc.runner.
+// runner_local_state). A Detached verdict (registration offline) does NOT imply idle, so the plan refuses a
+// busy slot: only SlotIdle permits; a busy standing that could not be read refuses exactly like a running
+// job (§5, could-not-see is never permission); a slot executing a job refuses UNLESS the lost-agent reading
+// corroborates that the running job IS the orphaned one (in_progress, runner null, past timeout), where
+// killing it is the remedy. This module's §3b note maps busy into the payload-free SlotActivityObservation
+// (the same currency the sibling drain consults via read_slot_worker_over) rather than reading a worker
+// ProcessIdentity it would discard; a caller needing the identity uses RunnerSlotBusyStanding directly.
+fn slot_restart_plan(r: SlotActuationReading, worker: SlotActivityObservation, lost: LostAgentObservation) -> SlotRestartPlan {
   match r.load {
     UnitLoadNotFound => RestartRefused { reason: "the slot's unit is not installed on this host (LoadState=not-found): restart does not install it" }
     UnitLoadBadSetting => RestartRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
     UnitLoadError => RestartRefused { reason: "the manager failed to load the slot's unit (LoadState=error): the state is unreadable, so it is not restarted" }
     UnitLoadMasked => RestartRefused { reason: "the slot's unit is masked (a drained slot): restart does not unmask — that is a re-provision" }
-    UnitLoaded => RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+    UnitLoaded => match worker {
+      SlotIdle => RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+      SlotActivityUnobserved { cause: c } =>
+        RestartRefused { reason: concat("whether the slot is executing a job could not be read, so it is not restarted: ", c as String) }
+      SlotHasLiveWorker => match lost {
+        LostAgentDetected { job_id: _, over_by: _ } =>
+          RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+        JobNotLost { job_id: _, reason: why } =>
+          RestartRefused { reason: concat("the slot is executing a job that is not the orphaned one (", why as String, "); a restart would kill a live job") }
+        LostAgentReadRefused { job_id: _, reason: why } =>
+          RestartRefused { reason: concat("the slot is executing a job and the lost-agent reading was refused, so the running job is not presumed orphaned: ", why as String) }
+      }
+    }
   }
 }
 
@@ -626,9 +648,11 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
 
 // THE RESTART LEG'S EFFECT. `before` is the REAL main process the connectivity join was fed — the pid
 // the observation grounded the slot on — so the readback can tell a cycled process from a no-op. The
-// caller (runner_lifecycle_realize) supplies it only for a verdict that says detached/orphaned/lost;
-// this effect never re-reads a token and never runs blind: it reads the unit, refuses on an unreadable
-// or uninstalled or masked load, restarts once, and re-reads to a process cycle.
+// caller (runner_lifecycle_realize) supplies it only for a verdict that says detached/orphaned/lost, and
+// supplies `lost` (the same lost-agent observation the decide used). This effect never re-reads a token and
+// never runs blind: it reads the unit, consults busy standing (read_slot_worker_over while active, the §3b
+// payload-free currency) and REFUSES a busy slot unless the running job is corroborated orphaned, refuses on
+// an unreadable or uninstalled or masked load, restarts once, and re-reads to a process cycle.
 //
 // FRONTIER (DESIGN section 3c, declared not dangling). This is the modeled restart actuation the restart leg
 // performs on a permitted verdict. Its CONSUMER is the wet realize arm that calls runner_lifecycle_restart_leg
@@ -638,12 +662,13 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
 // runner-liveness-reconcile timer; nothing here runs live in this PR. Its WITNESS (runner_slot_restart_witness)
 // supplies the target, context, unit and `before` at the boundary and discriminates the refuse arms and the
 // changed-MainPID readback. DISSOLVES when the reconcile timer is re-enabled and the wet arm drives it.
-fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess) -> SlotActuationOutcome
+fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess, lost: LostAgentObservation) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
-    SlotRead { reading: r } =>
-      match slot_restart_plan(r: r) {
+    SlotRead { reading: r } => {
+      let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
+      match slot_restart_plan(r: r, worker: worker, lost: lost) {
         RestartRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         RestartSteps { steps: ss } =>
           match run_slot_steps_over(target: target, context: context, steps: ss) {
@@ -659,6 +684,7 @@ fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext
                   }
               }
           }
+      }
       }
   }
 }
