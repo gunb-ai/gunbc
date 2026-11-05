@@ -370,9 +370,13 @@ fn heal_publisher_phase_script(
   }
 }
 
+// THE TOKEN'S LIFETIME MUST OUTLIVE THE PUBLISH STEP'S RE-ADMISSION. The federation step runs before
+// heal_publication_publish_wet, which re-observes the candidate world and admits again (the corpus pass)
+// before it first spends this token on the Secret Manager read. A five-minute token expired inside that
+// pass (ACCESS_TOKEN_EXPIRED). Thirty minutes covers the pass and stays inside the job's 45-minute timeout.
 fn heal_publisher_wif_auth_step(job: HealPublisherPolicy) -> Step {
   UsesStep {
-    name: Present { value: "Federate to the publisher's own identity (access token only, five minutes)" },
+    name: Present { value: "Federate to the publisher's own identity (access token only, thirty minutes)" },
     id: Present { value: heal_publisher_wif_step_id },
     uses: google_auth_action,
     with: Present {
@@ -380,7 +384,7 @@ fn heal_publisher_wif_auth_step(job: HealPublisherPolicy) -> Step {
         kv(key: "workload_identity_provider", value: yaml_string(s: heal_publisher_federation_provider_resource(f: job.federation))),
         kv(key: "service_account", value: yaml_string(s: job.federation.service_account as String)),
         kv(key: "token_format", value: yaml_string(s: "access_token")),
-        kv(key: "access_token_lifetime", value: yaml_string(s: "300s")),
+        kv(key: "access_token_lifetime", value: yaml_string(s: "1800s")),
         kv(key: "create_credentials_file", value: yaml_bool(b: false)),
         kv(key: "export_environment_variables", value: yaml_bool(b: false))
       ]
