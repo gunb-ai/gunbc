@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.build_target_directory_declared_only_through_injected_env
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// THE INVALID STATE: a build's ARTIFACT DIRECTORY is declared only as an environment assignment at the
+// call site, so the command that is run does not say where its outputs land. Filed at clever-crane-830's
+// instruction (2026-11-02) when the H1 scope answer required the fix be split off rather than bundled:
+// rewriting these workflow-route commands inside H1 would have moved emitted workflow argv and generated
+// artifacts no H1 consumer needs moved.
+data build_target_directory_declared_only_through_injected_env: RecurringFailureMode = RecurringFailureMode {
+  identity: "build_target_directory_declared_only_through_injected_env" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of declaring a build's output directory as an argv token the command itself carries (cargo's own --target-dir), and of reading that token back off the emitted argv in a witness, instead of relying on an environment assignment composed around the command"
+    }
+  },
+
+  receipts: [
+    "**WHERE IT LIVES, BY CITED READ, NOT AS A HYPOTHESIS.** extdeps.rust.cargo_build composes `CARGO_TARGET_DIR=\{target_dir\}` into `env` at three shell-transport call sites -- cargo.Build `BuildManifest`, `BuildManifestMessages`, `CheckManifestMessages` -- and spells the same assignment in the argv builder at the head of that module (cargo_build_command_in, which also sets `CARGO_HOME=\{cargo_home\}`). extdeps.rust.cargo's own comment records the two-channel state directly: the host injects CARGO_TARGET_DIR through ShellTransportConfig (cargo_compile_env) 'not argv, because the caller composes the full command string'. So the same fact has two spellings and neither is the command.",
+
+    "**WHY THAT IS AN INVALID STATE AND NOT A STYLE CHOICE.** Everything downstream reads one of the two spellings and they can disagree: the workflow YAML and the emitted closure see a command line, a runner that sanitizes or re-exports environment sees something else, and the native route -- which by the 2026-11-01 ruling declares NO environment of its own, precisely so that the process inherits the seed-build preamble and nothing more -- would run the very same build with a different output location. A reader of the argv cannot tell which directory the build promised.",
+
+    "**MEASURED, AND THE EQUIVALENCE THAT MAKES THE FIX CHEAP.** On the pinned toolchain (rust-toolchain.toml channel 1.93.0, measured 2026-11-02) `cargo build --target-dir <dir> --manifest-path <manifest>` places artifacts where `CARGO_TARGET_DIR=<dir> cargo build --manifest-path <manifest>` does: the flag is the stable, argv-visible form of the same setting. The same measurement is what killed the tempting variant -- cargo has no working-directory flag here (`--workdir` answers 'unexpected argument'; `-C` answers 'the `-C` flag is unstable, pass -Z unstable-options on the nightly channel'), which is why the DIRECTORY part of the residue is handled at the binding instead (gunbc.recurring_failure_mode admitted_shell_effect_spawned_at_an_ambient_working_root).",
+
+    "**RUNG FOUND AT: Mitigatable.** Today the two spellings agree by convention, and the instruments that run these builds pass the same target_dir into both. Nothing refuses when they diverge, and no witness reads the emitted argv for the token, which is why this is not yet MechanicallyPreventable.",
+
+    "**DISSOLUTION CONDITION, CONCRETE.** The row dissolves when (a) the three shell-transport sites and the argv builder carry `--target-dir <target_dir>` with no `CARGO_TARGET_DIR=` assignment, and (b) an executed witness over the emitted command states the token is present and its value equals the parameter. Filed as a follow-up item rather than folded into H1: the change moves workflow-route commands and the artifacts generated from them, which the H1 ruling placed out of scope.",
+
+    "**NAMED OWNER.** The native-backend lane (manager clever-crane-830, work item adhoc-b3b5b3ae-af9), which is also the consumer that would most suffer the divergence, since the native route's declared operation states its artifact location as a flag (extdeps.rust.cargo_build_service CargoBuild, cargo_build_target_dir_flag).",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "BuildManifest"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "BuildManifestMessages"),
+    decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "CheckManifestMessages"),
+    decl_ref(module_path: "extdeps.rust.cargo_build_service", decl_name: "cargo_build_target_dir_flag"),
+    decl_ref(module_path: "gunbc.recurring_failure_mode.admitted_shell_effect_spawned_at_an_ambient_working_root", decl_name: "admitted_shell_effect_spawned_at_an_ambient_working_root"),
+  ],
+}
