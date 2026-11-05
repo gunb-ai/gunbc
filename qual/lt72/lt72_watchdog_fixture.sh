@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lively-tern-72 slot-watchdog fixture. Usage: lt72_watchdog_fixture.sh <mode> <gunbc-bin> <checkout> [envelope=2G] [seconds=420]
+# lively-tern-72 slot-watchdog fixture. Usage: lt72_watchdog_fixture.sh <mode> <gunbc-bin> <checkout> [envelope=2G] [seconds=420] [memory.high=envelope; "infinity" for the drift-peak shape]
 # modes: livelock  (run-4 shape: anon to the cap, then CPU-bound text refaulting)      EXPECT: verb kills job tree, exit!=0 receipt; Worker gone, Listener alive, memory.current ~ listener baseline
 #        cpusteady (anon 60% of cap, 100% user CPU)                                   EXPECT: LIVES to the deadline
 #        burst     (alloc 95% of cap 8 s, free, then CPU work)                         EXPECT: LIVES
@@ -7,8 +7,8 @@
 # Slot shape: transient USER unit (flat leaf), MemoryMax=MemoryHigh=$ENV, swap 0, holding a fake Runner.Listener (sleep copy named so) and a fake Runner.Worker tree.
 # Env: verb runs UNPRIVILEGED; /run/gunbc-slot-watchdog must be pre-created and writable. The job runs a private fadvised copy of python (py-job) in ALL modes. The verb gets the ABSOLUTE slot cgroup dir (user units sit >3 levels down).
 set -u
-MODE=${1:?mode}; BIN=${2:?gunbc}; CHK=${3:?checkout}; ENV=${4:-2G}; SECS=${5:-420}
-OUT=/var/tmp/lt72-wd-$MODE-$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$OUT/bin"
+MODE=${1:?mode}; BIN=${2:?gunbc}; CHK=${3:?checkout}; ENV=${4:-2G}; SECS=${5:-420}; HIGH=${6:-$ENV}
+OUT=/var/tmp/lt72-wd-$MODE-$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$OUT/bin"; echo "envelope=$ENV high=$HIGH" >"$OUT/shape.txt"
 cp "$(command -v sleep)" "$OUT/bin/Runner.Listener"
 cp "$(command -v python3)" "$OUT/bin/Runner.Worker" 2>/dev/null || ln -s "$(command -v python3)" "$OUT/bin/Runner.Worker"
 # private interpreter copy for the JOB (new inodes, page cache evicted) so its text is charged to the slot, as in probe run 4
@@ -52,7 +52,7 @@ while True:
             for _ in range(2000): x=(x*1103515245+12345)&0xffffffff';;
 *) echo bad mode; exit 2;; esac
 # slot: Listener + Worker tree (Worker spawns a child shell that spawns the workload, so the tree is >1 deep)
-systemd-run --user --unit="$UNIT" --collect -p MemoryMax="$ENV" -p MemoryHigh="$ENV" -p MemorySwapMax=0 -p KillMode=control-group \
+systemd-run --user --unit="$UNIT" --collect -p MemoryMax="$ENV" -p MemoryHigh="$HIGH" -p MemorySwapMax=0 -p KillMode=control-group \
   -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" -E LD_LIBRARY_PATH="$OUT/lib" bash -c "$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"$OUT/bin/py-job -c \\\"\$PY\\\"\"])'" >"$OUT/launch.txt" 2>&1
 sleep 2
 CG=/sys/fs/cgroup$(systemctl --user show "$UNIT" -p ControlGroup --value); echo "$CG" >"$OUT/cgroup.txt"
