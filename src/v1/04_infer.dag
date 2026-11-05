@@ -225,7 +225,7 @@ import v1.compiler.infer_items {
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
   is_typed_service_call_receiver, extract_typed_service_name,
-  service_endpoint_supply, EndpointOperationParameter, service_operation_items, service_data_values,
+  service_endpoint_supply, service_endpoint_answer, EndpointOperationParameter, service_operation_items, service_data_values,
   collect_typed_service_calls,
   expand_transitive_services,
   EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
