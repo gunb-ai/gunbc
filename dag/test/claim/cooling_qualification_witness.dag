@@ -56,7 +56,7 @@ data srv3_installed_cooling: InstalledCoolingRealization = InstalledCoolingReali
 
 // GREEN: the fleet's actual srv3 pairing is catalog-compatible. W1 socket LGA4926 matches the
 // M128-30 socket, the W1's supported-board population contains the ALTRAD8UD, and the W1's
-// 250 W design power covers the M128-30's 183 W TDP.
+// 250 W design power covers the M128-30's 250 W design power.
 data test_socket_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "Supplied test fixture socket; its figures are claimed of no upstream socket." as NonEmptyStr
 }
@@ -153,8 +153,8 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
   }
 }
 
-// Control 4: lowering design power below the processor TDP refuses. 182 W sits one watt under
-// the M128-30's cited 183 W, so this also proves the comparison is not a coarse bucket.
+// Control 4: lowering design power below the processor TDP refuses. 249 W sits one watt under
+// the M128-30's cited 250 W design power, so this also proves the comparison is not a coarse bucket.
 test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
   let underrated_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
@@ -162,7 +162,7 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
     socket: dynatron_w1_catalog.socket,
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: watt(182),
+    max_design_power: watt(249),
     supported_motherboards: dynatron_w1_catalog.supported_motherboards,
   }
   match cooling_catalog_verdict(
@@ -200,7 +200,7 @@ test fn design_power_exactly_equal_to_tdp_is_admitted() -> Bool {
     socket: dynatron_w1_catalog.socket,
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
-    max_design_power: watt(183),
+    max_design_power: watt(250),
     supported_motherboards: dynatron_w1_catalog.supported_motherboards,
   }
   cooling_catalog_verdict_admits_qualification(

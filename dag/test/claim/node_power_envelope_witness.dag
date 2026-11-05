@@ -4,12 +4,17 @@ import std.types { Bool, Int, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
   ByteSize,
+  Bandwidth,
   bandwidth_count,
   byte_size,
   byte_size_count,
   megatransfers_per_second,
+  celsius,
   megatransfers_per_second_count,
+  milliampere,
+  millivolt,
   milliwatt,
+  milliwatt_count,
   watt,
   watt_count,
 }
@@ -18,13 +23,17 @@ import extdeps.memory.jedec { ddr4_generation_catalog }
 import extdeps.memory.types {
   DramModuleCatalogRow,
   Registered,
+  Unbuffered,
   bit_width,
   dram_generation_ddr4,
   dram_module_is_realizable,
   dram_module_required_die_density,
   MonolithicDie,
+  DramCurrentProfile,
+  DramPartCurrentEvidence,
 }
-import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
+import extdeps.memory.dimm_class_power_bound { ddr4_class_power_bounds }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_max_m12830_usage_power, altra_q8030_catalog }
 import extdeps.cpu.ampere_altra_memory_controller {
   altra_memory_max_data_rate,
 }
@@ -38,7 +47,8 @@ import gunbc.memory_provisioning {
   asrock_altrad8ud_1l2t_geometry,
   mt_collins_per_socket_geometry,
 }
-import extdeps.external_authority { ExternalAuthority, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
+import std.optional { Absent, Present }
+import extdeps.external_authority { CitedFigureStanding, ExternalAuthority, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
 import extdeps.uri { Uri, File }
 import product.node_power_envelope {
   ChannelClockAdmitted,
@@ -70,7 +80,27 @@ import product.node_power_envelope {
   PopulationModuleRead,
   PopulationModuleUnread,
   PsuUndecidable,
+  CpuDesignWorstCase,
+  CpuPartialUtilisation,
+  CpuPowerUnresolved,
+  CpuRatedUsageWorkload,
+  CpuPowerDerived,
+  CpuPowerRefused,
+  DimmLoad,
+  DimmPowerEvidence,
+  DimmPowerFromClassBound,
+  DimmPowerFromPartCurrents,
+  DimmPowerRefused,
+  DimmTraffic,
+  MemoryPowerUnresolved,
+  NoPartEvidenceAndNoClassBound,
+  TemperatureBeyondClassBound,
+  TrafficExceedsModulePeak,
+  cpu_power,
+  dimm_power,
   memory_power,
+  MemoryPowerDerived,
+  MemoryPowerRefused,
   node_draw,
   node_memory_capacity,
   populated_dimms_per_channel,
@@ -212,9 +242,19 @@ data eight_module_population: PopulationOption = PopulationOption {
 // which no claim below can mistake for a wattage.
 fn node_wall(inputs: NodeElectricalInputs) -> Int {
   match node_draw(inputs: inputs) {
-    NodeDrawDerived { dc_load: _, wall_draw: w } => watt_count(w: w)
+    NodeDrawDerived { dc_load: _, wall_draw: w, memory_standing: _ } => watt_count(w: w)
     NodeDrawRefused { cause: _ } => 0 - 1
   }
+}
+
+data idle_normal_load: DimmLoad = DimmLoad {
+  traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activate_duty_permille: 0 },
+  temperature: celsius(count: 60),
+}
+
+data class_bound_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [],
+  class_bounds: ddr4_class_power_bounds,
 }
 
 data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
@@ -223,7 +263,10 @@ data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
   cpu: altra_q8030_catalog,
   context: altrad8ud_context,
   memory: PopulationModuleRead { population: eight_module_population },
-  dram_power_per_chip: milliwatt(count: 400),
+  dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
   psu_efficiency: Gold,
@@ -372,17 +415,20 @@ test fn the_populated_depth_is_read_from_the_population() -> Bool {
 
 // PSU SIZING IS COMPUTED, and its verdict carries both numbers. 161W of
 // processor (the Q80-30's cited TDP, not a hand-authored typical draw) plus
-// 115W of DRAM plus 30W of board is 306W at the DC rail; a Gold supply turns
-// that into 340W at the wall. The DRAM figure counts the ECC devices as well as
+// 64W of DRAM (eight 32 GiB Registered monolithic sticks at the 8W class bound) plus 30W of
+// board is 255W at the DC rail; a Gold supply turns that into 283W at the wall. The DRAM figure counts the ECC devices as well as
 // the data ones — eight 2Rx4 modules are 8 x 2 x 18 chips, not 8 x 2 x 16 —
 // because the chip count comes from the module width against the ECC word:
 // dram_chips_per_rank derives the count from the 72-bit ECC word rather than
 // the 64-bit data word.
 test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
-  watt_count(w: memory_power(population: eight_module_population, power_per_chip: milliwatt(count: 400))) == 115
-    && node_wall(inputs: q8030_node) == 340
+  (match memory_power(population: eight_module_population, evidence: class_bound_only_evidence, load: idle_normal_load) {
+    MemoryPowerDerived { power: p, standing: _ } => watt_count(w: p) == 64
+    MemoryPowerRefused { cause: _ } => false
+  })
+    && node_wall(inputs: q8030_node) == 283
     && match psu_adequacy(inputs: q8030_node) {
-      PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 306 && watt_count(w: h) == 244
+      PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 255 && watt_count(w: h) == 295
       PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
       PsuUndecidable { cause: _ } => false
     }
@@ -397,14 +443,17 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
     cpu: altra_q8030_catalog,
     context: altrad8ud_context,
     memory: PopulationModuleRead { population: eight_module_population },
-    dram_power_per_chip: milliwatt(count: 400),
+    dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
     board_idle_draw: watt(count: 30),
     psu_rated_output: watt(count: 250),
     psu_efficiency: Gold,
   }
   match psu_adequacy(inputs: small) {
     PsuUndersized { dc_load: dc, rated: r, shortfall: s } =>
-      watt_count(w: dc) == 306 && watt_count(w: r) == 250 && watt_count(w: s) == 56
+      watt_count(w: dc) == 255 && watt_count(w: r) == 250 && watt_count(w: s) == 5
     PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
     PsuUndecidable { cause: _ } => false
   }
@@ -448,22 +497,22 @@ test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
     DerivedWallPowerRefused { cause: _ } => WallPowerMeasured { watts: watt(count: 0), host: "unreachable" as NonEmptyStr, observed_at: 0 }
   }
   let measured_low = WallPowerMeasured {
-    watts: watt(count: 300),
+    watts: watt(count: 250),
     host: "srv1" as NonEmptyStr,
     observed_at: 1786600000000,
   }
   let measured_equal = WallPowerMeasured {
-    watts: watt(count: 340),
+    watts: watt(count: 283),
     host: "srv1" as NonEmptyStr,
     observed_at: 1786600000000,
   }
   match envelope_divergence(derived: derived, measured: measured_low) {
     DerivationReadsHigh { derived: d, measured: m, excess: e } =>
-      watt_count(w: d) == 340 && watt_count(w: m) == 300 && watt_count(w: e) == 40
+      watt_count(w: d) == 283 && watt_count(w: m) == 250 && watt_count(w: e) == 33
     _ => false
   }
     && match envelope_divergence(derived: derived, measured: measured_equal) {
-      EnvelopeAgrees { watts: w } => watt_count(w: w) == 340
+      EnvelopeAgrees { watts: w } => watt_count(w: w) == 283
       _ => false
     }
 }
@@ -494,7 +543,10 @@ data pending_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs 
     dimm_count: 8,
     read_obligation: "read the part number off an arriving 64 GiB RDIMM and cite its catalog row: rank count and DRAM device width decide the chip count per rank, and a 64 GiB DDR4 module may be 2Rx4, 4Rx4 or stacked-die",
   },
-  dram_power_per_chip: milliwatt(count: 400),
+  dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
   psu_efficiency: Gold,
@@ -506,13 +558,15 @@ test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool 
       match c {
         MemoryModuleUnread { stick_capacity: cap, dimm_count: n, read_obligation: _ } =>
           byte_size_count(b: cap) == 68719476736 && n == 8
+        MemoryPowerUnresolved { cause: _ } => false
+        CpuPowerUnresolved { utilisation_permille: _, read_obligation: _ } => false
       }
-    NodeDrawDerived { dc_load: _, wall_draw: _ } => false
+    NodeDrawDerived { dc_load: _, wall_draw: _, memory_standing: _ } => false
   }
 }
 
 // ...and the supply is UNDECIDABLE rather than adequate. A 550W supply against
-// a 183W processor and a board looks comfortable until the memory it could not
+// a 250W processor and a board looks comfortable until the memory it could not
 // count is added, which is exactly the reading this arm refuses to give.
 test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
   match psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
@@ -532,8 +586,8 @@ test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
 
 // POSITIVE CONTROL, and the number the placement decision consumes the moment
 // the sticks are qualified: the SAME node with the part read as a 2Rx4 64 GiB
-// module derives 183W of processor plus 115W of DRAM plus 30W of board = 328W
-// at the DC rail, 364W at the wall behind a Gold supply. If the refusal above
+// module derives 250W of processor DESIGN power plus 80W of DRAM (the 10W class bound x8) plus 30W
+// of board = 360W at the DC rail, 400W at the wall behind a Gold supply. If the refusal above
 // were a modelling dead end rather than a missing read, this claim could not
 // exist.
 data rdimm_64g_2rx4: DramModuleCatalogRow = DramModuleCatalogRow {
@@ -563,7 +617,10 @@ data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInput
   cpu: altra_max_m12830_catalog,
   context: altrad8ud_context,
   memory: PopulationModuleRead { population: eight_by_64_population },
-  dram_power_per_chip: milliwatt(count: 400),
+  dimm_load: idle_normal_load,
+  dimm_evidence: class_bound_only_evidence,
+  cpu_load: CpuDesignWorstCase,
+  cpu_power_cap: Absent,
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
   psu_efficiency: Gold,
@@ -571,7 +628,130 @@ data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInput
 
 test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
   match node_draw(inputs: qualified_altrad8ud_m12830_node) {
-    NodeDrawDerived { dc_load: dc, wall_draw: w } => watt_count(w: dc) == 328 && watt_count(w: w) == 364
+    NodeDrawDerived { dc_load: dc, wall_draw: w, memory_standing: _ } => watt_count(w: dc) == 360 && watt_count(w: w) == 400
     NodeDrawRefused { cause: _ } => false
   }
+}
+
+
+// ── DIMM POWER IS A FUNCTION OF TRAFFIC AND TEMPERATURE (host thermal P2) ──────────────────────
+// The profile below is a FIXTURE, uncited by construction: it exercises the current-based method
+// and is never a Samsung or any other vendor figure.
+data fixture_profile_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "fixture current profile for exercising dimm_power_from_currents; not a datasheet figure" as NonEmptyStr,
+}
+
+data fixture_part_evidence: DramPartCurrentEvidence = DramPartCurrentEvidence {
+  part_number: "GENERIC-32G-2RX4-3200" as NonEmptyStr,
+  profile: DramCurrentProfile {
+    supply: millivolt(count: 1200),
+    idd0: milliampere(count: 50),
+    idd3n: milliampere(count: 40),
+    idd4r: milliampere(count: 150),
+    idd4w: milliampere(count: 140),
+    idd5b: milliampere(count: 250),
+    refresh_duty_permille: 40,
+    buffer_overhead: milliwatt(count: 500),
+  },
+  standing: fixture_profile_standing,
+}
+
+data fixture_part_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
+  parts: [fixture_part_evidence],
+  class_bounds: [],
+}
+
+fn load_at(temp: Int, read: Int, write: Int) -> DimmLoad {
+  DimmLoad {
+    traffic: DimmTraffic { read: Bandwidth { count: read }, write: Bandwidth { count: write }, activate_duty_permille: 300 },
+    temperature: celsius(count: temp),
+  }
+}
+
+fn part_milliwatts(evidence: DimmPowerEvidence, load: DimmLoad) -> Int {
+  match dimm_power(module: mod_2rx4_32g, evidence: evidence, load: load) {
+    DimmPowerFromPartCurrents { power: p, standing: _ } => milliwatt_count(w: p)
+    DimmPowerFromClassBound { power: _, standing: _ } => 0 - 1
+    DimmPowerRefused { cause: _ } => 0 - 2
+  }
+}
+
+// Equal traffic, hotter die: refresh doubles above 85 C, so 90 C reads strictly higher than 80 C.
+test fn dimm_power_at_90c_exceeds_80c_under_equal_traffic() -> Bool {
+  part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 4000000000, write: 2000000000))
+    > part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 80, read: 4000000000, write: 2000000000))
+    && part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 80, read: 4000000000, write: 2000000000)) > 0
+}
+
+// Equal temperature, more traffic: power rises with read/write bandwidth.
+test fn dimm_power_rises_with_traffic_at_equal_temperature() -> Bool {
+  part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 8000000000, write: 4000000000))
+    > part_milliwatts(evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 0, write: 0))
+}
+
+// Traffic beyond the module's peak bus bandwidth refuses; it is not clamped.
+test fn traffic_beyond_the_module_peak_refuses() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 30000000000, write: 30000000000)) {
+    DimmPowerRefused { cause: TrafficExceedsModulePeak { demanded: _, peak: _ } } => true
+    _ => false
+  }
+}
+
+// An unknown DIMM with no part evidence and no covering class bound refuses (never a silent default).
+data unbuffered_unknown_module: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "UNKNOWN-UDIMM",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: false,
+  buffering: Unbuffered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 8),
+  rank_count: 2,
+}
+
+test fn an_unknown_dimm_with_no_class_bound_refuses() -> Bool {
+  match dimm_power(module: unbuffered_unknown_module, evidence: class_bound_only_evidence, load: idle_normal_load) {
+    DimmPowerRefused { cause: NoPartEvidenceAndNoClassBound { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// A part with cited-shaped evidence takes the part path; a part without it falls to the class bound.
+test fn part_evidence_takes_precedence_and_class_bound_covers_its_absence() -> Bool {
+  (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: idle_normal_load) {
+    DimmPowerFromPartCurrents { power: _, standing: _ } => true
+    _ => false
+  })
+    && (match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: idle_normal_load) {
+      DimmPowerFromClassBound { power: p, standing: _ } => milliwatt_count(w: p) == 8000
+      _ => false
+    })
+}
+
+// Past the class bound's extended-temperature ceiling the class bound refuses.
+test fn the_class_bound_refuses_beyond_its_temperature_ceiling() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
+    DimmPowerRefused { cause: TemperatureBeyondClassBound { temperature: _ } } => true
+    _ => false
+  }
+}
+
+// ── CPU: DESIGN POWER AND USAGE POWER ARE TWO FACTS ────────────────────────────────────────────
+fn cpu_watts(load: CpuLoad, cap: Watt?) -> Int {
+  match cpu_power(cpu: altra_max_m12830_catalog, load: load, cap: cap) {
+    CpuPowerDerived { watts: w, standing: _ } => watt_count(w: w)
+    CpuPowerRefused { utilisation_permille: _, read_obligation: _ } => 0 - 1
+  }
+}
+
+test fn cpu_design_power_is_250_and_usage_power_is_183() -> Bool {
+  cpu_watts(load: CpuDesignWorstCase, cap: Absent) == 250
+    && cpu_watts(load: CpuRatedUsageWorkload { usage: altra_max_m12830_usage_power }, cap: Absent) == 183
+}
+
+test fn a_power_cap_bounds_cpu_power_and_partial_utilisation_refuses() -> Bool {
+  cpu_watts(load: CpuDesignWorstCase, cap: Present { value: watt(count: 200) }) == 200
+    && cpu_watts(load: CpuPartialUtilisation { utilisation_permille: 500 }, cap: Absent) == 0 - 1
 }

@@ -1,11 +1,12 @@
 module extdeps.memory.types
 
-import std.measure { ByteSize, BitWidth, byte_size_count, bit_width, bit_width_count, byte_size }
+import std.measure { ByteSize, BitWidth, Milliampere, Millivolt, Milliwatt, byte_size_count, bit_width, bit_width_count, byte_size }
+import std.nat { Nat }
 import std.types { Bool, Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -218,4 +219,47 @@ type MemoryPopulationRow {
 
 type HostMemoryPopulation {
   rows: List<MemoryPopulationRow>
+}
+
+// --- DDR4 CURRENT-BASED POWER EVIDENCE ------------------------------------------------------------
+//
+// A DRAM component datasheet states per-DIE supply currents for named operating states (JEDEC DDR4
+// IDD definitions): IDD3N active standby, IDD0 one-bank activate-precharge, IDD4R and IDD4W burst
+// read and write, IDD5B burst refresh. Module power is those currents times the supply voltage,
+// weighted by how long the traffic keeps each state (the method in Micron TN-40-07). The profile is
+// PER DIE; the module's die count and active-rank die count come from the catalog row, never
+// restated here. refresh_duty_permille is tRFC over tREFI for the die, a datasheet figure.
+// buffer_overhead is the register and data-buffer draw of an RDIMM/LRDIMM that the die currents do
+// not include, or zero for a part with none.
+type DramCurrentProfile {
+  supply: Millivolt
+  idd0: Milliampere
+  idd3n: Milliampere
+  idd4r: Milliampere
+  idd4w: Milliampere
+  idd5b: Milliampere
+  refresh_duty_permille: Nat
+  buffer_overhead: Milliwatt
+}
+
+// ONE PART'S CURRENT EVIDENCE, keyed by the exact catalog part number. standing says whether the
+// profile was read from the vendor datasheet (CitedToAuthority) or is an uncited transcription; a
+// consumer must carry that standing to its own answer rather than consuming a bet as deduced.
+type DramPartCurrentEvidence {
+  part_number: NonEmptyStr
+  profile: DramCurrentProfile
+  standing: CitedFigureStanding
+}
+
+// A CONSERVATIVE POWER CEILING FOR A MODULE CLASS, used only when no part-specific current evidence
+// resolves. Keyed by generation, module class and an inclusive capacity ceiling; the row that
+// applies is the smallest max_capacity that still covers the module. normal_milliwatts holds up to
+// 85 C case temperature, extended_milliwatts above it (refresh doubled) up to 95 C.
+type DramClassPowerBound {
+  generation: DramGeneration
+  class: DramModuleClass
+  max_capacity: ByteSize
+  normal_milliwatts: Milliwatt
+  extended_milliwatts: Milliwatt
+  standing: CitedFigureStanding
 }

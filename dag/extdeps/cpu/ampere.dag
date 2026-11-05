@@ -20,6 +20,7 @@ import extdeps.ampere.altra_ssif_patch { altra_ssif_patch_authority }
 // SUCCESS". The comment sits ABOVE the block, not inside it: no file in this corpus carries a comment
 // inside an import block, so it is not a position the parser is known to accept.
 import extdeps.cpu.types {
+  CpuUsagePower,
   ProcessorCoolingMount,
   SocketedLandGrid, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SoCFamily,
   soc_family_eq,
@@ -277,13 +278,24 @@ data altra_max_m12830_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(128),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
-  tdp_watts: watt(183),
+  tdp_watts: watt(250),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
   l2_cache: ampere_altra_l2_cache_geometry,
   l2_cache_citations: ampere_altra_l2_cache_citations,
   l3_cache: ampere_altra_max_l3_cache_geometry,
   l3_cache_citations: ampere_altra_max_l3_cache_citations,
+}
+
+// M128-30 USAGE POWER, a distinct fact from the 250 W design power on the row above. 183 W is the
+// figure Ampere lists as usage power; it was previously recorded as the row's TDP (finding A of
+// gunbc.plans.host_thermal_operating_point), which understated the worst case by 67 W. The workload
+// basis is the datasheet's usage-power condition and is carried by name so nobody reads 183 W as a
+// bound. WHAT IS NOT YET READ: the exact workload text of the usage-power footnote.
+data altra_max_m12830_usage_power: CpuUsagePower = CpuUsagePower {
+  watts: watt(183),
+  workload_basis: "Ampere-listed usage power for the M128-30 at 3.0 GHz all-core; footnote workload text to be transcribed from the Rev A1 datasheet" as NonEmptyStr,
+  standing: CitedToAuthority { authority: ampere_altra_max_rev_a1_datasheet_authority },
 }
 
 data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
