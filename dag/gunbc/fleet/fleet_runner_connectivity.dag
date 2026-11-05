@@ -698,7 +698,7 @@ data jit_wrapper_mint_to_exec_bound: Second = second(count: 120)
 // none when the mint is at or after the start (that case is the recycled-pid arm above, and a negative
 // elapsed time is refused rather than clamped to zero — the same instant/displacement discipline as
 // provider_token_age, which returns none on a clock that stepped back).
-fn mint_to_exec_gap(started_at: EpochSecs, minted_epoch: Int) -> Second? {
+fn mint_to_exec_gap(started_at: EpochSecs, minted_epoch: EpochSecs) -> Second? {
   match checked_int_to_nat(n: started_at - minted_epoch) {
     Absent => none
     Present { value: g } => Present { value: second(count: g) }
@@ -725,7 +725,7 @@ fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incar
             Present { value: n } =>
               if n.minted_epoch > s {
                 IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted AFTER the running process started: a recycled pid, not this incarnation" }
-              } else if match mint_to_exec_gap(started_at: s, minted_epoch: n.minted_epoch) {
+              } else if match mint_to_exec_gap(started_at: s, minted_epoch: n.minted_epoch as EpochSecs) {
                   // The minted-after-start case is already taken above, so the gap is non-negative here;
                   // a none (unreachable in this arm) is NOT read as "within the bound" — it falls through
                   // to the same found path only because it cannot occur, never because a gap was guessed.

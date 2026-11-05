@@ -2,6 +2,7 @@ module gunbc.runner.runner_slot_actuation
 
 import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
+import std.measure { Hertz, hertz, hertz_count }
 import std.optional { Absent, Present }
 import std.algebra { trim }
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess, ProcessAbsoluteStart, StartObserved, StartUnread }
@@ -956,7 +957,13 @@ fn proc_absolute_start_of(proc_stat: String?, clock_ticks_text: String?, start_t
                   match start_ticks {
                     Absent => StartUnread { cause: "the process start time was not read" as NonEmptyStr }
                     Present { value: ticks } =>
-                      let abs = (btime as Int) + (ticks / hz)
+                      // The clock tick rate is a frequency, so it is carried on the std.measure Hertz
+                      // carrier (never a bare scalar divisor), exactly as the sibling replica_incarnation
+                      // probe carries it; btime is an EpochSecs instant. The absolute start is the boot
+                      // instant plus start_ticks over that rate, and a boot that would fall before the
+                      // epoch is refused rather than clamped.
+                      let ticks_per_second: Hertz = hertz(count: hz)
+                      let abs = (btime as Int) + (ticks / hertz_count(h: ticks_per_second))
                       if abs < 0 {
                         StartUnread { cause: "the computed absolute process start precedes the epoch" as NonEmptyStr }
                       } else {

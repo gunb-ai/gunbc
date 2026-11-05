@@ -1,6 +1,6 @@
 module gunbc.runner.runner_lost_agent
 
-import std.types { Int, NonEmptyStr, Bool }
+import std.types { Int, NonEmptyStr }
 import std.measure { Second, second, second_count }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 
@@ -117,16 +117,7 @@ fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
   }
 }
 
-// A NECESSARY-BUT-NOT-SUFFICIENT CORROBORATION GATE. This predicate is consulted only for a slot the
-// connectivity verdict has already named Detached or Orphaned; it is never on its own a permission to restart
-// (review 90967 -- the observation names no slot). NotLost refuses with a located reason, and a refused read
-// refuses too: neither may be read as corroboration, because a lost agent that was merely not-yet-over-timeout
-// may still be picked up by a late-binding agent, and a job whose fields could not be read is a job we have
-// not actually seen.
-fn lost_agent_slot_is_reclaimable(obs: LostAgentObservation) -> Bool {
-  match obs {
-    LostAgentDetected { job_id: _, over_by: _ } => True
-    JobNotLost { job_id: _, reason: _ } => False
-    LostAgentReadRefused { job_id: _, reason: _ } => False
-  }
-}
+// A NECESSARY-BUT-NOT-SUFFICIENT CORROBORATION GATE now lives in restart_leg_decision, which MATCHES on the
+// LostAgentObservation directly (review 91001) rather than collapsing it to a Bool: only the connectivity
+// verdict can permit, and the observation only deepens the reason, keeping its typed over_by / read-refused
+// cause. The classifier below is the sole producer of that observation.

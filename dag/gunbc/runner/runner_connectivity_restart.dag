@@ -7,7 +7,7 @@ import gunbc.fleet.fleet_runner_connectivity {
   SlotConnectivityHealthy, SlotConnectivityDetached, SlotConnectivityLabelsDiverge,
   SlotConnectivityOrphaned, SlotConnectivityUnknown, SlotConnectivityUnexpectedRegistration,
 }
-import gunbc.runner.runner_lost_agent { LostAgentObservation, lost_agent_slot_is_reclaimable }
+import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 
 data runner_connectivity_restart_authority_disposition: ConstructionMechanism = SingleAuthority
 
@@ -39,15 +39,24 @@ type RestartLegDecision
   | RestartLegRefuse { why: NonEmptyStr }
 
 fn restart_leg_decision(verdict: RunnerSlotConnectivityVerdict, lost: LostAgentObservation) -> RestartLegDecision {
-  let corroborated = lost_agent_slot_is_reclaimable(obs: lost)
+  // MATCH ON THE OBSERVATION, DO NOT COLLAPSE IT TO A Bool (review 91001, DESIGN section 5). Each lost-agent
+  // disposition contributes its OWN typed reason: a full detection deepens the claim with the over-timeout
+  // evidence; a refused read carries its refusal cause (it is not a detection, so it neither reclaims nor
+  // hides that the read failed); a not-lost job adds nothing. A Bool would throw away the over_by evidence and
+  // the typed LostAgentReadRefused cause. The corroboration NEVER opens a permit arm -- only the verdict does.
+  let corroboration: String = match lost {
+    LostAgentDetected { job_id: _, over_by: _ } => " and its job was detected stranded past its own timeout (a corroborating lost agent)"
+    JobNotLost { job_id: _, reason: _ } => ""
+    LostAgentReadRefused { job_id: _, reason: r } => concat(" and its lost-agent read was itself refused, so it is not corroborated: ", r)
+  }
   match verdict {
     // Only the verdict can name the slot, so only the verdict can permit. A detected lost agent deepens the
     // reason; it never opens a new arm. A slot-less lost-agent read cannot override any refuse arm: naming no
     // slot, it authorizes none (review 90967, DESIGN section 5).
     SlotConnectivityDetached { slot: s, registration_id: _ } =>
-      RestartLegPermit { slot: s, why: if corroborated { "the slot's registration is offline (detached) and its job was stranded against it (lost agent)" } else { "the slot's registration is offline (detached)" } }
+      RestartLegPermit { slot: s, why: concat("the slot's registration is offline (detached)", corroboration) }
     SlotConnectivityOrphaned { slot: s } =>
-      RestartLegPermit { slot: s, why: if corroborated { "the slot has no registration GitHub will acknowledge (orphaned) and its job was stranded against it (lost agent)" } else { "the slot has no registration GitHub will acknowledge (orphaned)" } }
+      RestartLegPermit { slot: s, why: concat("the slot has no registration GitHub will acknowledge (orphaned)", corroboration) }
     SlotConnectivityHealthy { slot: _, registration_id: _ } =>
       RestartLegRefuse { why: "the slot is healthy; a restart would be a self-inflicted wedge, and a lost-agent read names no slot so it cannot override this (review 90967, DESIGN section 5)" }
     SlotConnectivityLabelsDiverge { slot: _, registration_id: _ } =>

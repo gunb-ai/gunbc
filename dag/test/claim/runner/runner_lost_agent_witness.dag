@@ -9,7 +9,7 @@ import gunbc.runner.runner_lost_agent {
   LostAgentRunnerAssignment, RunnerBound, RunnerNull, RunnerReadUnavailable,
   LostAgentStartField, StartRecorded, StartNull, StartReadUnavailable,
   LostAgentDetected, JobNotLost, LostAgentReadRefused,
-  classify_lost_agent, lost_agent_slot_is_reclaimable,
+  classify_lost_agent,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -38,15 +38,14 @@ fn stranded_job() -> LostAgentJob {
 
 // ── The full detection, and what each single field removes from it ───────────────────────────────
 
-// POSITIVE CONTROL. All three symptoms together, past the timeout: the job is stranded and the slot is
-// reclaimable.
-test fn a_stranded_job_is_a_lost_agent_and_reclaims_its_slot() -> Bool {
-  (match classify_lost_agent(job: stranded_job()) {
+// POSITIVE CONTROL. All three symptoms together, past the timeout: the job is a lost agent. (Whether that
+// reclaims a slot is the restart leg's decision, witnessed in runner_connectivity_restart_witness.)
+test fn a_stranded_job_is_a_lost_agent() -> Bool {
+  match classify_lost_agent(job: stranded_job()) {
     LostAgentDetected { job_id: j, over_by: o } => j == 126894416098 && second_count(s: o) == 3600
     JobNotLost { job_id: _, reason: _ } => false
     LostAgentReadRefused { job_id: _, reason: _ } => false
-  })
-    && lost_agent_slot_is_reclaimable(obs: classify_lost_agent(job: stranded_job()))
+  }
 }
 
 // DISCRIMINATING RED (runner): bind a runner and the same job stops being a lost agent. If the detector
@@ -91,12 +90,11 @@ test fn not_yet_past_the_timeout_is_not_a_lost_agent() -> Bool {
 // ── A field the read could not answer is a refusal, never a symptom and never a reclaim ────────────
 
 test fn an_unreadable_runner_is_a_refusal_not_a_lost_agent() -> Bool {
-  (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerReadUnavailable { reason: "jobs API 500" as NonEmptyStr }, started: StartNull, over: second(count: 25200))) {
+  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerReadUnavailable { reason: "jobs API 500" as NonEmptyStr }, started: StartNull, over: second(count: 25200))) {
     LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => false
     LostAgentReadRefused { job_id: _, reason: _ } => true
-  })
-    && !lost_agent_slot_is_reclaimable(obs: LostAgentReadRefused { job_id: 1, reason: "x" as NonEmptyStr })
+  }
 }
 
 test fn an_unreadable_started_at_is_a_refusal_not_a_lost_agent() -> Bool {
@@ -130,10 +128,3 @@ test fn a_queued_or_completed_job_is_not_a_lost_agent() -> Bool {
     })
 }
 
-// POSITIVE CONTROL on the reclaim predicate: only a full detection reclaims; every other disposition,
-// including the refusals, does not.
-test fn only_a_full_detection_reclaims_the_slot() -> Bool {
-  lost_agent_slot_is_reclaimable(obs: LostAgentDetected { job_id: 1, over_by: second(count: 1) })
-    && !lost_agent_slot_is_reclaimable(obs: JobNotLost { job_id: 1, reason: "x" as NonEmptyStr })
-    && !lost_agent_slot_is_reclaimable(obs: LostAgentReadRefused { job_id: 1, reason: "x" as NonEmptyStr })
-}
