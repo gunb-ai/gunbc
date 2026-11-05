@@ -574,7 +574,7 @@ fn dashboard_ensure_serve_binary(
 ) -> DashboardExecResult {
   match serve_binary_origin {
     BuildInPlaceFromAdmittedRevision => dashboard_build_serve_binary_in_place(instance: instance, path: path)
-    DeclaredBuiltBinary { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, serve_binary_origin: declared, path: path)
+    DeclaredBuiltBinary { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, built_binary_path: declared, path: path)
   }
 }
 
@@ -694,18 +694,18 @@ fn dashboard_restore_previous_after_refused_install(instance: HostDashboardInsta
 fn dashboard_ensure_declared_serve_binary(
   instance: HostDashboardInstance,
   apply_workdir: FilePath,
-  serve_binary_origin: FilePath,
+  built_binary_path: FilePath,
   path: FilePath,
 ) -> DashboardExecResult {
   let present = dashboard_local_exec(
     workdir: apply_workdir,
     program: instance.toolchain.path_test,
-    args: ["-f", serve_binary_origin as String],
+    args: ["-f", built_binary_path as String],
   )
   if !present.success {
     dashboard_exec_refused(detail: join([
       "declared serve binary artifact absent: ",
-      serve_binary_origin as String,
+      built_binary_path as String,
       " — build it before apply; this step copies, it never builds",
     ], ""))
   } else {
@@ -728,7 +728,7 @@ fn dashboard_ensure_declared_serve_binary(
         let copied = dashboard_copy_to_target_atomically(
           instance: instance,
           controller_workdir: apply_workdir,
-          local_path: serve_binary_origin,
+          local_path: built_binary_path,
           remote_path: path,
         )
         if !copied.success {
