@@ -57,7 +57,9 @@ import v2.workflow.roster_import_sweep {
   roster_target_refusal,
   roster_target_unchanged,
   RosterLockAcquired,
-  RosterLockRefused
+  RosterLockRefused,
+  RosterLockBusy,
+  roster_lock_refusal_row
 }
 
 // DECLARED-TO-DECLARED REHOMING (NAMESPACE-XL, tidy-ant-251's approved design, 2026-10-20). A wave of
@@ -900,6 +902,7 @@ fn rehome_apply_exit(root_dir: String, paths_csv: String, name: String, from_hom
   let row = rehome_row_of(name: name, from_home: from_home, to_home: to_home)
   let report = match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { reason: r } => "REFUSE * " + roster_refusal_text(reason: r) + "\n"
+    RosterLockBusy { reason: r, holder: h, detail: d } => roster_lock_refusal_row(acquisition: RosterLockBusy { reason: r, holder: h, detail: d })
     RosterLockAcquired { held: held } => {
       let out = rehome_apply_locked(held: held, paths_csv: paths_csv, row: row)
       if roster_lock_release(held: held) { out } else { out + "REFUSE * apply-lock-not-released\n" }
