@@ -17,8 +17,9 @@ import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, NonEmptyDiagnostics, diagnostics_reason_lexemes }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
-  bash_build_command_with_words, bash_build_with_redir, bash_build_with_redir_to_file,
-  bash_build_word_cmdsubst, bash_build_exit, bash_build_assign_lit, bash_build_assign, bash_build_test_bracket,
+  bash_build_command_with_words, bash_build_with_redir_to_file, bash_build_with_redir_from_file,
+  bash_build_word_cmdsubst, bash_build_if_else_from_stmts, bash_build_exit,
+  bash_build_assign_lit, bash_build_assign, bash_build_test_bracket,
 }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
