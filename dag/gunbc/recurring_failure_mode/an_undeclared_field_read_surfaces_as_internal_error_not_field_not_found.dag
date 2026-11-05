@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.an_undeclared_field_read_surfaces_as_internal_error_not_field_not_found
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data an_undeclared_field_read_surfaces_as_internal_error_not_field_not_found: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_undeclared_field_read_surfaces_as_internal_error_not_field_not_found" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "**reading a field a record type does not declare (`e.state_label` on a `{ label, published_key }` record) is refused through gunbc.instruments.multi_module_compile_fixture with exactly ONE diagnostic class, InternalError, and no located FieldNotFound** (INVALID STATE: an undeclared field read; the refusal is present but is the compiler's own internal-error class rather than the floor's located `fields exist` diagnostic. HARM: DESIGN section 4b's ordinary floor says fields exist; an InternalError is indistinguishable by class from a compiler fault, so a consumer pinning the refusal to its cause cannot, and a probe asserting only 'some blocking row' would pass for an unrelated fixture typo). DISTINGUISHING FACTS: FieldNotFound exists in the v1 diagnostic roster and fires for a record LITERAL's unknown key (infer_record_lit_structural); this is the READ side.",
+
+    "RECEIPT 2026-11-05, merry-fox-82's execution of fed152a0 (test.claim.megarac_excerpt_arm_type_separation_witness, mtcollins1 PR-E): 3 of 4 passed. The wrong-type-argument probe was refused with classes TypeMismatch and DeclaredTypeNotInhabited; the undeclared-field-read probe returned exactly InternalError, so the claim that asserts FieldNotFound is held RED by enrolment in v2.workflow.floor_expected_red. It is not repinned to InternalError, which would enshrine the defect as expected behaviour. The PR's separation claim rests on the argument probe only. The fixture is isolated, so this was read on shape-alike types, not on the real megarac records.",
+
+    "RUNG FOUND AT: not established. The state is refused (not silent), but at a class that does not name it; no discriminating located refusal exists. CEILING: undetermined and not claimed; NEXT-RUNG TRIGGER: a located FieldNotFound at an undeclared field READ in the fixture compile path, at which point the enrolled claim passes and the roster names it for removal, leaving it a permanent regression control (DESIGN 4b(4)). Whether the same read yields FieldNotFound on the production compile route (not the fixture) is unmeasured.",
+  ],
+
+  evidence: [],
+}

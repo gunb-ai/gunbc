@@ -96,13 +96,20 @@ test fn the_excerpt_type_reads_its_own_field() -> Bool {
   completed_clean(with_entry(entry_excerpt_reads_its_label))
 }
 
-// PROBE (a). Red-by-design: expected REFUSED. If this test fails, the verdict is FixtureCompileCompleted and
+// PROBE (a). Executed 2026-11-05 on fed152a0: refused with TypeMismatch and DeclaredTypeNotInhabited, both
+// pinned. No rung is claimed. Expected REFUSED. If this test fails, the verdict is FixtureCompileCompleted and
 // the separation is not a refused path.
 test fn the_excerpt_datum_is_refused_where_the_attestation_is_required() -> Bool {
-  refused_with_class(with_entry(entry_excerpt_to_consumer), "DeclaredTypeNotInhabited")
+  refused_with_class(with_entry(entry_excerpt_to_consumer), "TypeMismatch") && refused_with_class(with_entry(entry_excerpt_to_consumer), "DeclaredTypeNotInhabited")
 }
 
-// PROBE (b). Expected REFUSED: the excerpt type has no state_label.
+// PROBE (b), HELD RED BY ENROLMENT in v2.workflow.floor_expected_red. It asserts the located class the floor
+// owes for an undeclared field read, FieldNotFound. Executed by merry-fox-82 on fed152a0 (2026-11-05): the
+// fixture compile returns exactly one class, InternalError, so this claim answers false today. It is NOT
+// repinned to InternalError, which would enshrine the defect; the row is
+// gunbc.recurring_failure_mode an_undeclared_field_read_surfaces_as_internal_error_not_field_not_found. When a
+// located FieldNotFound lands this passes and the roster names it for removal, leaving it a regression control.
+// The separation claim in the PR rests on probe (a) alone.
 test fn the_excerpt_type_cannot_be_read_as_an_attestation() -> Bool {
   refused_with_class(with_entry(entry_excerpt_reads_state_label), "FieldNotFound")
 }
