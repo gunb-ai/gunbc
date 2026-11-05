@@ -25,6 +25,7 @@ import gunbc.roadmap.roadmap_execution_contract {
   contract_closure,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_provision_transport,
   HostDashboardInstance,
   DashboardProvisionTransport,
   DashboardLocalProvision,
@@ -72,7 +73,7 @@ import extdeps.languages.json.emit {
 
 // THE FIRST CUT WAS A USEFUL VERIFIER LIBRARY WEARING THE PRODUCER'S NAME, and it was wrong about
 // both the HOST and the SUBJECT.\n\nWRONG HOST. verify_node called belt_exec, which is
-// gunbc.WitnessBin.Run — a local process — and never consulted instance.provision_transport.
+// gunbc.WitnessBin.Run — a local process — and never consulted the selected transport.
 // srv1_lab's transport is DashboardSshProvision on srv1, so selecting that instance changed the
 // repo paths and the executable resolution the command was built from and did NOT change which
 // machine ran it. Verifying an srv1 instance executed on srv2, against srv1's paths, from srv2's
@@ -164,7 +165,7 @@ type VerificationExec
     }
 
 fn verification_execution_host(instance: HostDashboardInstance) -> NonEmptyStr {
-  match instance.provision_transport {
+  match dashboard_provision_transport(instance: instance) {
     DashboardLocalProvision => instance.host_identity
     DashboardSshProvision { host } => host
   }
@@ -175,7 +176,7 @@ fn verification_exec(
   workdir: FilePath,
   command: ModeledValidationCommand,
 ) -> VerificationExec {
-  match instance.provision_transport {
+  match dashboard_provision_transport(instance: instance) {
     DashboardLocalProvision => {
       let result = gunbc.WitnessBin.Run(
         workdir: workdir,

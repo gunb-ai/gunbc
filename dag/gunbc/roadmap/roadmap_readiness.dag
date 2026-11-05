@@ -236,6 +236,29 @@ fn readiness_gap_display(g: ReadinessGap) -> String {
   }
 }
 
+// BLOCKED BY RETIRED (operator ruling 2026-11-04, manager condition 2026-11-04): a child held by a
+// RETIRED parent is blocked forever — the retirement can never close it — so the reason MUST name
+// that, not merely list the id. The retired set is derived by the caller from each blocker's own
+// standing (roadmap_event_log.standing_for_node); no new label type joins the gap vocabulary, the
+// dependency voice simply reads its blocker honestly.
+fn readiness_blocked_voice(b: String, retired: List<String>) -> String {
+  if any(retired, x => x == b) { join(["blocked by retired ", b], "") } else { b }
+}
+
+fn readiness_gap_display_with_retired(g: ReadinessGap, retired: List<String>) -> String {
+  match g {
+    GapDependencies { blockers } => join(["dependencies (", join(map(blockers, b => readiness_blocked_voice(b: b, retired: retired)), ", "), ")"], "")
+    _ => readiness_gap_display(g: g)
+  }
+}
+
+fn readiness_gap_reason_with_retired(g: ReadinessGap, retired: List<String>) -> String {
+  match g {
+    GapDependencies { blockers } => join(["prerequisites not closed: ", join(map(blockers, b => readiness_blocked_voice(b: b, retired: retired)), ", ")], "")
+    _ => readiness_gap_reason(g: g)
+  }
+}
+
 // The page's one sentence for the value: "ready" or "not ready: missing centering, contract".
 fn readiness_text(r: NodeReadiness) -> String {
   match r {
@@ -248,5 +271,20 @@ fn readiness_reason_text(r: NodeReadiness) -> String {
   match r {
     ReadyToDispatch => "every dispatch fact is present"
     NotReady { missing } => join(missing |> map(g => readiness_gap_reason(g: g)), "; ")
+  }
+}
+
+// The same two voices, with the retired parents named where a dependency gap holds one.
+fn readiness_text_with_retired(r: NodeReadiness, retired: List<String>) -> String {
+  match r {
+    ReadyToDispatch => "ready"
+    NotReady { missing } => concat("not ready: missing ", join(missing |> map(g => readiness_gap_display_with_retired(g: g, retired: retired)), ", "))
+  }
+}
+
+fn readiness_reason_text_with_retired(r: NodeReadiness, retired: List<String>) -> String {
+  match r {
+    ReadyToDispatch => "every dispatch fact is present"
+    NotReady { missing } => join(missing |> map(g => readiness_gap_reason_with_retired(g: g, retired: retired)), "; ")
   }
 }
