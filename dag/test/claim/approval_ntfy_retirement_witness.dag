@@ -212,15 +212,17 @@ test fn red_a_member_found_present_makes_the_receipt_unclean() -> Bool {
     && string_contains(s: ntfy_retire_receipt_text(vs: one_present), pattern: "STILL PRESENT")
 }
 
-// RED: A MEMBER NEVER READ. Six legs ran and five verdicts came back: the roster is the standard, so
-// a receipt that simply omits a member is not clean coverage, it is a gap.
+// RED: A MEMBER NEVER READ. Seven legs ran and six verdicts came back: the roster is the standard, so
+// a receipt that simply omits a member is not clean coverage, it is a gap. The dropped member is the
+// binary here; the group's own twin of this claim is further down, so neither of the two members added
+// after the first six can become the member the receipt is allowed to forget.
 test fn red_a_roster_member_never_read_makes_the_receipt_unclean() -> Bool {
-  let five = filter(verdict_all_absent, v => match v {
+  let six = filter(verdict_all_absent, v => match v {
     RetireMemberAbsent { member: m, evidence: _ } => m != (MemberBinary)
     RetireMemberPresent { member: _, evidence: _ } => true
     RetireMemberUnreadable { member: _, evidence: _ } => true
   })
-  count(five) == 5 && !ntfy_retire_receipt_is_clean(vs: five)
+  count(six) == 6 && !ntfy_retire_receipt_is_clean(vs: six)
 }
 
 // ONE READ, THREE STATES, ONE TYPE. Every prober returns the same sum, so no verdict can depend on
@@ -352,11 +354,16 @@ test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
   let config_absent = ntfy_retire_verdict_from_read(member: MemberConfigDir, read: ntfy_retire_path_read(exit_code: 1))
   let state_absent = ntfy_retire_verdict_from_read(member: MemberStateRoot, read: ntfy_retire_path_read(exit_code: 1))
   let binary_absent = ntfy_retire_verdict_from_read(member: MemberBinary, read: ntfy_retire_path_read(exit_code: 1))
-  let vs = [unit_absent, door_absent, account_absent, config_absent, state_absent, binary_absent]
+  let group_absent = ntfy_retire_verdict_from_read(member: MemberGroup, read: ntfy_retire_group_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
+  // All SEVEN, not the original six: the receipt is clean only over the whole roster, so a claim that
+  // quietly kept the pre-group list would be certified by a receipt that forgot a member.
+  let vs = [unit_absent, door_absent, account_absent, config_absent, state_absent, binary_absent, group_absent]
   all(vs, v => witness_verdict_state(v: v) == "absent")
+    && count(vs) == count(ntfy_retire_members)
     && ntfy_retire_receipt_is_clean(vs: vs)
     && string_contains(s: ntfy_retire_verdict_text(v: unit_absent), pattern: "systemd LoadState is not-found")
     && string_contains(s: ntfy_retire_verdict_text(v: account_absent), pattern: "getent passwd resolves no entry")
+    && string_contains(s: ntfy_retire_verdict_text(v: group_absent), pattern: "getent group resolves no entry")
     && string_contains(s: ntfy_retire_verdict_text(v: door_absent), pattern: "tailscale serve status lists no route")
 }
 
