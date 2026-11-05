@@ -38,7 +38,7 @@ fn native_serve_probe_requests(peer_port: Int) -> List<String> {
   ["GET /slow HTTP/1.1\r\nHost: probe\r\nX-Probe: composed\r\n\r\n"]
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_live_status: Int, unix_live_stderr: String, unix_live_still_named: Bool) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the service did not bind and announce; a startup slower than the request deadline was refused [", concat(announcement, "]")) }
   } else if (responses |> count) != 1 {

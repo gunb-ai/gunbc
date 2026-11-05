@@ -4006,11 +4006,11 @@ pub struct NativeServeProgramRun {
     /// The account the host's own effective uid resolves to, when the subject was served on a unix
     /// socket: the peer the kernel must attest for every connection the host made. Empty otherwise.
     pub unix_peer_account: String,
-    /// The live-socket launch: its status and stderr, and whether the host's own listener at that
-    /// path still received a connection by path afterwards (None/empty/false when not run).
-    pub unix_live_status: Option<i32>,
-    pub unix_live_stderr: String,
-    pub unix_live_still_named: bool,
+    /// The contended launches, in `NativeServeLaunches::unix_contended` order: each one's status
+    /// and stderr, and whether its path still holds what the host put there (empty when not run).
+    pub unix_contended_statuses: Vec<Option<i32>>,
+    pub unix_contended_stderrs: Vec<String>,
+    pub unix_contended_kept: Vec<bool>,
     pub stderr: String,
 }
 
@@ -4032,12 +4032,25 @@ pub struct NativeServePhases {
 pub struct NativeServeLaunches {
     pub subject: Vec<String>,
     pub unix_socket_path: Option<String>,
-    /// Under the unix-socket phase, a second socket path the HOST listens on and the argv that
-    /// launches the subject's binary on it: the launch must refuse rather than displace a live
-    /// listener.
-    pub unix_live: Option<(String, Vec<String>)>,
+    /// Under the unix-socket phase, the CONTENDED launches: each a path the host contends, how it
+    /// contends it, and the argv that launches the subject's binary there. Each must refuse and
+    /// leave the path as the host holds it.
+    pub unix_contended: Vec<(NativeServeContention, String, Vec<String>)>,
     pub refused: Vec<Vec<String>>,
     pub deadline: Vec<Vec<String>>,
+}
+
+/// HOW THE HOST CONTENDS A SOCKET PATH under the unix-socket phase, the two ways another
+/// realization can be found at a path.
+#[derive(Clone, Copy)]
+pub enum NativeServeContention {
+    /// A live listener that never took the path's lock: the launch must find it live and refuse,
+    /// and a connection by that path must still reach the host's listener afterwards.
+    LiveListener,
+    /// A stale socket whose lock the host holds, the moment at which another realization has
+    /// judged the path stale and not yet bound it: the launch must refuse on the lock and leave the
+    /// stale socket untouched (the same inode).
+    HeldLock,
 }
 
 /// How long a launch, an announcement or one exchange may take before the run stops waiting. A
@@ -4182,21 +4195,53 @@ pub fn run_native_serve_program(
             refused_stderrs.push(stderr);
         }
     }
-    // THE LIVE-SOCKET LAUNCH: the host listens at a path and launches the binary on it; the launch
-    // must refuse, and the host's listener must still be the one a connection by that path reaches.
-    let (unix_live_status, unix_live_stderr, unix_live_still_named) = match &launches.unix_live {
-        None => (None, String::new(), false),
-        Some((path, argv)) => {
-            let held = std::os::unix::net::UnixListener::bind(path).map_err(|cause| {
-                format!("NATIVE-SERVE REFUSAL cause=LiveListenerUnbound entry={entry} path={path} — {cause}")
-            })?;
-            let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
-            let still_named = std::os::unix::net::UnixStream::connect(path).is_ok()
-                && held.set_nonblocking(true).is_ok()
-                && held.accept().is_ok();
-            (status, stderr, still_named)
-        }
-    };
+    // THE CONTENDED LAUNCHES: each path is held by the host in the way its contention names, the
+    // binary is launched there, and what the path holds afterwards is read back.
+    let mut unix_contended_statuses = Vec::new();
+    let mut unix_contended_stderrs = Vec::new();
+    let mut unix_contended_kept = Vec::new();
+    for (contention, path, argv) in &launches.unix_contended {
+        let unbound = |cause: std::io::Error| {
+            format!(
+                "NATIVE-SERVE REFUSAL cause=ContentionUnheld entry={entry} path={path} — {cause}"
+            )
+        };
+        let (status, stderr, kept) = match contention {
+            NativeServeContention::LiveListener => {
+                let held = std::os::unix::net::UnixListener::bind(path).map_err(unbound)?;
+                let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+                let kept = std::os::unix::net::UnixStream::connect(path).is_ok()
+                    && held.set_nonblocking(true).is_ok()
+                    && held.accept().is_ok();
+                (status, stderr, kept)
+            }
+            NativeServeContention::HeldLock => {
+                use std::os::unix::fs::MetadataExt;
+                use std::os::unix::io::AsRawFd;
+                drop(std::os::unix::net::UnixListener::bind(path).map_err(unbound)?);
+                let before = std::fs::metadata(path).map_err(unbound)?.ino();
+                let lock = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(format!("{path}.lock"))
+                    .map_err(unbound)?;
+                if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                    return Err(unbound(std::io::Error::last_os_error()));
+                }
+                let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+                let kept = std::fs::metadata(path)
+                    .map(|m| m.ino() == before)
+                    .unwrap_or(false);
+                drop(lock);
+                (status, stderr, kept)
+            }
+        };
+        unix_contended_statuses.push(status);
+        unix_contended_stderrs.push(stderr);
+        unix_contended_kept.push(kept);
+    }
     // THE STALE SOCKET: under the unix-socket phase the subject's path already holds a socket no
     // process listens on, which the subject must show stale and replace before it can announce.
     if let Some(path) = &launches.unix_socket_path {
@@ -4336,9 +4381,9 @@ pub fn run_native_serve_program(
         deadline_responses,
         deadline_exit_statuses,
         unix_peer_account,
-        unix_live_status,
-        unix_live_stderr,
-        unix_live_still_named,
+        unix_contended_statuses,
+        unix_contended_stderrs,
+        unix_contended_kept,
         stderr: format!("{stderr}{peer_stderr}{deadline_stderr}"),
     })
 }

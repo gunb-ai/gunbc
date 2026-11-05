@@ -1973,19 +1973,31 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         })?;
         words(&value).ok_or_else(|| "the unix launch argv is not a List of String".to_string())
     };
-    let unix_live_path = unix_socket_dir
-        .as_ref()
-        .map(|dir| dir.0.join("live.sock").display().to_string());
+    // The contended paths, one per way another realization can be found at a path.
+    let unix_contended_paths: Vec<(cli_run::NativeServeContention, String)> = match &unix_socket_dir
+    {
+        Some(dir) => vec![
+            (
+                cli_run::NativeServeContention::LiveListener,
+                dir.0.join("live.sock").display().to_string(),
+            ),
+            (
+                cli_run::NativeServeContention::HeldLock,
+                dir.0.join("locked.sock").display().to_string(),
+            ),
+        ],
+        None => Vec::new(),
+    };
     let plan = (|| -> Result<cli_run::NativeServeLaunches, String> {
         let subject = match &unix_socket_path {
             Some(path) => unix_launch(path)?,
             None => words(&read("native_serve_probe_launch_argv")?)
                 .ok_or("the launch argv is not a List of String")?,
         };
-        let unix_live = match &unix_live_path {
-            Some(path) => Some((path.clone(), unix_launch(path)?)),
-            None => None,
-        };
+        let unix_contended = unix_contended_paths
+            .iter()
+            .map(|(contention, path)| Ok((*contention, path.clone(), unix_launch(path)?)))
+            .collect::<Result<Vec<_>, String>>()?;
         let refused = if binding.phases.refused_launch {
             argvs(&read("native_serve_probe_refused_launches")?)
                 .ok_or("the refused launches are not a List of argv")?
@@ -2001,7 +2013,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(cli_run::NativeServeLaunches {
             subject,
             unix_socket_path: unix_socket_path.clone(),
-            unix_live,
+            unix_contended,
             refused,
             deadline,
         })
@@ -2096,16 +2108,22 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             crate::v1_interpreter::Value::Str(run.unix_peer_account.clone().into()),
         ),
         (
-            Some("unix_live_status".to_string()),
-            crate::v1_interpreter::Value::Int(i64::from(run.unix_live_status.unwrap_or(-1))),
+            Some("unix_contended_statuses".to_string()),
+            statuses(&run.unix_contended_statuses),
         ),
         (
-            Some("unix_live_stderr".to_string()),
-            crate::v1_interpreter::Value::Str(run.unix_live_stderr.clone().into()),
+            Some("unix_contended_stderrs".to_string()),
+            texts(&run.unix_contended_stderrs),
         ),
         (
-            Some("unix_live_still_named".to_string()),
-            crate::v1_interpreter::Value::Bool(run.unix_live_still_named),
+            Some("unix_contended_kept".to_string()),
+            crate::v1_interpreter::Value::List(std::rc::Rc::new(
+                run.unix_contended_kept
+                    .iter()
+                    .map(|k| crate::v1_interpreter::Value::Bool(*k))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
         ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(

@@ -573,7 +573,7 @@ test fn the_native_ingress_main_refuses_to_read_a_body_past_a_deadline_it_could_
 
 // THE LISTENER IS THE BINDING'S, AND A UNIX PEER IS THE KERNEL'S (gunbc.plans.converged_ingress M2b): the main binds
 // whichever listener the start returned, converting its port and mode only by checked conversion and displacing no live
-// socket (side-chat review 5785782995), reads each unix connection's peer through SO_PEERCRED before any request byte,
+// socket and holding the path's lock for the listener's lifetime (side-chat reviews 5785782995, 5786866091), reads each unix connection's peer through SO_PEERCRED before any request byte,
 // and reads no peer from the request.
 test fn the_native_ingress_main_binds_the_unix_listener_and_reads_the_peer_from_the_kernel() -> Bool {
   let text = crc_ingress_main(startup: false)
@@ -582,6 +582,9 @@ test fn the_native_ingress_main_binds_the_unix_listener_and_reads_the_peer_from_
     && !string_contains(s: text, pattern: " as u16")
     && !string_contains(s: text, pattern: "*mode as u32")
     && string_contains(s: text, pattern: "has a live listener; refusing to displace it")
+    && string_contains(s: text, pattern: "let lock = lock_socket_path(path)?;")
+    && string_contains(s: text, pattern: "libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB)")
+    && string_contains(s: text, pattern: "Ok((listener, lock)) => Listener::Unix { listener, _lock: lock },")
     && string_contains(s: text, pattern: "libc::SO_PEERCRED")
     && string_contains(s: text, pattern: "let user = peer_user(&stream).map_err(|cause| format!(\"unattested peer dropped: {}\", cause))?;")
     && !string_contains(s: text, pattern: "native-serve binds TCP only")

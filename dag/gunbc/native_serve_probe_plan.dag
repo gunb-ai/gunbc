@@ -24,9 +24,10 @@ import gunbc.http_ingress { HttpIngressTcp, HttpIngressUnixSocket, http_ingress_
 //     request is exchanged over that socket, and the host reports the account its own effective uid
 //     resolves to -- the account the kernel must attest as the peer of every connection the host makes.
 //     The subject's path first holds a stale socket (no process listens on it), which the subject must
-//     replace; and the binary is launched once more on a second path the host itself listens on, which
-//     it must refuse rather than displace: the host reports that launch's status and stderr and whether
-//     a connection by that path still reached the host's listener afterwards.
+//     replace; and the binary is launched on each CONTENDED path, one per way another realization can
+//     be found there -- a live listener that never took the path's lock, and a stale socket whose lock
+//     the host holds -- each of which it must refuse rather than take: the host reports each launch's
+//     status and stderr and whether the path still held what the host put there afterwards.
 type NativeServePhase
   = NativeServePeerInstance
   | NativeServeRefusedLaunch

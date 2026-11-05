@@ -17,10 +17,13 @@ import gunbc.native_serve_probe_plan {
 //   names someone else, so the peer is the kernel's attestation of the connecting process and not the request's claim;
 // - the announcement names the unix listener;
 // - the TCP launch refuses before it binds, naming the peer the listener cannot attest;
-// - LIVE IS NOT STALE (side-chat review 5785782995): launched on a path the host itself listens on, the binary refuses
-//   rather than displace that listener, and a connection by that path still reaches the host's listener afterwards;
-//   while the subject's own path held a socket no process listened on, which it showed stale and replaced (it could not
-//   have announced otherwise).
+// - A CONTENDED PATH IS NEVER TAKEN (side-chat reviews 5785782995, 5786866091), in both ways another realization can be
+//   found at a path: launched where the host listens without the path's lock, the binary finds the listener live and
+//   refuses, and a connection by that path still reaches the host's listener; launched where a stale socket sits whose
+//   lock the host holds -- the moment at which another realization has judged the path stale and not yet bound it --
+//   the binary refuses on the lock and the stale socket is untouched (the race in which a second start unlinked the
+//   first's socket is this interleaving point). Meanwhile the subject's own path held a socket no process listened on,
+//   which it showed stale and replaced (it could not have announced otherwise).
 
 fn native_serve_probe_phases() -> List<NativeServePhase> {
   [NativeServeUnixSocket, NativeServeRefusedLaunch]
@@ -51,7 +54,11 @@ fn native_serve_probe_refused_launches() -> List<List<String>> {
 
 data native_serve_unix_probe_refusal_marker: String = "handler declares `peer_user`, but only a unix-socket listener attests a peer"
 
-data native_serve_unix_probe_live_marker: String = "has a live listener; refusing to displace it"
+// What each contended launch must say, in the host's contention order (live listener, held lock).
+data native_serve_unix_probe_contended_markers: List<String> = [
+  "has a live listener; refusing to displace it",
+  "is held by another realization",
+]
 
 data native_serve_unix_probe_claimed: String = "mallory@example"
 
@@ -72,7 +79,32 @@ fn native_serve_unix_whoami_failure(response: String, account: String) -> String
   }
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_live_status: Int, unix_live_stderr: String, unix_live_still_named: Bool) -> ProcessExit {
+fn native_serve_unix_contended_failures(statuses: List<Int>, stderrs: List<String>, kept: List<Bool>, markers: List<String>, acc: List<String>) -> List<String> {
+  match markers {
+    Empty => acc
+    Cons { head: marker, tail: more } =>
+      match statuses {
+        Empty => acc
+        Cons { head: status, tail: ss } =>
+          match stderrs {
+            Empty => acc
+            Cons { head: err, tail: es } =>
+              match kept {
+                Empty => acc
+                Cons { head: k, tail: ks } =>
+                  let refused = status == 2 && starts_with(s: err, prefix: "REFUSED: ") && (split(s: err, delimiter: marker) |> count) >= 2
+                  let found = concat(
+                    if refused { [] } else { [concat("a launch on a contended path did not refuse with [", concat(marker, concat("] (status ", concat(to_string(value: status), concat("): ", err)))))] },
+                    if k { [] } else { [concat("after the launch refusing with [", concat(marker, "], the path no longer held what the host put there"))] }
+                  )
+                  native_serve_unix_contended_failures(statuses: ss, stderrs: es, kept: ks, markers: more, acc: concat(acc, found))
+              }
+          }
+      }
+  }
+}
+
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
   let refused_status = native_serve_first_status(statuses: refused_statuses)
   let refused_stderr = native_serve_first_text(items: refused_stderrs)
   if unix_peer_account == "" {
@@ -83,19 +115,15 @@ fn native_serve_probe_standing(announcement: String, peer_announcement: String, 
     no_observation(reason: "the two /whoami requests were not each answered")
   } else if (refused_statuses |> count) != 1 {
     no_observation(reason: "the TCP launch was not run")
-  } else if unix_live_status == -1 && unix_live_stderr == "" {
-    no_observation(reason: "the live-socket launch was not run")
+  } else if (unix_contended_statuses |> count) != (native_serve_unix_probe_contended_markers |> count) || (unix_contended_stderrs |> count) != (unix_contended_statuses |> count) || (unix_contended_kept |> count) != (unix_contended_statuses |> count) {
+    no_observation(reason: "the contended launches do not join the declared contentions one for one")
   } else {
     let failures = concat(
       responses |> map(r => native_serve_unix_whoami_failure(response: r, account: unix_peer_account)) |> filter(f => f != ""),
       if refused_status == 2 && starts_with(s: refused_stderr, prefix: "REFUSED: ") && (split(s: refused_stderr, delimiter: native_serve_unix_probe_refusal_marker) |> count) >= 2 { [] }
       else { [concat("the TCP launch of a handler declaring peer_user did not refuse before binding (status ", concat(to_string(value: refused_status), concat("): ", refused_stderr)))] }
     )
-    let live_failures = concat(
-      if unix_live_status == 2 && starts_with(s: unix_live_stderr, prefix: "REFUSED: ") && (split(s: unix_live_stderr, delimiter: native_serve_unix_probe_live_marker) |> count) >= 2 { [] }
-      else { [concat("a launch on a live socket did not refuse to displace it (status ", concat(to_string(value: unix_live_status), concat("): ", unix_live_stderr)))] },
-      if unix_live_still_named { [] } else { ["after the live-socket launch, a connection by that path no longer reached the listener that held it"] }
-    )
+    let live_failures = native_serve_unix_contended_failures(statuses: unix_contended_statuses, stderrs: unix_contended_stderrs, kept: unix_contended_kept, markers: native_serve_unix_probe_contended_markers, acc: [])
     let all_failures = concat(failures, live_failures)
     if (all_failures |> count) > 0 {
       ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: ", all_failures |> join(separator: "; ")) }
