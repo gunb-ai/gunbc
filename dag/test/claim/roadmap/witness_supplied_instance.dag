@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.optional { Optional, Present, Absent }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
 import gunbc.harness.harness_operator_credential { OperatorCredentialFile }
+import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
 import gunbc.command_runner { run_shell_command_capture }
@@ -148,11 +149,28 @@ fn wet_ok(command: ArgvCommand) -> Bool {
 // whole fleet already uses for that shape. They exist here rather than in extdeps.exec.command because
 // sealing the same words into an ArgvCommand needs a caller roster that project does not grow.
 fn wet_argv_ok(program: NonEmptyStr, arguments: List<String>) -> Bool {
-  shell.Exec.RunArgv(program: program as String, arguments: arguments).exit_code == 0
+  // THE OUTCOME, NOT AN EXCEPTION -- and the same shape as `wet_out` below, which maps a ProcessRefused
+  // to "" rather than raising. shell.Exec.RunArgv RAISES when the program cannot be spawned, and a
+  // raised claim returns through the top of the interpreter: no removal of its root, no `claim-root-gone`
+  // readback, no `[witness]` line (measured at 22c8f47b -- the unsandboxed control left
+  // /tmp/gunbc-sandbox-unsandboxed-control-... behind on a host with no systemctl, and the only reason
+  // the batch still reported it red was the leftover listing in the run script). "The host could not run
+  // this argv" is a NO, and every caller of these two reads a NO as a refusal already.
+  let read = shell.Exec.RunArgvOutcome(program: program as String, arguments: arguments)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => false
+    ShellExited => read.exit_code == 0
+  }
 }
 
 fn wet_argv_out(program: NonEmptyStr, arguments: List<String>) -> String {
-  trim(s: shell.Exec.RunArgv(program: program as String, arguments: arguments).stdout)
+  // Same rule for the read side: no process, no output. A caller that expects text refuses on the empty
+  // string -- `witness_claim_leaf` does -- instead of the claim dying inside a helper.
+  let read = shell.Exec.RunArgvOutcome(program: program as String, arguments: arguments)
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } => ""
+    ShellExited => trim(s: read.stdout)
+  }
 }
 
 fn wet_out(command: ArgvCommand) -> String {
