@@ -559,7 +559,119 @@ data served_observation_written_by_hand_beside_the_store: IntegrationConcern = I
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, served_observation_written_by_hand_beside_the_store]
+// THE METERING ROSTER IS PUT BY HAND BESIDE THE STORE LIBRARY. The record moved onto generations
+// (`attempt_metering_commit` -> `file_compare_and_set`, review 90868); the roster ENTRY and the SEALED roster
+// file did not. `attempt_metering_create_once` (dag/gunbc/roadmap/roadmap_attempt_metering.dag:1394) issues a
+// `Filesystem.WriteCreateNew` and this module adjudicates the race itself: on an occupied name it reads what
+// stands and agrees or refuses. That is the library's own rule, written a second time -- and the second copy is
+// what an entrant reads first, which is how a Final metering record came to be rewritable before review 90868.
+// The census row `gunbc.roadmap.roadmap_attempt_metering|storage|metering_roster_admit|1` carries the narrowed
+// finding; this row carries the reconciliation, so the census mechanism can be retired without losing it
+// (DESIGN section 4c).
+data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "metering_roster_written_by_hand_beside_the_store",
+  kind: SuspectedFork {
+    authorities: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      tail: [
+        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+    ],
+  },
+  question: "Who may put a metering roster entry, or the sealed roster, where one already stands -- gunbc.durable_cas_file_store's committed generations, or this module's own create-only write with its read-back adjudication?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_metering|storage|metering_roster_admit|1, narrowed rather than deleted at review 90974",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8505cef2363: `attempt_metering_create_once` (:1394) writes create-only and, on an occupied name, reads the standing bytes back and compares; `metering_roster_seal_under_hold` (:1661) publishes the sealed roster through it. `attempt_metering_commit` puts the RECORD through `file_compare_and_set` with a carried expectation and a typed lost race, so the same question -- may these bytes stand where those stand -- is answered twice in one module, and only one of the two answers can tell a lost race from a matching one.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_admit"),
+        control: decl_ref(module_path: "test.claim.c_roadmap2_metering_record_cas_wet_witness", decl_name: "an_entry_that_names_the_worker_is_refused_by_name_and_the_roster_refuses_to_read"),
+        statement: "the roster's own naming rule stands through a migration: an entry file may only add a launch beyond the worker, and an entry that names the worker is refused by name -- the bytes the create-only route wrote today stay readable by the reader that follows",
+      },
+    ],
+    next: climbs_when(capability: "the roster entry and the sealed roster are put through committed generations, the reader reads the head, and a mutation of the library's expectation rule reddens a roster row -- today it reddens none, because these two writes bypass the library"),
+  },
+}
+
+// THE REQUEST BINDING ADJUDICATES ITS OWN RACE BESIDE THE STORE LIBRARY.
+// `attempt_request_binding_commit` (dag/gunbc/roadmap/roadmap_attempt_request_record.dag:169) creates the binding
+// with `attempt_state_create_new_at` and, when the name is occupied, reads the standing bytes back and refuses a
+// different binding -- the library's compare-and-set rule reimplemented by hand, in a store this lane sealed.
+// The census row `gunbc.roadmap.roadmap_attempt_request_record|storage|attempt_request_binding_create_for_instance|1`
+// carries the finding; this row carries the reconciliation (DESIGN section 4c).
+data attempt_request_binding_races_itself_beside_the_store: IntegrationConcern = IntegrationConcern {
+  identity: "attempt_request_binding_races_itself_beside_the_store",
+  kind: SuspectedFork {
+    authorities: FreeSemigroup {
+      head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      tail: [
+        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_store", decl_name: "attempt_state_create_new_at"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+    ],
+  },
+  question: "Who may replace an attempt's request binding once one stands -- gunbc.durable_cas_file_store's committed generations with a carried expectation, or this module's create-new plus read-back comparison?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "8505cef2363a917a2781feea3e05a856835110a9" as CommitSha,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance") },
+          CitesArtifact {
+            label: "docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv, the row gunbc.roadmap.roadmap_attempt_request_record|storage|attempt_request_binding_create_for_instance|1, kept at review 90974",
+            sha256: Sha256Digest { hex: "03c2cb71cb7b85a120fc2b764af36a1c0797e90ac8eb4f97350a1bb958ad1f4f" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Read at 8505cef2363: `attempt_request_binding_create_for_instance` (:188) mints the store and delegates to `attempt_request_binding_commit` (:169), which creates with `attempt_state_create_new_at` and on an occupied name reads the standing bytes, decodes them and refuses a different binding -- correct behaviour, held twice: the same rule exists in `gunbc.durable_cas_file_store` as an expectation that answers a lost race typed. An unreadable standing binding is refused here by this module's own reading of the file, not by the library's typed unreadable-slot state.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_create_for_instance"),
+        control: decl_ref(module_path: "test.claim.roadmap.attempt_request_binding_commit_wet_witness", decl_name: "a_different_binding_cannot_replace_the_first"),
+        statement: "the first binding stands: a repeated create of the same binding is idempotent, a different binding cannot replace it, and an unreadable existing binding is not replaced -- whatever route holds the exclusion, these three answers must not change",
+      },
+    ],
+    next: climbs_when(capability: "the binding is committed through generations with a carried expectation and a typed lost race, the refusal of a different binding comes from the library rather than from this module's read-back, and a mutation of the expectation rule reddens a binding row"),
+  },
+}
+
+data integration_concerns: List<IntegrationConcern> = [support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, served_observation_written_by_hand_beside_the_store, metering_roster_written_by_hand_beside_the_store, attempt_request_binding_races_itself_beside_the_store]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
