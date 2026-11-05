@@ -79,7 +79,6 @@ import gunbc.ci.ci_deploy_access {
   deploy_target_proof_from_access,
   deploy_access_sudoers_install_scope,
 }
-import gunbc.fleet.fleet_posix_accounts { grounded_posix_principal_name }
 import gunbc.ci.ci_deploy_access_observe {
   deploy_mutation_gate,
 }
@@ -143,7 +142,7 @@ import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, d
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
 import gunbc.auth.approval_broker_cutover { CutoverAdmission, StageAdmitted, StageRefused, dark_install_release_discharged, cutover_refusal_reason }
 import gunbc.live_deploy.release_locus {
-  ReleaseTreeReceiptRead, observe_release_tree_receipt, release_locus_tree_receipt_path, RevisionBoundAtEmission, ReleaseRevisionBinding,
+  ReleaseTreeReceiptRead, observe_release_tree_receipt, release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission, ReleaseRevisionBinding,
   TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
 }
 import gunbc.live_deploy.readiness {
@@ -1399,9 +1398,11 @@ fn live_deploy_prod_role_wet_with_access(access: DeployAccess) -> ProcessExit {
   }
 }
 
-// The converge verb's deploy mode: the same admitted path the CI entry runs, under the operator
-// principal on the host itself. Candidate observation, preflight, mutation and the readiness
-// gate are all shared; nothing here is a second deploy.
+// The converge verb's deploy mode -- DISSOLVED (prod gap 1, F1). The selection, realization
+// admission and host checks below stay (a refusal must still be located: wrong host, wrong branch,
+// unadmitted realization each name themselves before the route retires), and the route ends in
+// live_deploy_operator_local_admitted's typed OperatorLocalDeployDissolved refusal naming the CI
+// transaction as the one deploy path.
 fn live_deploy_apply_prod_role_operator_local_wet() -> ProcessExit {
   match live_deploy_prod_role_apply_selection(access: ci_deploy_srv1_operator_local_access) {
     DesiredApplyRefused { reason } => exit_failure(reason: reason)
@@ -1429,25 +1430,26 @@ fn live_deploy_operator_local_wet_for_realization(
   }
 }
 
+// THE OPERATOR-LOCAL DEPLOY ROUTE IS DISSOLVED (prod gap 1, F1: one deploy path).
+// The serve-entry compile verdict is a PLAN-JOB artifact -- produced beside the plan artifact by
+// record_plan_serve_entry_compile_verdict and consumed by identity in the swap. An operator-local
+// apply has no plan job, so its only "verdict" options were a cold recompile inside the swap (the
+// 10-minute resolve that took the deploy down: the exact symptom §6b forbids treating at the
+// symptom link) or a file no operator host ever writes (always-refuse). Both are second-path
+// mechanisms the CI transaction already owns receipted. The route therefore retires here with a
+// typed refusal naming the surviving path -- not a silent widen, not a plausible default (§5).
+fn operator_local_deploy_dissolved_refusal() -> String {
+  join([
+    "live_deploy: OperatorLocalDeployDissolved — the operator-local converge deploy route ",
+    "(gunbc converge --mode deploy) is retired; the CI dashboard_deploy transaction is the ONE ",
+    "deploy path (prod gap 1, F1). The serve-entry compile verdict travels with the plan artifact, ",
+    "which only the plan job writes. To deploy: dispatch fleet-converge dashboard_deploy (plan ",
+    "modes first, then the receipted apply) from GitHub. Nothing was mutated.",
+  ], "")
+}
+
 fn live_deploy_operator_local_admitted(deployment: DesiredDeployment, access: DeployAccess) -> ProcessExit {
-  match observe_candidate_release() {
-    CandidateUnobservable { cause: why } =>
-      exit_failure(reason: candidate_unobservable_detail(cause: why))
-    CandidateObserved { candidate: candidate } =>
-      match live_deploy_pre_swap_for_deployment(deployment: deployment) {
-        PreSwapRefused { reason } => exit_failure(reason: reason)
-        PreSwapAdmitted =>
-          live_deploy_receipted_with_candidate(
-            deployment: deployment,
-            access: access,
-            candidate: candidate,
-            provenance: OperatorLocalApply {
-              host: access.host.identity,
-              principal: grounded_posix_principal_name(p: access.principal),
-            },
-          )
-      }
-  }
+  exit_failure(reason: operator_local_deploy_dissolved_refusal())
 }
 
 fn live_deploy_retract_prod_role_wet() -> ProcessExit {
