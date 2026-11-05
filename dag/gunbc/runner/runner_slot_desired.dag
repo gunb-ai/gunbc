@@ -285,3 +285,11 @@ data gunbc_runner_slot_watchdog_term_grace: Millisecond = millisecond(count: 150
 // receipt's first token, MemoryStallRefusedReclaimLivelock, and classes it Structural: the overrun
 // is the subject's.
 data gunbc_runner_slot_watchdog_receipt_dir: String = "/run/gunbc-slot-watchdog"
+
+// THE WATCHDOG'S OWN MEMORY BOUND. The verb evaluates its verdict through the host-budget model, which
+// refuses (HostBudgetUnreadable) a process no cgroup memory.max binds; the watchdog unit therefore MUST carry
+// its own MemoryMax, with swap 0. Measured on srv1 (2026-11-05, fixture d357ec10): verb peak RSS 93,220 KB.
+// 512 MiB is ~5.6x that, a policy ceiling that lets the typed-module evaluation grow without letting a
+// runaway watchdog become the host's problem; one unit per slot, so the host's watchdog charge is this
+// times the slot count.
+data gunbc_runner_slot_watchdog_memory_max: ByteSize = byte_size(536870912)
