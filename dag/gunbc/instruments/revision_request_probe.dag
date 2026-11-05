@@ -1,0 +1,31 @@
+module gunbc.instruments.revision_request_probe
+
+import std.types { String, Int, List }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.native_serve_probe_plan { NativeServePhase, native_serve_phase_refusals, native_serve_wire_parse }
+
+// Emission/build and authentication-boundary smoke check. This is not the
+// concurrent/restart acceptance receipt; that exercise uses the same built image
+// and private roots with two instances, so an in-process counter cannot pass.
+fn native_serve_probe_phases() -> List<NativeServePhase> { [] }
+fn native_serve_probe_phases_refused(declared: List<String>) -> List<String> {
+  native_serve_phase_refusals(declared: declared, judged: native_serve_probe_phases())
+}
+fn native_serve_probe_release_revision() -> String { "0123456789abcdef0123456789abcdef01234567" }
+fn native_serve_probe_request_deadline_ms() -> String { "30000" }
+fn native_serve_probe_requests(peer_port: Int) -> List<String> {
+  ["GET /requests/not-accepted HTTP/1.1\r\nHost: probe\r\n\r\n",
+   "GET /requests/not-accepted HTTP/1.1\r\nHost: probe\r\nAuthorization: Bearer unknown-probe-key\r\n\r\n"]
+}
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int,
+  responses: List<String>, refused_status: Int, refused_stderr: String, served_exit_status: Int) -> ProcessExit {
+  if !starts_with(s: announcement, prefix: "native-serve listening on 127.0.0.1:") || count(responses) != 2 {
+    return ExitFailure { code: 2, reason: "native request fixture not observed" }
+  }
+  if all(responses, response => match native_serve_wire_parse(response: response) {
+    Present { value: wire } => wire.status == 401
+    Absent => false
+  }) { ExitSuccess }
+  else { ExitFailure { code: 1, reason: "native request fixture did not refuse missing/unknown API keys" } }
+}

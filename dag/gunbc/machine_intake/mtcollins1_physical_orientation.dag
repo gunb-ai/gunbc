@@ -1,6 +1,7 @@
 module gunbc.machine_intake.mtcollins1_physical_orientation
 
-import std.types { Bool, NonEmptyStr, String, List, list_length, bool_text }
+import std.types { Bool, NonEmptyStr, String, List, bool_text }
+import std.algebra { length }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import std.measure { gibibyte_count, millivolt_count }
@@ -67,7 +68,7 @@ data mtcollins1_three_stick_anchor: DimmPlacementAnchor = boot_anchor(boot: mtco
 data mtcollins1_two_stick_anchor: DimmPlacementAnchor = boot_anchor(boot: mtcollins1_socket1_boot_two_sticks)
 
 // Every boot whose placement was recorded in drawing labels is an anchor.
-data mtcollins1_placement_anchors: List<DimmPlacementAnchor> = map(filter(mtcollins1_socket1_investigation_boots, b => list_length(items: drawing_labels(intended: b.intended)) > 0), b => boot_anchor(boot: b))
+data mtcollins1_placement_anchors: List<DimmPlacementAnchor> = map(filter(mtcollins1_socket1_investigation_boots, b => length(xs: drawing_labels(intended: b.intended)) > 0), b => boot_anchor(boot: b))
 
 data mtcollins1_damage_observed_on: SpecificationDocumentDate = SpecificationDocumentDate { year: 2026, month: 9, day: 23 }
 
@@ -110,7 +111,7 @@ fn socket1_standing(boots: List<MtCollins1Socket1InvestigationBoot>, oriented: D
     Present { value: cs } => nat_member(xs: cs, x: 9) && nat_member(xs: cs, x: 25)
     Absent => false
   })
-  if list_length(items: trained_on_1) == 0 {
+  if length(xs: trained_on_1) == 0 {
     Socket1TrainedNothing { runs: map(boots, b => b.run_id), since: mtcollins1_socket1_investigation_predecessor, symmetric_mc4_runs: map(symmetric, b => b.run_id) }
   } else {
     Socket1TrainedIn { runs: map(trained_on_1, b => b.run_id) }
@@ -170,7 +171,7 @@ fn placement_readbacks(boots: List<MtCollins1Socket1InvestigationBoot>, oriented
 fn socket1_standing_text(standing: MtCollins1Socket1Standing) -> String {
   match standing {
     Socket1TrainedNothing { runs: rs, since: _, symmetric_mc4_runs: sy } => concat(concat(concat(concat(
-      "Socket 1 trained no DIMM in ", to_string(list_length(items: rs))), " boots, including the J9+J25 placement (run "), join(map(sy, r => to_string(r)), ", run ")), ").")
+      "Socket 1 trained no DIMM in ", to_string(length(xs: rs))), " boots, including the J9+J25 placement (run "), join(map(sy, r => to_string(r)), ", run ")), ").")
     Socket1TrainedIn { runs: rs } => concat("Socket 1 trained a DIMM in run ", join(map(rs, r => to_string(r)), ", run "))
   }
 }
@@ -178,7 +179,7 @@ fn socket1_standing_text(standing: MtCollins1Socket1Standing) -> String {
 // THE UNIT'S HISTORY BLOCK FOR THE SLOT MAP: the firmware rosters, socket 1's standing, the CPU facts,
 // the join outcomes, the socket damage and the open bets, all read under the bound host's orientation.
 fn history_block(history: List<MtCollins1Socket1InvestigationBoot>, oriented: DimmOrientedHost) -> List<String> {
-  if list_length(items: history) == 0 { [] } else {
+  if length(xs: history) == 0 { [] } else {
     concat(concat(concat(["History (firmware rosters):"], map(history, b => boot_history_line(boot: b, oriented: oriented))),
       [socket1_standing_text(standing: socket1_standing(boots: history, oriented: oriented))]),
       concat(concat(concat(cpu_block(cpus: mtcollins1_socket_cpus, history: mtcollins1_pairing_boot_history, banks: figure_banks(figure: oriented.figure)), map(mtcollins1_secondary_join_readings, r => concat(concat(concat("Join outcome (", r.run), "): "), join_outcome_text(outcome: secondary_join_outcome(reading: r))))), [socket_damage_text(damage: mtcollins1_socket1_pin_damage_report)]), map(mtcollins1_socket1_hypotheses, h => hypothesis_text(h: h, history: history, oriented: oriented))))
@@ -192,7 +193,7 @@ fn cpu_release_text(issue: MtCollins1CpuRelease) -> String {
 // Firmware's socket count against the board's: fewer active than the board has is what
 // "not exposed" means here, and it is derived, never authored.
 fn socket_summary_text(summary: MtCollins1FirmwareSocketSummary, banks: List<MtCollinsDimmFigureBank>) -> String {
-  let board = list_length(items: board_sockets(banks: banks))
+  let board = length(xs: board_sockets(banks: banks))
   let head = concat(concat(concat(concat("Established (run ", to_string(summary.run_id)), "): SCP reports '"), summary.line), "'")
   if summary.active_sockets < board { concat(head, " of the board's sockets - firmware does not expose them all. Which layer stops socket 1 is open.") } else { concat(head, " - every board socket is active.") }
 }
@@ -220,9 +221,9 @@ fn placement_trained(p: MtCollins1StickPlacement, history: List<MtCollins1Socket
   let e = expected_firmware_readback(connectors: [p.connector], live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
   match filter(history, b => b.run_id == p.run_id).first() {
     Absent => PlacementUnevaluable
-    Present { value: b } => if list_length(items: e.unresolved) > 0 || list_length(items: e.predicted) == 0 { PlacementUnevaluable } else {
-      let hits = list_length(items: filter(e.predicted, t => list_length(items: filter(b.trained, u => u.socket == t.socket && u.controller == t.controller && u.slot == t.slot)) > 0))
-      if hits == list_length(items: e.predicted) { PlacementTrained } else { if hits == 0 { PlacementSilent } else { PlacementUnevaluable } }
+    Present { value: b } => if length(xs: e.unresolved) > 0 || length(xs: e.predicted) == 0 { PlacementUnevaluable } else {
+      let hits = length(xs: filter(e.predicted, t => length(xs: filter(b.trained, u => u.socket == t.socket && u.controller == t.controller && u.slot == t.slot)) > 0))
+      if hits == length(xs: e.predicted) { PlacementTrained } else { if hits == 0 { PlacementSilent } else { PlacementUnevaluable } }
     }
   }
 }

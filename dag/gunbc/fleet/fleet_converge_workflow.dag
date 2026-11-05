@@ -1,4 +1,5 @@
 module gunbc.fleet.fleet_converge_workflow
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
 import gunbc.ci.ci_spec { gunbc_ci_boot_medium_reader_probe_invoke, gunbc_ci_host_credential_custody_converge_invoke, gunbc_ci_host_reset_dispatch_admission_invoke, gunbc_ci_host_reset_return_invoke, gunbc_ci_mtcollins1_runner_image_publish_invoke, gunbc_ci_runner_microvm_network_apply_invoke, gunbc_ci_runner_microvm_network_observe_invoke, gunbc_ci_runner_password_session_tool_converge_invoke }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_gate_script_admitted, fleet_converge_split_gate_step_run }
 import gunbc.fleet.fleet_workflow_steps { ci_wif_auth_step_with_condition }
@@ -114,14 +115,14 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map, empty_map, map_insert }
+import std.algebra { list_map, empty_map, map_insert, length }
 import product.host_identity { HostIdentity }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -159,6 +160,7 @@ import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, 
 import gunbc.ci.ci_spec {
   site_pxe_edge_converge_receipt_path,
   gunbc_ci_fleet_converge_plan_invoke,
+  gunbc_ci_record_plan_serve_entry_verdict_invoke,
   gunbc_ci_fleet_converge_launch_environment_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke,
@@ -289,7 +291,7 @@ import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.json.emit { json_kv, json_object, json_string, serialize_json }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr, List, String, Int, Bool, list_length, Duration }
+import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
@@ -1184,12 +1186,13 @@ fn fleet_converge_host_reset_return_receipt_upload_step() -> Step {
     name: Present { value: "Upload host reset-return attempt receipt" },
     id: Present { value: "host_reset_return_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "host-reset-return")),
-      kv(key: "path", value: yaml_string(s: host_reset_return_receipt_path as String)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-reset-return",
+      path: host_reset_return_receipt_path as String,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_reset_return_step_if, ")")) },
     continue_on_error: none,
@@ -1544,6 +1547,15 @@ data fleet_converge_allocation_store_plan_step_if: String = fleet_converge_mode_
 data fleet_converge_workspace_commissioning_plan_step_if: String = fleet_converge_mode_step_if(mode: WorkspaceCommissioningPlan)
 
 data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan])
+
+// THE VERDICT STEP'S OWN GATE (§3c, §6b step 4). The serve-entry verdict is consumed by exactly
+// one reader -- the dashboard swap's pre-swap admission -- which can only be reached from a
+// pointer run that minted the RUN-BOUND PLAN RECEIPT the receipt assertion demands. That receipt
+// is minted by the two plan modes below (the launch-environment plan carries the same run-bound
+// binding as the full-host plan, see the comment under fleet_converge_plan_step); an
+// allocation-store, workspace-commissioning or workspace-allocation plan run never feeds the
+// swap, so those runs do not pay the ~18-minute serve-entry compile for a verdict nothing reads.
+data fleet_converge_serve_entry_verdict_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan])
 data fleet_converge_apply_step_if: String = fleet_converge_mode_step_if(mode: FleetApply)
 data fleet_converge_org_actions_step_if: String = fleet_converge_mode_step_if(mode: OrgActionsObserve)
 data fleet_converge_org_runner_roster_step_if: String = fleet_converge_mode_step_if(mode: OrgRunnerRosterObserve)
@@ -1630,12 +1642,13 @@ fn fleet_converge_runner_password_session_tool_receipt_upload_step() -> Step {
     name: Present { value: "Upload password-session tool converge receipt" },
     id: Present { value: "runner_password_session_tool_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-password-session-tool-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-password-session-tool-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-password-session-tool-converge-receipt",
+      path: "target/runner-password-session-tool-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_password_session_tool_converge_step_if, ")")) },
     continue_on_error: none,
@@ -1659,12 +1672,13 @@ fn fleet_converge_runner_gpu_container_toolchain_receipt_upload_step() -> Step {
     name: Present { value: "Upload GPU container toolchain converge receipt" },
     id: Present { value: "runner_gpu_container_toolchain_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-gpu-container-toolchain-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-gpu-container-toolchain-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-gpu-container-toolchain-converge-receipt",
+      path: "target/runner-gpu-container-toolchain-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_gpu_container_toolchain_converge_step_if, ")")) },
     continue_on_error: none,
@@ -1679,12 +1693,13 @@ fn fleet_converge_runner_browser_toolchain_receipt_upload_step() -> Step {
     name: Present { value: "Upload browser toolchain converge receipt" },
     id: Present { value: "runner_browser_toolchain_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-browser-toolchain-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/runner-browser-toolchain-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-browser-toolchain-converge-receipt",
+      path: "target/runner-browser-toolchain-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_browser_toolchain_converge_step_if, ")")) },
     continue_on_error: none,
@@ -1905,13 +1920,13 @@ fn fleet_converge_plan_upload_step() -> Step {
     id: Present { value: "plan_upload" },
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: gunbc_fleet_converge_plan_artifact_name)),
-        kv(key: "path", value: yaml_string(s: fleet_converge_plan_artifact_dir)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 30)),
-        kv(key: "compression-level", value: yaml_int(n: 0)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: gunbc_fleet_converge_plan_artifact_name,
+        path: fleet_converge_plan_artifact_dir,
+        retention_days: Present { value: 30 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: fleet_converge_any_plan_step_if },
@@ -1956,6 +1971,29 @@ fn fleet_converge_plan_step() -> Step {
     if_condition: Present { value: fleet_converge_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_converge_plan_step_timeout_minutes }
+  }
+}
+
+// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission). The plan job compiles
+// the prod-role serve entry ONCE, with the release pair this run built, and publishes the verdict
+// beside the plan receipt; the swap transaction consumes it by identity -- source revision, entry,
+// serve argv, and the release binary the swap admits -- instead of paying the cold resolve again
+// (job 117824998335 spent 614964 ms there and still exited 1). It runs, immediately before the
+// artifact upload, exactly in the modes whose run-bound plan receipt the swap's receipt assertion
+// demands (fleet_converge_serve_entry_verdict_step_if: the full-host and launch-environment plans)
+// -- so no consumable plan artifact ships without the verdict, and the modes that never feed the
+// swap pay no serve-entry fold (§6b step 4).
+fn fleet_converge_serve_entry_verdict_step() -> Step {
+  RunStep {
+    name: Present { value: "Record the serve-entry compile verdict beside the plan artifact (gunbc.live_deploy.pre_swap_admission)" },
+    id: Present { value: "serve_entry_verdict" },
+    run: gunbc_ci_record_plan_serve_entry_verdict_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_serve_entry_verdict_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes }
   }
 }
 
@@ -2144,13 +2182,13 @@ fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String
     id: Present { value: id },
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: artifact)),
-        kv(key: "path", value: yaml_string(s: path)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 90)),
-        kv(key: "compression-level", value: yaml_int(n: 0)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: artifact,
+        path: path,
+        retention_days: Present { value: 90 },
+        compression_level: Present { value: 0 },
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: if_condition },
@@ -2194,12 +2232,13 @@ fn fleet_converge_guest_image_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM guest image standing receipt" },
     id: Present { value: "guest_image_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-guest-image-standing")),
-      kv(key: "path", value: yaml_string(s: "target/runner-guest-image-standing.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-guest-image-standing",
+      path: "target/runner-guest-image-standing.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_guest_image_any_step_if, ")")) },
     continue_on_error: none,
@@ -2273,12 +2312,13 @@ fn fleet_converge_microvm_network_observe_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM network converge receipt" },
     id: Present { value: "microvm_network_observe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-network-observe-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/microvm-network-observe.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-network-observe-receipt",
+      path: "target/microvm-network-observe.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_network_observe_step_if, ")")) },
     continue_on_error: none,
@@ -2320,12 +2360,13 @@ fn fleet_converge_microvm_network_apply_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM network apply receipt" },
     id: Present { value: "microvm_network_apply_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-network-apply-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/microvm-network-apply-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-network-apply-receipt",
+      path: "target/microvm-network-apply-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_network_apply_step_if, ")")) },
     continue_on_error: none,
@@ -2338,12 +2379,13 @@ fn fleet_converge_microvm_host_standing_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM host standing receipt" },
     id: Present { value: "microvm_host_standing_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-host-standing")),
-      kv(key: "path", value: yaml_string(s: "target/runner-microvm-host-standing.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-host-standing",
+      path: "target/runner-microvm-host-standing.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_host_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2571,12 +2613,13 @@ fn fleet_converge_runner_user_session_receipt_upload_step() -> Step {
     name: Present { value: "Upload user session converge receipt" },
     id: Present { value: "runner_user_session_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: runner_user_session_converge_receipt_artifact_name)),
-      kv(key: "path", value: yaml_string(s: runner_user_session_converge_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: runner_user_session_converge_receipt_artifact_name,
+      path: runner_user_session_converge_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_user_session_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2636,12 +2679,13 @@ fn fleet_converge_host_credential_custody_receipt_upload_step() -> Step {
     name: Present { value: "Upload host credential custody receipt" },
     id: Present { value: "host_credential_custody_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "host-credential-custody-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: "target/host-credential-custody-converge-receipt.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-credential-custody-converge-receipt",
+      path: "target/host-credential-custody-converge-receipt.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_credential_custody_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2678,12 +2722,13 @@ fn fleet_converge_site_pxe_edge_receipt_upload_step() -> Step {
     name: Present { value: "Upload site PXE edge converge receipt" },
     id: Present { value: "site_pxe_edge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "site-pxe-edge-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: site_pxe_edge_converge_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "site-pxe-edge-converge-receipt",
+      path: site_pxe_edge_converge_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_site_pxe_edge_any_step_if, ")")) },
     continue_on_error: none,
@@ -2697,12 +2742,13 @@ fn fleet_converge_runner_host_cap_release_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host cap release receipt" },
     id: Present { value: "runner_host_cap_release_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-cap-release-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_cap_release_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-cap-release-receipt",
+      path: gunbc_ci_runner_host_cap_release_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_file_converge_step_if, ")"], "") },
     continue_on_error: none,
@@ -2715,12 +2761,13 @@ fn fleet_converge_runner_host_withdraw_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host withdraw receipt" },
     id: Present { value: "runner_host_withdraw_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-withdraw-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_withdraw_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-withdraw-receipt",
+      path: gunbc_ci_runner_host_withdraw_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_withdraw_step_if, ")"], "") },
     continue_on_error: none,
@@ -2733,12 +2780,13 @@ fn fleet_converge_runner_host_restore_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host restore receipt" },
     id: Present { value: "runner_host_restore_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-restore-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_restore_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-restore-receipt",
+      path: gunbc_ci_runner_host_restore_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && (", fleet_converge_runner_host_restore_step_if, ")"], "") },
     continue_on_error: none,
@@ -2751,12 +2799,13 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner host file converge receipt" },
     id: Present { value: "runner_host_file_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-host-file-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: gunbc_ci_runner_host_file_converge_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-host-file-converge-receipt",
+      path: gunbc_ci_runner_host_file_converge_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_host_file_any_step_if, ")")) },
     continue_on_error: none,
@@ -2827,12 +2876,13 @@ fn fleet_converge_board_function_converge_receipt_upload_step() -> Step {
     name: Present { value: "Upload board-function converge receipt" },
     id: Present { value: "board_function_converge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "board-function-converge-delivery-receipt")),
-      kv(key: "path", value: yaml_string(s: board_function_converge_delivery_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "board-function-converge-delivery-receipt",
+      path: board_function_converge_delivery_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_board_function_converge_step_if, ")")) },
     continue_on_error: none,
@@ -2845,12 +2895,13 @@ fn fleet_converge_host_primary_network_receipt_upload_step() -> Step {
     name: Present { value: "Upload primary network receipt" },
     id: Present { value: "host_primary_network_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "host-primary-network-receipt")),
-      kv(key: "path", value: yaml_string(s: host_primary_network_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-primary-network-receipt",
+      path: host_primary_network_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_primary_network_any_step_if, ")")) },
     continue_on_error: none,
@@ -2906,12 +2957,13 @@ fn fleet_converge_microvm_slot_reserve_receipt_upload_step() -> Step {
     name: Present { value: "Upload the microVM slot reserve receipt" },
     id: Present { value: "microvm_slot_reserve_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-slot-reserve")),
-      kv(key: "path", value: yaml_string(s: microvm_slot_reserve_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "microvm-slot-reserve",
+      path: microvm_slot_reserve_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_slot_reserve_step_if, ")")) },
     continue_on_error: none,
@@ -2947,12 +2999,13 @@ fn fleet_converge_microvm_slot_start_receipt_upload_step() -> Step {
     name: Present { value: "Upload the microVM slot start receipt" },
     id: Present { value: "microvm_slot_start_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-slot-start")),
-      kv(key: "path", value: yaml_string(s: microvm_slot_start_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "microvm-slot-start",
+      path: microvm_slot_start_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_slot_start_step_if, ")")) },
     continue_on_error: none,
@@ -2969,12 +3022,13 @@ fn fleet_converge_microvm_boot_probe_receipt_upload_step() -> Step {
     name: Present { value: "Upload runner micro-VM boot probe console receipt" },
     id: Present { value: "microvm_boot_probe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "runner-microvm-boot-probe")),
-      kv(key: "path", value: yaml_string(s: "target/runner-microvm-boot-probe.txt")),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "runner-microvm-boot-probe",
+      path: "target/runner-microvm-boot-probe.txt",
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_microvm_boot_probe_step_if, ")")) },
     continue_on_error: none,
@@ -3039,12 +3093,13 @@ fn fleet_converge_org_runner_roster_receipt_upload_step() -> Step {
     name: Present { value: "Upload org runner roster receipt" },
     id: Present { value: "org_runner_roster_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "org-runner-roster")),
-      kv(key: "path", value: yaml_string(s: organization_runner_roster_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "org-runner-roster",
+      path: organization_runner_roster_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_org_runner_roster_step_if], "") },
     continue_on_error: none,
@@ -3444,12 +3499,13 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
     name: Present { value: "Upload Mt. Collins fan observation series" },
     id: Present { value: "mtcollins1_fan_observe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-fan-observation")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-fan-observation",
+      path: mtcollins1_fan_observation_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
     continue_on_error: none,
@@ -3485,12 +3541,13 @@ fn fleet_converge_mtcollins1_census_image_publish_receipt_upload_step() -> Step 
     name: Present { value: "Upload Mt. Collins census image receipt" },
     id: Present { value: "mtcollins1_census_image_publish_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-image")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_census_image_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-image",
+      path: mtcollins1_census_image_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_image_publish_step_if) },
     continue_on_error: none,
@@ -3523,12 +3580,13 @@ fn fleet_converge_mtcollins1_runner_image_publish_receipt_upload_step() -> Step 
     name: Present { value: "Upload Mt. Collins runner image receipt" },
     id: Present { value: "mtcollins1_runner_image_publish_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-runner-image")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_runner_image_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-runner-image",
+      path: mtcollins1_runner_image_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_runner_image_publish_step_if) },
     continue_on_error: none,
@@ -3562,12 +3620,13 @@ fn fleet_converge_mtcollins1_census_member_readback_receipt_upload_step() -> Ste
     name: Present { value: "Upload Mt. Collins census member readback receipt" },
     id: Present { value: "mtcollins1_census_member_readback_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-member-readback")),
-      kv(key: "path", value: yaml_string(s: census_member_readback_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-member-readback",
+      path: census_member_readback_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_member_readback_step_if) },
     continue_on_error: none,
@@ -3601,12 +3660,13 @@ fn fleet_converge_mtcollins1_census_qemu_host_observe_receipt_upload_step() -> S
     name: Present { value: "Upload Mt. Collins census QEMU host standing receipt" },
     id: Present { value: "mtcollins1_census_qemu_host_observe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-qemu-host")),
-      kv(key: "path", value: yaml_string(s: census_qemu_host_observe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-qemu-host",
+      path: census_qemu_host_observe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_qemu_host_observe_step_if) },
     continue_on_error: none,
@@ -3643,12 +3703,13 @@ fn fleet_converge_mtcollins1_census_qemu_toolchain_converge_receipt_upload_step(
     name: Present { value: "Upload Mt. Collins census QEMU toolchain converge receipt" },
     id: Present { value: "mtcollins1_census_qemu_toolchain_converge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-census-qemu-toolchain")),
-      kv(key: "path", value: yaml_string(s: census_qemu_host_observe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-census-qemu-toolchain",
+      path: census_qemu_host_observe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: concat("always() && ", fleet_converge_mtcollins1_census_qemu_toolchain_converge_step_if) },
     continue_on_error: none,
@@ -3677,12 +3738,13 @@ fn fleet_converge_r2_mint_preflight_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 mint preflight receipt" },
     id: Present { value: "r2_mint_preflight_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-mint-preflight")),
-      kv(key: "path", value: yaml_string(s: r2_mint_preflight_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-mint-preflight",
+      path: r2_mint_preflight_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_r2_mint_preflight_step_if },
     continue_on_error: none,
@@ -3718,12 +3780,13 @@ fn fleet_converge_r2_bucket_ensure_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 bucket ensure receipt" },
     id: Present { value: "r2_bucket_ensure_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-bucket-ensure")),
-      kv(key: "path", value: yaml_string(s: r2_bucket_ensure_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-bucket-ensure",
+      path: r2_bucket_ensure_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_ensure_step_if], "") },
     continue_on_error: none,
@@ -3755,15 +3818,16 @@ fn fleet_converge_r2_bucket_admin_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 bucket-admin mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_bucket_admin_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-bucket-admin-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-bucket-admin-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2AccountBucketAdmin,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_bucket_admin_mint_step_if], "") },
     continue_on_error: none,
@@ -3857,12 +3921,13 @@ fn fleet_converge_service_runner_lost_boot_sweep_dry_run_receipt_upload_step() -
     name: Present { value: "Upload the service runner lost-boot sweep dry-run receipt" },
     id: Present { value: "service_runner_lost_boot_sweep_dry_run_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "service-runner-lost-boot-sweep-dry-run-receipts")),
-      kv(key: "path", value: yaml_string(s: lost_boot_sweep_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "service-runner-lost-boot-sweep-dry-run-receipts",
+      path: lost_boot_sweep_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_service_runner_lost_boot_sweep_dry_run_step_if], "") },
     continue_on_error: none,
@@ -3899,12 +3964,13 @@ fn fleet_converge_qualification_attempt_receipt_upload_step() -> Step {
     name: Present { value: "Upload the qualification attempt receipt" },
     id: Present { value: "qualification_attempt_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "qualification-attempt-receipts")),
-      kv(key: "path", value: yaml_string(s: qualification_attempt_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "qualification-attempt-receipts",
+      path: qualification_attempt_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_qualification_attempt_step_if], "") },
     continue_on_error: none,
@@ -3917,12 +3983,13 @@ fn fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step() -> Step {
     name: Present { value: "Upload the service runner lost-boot sweep receipt" },
     id: Present { value: "service_runner_lost_boot_sweep_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "service-runner-lost-boot-sweep-receipts")),
-      kv(key: "path", value: yaml_string(s: lost_boot_sweep_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "service-runner-lost-boot-sweep-receipts",
+      path: lost_boot_sweep_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_service_runner_lost_boot_sweep_step_if], "") },
     continue_on_error: none,
@@ -3952,12 +4019,13 @@ fn fleet_converge_microvm_runner_group_ensure_receipt_upload_step() -> Step {
     name: Present { value: "Upload the microVM runner group ensure receipt" },
     id: Present { value: "microvm_runner_group_ensure_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "microvm-runner-group-ensure-receipts")),
-      kv(key: "path", value: yaml_string(s: microvm_runner_group_ensure_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "microvm-runner-group-ensure-receipts",
+      path: microvm_runner_group_ensure_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_microvm_runner_group_ensure_step_if], "") },
     continue_on_error: none,
@@ -4024,12 +4092,13 @@ fn fleet_converge_mtcollins1_boot_receipt_upload_step() -> Step {
     name: Present { value: "Upload Mt. Collins unit 1 boot SOL capture and receipts" },
     id: Present { value: "mtcollins1_boot_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "mtcollins1-boot-receipts")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_boot_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "mtcollins1-boot-receipts",
+      path: mtcollins1_boot_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_mtcollins1_boot_step_if], "") },
     continue_on_error: none,
@@ -4066,23 +4135,24 @@ fn fleet_converge_r2_mint_receipt_scope() -> R2MintReceiptAttemptScoped {
 // receipt it could ever find belonged to a run that did not need one. A glob, because the receipt is named for the bucket the mint ran against
 // (gunbc.cloudflare.r2_token_mint_run r2_origin_token_name) and re-spelling that name here would be
 // a second authority for it -- the §3 decay that an edit to the allocation roster would silently
-// invalidate. if-no-files-found is warn rather than error for the same reason the condition is
-// always(): a refusal before the Create writes no receipt, and that is the correct outcome, not a
-// missing artifact.
+// invalidate. A missing receipt refuses the upload (gunbc.ci.workflow_artifact_upload AbsenceRefused): a refusal
+// before the Create writes no receipt and already fails the mint step, so failing the upload as well loses nothing,
+// while the only exit-0 path of the mint (mint_origin_token_and_store) writes the receipt first.
 fn fleet_converge_r2_object_write_mint_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload R2 object-write mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_object_write_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-object-write-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectWrite,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_object_write_mint_step_if], "") },
     continue_on_error: none,
@@ -4115,15 +4185,16 @@ fn fleet_converge_r2_workspace_object_read_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 workspace object-read mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_workspace_object_read_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-workspace-object-read-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-workspace-object-read-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectRead,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_read_mint_step_if], "") },
     continue_on_error: none,
@@ -4152,15 +4223,16 @@ fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 workspace object-write mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_workspace_object_write_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-workspace-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-workspace-object-write-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectWrite,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_workspace_object_write_mint_step_if], "") },
     continue_on_error: none,
@@ -4189,15 +4261,16 @@ fn fleet_converge_r2_cache_object_read_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 cache-blobs object-read mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_cache_object_read_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-cache-object-read-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-cache-object-read-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectRead,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_cache_object_read_mint_step_if], "") },
     continue_on_error: none,
@@ -4226,15 +4299,16 @@ fn fleet_converge_r2_cache_object_write_mint_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 cache-blobs object-write mint receipt (token id + custody version resource; no secret)" },
     id: Present { value: "r2_cache_object_write_mint_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-cache-object-write-mint-receipt")),
-      kv(key: "path", value: yaml_string(s: r2_mint_receipt_glob_in(
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-cache-object-write-mint-receipt",
+      path: r2_mint_receipt_glob_in(
         scope: fleet_converge_r2_mint_receipt_scope(),
         profile: R2OriginObjectWrite,
-      ))),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+      ),
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_cache_object_write_mint_step_if], "") },
     continue_on_error: none,
@@ -4274,12 +4348,13 @@ fn fleet_converge_r2_conditional_put_race_probe_receipt_upload_step() -> Step {
     name: Present { value: "Upload R2 If-Match race probe receipt (per-round statuses and verdict; no secret)" },
     id: Present { value: "r2_conditional_put_race_probe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "r2-conditional-put-race-probe-receipt")),
-      kv(key: "path", value: yaml_string(s: race_probe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 90)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "r2-conditional-put-race-probe-receipt",
+      path: race_probe_receipt_path,
+      retention_days: Present { value: 90 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_r2_conditional_put_race_probe_step_if], "") },
     continue_on_error: none,
@@ -4292,12 +4367,13 @@ fn fleet_converge_app_control_plane_receipt_upload_step() -> Step {
     name: Present { value: "Upload GitHub App control plane observation receipt" },
     id: Present { value: "app_control_plane_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "app-control-plane-observation")),
-      kv(key: "path", value: yaml_string(s: app_control_plane_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "app-control-plane-observation",
+      path: app_control_plane_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_app_control_plane_receipt_if },
     continue_on_error: none,
@@ -4310,12 +4386,13 @@ fn fleet_converge_org_actions_receipt_upload_step() -> Step {
     name: Present { value: "Upload org Actions credential validation receipt" },
     id: Present { value: "org_actions_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "org-actions-credential-validation")),
-      kv(key: "path", value: yaml_string(s: org_actions_validation_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "org-actions-credential-validation",
+      path: org_actions_validation_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: fleet_converge_org_actions_step_if },
     continue_on_error: none,
@@ -4477,12 +4554,13 @@ fn fleet_converge_srv1_root_mutation_approval_receipt_upload_step() -> Step {
     name: Present { value: "Upload the srv1 root-mutation approval receipt" },
     id: Present { value: "srv1_root_mutation_approval_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "srv1-root-mutation-approval-receipts")),
-      kv(key: "path", value: yaml_string(s: srv1_root_mutation_approval_artifact_glob)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "srv1-root-mutation-approval-receipts",
+      path: srv1_root_mutation_approval_artifact_glob,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceExpected { reason: "this upload runs under a bare always(), so it fires in every fleet-converge mode, and only the srv1 root-mutation modes write the approval receipt; error here would fail every other mode. Narrowing its condition to those modes, then refusing absence, is the follow-up." as NonEmptyStr },
+    ) },
     env: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -5398,12 +5476,13 @@ fn fleet_converge_fan_policy_phase_receipt_upload_step() -> Step {
     name: Present { value: "Upload fan-policy-phase observation series" },
     id: Present { value: "fan_policy_phase_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "fan-policy-phase-observation")),
-      kv(key: "path", value: yaml_string(s: mtcollins1_fan_observation_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "fan-policy-phase-observation",
+      path: mtcollins1_fan_observation_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
@@ -5495,6 +5574,7 @@ fn fleet_converge_job() -> Job {
         fleet_converge_workspace_image_upload_step(),
         fleet_converge_workspace_operation_step(mode: RevisionJobImageBuild, run: gunbc_ci_revision_job_image_build_invoke()),
         fleet_converge_revision_job_image_upload_step(),
+        fleet_converge_serve_entry_verdict_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_checkout_verify_step(if_condition: Present { value: fleet_converge_apply_step_if }),
@@ -6299,12 +6379,13 @@ fn fleet_converge_flex_pass_receipt_upload_step() -> Step {
     name: Present { value: "Upload flex pass receipt (ids, prices, standings, walls; no secret)" },
     id: Present { value: "flex_pass_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "flex-pass-receipt")),
-      kv(key: "path", value: yaml_string(s: flex_pass_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "flex-pass-receipt",
+      path: flex_pass_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_flex_pass_step_if], "") },
     continue_on_error: none,
@@ -6340,12 +6421,13 @@ fn fleet_converge_flex_template_ensure_receipt_upload_step() -> Step {
     name: Present { value: "Upload flex template receipt (names, hashes, counts; no secret)" },
     id: Present { value: "flex_template_ensure_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "flex-template-ensure-receipt")),
-      kv(key: "path", value: yaml_string(s: flex_vast_template_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "flex-template-ensure-receipt",
+      path: flex_vast_template_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_flex_template_ensure_step_if], "") },
     continue_on_error: none,
@@ -6378,12 +6460,13 @@ fn fleet_converge_hetzner_cloud_server_read_receipt_upload_step() -> Step {
     name: Present { value: "Upload Hetzner Cloud server read receipt (ids, names, statuses; no secret)" },
     id: Present { value: "hetzner_cloud_server_read_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "hetzner-cloud-server-read-receipt")),
-      kv(key: "path", value: yaml_string(s: hetzner_cloud_server_read_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "hetzner-cloud-server-read-receipt",
+      path: hetzner_cloud_server_read_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_hetzner_cloud_server_read_step_if], "") },
     continue_on_error: none,
@@ -6420,12 +6503,13 @@ fn fleet_converge_boot_medium_reader_probe_receipt_upload_step() -> Step {
     name: Present { value: "Upload boot medium reader probe receipt" },
     id: Present { value: "boot_medium_reader_probe_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "boot-medium-reader-probe-receipt")),
-      kv(key: "path", value: yaml_string(s: boot_medium_reader_probe_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "boot-medium-reader-probe-receipt",
+      path: boot_medium_reader_probe_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_boot_medium_reader_probe_step_if], "") },
     continue_on_error: none,
@@ -6455,12 +6539,13 @@ fn fleet_converge_export_host_reader_converge_receipt_upload_step() -> Step {
     name: Present { value: "Upload export host reader converge receipt" },
     id: Present { value: "export_host_reader_converge_receipt_upload" },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: "export-host-reader-converge-receipt")),
-      kv(key: "path", value: yaml_string(s: export_host_reader_receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: "export-host-reader-converge-receipt",
+      path: export_host_reader_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     if_condition: Present { value: join(["always() && ", fleet_converge_export_host_reader_converge_step_if], "") },
     continue_on_error: none,
@@ -6557,12 +6642,13 @@ fn fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: FleetKeypairMi
     name: Present { value: concat("Upload mint receipt: ", concat(subject.lane as String, " (public key, fingerprint, version; no private material)")) },
     id: Present { value: concat(fleet_converge_fleet_keypair_mint_step_id(subject: subject), "_receipt_upload") },
     uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: concat("fleet-keypair-mint-receipt-", fleet_converge_lane_slug(subject: subject)))),
-      kv(key: "path", value: yaml_string(s: subject.receipt_path)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-      kv(key: "retention-days", value: yaml_int(n: 30)),
-    ] },
+    with: Present { value: workflow_artifact_upload_with(
+      name: concat("fleet-keypair-mint-receipt-", fleet_converge_lane_slug(subject: subject)),
+      path: subject.receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceRefused,
+    ) },
     env: none,
     // `always()` WITHOUT `&& failure()`: a mint that failed is the case where the receipt matters most, but a
     // mint that SUCCEEDED matters more -- the job runs on a GitHub-hosted VM that is thrown away when the job
@@ -7265,7 +7351,7 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
     DispatchAssignmentRefused { cause: c } =>
       FleetConvergeYamlGenerationRefused { reason: fleet_converge_reset_assignment_refusal_reason(cause: c) }
     DispatchAssignment { pairings: ps } =>
-      if list_length(ps) == 0 {
+      if length(ps) == 0 {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
@@ -7601,13 +7687,13 @@ fn fleet_converge_guest_image_upload_step(label: String, id: String, name: Strin
   UsesStep {
     name: Present { value: concat(concat("Archive the exact ", label), " image build and digest receipt") },
     id: Present { value: id }, uses: upload_artifact_action,
-    with: Present { value: [
-      kv(key: "name", value: yaml_string(s: name)),
-      kv(key: "path", value: yaml_string(s: paths)),
-      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-      kv(key: "retention-days", value: yaml_int(n: 90)),
-      kv(key: "compression-level", value: yaml_int(n: 6)),
-    ] }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
+    with: Present { value: workflow_artifact_upload_with(
+      name: name,
+      path: paths,
+      retention_days: Present { value: 90 },
+      compression_level: Present { value: 6 },
+      absence: AbsenceRefused,
+    ) }, env: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
     continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }

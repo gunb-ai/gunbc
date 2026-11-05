@@ -18,6 +18,7 @@ import gunbc.spark.fabric_switch_desired {
   Crs812LaneIntent, LaneCarriesLeg, LaneOwnedByItsPair,
   fabric_switch_intent,
 }
+import std.algebra { length }
 
 // THE SWITCH AS A CONVERGENCE SUBJECT, WHICH IS A DIFFERENT SUBJECT FROM THE CABLE PLANT.
 //
@@ -323,7 +324,7 @@ fn assess_fabric_switch(
 }
 
 fn fabric_switch_agreement_receipt(observed: Crs812SwitchObserved) -> Crs812SwitchReceipt {
-  Crs812SwitchReceipt { lanes_read: list_length(items: observed.lanes) }
+  Crs812SwitchReceipt { lanes_read: length(xs: observed.lanes) }
 }
 
 type Crs812SwitchInspection = GoalInspection<NonEmptyStr, Crs812SwitchIntent, List<Crs812LaneReading>, Crs812SwitchObserved, Crs812SwitchReceipt, Crs812LaneDivergence, Crs812LaneUnknown, Never, Crs812SwitchAssessRefusal>
