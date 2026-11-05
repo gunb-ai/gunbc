@@ -24,6 +24,9 @@ import gunbc.fleet.approval_ntfy_retirement {
   ntfy_retire_removals, ntfy_retire_removals_are_stated, ntfy_retire_removal_target_is_stated,
   ntfy_retire_removal_argv, ntfy_retire_roster_paths,
   ntfy_retire_leg_answers_subject_absent, ntfy_retire_subject_absent_reason,
+  ntfy_retire_leg_decision, LegDecisionRun, LegDecisionSkip, ntfy_retire_any_member_unreadable,
+  ntfy_retire_member_unit, ntfy_retire_member_front_door, ntfy_retire_member_account,
+  ntfy_retire_member_config_dir, ntfy_retire_member_state_root, ntfy_retire_member_binary,
   NtfyRetireLeg, NoSubjectAbsentAnswer, SubjectAbsentExit,
 }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -232,6 +235,20 @@ fn witness_verdict_state(v: NtfyRetireVerdict) -> String {
   }
 }
 
+// THE SERVE STATUS AS THE TRANSPORT RETURNS IT. The front-door prober takes the whole read, exit code
+// included, because a `tailscale serve status` that never ran prints nothing and an empty document
+// parses to "no routes" -- which is exactly how a failed close could be certified as a closed door.
+fn witness_serve_status(stdout: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: 0, success: true, stdout: stdout, stderr: "" }
+}
+
+data failed_serve_status: SshSessionExecResult = SshSessionExecResult {
+  exit_code: 1,
+  success: false,
+  stdout: "",
+  stderr: "sudo: serve: command not found",
+}
+
 data serve_status_with_route: String = "{\"TCP\":{\"8443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:8443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}"
 data serve_status_without_route: String = "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:18789\"}}}}}"
 data serve_status_unparseable: String = "{\"TCP\":{"
@@ -310,11 +327,11 @@ test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool
   witness_read_state(read: ntfy_retire_load_state_read(read: failed_systemctl)) == "unreadable"
     && witness_read_state(read: ntfy_retire_account_read(read: hollow_getent)) == "unreadable"
     && witness_read_state(read: ntfy_retire_account_read(read: errored_getent)) == "unreadable"
-    && witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_unparseable)) == "unreadable"
+    && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable))) == "unreadable"
     && witness_read_state(read: ntfy_retire_path_read(exit_code: 2)) == "unreadable"
     && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "unit" as NonEmptyStr, read: ntfy_retire_load_state_read(read: failed_systemctl))) == "unreadable"
     && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "account" as NonEmptyStr, read: ntfy_retire_account_read(read: hollow_getent))) == "unreadable"
-    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_json: serve_status_unparseable))) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable)))) == "unreadable"
 }
 
 // A READ THAT HAPPENED IS CLASSIFIED BY WHAT IT ANSWERED, and one shared function is the only thing
@@ -322,7 +339,7 @@ test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool
 // the prober that decided it rather than restating the run's intent.
 test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
   let unit_absent = ntfy_retire_verdict_from_read(member: "unit" as NonEmptyStr, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }, unit_path_exit: 1))
-  let door_absent = ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_json: serve_status_without_route))
+  let door_absent = ntfy_retire_verdict_from_read(member: "front door" as NonEmptyStr, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route)))
   let account_absent = ntfy_retire_verdict_from_read(member: "account" as NonEmptyStr, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
   let config_absent = ntfy_retire_verdict_from_read(member: "config directory" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
   let state_absent = ntfy_retire_verdict_from_read(member: "state root" as NonEmptyStr, read: ntfy_retire_path_read(exit_code: 1))
@@ -353,9 +370,9 @@ test fn two_reads_of_one_member_meet_under_one_rule() -> Bool {
 // means the door is still standing, and a status that cannot be parsed is NOT read as absence -- a
 // parse gap must not retire a listener.
 test fn the_front_door_absence_is_read_from_tailscales_own_status() -> Bool {
-  witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_without_route)) == "absent"
-    && witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_with_route)) == "present"
-    && witness_read_state(read: ntfy_retire_front_door_read(status_json: serve_status_unparseable)) == "unreadable"
+  witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route))) == "absent"
+    && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_with_route))) == "present"
+    && witness_read_state(read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_unparseable))) == "unreadable"
 }
 
 // THE ROSTER PATHS ARE THE ONES THE RUN REMOVES: each member's path appears in a leg, so the roster
@@ -363,4 +380,121 @@ test fn the_front_door_absence_is_read_from_tailscales_own_status() -> Bool {
 test fn every_roster_path_is_removed_by_a_leg() -> Bool {
   all([ntfy_retire_unit_path, ntfy_retire_config_dir, ntfy_retire_state_root, ntfy_retire_binary_path], p =>
     any(ntfy_retire_legs, leg => any(leg.argv, w => w == (p as String))))
+}
+
+// ── The legs' own decisions, and the two defects the first actuation found ─────────────────────
+
+fn witness_first_word(argv: List<String>) -> String {
+  match first_where(xs: argv, keep: w => true) {
+    Absent => ""
+    Present { value: w } => w
+  }
+}
+
+// RED: THE CLOSE NAMES THE PROGRAM IT RUNS. The first actuation of this retirement died on exactly
+// this leg: the words handed to `sudo -n --` were ["serve", "--https=8443", "off"], so sudo was asked
+// to run a program called `serve`, it exited 1, and the listener stayed open on a host whose unit,
+// account, directories and binary had already been removed. A close that does not name its program is
+// not a close; the program now comes from extdeps.tailscale.serve, the module that owns it.
+test fn red_the_front_door_close_names_the_tailscale_program() -> Bool {
+  match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "front-door-off") {
+    Absent => false
+    Present { value: leg } =>
+      witness_first_word(argv: leg.argv) == "tailscale"
+        && any(leg.argv, w => w == "serve")
+        && any(leg.argv, w => w == "--https=8443")
+        && any(leg.argv, w => w == "off")
+  }
+}
+
+// RED: A SERVE STATUS THAT NEVER RAN IS NOT A CLOSED DOOR. sudo's "command not found" and a daemon
+// that is down both print an EMPTY document, and an empty document parses to "no routes". Read that
+// way, the failed close above would have been certified as a closed front door by the run's own
+// readback. Only an exit-0 status is a status; anything else is UNREADABLE, which fails the run.
+test fn red_a_failed_serve_status_is_never_read_as_a_closed_door() -> Bool {
+  witness_read_state(read: ntfy_retire_front_door_read(status_read: failed_serve_status)) == "unreadable"
+    && witness_verdict_state(v: ntfy_retire_verdict_from_read(
+      member: ntfy_retire_member_front_door,
+      read: ntfy_retire_front_door_read(status_read: failed_serve_status),
+    )) == "unreadable"
+}
+
+fn witness_member_absent(member: NonEmptyStr) -> NtfyRetireVerdict {
+  ntfy_retire_verdict_from_read(member: member, read: ReadAbsent { evidence: "the member's own probe said not there" })
+}
+
+// RED: A RESUMED PASS SKIPS ONLY WHAT ITS OWN READS FOUND GONE. This is the state the first actuation
+// left srv1 in -- everything removed except the front door -- and before this rule the run could not
+// finish: `systemctl stop` of a unit systemd no longer knows exits non-zero, so the first leg refused
+// and the listener could never be closed. Eight legs skip, quoting the read that justified it; the one
+// leg whose member is still there runs.
+test fn red_a_resumed_pass_skips_only_what_its_reads_found_gone() -> Bool {
+  let vs = concat(
+    [ntfy_retire_verdict_from_read(
+      member: ntfy_retire_member_front_door,
+      read: ReadPresent { evidence: "tailscale serve status still lists a route" },
+    )],
+    map([ntfy_retire_member_unit, ntfy_retire_member_account, ntfy_retire_member_config_dir,
+         ntfy_retire_member_state_root, ntfy_retire_member_binary], m => witness_member_absent(member: m)),
+  )
+  let skipped = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
+    LegDecisionSkip { note: _ } => true
+    LegDecisionRun { note: _ } => false
+  }))
+  let ran = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: vs) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }))
+  skipped == 8
+    && ran == 1
+    && match first_where(xs: ntfy_retire_legs, keep: leg => leg.name == "front-door-off") {
+      Absent => false
+      Present { value: door } => match ntfy_retire_leg_decision(leg: door, verdicts: vs) {
+        LegDecisionRun { note: note } => string_contains(s: note, pattern: "read present")
+        LegDecisionSkip { note: _ } => false
+      }
+    }
+}
+
+// RED: NO LEG EVER SKIPS ON A READ THAT WAS NEVER MADE. An absent verdict is the ONLY thing that skips
+// a leg: nothing read about a member, or a read that said nothing (unreadable), runs the removal,
+// because the roster -- not the gaps in the evidence -- is the standard. A run that skipped on a gap
+// would report a retired member it had never removed.
+test fn red_no_leg_skips_on_a_read_that_was_never_made() -> Bool {
+  let ran_when_nothing_read = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: []) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }))
+  let blind = [ntfy_retire_verdict_from_read(
+    member: ntfy_retire_member_binary,
+    read: ReadUnreadable { evidence: "the probe could not reach the host" },
+  )]
+  let ran_blind = count(filter(ntfy_retire_legs, leg => match ntfy_retire_leg_decision(leg: leg, verdicts: blind) {
+    LegDecisionRun { note: _ } => true
+    LegDecisionSkip { note: _ } => false
+  }))
+  ran_when_nothing_read == count(ntfy_retire_legs) && ran_blind == count(ntfy_retire_legs)
+}
+
+// RED: AN UNREADABLE MEMBER STOPS THE RUN BEFORE IT TOUCHES THE HOST. The actuation reads the roster
+// first and refuses to remove anything while a member's state is unknown; once every member has been
+// read, the same predicate is what lets it proceed.
+test fn red_an_unreadable_member_refuses_before_the_first_leg() -> Bool {
+  let with_gap = concat(
+    map([ntfy_retire_member_unit, ntfy_retire_member_front_door, ntfy_retire_member_account,
+         ntfy_retire_member_config_dir, ntfy_retire_member_state_root], m => witness_member_absent(member: m)),
+    [ntfy_retire_verdict_from_read(
+      member: ntfy_retire_member_binary,
+      read: ReadUnreadable { evidence: "the probe could not reach the host" },
+    )],
+  )
+  let all_read = map(ntfy_retire_members, m => witness_member_absent(member: m))
+  ntfy_retire_any_member_unreadable(vs: with_gap) && !ntfy_retire_any_member_unreadable(vs: all_read)
+}
+
+// EVERY LEG REMOVES A MEMBER THE ROSTER KNOWS. The skip rule matches a leg to a verdict by member name;
+// a leg whose subject is not on the roster would never match a verdict and so would never skip -- a
+// silent hole in the resume rule above. This pins the two lists to one vocabulary.
+test fn every_leg_removes_a_roster_member_the_readback_attests() -> Bool {
+  all(ntfy_retire_legs, leg => any(ntfy_retire_members, m => m == leg.subject))
 }
