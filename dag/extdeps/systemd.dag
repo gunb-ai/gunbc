@@ -1,7 +1,7 @@
 module extdeps.systemd
 
-import std.types { NonEmptyStr, String, Int, Bool, list_length, List }
-import std.algebra { trim }
+import std.types { NonEmptyStr, String, Int, Bool, List }
+import std.algebra { trim, length }
 import std.nat { Nat }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Microsecond, microsecond, microsecond_count, Second, second_count,
@@ -424,7 +424,7 @@ fn systemd_time_span_of_seconds(d: Second) -> NonEmptyStr {
 
 fn systemd_duration_usec(text: String) -> Microsecond? {
   let parts = filter(split(s: trim(s: text), delimiter: " "), p => p != "")
-  if list_length(items: parts) == 0 {
+  if length(xs: parts) == 0 {
     none
   } else {
     let total = fold(parts, init: Present { value: 0 }, f: (acc, part) =>

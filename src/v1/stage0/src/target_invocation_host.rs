@@ -262,18 +262,12 @@ pub enum TargetProducer {
     BehavioralReceiptPlan,
     BehavioralReceiptCensus,
     BehavioralReceiptSelftest,
-    CompileCleanDiagnosticCensus,
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
     RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
-    /// `NativeCensusVerbProducer { verb }`: a whole-corpus census is a verb of the emitted compiler,
-    /// so a further census is a registry row naming its verb, never another variant.
-    NativeCensusVerb {
-        verb: &'static str,
-    },
     SelfHostFrontier,
     CardinalityRealization,
     RegenRoundCost,
@@ -758,7 +752,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
             cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
         ),
-        TargetProducer::CompileCleanDiagnosticCensus => run_compile_clean_diagnostic_census(),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
@@ -776,9 +769,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             run_typed_graph_exclusive_bytes_floor_subject()
         }
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
-        TargetProducer::NativeCensusVerb { verb } => {
-            run_census_verb(verb, label, &self_host_source_roots())
-        }
         TargetProducer::SelfHostFrontier => run_self_host_frontier(
             &self_host_source_roots(),
             &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
@@ -1748,17 +1738,17 @@ fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, Stri
         phases: cli_run::NativeServePhases {
             peer_instance: flag("native_serve_probe_runs_peer")?,
             refused_launch: flag("native_serve_probe_runs_refused_launch")?,
-            stuck_ceiling_exit: flag("native_serve_probe_runs_stuck_ceiling_exit")?,
+            deadline_exit: flag("native_serve_probe_runs_deadline_exit")?,
         },
         declared,
     })
 }
 
-/// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeServeDriver` entry, exchange
+/// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeIngressDriver` entry, exchange
 /// the requests the binding row's probe reader names over real TCP, then let that reader decide what
 /// the run established. The host decides nothing about a case, and branches on no binding: the
 /// reader module and the phases come from the row (`read_native_serve_binding`), the requests and
-/// both launch revisions are read from the reader module, the bytes go back to its
+/// every launch's argv are read from the reader module, the bytes go back to its
 /// `native_serve_probe_standing` unjudged, and its `ProcessExit` maps through the one classifier
 /// exactly as the claim producer's does.
 fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
@@ -1874,22 +1864,67 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => Err("native_serve_probe_requests is not a List".to_string()),
         }
     };
-    let plan = (|| -> Result<(String, String, String), String> {
-        let release = text(&read("native_serve_probe_release_revision")?)
-            .ok_or("the release revision is not a String")?;
-        // The refused revision is read only for a row that declares the refused launch; a reader
-        // with no such phase owes no such function.
+    let deadline_requests_for_silent_port = |silent_port: i64| -> Result<Vec<String>, String> {
+        let value = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_serve_probe_deadline_requests",
+            &[(
+                Some("silent_port".to_string()),
+                crate::v1_interpreter::Value::Int(silent_port),
+            )],
+            true,
+        )
+        .map_err(|cause| {
+            format!("{label_name}: {READER} native_serve_probe_deadline_requests failed: {cause}")
+        })?;
+        match &value {
+            crate::v1_interpreter::Value::List(items) => items
+                .iter()
+                .map(|item| text(item).ok_or("a deadline request is not a String".to_string()))
+                .collect::<Result<Vec<String>, String>>(),
+            _ => Err("native_serve_probe_deadline_requests is not a List".to_string()),
+        }
+    };
+    let words = |value: &crate::v1_interpreter::Value| -> Option<Vec<String>> {
+        match value {
+            crate::v1_interpreter::Value::List(items) => {
+                items.iter().map(|item| text(item)).collect()
+            }
+            _ => None,
+        }
+    };
+    let argvs = |value: &crate::v1_interpreter::Value| -> Option<Vec<Vec<String>>> {
+        match value {
+            crate::v1_interpreter::Value::List(items) => {
+                items.iter().map(|item| words(item)).collect()
+            }
+            _ => None,
+        }
+    };
+    // Every launch's argv is the reader's (gunbc.native_serve_probe_plan native_serve_probe_launch); a
+    // phase the row does not declare owes no function.
+    let plan = (|| -> Result<cli_run::NativeServeLaunches, String> {
+        let subject = words(&read("native_serve_probe_launch_argv")?)
+            .ok_or("the launch argv is not a List of String")?;
         let refused = if binding.phases.refused_launch {
-            text(&read("native_serve_probe_refused_revision")?)
-                .ok_or("the refused revision is not a String")?
+            argvs(&read("native_serve_probe_refused_launches")?)
+                .ok_or("the refused launches are not a List of argv")?
         } else {
-            String::new()
+            Vec::new()
         };
-        let deadline = text(&read("native_serve_probe_request_deadline_ms")?)
-            .ok_or("the request deadline is not a String")?;
-        Ok((release, refused, deadline))
+        let deadline = if binding.phases.deadline_exit {
+            argvs(&read("native_serve_probe_deadline_launches")?)
+                .ok_or("the deadline launches are not a List of argv")?
+        } else {
+            Vec::new()
+        };
+        Ok(cli_run::NativeServeLaunches {
+            subject,
+            refused,
+            deadline,
+        })
     })();
-    let (release, refused, deadline) = match plan {
+    let launches = match plan {
         Ok(plan) => plan,
         Err(cause) => {
             return InvocationOutcome {
@@ -1901,11 +1936,10 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let run = match cli_run::run_native_serve_program(
         &v2_native_cli_source_roots(),
         entry,
-        &release,
-        &refused,
-        &deadline,
+        &launches,
         binding.phases,
         &requests_for_peer_port,
+        &deadline_requests_for_silent_port,
     ) {
         Ok(run) => run,
         Err(cause) => {
@@ -1915,7 +1949,31 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             }
         }
     };
-    let refused_status = i64::from(run.refused_status.unwrap_or(-1));
+    let statuses = |items: &[Option<i32>]| -> crate::v1_interpreter::Value {
+        crate::v1_interpreter::Value::List(std::rc::Rc::new(
+            items
+                .iter()
+                .map(|s| crate::v1_interpreter::Value::Int(i64::from(s.unwrap_or(-1))))
+                .collect::<Vec<_>>()
+                .into(),
+        ))
+    };
+    let texts = |items: &[String]| -> crate::v1_interpreter::Value {
+        crate::v1_interpreter::Value::List(std::rc::Rc::new(
+            items
+                .iter()
+                .map(|r| crate::v1_interpreter::Value::Str(r.clone().into()))
+                .collect::<Vec<_>>()
+                .into(),
+        ))
+    };
+    let refused_status = i64::from(
+        run.refused_statuses
+            .first()
+            .copied()
+            .flatten()
+            .unwrap_or(-1),
+    );
     let args = [
         (
             Some("announcement".to_string()),
@@ -1929,27 +1987,26 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             Some("peer_port".to_string()),
             crate::v1_interpreter::Value::Int(run.peer_port),
         ),
+        (Some("responses".to_string()), texts(&run.responses)),
         (
-            Some("responses".to_string()),
-            crate::v1_interpreter::Value::List(std::rc::Rc::new(
-                run.responses
-                    .iter()
-                    .map(|r| crate::v1_interpreter::Value::Str(r.clone().into()))
-                    .collect::<Vec<_>>()
-                    .into(),
-            )),
+            Some("refused_statuses".to_string()),
+            statuses(&run.refused_statuses),
         ),
         (
-            Some("refused_status".to_string()),
-            crate::v1_interpreter::Value::Int(refused_status),
+            Some("refused_stderrs".to_string()),
+            texts(&run.refused_stderrs),
         ),
         (
-            Some("refused_stderr".to_string()),
-            crate::v1_interpreter::Value::Str(run.refused_stderr.clone().into()),
+            Some("deadline_announcements".to_string()),
+            texts(&run.deadline_announcements),
         ),
         (
-            Some("served_exit_status".to_string()),
-            crate::v1_interpreter::Value::Int(i64::from(run.served_exit_status.unwrap_or(-1))),
+            Some("deadline_responses".to_string()),
+            texts(&run.deadline_responses),
+        ),
+        (
+            Some("deadline_exit_statuses".to_string()),
+            statuses(&run.deadline_exit_statuses),
         ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(
@@ -1996,112 +2053,6 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     }
 }
 
-/// THE DIAGNOSTIC CENSUS PRODUCER. The subject is the whole-tree compile-clean closure, which the
-/// census itself derives from `witness_layer_roots` — like the differential's roots, which corpus
-/// is measured is the instrument's own fact, not an invocation option.
-///
-/// The modeled observation (`gunbc.target_binding` `CompileCleanDiagnosticCensusObservation`) is
-/// the per-class raw summary with its identity block, and the rendering below mirrors
-/// `gunbc.instrument_targets` `compile_clean_diagnostic_census_observation_rendered` line for
-/// line. Two host sections ride below it, outside the model, exactly as the differential's
-/// parse-wall figures do: the UnlistedImportUse binding-source partition and the per-row
-/// worklist, because those are the repair instrument's detail for the one class whose promotion
-/// is staged, not per-class census vocabulary. Their next rung is a modeled carrier; until then
-/// they are named unmodeled host output, printed rather than dropped.
-///
-/// THE TERMINATION IS THE MODELED CLASS-SPECIFIC WALL: the RAW UnlistedImportUse count over the
-/// unfiltered population is zero (`gunbc.instrument_targets`
-/// `compile_clean_diagnostic_census_holds`). Not the all-classes-empty completion target — while
-/// the other advisory classes burn down on their own tracks, this instrument holds exactly when
-/// UnlistedImportUse reaches zero, and a severity change cannot hide a recurrence because no
-/// severity filter stands between emission and the count.
-fn run_compile_clean_diagnostic_census() -> InvocationOutcome {
-    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
-        return InvocationOutcome {
-            termination: Termination::Refused,
-            message: format!(
-                "compile-clean-diagnostic-census: refused: could not anchor at the workspace root: {e}"
-            ),
-        };
-    }
-    let census = match cli_run::compile_clean_diagnostic_census() {
-        Ok(c) => c,
-        Err(refusal) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
-                    "compile-clean-diagnostic-census: refused: {}",
-                    cli_run::diagnostic_census_refusal_rendered(&refusal)
-                ),
-            };
-        }
-    };
-    let unlisted_import_use_raw: usize = census
-        .classes
-        .iter()
-        .filter(|e| e.class_name == "UnlistedImportUse")
-        .map(|e| e.diagnostics)
-        .sum();
-    let mut message = format!(
-        "compile-clean-diagnostic-census: closure_modules={} raw_diagnostics={} classes={} unlisted_import_use_raw={}",
-        census.closure_modules,
-        census.raw_diagnostics,
-        census.classes.len(),
-        unlisted_import_use_raw,
-    );
-    message.push_str(&format!(
-        "\nidentity source_vector={} compiler={} resolver_policy={} diagnostic_class_schema={} closure={}",
-        census.identity.source_vector_digest,
-        census.identity.compiler_executable_digest,
-        census.identity.resolver_policy_digest,
-        census.identity.diagnostic_class_schema_digest,
-        census.identity.closure_digest,
-    ));
-    for entry in &census.classes {
-        message.push_str(&format!(
-            "\n{} gate={} severity={} diagnostics={} distinct_modules={} distinct_positions={}",
-            entry.class_name,
-            cli_run::census_gate_tag(&entry.gate),
-            cli_run::census_severity_tag(&entry.severity),
-            entry.diagnostics,
-            entry.distinct_modules,
-            entry.distinct_positions,
-        ));
-    }
-    if !census.unlisted_import_rows.is_empty() {
-        let mut by_source: std::collections::BTreeMap<&'static str, usize> =
-            std::collections::BTreeMap::new();
-        for row in &census.unlisted_import_rows {
-            *by_source.entry(row.binding_source.as_str()).or_default() += 1;
-        }
-        message.push_str("\n--- UNLISTED_IMPORT_USE BINDING_SOURCE ---");
-        for (source, count) in &by_source {
-            message.push_str(&format!("\nSOURCE\t{source}\t{count}"));
-        }
-        message.push_str(
-            "\n--- UNLISTED_IMPORT_USE TSV ---\nfile\tposition\treferenced_name\treferencing_module\tdefiner_module\tbinding_source",
-        );
-        for row in &census.unlisted_import_rows {
-            message.push_str(&format!(
-                "\n{}\t{}\t{}\t{}\t{}\t{}",
-                row.file,
-                row.position,
-                row.referenced_name,
-                row.referencing_module,
-                row.definer_module.as_deref().unwrap_or(""),
-                row.binding_source.as_str(),
-            ));
-        }
-    }
-    InvocationOutcome {
-        termination: if unlisted_import_use_raw == 0 {
-            Termination::ObservationHeld
-        } else {
-            Termination::ObservationDidNotHold
-        },
-        message,
-    }
-}
 fn behavioral_outcome(
     outcome: cli_run::behavioral_receipt_host::BehavioralHostOutcome,
 ) -> InvocationOutcome {
@@ -3922,25 +3873,6 @@ fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> In
             message: format!(
                 "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
             ),
-        },
-        Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
-            message: cause,
-        },
-    }
-}
-
-/// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
-/// the exit are decided by the emitted verb; the host adds no verdict.
-fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
-    match cli_run::run_v2_census_verb(verb, source_roots) {
-        Ok(code) => InvocationOutcome {
-            termination: match code {
-                0 => Termination::ObservationHeld,
-                1 => Termination::ObservationDidNotHold,
-                _ => Termination::SubjectUnreached,
-            },
-            message: format!("{label}: exit {code}; the [{verb}] lines above are the census"),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,

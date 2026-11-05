@@ -1,7 +1,7 @@
 module v2.workflow.floor_cost_debt
 
-import std.types { list_length, List }
-import std.algebra { Cons, Empty, list_flat_map }
+import std.types { List }
+import std.algebra { Cons, Empty, list_flat_map, length }
 
 // THE OVER-COST WITHHOLDING MECHANISM. ITS POPULATION IS NOT STATED HERE -- ASK
 // `floor_cost_debt_population_report`, WHICH FOLDS THE SAME CHUNKS THE ROSTER DOES.
@@ -1140,15 +1140,15 @@ fn floor_cost_debt_holds(name: String) -> Bool {
 // the correct behaviour rather than a workaround: a report is not a verdict, and this file
 // deliberately does not mint one (see the paragraph above on why no witness pins the size).
 fn floor_cost_debt_proven_population() -> Int {
-  list_length(items: floor_cost_debt_proven_roster())
+  length(xs: floor_cost_debt_proven_roster())
 }
 
 fn floor_cost_debt_censored_population() -> Int {
-  list_length(items: floor_cost_debt_censored_roster())
+  length(xs: floor_cost_debt_censored_roster())
 }
 
 fn floor_cost_debt_straddling_population() -> Int {
-  list_length(items: floor_cost_debt_straddling_roster())
+  length(xs: floor_cost_debt_straddling_roster())
 }
 
 fn floor_cost_debt_population_report() -> String {
@@ -1161,7 +1161,7 @@ fn floor_cost_debt_population_report() -> String {
       " straddling=",
       to_string(floor_cost_debt_straddling_population()),
       " total=",
-      to_string(list_length(items: floor_cost_debt_roster())),
+      to_string(length(xs: floor_cost_debt_roster())),
     ],
     ""
   )

@@ -12,7 +12,7 @@ import std.measure { ByteSize, byte_size_count }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import std.decimal { decimal_digits_only }
-import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, claim_route_verdict_of_exit }
+import gunbc.target_invocation { ClaimRouteVerdict, ClaimHeld, ClaimDidNotHold, ClaimUnobserved, claim_route_verdict_exit, claim_route_verdict_of_exit }
 
 // THE CLAIM-SET RESULTS FRAME: WHAT A REVISION JOB'S GUEST HANDS BACK, AND HOW THE HOST READS IT.
 //
@@ -261,4 +261,24 @@ fn admit_claim_set_results(
 type ClaimSetAdmissionFold {
   index: Int
   verdict: ClaimSetResultsAdmission
+}
+
+// ── the job's standing, read from its admitted results ─────────────────────────────────────────
+
+// THREE ANSWERS, AND ONLY ONE QUALIFIES. Every claim held; some claim did not hold with every claim
+// observed; or some claim was not observed (an unresolved label at this commit, or no observation) -- which never counts toward the held arm, whatever the others did, so
+// a typo in a label reads as an unresolved, non-qualifying job naming that label, never a pass.
+type RevisionJobStanding
+  = RevisionJobAllHeld
+  | RevisionJobSomeNotHeld { not_held: List<String> }
+  | RevisionJobSomeUnobserved { unobserved: List<String>, not_held: List<String> }
+
+// Read from each claim's ClaimRouteVerdict: an unobserved claim never counts toward the held arm,
+// whatever the others did.
+fn revision_job_standing(results: List<ClaimSetResult>) -> RevisionJobStanding {
+  let unobserved = map(filter(results, r => match r.verdict { ClaimUnobserved => true  ClaimHeld => false  ClaimDidNotHold => false }), r => r.label as String)
+  let not_held = map(filter(results, r => match r.verdict { ClaimDidNotHold => true  ClaimHeld => false  ClaimUnobserved => false }), r => r.label as String)
+  if count(unobserved) > 0 { RevisionJobSomeUnobserved { unobserved: unobserved, not_held: not_held } }
+  else if count(not_held) > 0 { RevisionJobSomeNotHeld { not_held: not_held } }
+  else { RevisionJobAllHeld }
 }
