@@ -217,6 +217,7 @@ import gunbc.roadmap.roadmap_launch_admission { occurrence_census_row }
 
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNextAttempt, SpawnRouteNone, belt_spawn_route_for_decision,
+  belt_branch_head_of, BeltBranchHead, BranchHeadPresent, BranchHeadAbsent, BranchHeadUndeterminable,
   VerifyOneReceiptObservation, VerifyOneReceiptAbsent, VerifyOneReceiptRecorded, VerifyOneReceiptUnreadable,
   VerifyOneGate, VerifyOneRun, VerifyOneNoOp, VerifyOneRefuse,
   belt_verify_one_gate,
@@ -2782,6 +2783,24 @@ test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
       SpawnRouteResume { attempt_key, ordinal } => attempt_key == "a1" && ordinal == 2
       _ => false
     })
+}
+
+// RED control for the branch-head check: a FAILED git command must never be reported as the fact that the
+// branch is gone. Only rev-parse --verify --quiet's genuine exit-1 miss is BranchHeadAbsent; a fatal git
+// fault (exit 128) and a refused capability are BranchHeadUndeterminable, and a present branch is read by
+// its object id. Every arm is discriminating: if a fault were misread as absence (the reported bug) the
+// fatal/refused arms fail; if the exit-1 miss were misread as unknown the absent arm fails.
+test fn branch_head_check_distinguishes_absent_from_a_failed_command() -> Bool {
+  let present = belt_branch_head_of(outcome: ExecOk { stdout: "  95a59311871c66bd4bacb97f990417fa0bf670dd\n" })
+  let absent = belt_branch_head_of(outcome: ExecFailed { program: "git", exit_code: 1, stderr: "" })
+  let fatal = belt_branch_head_of(outcome: ExecFailed { program: "git", exit_code: 128, stderr: "fatal: not a git repository" })
+  let refused = belt_branch_head_of(outcome: ExecRefused { program: "git", reason: "capability unavailable" })
+  let empty_ok = belt_branch_head_of(outcome: ExecOk { stdout: "   " })
+  (match present { BranchHeadPresent { revision } => revision == "95a59311871c66bd4bacb97f990417fa0bf670dd"  _ => false })
+    && (match absent { BranchHeadAbsent => true  _ => false })
+    && (match fatal { BranchHeadUndeterminable { reason } => string_contains(s: reason, pattern: "exit 128")  _ => false })
+    && (match refused { BranchHeadUndeterminable { reason } => string_contains(s: reason, pattern: "not available")  _ => false })
+    && (match empty_ok { BranchHeadUndeterminable { reason: _ } => true  _ => false })
 }
 
 // THE COMPOSITION, END TO END OVER THE REAL PRODUCER: an active systemd attempt unit for node-a
