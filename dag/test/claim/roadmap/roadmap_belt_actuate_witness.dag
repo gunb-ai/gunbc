@@ -257,7 +257,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchCensusRow,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision, launch_gate_landed,
-  launch_identity_exemplar,
+  launch_identity_exemplar, launch_refusal_exemplars,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependencies, GapContract, readiness_gap_label }
@@ -280,6 +280,10 @@ import gunbc.fleet.origin_main_revision_observe {
   TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import extdeps.languages.json.emit { json_string }
+import gunbc.roadmap.roadmap_attempt_continuation { attempt_origin_turn }
+import gunbc.roadmap.roadmap_launch_admission { launch_refusal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
