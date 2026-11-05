@@ -693,9 +693,18 @@ type ComputeSeatCharge
 // gunbc.product.capacity.pool_events has exactly two ways a held charge stops being held: a release, which
 // carries its reason, and a settlement, which carries the settled amount instead. Naming those as arms is what
 // makes "a return with no reason" UNWRITABLE rather than merely unreachable.
+//
+// THE SETTLEMENT AMOUNT CARRIES THE LEDGER'S OWN FACT, NOT A WIDER COPY OF IT. The ledger declares
+// `PoolSettled { reference: NonEmptyStr, actual: Nat }` (product/capacity/pool_events.dag), so that amount is
+// never absent and never negative; an optional here would invent a state the ledger cannot produce, and the
+// wire arm for it would be prose about a row that cannot exist - DESIGN 5's fabricated output. Its unit is not
+// a guess either: the same ledger hands that count to `pool_settle(... actual: Measure { count: a })`, and the
+// partition this reads belongs to `Pool<Memory, Kibi>` (compute_memory_root_pool above), so the count is a
+// KiB count and it is carried as this module's own measure, Kibibyte - the same carrier every other amount in
+// this module renders through.
 type ChargeReturnCause
   = ReturnedByRelease { reason: NonEmptyStr }
-  | ReturnedBySettlement { actual: Int? }
+  | ReturnedBySettlement { actual: Kibibyte }
 
 // THE SCAN IS A SUM, NOT A RECORD OF THREE OPTIONALS. The record shape - acquired_at?, returned_at?,
 // release_reason? - stood in for three states while permitting others the model rules out: a return with no
@@ -748,11 +757,11 @@ fn seat_charge_scan_all_step(state: Map<String, SeatChargeScan>, wrapped: ChainE
           // The settlement row is in the ledger and the acquisition is not, so the scan records the close
           // without inventing the open. seat_charge_of_scan answers that state as not-acquired, which is the
           // answer the pass can act on - no release can be fenced on an instant the history does not contain.
-          map_insert(m: state, key: r as String, value: ScanReturnedUnacquired { returned_at: event.recorded_at, by: ReturnedBySettlement { actual: actual } })
+          map_insert(m: state, key: r as String, value: ScanReturnedUnacquired { returned_at: event.recorded_at, by: ReturnedBySettlement { actual: kibibyte(count: actual) } })
         Present { value: s } =>
           match s {
             ScanOpen { acquired_at: at } =>
-              map_insert(m: state, key: r as String, value: ScanReturned { acquired_at: at, returned_at: event.recorded_at, by: ReturnedBySettlement { actual: actual } })
+              map_insert(m: state, key: r as String, value: ScanReturned { acquired_at: at, returned_at: event.recorded_at, by: ReturnedBySettlement { actual: kibibyte(count: actual) } })
             _ => state
           }
       }
@@ -835,11 +844,7 @@ fn compute_seat_charge_returned(store: FabricStorageBinding, partition: Partitio
 fn charge_return_cause_wire(c: ChargeReturnCause) -> String {
   match c {
     ReturnedByRelease { reason: why } => join(["released by: ", why as String], "")
-    ReturnedBySettlement { actual: a } =>
-      match a {
-        Present { value: v } => join(["closed by a settlement row of ", to_string(value: v), " KiB"], "")
-        Absent => "closed by a settlement row that carried no amount"
-      }
+    ReturnedBySettlement { actual: a } => join(["closed by a settlement row of ", to_string(value: kibibyte_count(k: a)), " KiB"], "")
   }
 }
 
