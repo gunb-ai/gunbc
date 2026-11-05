@@ -1,7 +1,7 @@
 module v1.tests.claim.carrier_realization_census
 
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
-import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params, emit_native_serve_driver_main_rs }
+import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params, emit_native_ingress_driver_main_rs, NativeIngressProgramResolved, NativeIngressRef, NativeIngressParameter, NativeIngressTextArgument, NativeIngressIntArgument }
 import v1.compiler.emit_core_support { is_type_def_item }
 import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision }
@@ -485,13 +485,27 @@ fn typed_census_from_sources(sources: List<SourceFile>) -> String {
   }
 }
 
-// THE EMITTED SERVE MAIN'S TWO ORDERINGS (v1.compiler.emit_rust emit_native_serve_driver_main_rs), read off the text before
-// the first `TcpListener::bind`, the one site the order is decided at. A driver that declares native_serve_startup realizes its
-// first worker -- which runs the startup fold, within its own startup_deadline -- BEFORE the bind, so a self-check that refuses
-// never becomes reachable; a driver that declares none is emitted unchanged: bind first, realize after, on the request deadline.
+// THE EMITTED NATIVE INGRESS MAIN (v1.compiler.emit_rust emit_native_ingress_driver_main_rs), read off its text. Its two
+// orderings are read before the first `TcpListener::bind`, the one site the order is decided at: a program that names a
+// startup realizes its first worker -- which runs the startup fold, within the descriptor's own bound -- BEFORE the bind,
+// so a self-check that refuses never becomes reachable; a program with none binds first and realizes after, on the
+// request deadline.
+fn crc_ingress_program(startup: Bool) -> NativeIngressProgramResolved {
+  NativeIngressProgramResolved {
+    program: NativeIngressRef { module_path: "p", decl_name: "prog" },
+    binding: NativeIngressRef { module_path: "m", decl_name: "ctor" },
+    binding_parameters: [NativeIngressParameter { name: "listener", kind: NativeIngressTextArgument }, NativeIngressParameter { name: "cpu_limit_ms", kind: NativeIngressIntArgument }],
+    handler: NativeIngressRef { module_path: "h", decl_name: "handle" },
+    startup: if startup { Present { value: NativeIngressRef { module_path: "h", decl_name: "boot" } } } else { none },
+  }
+}
+
+fn crc_ingress_main(startup: Bool) -> String {
+  emit_native_ingress_driver_main_rs(crate_name: "c", program: crc_ingress_program(startup: startup), bindings: [], handler_effect_args: "", startup_effect_args: "", handler_effectful: false, startup_effectful: false).content
+}
+
 fn crc_serve_before_bind(startup: Bool) -> String {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
-  match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
+  match (crc_ingress_main(startup: startup) |> split(delimiter: "TcpListener::bind((")).first() {
     Present { value: head } => head
     Absent => ""
   }
@@ -499,25 +513,16 @@ fn crc_serve_before_bind(startup: Bool) -> String {
 
 test fn a_startup_entry_realizes_its_worker_before_it_binds_and_bounds_it_by_the_startup_deadline() -> Bool {
   let head = crc_serve_before_bind(startup: true)
-  string_contains(s: head, pattern: "realize_generation(&stuck, ready_within)") && string_contains(s: head, pattern: "contract.startup_deadline")
+  string_contains(s: head, pattern: "realize_generation(ready_within)") && string_contains(s: head, pattern: "second_count(contract.startup_deadline.clone())")
 }
 
 test fn a_driver_with_no_startup_binds_before_it_realizes_its_worker_on_the_request_deadline() -> Bool {
   let head = crc_serve_before_bind(startup: false)
-  !string_contains(s: head, pattern: "realize_generation(&stuck") && !string_contains(s: head, pattern: "startup_deadline")
-}
-
-test fn a_declared_startup_bound_replaces_the_contracts_default_in_the_readiness_wait() -> Bool {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: true, startup_bound: true)
-  match (file.content |> split(delimiter: "TcpListener::bind((")).first() {
-    Present { value: head } => string_contains(s: head, pattern: "second_count(native_serve_startup_bound())") && !string_contains(s: head, pattern: "second_count(contract.startup_deadline.clone())")
-    Absent => false
-  }
+  !string_contains(s: head, pattern: "realize_generation(ready_within)") && !string_contains(s: head, pattern: "startup_deadline")
 }
 
 fn crc_realize_generation_body(startup: Bool) -> String {
-  let file = emit_native_serve_driver_main_rs(crate_name: "c", pipeline_module: "m", bindings: [], startup: startup, startup_bound: false)
-  match (file.content |> split(delimiter: "fn realize_generation(")).last() {
+  match (crc_ingress_main(startup: startup) |> split(delimiter: "fn realize_generation(")).last() {
     Present { value: tail } => tail
     Absent => ""
   }
@@ -525,8 +530,37 @@ fn crc_realize_generation_body(startup: Bool) -> String {
 
 test fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared_state_after_the_wait() -> Bool {
   let body = crc_realize_generation_body(startup: true)
-  string_contains(s: body, pattern: "started_rx.recv_timeout(ready_within).is_err()")
+  string_contains(s: body, pattern: "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {")
+    && string_contains(s: body, pattern: "the startup did not complete within its bound")
     && !string_contains(s: body, pattern: "AtomicBool")
     && !string_contains(s: body, pattern: "started.load")
-    && !string_contains(s: body, pattern: "started_flag")
+}
+
+// THE MAIN CALLS THE EXACT CONSTRUCTOR AND THE EXACT HANDLER AND STARTUP, by their qualified paths, and derives its
+// contract from the constructor's answer and the descriptor; it parses no serve flag of its own.
+test fn the_native_ingress_main_calls_the_exact_constructor_handler_and_startup_by_qualified_path() -> Bool {
+  let text = crc_ingress_main(startup: true)
+  string_contains(s: text, pattern: "http_ingress_native_contract(c::m::ctor(binding_argument_0, binding_argument_1), c::p::prog())")
+    && string_contains(s: text, pattern: "c::h::handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision, startup_value.clone())")
+    && string_contains(s: text, pattern: "c::h::boot(")
+    && string_contains(s: text, pattern: "vec![\"listener\".to_string(), \"cpu_limit_ms\".to_string()]")
+    && !string_contains(s: text, pattern: "--host")
+}
+
+// A REQUEST THAT CROSSES THE DEADLINE ENDS THE PROCESS: there is no stuck-worker accounting left to bound.
+test fn the_native_ingress_main_exits_after_a_deadline_and_keeps_no_stuck_worker_count() -> Bool {
+  let text = crc_ingress_main(startup: false)
+  string_contains(s: text, pattern: "Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&mut stream, &contract),")
+    && string_contains(s: text, pattern: "Exchange::Overran => exit_after_deadline(&mut stream, &contract),")
+    && !string_contains(s: text, pattern: "stuck")
+    && !string_contains(s: text, pattern: "WORKER_ABANDONED")
+}
+
+// THE BODY READ IS NEVER CONTINUED UNDER A STALE BOUND (side-chat review 5778387891): narrowing the connection's read
+// timeout to what is left of the deadline is checked, and a failure is the typed refusal and the same exit.
+test fn the_native_ingress_main_refuses_to_read_a_body_past_a_deadline_it_could_not_install() -> Bool {
+  let text = crc_ingress_main(startup: false)
+  string_contains(s: text, pattern: "if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }")
+    && string_contains(s: text, pattern: "Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&mut stream, &contract, reason),")
+    && !string_contains(s: text, pattern: "let _ = stream.set_read_timeout")
 }
