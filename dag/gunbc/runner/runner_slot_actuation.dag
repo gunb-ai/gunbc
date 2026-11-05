@@ -1,6 +1,6 @@
 module gunbc.runner.runner_slot_actuation
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.types { String, List, Bool, Int, Nat, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.algebra { trim }
 import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcessUnread, NoMainProcess, MainProcessUngrounded, MainProcess }
@@ -21,6 +21,7 @@ import extdeps.systemd.systemctl {
   systemctl_unmask_argv,
   systemctl_enable_argv,
   systemctl_start_argv,
+  systemctl_restart_argv,
   systemctl_mask_argv,
   systemctl_stop_argv,
 }
@@ -238,6 +239,66 @@ fn slot_activation_read_back_holds(r: SlotActuationReading) -> Bool {
   (match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false })
     && slot_is_enabled(r: r) && slot_state_active(active: r.active)
 }
+
+// ── The restart decision (the RESTART LEG's actuation) ──────────────────────────────────────────
+//
+// A RESTART IS NOT AN ACTIVATION. Activation brings an idle slot into service; it refuses a masked
+// unit's re-provision and refuses a unit that is already running. A restart cycles a slot that the
+// connectivity verdict has already judged DETACHED, ORPHANED, or LOST — a unit that exists and may even
+// be "active" to systemd but whose runner is not registered or whose job never reached an agent. So
+// this plan is deliberately narrower than activation on the load axis (it will NOT resurrect a unit the
+// manager does not have, nor unmask a drained slot — that is a re-provision, a different effect) and
+// deliberately broader on the active axis (it restarts a running unit, which activation would no-op).
+//
+// IT MUST REFUSE WHERE THE STATE IS UNKNOWABLE. A slot whose load could not be read (LoadState=error),
+// that is not installed, has a bad setting, or is masked, is refused here rather than restarted blind:
+// DESIGN section 5, fail closed on Unresolved/Unreadable. The readback then proves the cycle actually
+// happened rather than trusting a systemctl exit code.
+
+type SlotRestartPlan
+  = RestartSteps { steps: List<List<String>> }
+  | RestartRefused { reason: String }
+
+fn slot_restart_plan(r: SlotActuationReading) -> SlotRestartPlan {
+  match r.load {
+    UnitLoadNotFound => RestartRefused { reason: "the slot's unit is not installed on this host (LoadState=not-found): restart does not install it" }
+    UnitLoadBadSetting => RestartRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
+    UnitLoadError => RestartRefused { reason: "the manager failed to load the slot's unit (LoadState=error): the state is unreadable, so it is not restarted" }
+    UnitLoadMasked => RestartRefused { reason: "the slot's unit is masked (a drained slot): restart does not unmask — that is a re-provision" }
+    UnitLoaded => RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+  }
+}
+
+// THE LIVE MAIN PID OF A READING, IF IT HAS ONE. A grounded or ungrounded main carries a pid; unread or
+// none carries none. Used only to prove the restart changed the process.
+fn slot_main_process_pid(m: RunnerUnitMainProcess) -> Nat? {
+  match m {
+    MainProcess { process: p } => Present { value: p.pid }
+    MainProcessUngrounded { pid: p, cause: _ } => Present { value: p }
+    NoMainProcess => Absent
+    MainProcessUnread { cause: _ } => Absent
+  }
+}
+
+// THE RESTART READS BACK ONLY ON A PROCESS CYCLE: loaded, active, and a live MainPID that differs from
+// the one this leg recorded BEFORE the restart (or any live pid where there was none before). This is
+// the difference between "systemctl restart returned 0" and "a different agent process is now running"
+// — the rung DESIGN section 4c demands: an actuation return cannot mint convergence.
+fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainProcess, after_main: RunnerUnitMainProcess) -> Bool {
+  let loaded = match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false }
+  let after_pid = slot_main_process_pid(m: after_main)
+  let before_pid = slot_main_process_pid(m: before)
+  loaded
+    && slot_state_active(active: r.active)
+    && match after_pid {
+      Absent => false
+      Present { value: a } => match before_pid {
+        Absent => true
+        Present { value: b } => a != b
+      }
+    }
+}
+
 
 // A DRAINED SLOT IS MASKED AND STOPPED. UNDER MaskWhileRunning the mask comes first, and that is NOT
 // safe at any time, which this comment used to claim: `systemctl mask` reloads the manager, and a unit
@@ -542,6 +603,37 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
       }
   }
 }
+
+// THE RESTART LEG'S EFFECT. `before` is the REAL main process the connectivity join was fed — the pid
+// the observation grounded the slot on — so the readback can tell a cycled process from a no-op. The
+// caller (runner_lifecycle_realize) supplies it only for a verdict that says detached/orphaned/lost;
+// this effect never re-reads a token and never runs blind: it reads the unit, refuses on an unreadable
+// or uninstalled or masked load, restarts once, and re-reads to a process cycle.
+fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess) -> SlotActuationOutcome
+{
+  match read_slot_over(target: target, context: context, unit: unit) {
+    SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
+    SlotRead { reading: r } =>
+      match slot_restart_plan(r: r) {
+        RestartRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
+        RestartSteps { steps: ss } =>
+          match run_slot_steps_over(target: target, context: context, steps: ss) {
+            Present { value: why } => SlotActuationRefused { unit: unit, step: "restart", reason: why }
+            Absent =>
+              match read_slot_over(target: target, context: context, unit: unit) {
+                SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "readback", reason: why }
+                SlotRead { reading: after } =>
+                  if slot_restart_read_back_holds(r: after, before: before, after_main: slot_main_process_over(target: target, context: context, unit: unit)) {
+                    SlotActivated { unit: unit }
+                  } else {
+                    SlotActuationRefused { unit: unit, step: "readback", reason: "not loaded and active on a changed MainPID after restart" }
+                  }
+              }
+          }
+      }
+  }
+}
+
 
 fn drain_and_mask_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
 {

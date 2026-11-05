@@ -1,0 +1,99 @@
+module test.claim.runner.runner_slot_restart_witness
+
+import std.types { Bool, String, Nat, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.systemd { UnitLoadError, Failed }
+import extdeps.systemd.systemctl { systemctl_restart_argv }
+import gunbc.build_cache.build_cache_instance { ProcessIdentity }
+import gunbc.runner.runner_local_state { RunnerUnitMainProcess, MainProcess, NoMainProcess, MainProcessUnread }
+import gunbc.runner.runner_slot_actuation {
+  SlotActuationReading, SlotReadingTyped, SlotReadingUnknownWord, slot_actuation_reading_typed,
+  SlotRestartPlan, RestartSteps, RestartRefused, slot_restart_plan, slot_restart_read_back_holds,
+}
+
+// Every claim is a function of a supplied reading and supplied main-process observations; nothing reads
+// the live tree and nothing imports another test file — the restart decisions are pure and the boundary
+// values (readings, main pids) are built right here.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data slot_u: NonEmptyStr = "actions-runner@srv3-18.service" as NonEmptyStr
+
+fn reading(load: String, file: String, active: String) -> SlotActuationReading {
+  match slot_actuation_reading_typed(unit: slot_u, load_raw: load, file_raw: file, active_raw: active) {
+    SlotReadingTyped { reading: r } => r
+    SlotReadingUnknownWord { property: _, raw: _ } => SlotActuationReading { unit: "fixture-word-refused" as NonEmptyStr, load: UnitLoadError, file: none, active: Failed }
+  }
+}
+
+fn with_pid(pid: Nat, boot: String) -> RunnerUnitMainProcess {
+  MainProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: "12345" as NonEmptyStr } }
+}
+
+// ── The restart plan is narrower than activation on load, broader on active ────────────────────────
+
+// POSITIVE CONTROL: a loaded unit restarts with exactly `systemctl restart <unit>`, whether systemd
+// already calls it active or not — the restart leg cycles a running runner, which activation would
+// no-op.
+test fn a_loaded_slot_restarts_with_the_restart_argv() -> Bool {
+  (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "active")) {
+    RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
+    RestartRefused { reason: _ } => false
+  })
+    && (match slot_restart_plan(r: reading(load: "loaded", file: "enabled", active: "inactive")) {
+      RestartSteps { steps: ss } => ss == [systemctl_restart_argv(unit: slot_u)]
+      RestartRefused { reason: _ } => false
+    })
+}
+
+// DISCRIMINATING REDS on the load axis. An uninstalled, masked, bad-setting, or error unit is refused,
+// not restarted: a masked slot is a drained slot (a re-provision, not a restart) and error/not-found is
+// an unreadable or absent state that the fail-closed leg must not act on.
+test fn an_uninstalled_masked_bad_or_error_unit_is_never_restarted() -> Bool {
+  (match slot_restart_plan(r: reading(load: "not-found", file: "", active: "inactive")) {
+    RestartSteps { steps: _ } => false
+    RestartRefused { reason: _ } => true
+  })
+    && (match slot_restart_plan(r: reading(load: "masked", file: "masked", active: "inactive")) {
+      RestartSteps { steps: _ } => false
+      RestartRefused { reason: _ } => true
+    })
+    && (match slot_restart_plan(r: reading(load: "bad-setting", file: "bad", active: "inactive")) {
+      RestartSteps { steps: _ } => false
+      RestartRefused { reason: _ } => true
+    })
+    && (match slot_restart_plan(r: reading(load: "error", file: "", active: "failed")) {
+      RestartSteps { steps: _ } => false
+      RestartRefused { reason: _ } => true
+    })
+}
+
+// ── The readback proves a PROCESS CYCLE, not a systemctl exit code ─────────────────────────────────
+
+// POSITIVE CONTROL: loaded and active on a MainPID that CHANGED proves the restart cycled the agent.
+test fn a_changed_main_pid_reads_back_as_restarted() -> Bool {
+  slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: with_pid(pid: 333, boot: "b1"), after_main: with_pid(pid: 444, boot: "b1"))
+}
+
+// POSITIVE CONTROL (cold start): a slot that had NO main process before now has one, active: that is a
+// successful cycle too.
+test fn a_new_main_pid_from_nothing_reads_back_as_restarted() -> Bool {
+  slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: NoMainProcess, after_main: with_pid(pid: 444, boot: "b1"))
+}
+
+// DISCRIMINATING RED (no cycle): the SAME live pid before and after means nothing restarted; a success
+// from systemctl with an unchanged process is refused.
+test fn an_unchanged_main_pid_does_not_read_back_as_restarted() -> Bool {
+  !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: with_pid(pid: 333, boot: "b1"), after_main: with_pid(pid: 333, boot: "b1"))
+}
+
+// DISCRIMINATING RED (no live process after): an unread or absent main after the restart is a refusal.
+test fn a_missing_or_unread_main_after_does_not_read_back_as_restarted() -> Bool {
+  !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: with_pid(pid: 333, boot: "b1"), after_main: NoMainProcess)
+    && !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: NoMainProcess, after_main: MainProcessUnread { cause: "show refused" as NonEmptyStr })
+}
+
+// DISCRIMINATING RED (not active after): an inactive unit is not a restart that took, whatever the pid.
+test fn an_inactive_unit_does_not_read_back_as_restarted() -> Bool {
+  !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "inactive"), before: with_pid(pid: 333, boot: "b1"), after_main: with_pid(pid: 444, boot: "b1"))
+}

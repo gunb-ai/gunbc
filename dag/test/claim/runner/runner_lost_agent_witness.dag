@@ -1,6 +1,7 @@
 module test.claim.runner.runner_lost_agent_witness
 
-import std.types { Bool, Int, NonEmptyStr, Duration }
+import std.types { Bool, Int, NonEmptyStr }
+import std.measure { Second, second, second_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner.runner_lost_agent {
   LostAgentJob, LostAgentObservation,
@@ -16,15 +17,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // BOUNDARY VALUES, SUPPLIED HERE. This witness imports no other test file: every field of the jobs-API
 // shape is spelled out below so that no transitive import drags a heavy workflow closure into the batch.
 
-fn job(status: LostAgentJobStatus, runner: LostAgentRunnerAssignment, started: LostAgentStartField, over: Duration) -> LostAgentJob {
+fn job(status: LostAgentJobStatus, runner: LostAgentRunnerAssignment, started: LostAgentStartField, over: Second) -> LostAgentJob {
   LostAgentJob {
     job_id: 126894416098,
     run_id: 1,
     status: status,
     runner: runner,
     started: started,
-    timeout_seconds: 21600,
-    in_progress_seconds: over,
+    timeout: second(count: 21600),
+    in_progress_for: over,
   }
 }
 
@@ -32,7 +33,7 @@ fn job(status: LostAgentJobStatus, runner: LostAgentRunnerAssignment, started: L
 // startedAt, held for roughly seven hours (~25200s) before a hand cancel. Its timeout is six hours
 // (21600s), so at the moment of cancel it is past its timeout by about an hour.
 fn stranded_job() -> LostAgentJob {
-  job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: 25200)
+  job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: second(count: 25200))
 }
 
 // ── The full detection, and what each single field removes from it ───────────────────────────────
@@ -41,7 +42,7 @@ fn stranded_job() -> LostAgentJob {
 // reclaimable.
 test fn a_stranded_job_is_a_lost_agent_and_reclaims_its_slot() -> Bool {
   (match classify_lost_agent(job: stranded_job()) {
-    LostAgentDetected { job_id: j, over_by_seconds: o } => j == 126894416098 && o == 3600
+    LostAgentDetected { job_id: j, over_by: o } => j == 126894416098 && second_count(s: o) == 3600
     JobNotLost { job_id: _, reason: _ } => false
     LostAgentReadRefused { job_id: _, reason: _ } => false
   })
@@ -51,8 +52,8 @@ test fn a_stranded_job_is_a_lost_agent_and_reclaims_its_slot() -> Bool {
 // DISCRIMINATING RED (runner): bind a runner and the same job stops being a lost agent. If the detector
 // ignored the runner field this would still report LostAgentDetected.
 test fn a_bound_runner_removes_the_lost_agent() -> Bool {
-  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerBound { runner_id: 7 }, started: StartNull, over: 25200)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerBound { runner_id: 7 }, started: StartNull, over: second(count: 25200))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: j, reason: _ } => j == 126894416098
     LostAgentReadRefused { job_id: _, reason: _ } => false
   }
@@ -60,28 +61,28 @@ test fn a_bound_runner_removes_the_lost_agent() -> Bool {
 
 // DISCRIMINATING RED (startedAt): a recorded startedAt means an agent reached the job.
 test fn a_recorded_start_removes_the_lost_agent() -> Bool {
-  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartRecorded { started_at: "2026-11-05T00:00:00Z" as NonEmptyStr }, over: 25200)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartRecorded { started_at: "2026-11-05T00:00:00Z" as NonEmptyStr }, over: second(count: 25200))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => true
     LostAgentReadRefused { job_id: _, reason: _ } => false
   }
 }
 
 // DISCRIMINATING RED (timeout): still inside the job's own timeout, an agent may still bind late. The
-// boundary is exclusive — equal to the timeout is NOT yet past it.
+// boundary is exclusive — equal to the timeout is NOT yet past it; one second over is.
 test fn not_yet_past_the_timeout_is_not_a_lost_agent() -> Bool {
-  (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: 21599)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: second(count: 21599))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => true
     LostAgentReadRefused { job_id: _, reason: _ } => false
   })
-    && (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: 21600)) {
-      LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+    && (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: second(count: 21600))) {
+      LostAgentDetected { job_id: _, over_by: _ } => false
       JobNotLost { job_id: _, reason: _ } => true
       LostAgentReadRefused { job_id: _, reason: _ } => false
     })
-    && (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: 21601)) {
-      LostAgentDetected { job_id: _, over_by_seconds: o } => o == 1
+    && (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartNull, over: second(count: 21601))) {
+      LostAgentDetected { job_id: _, over_by: o } => second_count(s: o) == 1
       JobNotLost { job_id: _, reason: _ } => false
       LostAgentReadRefused { job_id: _, reason: _ } => false
     })
@@ -90,8 +91,8 @@ test fn not_yet_past_the_timeout_is_not_a_lost_agent() -> Bool {
 // ── A field the read could not answer is a refusal, never a symptom and never a reclaim ────────────
 
 test fn an_unreadable_runner_is_a_refusal_not_a_lost_agent() -> Bool {
-  (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerReadUnavailable { reason: "jobs API 500" as NonEmptyStr }, started: StartNull, over: 25200)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  (match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerReadUnavailable { reason: "jobs API 500" as NonEmptyStr }, started: StartNull, over: second(count: 25200))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => false
     LostAgentReadRefused { job_id: _, reason: _ } => true
   })
@@ -99,16 +100,16 @@ test fn an_unreadable_runner_is_a_refusal_not_a_lost_agent() -> Bool {
 }
 
 test fn an_unreadable_started_at_is_a_refusal_not_a_lost_agent() -> Bool {
-  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartReadUnavailable { reason: "field absent" as NonEmptyStr }, over: 25200)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  match classify_lost_agent(job: job(status: JobInProgress, runner: RunnerNull, started: StartReadUnavailable { reason: "field absent" as NonEmptyStr }, over: second(count: 25200))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => false
     LostAgentReadRefused { job_id: _, reason: _ } => true
   }
 }
 
 test fn an_unreadable_status_is_a_refusal() -> Bool {
-  match classify_lost_agent(job: job(status: JobStatusUnread { reason: "no status" as NonEmptyStr }, runner: RunnerNull, started: StartNull, over: 25200)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  match classify_lost_agent(job: job(status: JobStatusUnread { reason: "no status" as NonEmptyStr }, runner: RunnerNull, started: StartNull, over: second(count: 25200))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => false
     LostAgentReadRefused { job_id: _, reason: _ } => true
   }
@@ -117,13 +118,13 @@ test fn an_unreadable_status_is_a_refusal() -> Bool {
 // ── Not in_progress is simply not a lost agent ────────────────────────────────────────────────────
 
 test fn a_queued_or_completed_job_is_not_a_lost_agent() -> Bool {
-  (match classify_lost_agent(job: job(status: JobQueued, runner: RunnerNull, started: StartNull, over: 25200)) {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+  (match classify_lost_agent(job: job(status: JobQueued, runner: RunnerNull, started: StartNull, over: second(count: 25200))) {
+    LostAgentDetected { job_id: _, over_by: _ } => false
     JobNotLost { job_id: _, reason: _ } => true
     LostAgentReadRefused { job_id: _, reason: _ } => false
   })
-    && (match classify_lost_agent(job: job(status: JobCompleted { reason: "the run finished" as NonEmptyStr }, runner: RunnerNull, started: StartNull, over: 25200)) {
-      LostAgentDetected { job_id: _, over_by_seconds: _ } => false
+    && (match classify_lost_agent(job: job(status: JobCompleted { reason: "the run finished" as NonEmptyStr }, runner: RunnerNull, started: StartNull, over: second(count: 25200))) {
+      LostAgentDetected { job_id: _, over_by: _ } => false
       JobNotLost { job_id: _, reason: _ } => true
       LostAgentReadRefused { job_id: _, reason: _ } => false
     })
@@ -132,7 +133,7 @@ test fn a_queued_or_completed_job_is_not_a_lost_agent() -> Bool {
 // POSITIVE CONTROL on the reclaim predicate: only a full detection reclaims; every other disposition,
 // including the refusals, does not.
 test fn only_a_full_detection_reclaims_the_slot() -> Bool {
-  lost_agent_slot_is_reclaimable(obs: LostAgentDetected { job_id: 1, over_by_seconds: 1 })
+  lost_agent_slot_is_reclaimable(obs: LostAgentDetected { job_id: 1, over_by: second(count: 1) })
     && !lost_agent_slot_is_reclaimable(obs: JobNotLost { job_id: 1, reason: "x" as NonEmptyStr })
     && !lost_agent_slot_is_reclaimable(obs: LostAgentReadRefused { job_id: 1, reason: "x" as NonEmptyStr })
 }

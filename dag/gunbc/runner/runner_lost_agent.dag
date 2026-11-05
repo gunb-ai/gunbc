@@ -1,6 +1,7 @@
 module gunbc.runner.runner_lost_agent
 
-import std.types { String, Int, NonEmptyStr, Bool, Duration, List }
+import std.types { Int, NonEmptyStr, Bool }
+import std.measure { Second, second, second_count }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 
 // A LOST AGENT: THE JOB IS CLAIMED BUT NO AGENT EVER PICKED IT UP.
@@ -25,46 +26,50 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 
 data runner_lost_agent_authority_disposition: ConstructionMechanism = SingleAuthority
 
-// The clock that starts the lost-agent count is NOT a field on the job: startedAt is null, which is
-// one of the three symptoms. It is the caller's record of how long the job has been observed in this
-// state, supplied at the boundary — never inferred from a wall clock inside the classifier, which
-// would make the pure decision depend on the host's clock and drift between witnesses and production.
+// A job's own timeout and the time it has been observed in_progress are elapsed time, so they carry
+// the std.measure duration carrier (Second), not a bare second-count. The clock that starts the count
+// is NOT a field on the job (startedAt is null — one of the three symptoms); it is the caller's record
+// of how long the job has been observed in this state, supplied at the boundary, never inferred from a
+// wall clock inside the classifier (which would make the pure decision depend on the host clock and
+// drift between witnesses and production).
 
-// A job's own timeout, from the jobs API `timeout_minutes`, in seconds. A job reports the ceiling it
-// was given; a lost agent is declared only once it has run PAST that ceiling without binding.
+// The jobs-API `status`, kept as the wire vocabulary GitHub uses. The `Unread` arm is for a read that
+// did not answer it, so "we could not see it" is distinct from any concrete status (DESIGN section 4d).
 type LostAgentJobStatus
   = JobQueued
   | JobInProgress
   | JobCompleted { reason: NonEmptyStr }
   | JobStatusUnread { reason: NonEmptyStr }
 
+// The jobs-API `runner`, which is an object when an agent is bound and null when none is. A read that
+// did not answer the field is its own arm, so a missing read is never read as "null" (which would look
+// like a lost agent).
 type LostAgentRunnerAssignment
   = RunnerBound { runner_id: Int }
   | RunnerNull
   | RunnerReadUnavailable { reason: NonEmptyStr }
 
+// The jobs-API `startedAt`, populated once an agent reaches the job. Same refusal-not-null discipline.
 type LostAgentStartField
   = StartRecorded { started_at: NonEmptyStr }
   | StartNull
   | StartReadUnavailable { reason: NonEmptyStr }
 
-// The whole boundary shape. Every field is what the jobs API reported for one job; the `*ReadUnavailable`
-// arms are for a read that did not answer that field, so "we could not see it" is distinct from "it was
-// null" and can never be mistaken for a lost-agent signal (DESIGN section 4d: could-not-see is not a
-// verdict).
+// The whole boundary shape. Every field is what the jobs API reported for one job, plus the caller's
+// record of how long it has been observed in_progress.
 type LostAgentJob {
   job_id: Int,
   run_id: Int,
   status: LostAgentJobStatus,
   runner: LostAgentRunnerAssignment,
   started: LostAgentStartField,
-  timeout_seconds: Duration,
-  in_progress_seconds: Duration,
+  timeout: Second,
+  in_progress_for: Second,
 }
 
 type LostAgentObservation
   // in_progress for longer than its timeout, with no runner and no startedAt: the job is stranded.
-  = LostAgentDetected { job_id: Int, over_by_seconds: Duration }
+  = LostAgentDetected { job_id: Int, over_by: Second }
   // The job is genuinely progressing (a runner is bound, or a start is recorded, or it is not yet over
   // its timeout, or it is not in_progress). A located reason, never a bare "no".
   | JobNotLost { job_id: Int, reason: NonEmptyStr }
@@ -74,8 +79,9 @@ type LostAgentObservation
 
 // ALL THREE SYMPTOMS MUST HOLD TOGETHER, and none of them may be a read the caller could not make.
 // in_progress (not queued, not completed), runner null, startedAt null, AND the time since the job was
-// observed in_progress exceeds the job's own timeout. A single unreadable field drops to the refusal
-// arm rather than being silently treated as null — a missing read is not evidence of a stranded job.
+// observed in_progress exceeds the job's own timeout — the bound is EXCLUSIVE, equal-to-timeout is not
+// yet over it, because a job at exactly its timeout may still bind an agent in its final instant. A
+// single unreadable field drops to the refusal arm rather than being silently treated as null.
 fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
   match job.status {
     JobStatusUnread { reason: r } => LostAgentReadRefused { job_id: job.job_id, reason: r }
@@ -90,8 +96,8 @@ fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
             StartRecorded { started_at: _ } => JobNotLost { job_id: job.job_id, reason: "startedAt is recorded, so an agent reached the job" }
             StartReadUnavailable { reason: r } => LostAgentReadRefused { job_id: job.job_id, reason: r }
             StartNull =>
-              if job.in_progress_seconds > job.timeout_seconds {
-                LostAgentDetected { job_id: job.job_id, over_by_seconds: job.in_progress_seconds - job.timeout_seconds }
+              if second_count(s: job.in_progress_for) > second_count(s: job.timeout) {
+                LostAgentDetected { job_id: job.job_id, over_by: second(count: second_count(s: job.in_progress_for) - second_count(s: job.timeout)) }
               } else {
                 JobNotLost { job_id: job.job_id, reason: "in_progress with no runner and no startedAt, but not yet past its timeout" }
               }
@@ -106,16 +112,8 @@ fn classify_lost_agent(job: LostAgentJob) -> LostAgentObservation {
 // be read is a job we have not actually seen.
 fn lost_agent_slot_is_reclaimable(obs: LostAgentObservation) -> Bool {
   match obs {
-    LostAgentDetected { job_id: _, over_by_seconds: _ } => True
+    LostAgentDetected { job_id: _, over_by: _ } => True
     JobNotLost { job_id: _, reason: _ } => False
     LostAgentReadRefused { job_id: _, reason: _ } => False
-  }
-}
-
-fn lost_agent_observation_wire(obs: LostAgentObservation) -> String {
-  match obs {
-    LostAgentDetected { job_id: j, over_by_seconds: o } => join(["lost-agent job=", to_string(j), " over-timeout-by=", to_string(o), "s"], "")
-    JobNotLost { job_id: j, reason: r } => join(["job=", to_string(j), " not-lost: ", r as String], "")
-    LostAgentReadRefused { job_id: j, reason: r } => join(["job=", to_string(j), " read-refused: ", r as String], "")
   }
 }
