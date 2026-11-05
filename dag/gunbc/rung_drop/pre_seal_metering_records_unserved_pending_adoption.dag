@@ -1,0 +1,49 @@
+module gunbc.rung_drop.pre_seal_metering_records_unserved_pending_adoption
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, NotYetCounted, NoInstrumentObservesTheZero, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-11-05 by session loyal-ant-144 (#15574, the sealed metering store). Before this PR the
+// readers of an attempt's metering record read the plain entry `metering.json` under
+// attempt-state/<entry>/ directly. The sealed store makes the slot head the ONLY serving entry, and a
+// plain record that was never migrated answers the typed MeteringRecordHeadRefused "a pre-seal metering
+// record stands at ... but no generation was ever committed for this attempt; the adoption act must
+// migrate it" — never silent absence, and never the plain bytes (the review-90868 (B) ruling: no second
+// read path beside the store). The srv2 inventory (stern) holds a bounded population of such records: the
+// plain metering.json files under ~/.local/share/gunbc-srv2-deploy/attempt-state/, all dated 2026-10-24.
+//
+// THE READERS THAT ANSWER THE REFUSAL INSTEAD OF THE BYTES for those rows, by symbol:
+// - gunbc.roadmap.roadmap_service_evidence.service_evidence_inputs_for_attempt (the MeteringRead wire,
+//   service_evidence_reader_wire, and the metering_observe_for_attempt call in its body);
+// - gunbc.roadmap.roadmap_dogfood_route.dogfood_metering_reading (and its ServiceEvidence fold
+//   dogfood_metering_reading_of, which reads through the service-evidence wire above);
+// - gunbc.roadmap.roadmap_attempt_metering.metering_persist_for_attempt, whose observe reaches the same
+//   head — unreachable for exactly these rows, because no modeled belt route touches them (below).
+//
+// WHY THE POPULATION IS NOT YET COUNTED: the belt reaches an attempt only while LIVE (a dispatch ref,
+// belt_attempts_observe_for_instance) or while INDEXED (a metering-attempt.<L1>.<node>.<L2>.<key>.json
+// file, metering_attempt_index). metering_attempt_index_admit landed on main at b87550652ec (2026-11-05),
+// AFTER every one of these records was written, so none carries an index entry, and the entry directory
+// name (<node> + attempt_state_slots.attempt_infix '-a' + <attempt_key>, attempt_state_entry_name) cannot
+// be reverse-parsed because '-a' also occurs inside node names. No instrument of the corpus enumerates
+// the rows today; the read-only classification step of the #15574 srv2 op-boundary script (step [2b],
+// equality against both authorities) is the provisional enumeration route and is not a gunbc instrument
+// target, which is exactly what NoInstrumentObservesTheZero names.
+
+data pre_seal_metering_records_unserved_pending_adoption: RungDrop = RungDrop {
+  identity: "pre_seal_metering_records_unserved_pending_adoption" as NonEmptyStr,
+  subject: "the metering token and seat-time bytes of a srv2 attempt whose record predates the sealed store are served to its readers",
+  declared: "2026-11-05",
+  standing: Standing {
+    declaration: TypedDeclaration {
+      previous: MechanicallyPreventable,
+      temporary: Mitigatable,
+      reason: ReplacementStaged {
+        replacement: "the modeled adoption act gunbc.roadmap.roadmap_attempt_metering.attempt_metering_adopt_pre_seal_record — verification-gated through metering_observe_against, committed as generation one via attempt_metering_commit with ExpectSlotAbsent, the plain name retired by the act itself — already landed for every attempt a modeled belt route reaches; what is staged and missing is a node/key recovery route for the pre-index rows"
+      },
+      population: NotYetCounted { cause: NoInstrumentObservesTheZero },
+      restoration_trigger: "THE CAPABILITY: a modeled node/key recovery route for pre-index attempts — the deploy records that minted the attempt directories reconstruct node_id and attempt_key, verified by the belt — after which the idempotent act attempt_metering_adopt_pre_seal_record admits each record once and readers serve the adopted slot head. WHAT THAT MUST BE SUFFICIENT FOR: every row of the srv2 classification (the bounded population: the plain metering.json records under ~/.local/share/gunbc-srv2-deploy/attempt-state/, all dated 2026-10-24, none modified since; authority: the op-boundary script's step [2b], equality against belt_attempts_observe_for_instance and metering_attempt_index) answers as the adopted head, not the typed pre-seal refusal. Re-exposing the plain entry beside the slot does NOT retire this row — that is the second read path DESIGN section 3 forbids."
+    }
+  }
+}
