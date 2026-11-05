@@ -1,6 +1,7 @@
 module gunbc.auth.request_authentication
 
 import std.types { NonEmptyStr, String, Bool, List, Timestamp, Int }
+import std.algebra { non_empty }
 import std.access {
   AccessRequest, AccessContext, AccessEvidence, AccessDecision, Permit, Deny,
   AccessRefusal, AccessRefusalCause, AccessRefusalLocation,
@@ -28,6 +29,7 @@ import gunbc.auth.session {
 }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_eq, principal_ref_label, fabric_workflow_principal, fabric_display_alias,
+  google_oidc_principal_authority, google_accounts_principal_namespace,
   host_account_principal_authority, srv1_host_accounts_principal_namespace,
 }
 import gunbc.deployment_risk { DeploymentId, srv1_lab_codex_feedback_deployment }
@@ -355,6 +357,7 @@ type ServeRouteAction
   | ServeActionApproveDecision
   | ServeActionCreateAllocation
   | ServeActionReleaseAllocation
+  | ServeActionRetireLineage
   | ServeActionDispatchNode
   | ServeActionStopNode
   | ServeActionPublishNode
@@ -375,6 +378,7 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionApproveDecision => "approve-decision" as NonEmptyStr
     ServeActionCreateAllocation => "create-allocation" as NonEmptyStr
     ServeActionReleaseAllocation => "release-own-allocation" as NonEmptyStr
+    ServeActionRetireLineage => "retire-lineage" as NonEmptyStr
     ServeActionDispatchNode => "dispatch-node" as NonEmptyStr
     ServeActionStopNode => "stop-node" as NonEmptyStr
     ServeActionPublishNode => "publish-node" as NonEmptyStr
@@ -401,23 +405,33 @@ type ServeWriteAuthorizationPolicy {
   agent_roster: List<PrincipalRef>
 }
 
+// THE FIRST APPROVER, ENROLLED AS THE DEPLOYMENT ROW THE ROSTER WAITED FOR. The operator signed in to
+// the srv1 lab on 2026-10-16 and asked for their login to be used for operator decisions; the subject
+// is the Google account's stable `sub` as the lab's session recorded it, never an email.
+data operator_approver_principal: PrincipalRef = PrincipalRef {
+  authority: google_oidc_principal_authority,
+  namespace: google_accounts_principal_namespace,
+  subject: "116084671989231734979" as NonEmptyStr,
+}
+
 data tracker_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
-  approve_roster: [],
+  approve_roster: [operator_approver_principal],
   agent_roster: [],
 }
 
-// THE LAB AGENT. Grant, operator in chat 2026-10-17 ~04:55Z: "I really don't care for dev right now -
-// you should be allowed to completely control your dev environment, you shouldn't need me". The agent
-// that owns the srv1 lab acts as ITSELF under a dedicated host account that no lab process, worker,
-// verification or candidate code runs as (the lab runs as briansrls, and a unix socket is connectable
-// from any unit not restricting address families, so admitting the lab's own account would admit
-// model-driven code).
+// THE LAB AGENT (LAB-AGENT-OPERATOR-1). Grant, operator in chat 2026-10-17 ~04:55Z: "I really don't
+// care for dev right now - you should be allowed to completely control your dev environment, you
+// shouldn't need me". The agent that owns the srv1 lab acts as ITSELF under a dedicated host account
+// that no lab process, worker, verification or candidate code runs as (the lab runs as briansrls,
+// and a unix socket is connectable from any unit not restricting address families, so admitting the
+// lab's own account would admit model-driven code).
 //
 // DECLARED HERE, NOT YET IN gunbc.fleet.fleet_posix_accounts: that roster is a closed key coproduct
 // whose members carry allocated uids and prod-side convergence, and this account is lab-scoped and
 // created by the lab's owning agent at qualification (bright-moth-475 ruling). Modeling it there
 // means a FleetPosixAccountKey arm plus a lab-scoped convergence, which needs the uid allocation the
-// account does not have yet. Trigger: the account exists on srv1 and its uid is observed.
+// account does not have yet; the evidence below decides on the NAME the kernel attests, so the
+// declaration gap widens no admission. Trigger: the account exists on srv1 and its uid is observed.
 data lab_agent_host_account: NonEmptyStr = "gunbc-lab-agent" as NonEmptyStr
 
 data lab_agent_principal: PrincipalRef = PrincipalRef {
@@ -426,10 +440,11 @@ data lab_agent_principal: PrincipalRef = PrincipalRef {
   subject: lab_agent_host_account,
 }
 
-// THE SCOPE IS POLICY KEYED ON THE DEPLOYMENT, not a forked code path: the lab deployment rosters the
-// agent principal; every other deployment gets the tracker policy, whose agent roster is empty.
+// THE SCOPE IS POLICY KEYED ON THE DEPLOYMENT, not a forked code path: the lab deployment admits the
+// agent principal on its agent door; every other deployment gets the tracker policy, whose agent
+// roster is empty, so the same evidence is refused there.
 data lab_write_authorization_policy: ServeWriteAuthorizationPolicy = ServeWriteAuthorizationPolicy {
-  approve_roster: tracker_write_authorization_policy.approve_roster,
+  approve_roster: [operator_approver_principal],
   agent_roster: [lab_agent_principal],
 }
 
@@ -469,6 +484,7 @@ fn serve_route_action_agent_admissible(action: ServeRouteAction) -> Bool {
     ServeActionRetireNode => false
     ServeActionCreateAllocation => false
     ServeActionReleaseAllocation => false
+    ServeActionRetireLineage => false
   }
 }
 
@@ -633,6 +649,17 @@ fn human_action_authorization_decision(
         ServeActionCreateIssue => Permit
         ServeActionCommentIssue => Permit
         ServeActionSaveOwnView => Permit
+        ServeActionRetireLineage =>
+          if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
+            Permit
+          } else {
+            write_refused(
+              route_path: route_path,
+              action: action,
+              security: security,
+              cause: AccessActionNotGranted { action: serve_route_action_label(action: action) as String },
+            )
+          }
         ServeActionDispatchNode => Permit
         ServeActionStopNode => Permit
         ServeActionPublishNode => Permit
@@ -690,6 +717,10 @@ fn human_action_authorization_decision(
 // CSRF IS A SEPARATE PROOF, never implied by the cookie. A mutation without the session's token
 // refuses even with a valid session -- login state != CSRF token -- and the service arm refuses
 // here because service writes present service evidence, not browser CSRF.
+//
+// CSRF defends an ambient browser credential (a cookie) against a forged cross-site request. A
+// kernel-attested unix-socket peer carries no ambient credential a browser can be made to
+// present: the conjunct has no subject here, and the proof is the peer itself.
 fn csrf_write_decision(
   route_path: NonEmptyStr,
   action: ServeRouteAction,

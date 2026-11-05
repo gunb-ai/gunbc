@@ -10,8 +10,11 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_words_pair,
   bash_build_command_words_single,
   bash_build_exit,
+  bash_build_if,
   bash_build_if_from_stmts,
   bash_build_or_else,
+  bash_build_stmt_list_from_nodes,
+  bash_build_subshell,
   bash_build_subshell_from_stmts,
   bash_build_with_redir,
   bash_build_word_cmdsubst,
@@ -30,9 +33,10 @@ import v2.workflow.bash_emit {
   bash_emit_program_sequence
 }
 import std.algebra { list_append, list_map }
-import v2.std.diagnostic { Accepted, Rejected }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, NodeLocus, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Conj, Node, Symbol, TypeNode }
 import v2.test.claim.bash_program_fold_support {
   bash_program_fixture_assign_root_node,
   bash_program_fold_tag_assign,
@@ -60,6 +64,7 @@ data bash_program_assign_root_golden: String = "ROOT=$('git' 'rev-parse' '--show
 data bash_program_exit_subshell_golden: String = "('echo' 'hi'; exit 1)\n"
 data bash_program_exit_if_golden: String = "if 'true'; then 'echo' 'hi'; exit 1; fi\n"
 data bash_program_andor_exit_golden: String = "'true' || exit 1\n"
+data bash_program_subshell_or_else_both_sides_golden: String = "('true' || exit 1)\n"
 
 data bash_program_mktemp_rm_golden: String = "set -e\nOUT=$('mktemp' '-d')\n'rm' '-rf' \"$OUT\"\n"
 data bash_program_metachars_quoted_golden: String = "'echo' '$(rm -rf /)'\n"
@@ -280,6 +285,158 @@ test fn bash_program_exit_spelling_literal_holds() -> Bool {
     },
     golden: "('echo' 'hi'; exit 1)"
   )
+}
+
+fn bash_program_empty_stmt_list() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn bash_program_or_else_true_exit() -> Node {
+  bash_build_or_else(
+    left: bash_build_command_from_lits(lits: ["true"]),
+    right: bash_build_exit(code: "1")
+  )
+}
+
+// Emission route is bash_emit_program → bash_fold_serialize_program (deploy/apply).
+// Planting or_else as the subshell/if body is the F37 shape: not a statement-list cons.
+test fn bash_program_subshell_malformed_or_else_body_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_subshell(
+        node: bash_build_subshell(body: bash_program_or_else_true_exit())
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
+}
+
+test fn bash_program_subshell_or_else_preserves_both_sides_holds() -> Bool {
+  bash_emit_program_matches_golden(
+    statements: [
+      bash_program_fold_tag_subshell(
+        node: bash_build_subshell_from_stmts(stmts: [bash_program_or_else_true_exit()])
+      )
+    ],
+    set_e: false,
+    golden: bash_program_subshell_or_else_both_sides_golden
+  )
+}
+
+test fn bash_program_subshell_empty_body_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_subshell(
+        node: bash_build_subshell(body: bash_program_empty_stmt_list())
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
+}
+
+test fn bash_program_subshell_refused_empty_stmt_list_placeholder_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_subshell(
+        node: bash_build_subshell(body: bash_build_stmt_list_from_nodes(stmts: []))
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
+}
+
+test fn bash_program_concat_refused_empty_word_list_placeholder_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_assign(
+        node: bash_build_assign(
+          name: "X",
+          value: bash_build_word_concat_from_nodes(parts: [])
+        )
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
+}
+
+test fn bash_program_if_empty_body_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_if(
+        node: bash_build_if(
+          cond: bash_build_command_from_lits(lits: ["true"]),
+          body: bash_program_empty_stmt_list()
+        )
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
+}
+
+test fn bash_program_if_malformed_or_else_body_refuses_holds() -> Bool {
+  match bash_emit_program(
+    statements: [
+      bash_program_fold_tag_if(
+        node: bash_build_if(
+          cond: bash_build_command_from_lits(lits: ["true"]),
+          body: bash_program_or_else_true_exit()
+        )
+      )
+    ],
+    set_e: false
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      match d.head.at {
+        NodeLocus { anchor: _ } =>
+          d.head.reason == ^bash_fold_serialize_stmt_list_shape_refused
+        _ => false
+      }
+  }
 }
 
 test fn bash_program_andor_exit_matches_golden_holds() -> Bool {

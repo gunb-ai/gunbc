@@ -48,7 +48,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launch_entry, attempt_system_unit_launch_function,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed, AttemptHandInEntryDecoded,
   AttemptProcessExitedWith, AttemptProcessSignaled,
   attempt_exit_stage_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
   attempt_exit_vendor_pane_entry_name, attempt_exit_spool_prepare,
@@ -65,6 +65,10 @@ import test.claim.roadmap.sandbox_touch_reading {
   SandboxTouchWroteReading, SandboxTouchRefusedReading, SandboxTouchInconclusive, sandbox_touch_reading_of,
 }
 import gunbc.cli_invoke { admit_named_argument, NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator }
+
+// The exit-drain unit a launched worker's hand-in path unit would start. No spool fixture here hands in, so the
+// unit is never started; it only has to be a well-formed name the launcher's argument admits.
+data witness_handin_wake_unit: String = "gunbc-witness-belt-exit.service"
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -535,6 +539,7 @@ fn launcher_exit_record_is_expanded(name: String) -> Bool {
   !string_contains(s: name, pattern: unexpanded)
     && match attempt_exit_entry_decode(entry_name: name) {
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+      AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => false
       AttemptExitEntryDecoded { record } =>
         string_length(s: record.invocation_id) == 32
           && !string_contains(s: record.invocation_id, pattern: unexpanded)
@@ -707,6 +712,7 @@ fn wet_inner_exit_status_poll(instance_root: String, unit_key: String, seen: Lis
           } else {
             match attempt_exit_entry_decode(entry_name: name) {
               AttemptExitEntryMalformed { entry_name: _, reason: _ } => SandboxTouchUnrunnable
+              AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => SandboxTouchUnrunnable
               AttemptExitEntryDecoded { record } =>
                 match record.end {
                   AttemptProcessExitedWith { status } => SandboxTouchRan { exit_code: status }
@@ -1097,7 +1103,7 @@ test fn a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record() -
     Absent => false
     Present { value: root } => {
       let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
-      let pass = attempt_system_unit_drain_pass(instance_root: root)
+      let pass = attempt_system_unit_drain_pass(instance_root: root, handin_wake_unit: witness_handin_wake_unit)
       let claim_is_unmovable = match attempt_system_unit_claim_entry(instance_root: root, entry: entry) {
         AttemptSystemUnitClaimUnmovable { entry: e, cause: _ } => e == entry
         _ => false
@@ -1106,7 +1112,7 @@ test fn a_request_the_claim_cannot_move_stalls_the_drain_and_leaves_a_record() -
         AttemptUnitStalled { unmovable } => count(unmovable) == 1
         AttemptUnitNotStalled => false
       }
-      let exited = match attempt_system_unit_launch_cli(instance_root: root) {
+      let exited = match attempt_system_unit_launch_cli(instance_root: root, handin_wake_unit: witness_handin_wake_unit) {
         ExitSuccess => false
         ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "unmovable at claim")
       }
@@ -1125,7 +1131,7 @@ test fn an_unlistable_request_directory_stalls_the_drain() -> Bool {
     false
   } else {
     let root = tmp.path as String
-    let pass = attempt_system_unit_drain_pass(instance_root: root)
+    let pass = attempt_system_unit_drain_pass(instance_root: root, handin_wake_unit: witness_handin_wake_unit)
     match attempt_unit_stall_verdict(pass: pass) {
       AttemptUnitStalled { unmovable } => (unmovable |> map(e => e.step)) == [SpoolStallListRequests]
       AttemptUnitNotStalled => false
@@ -1144,12 +1150,12 @@ test fn a_retired_request_and_an_empty_spool_do_not_stall_the_drain() -> Bool {
     let entry = attempt_system_unit_request_entry_name(node_id: "n1", attempt_key: "k1")
     let dest = attempt_system_unit_request_path(instance_root: root, entry: entry)
     let prepared = attempt_system_unit_spool_prepare(instance_root: root)
-    let empty_not_stalled = match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root)) {
+    let empty_not_stalled = match attempt_unit_stall_verdict(pass: attempt_system_unit_drain_pass(instance_root: root, handin_wake_unit: witness_handin_wake_unit)) {
       AttemptUnitNotStalled => true
       AttemptUnitStalled { unmovable: _ } => false
     }
     let planted = shell.Exec.RunArgv(program: "ln", arguments: ["-s", "--", "/tmp/gunbc-not-a-request", dest]).exit_code == 0
-    let pass = attempt_system_unit_drain_pass(instance_root: root)
+    let pass = attempt_system_unit_drain_pass(instance_root: root, handin_wake_unit: witness_handin_wake_unit)
     let retired_not_stalled = pass.retired == 1 && pass.refused == 1 && match attempt_unit_stall_verdict(pass: pass) {
       AttemptUnitNotStalled => true
       AttemptUnitStalled { unmovable: _ } => false
@@ -1179,7 +1185,7 @@ fn planted_symlink_request_root(tag: String, answer_exists: Bool) -> String? {
 test fn a_refused_request_does_not_fail_the_drain_unit() -> Bool {
   match planted_symlink_request_root(tag: "k1", answer_exists: false) {
     Absent => false
-    Present { value: root } => match attempt_system_unit_launch_cli(instance_root: root) {
+    Present { value: root } => match attempt_system_unit_launch_cli(instance_root: root, handin_wake_unit: witness_handin_wake_unit) {
       ExitSuccess => true
       ExitFailure { code: _, reason: _ } => false
     }
@@ -1189,7 +1195,7 @@ test fn a_refused_request_does_not_fail_the_drain_unit() -> Bool {
 test fn a_request_the_drain_cannot_answer_fails_the_drain_unit() -> Bool {
   match planted_symlink_request_root(tag: "k1", answer_exists: true) {
     Absent => false
-    Present { value: root } => match attempt_system_unit_launch_cli(instance_root: root) {
+    Present { value: root } => match attempt_system_unit_launch_cli(instance_root: root, handin_wake_unit: witness_handin_wake_unit) {
       ExitSuccess => false
       ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "could not be written")
     }

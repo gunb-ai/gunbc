@@ -157,7 +157,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // SP SP TAB (`<mode> <type> <object>\t<path>`), which is what makes a path containing a newline, a
 // quote or a tab-free space unambiguous -- git's own -z contract, not a convention this repository
 // invents.
-// HeadCommitIn, ReadTreeIntoIndex, StatusAgainstIndex and IgnoredAgainstIndex TRUST THE REPOSITORY
+// HeadCommitIn, ShowTreeIn, ReadTreeIntoIndex, StatusAgainstIndex and IgnoredAgainstIndex TRUST THE REPOSITORY
 // THEY ARE ASKED ABOUT, for their own invocation only: `-c safe.directory=<repository_path>` beside
 // `-C <repository_path>`, the same words extdeps.git git_in_trusted_repository_args builds for the
 // transported legs. Their one consumer reads a deployed tree another principal owns, which git
@@ -237,6 +237,25 @@ service git.Inspect {
     }
     mock_response {
       0 => { sha: "0000000000000000000000000000000000000000", success: true, stderr: "" } "hermetic git.Inspect.HeadCommitIn"
+    }
+  }
+
+  operation ShowTreeIn {
+    requires none
+    input { repository_path: String, ref: GitRef }
+    output {
+      tree: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "-c", "safe.directory={repository_path}", "-C", "{repository_path}", "show", "-s", "--format=%T", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+    mock_response {
+      0 => { tree: "0000000000000000000000000000000000000000", success: true, stderr: "" } "hermetic git.Inspect.ShowTreeIn"
     }
   }
 

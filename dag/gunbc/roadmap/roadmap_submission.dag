@@ -4,6 +4,8 @@ import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.content_hash { content_hash_atom }
 import extdeps.languages.json.emit {
   JsonValue,
+  JsonKeyValue,
+  JsonString,
   json_string,
   json_int,
   json_object,
@@ -17,16 +19,20 @@ import extdeps.languages.json.parse {
   json_document_gap_text,
   json_object_unique_member,
   JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState,
   ProviderNotStarted,
-  ProviderStarting, ProviderAwaitingSeat,
+  ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance,
   ProviderRunning,
   ProviderCompleted,
   ProviderFailed,
   ProviderBudgetSpent,
   ProviderEventsRefused,
+  ProviderRequestPending,
 }
 import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 import gunbc.scm.ancestry { RepositoryCommitRef }
@@ -64,6 +70,12 @@ data submission_schema: NonEmptyStr = "roadmap-submission/v1" as NonEmptyStr
 data submission_capture_schema: NonEmptyStr = "roadmap-submission-capture/v2" as NonEmptyStr
 
 data submission_capture_schema_v3: NonEmptyStr = "roadmap-submission-capture/v3" as NonEmptyStr
+
+// v4 ADDS THE HAND-IN A CAPTURE ANSWERED (gunbc.plans.harness_session_lifecycle, slice S2): a session
+// that hands in keeps running, so one attempt can capture several candidates, and the hand-in id --
+// not the declaration's digest, which hashes only its wording -- says which act each capture is.
+// A capture taken from an ended worker names none; v3 and v2 records read as naming none.
+data submission_capture_schema_v4: NonEmptyStr = "roadmap-submission-capture/v4" as NonEmptyStr
 
 // THREE READINGS OF "HOW THE TASK ENDED", NOT ONE. `ready` declares a candidate: capture it and
 // judge it. `blocked` and `needs-context` declare that no candidate exists and why -- they end the
@@ -251,6 +263,7 @@ type SubmissionCapture {
   scm_root_locator: SubmissionCaptureRoot
   digest: String
   submission: WorkerSubmission
+  handin: String?
 }
 
 fn submission_capture_basename(head_sha: String) -> String {
@@ -260,15 +273,18 @@ fn submission_capture_basename(head_sha: String) -> String {
 fn submission_capture_json(capture: SubmissionCapture) -> JsonValue {
   match capture.scm_root_locator {
     SubmissionCaptureRootBound { locator } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: submission_capture_schema_v3 as String)),
+      json_object(members: concat([
+        json_kv(key: "schema", value: json_string(s: submission_capture_schema_v4 as String)),
         json_kv(key: "head_sha", value: json_string(s: capture.head_sha)),
         json_kv(key: "scm_repository", value: json_string(s: capture.scm_repository)),
         json_kv(key: "scm_commit_ordinal", value: json_int(n: capture.scm_commit_ordinal)),
         json_kv(key: "scm_root_locator", value: json_string(s: locator)),
         json_kv(key: "digest", value: json_string(s: capture.digest)),
         json_kv(key: "submission", value: submission_json(submission: capture.submission)),
-      ])
+      ], match capture.handin {
+        Present { value: h } => [json_kv(key: "handin", value: json_string(s: h))]
+        Absent => [] as List<JsonKeyValue>
+      }))
     SubmissionCaptureRootLegacyUnbound =>
       json_object(members: [
         json_kv(key: "schema", value: json_string(s: submission_capture_schema as String)),
@@ -298,21 +314,32 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
   match publication_receipt_member(doc: doc, key: "schema") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: schema } =>
-      if schema == (submission_capture_schema_v3 as String) {
+      if schema == (submission_capture_schema_v4 as String) || schema == (submission_capture_schema_v3 as String) {
         match publication_receipt_member(doc: doc, key: "scm_root_locator") {
           ReceiptMemberUnreadable { reason: _ } =>
             CaptureNotDecodable {
               reason: "capture record scm_root_locator member is absent, duplicated or not a string",
             }
           ReceiptMemberRead { value: locator } =>
-            submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator })
+            if schema == (submission_capture_schema_v3 as String) {
+              submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: none)
+            } else {
+              match json_object_unique_member(v: doc, key: "handin") {
+                JsonMemberAbsent => submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: none)
+                JsonMemberFound { value: JsonString { value: h } } =>
+                  submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootBound { locator: locator }, handin: Present { value: h })
+                JsonMemberFound { value: _ } => CaptureNotDecodable { reason: "capture record handin member is not a string" }
+                JsonMemberDuplicated { count: _ } => CaptureNotDecodable { reason: "capture record handin member is duplicated" }
+                JsonMemberNotAnObject => CaptureNotDecodable { reason: "capture record is not a JSON object" }
+              }
+            }
         }
       } else if schema == (submission_capture_schema as String) {
-        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound)
+        submission_capture_decode_tail(doc: doc, root: SubmissionCaptureRootLegacyUnbound, handin: none)
       } else {
         CaptureNotDecodable {
           reason: join([
-            "capture schema is ", schema, ", not ", submission_capture_schema_v3 as String,
+            "capture schema is ", schema, ", not ", submission_capture_schema_v4 as String, " or ", submission_capture_schema_v3 as String,
             " (or the ", submission_capture_schema as String, " a historical capture carries)",
           ], ""),
         }
@@ -323,7 +350,7 @@ fn submission_capture_decode_document(doc: JsonValue) -> SubmissionCaptureDecode
 // THE MEMBER TAIL, SHARED BY BOTH SCHEMAS. The binding arrived as a parameter because the schema
 // dispatch already decided it; everything from head_sha down is the carrier both versions carry
 // unchanged.
-fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -> SubmissionCaptureDecode {
+fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot, handin: String?) -> SubmissionCaptureDecode {
   match publication_receipt_member(doc: doc, key: "head_sha") {
     ReceiptMemberUnreadable { reason: r } => CaptureNotDecodable { reason: r }
     ReceiptMemberRead { value: head_sha } =>
@@ -352,6 +379,7 @@ fn submission_capture_decode_tail(doc: JsonValue, root: SubmissionCaptureRoot) -
                               scm_root_locator: root,
                               digest: digest,
                               submission: submission,
+                              handin: handin,
                             },
                           }
                       }
@@ -467,12 +495,34 @@ type CandidateDecision
   = CandidateFresh { submission: WorkerSubmission, digest: String }
   | CandidateCheckpoint { note: String }
 
+// A HAND-IN IS ITS OWN ACT (gunbc.plans.harness_session_lifecycle, slice S2). A session that handed
+// in names the hand-in, and a declaration is fresh exactly when no capture answers that hand-in yet --
+// even when its wording repeats an earlier one, because a revision that keeps its explanation is
+// still new code. With no hand-in named (a worker that ended), the digest rule above stands.
+fn submission_capture_answers_handin(c: SubmissionCapture, handin: String) -> Bool {
+  match c.handin {
+    Present { value: h } => h == handin
+    Absent => false
+  }
+}
+
 fn submission_candidate_decision(
   observation: SubmissionObservation,
   captures: List<SubmissionCapture>,
+  handin: String?,
 ) -> CandidateDecision {
   match observation {
     SubmissionDeclared { submission, digest } =>
+      match handin {
+        Present { value: h } =>
+          match (captures |> filter(c => submission_capture_answers_handin(c: c, handin: h))).first() {
+            Present { value: prior } =>
+              CandidateCheckpoint {
+                note: join(["hand-in ", h, " was already captured at ", prior.head_sha, ": one hand-in answers one capture"], ""),
+              }
+            Absent => CandidateFresh { submission: submission, digest: digest }
+          }
+        Absent =>
       match (captures |> filter(c => c.digest == digest)).first() {
         Present { value: prior } =>
           CandidateCheckpoint {
@@ -483,6 +533,7 @@ fn submission_candidate_decision(
             ], ""),
           }
         Absent => CandidateFresh { submission: submission, digest: digest }
+      }
       }
     SubmissionAbsent =>
       CandidateCheckpoint {
@@ -555,13 +606,49 @@ fn candidate_handoff_state(
     ProviderNotStarted => HandoffAwaitingWorker
     ProviderStarting { activity: _ } => HandoffAwaitingWorker
     ProviderAwaitingSeat { detail: _ } => HandoffAwaitingWorker
+    ProviderAwaitingAcceptance { handin } =>
+      candidate_handoff_state_for_handin(handin: handin, capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderRunning { activity: _ } => HandoffAwaitingWorker
     ProviderEventsRefused { activity: _, detail: _ } => HandoffAwaitingWorker
+    // A PENDING REQUEST IS AN ENDED WORKER WAITING TO BE RE-DELIVERED, so its capture is read the
+    // same way a yield is: the commit step records it (CaptureAbsent), which lands here as
+    // HandoffYielded -- the attempt holds no candidate and never waits on one it cannot produce, and
+    // the settled capture clears the capture obligation so the belt does not re-run the step forever.
+    ProviderRequestPending { activity: _, detail: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderCompleted { activity: _ } =>
       candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderFailed { activity: _, detail: _ } =>
       candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderBudgetSpent { activity: _, detail: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+  }
+}
+
+// A HANDED-IN WORKER'S CANDIDATE IS THE CAPTURE THAT NAMES ITS CURRENT HAND-IN (gunbc.plans.
+// harness_session_lifecycle, slice S2). A revision hands in again from the same worktree, so the head
+// can still carry the capture of the hand-in it revises: that capture is not this hand-in's, and the
+// stages that judged it say nothing about the revision, so the capture is owed. The commit step's record
+// is attempt-grain, so a capture it settled without minting (CaptureAbsent) reads as the yield it
+// recorded, never as owed again.
+fn candidate_handoff_state_for_handin(
+  handin: String,
+  capture: SubmissionCaptureObservation,
+  verification: HandoffVerificationStanding,
+  integration: HandoffIntegrationStanding,
+  publication: HandoffPublicationStanding,
+) -> CandidateHandoffState {
+  match capture {
+    CaptureForHead { capture: c } =>
+      if submission_capture_answers_handin(c: c, handin: handin) {
+        candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+      } else {
+        HandoffAwaitingCapture { reason: join(["hand-in ", handin, " has not been captured; the head still carries an earlier capture"], "") }
+      }
+    CaptureNotAttempted { reason } => HandoffAwaitingCapture { reason: join(["hand-in ", handin, " has not been captured: ", reason], "") }
+    CaptureAbsent =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
+    CaptureUnreadable { reason: _ } =>
       candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
   }
 }

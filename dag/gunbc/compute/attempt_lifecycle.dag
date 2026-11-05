@@ -468,6 +468,7 @@ fn attempt_commit_bytes(
   admit_callers: [
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_open_payload"),
     decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_advance_payload"),
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled_payload"),
   ]
 {
   match admit_cas_attempt(attempt: cas_attempt(
@@ -823,5 +824,104 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
       join(["TOO EARLY: the attempt declared a launch deadline of ", to_string(value: d), " and it is only ", to_string(value: n), "; a producer inside its own declared window is not dead"], "")
     RecoveryUnitNotEnded { lifecycle: u } => join(["the unit has not ended: ", unit_lifecycle_wire(u: u)], "")
     RecoveryTerminalRecordMayRelease { state: s } => join(["the attempt is already ", attempt_state_wire(s: s), ", so there is no transition to make; its seat is released only once the unit is proven ended"], "")
+  }
+}
+
+
+// ── THE LAB'S REOPEN PAIR, CARRIED THROUGH THE RETYPE ─────────────────────────────
+// A settled attempt's slot records how its worker ended; a resume may not treat that slot as open.
+// The lab's two routes that resume a settled attempt -- the worktree claim (roadmap_attempt_worktree_claim)
+// and the session-placement settle route -- call this pair: it re-checks the window the resumed attempt
+// declares, reads the slot at the generation the caller believes is current, refuses unless the slot is
+// TERMINAL, and re-commits it at Reserved with the SAME reference, unit and grant, so a resume cannot
+// smuggle a different placement into an existing generation.
+//
+// It is carried over with its refusals intact -- an over-ceiling declaration, a negative window, an
+// unreadable slot, a slot that does not decode, a slot whose stored reference is not the one asked for,
+// a generation that is not the one believed, and a slot still Reserved or still Launching. Two things
+// change and nothing else: the carrier is a SlotStore handle instead of a root string, and the read goes
+// through this module's OWN typed read (attempt_payload_read) instead of the CAS library directly, so the
+// slot key and the payload codec live in one place and this pair does not re-implement the decode the way
+// attempt_slot_read already does. The generation check stays explicit rather than resting only on the CAS
+// expectation, so the refusal names BOTH generations; the expectation is what makes the commit itself safe.
+fn attempt_reopen_settled(
+  store: SlotStore,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  record: AttemptRecord,
+) -> AttemptTransition {
+  attempt_reopen_settled_payload(
+    store: store,
+    reference: reference,
+    expected: expected,
+    record: record,
+    codec: attempt_record_codec())
+}
+
+fn attempt_reopen_settled_payload<P>(
+  store: SlotStore,
+  reference: NonEmptyStr,
+  expected: CasGeneration,
+  record: P,
+  codec: AttemptPayloadCodec<P>,
+) -> AttemptTransition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_reopen_settled"),
+  ]
+{
+  let reserved = codec.with_state(record, AttemptReserved)
+  let declared = codec.launch_deadline(reserved) - codec.opened_at(reserved)
+  if declared > compute_pre_launch_ceiling_seconds {
+    AttemptTransitionRefused {
+      detail: join([
+        "the resumed attempt declared a pre-launch window of ", to_string(value: declared),
+        " seconds and the ceiling is ", to_string(value: compute_pre_launch_ceiling_seconds),
+        "; a window nobody may reclaim a seat inside is a cost borne by every other contender on this host, so an over-long declaration is refused, not clamped",
+      ], ""),
+    }
+  } else if declared < 0 {
+    AttemptTransitionRefused {
+      detail: join([
+        "the resumed attempt declared a launch deadline of ", to_string(value: codec.launch_deadline(reserved)),
+        " which precedes the instant it opened, ", to_string(value: codec.opened_at(reserved)),
+        "; a window that has already closed would be reclaimable the moment it is written",
+      ], ""),
+    }
+  } else {
+    match attempt_payload_read(store: store, reference: reference, codec: codec) {
+      AttemptPayloadUnreadable { detail: d } =>
+        AttemptTransitionRefused { detail: join(["the settled attempt slot could not be read: ", d], "") }
+      AttemptPayloadAbsent =>
+        AttemptLostRace {
+          expected: join(["a settled slot at generation ", to_string(value: cas_generation_count(g: expected))], ""),
+          observed: "an absent slot",
+        }
+      AttemptPayloadHeld { record: rec, generation: g } =>
+        if codec.reference_of(rec) != (reference as String) {
+          AttemptTransitionRefused {
+            detail: join(["the attempt slot keyed ", reference as String, " names reference ", codec.reference_of(rec)], ""),
+          }
+        } else if cas_generation_count(g: g) != cas_generation_count(g: expected) {
+          AttemptLostRace {
+            expected: join(["generation ", to_string(value: cas_generation_count(g: expected))], ""),
+            observed: join(["generation ", to_string(value: cas_generation_count(g: g))], ""),
+          }
+        } else {
+          match codec.state_of(rec) {
+            AttemptTerminal { verdict: _, detail: _ } =>
+              attempt_commit_bytes(
+                store: store,
+                reference: reference,
+                state: AttemptReserved,
+                payload: codec.encode(reserved) as NonEmptyStr,
+                expected: ExpectSlotGeneration { generation: expected })
+            AttemptReserved =>
+              AttemptTransitionRefused { detail: "reopen requires a closed slot, but this slot is still Reserved -- a live placement a resume may never displace" }
+            AttemptLaunching =>
+              AttemptTransitionRefused { detail: "reopen requires a closed slot, but this slot is still Launching -- a running worker a resume may never displace" }
+          }
+        }
+    }
   }
 }

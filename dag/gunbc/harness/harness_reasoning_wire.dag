@@ -20,6 +20,7 @@ import gunbc.spark.serving_arm {
 import extdeps.ninfer.ninfer_serve { ninfer_message_reasoning_field, ninfer_inline_think_end_token }
 import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
+import extdeps.external_authority { CitedFigure, cited_figure_read }
 import gunbc.serving.router_dev_policy { router_dev_srv1_site }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
@@ -304,6 +305,36 @@ fn harness_ninfer_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessReaso
   }
 }
 
+// A BUDGET THE LAB CHOOSES, NOT A FACT THE UPSTREAM PROVED (DESIGN 4d). The pool operator's limits are its
+// word (extdeps.pool.pool_front CitedFigure<Nat>, TranscribedUncited), so what the harness enforces is this
+// policy: a declared value with the reason it was chosen. Once the upstream's own limit is read (cited or
+// observed) the enforced budget is the smaller of the two; until then the policy alone is enforced.
+fn pool_budget_enforced(policy: PoolBudgetPolicy, upstream: CitedFigure<Nat>) -> Nat {
+  match cited_figure_read(figure: upstream) {
+    Absent => policy.value
+    Present { value: read } => if read < policy.value { read } else { policy.value }
+  }
+}
+
+// THE LARGEST OUTPUT BUDGET A REQUEST MAY ASK. Absent where no upstream states one; a unit with a cap has a
+// request budget above it capped by harness_capped_max_tokens, never sent.
+fn harness_unit_output_cap(unit: HarnessServingUnit) -> Int? {
+  match unit {
+    Qwen38FlashNextOnFabricRouter => none
+    DeepseekV4FlashOnVllm => none
+    Glm53FlashOnVllm => none
+    NemotronUltraFreeOnOpenRouter => none
+    Qwen3_8_27bOnNinfer => none
+  }
+}
+
+fn harness_capped_max_tokens(unit: HarnessServingUnit, asked: Int) -> Int {
+  match harness_unit_output_cap(unit: unit) {
+    Absent => asked
+    Present { value: cap } => if asked < cap { asked } else { cap }
+  }
+}
+
 // THE FABRIC ROUTER ARM: the request carries the effort in the router's CLIENT dialect, chat_template_kwargs
 // .reasoning_effort, and the router rewrites it per upstream (gunbc.serving.router_dev_policy
 // qwen3_effort_rules / iq3_s_effort_rules: "none" drops thinking, "xhigh" becomes "high" on the
@@ -446,13 +477,13 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
 // without minting a sentinel every caller would have to branch on, exactly as the inline arm already
 // does -- it does not assert that the runtime answers under that name.
 //
-// THE ABSENT ARM IS UNREACHABLE FOR BOTH UNITS THIS HARNESS SERVES, because both rows it reads carry
-// a projection today. It exists so that adding a unit whose runtime has never served cannot silently
-// unwrap into a fabricated name, which is what the previous bare-typed signature would have done.
-fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+// THE ABSENT ARM IS UNREACHABLE FOR EVERY UNIT THIS HARNESS SERVES TODAY, because every row it reads carries a
+// field. The optional answer keeps a unit whose field is an uncited figure, or whose runtime has never served,
+// from silently unwrapping into a fabricated name, which is what the previous bare-typed signature would have done.
+fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? {
   match harness_unit_reasoning_projection(unit: unit) {
     Absent => harness_unit_model_reasoning_field(unit: unit)
-    Present { value: ParsedReasoningField { field: f } } => f
+    Present { value: ParsedReasoningField { field: f } } => Present { value: f }
     Present { value: InlineReasoning { end_token: _ } } => harness_unit_model_reasoning_field(unit: unit)
   }
 }
@@ -461,13 +492,13 @@ fn harness_unit_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 // wire carries reasoning for such a unit, so any name is unused by the decoder; naming the model's own
 // field keeps the answer meaningful if that unit is later relaunched WITH a parser, and keeps this
 // function total without inventing a sentinel the caller would have to branch on.
-fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
+fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? {
   match unit {
-    DeepseekV4FlashOnVllm => deepseek_v4_chat_reasoning_field
-    Glm53FlashOnVllm => glm_5_3_flash_chat_reasoning_field
-    NemotronUltraFreeOnOpenRouter => openrouter_message_reasoning_field
-    Qwen3_8_27bOnNinfer => ninfer_message_reasoning_field
-    Qwen38FlashNextOnFabricRouter => ninfer_message_reasoning_field
+    DeepseekV4FlashOnVllm => Present { value: deepseek_v4_chat_reasoning_field }
+    Glm53FlashOnVllm => Present { value: glm_5_3_flash_chat_reasoning_field }
+    NemotronUltraFreeOnOpenRouter => Present { value: openrouter_message_reasoning_field }
+    Qwen3_8_27bOnNinfer => Present { value: ninfer_message_reasoning_field }
+    Qwen38FlashNextOnFabricRouter => Present { value: ninfer_message_reasoning_field }
   }
 }
 
@@ -481,7 +512,11 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr {
 fn harness_unit_reasoning_field_aliases(unit: HarnessServingUnit) -> List<NonEmptyStr> {
   match harness_unit_reasoning_projection(unit: unit) {
     Absent => [] as List<NonEmptyStr>
-    Present { value: ParsedReasoningField { field: _ } } => [harness_unit_model_reasoning_field(unit: unit)]
+    Present { value: ParsedReasoningField { field: _ } } =>
+      match harness_unit_model_reasoning_field(unit: unit) {
+        Present { value: f } => [f]
+        Absent => [] as List<NonEmptyStr>
+      }
     Present { value: InlineReasoning { end_token: _ } } => [] as List<NonEmptyStr>
   }
 }
@@ -551,13 +586,13 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
 // THE INLINE CLOSER, for the client-side split the unit above still needs. Carried even where the
 // server parses, because a parser can be absent from a rebuilt engine and the token is the model's
 // either way.
-fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr {
+fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr? {
   match unit {
-    DeepseekV4FlashOnVllm => deepseek_v4_thinking_end_token
-    Glm53FlashOnVllm => glm_5_3_flash_thinking_end_token
-    NemotronUltraFreeOnOpenRouter => nemotron_ultra_thinking_end_token
-    Qwen3_8_27bOnNinfer => ninfer_inline_think_end_token.token
-    Qwen38FlashNextOnFabricRouter => ninfer_inline_think_end_token.token
+    DeepseekV4FlashOnVllm => Present { value: deepseek_v4_thinking_end_token }
+    Glm53FlashOnVllm => Present { value: glm_5_3_flash_thinking_end_token }
+    NemotronUltraFreeOnOpenRouter => Present { value: nemotron_ultra_thinking_end_token }
+    Qwen3_8_27bOnNinfer => Present { value: ninfer_inline_think_end_token.token }
+    Qwen38FlashNextOnFabricRouter => Present { value: ninfer_inline_think_end_token.token }
   }
 }
 

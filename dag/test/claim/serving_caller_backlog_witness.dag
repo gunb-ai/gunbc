@@ -724,7 +724,8 @@ fn worker_with_turn(dispatch_node: String, turn_ordinal: Int, state_root: String
   harness_durable_worker_cli(
     worktree: "/nonexistent/worktree", brief: "b", timeout_program: "timeout", request_scratch_path: "/nonexistent/req",
     events_path: "/nonexistent/events", repo_root: "/nonexistent/repo", gunbc_program: "gunbc", attempt_identity: "a",
-    alignment_chain_fingerprint: "f", dispatch_node: dispatch_node, turn_ordinal: turn_ordinal, state_root: state_root,
+    alignment_chain_fingerprint: "f", supervision_prompt: "p", supervision_dir: "/nonexistent/supervision", handin_inbox: "/nonexistent/inbox",
+    node_id: "node", attempt_key: "0123456789abcdef", dispatch_node: dispatch_node, turn_ordinal: turn_ordinal, state_root: state_root,
   )
 }
 

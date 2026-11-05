@@ -12,7 +12,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   ClaudeProviderCredentialUnbound,
-  dispatch_provider_inner_argv_for_launch,
+  dispatch_provider_inner_argv_for_launch, DispatchWorkerFirst,
+  dispatch_attempt_state_path_for_instance,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { PreparedAttemptLaunch, SnapshotFreeLaunch, CodexWithoutSnapshot, HarnessWithoutSnapshot }
@@ -44,6 +45,8 @@ fn inner_for_launch(prepared: PreparedAttemptLaunch) -> DispatchProviderInnerArg
     worktree_path: "/tmp/w",
     brief: "brief",
     alignment_chain_fingerprint: "fp",
+    supervision_prompt: "the rendered chain",
+    run: DispatchWorkerFirst,
   )
 }
 
@@ -122,6 +125,37 @@ test fn a_codex_turn_off_its_custody_host_refuses() -> Bool {
   }
 }
 
+// THE HARNESS WORKER IS SPAWNED SUPERVISED (gunbc.plans.harness_session_lifecycle, slice S1): the
+// production spawn fold hands it the rendered chain its alignment check asks about and the attempt's
+// own state directory for the check's verdicts, beside the fingerprint -- so the pause at a round
+// boundary has everything it needs in-process and nothing routes back through the belt.
+test fn a_harness_worker_on_srv1_carries_its_supervision() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  let attempt = worker_turn_attempt(instance: instance)
+  match fx_prepared_launch(
+    requested: attempt,
+    launch: SnapshotFreeLaunch { attempt: attempt, executor: HarnessWithoutSnapshot },
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    none => false
+    Present { value: prepared } =>
+      match ready_argv(inner: inner_for_launch(prepared: prepared)) {
+        Absent => false
+        Present { value: argv } =>
+          has_pair(argv: argv, flag: "--arg", value: "alignment_chain_fingerprint=fp")
+            && has_pair(argv: argv, flag: "--arg", value: "supervision_prompt=the rendered chain")
+            && has_pair(argv: argv, flag: "--arg", value: join([
+                 "supervision_dir=",
+                 dispatch_attempt_state_path_for_instance(instance: instance, node_id: attempt.node.node, attempt_key: attempt.attempt_key),
+               ], ""))
+            && has_pair(argv: argv, flag: "--arg", value: "node_id=node-worker-turn")
+            && has_pair(argv: argv, flag: "--arg", value: "attempt_key=0123456789abcdef")
+            && string_contains(s: join(argv, separator: "\0"), pattern: "\0handin_inbox=")
+      }
+  }
+}
+
 // THE BELT ENTRY IS UNACTIVATED (operator ruling, flex 7): the production spawn fold passes no durable turn, so a
 // belt worker keeps the operator-route behaviour and claims no durability. Activation is a fleet-seat placement
 // for BatchQualityTolerant belt work (gunbc.serving.caller_retry_contract serving_route_caller_retry_rows). Passing
@@ -136,17 +170,13 @@ test fn the_emitted_worker_argv_passes_no_durable_turn() -> Bool {
   ) {
     none => false
     Present { value: prepared } =>
-      match inner_for_launch(prepared: prepared) {
-        DispatchProviderInnerArgvReady { argv } =>
+      match ready_argv(inner: inner_for_launch(prepared: prepared)) {
+        Absent => false
+        Present { value: argv } =>
           string_contains(s: join(argv, separator: "\0"), pattern: "alignment_chain_fingerprint=")
             && !string_contains(s: join(argv, separator: "\0"), pattern: "dispatch_node=")
             && !string_contains(s: join(argv, separator: "\0"), pattern: "turn_ordinal=")
             && !string_contains(s: join(argv, separator: "\0"), pattern: "state_root=")
-        CodexProviderExecutableAbsent { reason: _ } => false
-        CursorProviderOffCustodyHost { reason: _ } => false
-        CursorProviderCredentialUnbound { reason: _ } => false
-        CodexProviderOffCustodyHost { reason: _ } => false
-        ClaudeProviderCredentialUnbound { reason: _ } => false
       }
   }
 }

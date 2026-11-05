@@ -2,7 +2,7 @@ module gunbc.compute.work_provider_local
 
 import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
 import gunbc.compute.compute_attempt_slots_root {
-  compute_attempt_slots, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
+  compute_attempt_slots, compute_attempts_path, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
   ComputeSeatStore, compute_seat_store, ComputeSeatStoreReady, ComputeSeatStoreUnready,
   compute_dispatch_seats, ComputeSeatsListed, ComputeSeatsUnreadable,
 }
@@ -17,9 +17,12 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
-  Filesystem, filesystem_listing_names_entry, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  Filesystem, filesystem_listing_names_entry,
+  FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
+  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_listing_observation, filesystem_listing_entry_names, filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
 }
+import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.git_diff_change_window { gunbc_diff_window_path_env }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_array, serialize_json }
@@ -65,6 +68,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable,
   attempt_open, attempt_begin_launch, attempt_terminate, attempt_transition_wire, attempt_slot_read,
+  attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysAbsent, AttemptSlotKeysRefused,
   compute_pre_launch_ceiling_seconds,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -135,7 +139,7 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ComputePrincipalNotServiceUser, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -2011,6 +2015,13 @@ fn compute_store(instance: HostDashboardInstance) -> ComputeStore? {
   }
 }
 
+// THE STORE'S OWN DIRECTORIES ARE DEMANDED IN gunbc.compute.compute_store_owned_directories
+// compute_store_owned_directories -- declared by the route that writes them, joined to the instance's
+// one list by gunbc.roadmap.dashboard_instance_directories. It lives in its own module because the
+// consumer list cannot import this one (its layer feeds gunbc.live_deploy.spec, which the list also
+// imports) -- the registry's rule is that each consumer declares its demand in a module the LIST can
+// reach.
+
 data compute_requests_frame: Frame = Frame { name: "compute-host-requests", kind: UnboundedSiblingsFrame }
 
 type ComputeMaterializationPlan
@@ -2879,28 +2890,115 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
 // claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
 // occurrence, never reads the store and is never committed, so it is served here rather than refused.
+// THE PRINCIPAL GATE: the first arm of admission, before a toolchain is observed, a subject resolved,
+// a store opened, a capacity-ledger grant drawn or a compute root touched.
+//
+// WHY IT SITS HERE AND NOT IN THE FILESYSTEM. compute_root(instance) (gunbc.compute.host_capacity) is
+// the instance's SHARED compute directory and every reservation goes through the HOST capacity ledger
+// (/opt/gunbc/compute/capacity), so a principal the instance does not trust must never be the one
+// standing in front of either. The srv1 lab's dedicated worker used to be kept out by an ABSENCE --
+// the instance declared no materialization store, so MaterializationStoreUndeclared refused before
+// shared state was reachable (the store's whole exclusion power was accidental). The lab now declares
+// a store, because its verification obligation runs compute as the instance's SERVICE USER and a
+// store-less instance can never accept an attempt (measured on srv1 2026-10-25: attempt
+// 71ac07ca21af8e29 handed in, the belt committed the candidate, acceptance came back `unavailable`
+// with MaterializationStoreUndeclared). Declaring the store moved the worker's refusal from a typed
+// refusal to an EACCES somewhere in the ledger or the compute root -- an outcome that depends on the
+// modes the deploy happens to have set, which DESIGN 5 does not allow an exclusion to rest on. So the
+// worker is refused BY WHO IT IS, at admission, with a cause that says so.
+//
+// THE COMPARISON IS DERIVED, NEVER LITERAL. `instance.directory_owner.user` is the account the
+// instance's directories are owned by -- which IS its service user: it is derived from the instance's
+// service principal (gunbc.roadmap.roadmap_dashboard_instance linux_service_directory_owner), it is the
+// account the belt's verification obligation runs as, and an instance whose worker IS the service user
+// passes the gate by construction (dashboard_instance_worker_user's WorkerIsServiceUser arm returns
+// exactly this account). A dedicated worker's unit runs as the account that same fn derives from
+// fleet_posix_worker_user -- a DIFFERENT name, which is precisely what this gate refuses. The running
+// account comes from the existing observation,
+// shell.Id.UserName (extdeps.shell -- the same one gunbc.fabric.fabric_source_snapshot
+// observe_provider_principal reads); this module adds no uid constant and no host-specific literal.
+// A refusal whose principal is not the service user is refused for EVERY instance, including
+// macbook-local and srv2-deploy: the rule is about the principal, not about the lab.
+//
+// AN UNOBSERVABLE ACCOUNT REFUSES. If `id -un` cannot name the running account the request is refused
+// with the unobservable stand-in: DESIGN 5 fails closed, and admitting on an unread principal is the
+// shape this gate exists to remove.
+fn compute_principal_refusal(instance: HostDashboardInstance, principal: String) -> WorkInfrastructureRefusal? {
+  if principal == (instance.directory_owner.user as String) {
+    none
+  } else {
+    Present {
+      value: ComputePrincipalNotServiceUser {
+        instance_id: instance.instance_id as String,
+        principal: principal,
+      }
+    }
+  }
+}
+
+// THE RUNNING ACCOUNT, read through the observation the corpus already has. Empty output is unreadable,
+// in the same shape as the fabric readback that first used this observation.
+data compute_unobservable_principal: String = "unobserved"
+
+fn compute_running_principal() -> String {
+  let named = shell.Id.UserName()
+  if !named.success {
+    compute_unobservable_principal
+  } else {
+    let trimmed = trim(s: named.stdout)
+    if trimmed == "" {
+      compute_unobservable_principal
+    } else {
+      trimmed
+    }
+  }
+}
+
 fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op)
 }
 
+// The admitted route as the RUNNING account: the gate reads the principal through the observation and
+// refuses before any of the routes below can run.
 fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  match compute_observe_toolchain(instance: instance) {
-    ToolchainObservationRefused { detail } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-    ToolchainObserved { toolchain } =>
-      match compute_resolve_subject(instance: instance, commit: commit) {
-        SubjectResolutionRefused { detail } =>
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-        SubjectResolved { subject } =>
-          match compute_store(instance: instance) {
-            Absent =>
-              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
-            Present { value: store } =>
-              match op {
-                BuildGunbcBinaries { profile: _, bins: _ } =>
-                  compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+  compute_provide_admitted_as(
+    instance: instance,
+    principal: compute_running_principal(),
+    owner: owner, commit: commit, op: op,
+  )
+}
+
+// The admitted route AS A GIVEN PRINCIPAL, so a witness can name the account it claims to be. The gate
+// is the FIRST arm: a principal that is not the instance's service user is refused here, with the
+// typed cause, and nothing below it -- no toolchain observation, no subject resolution, no store open,
+// no ledger grant, no compute root -- is reached. That order is the claim
+// test.claim.compute.compute_principal_admission_witness an_absent_store_is_not_the_workers_exclusion_anymore,
+// whose RED control removes the gate arm and expects the refusal's cause to change on a STILL
+// store-less instance: a refusal that is only about the missing store would survive that removal,
+// and this one does not.
+fn compute_provide_admitted_as(instance: HostDashboardInstance, principal: String, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
+  match compute_principal_refusal(instance: instance, principal: principal) {
+    Present { value: refusal } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: refusal }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+    Absent =>
+      match compute_observe_toolchain(instance: instance) {
+        ToolchainObservationRefused { detail } =>
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+        ToolchainObserved { toolchain } =>
+          match compute_resolve_subject(instance: instance, commit: commit) {
+            SubjectResolutionRefused { detail } =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+            SubjectResolved { subject } =>
+              match compute_store(instance: instance) {
+                Absent =>
+                  compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+                Present { value: store } =>
+                  match op {
+                    BuildGunbcBinaries { profile: _, bins: _ } =>
+                      compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                    CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                    RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                  }
               }
           }
       }
@@ -2920,7 +3018,7 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
     match compute_dependency_read(store: store, build: ComputeWorkRequest { subject: subject, operation: work_default_build(), toolchain: toolchain }) {
       ComputeDependencyRefused { detail } =>
         provide_result_with_host_record(
-          r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], "") } }, subject: subject, op: op),
+          r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: build_identity, ending: join(["succeeded, but ", detail], ""), dependency_outcome: provide_result_document(r: build) } }, subject: subject, op: op),
           carried: provide_result_host_record(r: build))
       ComputeDependencyResolved { dependency } =>
         provide_result_with_host_record(
@@ -2930,7 +3028,7 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
   } else {
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
     provide_result_with_host_record(
-      r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
+      r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build), dependency_outcome: provide_result_document(r: build) } }, subject: subject, op: op),
       carried: provide_result_host_record(r: build))
   }
 }
@@ -3291,6 +3389,100 @@ fn compute_recover_exit(outcome: ComputeRecovery, receipt_path: String) -> Proce
     }
   }
 }
+
+// THE HELD-SEAT SWEEP, the first slice of the guaranteed-cleanup leaf (gunbc.plans.convergence_coverage_program
+// cc-guaranteed-cleanup): an ensure over every compute attempt slot, observed and acted on through the
+// one recovery door above rather than a second one. A seat whose unit is proven ended is drifted and
+// the door frees it; a seat inside its launch window, or whose unit still runs, the door declines
+// (no-op); a seat it cannot decide stays charged and is named. Terminal slots are skipped before any
+// unit is observed. Its driver is the belt's record-moved obligation set, so it runs after every
+// attempt's obligations -- including the exit of a worker whose turn ended mid-build, the source of
+// every orphaned seat on the srv1 lab (2026-10-11). A slot directory that cannot be listed refuses:
+// an unlisted directory is not an empty one.
+type ComputeSeatSweep
+  = ComputeSeatsSwept { recoveries: List<ComputeRecovery> }
+  | ComputeSeatSweepRefused { detail: String }
+
+// A slot is named <reference>.<generation>, and a reference (identity @ UTC second) carries no dot.
+fn compute_attempt_slot_references(names: List<String>) -> List<String> {
+  fold(names |> filter(n => trim(n) != "") |> flat_map(n => match split(s: trim(n), delimiter: ".").first() {
+    Present { value: r } => [r]
+    Absent => [] as List<String>
+  }), init: [] as List<String>, f: fn(acc, r) { if acc |> any(x => x == r) { acc } else { concat(acc, [r]) } })
+}
+
+fn compute_attempt_state_open(state: AttemptState) -> Bool {
+  match state {
+    AttemptReserved => true
+    AttemptLaunching => true
+    AttemptTerminal { verdict: _, detail: _ } => false
+  }
+}
+
+fn compute_seat_offer(instance: HostDashboardInstance, seat: ComputeSeatStore, reference: NonEmptyStr) -> List<ComputeRecovery> {
+  match attempt_slot_read(store: seat.slots, reference: reference) {
+    AttemptSlotAbsent => [] as List<ComputeRecovery>
+    AttemptSlotUnreadable { detail } => [RecoveryRefused { detail: join(["the attempt slot for ", reference as String, " could not be read: ", detail], "") }]
+    AttemptSlotHeld { record, generation: _ } =>
+      if compute_attempt_state_open(state: record.state) { [compute_recover_attempt(instance: instance, reference: reference)] } else { [] as List<ComputeRecovery> }
+  }
+}
+
+// The sweep reads every seat main's mints yield (the flat seat and each dispatch seat, as compute_recover_seats
+// does), and lists each through its sealed store; no path reaches a slot function.
+fn compute_seat_offers_in(instance: HostDashboardInstance, seat: ComputeSeatStore) -> ComputeSeatSweep {
+  match attempt_slot_keys(store: seat.slots) {
+    AttemptSlotKeysRefused { detail } => ComputeSeatSweepRefused { detail: detail }
+    AttemptSlotKeysAbsent { store: _ } => ComputeSeatSweepRefused { detail: "the seat's slot store was never created, so the sweep did not look; absence is not an empty seat" }
+    AttemptSlotKeysListed { keys } => ComputeSeatsSwept { recoveries: keys |> flat_map(r => compute_seat_offer(instance: instance, seat: seat, reference: r)) }
+  }
+}
+
+fn compute_seat_sweep_stores(instance: HostDashboardInstance, stores: List<ComputeSeatStore>) -> ComputeSeatSweep {
+  fold(stores, init: ComputeSeatsSwept { recoveries: [] }, f: (acc, st) => match acc {
+    ComputeSeatSweepRefused { detail: d } => ComputeSeatSweepRefused { detail: d }
+    ComputeSeatsSwept { recoveries: rs } =>
+      match compute_seat_offers_in(instance: instance, seat: st) {
+        ComputeSeatSweepRefused { detail: d } => ComputeSeatSweepRefused { detail: d }
+        ComputeSeatsSwept { recoveries: more } => ComputeSeatsSwept { recoveries: concat(rs, more) }
+      }
+  })
+}
+
+fn compute_seat_sweep(instance: HostDashboardInstance) -> ComputeSeatSweep {
+  let root = compute_attempts_path(instance: instance)
+  match filesystem_entry_presence_of_path(path: root as String) {
+    FilesystemEntryAbsent(_) => ComputeSeatsSwept { recoveries: [] }
+    FilesystemEntryPresenceIndeterminate { cause } =>
+      ComputeSeatSweepRefused { detail: join(["whether compute attempt slots exist at ", root as String, " could not be established: ", cause], "") }
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause } => ComputeSeatSweepRefused { detail: cause }
+    FilesystemEntryListed { directory: _, name: _ } =>
+      match compute_dispatch_seats(instance: instance) {
+        ComputeSeatsUnreadable { reason } => ComputeSeatSweepRefused { detail: reason }
+        ComputeSeatsListed { seats } =>
+          match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
+            ComputeSeatStoresUnready { detail } => ComputeSeatSweepRefused { detail: join(["a seat's attempt store is not ready: ", detail], "") }
+            ComputeSeatStoresReady { stores } => compute_seat_sweep_stores(instance: instance, stores: stores)
+          }
+      }
+  }
+}
+
+// What the sweep could not settle: a refusal, or a closed attempt whose seat did not come back. A
+// declined seat is the door doing its job and is not a failure.
+fn compute_seat_sweep_failures(s: ComputeSeatSweep) -> List<String> {
+  match s {
+    ComputeSeatSweepRefused { detail } => [join(["compute seat sweep refused: ", detail], "")]
+    ComputeSeatsSwept { recoveries } => recoveries |> flat_map(r => match r {
+      RecoveryReleased { reference: _, verdict: _, seat: _ } => [] as List<String>
+      RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => [] as List<String>
+      RecoveryDeclined { reference: _, why: _ } => [] as List<String>
+      RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => [compute_recovery_wire(r: r)]
+      RecoveryRefused { detail: _ } => [compute_recovery_wire(r: r)]
+    })
+  }
+}
+
 
 // THE RECEIPT STAYS THE DOCUMENT, AND THE HOST-RECORD FACT GETS ITS OWN FILE BESIDE IT.
 //

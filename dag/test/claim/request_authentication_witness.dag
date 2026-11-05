@@ -30,19 +30,19 @@ import gunbc.auth.session {
   SessionCookieStanding, SessionCookieValid, SessionCookieExpired, SessionCookieAbsent,
   SessionCookieUnknown, SessionCookieUnread, SessionCookieMalformed,
 }
-import gunbc.principal_projection { PrincipalRef }
+import gunbc.principal_projection { PrincipalRef, principal_ref_eq }
 import gunbc.deployment_risk { srv1_lab_codex_feedback_deployment, srv1_daily_workspace_deployment }
 import gunbc.auth.request_authentication {
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, AuthAbsent,
   SessionStandingInvalid,
   FabricServiceEvidenceSubmissionMac,
   DeploymentAccessPolicy,
-  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionDispatchNode,
+  ServeActionAssignIssue, ServeActionCommentIssue, ServeActionApproveDecision, ServeActionRetireLineage, ServeActionDispatchNode,
   ServeRouteAction,
   ServeActionStopNode, ServeActionPublishNode, ServeActionCreateIssue,
   ServeWriteAuthorizationPolicy,
-  tracker_write_authorization_policy, write_authorization_policy_for, srv1_host_account_enrolments,
-  HostAccountPeerEvidence, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
+  tracker_write_authorization_policy, operator_approver_principal, write_authorization_policy_for, srv1_host_account_enrolments,
+  HostAccountPeerEvidence, HostAccountEnrolment, host_account_evidence_of_ingress, lab_agent_principal, lab_agent_host_account,
   request_access_path_of, tailnet_transport_observation, authenticated_viewer_label,
   human_write_admission, service_write_authentication_decision,
   request_authentication_evidence_of_standing,
@@ -646,6 +646,48 @@ test fn a_forged_cookie_mints_nothing_and_each_invalid_standing_refuses_with_its
   }
 }
 
+// RETIRING A LINEAGE IS THE OPERATOR'S DECISION (LINEAGE-RETIRE-1): a signed-in Workspace human
+// outside the approve roster is refused with the action's label; a rostered principal is admitted.
+test fn retiring_a_lineage_admits_exactly_the_approve_roster() -> Bool {
+  match witness_mint_session(expires_at: "2026-09-25T12:00:00Z") {
+    SessionRefused { cause: _ } => false
+    SessionMinted { session: s } =>
+      match human_write_admission(
+        route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+        action: ServeActionRetireLineage,
+        security: session_security(session: s),
+        authorization_policy: open_write_policy(),
+        deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+        csrf_presented: "csrf-1",
+        observed_at: fn() { "2026-09-25T00:05:00Z" },
+      ) {
+        Deny { refusal } =>
+          match refusal.cause {
+            AccessActionNotGranted { action: a } => a == "retire-lineage"
+            _ => false
+          }
+        Permit => false
+      }
+        && human_write_admission(
+          route_path: "/dispatch/n/retire-lineage" as NonEmptyStr,
+          action: ServeActionRetireLineage,
+          security: session_security(session: s),
+          authorization_policy: ServeWriteAuthorizationPolicy { approve_roster: [s.principal], agent_roster: [] },
+          deployment_policy: DeploymentAccessPolicy { tailnet_path_required: false },
+          csrf_presented: "csrf-1",
+          observed_at: fn() { "2026-09-25T00:05:00Z" },
+        ) == Permit
+  }
+}
+
+// THE PRODUCTION ROSTER IS EXACTLY THE ENROLLED OPERATOR, an identity join rather than a count, so a
+// widened roster (a second principal minted beside the operator's) goes red here.
+test fn the_production_approve_roster_is_exactly_the_enrolled_operator() -> Bool {
+  let roster = tracker_write_authorization_policy.approve_roster
+  any(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+    && all(roster, p => principal_ref_eq(a: p, b: operator_approver_principal))
+}
+
 // ── LAB AGENT ASSIGN + DISPATCH ─────────────────────────────────────────────────────────────────
 // GRANT, operator in chat 2026-11-04: "can i make it so you can also assign/dispatch so i don't need to
 // click the button?". Each claim varies one term over SUPPLIED evidence: the policy the deployment
@@ -692,6 +734,7 @@ test fn the_agent_is_refused_every_action_but_assign_and_dispatch() -> Bool {
     && !agent_admitted_under(action: ServeActionCommentIssue, policy: lab, security: agent_security())
     && !agent_admitted_under(action: ServeActionStopNode, policy: lab, security: agent_security())
     && !agent_admitted_under(action: ServeActionPublishNode, policy: lab, security: agent_security())
+    && !agent_admitted_under(action: ServeActionRetireLineage, policy: lab, security: agent_security())
 }
 
 test fn absent_and_unenrolled_identities_are_refused_assign_and_dispatch_on_the_lab() -> Bool {
@@ -721,6 +764,7 @@ test fn an_unrostered_host_account_principal_is_refused_even_on_the_lab() -> Boo
   !agent_admitted_under(action: ServeActionAssignIssue, policy: write_authorization_policy_for(deployment: srv1_lab_codex_feedback_deployment), security: stranger)
 }
 
+// THE PRODUCTION ROSTER NEVER GAINS AN AGENT: the policy every non-lab deployment selects has no agent.
 test fn the_production_agent_roster_is_empty() -> Bool {
   all(tracker_write_authorization_policy.agent_roster, p => false)
 }

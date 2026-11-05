@@ -47,7 +47,7 @@ test fn the_worker_unit_denies_the_docker_and_lxd_sockets() -> Bool {
 
 test fn the_review_audit_and_supervisor_units_deny_the_sockets() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  denies_every_socket(props: dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: exit_hook()))
+  denies_every_socket(props: dispatch_review_unit_properties(instance: inst, granted: inst.dispatch_worker_memory_max, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: exit_hook()))
 }
 
 test fn the_verification_compute_unit_denies_the_sockets() -> Bool {

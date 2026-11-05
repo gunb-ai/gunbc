@@ -15,6 +15,8 @@ import gunbc.live_deploy.spec {
   ComposeOwned, UpsertOwned,
   SystemdUnit, FleetConvergeTimerUnit, FabricStorageServeUnit, FabricStorageServeMapping, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
   ServeBinary, GunbcSourceTree, BeltEventPathUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, ApprovalBrokerFrontDoor, AttemptUnitDrainPathUnit,
+  AgentDoorServeUnit,
+  deployment_agent_door_unit_name,
   deployment_fabric_storage_door_socket, deployment_fabric_storage_serve_endpoint, deployment_approval_broker_front_door_endpoints,
   deployment_tailnet_door_unit_name, deployment_fabric_storage_unit_name,
   deployment_agent_door_unit_name, deployment_attempt_unit_drain_path_unit_name, deployment_attempt_unit_drain_service_unit_path,
@@ -174,6 +176,8 @@ fn deploy_retract_artifact_plan(art: DeploymentArtifactStep, spec: DeploymentSpe
           ],
         ),
       }
+    ComposeOwned { kind: AgentDoorServeUnit } =>
+      RetractPlanReady { legs: retract_unit_teardown(units: [deployment_agent_door_unit_name(names: spec.names)], head: art.path, rest: []) }
     UpsertOwned { kind: AttemptUnitDrainPathUnit } =>
       RetractPlanReady {
         legs: retract_unit_teardown(

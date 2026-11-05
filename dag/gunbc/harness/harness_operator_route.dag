@@ -1,6 +1,6 @@
 module gunbc.harness.harness_operator_route
 
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, HttpStatus }
 import std.algebra { trim, list_init }
 import std.nat { Nat }
 import std.optional { Present, Absent }
@@ -422,6 +422,42 @@ fn operator_round_fault_text(fault: OperatorRoundFault) -> String {
   match fault {
     OperatorCertificateNotPinned { curl_exit: c } => join(["the router presented a certificate that is not the pinned one (curl exit ", to_string(c), "); the request was refused in the handshake and not retried. "], "")
     OperatorCertificateNotVerifiedForHost { curl_exit: c } => join(["the router's certificate did not verify against the trusted anchor or the host (curl exit ", to_string(c), "); the request was refused in the handshake and not retried. "], "")
+  }
+}
+
+// THE OPERATOR ROUTE'S CAPACITY ANSWERS, read from the HTTP status the route answered (the response-header dump),
+// never from the body's text, and named for what they mean on any front rather than for one front's product.
+// 503 is no capacity to serve the request, 502 is an upstream that was chosen and did not answer, 429 is every
+// compatible upstream busy. Each means NOTHING WAS SERVED and no effect was taken, so under the patient request
+// contract (operator direction 2026-10-27) the request stands pending and the belt re-delivers it. Typed apart from
+// OperatorRoundFault because those are handshake refusals that are terminal; these are answers that stand.
+// The meanings are the contract the lab holds the route to, not a cited reading of the router's own documentation.
+type OperatorCapacityAnswer
+  = OperatorNoCapacity
+  | OperatorUpstreamUnanswered
+  | OperatorUpstreamsBusy
+
+fn operator_capacity_answer(status: HttpStatus?) -> OperatorCapacityAnswer? {
+  match status {
+    Absent => none
+    Present { value: st } =>
+      if st == 503 {
+        Present { value: OperatorNoCapacity }
+      } else if st == 502 {
+        Present { value: OperatorUpstreamUnanswered }
+      } else if st == 429 {
+        Present { value: OperatorUpstreamsBusy }
+      } else {
+        none
+      }
+  }
+}
+
+fn operator_capacity_answer_text(answer: OperatorCapacityAnswer) -> String {
+  match answer {
+    OperatorNoCapacity => "the operator route answered 503 (no capacity to serve the request)"
+    OperatorUpstreamUnanswered => "the operator route answered 502 (the upstream it chose did not answer)"
+    OperatorUpstreamsBusy => "the operator route answered 429 (every compatible upstream busy)"
   }
 }
 

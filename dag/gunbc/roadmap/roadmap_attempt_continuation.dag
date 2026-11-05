@@ -1,18 +1,19 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
-
-import std.types { String, Bool, Int, List, NonEmptyStr }
-import gunbc.roadmap.roadmap_model { RoadmapEdge }
+import std.algebra { length }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
+import gunbc.roadmap.roadmap_refused_retry {
+  RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, refused_retry_exhausted_reason,
+}
 import gunbc.roadmap.roadmap_submission {
   SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
-import gunbc.roadmap.roadmap_supervisor {
-  SupervisorVerdict, VerdictNominal, VerdictPlanDefect, VerdictStuck,
-  SupervisorVerdictReceipt,
-  SupervisorVerdictObservation, SupervisorVerdictAbsent, SupervisorVerdictBound, SupervisorVerdictUnreadable,
-  SupervisorTarget, SupervisorEscalation, supervisor_target_for,
+import gunbc.harness.harness_session_recovery {
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, SessionRecoveryRequestPending, session_resume_bound,
+}
+import gunbc.harness.harness_transport_retry_policy {
+  harness_transport_retry_policy_now, transport_retry_next_delivery_at, transport_retry_redelivery_due,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
@@ -20,128 +21,77 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
 }
 
-// WHERE A NEW ATTEMPT STARTS FROM. Until 2026-09-05 every attempt of a node started fresh from the
-// instance's base ref with the node's brief, so a worker that spent its round budget mid-task was
-// followed by a worker that began the same task from nothing: five attempts of one node, each
-// re-reading the same files, none of them told what the last one had done or what verification said
-// about it. The belt already commits a terminal attempt's work to its branch and runs the pinned
-// verification against that head; a continuation starts the next turn FROM that branch and puts the
-// verdict at the top of its brief, so the loop is write -> verify -> diagnose -> write, on one lineage.
-//
-// turn is 1-based and counts turns in the lineage, not attempts of the node: a fresh start after a
-// refused continuation begins a new lineage at 1.
-type AttemptOrigin
-  = FreshFromBase
-  | ContinueFromAttempt {
-      parent_attempt_key: String,
-      branch: String,
-      turn: Int,
-      verdict_detail: String,
-    }
+import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
 
-// THE FACTS THE DECISION READS, and nothing else. The belt's progress carrier holds far more
-// (reconciliation, the round ledger, the admission receipt); the decision needs the node's identity
-// (the escalation target derives from it), the decomposition edges, the prior attempt's key and
-// branch, whether its worker has ended, what its submission capture says the terminal state meant,
-// what verification said, and whether a supervisor has adjudicated the lineage, so it takes
-// exactly those and a witness can author them without building a whole progress row. The capture
-// is the same head-grain observation the verify gate reads: a terminal worker whose capture
-// declares blocked or needs-context, or whose commit was preservation only, has UNFINISHED work on
-// its branch -- not a candidate -- and the next turn continues from that branch rather than
-// starting over from base.
+// WHETHER A NODE'S NEXT ATTEMPT MAY START. Every attempt starts from the instance's base ref; there
+// is no second origin. Until gunbc.plans.harness_session_lifecycle slice S1 a terminal attempt was
+// CONTINUED by a new attempt on its branch -- a fresh worker, a fresh conversation, the prior turn's
+// verdict at the top of its brief -- and a worker that spent its round budget was restarted that way
+// every forty turns. A supervised session no longer ends at a round boundary, so that lane is gone
+// with its turn cap, its turn file and its stretch supervisor; a candidate's revision continues the
+// worker's own session once hand-in awaits acceptance (slice S2), never a replacement attempt.
+
+// THE FACTS THE DECISION READS, and nothing else: the prior attempt's key and branch, whether its
+// worker has ended, what its submission capture says the end meant, and what verification, review
+// and the goal audit said. The capture is the same head-grain observation the verify gate reads.
 type PriorAttemptFacts {
   node_id: String
-  memberships: List<RoadmapMembership>
   attempt_key: String
   branch: String
   worker_terminal: Bool
   capture: SubmissionCaptureObservation
-  supervisor_verdict: SupervisorVerdictObservation
   verification: WorkflowSegment?
   review: WorkflowSegment?
   goal_audit: WorkflowSegment?
+  recovery: SessionRecovery
+  // THE CLOCK THE SCHEDULE IS READ AGAINST, supplied by the belt as a supplied reading: one epoch-second
+  // instant per sweep, passed down -- the std.types carrier, so it cannot be confused with a count or an
+  // offset. Absent means the sweep could not read the clock, which is refused where a re-delivery instant
+  // is to be named -- never guessed at, and never an ending.
+  now: EpochSecs?
+  verification_retry: RefusedRetryStanding
 }
-
-// THE PRIOR TURN NUMBER, AS READ FROM ITS ATTEMPT STATE. Absent is an attempt that predates the
-// continuation-turn file and is read as turn 1; unreadable is refused, never guessed, because a
-// guessed 1 would let a lineage run past its cap by one unreadable file at a time.
-type ContinuationTurnRead
-  = ContinuationTurnAbsent
-  | ContinuationTurnKnown { turn: Int }
-  | ContinuationTurnUnreadable { reason: String }
 
 // THE VOCABULARY NAMES WHAT THE BELT MAY DO, and Fresh means exactly one fact (branch review
-// 2026-09-23, blocker 2): ContinuationFresh used to answer both "no lineage exists" and "a lineage
-// exists but is unresolved" (worker running, verification pending), and the belt consumed both by
-// spawning a NEW attempt from base -- a second lineage beside the live one. Repaired:
-// SpawnFresh is "it is established that no prior owned lineage exists for this node";
-// SpawnFromPrior carries the origin the spawn uses; Hold spawns nothing while a verdict or a
-// worker is outstanding; Complete spawns nothing because the lineage is fully approved; Refused is
-// the arm that must not widen: a prior attempt whose turn cannot be read, a verdict receipt that
-// cannot be decoded, a membership the authority leaves ambiguous, or a verification segment in a
-// state verification does not inhabit does NOT fall back to a fresh start -- that would discard
-// committed work silently -- it refuses with a located reason the dashboard shows, and the
-// operator decides.
-//
-// THE CAP IS A CADENCE, NOT A REFUSAL (owner ruling 2026-09-22; docs/plans/harness-work-lifecycle.md
-// "Resource policy"): a lineage that reaches its turn cap ESCALATES to the supervisor derived from
-// the decomposition DAG, and the supervisor's adjudication is the alignment verdict. Escalate
-// carries the escalation record when no verdict exists yet; a bound Nominal verdict for THIS turn
-// issues the renewed continuation on the supervisor's stated evidence; PlanDefect and Stuck are
-// terminal typed states of their own -- they are never spelled "failed", because a budget spent is
-// not a task failed.
+// 2026-09-23, blocker 2): SpawnFresh is "it is established that no prior owned lineage exists for
+// this node"; Hold spawns nothing while a verdict or a worker is outstanding; Complete spawns nothing
+// because the lineage is fully approved; Ended spawns nothing because the lineage stopped short of
+// an approved candidate -- its worker stopped, handed in nothing, declared a blocker, or its
+// candidate was judged and found wanting -- and starting over from base would discard committed work
+// silently; Refused is the arm that must not widen: a fact the decision needs that cannot be
+// established refuses with a located reason the dashboard shows, and the operator decides.
 type ContinuationDecision
   = ContinuationSpawnFresh { reason: String }
-  | ContinuationSpawnFromPrior { origin: AttemptOrigin }
   | ContinuationRefused { reason: String }
   | ContinuationHold { reason: String }
+  // A request-pending attempt whose re-delivery is NOT yet due holds UNTIL a TYPED instant, not just a
+  // prose reason. The instant is transport_retry_next_delivery_at -- the SAME value the reason quotes --
+  // so the belt arms exactly one re-delivery wake at it (roadmap_belt_actuate's SpawnRouteWake), reading
+  // it off the decision rather than re-deriving it. Untimed holds (worker running, interrupted calls,
+  // an unreadable clock) stay plain ContinuationHold: they name no clock and must never arm a wake.
+  | ContinuationHoldUntil { reason: String, attempt_key: String, redeliver_at: EpochSecs }
   | ContinuationComplete { reason: String }
-  | ContinuationEscalate { escalation: SupervisorEscalation }
-  | ContinuationPlanDefect { defect: String }
-  | ContinuationStuck { cause: String }
+  | ContinuationEnded { reason: String }
+  | ContinuationResume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
 
-// THREE TURNS PER LINEAGE BEFORE THE SUPERVISOR HEARS IT. The first turn does the work, the second
-// acts on the verdict, the third is the last before the lineage escalates; a lineage that has not
-// converged in three turns is evidence about the brief or the contract, which is exactly the
-// supervisor's subject. The cap remains tunable policy attached to the anchor -- a cap hit
-// escalates again each time rather than failing silently.
-data continuation_turn_cap: Int = 3
-
-fn continuation_turn_label(turn: Int) -> String {
-  join(["turn ", to_string(value: turn), " of ", to_string(value: continuation_turn_cap)], "")
-}
-
-fn continuation_prior_turn(read: ContinuationTurnRead) -> Int? {
-  match read {
-    ContinuationTurnAbsent => Present { value: 1 }
-    ContinuationTurnKnown { turn } => Present { value: turn }
-    ContinuationTurnUnreadable { reason: _ } => none
-  }
-}
-
-fn continuation_decision(prior: PriorAttemptFacts?, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+fn continuation_decision(prior: PriorAttemptFacts?) -> ContinuationDecision {
   match prior {
     Absent => ContinuationSpawnFresh { reason: "no prior attempt of this node" }
     Present { value: p } =>
       if !p.worker_terminal {
         ContinuationHold { reason: "the prior attempt's worker has not ended; the lineage is active and a second attempt beside it is never spawned" }
       } else {
-        continuation_from_capture(prior: p, prior_turn: prior_turn)
+        continuation_from_capture(prior: p)
       }
   }
 }
 
 // THE CAPTURE IS READ BEFORE THE SEGMENTS. A terminal worker's capture is the binding record of
-// what its end meant, and it decides three cases the workflow segments cannot: a submission that
-// declares blocked or needs-context is unfinished work with the worker's own explanation attached
-// (production receipt: attempt cd172fe81b806160 spent its budget with the acceptance run still in
-// flight, declared blocked truthfully, and the segment-only reading answered Fresh -- discarding a
-// finished implementation); a terminal state with no capture at the head is a yield, the same
-// unfinished shape without the explanation; and a capture that cannot be established is refused,
-// never read as either, because starting fresh over possibly-committed work discards it silently.
-// Only a READY capture falls through to the segment arms: that head is a candidate, and judging it
-// is verification's job, exactly as the Fresh reasons below already say.
-fn continuation_from_capture(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+// what its end meant: a submission that declares blocked or needs-context, or no capture at all, is
+// a lineage that ended without a candidate, and a capture that cannot be established is refused,
+// never read as either. Only a READY capture falls through to the segment arms: that head is a
+// candidate, and judging it is verification's job.
+fn continuation_from_capture(prior: PriorAttemptFacts) -> ContinuationDecision {
   match prior.capture {
     CaptureUnreadable { reason } =>
       ContinuationRefused {
@@ -158,45 +108,124 @@ fn continuation_from_capture(prior: PriorAttemptFacts, prior_turn: ContinuationT
           "), so whether its branch holds a declared candidate is not yet read and the decision waits for the capture",
         ], ""),
       }
-    CaptureAbsent =>
-      continuation_continue_next_turn(
-        prior: prior,
-        verdict_detail: "the prior turn reached a terminal state without a captured submission (yielded, not ready): the belt's commit over its worktree was preservation only, and no candidate advanced to verification. Establish why no submission was written, complete the work, and submit.",
-        stall: "it still yields without a captured submission",
-        prior_turn: prior_turn,
-      )
+    CaptureAbsent => continuation_from_absent_capture(prior: prior)
     CaptureForHead { capture: c } =>
       match c.submission.readiness {
-        SubmissionReady => continuation_from_segments(prior: prior, prior_turn: prior_turn)
+        SubmissionReady => continuation_from_segments(prior: prior)
         SubmissionBlocked =>
-          continuation_continue_next_turn(
-            prior: prior,
-            verdict_detail: join([
-              "the prior turn's submission declared blocked: ",
-              continuation_bounded_detail(detail: c.submission.explanation),
-              " Confirm the blocker still stands or repair its cause, then resubmit.",
-            ], ""),
-            stall: "its submission still declares blocked",
-            prior_turn: prior_turn,
-          )
+          continuation_ended(prior: prior, why: join(["its submission declared blocked: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
         SubmissionNeedsContext =>
-          continuation_continue_next_turn(
-            prior: prior,
-            verdict_detail: join([
-              "the prior turn's submission declared needs-context: ",
-              continuation_bounded_detail(detail: c.submission.explanation),
-              " Supply the missing context if it is now available or repair the cause, then resubmit.",
-            ], ""),
-            stall: "its submission still declares needs-context",
-            prior_turn: prior_turn,
-          )
+          continuation_ended(prior: prior, why: join(["its submission declared needs-context: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
       }
   }
 }
 
-// A WORKER-AUTHORED EXPLANATION IS UNBOUNDED TEXT, and it lands at the head of the next turn's
-// brief; the continuation carries at most this much of it. The truncation is marked so a cut
-// explanation is never mistaken for a whole one.
+// A WORKER THAT HANDED IN NOTHING ENDED THE LINEAGE, UNLESS ITS SESSION STOPPED AT A VALIDATED STATE
+// BY AN UNEXPLAINED ENGINE REFUSAL (gunbc.plans.harness_session_lifecycle S3, requirement 7). The
+// stream records that as a recovery the session has not yet answered, and then the session is
+// RECOVERY-NEEDED, which is not ended: it resumes in the same worktree and conversation, by the
+// belt, under the declared bound. Three outcomes are distinct on purpose. An interrupted tool
+// effect keeps the session recovery-needed but NOT resumable (Hold: the effect's outcome is to be
+// established first). Past the bound the lineage ends and names every recorded cause, so a flapping
+// engine is visible and bounded, never absorbed. No recovery recorded -- a refusal that explained
+// itself, a hosted route, a worker that simply stopped -- is the ending it always was.
+fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDecision {
+  match prior.recovery {
+    SessionRecoveryNone =>
+      continuation_ended(prior: prior, why: "its worker ended without handing in a candidate; the attempt's event stream records how the session ended")
+    SessionRecoveryMalformed { mismatch: mismatch } =>
+      ContinuationRefused {
+        reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor an ending is established: ", mismatch], ""),
+      }
+    SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>
+      continuation_from_request_pending(prior: prior, cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, interrupted: interrupted)
+    SessionRecoveryPending { causes: causes, resumes_made: made, wakes_made: wakes, interrupted_calls: interrupted, resume_round: _ } =>
+      if length(xs: interrupted) > 0 {
+        ContinuationHold {
+          reason: join([
+            "the prior attempt ", prior.attempt_key, " is recovery-needed but not resumable: tool calls ", join(interrupted, ", "),
+            " have no recorded result, so their effects are not established; the last cause was ", join(causes, " | "),
+          ], ""),
+        }
+      } else if made >= session_resume_bound {
+        continuation_ended(prior: prior, why: join([
+          "its session was resumed ", to_string(value: made), " times, the bound of ", to_string(value: session_resume_bound),
+          ", and was refused again; every recorded cause: ", join(causes, " | "),
+        ], ""))
+      } else {
+        ContinuationResume {
+          reason: join(["the prior attempt ", prior.attempt_key, " stopped at a validated state and is resumed in its own session, resume ", to_string(value: made + 1), " of ", to_string(value: session_resume_bound), "; cause: ", join(causes, " | ")], ""),
+          attempt_key: prior.attempt_key,
+          ordinal: wakes + 1,
+          causes: causes,
+        }
+      }
+  }
+}
+
+// A SESSION WHOSE REQUEST STANDS PENDING IS WAITING, NOT REFUSED, AND NOTHING ENDS THE WAIT. The front
+// answered 503/502/429 or the post drew no response, so nothing was served and the request had no
+// effect: it stands (operator direction 2026-10-27: "i deliver the request, and wait indefinitely for the
+// response (like a patient contract)"). The belt re-delivers the SAME attempt -- same session, same
+// conversation, same x-pool-session -- when the next re-delivery is DUE by
+// gunbc.harness.harness_transport_retry_policy, and Holds with the named instant until then. THE
+// CONTINUATION HAS NO TERMINAL FOR THIS STATE: no expiry, no budget, no "waited too long"; a request
+// pending ten days gets the same two answers as one pending ten seconds (a ten-day pending that produced
+// an ending would fail the witness that says so). An interrupted tool effect keeps the unchanged rule:
+// Hold, until that effect's outcome is established. A sweep that could not read the clock Holds naming
+// that -- a re-delivery instant cannot be guessed at, and refusing the instant is not ending the request.
+fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, interrupted: List<String>) -> ContinuationDecision {
+  if length(xs: interrupted) > 0 {
+    ContinuationHold {
+      reason: join([
+        "the prior attempt ", prior.attempt_key, " is request-pending but not resumable: tool calls ", join(interrupted, ", "),
+        " have no recorded result, so their effects are not established; the request stands pending: ", cause,
+      ], ""),
+    }
+  } else {
+    match prior.now {
+      Absent =>
+        ContinuationHold {
+          reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and this sweep could not read the clock, so the next re-delivery instant cannot be named; the request still stands and the belt re-delivers it on a sweep that can read the clock; the request began pending: ", cause], ""),
+        }
+      Present { value: now } => {
+        let next_delivery = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key)
+        if transport_retry_redelivery_due(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key, at: now) {
+          ContinuationResume {
+            reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is due: the same round of its own session is RE-DELIVERED (re-delivery ", to_string(value: re_deliveries + 1),
+              ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending at epoch ", to_string(value: since), ": ", cause], ""),
+            attempt_key: prior.attempt_key,
+            ordinal: wakes_made + 1,
+            causes: [cause],
+          }
+        } else {
+          // THE INSTANT IS TYPED ON THE DECISION, not only prose: one derivation of transport_retry_next_delivery_at
+          // feeds both the reason and redeliver_at, so the belt arms its wake at exactly the instant the
+          // continuation names -- it cannot name two times for the same attempt.
+          ContinuationHoldUntil {
+            reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is not due until ", to_string(value: next_delivery),
+              "; next re-delivery at that instant, no resume is spent; the request began pending: ", cause], ""),
+            attempt_key: prior.attempt_key,
+            redeliver_at: next_delivery,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn continuation_ended(prior: PriorAttemptFacts, why: String) -> ContinuationDecision {
+  ContinuationEnded {
+    reason: join([
+      "the lineage ending at attempt ", prior.attempt_key, " (branch ", prior.branch, ") stopped short of an approved candidate: ", why,
+      " -- its work stays on that branch, and no attempt is started over it",
+    ], ""),
+  }
+}
+
+// A WORKER-AUTHORED EXPLANATION IS UNBOUNDED TEXT, and it lands in a reason the dashboard shows; the
+// decision carries at most this much of it. The truncation is marked so a cut explanation is never
+// mistaken for a whole one.
 data continuation_verdict_detail_bound: Int = 400
 
 fn continuation_bounded_detail(detail: String) -> String {
@@ -207,31 +236,38 @@ fn continuation_bounded_detail(detail: String) -> String {
   }
 }
 
-fn continuation_from_segments(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision {
   match prior.verification {
     Absent => ContinuationHold { reason: "the prior attempt's verification is owed and has no segment yet; the belt owes it, not a spawn" }
     Present { value: v } =>
       match v.state {
-        WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["verification failed: ", v.detail], ""), prior_turn: prior_turn)
-        WorkflowSegmentComplete => continuation_after_green_verification(prior: prior, prior_turn: prior_turn)
+        WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["verification failed: ", v.detail], ""))
+        WorkflowSegmentComplete => continuation_after_green_verification(prior: prior)
         WorkflowSegmentStopped => ContinuationRefused { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
         WorkflowSegmentPending => ContinuationHold { reason: "the prior attempt's verification is owed and still pending; the belt owes it, not a spawn" }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's verification is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the obligation stays outstanding and the belt retries it when the environment recovers, so no spawn" }
+        WorkflowSegmentRefused =>
+          match prior.verification_retry {
+            RefusedRetryOwed { ordinal } =>
+              ContinuationHold { reason: join(["the prior attempt's verification was refused by its infrastructure, an environment fact rather than a verdict: the belt re-runs it on its next wake (retry ", to_string(ordinal), " of its bound), so no spawn"], "") }
+            RefusedRetryExhausted { attempts } =>
+              ContinuationRefused { reason: refused_retry_exhausted_reason(attempts: attempts) }
+            RefusedRetryOperatorOnly =>
+              ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the belt does not re-run it on its own: the line stops here for the attempt and the operator resumes the verification (belt_verify_resume_cli), so no spawn" }
+          }
       }
   }
 }
 
-// A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW. Changes requested continue the lineage with
-// the reviewer's located reasons as the brief's verdict; an approved review starts nothing (the head
-// is on its way to publication); anything in between holds.
-fn continuation_after_green_verification(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+// A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW: changes requested end the lineage with the
+// reviewer's located reasons, an approved review hands it to the goal audit, anything else holds.
+fn continuation_after_green_verification(prior: PriorAttemptFacts) -> ContinuationDecision {
   match prior.review {
     Absent => ContinuationHold { reason: "the prior attempt verified green and carries no review segment yet" }
     Present { value: r } =>
       match r.state {
-        WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["review requested changes: ", r.detail], ""), prior_turn: prior_turn)
-        WorkflowSegmentComplete => continuation_after_approved_review(prior: prior, prior_turn: prior_turn)
+        WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["review requested changes: ", r.detail], ""))
+        WorkflowSegmentComplete => continuation_after_approved_review(prior: prior)
         WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt verified green and awaits review: ", r.detail], "") }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt verified green and its reviewer is running" }
         WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt verified green and its review refused: ", r.detail], "") }
@@ -240,15 +276,14 @@ fn continuation_after_green_verification(prior: PriorAttemptFacts, prior_turn: C
   }
 }
 
-// AN APPROVED REVIEW HANDS THE QUESTION TO THE GOAL AUDIT, the same way a green verification handed it
-// to the review: changes requested continue with the auditor's reasons, approval starts nothing, and
-// anything else holds.
-fn continuation_after_approved_review(prior: PriorAttemptFacts, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
+// AN APPROVED REVIEW HANDS THE QUESTION TO THE GOAL AUDIT, the same way: changes requested end the
+// lineage with the auditor's reasons, approval completes it, and anything else holds.
+fn continuation_after_approved_review(prior: PriorAttemptFacts) -> ContinuationDecision {
   match prior.goal_audit {
     Absent => ContinuationHold { reason: "the prior attempt verified green and its review approved, but it carries no goal audit segment yet" }
     Present { value: a } =>
       match a.state {
-        WorkflowSegmentFailed => continuation_from_failed(prior: prior, verdict_detail: join(["goal audit requested changes: ", a.detail], ""), prior_turn: prior_turn)
+        WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["goal audit requested changes: ", a.detail], ""))
         WorkflowSegmentComplete => ContinuationComplete { reason: "the prior attempt verified green, its review approved and its goal audit approved; the lineage is complete and nothing spawns" }
         WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt awaits its goal audit: ", a.detail], "") }
         WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's goal auditor is running" }
@@ -258,144 +293,86 @@ fn continuation_after_approved_review(prior: PriorAttemptFacts, prior_turn: Cont
   }
 }
 
-fn continuation_from_failed(prior: PriorAttemptFacts, verdict_detail: String, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
-  continuation_continue_next_turn(prior: prior, verdict_detail: verdict_detail, stall: "its verification still fails", prior_turn: prior_turn)
-}
-
-// THE ONE PLACE A LINEAGE ADVANCES. Every route that continues -- a failed verdict, a blocked or
-// needs-context declaration, a yield -- pays the same refusal before it mints the next turn: an
-// unreadable turn file refuses (never guessed as 1, or a lineage would run past its cap one
-// unreadable file at a time). Below the cap the next turn is issued; at the cap the lineage
-// escalates rather than refusing. `stall` is the caller's one-clause account of why the prior turn
-// did not converge, projected into the escalation's reason.
-fn continuation_continue_next_turn(prior: PriorAttemptFacts, verdict_detail: String, stall: String, prior_turn: ContinuationTurnRead) -> ContinuationDecision {
-  match continuation_prior_turn(read: prior_turn) {
-    Absent =>
-      match prior_turn {
-        ContinuationTurnUnreadable { reason } =>
-          ContinuationRefused { reason: join(["the prior attempt ", prior.attempt_key, " has a continuation-turn file that could not be read: ", reason], "") }
-        ContinuationTurnAbsent => ContinuationRefused { reason: "the prior attempt's turn is unknown" }
-        ContinuationTurnKnown { turn: _ } => ContinuationRefused { reason: "the prior attempt's turn is unknown" }
-      }
-    Present { value: t } =>
-      if t >= continuation_turn_cap {
-        continuation_at_cap(prior: prior, turn: t, stall: stall)
-      } else {
-        ContinuationSpawnFromPrior { origin: ContinueFromAttempt {
-          parent_attempt_key: prior.attempt_key,
-          branch: prior.branch,
-          turn: t + 1,
-          verdict_detail: verdict_detail,
-        } }
+// THE OPERATOR'S RETIREMENT OF AN ENDED LINEAGE (ruling 2026-10-16, LINEAGE-RETIRE-1). Ended spawns
+// nothing because starting over would discard committed work silently; a retire record
+// (gunbc.roadmap.roadmap_lineage_retire LineageRetireRecord) is the operator's explicit, attributable
+// decision to discard, and it is read ONLY by the Ended arm. It changes no other arm's answer except
+// to refuse: retiring is for Ended only, so a record over a lineage that is active, held, complete or
+// refused, or over no lineage at all, is a refusal the dashboard shows, never a silent pass. A record
+// naming another attempt or node than the lineage's current end is stale and refuses. No record:
+// the decision is exactly continuation_decision. The ended branch is untouched by every arm.
+fn continuation_decision_with_retirement(prior: PriorAttemptFacts?, retire: LineageRetireRecord?) -> ContinuationDecision {
+  let base = continuation_decision(prior: prior)
+  match retire {
+    Absent => base
+    Present { value: record } =>
+      match prior {
+        Absent => ContinuationRefused { reason: join(["a retire record names attempt ", record.attempt_key, " of node ", record.node_id, " but the node has no prior attempt; retiring is for an Ended lineage only"], "") }
+        Present { value: p } =>
+          match base {
+            ContinuationEnded { reason: ended } =>
+              if record.attempt_key != p.attempt_key || record.node_id != p.node_id {
+                ContinuationRefused {
+                  reason: join(["the retire record names attempt ", record.attempt_key, " of node ", record.node_id, " but the lineage now ends at attempt ", p.attempt_key, " of node ", p.node_id, "; the record is stale and the operator decides again"], ""),
+                }
+              } else {
+                ContinuationSpawnFresh {
+                  reason: join([
+                    "the lineage ending at attempt ", p.attempt_key, " was retired by ", record.decided_by, " at ", record.decided_at,
+                    " (", continuation_bounded_detail(detail: record.reason), "); its branch ", p.branch,
+                    " is kept and the fresh attempt starts from base. It ended: ", ended,
+                  ], ""),
+                }
+              }
+            ContinuationSpawnFresh { reason: r } => continuation_retire_over_non_ended(record: record, state: "spawn-fresh", reason: r)
+            ContinuationRefused { reason: r } => continuation_retire_over_non_ended(record: record, state: "refused", reason: r)
+            ContinuationHold { reason: r } => continuation_retire_over_non_ended(record: record, state: "held or active", reason: r)
+            ContinuationHoldUntil { reason: r, attempt_key: _, redeliver_at: _ } => continuation_retire_over_non_ended(record: record, state: "held until re-delivery", reason: r)
+            ContinuationComplete { reason: r } => continuation_retire_over_non_ended(record: record, state: "complete", reason: r)
+            ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => continuation_retire_over_non_ended(record: record, state: "recovery-needed and resumable", reason: r)
+          }
       }
   }
 }
 
-// THE CADENCE POINT ITSELF. A lineage at its cap asks the supervisor's question, and the answer is
-// read from the verdict receipt and nothing else: a receipt that does not decode is refused (never
-// guessed), a receipt for a DIFFERENT turn is stale and cannot authorize this one (the route reads
-// the receipt's adjudicated turn, never the label), and no receipt at all is the escalation
-// itself. A Nominal verdict for THIS turn renews the lineage exactly once, on the supervisor's
-// stated evidence; PlanDefect and Stuck are terminal typed states, surfaced as themselves.
-fn continuation_at_cap(prior: PriorAttemptFacts, turn: Int, stall: String) -> ContinuationDecision {
-  match prior.supervisor_verdict {
-    SupervisorVerdictUnreadable { reason } =>
-      ContinuationRefused {
-        reason: join([
-          "the lineage ending at attempt ", prior.attempt_key,
-          " reached its turn cap and its supervisor verdict could not be read: ", reason,
-          " -- the decision does not guess an adjudication",
-        ], ""),
-      }
-    SupervisorVerdictBound { receipt } =>
-      if receipt.adjudicated_turn == turn {
-        match receipt.verdict {
-          VerdictNominal { basis } =>
-            ContinuationSpawnFromPrior { origin: ContinueFromAttempt {
-              parent_attempt_key: prior.attempt_key,
-              branch: prior.branch,
-              turn: turn + 1,
-              verdict_detail: join([
-                "the supervisor adjudicated this lineage Nominal at turn ", to_string(value: turn),
-                ": ", basis, " -- a renewed budget is issued on that evidence",
-              ], ""),
-            } }
-          VerdictPlanDefect { defect } => ContinuationPlanDefect { defect: defect }
-          VerdictStuck { cause } => ContinuationStuck { cause: cause }
+fn continuation_retire_over_non_ended(record: LineageRetireRecord, state: String, reason: String) -> ContinuationDecision {
+  ContinuationRefused {
+    reason: join(["a retire record for attempt ", record.attempt_key, " exists but the lineage is ", state, ", not Ended; retiring is for an Ended lineage only: ", reason], ""),
+  }
+}
+
+// THE ADMISSION OF A RETIRE REQUEST, pure over the lineage's facts and the request's values; the
+// route is one realization (DESIGN 3). Who and when arrive as values the route took from its
+// authentication and clock. The request must name the lineage's CURRENT ended end: any other
+// attempt, a lineage that is not Ended, or an empty reason refuses with a located cause.
+type LineageRetireAdmission
+  = LineageRetireAdmitted { record: LineageRetireRecord }
+  | LineageRetireRefused { reason: String }
+
+fn lineage_retire_admission(prior: PriorAttemptFacts?, attempt_key: String, reason: String, decided_by: String, decided_at: String) -> LineageRetireAdmission {
+  if reason == "" {
+    LineageRetireRefused { reason: "a retire request states the operator's reason; an empty reason is not a decision" }
+  } else {
+    match prior {
+      Absent => LineageRetireRefused { reason: "the node has no prior attempt, so there is no lineage to retire" }
+      Present { value: p } =>
+        match continuation_decision(prior: prior) {
+          ContinuationEnded { reason: _ } =>
+            if p.attempt_key != attempt_key {
+              LineageRetireRefused { reason: join(["the request names attempt ", attempt_key, " but the lineage ends at attempt ", p.attempt_key, "; only the ended end may be retired"], "") }
+            } else {
+              LineageRetireAdmitted { record: LineageRetireRecord {
+                node_id: p.node_id, attempt_key: p.attempt_key, branch: p.branch,
+                reason: reason, decided_by: decided_by, decided_at: decided_at,
+              } }
+            }
+          ContinuationSpawnFresh { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (spawn-fresh): ", r], "") }
+          ContinuationRefused { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (refused): ", r], "") }
+          ContinuationHold { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (held or active): ", r], "") }
+          ContinuationHoldUntil { reason: r, attempt_key: _, redeliver_at: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (held until re-delivery): ", r], "") }
+          ContinuationComplete { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (complete): ", r], "") }
+          ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (recovery-needed, resumable): ", r], "") }
         }
-      } else {
-        continuation_escalate(prior: prior, turn: turn, stall: join([stall, " (a supervisor verdict for turn ", to_string(value: receipt.adjudicated_turn), " exists but adjudicates a different turn and cannot authorize this one)"], ""))
-      }
-    SupervisorVerdictAbsent => continuation_escalate(prior: prior, turn: turn, stall: stall)
-  }
-}
-
-// THE ESCALATION RECORD, OR THE REFUSAL THE AUTHORITY OWES. The target derives from the
-// decomposition edges; a node whose membership is ambiguous has no supervisor to derive, and the
-// decision refuses with the ambiguity named rather than guessing one.
-fn continuation_escalate(prior: PriorAttemptFacts, turn: Int, stall: String) -> ContinuationDecision {
-  match supervisor_target_for(node_id: prior.node_id, memberships: prior.memberships) {
-    Absent =>
-      ContinuationRefused {
-        reason: join([
-          "the lineage ending at attempt ", prior.attempt_key,
-          " reached its turn cap, but the decomposition edges give node ", prior.node_id,
-          " more than one project; the authority must say which arc owns the delivery before a supervisor can be derived",
-        ], ""),
-      }
-    Present { value: target } =>
-      ContinuationEscalate {
-        escalation: SupervisorEscalation {
-          node_id: prior.node_id,
-          attempt_key: prior.attempt_key,
-          branch: prior.branch,
-          turn: turn,
-          target: target,
-          reason: stall,
-        },
-      }
-  }
-}
-
-fn attempt_origin_turn(origin: AttemptOrigin) -> Int {
-  match origin {
-    FreshFromBase => 1
-    ContinueFromAttempt { parent_attempt_key: _, branch: _, turn, verdict_detail: _ } => turn
-  }
-}
-
-fn attempt_origin_base_ref(origin: AttemptOrigin, instance_base_ref: String) -> String {
-  match origin {
-    FreshFromBase => instance_base_ref
-    ContinueFromAttempt { parent_attempt_key: _, branch, turn: _, verdict_detail: _ } => branch
-  }
-}
-
-// THE CADENCE TEXT FOR THE ALIGNMENT PREAMBLE, AUTHORED ONCE HERE so the continuation lane owns
-// what docs/plans/harness-work-lifecycle.md's alignment ladder says at cadence point 2 (each
-// continuation turn re-aligns), and the dispatch actuator only projects it. L0 stays a POINTER:
-// the load phase carries the principles' text; the preamble names their home and no more. The ask
-// is bounded (at most three sentences, riding in the submission's explanation) and names the drift
-// route: a named drift is supervisor input, not a failure.
-data continuation_alignment_l0_pointer: String = "L0 root principles: the root principles in DESIGN.md govern; in particular single authority, fail-closed, displaced cost."
-
-data continuation_alignment_ask: String = "Ask: in at most three sentences of your submission's explanation, state how the current work serves the task contract and the project intent, and NAME any drift you can see. A drift named here routes to the supervisor path; it is not a failure."
-
-// THE VERDICT LEADS THE BRIEF. The continuation's worker reads the same node brief as the first
-// turn, prefixed by what happened: which turn this is, that the prior work is already on the branch
-// it is standing in, and what verification said. It is told to start from the verdict, because the
-// measured failure mode of the first turns was spending forty rounds re-reading a tree the previous
-// turn had already read.
-fn continuation_brief_prefix(origin: AttemptOrigin) -> String {
-  match origin {
-    FreshFromBase => ""
-    ContinueFromAttempt { parent_attempt_key, branch, turn, verdict_detail } =>
-      join([
-        "CONTINUATION: this is ", continuation_turn_label(turn: turn),
-        " on this task. The previous turn (attempt ", parent_attempt_key, ") ended and its work was committed on branch ",
-        branch, ", which is the branch your worktree is on: the files already reflect it. The judgment of that head was:\n",
-        verdict_detail,
-        "\nStart from that result. Do not re-read the tree from scratch; read the verdict, inspect the files it names, make the change, and run the acceptance check.\n\n",
-      ], "")
+    }
   }
 }

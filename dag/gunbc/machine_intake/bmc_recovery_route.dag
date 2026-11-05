@@ -1481,6 +1481,7 @@ fn realized_authorization_text(r: RealizedAuthorization) -> NonEmptyStr {
     RealizedUnauthorized => "unauthorized" as NonEmptyStr
     RealizedAdministratorEdge => "administrator edge" as NonEmptyStr
     RealizedUnderApprovedConvergence => "under an approved convergence" as NonEmptyStr
+    RealizedHostAccountPeer => "host-account peer" as NonEmptyStr
   }
 }
 

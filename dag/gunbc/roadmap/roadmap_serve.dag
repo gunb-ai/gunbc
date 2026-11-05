@@ -74,6 +74,7 @@ import gunbc.auth.request_authentication {
   ServeActionAssignIssue,
   ServeActionCreateIssue,
   ServeActionCommentIssue, ServeActionCloseNode, ServeActionRetireNode,
+  ServeActionRetireLineage,
   ServeActionDispatchNode,
   ServeActionStopNode,
   ServeActionPublishNode,
@@ -196,7 +197,7 @@ import gunbc.roadmap.roadmap_event_carrier {
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
-  EventPrincipal, EventPrincipalAuthenticated,
+  EventPrincipal, EventPrincipalAuthenticated, roadmap_assignment_held_by,
   roadmap_node_standing, roadmap_node_standing_text, roadmap_history_unordered_reason,
   roadmap_recent_claimed_assignees,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present,
@@ -206,9 +207,10 @@ import extdeps.google.issue_tracker {
 }
 import gunbc.roadmap.roadmap_presentation { stale_attempt_nodes }
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted, SpawnLaunchPending,
   belt_spawn_outcome_json, belt_launch_host_standing_for_page_over,
   belt_dispatch_node_for_instance_over,
+  BeltLineageRetireOutcome, BeltLineageRetired, BeltLineageRetireRefused, belt_lineage_retire_for_instance, belt_lineage_retire_panel_for_instance,
   belt_workflow_attempts_observe_scoped, WorkflowAttemptsOneNode,
   WorkflowAttemptsObserved, WorkflowAttemptsRefused,
   BeltStopResult, StopProcessStopped, StopRetainedSessionCleared, StopSignaledSessionCleared, StopDisabled,
@@ -339,6 +341,7 @@ type RoadmapServeHandler
   | DashboardInstanceHandler
   | ProviderReadinessHandler
   | BeltDispatchHandler
+  | LineageRetireHandler
   | DispatchAssetHandler
   | SessionsJsonHandler
   | AttemptsJsonHandler
@@ -429,6 +432,7 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/observation.json", handler: ObservationJsonHandler },
     ServedRouteSpec { method: GET, raw: roadmap_dispatch_asset_path, handler: DispatchAssetHandler },
     ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+    ServedRouteSpec { method: POST, raw: "/dispatch/\{node_id\}/retire-lineage", handler: LineageRetireHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}", handler: IssueDetailPageHandler },
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
@@ -566,7 +570,6 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
 fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => 200
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry: _ } => 202
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
@@ -623,8 +626,6 @@ fn serve_dispatch_with_follow_ups(instance: HostDashboardInstance, r: BeltSpawnO
   let response = belt_dispatch_response(r: r)
   match r {
     Spawned { node_id: _, session_name: _, provider: _, launch: _ } =>
-      serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
-    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
     SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } =>
       serve_with_operator_follow_ups(instance: instance, action: OperatorDispatch, response: response)
@@ -704,6 +705,54 @@ fn serve_after_human_write(
   ) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
     Permit => proceed()
+  }
+}
+
+// POST /dispatch/NODE_ID/retire-lineage is the OPERATOR'S RETIREMENT of an Ended lineage (ruling
+// 2026-10-16, LINEAGE-RETIRE-1): the route is one realization of the record and its admission
+// (gunbc.roadmap.roadmap_attempt_continuation lineage_retire_admission), which decide; this function
+// only authenticates, takes the principal and the clock, and renders the answer. It goes through
+// human_write_admission, the gate every human write already passes (a Google OIDC session, the CSRF
+// token, the deployment path), under its own action: /dispatch itself carries no application-layer
+// authentication on this lab, so there is no weaker gate to share. The form carries attempt_key and
+// reason; who and when are never taken from it. ADMISSION PRECEDES THE PLAN READ, as on
+// serve_dispatch_handler_response_over: roadmap_plan_projection reads fabric storage, so reading it
+// first would turn an unauthenticated POST into a host-effect refusal instead of 403.
+fn serve_lineage_retire_response_over(
+  instance: HostDashboardInstance,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  match human_write_admission(route_path: concat("/dispatch/", concat(node_id, "/retire-lineage")) as NonEmptyStr,
+    action: ServeActionRetireLineage, security: request.security, authorization_policy: write_authorization_policy_for(deployment: instance.deployment),
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit =>
+      if !issue_detail_node_exists(proj: roadmap_plan_projection(), node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "node not found") }
+      else { lineage_retire_outcome_response(outcome: belt_lineage_retire_for_instance(
+        instance: instance, node_id: node_id as NonEmptyStr as RoadmapNodeId,
+        attempt_key: issue_form_field(body: request.body, name: "attempt_key"),
+        reason: issue_form_field(body: request.body, name: "reason"),
+        decided_by: authenticated_write_author_label(security: request.security) as String,
+        decided_at: human_write_observed_at(security: request.security),
+      )) }
+  }
+}
+
+// THE ANSWER, pure over the outcome: 200 with the record that was written, 409 for an admission or a
+// first-decision-stands conflict (the request does not match the lineage), 500 for a persist failure.
+fn lineage_retire_outcome_response(outcome: BeltLineageRetireOutcome) -> ServeHttpResponse {
+  match outcome {
+    BeltLineageRetired { record } =>
+      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["lineage retired: node ", record.node_id, " attempt ", record.attempt_key, " (branch ", record.branch, " kept) by ", record.decided_by, " at ", record.decided_at, "\n"], ""))
+    BeltLineageRetireRefused { step, detail } =>
+      serve_text_response(
+        status: if step == "lineage-retire-admission" || step == "lineage-retire-conflict" { 409 } else { 500 },
+        content_type: text_plain_utf8,
+        body: join(["lineage retire refused at ", step, ": ", detail, "\n"], ""),
+      )
   }
 }
 
@@ -931,7 +980,8 @@ fn serve_issue_detail_response_over(
             current_revision_hex: served_current_revision_hex(launch: launch)),
           events: envelopes,
           viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context,
-          profiles: serve_profiles_for_instance(instance: instance))
+          profiles: serve_profiles_for_instance(instance: instance),
+          lineage_retire: Present { value: belt_lineage_retire_panel_for_instance(instance: instance, node_id: node_id as NonEmptyStr as RoadmapNodeId, attempts: attempts) })
         let response = serve_page_response_with_status(page: page, status: 200)
         response
       }
@@ -1101,7 +1151,7 @@ fn serve_issue_assign_permitted(
                 assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to } }, recorded_at: observed_at))
             match outcome {
               EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
-              EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
+              EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_already_recorded_response(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
               EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
             }
           }
@@ -1450,6 +1500,31 @@ fn issue_form_has_field(body: String, name: String) -> Bool {
   match form_field(form: form_decode(wire: body), name: name) { Present { value: _ } => true Absent => false }
 }
 
+// AN ALREADY-RECORDED ASSIGNMENT THAT IS STILL THE CURRENT HOLD RE-RUNS THE LAUNCH FOLLOW-THROUGH.
+// Launch refusals tell the operator to re-assign to retry, and the form's operation key is tied to
+// the issue revision, so the retry arrives as EventAlreadyPresent; answering only the recorded
+// text made the advertised retry route nonexistent. The launch is idempotent -- a live attempt
+// answers AlreadyLive with the existing session and spawns nothing -- and no second assign event is
+// minted: the follow-through answers the event already on the log. It runs only when the newest
+// claim on the node's history still names this assignee; a superseded or released assignment, or a
+// history that cannot be read or ordered, keeps the recorded-event answer and launches nothing.
+fn serve_assignment_already_recorded_response(
+  instance: HostDashboardInstance,
+  plan: RoadmapAuthorityProjection,
+  node_id: String,
+  assignee: PrincipalRef,
+  event_id: String,
+) -> ServeHttpResponse {
+  let recorded = serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", event_id, ")\n"], ""))
+  match serve_history_after_snapshot_close(read: roadmap_events_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node_id as NonEmptyStr as RoadmapNodeId)) {
+    EventsReadRefused { node: _, step: _, reason: _ } => recorded
+    EventsRead { node: _, envelopes } =>
+      if roadmap_assignment_held_by(envs: envelopes, assignee: assignee) {
+        serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: event_id)
+      } else { recorded }
+  }
+}
+
 // THE EXECUTION ENTRY POINT'S FOLLOW-THROUGH, factored pure over the admission outcome so the
 // witness drives it with constructed outcomes: a human assignee stops at the recorded fact (NEVER
 // dispatches); the fabric endpoint drives the SAME admission the /dispatch route answers and the
@@ -1546,8 +1621,6 @@ fn serve_fabric_assignment_response(node_id: String, assignee_display: String, e
   match outcome {
     Spawned { node_id: _, session_name, provider: _, launch: _ } =>
       serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: session ", session_name, " — the attempt renders on the Work tab\n"], ""))
-    SupervisorConvened { node_id: _, unit, provider: _, launch: _ } =>
-      serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric work request admitted: supervisor ", unit, " — the attempt renders on the Work tab\n"], ""))
     SpawnFailed { node_id: _, step, detail, provider: _, launch: _ } =>
       serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " → ", assignee_display, " (event ", event_id, ")\nfabric launch failed at ", step, ": ", detail, " — the assignment stands; re-assign to retry the request\n"], ""))
     SpawnLaunchPending { node_id: _, session_name: _, provider: _, launch: _, entry } =>
@@ -1787,6 +1860,7 @@ fn roadmap_serve_invoke_over(
       )
     BeltDispatchHandler =>
       serve_dispatch_handler_response_over(instance: instance, plan: plan, params: params, executor_word: uri_query_param(path: request.path, key: "executor"), request: request, observed_at: fn() { human_write_observed_at(security: request.security) })
+    LineageRetireHandler => serve_lineage_retire_response_over(instance: instance, request: request, params: params)
     DispatchAssetHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: dispatch_client_js_source())
     IssueDetailPageHandler => serve_issue_detail_response_over(instance: instance, plan: plan(), params: params, request: request)
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)

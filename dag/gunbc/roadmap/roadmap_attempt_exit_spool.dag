@@ -78,15 +78,51 @@ type AttemptExitHook
 // a re-review of a new head is a new launch with its own record, not a second record for one launch.
 type AttemptUnitRole
   = AttemptWorkerRole
+  | AttemptWorkerResumedRole { ordinal: Int }
   | AttemptReviewerRole { criterion_key: String, head_sha: String }
   | AttemptAuditorRole { head_sha: String }
   | AttemptObligationRole
   | AttemptSupervisorRole { turn: Int }
 
+// A RESUMED WORKER IS A SECOND INVOCATION OF ONE ATTEMPT'S UNIT (gunbc.plans.harness_session_lifecycle
+// S3): the same session continued after an unexplained engine refusal. Its record carries its own
+// role word so the first invocation's record is never overwritten or read as the second's end.
+data attempt_worker_resumed_token_prefix: String = "worker-resumed-"
+
+// WHICH WORKER INVOCATION A ROLE WORD NAMES: 0 for the first, N for the Nth resume, absent for any
+// other role. The latest invocation's record is the worker's current end.
+fn attempt_worker_invocation_of_token(token: String) -> Int? {
+  if token == "worker" {
+    Present { value: 0 }
+  } else if starts_with(s: token, prefix: attempt_worker_resumed_token_prefix) {
+    match token.split(delimiter: attempt_worker_resumed_token_prefix).get(1) {
+      Present { value: tail } => parse_int(text: tail)
+      Absent => none
+    }
+  } else {
+    none
+  }
+}
+
+fn attempt_role_token_is_worker(token: String) -> Bool {
+  match attempt_worker_invocation_of_token(token: token) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE PREFIX EVERY REVIEWER EXIT RECORD BEGINS WITH for one criterion. Spelled ONCE, here: the
+// role token below is this prefix plus the head, and a settlement pass looking for the criterion's
+// records matches on this prefix rather than re-spelling the format somewhere it could drift.
+fn attempt_reviewer_role_token_prefix(criterion_key: String) -> String {
+  join(["review.", criterion_key, "."], "")
+}
+
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
     AttemptWorkerRole => "worker"
-    AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
+    AttemptWorkerResumedRole { ordinal } => join([attempt_worker_resumed_token_prefix, to_string(value: ordinal)], "")
+    AttemptReviewerRole { criterion_key, head_sha } => join([attempt_reviewer_role_token_prefix(criterion_key: criterion_key), head_sha], "")
     AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
     AttemptObligationRole => "obligation"
     AttemptSupervisorRole { turn } => join(["supervise.t", to_string(value: turn)], "")
@@ -169,9 +205,40 @@ type AttemptExitRecord {
   entry_name: String
 }
 
+// A HAND-IN IS NOT AN EXIT (gunbc.plans.harness_session_lifecycle, slice S2). A worker that hands in
+// stays alive and waits for acceptance, so nothing stops and no stop hook writes. The session itself
+// records the hand-in in the same inbox, because that inbox is what wakes an attempt's obligations, but
+// under its own name -- node, attempt, the word "handin", the hand-in id -- and it decodes to its own
+// arm: it carries no service result and no process end, and a reader of exits never mistakes it for one.
 type AttemptExitEntryDecode
   = AttemptExitEntryDecoded { record: AttemptExitRecord }
+  | AttemptHandInEntryDecoded { node_id: String, attempt_key: String, handin: String, entry_name: String }
   | AttemptExitEntryMalformed { entry_name: String, reason: String }
+
+data attempt_handin_entry_word: String = "handin"
+
+fn attempt_handin_entry_name(node_id: String, attempt_key: String, handin: String) -> String {
+  join([node_id, attempt_key, attempt_handin_entry_word, handin], attempt_exit_entry_separator)
+}
+
+// The inbox path a hand-in is recorded at, beside the exits; the session writes it, the drain reads it.
+fn attempt_handin_entry_path(instance_root: String, node_id: String, attempt_key: String, handin: String) -> String {
+  join([attempt_exit_inbox_dir(instance_root: instance_root), "/", attempt_handin_entry_name(node_id: node_id, attempt_key: attempt_key, handin: handin)], "")
+}
+
+// THE ATTEMPT AN ENTRY WAKES, whichever kind it is: what the drain, the sweep and the claim need.
+type AttemptSpoolSubject {
+  node_id: String
+  attempt_key: String
+}
+
+fn attempt_spool_entry_subject(d: AttemptExitEntryDecode) -> AttemptSpoolSubject? {
+  match d {
+    AttemptExitEntryDecoded { record } => Present { value: AttemptSpoolSubject { node_id: record.node_id, attempt_key: record.attempt_key } }
+    AttemptHandInEntryDecoded { node_id, attempt_key, handin: _, entry_name: _ } => Present { value: AttemptSpoolSubject { node_id: node_id, attempt_key: attempt_key } }
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => none
+  }
+}
 
 // THE END THE TWO STOP VARIABLES DESCRIBE, or why they describe none. "Exited" must carry a number;
 // "killed" and "dumped" carry a signal name; a word systemd.exec(5) does not document is refused
@@ -211,7 +278,16 @@ fn attempt_exit_entry_part(parts: List<String>, index: Int) -> String {
 
 fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
   let parts = entry_name.split(delimiter: attempt_exit_entry_separator)
-  if count(parts) != 7 {
+  if count(parts) == 4 && attempt_exit_entry_part(parts: parts, index: 2) == attempt_handin_entry_word {
+    let node_id = attempt_exit_entry_part(parts: parts, index: 0)
+    let attempt_key = attempt_exit_entry_part(parts: parts, index: 1)
+    let handin = attempt_exit_entry_part(parts: parts, index: 3)
+    if string_length(s: node_id) == 0 || string_length(s: attempt_key) == 0 || string_length(s: handin) == 0 {
+      AttemptExitEntryMalformed { entry_name: entry_name, reason: "a hand-in record names its node, attempt and hand-in; one of them is empty" }
+    } else {
+      AttemptHandInEntryDecoded { node_id: node_id, attempt_key: attempt_key, handin: handin, entry_name: entry_name }
+    }
+  } else if count(parts) != 7 {
     AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["an exit record has seven '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
   } else {
     let node_id = attempt_exit_entry_part(parts: parts, index: 0)
@@ -329,6 +405,7 @@ fn attempt_exit_record_matching(
       })
       let malformed = names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
         AttemptExitEntryDecoded { record: _ } => [] as List<String>
+        AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<String>
         AttemptExitEntryMalformed { entry_name: _, reason: why } =>
           if attempt_exit_entry_names_subject(matches: matches, name: name) { [join([name, ": ", why], "")] } else { [] as List<String> }
       })
@@ -345,6 +422,7 @@ fn attempt_exit_record_matching(
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
           AttemptExitEntryDecoded { record } => if matches(record.node_id, record.attempt_key, record.role) { [record] } else { [] as List<AttemptExitRecord> }
+          AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<AttemptExitRecord>
           AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
         })
       // A DECODABLE RECORD ANSWERS THE END, and it outranks a broken sibling artifact: the end is
@@ -367,6 +445,37 @@ fn attempt_exit_record_matching(
       }
     }
   }
+}
+
+// THE WORKER'S CURRENT END: among the records of one attempt's worker invocations (the first and each
+// resume, AttemptWorkerResumedRole), the latest invocation's. A resume is the one way an attempt has
+// two worker records, and the earlier is history, not a rival. Each invocation still has exactly one
+// record: two for one ordinal are unreadable, as for any other role.
+fn attempt_exit_worker_record_matching(
+  subject: fn(String, String) -> Bool,
+  listings: List<AttemptExitStageListing>,
+) -> AttemptExitRecordObservation {
+  let ordinals = listings
+    |> flat_map(l => match l {
+      AttemptExitStageNames { names } => names
+      AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+    })
+    |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+      AttemptExitEntryDecoded { record } =>
+        if subject(record.node_id, record.attempt_key) {
+          match attempt_worker_invocation_of_token(token: record.role) {
+            Present { value: n } => [n]
+            Absent => [] as List<Int>
+          }
+        } else {
+          [] as List<Int>
+        }
+      AttemptHandInEntryDecoded { node_id: _, attempt_key: _, handin: _, entry_name: _ } => [] as List<Int>
+      AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<Int>
+    })
+  let latest = fold(ordinals, init: 0, f: (best, n) => if n > best { n } else { best })
+  let latest_token = if latest == 0 { "worker" } else { join([attempt_worker_resumed_token_prefix, to_string(value: latest)], "") }
+  attempt_exit_record_matching(matches: (n, a, r) => subject(n, a) && r == latest_token, listings: listings)
 }
 
 fn attempt_exit_stage_list(instance_root: String, stage: HostSpoolStage) -> AttemptExitStageListing {

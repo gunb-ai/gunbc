@@ -173,6 +173,7 @@ fn layout_namespaces() -> List<String> {
     "extdeps.payroll",
     "extdeps.pci",
     "extdeps.physics",
+    "extdeps.pool",
     "extdeps.portwell",
     "extdeps.posix",
     "extdeps.power",

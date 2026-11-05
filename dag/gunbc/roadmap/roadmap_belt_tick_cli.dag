@@ -1,5 +1,6 @@
 module gunbc.roadmap.roadmap_belt_tick_cli
 
+import gunbc.compute.work_provider_local { compute_seat_sweep, compute_seat_sweep_failures }
 import std.types { String, List, NonEmptyStr }
 import gunbc.dispatch_credential_acquisition {
   credential_acquisition_slots, credential_acquisition_store, CredentialAcquisitionStoreReady, CredentialAcquisitionStoreUnready,
@@ -33,6 +34,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceRootUnknown,
   dashboard_instance_for_repo_root,
 }
+import gunbc.roadmap.roadmap_belt_actuate { belt_dispatch_node_for_instance, belt_dispatch_result_ok, belt_spawn_outcome_json, belt_dispatch_env_var, belt_redeliver_instance_env_var, belt_redeliver_attempt_key_env_var, belt_continuation_decision_for_node, belt_attempt_worktree_restore_for_instance, AttemptWorktreeRestored, AttemptWorktreeNotNeeded, AttemptWorktreeBranchAbsent, AttemptWorktreeRestoreRefused, belt_lookup_node, NodeFound, NodeMissing, AuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_attempt_continuation { ContinuationDecision, ContinuationResume, ContinuationHoldUntil, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded, BeltPassDeferred, BeltPassRefused, BeltPassFailed,
   belt_run_once_in,
@@ -42,11 +46,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_write_for_instance,
   belt_tick_result_json_value,
   belt_review_head_for_instance, belt_review_report_for_instance, belt_review_outcome_json,
-  belt_verify_one_for_instance, BeltVerifyOneResult,
+  belt_verify_one_for_instance, belt_verify_resume_for_instance, BeltVerifyOneResult,
   VerifyOneVerdictRecorded, VerifyOneAlreadyRecorded, VerifyOneRefused,
   belt_verify_outcome_json,
-  belt_escalate_one_for_instance, BeltEscalateOneResult,
-  EscalateOneConvened, EscalateOneGateNoOp, EscalateOneNotDue, EscalateOneRefused,
   belt_integrate_candidate_core_for_instance, BeltIntegrationCoreStep,
   IntegrationCoreDeferred, IntegrationCoreUnreadable, IntegrationCoreBlocked, IntegrationCoreIntegrated,
   belt_instance_obligation_enqueue, belt_obligation_enqueue_json,
@@ -72,7 +74,7 @@ import gunbc.roadmap.roadmap_result_returned {
 import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation, MeteringObligation,
-  DogfoodStartRecordObligation, SnapshotCensusObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
+  DogfoodStartRecordObligation, SnapshotCensusObligation, ComputeSeatSettlementObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
   BeltObligationEnqueue, BeltObligationStarted, BeltObligationHeld, BeltObligationEnqueueRefused,
 }
 import gunbc.roadmap.roadmap_event_snapshot_census { roadmap_snapshot_census_for_instance, belt_tick_exit_with_snapshot_census }
@@ -273,8 +275,7 @@ fn belt_review_report_cli(repo_root: String, node_id: String, attempt_key: Strin
 
 // ------------------------------------------------------------------------------------------------
 // PER-ITEM OBLIGATION ENTRIES (owner ruling 2026-09-22, "The belt demoted": wake-ups and
-// anti-entropy only). Verify one candidate, convene one lineage's supervisor, integrate one
-// verified candidate -- each on the item's own durable authorities, never the attempts ledger.
+// anti-entropy only). Verify one candidate, integrate one verified candidate -- each on the item's own durable authorities, never the attempts ledger.
 // Each is conditional and idempotent by construction: a repeat over unchanged state is a typed
 // no-op, so a duplicate, lost, or out-of-order wake-up is harmless. The tick's passes run the
 // same cores; these are their independent invocations.
@@ -317,45 +318,15 @@ fn belt_verify_one_cli(repo_root: String, node_id: String, attempt_key: String, 
   }
 }
 
-fn belt_escalate_one_result_json(r: BeltEscalateOneResult) -> JsonValue {
-  match r {
-    EscalateOneConvened { unit } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "convened")),
-        json_kv(key: "unit", value: json_string(s: unit)),
-      ])
-    EscalateOneGateNoOp { step, detail } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "gate-no-op")),
-        json_kv(key: "step", value: json_string(s: step)),
-        json_kv(key: "detail", value: json_string(s: detail)),
-      ])
-    EscalateOneNotDue { detail } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "not-due")),
-        json_kv(key: "detail", value: json_string(s: detail)),
-      ])
-    EscalateOneRefused { reason } =>
-      json_object(members: [
-        json_kv(key: "schema", value: json_string(s: "roadmap-escalate-one/v1")),
-        json_kv(key: "status", value: json_string(s: "refused")),
-        json_kv(key: "reason", value: json_string(s: reason)),
-      ])
-  }
-}
-
-fn belt_escalate_one_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
+fn belt_verify_resume_cli(repo_root: String, node_id: String, attempt_key: String, receipt_path: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
-    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_escalate_one_cli: no dashboard instance is rooted at ", w], ""))
+    DashboardInstanceRootUnknown { repo_root: w } => exit_failure(reason: join(["belt_verify_resume_cli: no dashboard instance is rooted at ", w], ""))
     DashboardInstanceResolved { instance } => {
-      let document = serialize_json(v: belt_escalate_one_result_json(
-        r: belt_escalate_one_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+      let document = serialize_json(v: belt_verify_one_result_json(
+        r: belt_verify_resume_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
       ))
       let w = Filesystem.Write(path: receipt_path, content: document)
-      if !w.success { exit_failure(reason: join(["belt_escalate_one_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
+      if !w.success { exit_failure(reason: join(["belt_verify_resume_cli: receipt could not be written: ", w.error, "; result was ", document], "")) } else { ExitSuccess }
     }
   }
 }
@@ -501,6 +472,143 @@ fn belt_instance_obligation_cli(kind: String) -> ProcessExit {
   }
 }
 
+// THE WAKE'S RE-DISPATCH ENTRY (armed by the belt's SpawnRouteWake fold, roadmap_attempt_redelivery_wake).
+// A transient re-delivery timer fires THIS with GUNBC_BELT_SPAWN_WORKDIR (the attempt's own repo root),
+// GUNBC_BELT_NODE_ID and GUNBC_BELT_REDELIVER_INSTANCE_ID (the instance the attempt belongs to). It
+// resolves the instance BY REPO ROOT with the belt's OWN existing resolver, belt_instance_from_env -- the
+// same one belt_run_once_cli / the obligation and discovery units use, and the only one that resolves
+// srv1-lab-codex-feedback-v0, which belt_dispatch_node_cli's narrow fail-closed admitted list REFUSES --
+// then hands the node to the SAME belt_dispatch_node_for_instance the door ends in. It is a composition of
+// those two existing functions with no copied dispatch logic. It REFUSES loudly, before any dispatch, when
+// the repo root resolves no instance (belt_instance_from_env's own refusal) OR a DIFFERENT one than the
+// wake named: the node is looked up over the GLOBAL plan (belt_find_node_in), so the instance identity is
+// the only thing that stops a wake firing on the wrong instance -- and that is worse than a wedge.
+// THE ENTRY MAY ONLY CONTINUE, NEVER START (review 87645, decision A1): it also reads
+// GUNBC_BELT_REDELIVER_ATTEMPT_KEY and, before dispatch, requires the node's continuation decision
+// (belt_continuation_decision_for_node -- the SAME derivation the belt fold uses; for_instance is a projection
+// onto it) to be a Resume or a request-pending Hold-Until for EXACTLY that key -- see
+// belt_redeliver_attempt_continues. It reads it AFTER the restore step, in the order the door route already
+// uses -- see belt_redeliver_attempt_wake_admission. So the wake re-delivers an attempt the door already
+// admitted, never fresh work; it is not a second door into new dispatch, and the fail-closed admitted-instance
+// list still governs what it was written for -- STARTING work from the belt-dispatch CLI.
+// The pure predicate behind belt_redeliver_attempt_cli's wrong-instance guard (rationale
+// in that entry's comment above): the root-resolved instance must equal the wake-named
+// one. Kept separate and Bool so the guard is witnessed hermetically apart from the env
+// reads and dispatch the entry wraps around it.
+fn belt_redeliver_instance_matches(resolved: String, expected: String) -> Bool {
+  resolved == expected
+}
+
+// THE STRUCTURAL GUARD (review 87645, manager decision A1): the wake entry may ONLY continue, never start.
+// It re-delivers only when the node's own continuation decision -- the existing belt_continuation_decision_for_node,
+// the SAME derivation the belt fold uses, so no second decision path -- is a Resume or a request-pending
+// Hold-Until for EXACTLY the attempt the armed wake names. Spawn-fresh, plain hold, complete, ended, refused,
+// or a Resume/Hold-Until for a DIFFERENT key all refuse: a wake re-delivers admitted in-flight work, it does not
+// open a second door into new dispatch. Pure, so it is witnessed hermetically apart from the env reads/dispatch.
+fn belt_redeliver_attempt_continues(decision: ContinuationDecision, attempt_key: String) -> Bool {
+  match decision {
+    ContinuationResume { reason: _, attempt_key: k, ordinal: _, causes: _ } => k == attempt_key
+    ContinuationHoldUntil { reason: _, attempt_key: k, redeliver_at: _ } => k == attempt_key
+    ContinuationSpawnFresh { reason: _ } => false
+    ContinuationRefused { reason: _ } => false
+    ContinuationHold { reason: _ } => false
+    ContinuationComplete { reason: _ } => false
+    ContinuationEnded { reason: _ } => false
+  }
+}
+
+// THE WAKE'S OWN ADMISSION SEQUENCE (lab defect, srv1 lab 7f6955095167, 2026-10-30 17:01Z, attempt
+// e5a42384c6a5e13d): restore FIRST, then the unchanged decision, then the unchanged key guard -- the order the
+// door route already uses. WHY THE OLD ORDER COULD NOT WORK: the guard above says what the wake must establish,
+// and it establishes it through the decision, but the decision reads the prior attempt's SUBMISSION CAPTURE,
+// whose head is observed in the worktree (belt_prior_attempt_capture -> belt_worktree_head_observe). With the
+// tree reaped that leg is not a verdict about the lineage at all: ContinuationRefused there says the capture
+// cannot be observed, so the guard's Bool is false and the wake can never re-deliver the very attempt it was
+// armed for -- while the door route, which restores before it decides, restored that attempt 20 minutes later.
+// The ORDER was the unjustified link, so the order is the whole change: this runs the SAME restore step the
+// spawn route runs (belt_attempt_worktree_restore_for_instance) and adds no derivation of its own -- no second
+// decision path, no second restore path, and belt_redeliver_attempt_continues is untouched. Its fail-closed arms
+// REFUSE the wake: a tree that cannot be re-materialized is an unknown tree, and unknown refuses (§5).
+// The step is the operator-approved bounded scaffold (attempt_worktree_restore_scaffold /
+// attempt_worktree_restore_dissolve_trigger); its population is enforced BY NAME inside the step
+// (attempt_worktree_restore_scaffold_attempt_key), so this call site admits no member the door route did not
+// already admit and adds no lifetime -- both call sites go away with the same dissolve trigger.
+type BeltRedeliverWakeAdmission
+  = WakeAdmissionAdmitted { restore: String }
+  | WakeAdmissionRestoreRefused { detail: String }
+  | WakeAdmissionContinuationRefused
+
+fn belt_redeliver_attempt_wake_admission(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> BeltRedeliverWakeAdmission {
+  match belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node_id) {
+    AttemptWorktreeBranchAbsent { branch: _, detail } => WakeAdmissionRestoreRefused { detail: detail }
+    AttemptWorktreeRestoreRefused { detail } => WakeAdmissionRestoreRefused { detail: detail }
+    AttemptWorktreeRestored { worktree_path: worktree_path, branch: branch } =>
+      belt_redeliver_attempt_after_restore(instance: instance, node_id: node_id, attempt_key: attempt_key, restore: join(["re-materialized ", worktree_path, " from branch ", branch], ""))
+    AttemptWorktreeNotNeeded =>
+      belt_redeliver_attempt_after_restore(instance: instance, node_id: node_id, attempt_key: attempt_key, restore: "no restore was needed")
+  }
+}
+
+// THE GUARD, READ AFTER THE STEP: the SAME continuation derivation (for_node is the projection for_instance
+// already points at) and the SAME key guard, neither of them touched here. Split out only so the step's outcome
+// is the one thing that changes what the guard is asked about.
+fn belt_redeliver_attempt_after_restore(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, restore: String) -> BeltRedeliverWakeAdmission {
+  let decision = belt_continuation_decision_for_node(instance: instance, node_id: node_id)
+  if belt_redeliver_attempt_continues(decision: decision, attempt_key: attempt_key) {
+    WakeAdmissionAdmitted { restore: restore }
+  } else {
+    WakeAdmissionContinuationRefused
+  }
+}
+
+fn belt_redeliver_attempt_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_dispatch_env_var).value {
+    Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID not set — a re-delivery wake must name the node it re-delivers (fail-closed)")
+    Present { value: node_id } =>
+      if string_length(s: node_id) == 0 {
+        exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_NODE_ID is empty — a re-delivery wake must name the node it re-delivers (fail-closed)")
+      } else {
+        match shell.Env.Get(name: belt_redeliver_instance_env_var).value {
+          Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID not set — the wake must name the instance the attempt belongs to, so a wrong spawn root cannot dispatch elsewhere (fail-closed)")
+          Present { value: expected_instance } =>
+            if string_length(s: expected_instance) == 0 {
+              exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_INSTANCE_ID is empty — the wake must name the instance the attempt belongs to (fail-closed)")
+            } else {
+              match shell.Env.Get(name: belt_redeliver_attempt_key_env_var).value {
+                Absent => exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_ATTEMPT_KEY not set — the wake must name the attempt it re-delivers, so the entry can refuse to start fresh work (fail-closed)")
+                Present { value: attempt_key } =>
+                  if string_length(s: attempt_key) == 0 {
+                    exit_failure(reason: "belt_redeliver_attempt_cli: GUNBC_BELT_REDELIVER_ATTEMPT_KEY is empty — the wake must name the attempt it re-delivers (fail-closed)")
+                  } else {
+                    belt_instance_from_env(entry: "belt_redeliver_attempt_cli", continuation: instance =>
+                      if !belt_redeliver_instance_matches(resolved: instance.instance_id as String, expected: expected_instance) {
+                        exit_failure(reason: join(["belt_redeliver_attempt_cli: GUNBC_BELT_SPAWN_WORKDIR resolves instance ", instance.instance_id as String, " but the wake names ", expected_instance, " — refusing; a wake firing for the wrong instance is worse than a wedge"], ""))
+                      } else {
+                        match belt_lookup_node(node_id: node_id) {
+                          NodeMissing => exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " is not in the accepted plan, so its continuation cannot be read — refusing re-delivery (fail-closed)"], ""))
+                          AuthorityProjectionRefused { detail: detail } => exit_failure(reason: join(["belt_redeliver_attempt_cli: the authority projection is refused, so node ", node_id, "'s continuation cannot be read: ", detail, " — refusing re-delivery (fail-closed)"], ""))
+                          NodeFound { node: node } =>
+                            match belt_redeliver_attempt_wake_admission(instance: instance, node_id: node.node, attempt_key: attempt_key) {
+                              WakeAdmissionAdmitted { restore: _ } => {
+                                let r = belt_dispatch_node_for_instance(instance: instance, node_id: node_id)
+                                if belt_dispatch_result_ok(r: r) { ExitSuccess } else { exit_failure(reason: serialize_json(v: belt_spawn_outcome_json(o: r))) }
+                              }
+                              WakeAdmissionRestoreRefused { detail } =>
+                                exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " attempt ", attempt_key, " cannot be re-delivered because its prior worktree could not be restored, so its continuation cannot be read at all -- ", detail, "; refusing (fail-closed)"], ""))
+                              WakeAdmissionContinuationRefused =>
+                                exit_failure(reason: join(["belt_redeliver_attempt_cli: node ", node_id, " has no Resume or request-pending Hold-Until continuation for attempt ", attempt_key, " — a wake may only re-deliver an already-admitted attempt, never start fresh work; refusing"], ""))
+                            }
+                        }
+                      }
+                    )
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
 fn belt_instance_obligation_run(instance: HostDashboardInstance, kind: BeltInstanceObligationKind) -> ProcessExit {
   let observed_at = belt_tick_observed_at()
   match kind {
@@ -519,6 +627,10 @@ fn belt_instance_obligation_run(instance: HostDashboardInstance, kind: BeltInsta
       }
     DogfoodStartRecordObligation => belt_start_record_exit(start: dogfood_start_record_for_instance(instance: instance))
     SnapshotCensusObligation => belt_tick_exit_with_snapshot_census(exit: ExitSuccess, census: roadmap_snapshot_census_for_instance(instance: instance, observed_at: observed_at))
+    ComputeSeatSettlementObligation => {
+      let failures = compute_seat_sweep_failures(s: compute_seat_sweep(instance: instance))
+      if count(failures) == 0 { ExitSuccess } else { exit_failure(reason: join(failures, "\n")) }
+    }
   }
 }
 

@@ -13,6 +13,7 @@ import gunbc.harness.harness_operator_route {
   operator_custody_file_path, operator_credential_custody_of, OperatorCredentialCustody,
   OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
   router_concurrency_budget_policy,
+  operator_capacity_answer, OperatorNoCapacity, OperatorUpstreamUnanswered, OperatorUpstreamsBusy,
 }
 import gunbc.harness.harness_operator_credential { operator_route_credential_file, operator_route_certificate_file }
 import gunbc.serving.router_dev_policy { router_dev_srv1_site }
@@ -21,13 +22,18 @@ import gunbc.harness.harness_backend {
   HarnessBackendServing, HarnessBackendModelNotAdmitted,
   HarnessRosterServing, HarnessRosterNoneServing, HarnessBackendUnreachable, HarnessBackendUnreadable,
 }
-import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat }
-import gunbc.harness.harness_turn { harness_backend_header_file }
+import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HarnessHostedQuota }
+import extdeps.api_rate_limit { UpstreamRateLimit, PerMinute, PerDay }
+import gunbc.harness.harness_turn { harness_backend_header_file, harness_request_pending_cause, HarnessPostOutcome, TurnRequestPending }
+import gunbc.harness.harness_cli { harness_turn_exit }
+import std.process { ExitSuccess, ExitFailure }
+import extdeps.http.header_dump { HeaderDumpRead }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
   Qwen3_8_27bOnNinfer, Qwen38FlashNextOnFabricRouter, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
-  harness_unit_model_id, harness_unit_reasoning_field,
+  harness_unit_model_id, harness_unit_reasoning_field, harness_capped_max_tokens,
+  DeepseekV4FlashOnVllm,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.operation_argv { operation_argv_bind_text, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
@@ -417,5 +423,129 @@ test fn the_containers_own_name_is_not_admitted_by_the_cards_list() -> Bool {
 }
 
 test fn the_cards_reasoning_is_read_from_the_member_ninfer_emits() -> Bool {
-  (harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) as String) == "reasoning_content"
+  match harness_unit_reasoning_field(unit: Qwen3_8_27bOnNinfer) { Present { value: f } => (f as String) == "reasoning_content"  Absent => false }
+}
+
+// ═══ THE PATIENT REQUEST CONTRACT ON THE OPERATOR ROUTE (supplied values at each interface) ══════
+fn w_post(success: Bool, exit_code: Int, status_line: String, body: String) -> HarnessPostOutcome {
+  HarnessPostOutcome {
+    body: body,
+    success: success,
+    headers: Present { value: HeaderDumpRead { text: status_line } },
+    fault: operator_round_fault(success: success, curl_exit: exit_code),
+  }
+}
+
+// WHETHER THIS POST OPENS A PATIENT-REQUEST WINDOW on the named backend. The reading is the turn path's
+// own, called once, and the discriminating part is that it is ROUTE-DEPENDENT: the same unanswered post
+// stands pending on the operator endpoint and does not on a hosted quota (hosted routes keep today's
+// behaviour).
+fn w_pending_on_operator(posted: HarnessPostOutcome) -> Bool {
+  match harness_request_pending_cause(access: BackendAdmittedByOperatorEndpoint { header_file: "witness/authorization" as NonEmptyStr }, posted: posted) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn w_pending_on_hosted(posted: HarnessPostOutcome) -> Bool {
+  match harness_request_pending_cause(access: BackendAdmittedByHostedQuota {
+    header_file: "witness/authorization" as NonEmptyStr,
+    quota: HarnessHostedQuota {
+      short_hostname: "witness",
+      actor: "hosted-witness" as NonEmptyStr,
+      per_minute: UpstreamRateLimit { upstream: "witness" as NonEmptyStr, scope: "minute" as NonEmptyStr, requests: 20, period: PerMinute },
+      per_day: UpstreamRateLimit { upstream: "witness" as NonEmptyStr, scope: "day" as NonEmptyStr, requests: 1000, period: PerDay },
+    },
+  }, posted: posted) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A POST THAT DREW NO RESPONSE AT ALL: the transport failed, the body is empty, and the response-header
+// file holds nothing -- curl's --max-time expiry and a connection reset both land here.
+fn w_post_drew_nothing() -> HarnessPostOutcome {
+  HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, fault: none }
+}
+
+// Exit 51 is CURLE_OBSOLETE51 at the pinned curl floor (>= 7.68), never emitted: it is no trust outcome, so it
+// carries no certificate fault and the round is not a certificate refusal.
+test fn curl_exit_51_is_obsolete_and_is_not_typed_as_a_certificate_refusal() -> Bool {
+  let p = w_post(success: false, exit_code: 51, status_line: "", body: "")
+  match p.fault {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// A post that drew NO RESPONSE AT ALL stands pending on the operator route, and the cause names the window for
+// what it is; the same post on a HOSTED QUOTA route stands for nothing. That the two readings differ on the
+// same evidence is the discriminating part.
+test fn a_post_that_drew_no_response_stands_pending_on_the_operator_route_only() -> Bool {
+  let drew_nothing = w_post_drew_nothing()
+  w_pending_on_operator(posted: drew_nothing)
+    && !w_pending_on_hosted(posted: drew_nothing)
+    && (match harness_request_pending_cause(access: BackendAdmittedByOperatorEndpoint { header_file: "witness/authorization" as NonEmptyStr }, posted: drew_nothing) {
+      Present { value: cause } => cause.contains("--max-time") && cause.contains("stopped watching")
+      Absent => false
+    })
+}
+
+// THE TERMINAL REFUSALS DO NOT STAND PENDING: a 401 (the route refusing THIS request's credentials) and a 500
+// (the engine answered, with an error) are refusals that stop visibly.
+test fn a_401_and_a_500_are_terminal_refusals_not_pending_requests() -> Bool {
+  let denied = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 401 Unauthorized\r\n", body: "{\"error\":{\"message\":\"no such api key\"}}")
+  let broken = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 500 Internal Server Error\r\n", body: "{\"error\":\"boom\"}")
+  !w_pending_on_operator(posted: denied) && !w_pending_on_operator(posted: broken)
+}
+
+// The real harness CLI's exit derivation maps a PATIENT REQUEST turn to exit 1 labelled request-pending.
+test fn a_request_pending_turn_exits_failure_labelled_request_pending() -> Bool {
+  match harness_turn_exit(outcome: TurnRequestPending { re_deliveries: 3, steps_taken: 2 }) {
+    ExitSuccess => false
+    ExitFailure { code, reason } => code == 1 && reason.contains("request-pending")
+  }
+}
+
+test fn a_unit_with_no_stated_output_cap_is_not_capped() -> Bool {
+  harness_capped_max_tokens(unit: DeepseekV4FlashOnVllm, asked: 40000) == 40000
+}
+
+// THE ROUTE'S CAPACITY ANSWERS STAND PENDING. A 503, 502 or 429 from the operator route means nothing was served,
+// so the request stands (operator direction 2026-10-27) -- on the operator route only: the same post on a hosted
+// quota stands for nothing. Each status is typed by the route's own classifier, read from the header dump, and
+// the cause names the status. RED beside them: a 500 and a 401 (above) do not stand.
+fn w_capacity_post(status_line: String) -> HarnessPostOutcome {
+  w_post(success: false, exit_code: 22, status_line: status_line, body: "{\"error\":\"busy\"}")
+}
+
+fn w_pending_cause_names(posted: HarnessPostOutcome, status: String) -> Bool {
+  match harness_request_pending_cause(access: BackendAdmittedByOperatorEndpoint { header_file: "witness/authorization" as NonEmptyStr }, posted: posted) {
+    Present { value: cause } => cause.contains(status)
+    Absent => false
+  }
+}
+
+test fn a_503_from_the_route_is_no_capacity_and_stands_pending_on_the_operator_route_only() -> Bool {
+  let p = w_capacity_post(status_line: "HTTP/1.1 503 Service Unavailable\r\n")
+  (match operator_capacity_answer(status: Present { value: 503 }) { Present { value: OperatorNoCapacity } => true  Present { value: OperatorUpstreamUnanswered } => false  Present { value: OperatorUpstreamsBusy } => false  Absent => false })
+    && w_pending_on_operator(posted: p) && !w_pending_on_hosted(posted: p) && w_pending_cause_names(posted: p, status: "503")
+}
+
+test fn a_502_from_the_route_is_an_unanswered_upstream_and_stands_pending() -> Bool {
+  let p = w_capacity_post(status_line: "HTTP/1.1 502 Bad Gateway\r\n")
+  (match operator_capacity_answer(status: Present { value: 502 }) { Present { value: OperatorUpstreamUnanswered } => true  Present { value: OperatorNoCapacity } => false  Present { value: OperatorUpstreamsBusy } => false  Absent => false })
+    && w_pending_on_operator(posted: p) && !w_pending_on_hosted(posted: p) && w_pending_cause_names(posted: p, status: "502")
+}
+
+test fn a_429_from_the_route_is_every_upstream_busy_and_stands_pending() -> Bool {
+  let p = w_capacity_post(status_line: "HTTP/1.1 429 Too Many Requests\r\n")
+  (match operator_capacity_answer(status: Present { value: 429 }) { Present { value: OperatorUpstreamsBusy } => true  Present { value: OperatorNoCapacity } => false  Present { value: OperatorUpstreamUnanswered } => false  Absent => false })
+    && w_pending_on_operator(posted: p) && !w_pending_on_hosted(posted: p) && w_pending_cause_names(posted: p, status: "429")
+}
+
+// RED: a 500 and an absent status are no capacity answer, so neither is read as "nothing was served".
+test fn a_500_or_no_status_is_no_capacity_answer() -> Bool {
+  (match operator_capacity_answer(status: Present { value: 500 }) { Present { value: _ } => false  Absent => true })
+    && (match operator_capacity_answer(status: none) { Present { value: _ } => false  Absent => true })
 }

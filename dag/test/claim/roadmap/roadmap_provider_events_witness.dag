@@ -4,7 +4,8 @@ import std.types { Bool, String, Int, List }
 import extdeps.languages.json.emit { json_object }
 import gunbc.harness.harness_wire { WireToolUseBlock }
 import gunbc.harness.harness_tool_kind {
-  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, harness_tool_wire_name,
+  HarnessTool, RunCommandTool, ReadFileTool, WriteFileTool, EditFileTool, HandInTool,
+  WaitJobsTool, ReadJobOutputTool, KillJobTool, harness_tool_wire_name,
 }
 import std.measure { character_count, character_count_value }
 import gunbc.harness.harness_turn { harness_event_placement_waiting, harness_tool_round_events }
@@ -18,7 +19,8 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted,
   ProviderItemActivity, RunningCommand, EditingFiles, UsingConnectedTool, Searching,
   UpdatingPlan, ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
-  HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+  HarnessEditingFile, HarnessHandingIn, HarnessWaitingOnJobs, HarnessReadingJobOutput,
+  HarnessKillingJob, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
   classify_claude_code_stream_line,
   ItemStarted, ItemCompleted,
   ProviderEventsParsed,
@@ -27,10 +29,12 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderRunning,
   ProviderStarting,
   ProviderAwaitingSeat,
+  ProviderAwaitingAcceptance,
   ProviderCompleted,
   ProviderFailed,
   ProviderBudgetSpent,
   ProviderEventsRefused,
+  ProviderRequestPending,
   parse_codex_jsonl,
   parse_codex_jsonl_with_line_budget,
   classify_provider_event_line,
@@ -43,6 +47,7 @@ import gunbc.roadmap.roadmap_provider_events {
   TurnStarted,
   TurnCompleted,
   TurnFailed,
+  HarnessRequestPending,
   codex_provider_event_line_observation_budget,
   codex_provider_projection_type_budget,
   codex_provider_projection_detail_budget,
@@ -55,7 +60,7 @@ import gunbc.roadmap.roadmap_provider_events {
   provider_execution_terminality,
   provider_item_activity_kind,
   provider_execution_carried_detail,
-  TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking,
+  TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking, TerminalityPending,
   ItemKindReporting, ItemKindWorking,
 }
 
@@ -388,6 +393,22 @@ test fn the_projector_keeps_the_wait_reason() -> Bool {
   string_contains(s: projection_filter_text(), pattern: "elif $type == \"turn.placement_waiting\" then {\"type\":$type,\"wait\":(.wait | num),\"wait_cap\":(.wait_cap | num),\"reason\":(.reason | bounded_text)}")
 }
 
+// THE HAND-IN ID SURVIVES THE PROJECTOR (lab 2026-10-14). The default arm emits only type, so the
+// fold answers AwaitingAcceptance with an empty id; capture still fires (the variant is enough)
+// and the outcome obligation does not (it requires the id). The envelope the waiter and the writer
+// share is the projected line, so this arm is the inhabitance of that id.
+test fn the_projector_keeps_the_hand_in_id() -> Bool {
+  string_contains(s: projection_filter_text(), pattern: "elif $type == \"session.handed_in\" then {\"type\":$type,\"handin\":(.handin | bounded_text)}")
+    && (match provider_execution_state(parsed: parse_codex_jsonl(text: "{\"type\":\"session.handed_in\",\"handin\":\"eb1ec191e8f18aa5\"}\n")) {
+      ProviderAwaitingAcceptance { handin } => handin == "eb1ec191e8f18aa5"
+      _ => false
+    })
+    && (match provider_execution_state(parsed: parse_codex_jsonl(text: "{\"type\":\"session.handed_in\"}\n")) {
+      ProviderAwaitingAcceptance { handin } => handin == ""
+      _ => false
+    })
+}
+
 // THE TOOL A ROUND DISPATCHED IS THE ACTIVITY THE READER REPORTS, real emitter into real reader.
 // Each stream below is what gunbc.harness.harness_turn harness_tool_round_events writes for one
 // tool use, and each is read by parse_codex_jsonl with nothing supplied in between, so deleting the
@@ -401,6 +422,10 @@ fn activity_tag(activity: ProviderItemActivity) -> String {
     HarnessReadingFile => "read"
     HarnessWritingFile => "write"
     HarnessEditingFile => "edit"
+    HarnessHandingIn => "handin"
+    HarnessWaitingOnJobs => "wait"
+    HarnessReadingJobOutput => "jobout"
+    HarnessKillingJob => "jobkill"
     HarnessRefusingUnrecognizedTool => "undeclared"
     EditingFiles => "other"
     UsingConnectedTool => "other"
@@ -454,6 +479,22 @@ test fn a_harness_file_write_round_is_read_back_as_writing() -> Bool {
 
 test fn a_harness_file_edit_round_is_read_back_as_editing_apart_from_writing() -> Bool {
   harness_tool_round_tags(tool: EditFileTool) == "started:edit,completed:edit"
+}
+
+test fn a_harness_hand_in_round_is_read_back_as_handing_in() -> Bool {
+  harness_tool_round_tags(tool: HandInTool) == "started:handin,completed:handin"
+}
+
+test fn a_harness_wait_round_is_read_back_as_waiting_on_jobs() -> Bool {
+  harness_tool_round_tags(tool: WaitJobsTool) == "started:wait,completed:wait"
+}
+
+test fn a_harness_job_output_round_is_read_back_as_reading_job_output() -> Bool {
+  harness_tool_round_tags(tool: ReadJobOutputTool) == "started:jobout,completed:jobout"
+}
+
+test fn a_harness_job_kill_round_is_read_back_as_killing_a_job() -> Bool {
+  harness_tool_round_tags(tool: KillJobTool) == "started:jobkill,completed:jobkill"
 }
 
 // A NAME THE HARNESS DOES NOT DECLARE IS NEVER REPORTED AS A COMMAND. The dispatcher refuses such a
@@ -770,7 +811,8 @@ test fn a_item_kind_partition_names_only_reporting() -> Bool {
   let activities: List<ProviderItemActivity> = [
     RunningCommand, EditingFiles, UsingConnectedTool, Searching, UpdatingPlan,
     ReasoningItem, Reporting, HarnessReadingFile, HarnessWritingFile,
-    HarnessEditingFile, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
+    HarnessEditingFile, HarnessHandingIn, HarnessWaitingOnJobs, HarnessReadingJobOutput,
+    HarnessKillingJob, HarnessRefusingUnrecognizedTool, UnclassifiedItem,
   ]
   count(activities.filter(a => match provider_item_activity_kind(activity: a) {
                                  ItemKindReporting => true
@@ -792,6 +834,7 @@ test fn a_fold_event_is_locked_for_every_locked_class() -> Bool {
            TerminalityCompleted { activity: _ } => true
            TerminalityRefused => true
            TerminalityEventsRefused => true
+           TerminalityPending { activity: _ } => true
            TerminalityNotStarted => false
            TerminalityWorking => false
          },
@@ -834,4 +877,53 @@ test fn a_detail_partition_fold_matches_the_detail_reader() -> Bool {
            none => provider_execution_detail(state: s) == ""
          },
   )
+}
+
+// ================= REQUEST-PENDING PROJECTION (the wedged e5a42384c6a5e13d, srv1 2026-10-28) =================
+// THE DISCRIMINATING CHAIN, PART 1: a round the front would not serve records ONE durable
+// turn.request_pending line and the worker exits. Before this contract reached the belt's classifier the
+// line had NO arm, fell through the Claude fall-through, and the WHOLE stream was refused as an unknown
+// event type (ProviderEventsRefused) -- which is exactly how the capture-owed rule and belt_commit_decision
+// both read "provider not completed" and capture was never owed. A stream that ends on a pending request
+// projects as its OWN standing now, labelled the harness's own word.
+data request_pending_stream: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"round.usage\",\"step\":7,\"input_tokens\":900,\"output_tokens\":40,\"epoch_ms\":1000000,\"files_changed\":0}\n{\"type\":\"turn.request_pending\",\"round\":7,\"resumable\":true,\"interrupted_calls\":[]}\n"
+
+test fn a_request_pending_round_projects_as_pending_not_refused() -> Bool {
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: request_pending_stream))
+  match state {
+    ProviderRequestPending { activity, detail } =>
+      provider_execution_state_label(state: state) == "request-pending"
+        && string_contains(s: activity, pattern: "request-pending")
+        && string_contains(s: detail, pattern: "request_pending")
+    _ => false
+  }
+}
+
+// THE PENDING STANDING IS ITS OWN TERMINALITY: neither the refused end nor the completed end. A fold that
+// mapped it onto TerminalityRefused would make the belt owe nothing AND let a refuse-shaped consumer act;
+// mapping it onto Completed would mint a candidate that never arrived.
+test fn a_request_pending_stream_is_terminal_as_pending() -> Bool {
+  let state = provider_execution_state(parsed: parse_codex_jsonl(text: request_pending_stream))
+  match provider_execution_terminality(state: state) {
+    TerminalityPending { activity } => string_contains(s: activity, pattern: "request-pending")
+    _ => false
+  }
+}
+
+// THE CLASSIFIER ARMS THE LINE DIRECTLY (not via the Claude fall-through). Observed, never refused.
+test fn turn_request_pending_is_observed_not_refused() -> Bool {
+  match classify_provider_event_line(raw: "{\"type\":\"turn.request_pending\",\"round\":7,\"resumable\":true}") {
+    ProviderEventObserved { kind } => kind == HarnessRequestPending
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL, THE OTHER HALF OF THE FIX: teaching the classifier one legitimate line must NOT soften
+// the refusal of a genuinely unknown line. An unrecognized type is still refused, so the fix is one honest
+// arm -- not a wildcard that swallows unreadable evidence into a legible standing.
+test fn an_unknown_event_is_still_refused_after_the_pending_arm() -> Bool {
+  match provider_execution_state(parsed: parse_codex_jsonl(text: "{\"type\":\"turn.something_nobody_authorized\"}\n")) {
+    ProviderEventsRefused { activity: _, detail: _ } => true
+    _ => false
+  }
 }

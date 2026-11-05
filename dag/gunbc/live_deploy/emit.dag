@@ -227,8 +227,8 @@ import gunbc.live_deploy.spec {
   ComposeOwnedArtifactKind,
   UpsertArtifactKind,
   ComposeOwned, UpsertOwned,
-  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, AgentDoorServeUnit, OidcConfigArtifact,
-  deployment_agent_door_socket_of, deployment_agent_door_function_suffix,
+  ServeBinary, GunbcSourceTree, SystemdUnit, BeltEventPathUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit, PublicationHelperPathUnit, AttemptUnitDrainPathUnit, FabricStorageServeUnit, FabricStorageServeMapping, ApprovalBrokerFrontDoor, TailnetDoorServeUnit, OidcConfigArtifact,
+  AgentDoorServeUnit, deployment_agent_door_socket_of, deployment_agent_door_function_suffix,
   deployment_tailnet_door_socket, deployment_tailnet_door_unit_name, deployment_tailnet_door_unit_path, deployment_tailnet_door_function_suffix,
   deployment_belt_service_unit_name,
   deployment_tree_remote_unit_name,
@@ -1005,7 +1005,7 @@ fn live_deploy_attempt_unit_drain_service_unit_file(
   instance: HostDashboardInstance,
   revision: ReleaseRevisionBinding,
 ) -> AttemptUnitDrainServiceFile {
-  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision) {
+  match attempt_system_unit_launch_gunbc_argv_at(instance: instance, revision: revision, handin_wake_unit: deployment_belt_exit_drain_service_unit_name(names: spec.names)) {
     AttemptSystemUnitLaunchArgvRefused { cause } => AttemptUnitDrainServiceRefused { cause: cause }
     AttemptSystemUnitLaunchArgvReady { argv } =>
       AttemptUnitDrainServiceReady { file: ServiceUnitFile {

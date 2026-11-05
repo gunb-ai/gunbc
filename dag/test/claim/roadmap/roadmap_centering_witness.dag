@@ -99,7 +99,6 @@ fn fixture_fields() -> DispatchBriefFields {
     displaced_cost: "dc",
     current_state: "cs",
     first_slice: "fs",
-    red_control: "rc",
     out_of_scope: "oos",
     handback: "hb",
     paths: "p",

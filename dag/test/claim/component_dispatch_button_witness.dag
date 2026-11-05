@@ -36,7 +36,9 @@ test fn witness_scale_well_formed() -> Bool {
 // 2026-09-22 supervisor escalation path; wire label supervisor_convened), and 27 -> 18 WITH the
 // readiness collapse (2026-09-30): the eight per-fact node refusals and the three non-agent-work
 // exemplars became the one LaunchNotReady { missing } (wire label not_ready), and 18 -> 19 WITH the
-// G5 placement refusal (2026-10-03; wire label no_placement_grant), and 19 -> 20 WITH
+// G5 placement refusal (2026-10-03; wire label no_placement_grant), and 19 -> 18 WITHOUT
+// SupervisorConvened (gunbc.plans.harness_session_lifecycle slice S1: the supervisor decides inside
+// the worker's paused session, so the belt convenes nothing), and back to 19 WITH
 // LaunchRevisionNotLanded (#13703, wire label revision_not_landed_on_main, which landed without
 // moving this pin), and 20 -> 21 WITH SpawnLaunchPending (wire label launch_pending, the start
 // request enqueued on the attempt-unit spool with no answer read yet). BandInProgress now MEANS that
