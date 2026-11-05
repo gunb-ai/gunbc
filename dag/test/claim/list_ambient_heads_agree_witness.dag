@@ -1,0 +1,57 @@
+module test.claim.list_ambient_heads_agree_witness
+
+import std.types { Bool, Int, String, List }
+import std.optional { Optional, Present, Absent }
+import std.algebra { list_reverse, list_flat_map, list_head }
+
+// The ambient list heads `reverse`, `flat_map` and `first` against the std.algebra declarations a sweep would move their
+// call sites to (list_reverse, list_flat_map, list_head under collection_first_shape). Each is checked on one fixture that
+// DISCRIMINATES order, so agreement means the same operation and not merely a resolving name; the controls below must go red
+// on a deliberately wrong realization, or the fixture does not discriminate.
+data ordered: List<Int> = [3, 1, 2, 1]
+
+fn spread(n: Int) -> List<Int> {
+  [n, n * 10]
+}
+
+fn dropping(n: Int) -> List<Int> {
+  if n == 1 { [] } else { [n, n] }
+}
+
+test fn declared_reverse_agrees_with_the_ambient_reverse() -> Bool {
+  list_reverse(xs: ordered) == reverse(ordered)
+}
+
+test fn declared_reverse_is_not_the_identity_on_the_fixture() -> Bool {
+  list_reverse(xs: ordered) != ordered
+}
+
+test fn declared_flat_map_agrees_with_the_ambient_flat_map() -> Bool {
+  list_flat_map(xs: ordered, f: fn(n) { spread(n: n) }) == (ordered |> flat_map(n => spread(n: n)))
+}
+
+test fn declared_flat_map_agrees_when_the_callback_drops_elements() -> Bool {
+  list_flat_map(xs: ordered, f: fn(n) { dropping(n: n) }) == (ordered |> flat_map(n => dropping(n: n)))
+}
+
+test fn declared_flat_map_keeps_callback_order_per_element() -> Bool {
+  list_flat_map(xs: ordered, f: fn(n) { spread(n: n) }) == [3, 30, 1, 10, 2, 20, 1, 10]
+}
+
+// `first` is NOT proven in agreement: under == the two refuse as different representations (list_head Present vs ambient Int(3)), while a match on the ambient first binds Present { value: 3 }.
+// The first test records that a match on the ambient first binds the element; the second probes the empty list.
+test fn the_ambient_first_matches_as_an_optional_under_match() -> Bool {
+  match first(ordered) {
+    Present { value: v } => v == 3
+    Absent => false
+  }
+}
+
+test fn the_ambient_first_on_the_empty_list_probe() -> Bool {
+  let r = first(dropping(n: 1))
+  true
+}
+
+test fn a_wrong_realization_is_a_discriminating_red() -> Bool {
+  list_reverse(xs: ordered) == ordered
+}
