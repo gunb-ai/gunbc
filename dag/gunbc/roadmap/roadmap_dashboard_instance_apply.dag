@@ -36,7 +36,7 @@ import gunbc.live_deploy.serve_binary_build {
 }
 import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty }
+import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty, parse_systemd_unit_load_state, parse_systemd_unit_active_state }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated }
 import extdeps.access.posix { file_mode_of_octal_text }
@@ -93,7 +93,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterUnitRead, LegacyWriterUnitUnreadable, legacy_writer_reading_summary, MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
@@ -1408,18 +1408,24 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
 }
 
 // ONE unit's reading: `systemctl show -p LoadState -p ActiveState -p FragmentPath <unit>` through the target
-// (unprivileged: show reads the manager). A failed or partial read yields empty fields, which the exclusion refuses.
+// (unprivileged: show reads the manager). A failed read, or a state word extdeps.systemd does not declare,
+// is the typed LegacyWriterUnitUnreadable, which is never excluded.
 fn dashboard_legacy_writer_reading(instance: HostDashboardInstance, systemctl: NonEmptyStr, unit: NonEmptyStr) -> LegacyWriterUnitReading {
   let cmd = systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState, FragmentPathProperty])
   let r = dashboard_target_exec(instance: instance, program: systemctl as FilePath, args: cmd.arguments)
   if r.success {
-    LegacyWriterUnitReading {
-      load_state: dashboard_show_word(text: r.stdout, key: "LoadState"),
-      active_state: dashboard_show_word(text: r.stdout, key: "ActiveState"),
-      fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath"),
+    let load_raw = dashboard_show_word(text: r.stdout, key: "LoadState")
+    let active_raw = dashboard_show_word(text: r.stdout, key: "ActiveState")
+    match parse_systemd_unit_load_state(raw: load_raw) {
+      Present { value: l } =>
+        match parse_systemd_unit_active_state(raw: active_raw) {
+          Present { value: a } => LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath") }
+          Absent => LegacyWriterUnitUnreadable { detail: join(["ActiveState '", active_raw, "' is not a state extdeps.systemd declares"], "") }
+        }
+      Absent => LegacyWriterUnitUnreadable { detail: join(["LoadState '", load_raw, "' is not a state extdeps.systemd declares"], "") }
     }
   } else {
-    LegacyWriterUnitReading { load_state: "", active_state: "", fragment_path: "" }
+    LegacyWriterUnitUnreadable { detail: join(["systemctl show failed: ", r.stderr], "") }
   }
 }
 
@@ -1438,12 +1444,12 @@ fn dashboard_run_privileged(instance: HostDashboardInstance, op: ExecutorPrivile
 
 // THE RETIREMENT LEG, per declared unit: read, decide (legacy_writer_retirement), act through typed privileged
 // operations, read again, and require exclusion. On a failed act or a unit still not excluded, the retained bytes go
-// back and the leg refuses; the receipt text names the unit, the plan, the fragment digest before and the retained digest after.
+// back and the leg refuses; the receipt text names the unit and the fragment digest before the act. A later plan step that refuses does not restore.
 fn dashboard_retire_legacy_writer(instance: HostDashboardInstance, ctl: NonEmptyStr, store: NonEmptyStr, unit: LegacyWriterUnit) -> DashboardExecResult {
   let before = dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name)
   let plan = legacy_writer_retirement(unit: unit, reading: before)
   match plan {
-    LegacyWriterAlreadyExcluded => dashboard_exec_ok(stdout: join([unit.name as String, ": already excluded (LoadState ", before.load_state, ", ActiveState ", before.active_state, ")"], ""))
+    LegacyWriterAlreadyExcluded => dashboard_exec_ok(stdout: join([unit.name as String, ": already excluded (", legacy_writer_reading_summary(reading: before), ")"], ""))
     LegacyWriterRetirementRefused { reason: why } => dashboard_exec_refused(detail: why)
     LegacyWriterRetireEtcFragment => dashboard_retire_legacy_writer_act(instance: instance, ctl: ctl, store: store, unit: unit, plan: plan)
   }
@@ -1455,18 +1461,20 @@ fn dashboard_retire_legacy_writer_act(instance: HostDashboardInstance, ctl: NonE
     if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
   let after = dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name)
   let excluded = legacy_writer_exclusion(unit: unit.name as String, reading: after)
-  match excluded {
-    LegacyWriterExcluded =>
-      if ran.success {
-        dashboard_exec_ok(stdout: join([unit.name as String, ": retired (fragment sha256 ", digest_before, ", retained at ", legacy_writer_retained_path(rollback_store: store, unit: unit) as String, ")"], ""))
-      } else {
-        ran
-      }
-    LegacyWriterNotExcluded { reason: why } => {
-      let restored = fold(legacy_writer_restore_operations(rollback_store: store, unit: unit, plan: plan), init: dashboard_exec_ok(stdout: ""), f: (acc, op) =>
-        if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
-      dashboard_exec_refused(detail: join([unit.name as String, ": retirement did not reach exclusion (", why, "; act ", if ran.success { "ran" } else { ran.stderr }, "); rollback ", if restored.success { "restored the retained fragment" } else { restored.stderr }], ""))
-    }
+  let why = match excluded {
+    LegacyWriterExcluded => "the unit reads excluded but the act failed"
+    LegacyWriterNotExcluded { reason: w } => w
+  }
+  let needs_restore = match excluded {
+    LegacyWriterExcluded => !ran.success
+    LegacyWriterNotExcluded { reason: _ } => true
+  }
+  if !needs_restore {
+    dashboard_exec_ok(stdout: join([unit.name as String, ": retired (fragment sha256 ", digest_before, ", retained at ", legacy_writer_retained_path(rollback_store: store, unit: unit) as String, ")"], ""))
+  } else {
+    let restored = fold(legacy_writer_restore_operations(rollback_store: store, unit: unit, plan: plan), init: dashboard_exec_ok(stdout: ""), f: (acc, op) =>
+      if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
+    dashboard_exec_refused(detail: join([unit.name as String, ": retirement did not reach exclusion (", why, "; act ", if ran.success { "ran" } else { ran.stderr }, "); rollback ", if restored.success { "restored the retained fragment" } else { restored.stderr }], ""))
   }
 }
 

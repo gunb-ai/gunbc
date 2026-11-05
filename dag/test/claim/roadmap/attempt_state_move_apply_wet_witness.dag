@@ -21,10 +21,11 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated_argv }
 import gunbc.roadmap.roadmap_attempt_state_layout_move {
-  LegacyWriterUnitReading, legacy_writer_exclusion, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations,
+  LegacyWriterUnitReading, LegacyWriterUnitRead, LegacyWriterUnitUnreadable, legacy_writer_exclusion, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations,
   LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, LegacyWriterExcluded, LegacyWriterNotExcluded,
 }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnit, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterFenceRow, legacy_writer_fence_for, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import extdeps.systemd { SystemdUnitLoadState, SystemdUnitActiveState, UnitLoaded, UnitLoadNotFound, UnitLoadMasked, Active, Inactive, Failed }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
@@ -458,8 +459,12 @@ test fn two_fence_rows_for_one_instance_are_a_typed_conflict_that_refuses_the_mo
 
 
 // ── THE RETIREMENT LEG (a unit whose fragment lives in /etc cannot be masked; it is retired) ─────────────────
-fn reading(load: String, active: String, fragment: String) -> LegacyWriterUnitReading {
-  LegacyWriterUnitReading { load_state: load, active_state: active, fragment_path: fragment }
+fn reading(load: SystemdUnitLoadState, active: SystemdUnitActiveState, fragment: String) -> LegacyWriterUnitReading {
+  LegacyWriterUnitRead { load_state: load, active_state: active, fragment_path: fragment }
+}
+
+fn unreadable_reading() -> LegacyWriterUnitReading {
+  LegacyWriterUnitUnreadable { detail: "systemctl show failed" }
 }
 
 fn lab_unit() -> LegacyWriterUnit {
@@ -473,11 +478,11 @@ fn ops_text(ops: List<ExecutorPrivilegedOperation>) -> String {
 // RED CONTROL on the reading this replaced: a stopped unit systemd cannot load (not-found) or that is masked IS
 // excluded though no is-enabled text exists; a stopped but still LOADABLE unit is not; an unreadable one never is.
 test fn exclusion_is_load_state_plus_active_state_not_is_enabled_masked() -> Bool {
-  let notfound = match legacy_writer_exclusion(unit: "u", reading: reading(load: "not-found", active: "inactive", fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
-  let masked = match legacy_writer_exclusion(unit: "u", reading: reading(load: "masked", active: "failed", fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
-  let loadable = match legacy_writer_exclusion(unit: "u", reading: reading(load: "loaded", active: "inactive", fragment: "/etc/systemd/system/u")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "still loadable") }
-  let running = match legacy_writer_exclusion(unit: "u", reading: reading(load: "not-found", active: "active", fragment: "")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "is not stopped") }
-  let unreadable = match legacy_writer_exclusion(unit: "u", reading: reading(load: "", active: "", fragment: "")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "could not be read") }
+  let notfound = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoadNotFound, active: Inactive, fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let masked = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoadMasked, active: Failed, fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let loadable = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoaded, active: Inactive, fragment: "/etc/systemd/system/u")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "still loadable") }
+  let running = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoadNotFound, active: Active, fragment: "")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "is not stopped") }
+  let unreadable = match legacy_writer_exclusion(unit: "u", reading: unreadable_reading()) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "could not be read") }
   notfound && masked && loadable && running && unreadable
 }
 
@@ -485,9 +490,9 @@ test fn exclusion_is_load_state_plus_active_state_not_is_enabled_masked() -> Boo
 // afterwards the unit reads not-found and stopped, which is excluded.
 test fn an_etc_fragment_is_retired_by_stop_rename_and_reload_then_reads_excluded() -> Bool {
   let u = lab_unit()
-  let plan = legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "active", fragment: u.etc_fragment as String))
+  let plan = legacy_writer_retirement(unit: u, reading: reading(load: UnitLoaded, active: Active, fragment: u.etc_fragment as String))
   let ops = legacy_writer_retirement_operations(rollback_store: "/etc/systemd/system" as NonEmptyStr, unit: u, plan: plan)
-  let after = match legacy_writer_exclusion(unit: u.name as String, reading: reading(load: "not-found", active: "inactive", fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let after = match legacy_writer_exclusion(unit: u.name as String, reading: reading(load: UnitLoadNotFound, active: Inactive, fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
   let is_etc = match plan { LegacyWriterRetireEtcFragment => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetirementRefused { reason: _ } => false }
   is_etc && after
     && ops_text(ops: ops) == "/usr/bin/sudo -n /usr/bin/systemctl stop gunbc-srv1-lab-codex-feedback-v0.service ; /usr/bin/sudo -n /usr/bin/mv -n -- /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service.retired-by-gunbc-apply ; /usr/bin/sudo -n /usr/bin/systemctl daemon-reload"
@@ -495,7 +500,7 @@ test fn an_etc_fragment_is_retired_by_stop_rename_and_reload_then_reads_excluded
 
 test fn a_vendor_fragment_refuses_because_no_mask_is_granted() -> Bool {
   let u = lab_unit()
-  match legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "inactive", fragment: "/usr/lib/systemd/system/x.service")) {
+  match legacy_writer_retirement(unit: u, reading: reading(load: UnitLoaded, active: Inactive, fragment: "/usr/lib/systemd/system/x.service")) {
     LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "no mask is granted")
     LegacyWriterAlreadyExcluded => false
     LegacyWriterRetireEtcFragment => false
@@ -504,9 +509,9 @@ test fn a_vendor_fragment_refuses_because_no_mask_is_granted() -> Bool {
 
 test fn an_unreadable_unit_or_a_foreign_fragment_refuses_and_an_excluded_one_needs_nothing() -> Bool {
   let u = lab_unit()
-  let unreadable = match legacy_writer_retirement(unit: u, reading: reading(load: "", active: "", fragment: "")) { LegacyWriterRetirementRefused { reason: _ } => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
-  let foreign = match legacy_writer_retirement(unit: u, reading: reading(load: "loaded", active: "inactive", fragment: "/run/systemd/system/x.service")) { LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "not the declared"), LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
-  let nothing = match legacy_writer_retirement(unit: u, reading: reading(load: "not-found", active: "inactive", fragment: "")) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
+  let unreadable = match legacy_writer_retirement(unit: u, reading: unreadable_reading()) { LegacyWriterRetirementRefused { reason: _ } => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
+  let foreign = match legacy_writer_retirement(unit: u, reading: reading(load: UnitLoaded, active: Inactive, fragment: "/run/systemd/system/x.service")) { LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "not the declared"), LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
+  let nothing = match legacy_writer_retirement(unit: u, reading: reading(load: UnitLoadNotFound, active: Inactive, fragment: "")) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
   unreadable && foreign && nothing
 }
 
