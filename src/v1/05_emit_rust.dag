@@ -20447,28 +20447,63 @@ fn native_ingress_binding_parameter(p: Node, env: TypeEnv) -> NativeIngressParam
   }
 }
 
-// The M2a handler contract: exactly the legacy request facts, in order, then the startup value when
-// the program names a startup (gunbc.plans.converged_ingress M2a (4)). M2b replaces this with the
-// binding's fact plan.
-data native_ingress_legacy_facts: List<String> = ["method", "path", "body", "tailscale_identity", "authorization", "release_revision"]
+// THE HANDLER'S REQUEST PARAMETERS, TYPED HERE AND PLANNED AT START. Which request fact each name
+// means, and whether the binding's listener can supply it, is decided once at startup by the one fact
+// plan the seed's realization uses (gunbc.http_ingress http_ingress_fact_plan, through
+// http_ingress_native_contract), because the listener is a launch fact this emission does not have.
+// What emission does decide is each parameter's realized carrier, since the rendered main passes it
+// positionally to a compiled function: text (kernel String, or std.types CommitSha, which std.types
+// declares as String) or the request's header list (List of extdeps.http.server ServeRequestHeader).
+// Any other type has no request fact to carry it and is refused here; the start then judges each
+// planned fact's shape against the shape read here, so a name that means headers on a text parameter
+// refuses before any bind (gunbc.plans.converged_ingress M2b).
+type NativeIngressRequestShape
+  = NativeIngressTextShape
+  | NativeIngressHeadersShape
 
-fn native_ingress_handler_param_refusals(params: List<Node>, env: TypeEnv) -> List<String> {
-  let names = params |> map(p => param_node_name_at(n: p, source_indices: env.source_indices))
-  let legacy = names |> take(native_ingress_legacy_facts |> count)
-  if (legacy |> join(separator: ",")) != (native_ingress_legacy_facts |> join(separator: ",")) {
-    [concat("the handler's leading parameters are [", concat(legacy |> join(separator: ", "), concat("]; the native door (M2a) passes exactly [", concat(native_ingress_legacy_facts |> join(separator: ", "), "]"))))]
+type NativeIngressRequestParameter {
+  name: String
+  shape: NativeIngressRequestShape
+}
+
+type NativeIngressRequestParameterReading
+  = NativeIngressRequestParameterRead { parameter: NativeIngressRequestParameter }
+  | NativeIngressRequestParameterRefused { reason: String }
+
+fn native_ingress_type_is_header_list(n: Node, env: TypeEnv) -> Bool {
+  node_is_element_collection(n: n, source_indices: env.source_indices)
+    && native_ingress_type_names(n: for_each_element_type_node(n: n, source_indices: env.source_indices), env: env, module_path: "extdeps.http.server", decl_name: "ServeRequestHeader")
+}
+
+fn native_ingress_request_parameter(p: Node, env: TypeEnv) -> NativeIngressRequestParameterReading {
+  let name = param_node_name_at(n: p, source_indices: env.source_indices)
+  let t = param_node_type_expr(n: p)
+  if p.return_cardinality != Required {
+    NativeIngressRequestParameterRefused { reason: concat("handler parameter ", concat(name, " is optional; every request fact is supplied, so a request parameter admits no default")) }
+  } else if native_ingress_type_is_kernel(n: t, env: env, name: "String") || native_ingress_type_names(n: t, env: env, module_path: "std.types", decl_name: "CommitSha") {
+    NativeIngressRequestParameterRead { parameter: NativeIngressRequestParameter { name: name, shape: NativeIngressTextShape } }
+  } else if native_ingress_type_is_header_list(n: t, env: env) {
+    NativeIngressRequestParameterRead { parameter: NativeIngressRequestParameter { name: name, shape: NativeIngressHeadersShape } }
   } else {
-    params |> take(native_ingress_legacy_facts |> count) |> flat_map(p => {
-      let n = param_node_name_at(n: p, source_indices: env.source_indices)
-      let t = param_node_type_expr(n: p)
-      // std.types declares CommitSha as String, so a release_revision position resolving to either is the one
-      // String the door passes; anything else is refused.
-      let ok = if n == "release_revision" { native_ingress_type_names(n: t, env: env, module_path: "std.types", decl_name: "CommitSha") || native_ingress_type_is_kernel(n: t, env: env, name: "String") } else { native_ingress_type_is_kernel(n: t, env: env, name: "String") }
-      if ok && p.return_cardinality == Required { [] } else {
-        [concat("handler parameter ", concat(n, concat(" is ", concat(native_ingress_type_text(n: t, env: env), if n == "release_revision" { ", not std.types CommitSha (String)" } else { ", not String" }))))]
-      }
-    })
+    NativeIngressRequestParameterRefused { reason: concat("handler parameter ", concat(name, concat(" is ", concat(native_ingress_type_text(n: t, env: env), "; a request fact is text (String or std.types CommitSha) or the request's header list (List<extdeps.http.server ServeRequestHeader>)")))) }
   }
+}
+
+// The handler's request parameters: every parameter but the trailing startup value when the program
+// names a startup.
+fn native_ingress_request_params(handler: NativeIngressSite, startup: NativeIngressSite?) -> List<Node> {
+  let params = handler.item.params
+  match startup {
+    Present { value: _ } => params |> take((params |> count) - 1)
+    Absent => params
+  }
+}
+
+fn native_ingress_request_parameters(handler: NativeIngressSite, startup: NativeIngressSite?) -> List<NativeIngressRequestParameter> {
+  native_ingress_request_params(handler: handler, startup: startup) |> flat_map(p => match native_ingress_request_parameter(p: p, env: handler.tm.type_env) {
+    NativeIngressRequestParameterRead { parameter: q } => [q]
+    NativeIngressRequestParameterRefused { reason: _ } => []
+  })
 }
 
 fn native_ingress_startup_payload(startup: NativeIngressSite) -> Node? {
@@ -20478,17 +20513,21 @@ fn native_ingress_startup_payload(startup: NativeIngressSite) -> Node? {
 fn native_ingress_handler_refusals(handler: NativeIngressSite, startup: NativeIngressSite?) -> List<String> {
   let env = handler.tm.type_env
   let params = handler.item.params
-  let expected = (native_ingress_legacy_facts |> count) + match startup { Present { value: _ } => 1  Absent => 0 }
-  let arity = if (params |> count) != expected {
-    [concat("the handler declares ", concat(to_string(value: params |> count), concat(" parameters; the native door passes ", concat(to_string(value: expected), match startup { Present { value: _ } => " (the legacy request facts, then the startup value)"  Absent => " (the legacy request facts)" }))))]
-  } else { [] }
+  let arity = match startup {
+    Present { value: _ } => if (params |> count) == 0 { ["the program names a startup, so the handler's last parameter is the startup value, but the handler declares no parameters"] } else { [] }
+    Absent => []
+  }
   let returns = if native_ingress_type_names(n: resolved_type(n: handler.item), env: env, module_path: "extdeps.http.server", decl_name: "ServeWireResponse") { [] } else {
     [concat("the handler returns ", concat(native_ingress_type_text(n: resolved_type(n: handler.item), env: env), ", not extdeps.http.server ServeWireResponse"))]
   }
+  let requests = native_ingress_request_params(handler: handler, startup: startup) |> flat_map(p => match native_ingress_request_parameter(p: p, env: env) {
+    NativeIngressRequestParameterRefused { reason: why } => [why]
+    NativeIngressRequestParameterRead { parameter: _ } => []
+  })
   let payload = match startup {
     Absent => []
     Present { value: st } =>
-      match params |> skip(native_ingress_legacy_facts |> count) |> first {
+      match params |> skip((params |> count) - 1) |> first {
         Absent => []
         Present { value: p } =>
           match native_ingress_startup_payload(startup: st) {
@@ -20500,7 +20539,7 @@ fn native_ingress_handler_refusals(handler: NativeIngressSite, startup: NativeIn
           }
       }
   }
-  if (arity |> count) > 0 { concat(arity, returns) } else { concat(native_ingress_handler_param_refusals(params: params, env: env), concat(returns, payload)) }
+  if (arity |> count) > 0 { concat(arity, returns) } else { concat(requests, concat(returns, payload)) }
 }
 
 fn native_ingress_startup_refusals(startup: NativeIngressSite) -> List<String> {
@@ -20547,6 +20586,7 @@ type NativeIngressProgramResolved {
   binding: NativeIngressRef
   binding_parameters: List<NativeIngressParameter>
   handler: NativeIngressRef
+  request_parameters: List<NativeIngressRequestParameter>
   startup: NativeIngressRef?
 }
 
@@ -20678,16 +20718,21 @@ fn native_ingress_program_from_descriptor(modules: List<TypedModule>, registry: 
                   match binding_site {
                     NativeIngressSiteRefused { reason: why } => native_ingress_unresolved(program: label, reason: why)
                     NativeIngressSiteFound { site: b } =>
+                      match handler_site {
+                      NativeIngressSiteRefused { reason: why } => native_ingress_unresolved(program: label, reason: why)
+                      NativeIngressSiteFound { site: h } =>
                       NativeIngressResolvedProgram { resolved: NativeIngressProgramResolved {
                         program: program,
                         binding: br,
                         binding_parameters: native_ingress_binding_parameters(binding: b),
                         handler: hr,
+                        request_parameters: native_ingress_request_parameters(handler: h, startup: found_startup),
                         startup: match startup_reading {
                           NativeIngressStartupNamed { reference: sr } => Present { value: sr }
                           _ => none
                         },
                       } }
+                      }
                   }
               }
           }
@@ -21257,9 +21302,12 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // gunbc.native_serve carry every decision as a fold: http_ingress_native_argv reads argv into the
 // constructor's declared arguments and refuses any other word (no source, entry or function
 // selector exists at runtime); the EXACT binding constructor the descriptor names is called with
-// them; http_ingress_native_contract derives the contract from the binding it returned, refusing a
-// refused binding, a binding naming any handler but the descriptor's, and a non-TCP listener, before
-// any bind; native_serve_frame judges the request line and header lines this main read and says how
+// them; http_ingress_native_contract derives the start from the binding it returned -- refusing a
+// refused binding, a binding naming any handler but the descriptor's, and a handler whose request
+// parameters the binding's fact plan cannot supply or supplies in another shape, before any bind --
+// and returns the listener to bind (TCP, or a unix socket whose every peer the kernel attests: the
+// peer's account is read off each accepted connection through SO_PEERCRED, and a connection whose
+// peer cannot be read is dropped unread); native_serve_frame judges the request line and header lines this main read and says how
 // many body bytes follow; native_serve_route answers /livez before the handler; the descriptor's
 // handler answers the rest. This main counts bytes against the contract's head limit, applies its
 // read timeout, strips line terminators, and writes what gunbc.native_serve native_serve_outgoing
@@ -21278,8 +21326,9 @@ fn emit_native_claim_driver_pure_main_rs(crate_name: String, pipeline_mod: Strin
 // abandoned-worker accounting are deleted). A crossing before the handler is entered (a slow body)
 // takes the same exit, so the one deadline has one consequence. A worker that ends WITHOUT an answer
 // (a panic: its sender is dropped) is answered with native_serve_handler_failed and replaced; nothing
-// is left running for it. The worker sends back only owned plain parts because the handler's values
-// are reference-counted and stay on its thread.
+// is left running for it. The handler's arguments are the fact plan's (gunbc.http_ingress
+// http_ingress_arguments, in declared order) and cross to the worker, and its answer back, as owned
+// plain parts, because the handler's values are reference-counted and stay on their thread.
 //
 // THE EFFECT WORKER, BY GENERATION. A function with effects is an async function returning Result
 // (emit_func_def); one without is a pure function returning its value. The admitted bindings decide
@@ -21339,6 +21388,14 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
   let has_text = parameters |> any(p => p.kind == NativeIngressTextArgument)
   let has_int = parameters |> any(p => p.kind == NativeIngressIntArgument)
   let argument_imports = concat(if has_text { " http_ingress_native_text_argument," } else { "" }, if has_int { " http_ingress_native_int_argument," } else { "" })
+  let request = program.request_parameters
+  let has_headers = request |> any(p => p.shape == NativeIngressHeadersShape)
+  let header_import = if has_headers { ", ServeRequestHeader" } else { "" }
+  let second_import = if match program.startup { Present { value: _ } => true  Absent => false } { ", second_count" } else { "" }
+  let headers_variant = if has_headers { "    Headers(Vec<(String, String)>),\n" } else { "" }
+  let headers_wire = if has_headers { "HttpIngressArgument::HttpIngressHeadersArgument \{ value, .. \} => wire.push(WireArgument::Headers(value.iter().map(|header| (header.name.clone(), header.value.clone())).collect()))," } else { "HttpIngressArgument::HttpIngressHeadersArgument \{ .. \} => return None," }
+  let request_parameters = native_ingress_request_parameter_values(parameters: request)
+  let worker_pattern = native_ingress_worker_pattern(parameters: request)
   let rendered_arguments = native_ingress_argument_render(parameters: parameters)
   let constructor_call = concat(binding_path, "(", rendered_arguments.vars |> join(separator: ", "), ")")
   let startup = match program.startup { Present { value: _ } => true  Absent => false }
@@ -21411,14 +21468,15 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
   }
   let startup_arg = if startup { ", startup_value.clone()" } else { "" }
   let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
+  let worker_arguments = native_ingress_worker_arguments(parameters: request)
   let worker_call = if handler_effectful {
     concat(
-      "            let response = match runtime.block_on(", handler_path, "(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
-      "                Ok(response) => response,", "\n",
-      "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
-      "            \};", "\n")
+      "                    match runtime.block_on(", handler_path, "(", native_ingress_call_arguments(parts: concat(worker_arguments, concat(startup_arg, handler_effect_args))), ")) \{", "\n",
+      "                        Ok(response) => response,", "\n",
+      "                        Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
+      "                    \}", "\n")
   } else {
-    concat("            let response = ", handler_path, "(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, ");\n")
+    concat("                    ", handler_path, "(", native_ingress_call_arguments(parts: concat(worker_arguments, startup_arg)), ")\n")
   }
   // Order of the main: a program with a startup realizes its first worker (which runs the startup fold) BEFORE the bind,
   // so a refusing self-check never becomes reachable; a program with no startup keeps the bind-then-realize order.
@@ -21430,16 +21488,33 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "    \};", "\n"
   )
   let bind_block = concat(
-      "    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) \{", "\n",
-      "        Ok(listener) => listener,", "\n",
-      "        Err(cause) => refuse_launch(format!(\"failed to bind \{\}:\{\}: \{\}\", contract.host, contract.port, cause)),", "\n",
+      "    let listener = match &*listen_on \{", "\n",
+      "        // The start already refused a port or mode outside range (gunbc.http_ingress http_ingress_listener_refusal); the", "\n",
+      "        // conversions are checked anyway, so no value is ever narrowed into another listener.", "\n",
+      "        HttpIngressListener::HttpIngressTcp \{ host, port \} => match u16::try_from(*port) \{", "\n",
+      "            Err(_) => refuse_launch(format!(\"listener port out of range: \{\}\", port)),", "\n",
+      "            Ok(port) => match std::net::TcpListener::bind((host.as_str(), port)) \{", "\n",
+      "                Ok(listener) => Listener::Tcp(listener),", "\n",
+      "                Err(cause) => refuse_launch(format!(\"failed to bind \{\}:\{\}: \{\}\", host, port, cause)),", "\n",
+      "            \},", "\n",
+      "        \},", "\n",
+      "        HttpIngressListener::HttpIngressUnixSocket \{ path, mode \} => match u32::try_from(*mode) \{", "\n",
+      "            Err(_) => refuse_launch(format!(\"listener socket mode out of range: \{\}\", mode)),", "\n",
+      "            Ok(mode) => match bind_unix(path, mode) \{", "\n",
+      "                Ok((listener, lock)) => Listener::Unix \{ listener, _lock: lock \},", "\n",
+      "                Err(reason) => refuse_launch(reason),", "\n",
+      "            \},", "\n",
+      "        \},", "\n",
       "    \};", "\n",
-      "    let bound = match listener.local_addr() \{", "\n",
-      "        Ok(addr) => addr,", "\n",
-      "        Err(cause) => refuse_launch(format!(\"bound but could not read the bound address: \{\}\", cause)),", "\n",
+      "    // A unix listener reports its listener text and port 0, as the seed's realization does.", "\n",
+      "    let (bound_host, bound_port) = match &listener \{", "\n",
+      "        Listener::Tcp(tcp) => match tcp.local_addr() \{", "\n",
+      "            Ok(addr) => (addr.ip().to_string(), addr.port() as i64),", "\n",
+      "            Err(cause) => refuse_launch(format!(\"bound but could not read the bound address: \{\}\", cause)),", "\n",
+      "        \},", "\n",
+      "        Listener::Unix \{ .. \} => (http_ingress_listener_text(listen_on.clone()), 0),", "\n",
       "    \};", "\n",
-      "    let bound_host = bound.ip().to_string();", "\n",
-      "    let bound_port = bound.port() as i64;", "\n"
+      ""
   )
   let first_block = if startup { realize_block } else { bind_block }
   let second_block = if startup { bind_block } else { realize_block }
@@ -21447,31 +21522,179 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
     path: concat(rust_source_root(), "main", rust_source_ext()),
     content: concat(
       "// Generated by v1 compiler -- do not edit.", "\n",
-      "\n",
+      "", "\n",
       "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]", "\n",
-      "\n",
+      "", "\n",
       "use std::io::\{BufRead, Read, Write\};", "\n",
       "use std::rc::Rc;", "\n",
-      "\n",
-      "use ", crate_name, "::extdeps_http_server::ServeWireResponse;", "\n",
-      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
+      "", "\n",
+      "use ", crate_name, "::extdeps_http_server::\{ServeWireResponse", header_import, "\};", "\n",
+      "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", second_import, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_read_refused,", "\n",
-      "    native_serve_deadline_refused, native_serve_deadline_uninstallable, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route, native_serve_authorization,", "\n",
-      "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,", "\n",
-      "    NativeServeContract, NativeServeFrame, NativeServeOutgoing, NativeServeRoute, NativeServeStart,", "\n",
+      "    native_serve_deadline_refused, native_serve_deadline_uninstallable, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
+      "    native_serve_arguments_unplanned, native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,", "\n",
+      "    NativeServeContract, NativeServeFrame, NativeServeOutgoing, NativeServeRoute, NativeServeRequestHead,", "\n",
       "\};", "\n",
       "use ", crate_name, "::gunbc_http_ingress::\{", "\n",
-      "    http_ingress_native_argv,", argument_imports, " http_ingress_native_argument_refused, http_ingress_native_contract, HttpIngressNativeArgv,", "\n",
+      "    http_ingress_native_argv,", argument_imports, " http_ingress_native_argument_refused, http_ingress_native_contract, http_ingress_arguments, http_ingress_listener_text,", "\n",
+      "    HttpIngressNativeArgv, HttpIngressNativeStart, HttpIngressListener, HttpIngressArgument,", "\n",
+      "    HttpIngressDeclaredParameter, HttpIngressArgumentShape,", "\n",
       "\};", "\n",
       startup_import,
-      "\n",
       "// A launch refusal binds nothing: it prints the reason and exits 2 before any listener exists.", "\n",
       "fn refuse_launch(reason: String) -> ! \{", "\n",
       "    eprintln!(\"REFUSED: \{\}\", reason);", "\n",
       "    std::process::exit(2);", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
+      "// THE LISTENER THE BINDING NAMES: TCP, or a unix socket whose every peer the kernel attests.", "\n",
+      "enum Listener \{", "\n",
+      "    Tcp(std::net::TcpListener),", "\n",
+      "    // The socket path's lock is held, never read, for the listener's whole lifetime (bind_unix).", "\n",
+      "    Unix \{ listener: std::os::unix::net::UnixListener, _lock: std::fs::File \},", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// One accepted connection, either kind; the exchange reads and writes it through a shared reference,", "\n",
+      "// so the read bound can be moved while a reader holds it.", "\n",
+      "enum Connection \{", "\n",
+      "    Tcp(std::net::TcpStream),", "\n",
+      "    Unix(std::os::unix::net::UnixStream),", "\n",
+      "\}", "\n",
+      "", "\n",
+      "impl Connection \{", "\n",
+      "    fn set_read_timeout(&self, bound: Option<std::time::Duration>) -> std::io::Result<()> \{", "\n",
+      "        match self \{", "\n",
+      "            Connection::Tcp(stream) => stream.set_read_timeout(bound),", "\n",
+      "            Connection::Unix(stream) => stream.set_read_timeout(bound),", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "", "\n",
+      "    fn shutdown(&self) \{", "\n",
+      "        let _ = match self \{", "\n",
+      "            Connection::Tcp(stream) => stream.shutdown(std::net::Shutdown::Both),", "\n",
+      "            Connection::Unix(stream) => stream.shutdown(std::net::Shutdown::Both),", "\n",
+      "        \};", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "", "\n",
+      "impl Read for &Connection \{", "\n",
+      "    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> \{", "\n",
+      "        match *self \{", "\n",
+      "            Connection::Tcp(stream) => \{ let mut stream: &std::net::TcpStream = stream; stream.read(buf) \}", "\n",
+      "            Connection::Unix(stream) => \{ let mut stream: &std::os::unix::net::UnixStream = stream; stream.read(buf) \}", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "", "\n",
+      "impl Write for &Connection \{", "\n",
+      "    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> \{", "\n",
+      "        match *self \{", "\n",
+      "            Connection::Tcp(stream) => \{ let mut stream: &std::net::TcpStream = stream; stream.write(buf) \}", "\n",
+      "            Connection::Unix(stream) => \{ let mut stream: &std::os::unix::net::UnixStream = stream; stream.write(buf) \}", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "", "\n",
+      "    fn flush(&mut self) -> std::io::Result<()> \{", "\n",
+      "        match *self \{", "\n",
+      "            Connection::Tcp(stream) => \{ let mut stream: &std::net::TcpStream = stream; stream.flush() \}", "\n",
+      "            Connection::Unix(stream) => \{ let mut stream: &std::os::unix::net::UnixStream = stream; stream.flush() \}", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// THE SOCKET PATH IS OWNED BY WHOEVER HOLDS ITS LOCK. An exclusive flock on `<path>.lock` is taken before the path is", "\n",
+      "// looked at and held for the listener's whole lifetime, so two realizations started on one path cannot both judge it", "\n",
+      "// stale: the second finds the lock taken and refuses, and never unlinks the first one's socket. Under the lock a socket", "\n",
+      "// file is replaced only when it is SHOWN stale: a connection to it is refused, so no process listens there (a process", "\n",
+      "// that listens without taking the lock is still never displaced). Any socket whose staleness cannot be shown, and any", "\n",
+      "// other file at the path, is refused. The file's mode is the binding's.", "\n",
+      "fn lock_socket_path(path: &str) -> Result<std::fs::File, String> \{", "\n",
+      "    use std::os::unix::io::AsRawFd;", "\n",
+      "    let lock_path = format!(\"\{\}.lock\", path);", "\n",
+      "    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&lock_path).map_err(|cause| format!(\"could not open the socket's lock \{\}: \{\}\", lock_path, cause))?;", "\n",
+      "    if unsafe \{ libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) \} != 0 \{", "\n",
+      "        let cause = std::io::Error::last_os_error();", "\n",
+      "        return Err(if cause.kind() == std::io::ErrorKind::WouldBlock \{", "\n",
+      "            format!(\"unix socket \{\} is held by another realization (its lock \{\} is taken); refusing to replace it\", path, lock_path)", "\n",
+      "        \} else \{", "\n",
+      "            format!(\"could not lock \{\}: \{\}\", lock_path, cause)", "\n",
+      "        \});", "\n",
+      "    \}", "\n",
+      "    Ok(lock)", "\n",
+      "\}", "\n",
+      "", "\n",
+      "fn bind_unix(path: &str, mode: u32) -> Result<(std::os::unix::net::UnixListener, std::fs::File), String> \{", "\n",
+      "    use std::os::unix::fs::\{FileTypeExt, PermissionsExt\};", "\n",
+      "    let lock = lock_socket_path(path)?;", "\n",
+      "    if let Ok(meta) = std::fs::symlink_metadata(path) \{", "\n",
+      "        if !meta.file_type().is_socket() \{", "\n",
+      "            return Err(format!(\"unix socket \{\} exists and is not a socket; refusing to replace it\", path));", "\n",
+      "        \}", "\n",
+      "        match std::os::unix::net::UnixStream::connect(path) \{", "\n",
+      "            Ok(_) => return Err(format!(\"unix socket \{\} has a live listener; refusing to displace it\", path)),", "\n",
+      "            Err(cause) if cause.kind() == std::io::ErrorKind::ConnectionRefused => \{\}", "\n",
+      "            Err(cause) => return Err(format!(\"unix socket \{\} could not be shown stale (\{\}); refusing to replace it\", path, cause)),", "\n",
+      "        \}", "\n",
+      "        std::fs::remove_file(path).map_err(|cause| format!(\"could not remove the stale socket \{\}: \{\}\", path, cause))?;", "\n",
+      "    \}", "\n",
+      "    let listener = std::os::unix::net::UnixListener::bind(path).map_err(|cause| format!(\"failed to bind unix socket \{\}: \{\}\", path, cause))?;", "\n",
+      "    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|cause| format!(\"could not set the socket \{\} to mode \{:o\}: \{\}\", path, mode, cause))?;", "\n",
+      "    Ok((listener, lock))", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// The kernel-attested peer uid of a unix-socket connection. Linux answers through SO_PEERCRED; macOS has no", "\n",
+      "// SO_PEERCRED and answers the same fact through getpeereid. Any other target refuses.", "\n",
+      "#[cfg(target_os = \"linux\")]", "\n",
+      "fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> \{", "\n",
+      "    use std::os::unix::io::AsRawFd;", "\n",
+      "    let mut cred: libc::ucred = unsafe \{ std::mem::zeroed() \};", "\n",
+      "    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;", "\n",
+      "    let rc = unsafe \{ libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, &mut cred as *mut libc::ucred as *mut libc::c_void, &mut len) \};", "\n",
+      "    if rc != 0 \{ return Err(std::io::Error::last_os_error()); \}", "\n",
+      "    Ok(cred.uid)", "\n",
+      "\}", "\n",
+      "", "\n",
+      "#[cfg(target_os = \"macos\")]", "\n",
+      "fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> \{", "\n",
+      "    use std::os::unix::io::AsRawFd;", "\n",
+      "    let mut uid: libc::uid_t = 0;", "\n",
+      "    let mut gid: libc::gid_t = 0;", "\n",
+      "    if unsafe \{ libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) \} != 0 \{ return Err(std::io::Error::last_os_error()); \}", "\n",
+      "    Ok(uid)", "\n",
+      "\}", "\n",
+      "", "\n",
+      "#[cfg(not(any(target_os = \"linux\", target_os = \"macos\")))]", "\n",
+      "fn peer_uid(_stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> \{", "\n",
+      "    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"unix-socket peer credentials are not modeled for this target\"))", "\n",
+      "\}", "\n",
+      "", "\n",
+      "// The account the attested uid resolves to. A uid that resolves to no account is not a peer.", "\n",
+      "fn peer_user(stream: &std::os::unix::net::UnixStream) -> Result<String, String> \{", "\n",
+      "    let uid = peer_uid(stream).map_err(|cause| format!(\"the peer's credentials could not be read: \{\}\", cause))?;", "\n",
+      "    let mut pwd: libc::passwd = unsafe \{ std::mem::zeroed() \};", "\n",
+      "    let mut buf = vec![0 as libc::c_char; 4096];", "\n",
+      "    let mut result: *mut libc::passwd = std::ptr::null_mut();", "\n",
+      "    let rc = unsafe \{ libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) \};", "\n",
+      "    if rc != 0 || result.is_null() \{ return Err(format!(\"peer uid \{\} resolves to no account\", uid)); \}", "\n",
+      "    Ok(unsafe \{ std::ffi::CStr::from_ptr(pwd.pw_name) \}.to_string_lossy().into_owned())", "\n",
+      "\}", "\n",
+      "", "\n",
+      "impl Listener \{", "\n",
+      "    // THE PEER IS READ FROM THE KERNEL, NEVER FROM THE REQUEST. A unix connection whose peer cannot be read", "\n",
+      "    // or resolved to an account is dropped before any request byte is read; a TCP connection attests none.", "\n",
+      "    fn accept(&self) -> Result<(Connection, String), String> \{", "\n",
+      "        match self \{", "\n",
+      "            Listener::Tcp(listener) => listener.accept().map(|(stream, _)| (Connection::Tcp(stream), String::new())).map_err(|cause| format!(\"accept error: \{\}\", cause)),", "\n",
+      "            Listener::Unix \{ listener, .. \} => \{", "\n",
+      "                let (stream, _) = listener.accept().map_err(|cause| format!(\"accept error: \{\}\", cause))?;", "\n",
+      "                let user = peer_user(&stream).map_err(|cause| format!(\"unattested peer dropped: \{\}\", cause))?;", "\n",
+      "                Ok((Connection::Unix(stream), user))", "\n",
+      "            \}", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "\}", "\n",
+      "", "\n",
       "// What a worker hands back across the thread boundary: owned plain values, because the compiled", "\n",
       "// handler's values are reference-counted and stay on the worker's thread.", "\n",
       "struct WireParts \{", "\n",
@@ -21480,7 +21703,7 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "    header_lines: Vec<String>,", "\n",
       "    body: String,", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "fn wire_parts(response: &NativeServeOutgoing) -> WireParts \{", "\n",
       "    WireParts \{", "\n",
       "        status: response.status,", "\n",
@@ -21489,57 +21712,59 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "        body: response.body.clone(),", "\n",
       "    \}", "\n",
       "\}", "\n",
-      "\n",
-      "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) \{", "\n",
+      "", "\n",
+      "fn write_parts(stream: &Connection, response: &WireParts) \{", "\n",
       "    let mut head = format!(", "\n",
       "        \"HTTP/1.1 \{\} \\r\\nContent-Type: \{\}\\r\\nContent-Length: \{\}\\r\\nConnection: close\\r\\n\",", "\n",
       "        response.status, response.content_type_label, response.body.len()", "\n",
       "    );", "\n",
       "    for line in response.header_lines.iter() \{ head.push_str(line); head.push_str(\"\\r\\n\"); \}", "\n",
       "    head.push_str(\"\\r\\n\");", "\n",
-      "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())).and_then(|_| stream.flush()) \{", "\n",
+      "    let mut writer = stream;", "\n",
+      "    if let Err(cause) = writer.write_all(head.as_bytes()).and_then(|_| writer.write_all(response.body.as_bytes())).and_then(|_| writer.flush()) \{", "\n",
       "        eprintln!(\"native-serve: write error: \{\}\", cause);", "\n",
       "    \}", "\n",
       "\}", "\n",
-      "\n",
-      "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) \{", "\n",
+      "", "\n",
+      "fn write_response(stream: &Connection, response: &NativeServeOutgoing) \{", "\n",
       "    write_parts(stream, &wire_parts(response));", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "// A request that crossed the effective deadline: answer the typed 500, then end the process, so the", "\n",
       "// computation the loop stopped waiting for cannot run on (gunbc.native_serve native_serve_deadline_exit_code).", "\n",
-      "fn exit_after_deadline(stream: &mut std::net::TcpStream, contract: &Rc<NativeServeContract>) -> ! \{", "\n",
+      "fn exit_after_deadline(stream: &Connection, contract: &Rc<NativeServeContract>) -> ! \{", "\n",
       "    write_response(stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));", "\n",
-      "    let _ = stream.shutdown(std::net::Shutdown::Both);", "\n",
+      "    stream.shutdown();", "\n",
       "    eprintln!(\"native-serve: a request crossed its \{\} ms deadline; exiting \{\} for the supervisor to restart this process\", millisecond_count(contract.request_deadline.clone()), native_serve_deadline_exit_code());", "\n",
       "    std::process::exit(native_serve_deadline_exit_code() as i32);", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "// The deadline could not be installed on the connection: no read proceeds under a stale bound, so the request is", "\n",
       "// refused with its typed 500 and the process ends exactly as after a crossing.", "\n",
-      "fn exit_after_uninstallable_deadline(stream: &mut std::net::TcpStream, contract: &Rc<NativeServeContract>, reason: String) -> ! \{", "\n",
+      "fn exit_after_uninstallable_deadline(stream: &Connection, contract: &Rc<NativeServeContract>, reason: String) -> ! \{", "\n",
       "    write_response(stream, &native_serve_outgoing(native_serve_deadline_uninstallable(contract.clone(), reason)));", "\n",
-      "    let _ = stream.shutdown(std::net::Shutdown::Both);", "\n",
+      "    stream.shutdown();", "\n",
       "    eprintln!(\"native-serve: a request's deadline could not be installed on its connection; exiting \{\} for the supervisor to restart this process\", native_serve_deadline_exit_code());", "\n",
       "    std::process::exit(native_serve_deadline_exit_code() as i32);", "\n",
       "\}", "\n",
-      "\n",
       startup_static,
+      "// One request argument as it crosses to the worker: owned plain values, rebuilt there into the", "\n",
+      "// handler's parameter type at the position the fact plan gave it.", "\n",
+      "enum WireArgument \{", "\n",
+      "    Text(String),", "\n",
+      "", headers_variant, "\}", "\n",
+      "", "\n",
+      "// One handler call: the planned request arguments, in the handler's declared order.", "\n",
       "struct HandlerCall \{", "\n",
-      "    method: String,", "\n",
-      "    path: String,", "\n",
-      "    body: String,", "\n",
-      "    tailscale_identity: String,", "\n",
-      "    authorization: String,", "\n",
-      "    release_revision: String,", "\n",
+      "    arguments: Vec<WireArgument>,", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "// One worker generation: the thread that owns the effect executor and every admitted handle and runs", "\n",
       "// handler calls one at a time.", "\n",
       "struct Generation \{", "\n",
       "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "fn realize_generation(ready_within: std::time::Duration) -> Result<Generation, String> \{", "\n",
       "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();", "\n",
       "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();", "\n",
@@ -21548,7 +21773,12 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       worker_startup,
       "        let _ = ready.send(Ok(()));", "\n",
       "        while let Ok((call, reply)) = inbox.recv() \{", "\n",
+      "            let response = match call.arguments.as_slice() \{", "\n",
+      "                [", worker_pattern, "] => \{", "\n",
       worker_call,
+      "                \}", "\n",
+      "                _ => native_serve_arguments_unplanned(),", "\n",
+      "            \};", "\n",
       "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));", "\n",
       "        \}", "\n",
       "    \});", "\n",
@@ -21558,7 +21788,7 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       timeout_arm,
       "    \}", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> \{", "\n",
       "    let mut bytes = Vec::new();", "\n",
       "    match reader.read_until(b'\\n', &mut bytes) \{", "\n",
@@ -21572,7 +21802,7 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "    if bytes.ends_with(b\"\\r\") \{ bytes.pop(); \}", "\n",
       "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "enum Exchange \{", "\n",
       "    Idle,", "\n",
       "    Answer(Rc<ServeWireResponse>),", "\n",
@@ -21580,13 +21810,25 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "    DeadlineUninstallable(String),", "\n",
       "    Handle(HandlerCall, std::time::Instant),", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "// The time left before the effective deadline, or None once it has passed.", "\n",
       "fn remaining(armed: std::time::Instant, deadline: std::time::Duration) -> Option<std::time::Duration> \{", "\n",
       "    deadline.checked_sub(armed.elapsed()).filter(|left| !left.is_zero())", "\n",
       "\}", "\n",
-      "\n",
-      "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64, deadline: std::time::Duration, read_timeout: std::time::Duration) -> Exchange \{", "\n",
+      "", "\n",
+      "// One request's planned arguments, made plain to cross to the worker.", "\n",
+      "fn wire_arguments<'a>(arguments: impl Iterator<Item = &'a Rc<HttpIngressArgument>>) -> Option<Vec<WireArgument>> \{", "\n",
+      "    let mut wire = Vec::new();", "\n",
+      "    for argument in arguments \{", "\n",
+      "        match &**argument \{", "\n",
+      "            HttpIngressArgument::HttpIngressTextArgument \{ value, .. \} => wire.push(WireArgument::Text(value.clone())),", "\n",
+      "            ", headers_wire, "", "\n",
+      "        \}", "\n",
+      "    \}", "\n",
+      "    Some(wire)", "\n",
+      "\}", "\n",
+      "", "\n",
+      "fn exchange(stream: &Connection, contract: &Rc<NativeServeContract>, arguments_of: &dyn Fn(Rc<NativeServeRequestHead>, String) -> Option<Vec<WireArgument>>, bound_host: &str, bound_port: i64, deadline: std::time::Duration, read_timeout: std::time::Duration) -> Exchange \{", "\n",
       "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;", "\n",
       "    let mut reader = std::io::BufReader::new(stream.take(limit));", "\n",
       "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;", "\n",
@@ -21631,17 +21873,13 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "    let (head, body) = head;", "\n",
       "    match &*native_serve_route(contract.clone(), head.clone(), bound_host.to_string(), bound_port) \{", "\n",
       "        NativeServeRoute::NativeServeAnswered \{ response \} => Exchange::Answer(response.clone()),", "\n",
-      "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall \{", "\n",
-      "            method: head.method.clone(),", "\n",
-      "            path: head.target.clone(),", "\n",
-      "            body,", "\n",
-      "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
-      "            authorization: native_serve_authorization(head.clone()),", "\n",
-      "            release_revision: contract.release_revision.clone(),", "\n",
-      "        \}, armed),", "\n",
+      "        NativeServeRoute::NativeServeToHandler => match arguments_of(head.clone(), body) \{", "\n",
+      "            Some(arguments) => Exchange::Handle(HandlerCall \{ arguments \}, armed),", "\n",
+      "            None => Exchange::Answer(native_serve_arguments_unplanned()),", "\n",
+      "        \},", "\n",
       "    \}", "\n",
       "\}", "\n",
-      "\n",
+      "", "\n",
       "fn main() \{", "\n",
       "    let argv: Vec<String> = std::env::args().skip(1).collect();", "\n",
       "    let declared: Vec<String> = vec![", declared_names, "];", "\n",
@@ -21650,46 +21888,51 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "        HttpIngressNativeArgv::HttpIngressNativeArgvRefused \{ reason \} => refuse_launch(reason.clone()),", "\n",
       "    \};", "\n",
       rendered_arguments.lines,
-      "    // THE EXACT BINDING CONSTRUCTOR the program descriptor names, and the contract derived from what it returned.", "\n",
-      "    let contract = match &*http_ingress_native_contract(", constructor_call, ", ", program_path, "()) \{", "\n",
-      "        NativeServeStart::NativeServeListen \{ contract \} => contract.clone(),", "\n",
-      "        NativeServeStart::NativeServeStartRefused \{ reason \} => refuse_launch(reason.clone()),", "\n",
+      "    // THE HANDLER'S REQUEST PARAMETERS as emission typed them; the start plans them against the binding.", "\n",
+      "    let request_parameters: Vec<Rc<HttpIngressDeclaredParameter>> = vec![", request_parameters, "];", "\n",
+      "    // THE EXACT BINDING CONSTRUCTOR the program descriptor names, and the start derived from what it returned.", "\n",
+      "    let (contract, listen_on, binding, facts) = match &*http_ingress_native_contract(", constructor_call, ", ", program_path, "(), Rc::new(request_parameters.into())) \{", "\n",
+      "        HttpIngressNativeStart::HttpIngressNativeListen \{ contract, listener, binding, facts \} => (contract.clone(), listener.clone(), binding.clone(), facts.clone()),", "\n",
+      "        HttpIngressNativeStart::HttpIngressNativeRefused \{ reason \} => refuse_launch(reason.clone()),", "\n",
       "    \};", "\n",
       "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);", "\n",
       first_block,
       second_block,
       "    eprintln!(\"\{\}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));", "\n",
       "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);", "\n",
-      "    for accepted in listener.incoming() \{", "\n",
-      "        let mut stream = match accepted \{", "\n",
-      "            Ok(stream) => stream,", "\n",
-      "            Err(cause) => \{ eprintln!(\"native-serve: accept error: \{\}\", cause); continue; \}", "\n",
+      "    loop \{", "\n",
+      "        let (stream, peer_user) = match listener.accept() \{", "\n",
+      "            Ok(accepted) => accepted,", "\n",
+      "            Err(cause) => \{ eprintln!(\"native-serve: \{\}\", cause); continue; \}", "\n",
       "        \};", "\n",
       "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) \{", "\n",
       "            eprintln!(\"native-serve: set_read_timeout: \{\}\", cause);", "\n",
       "            continue;", "\n",
       "        \}", "\n",
-      "        match exchange(&stream, &contract, &bound_host, bound_port, deadline, timeout) \{", "\n",
+      "        // THE ARGUMENTS ARE THE FACT PLAN'S (gunbc.http_ingress http_ingress_arguments over the binding and the planned", "\n",
+      "        // facts, with the peer this connection's kernel attested).", "\n",
+      "        let arguments_of = |head: Rc<NativeServeRequestHead>, body: String| wire_arguments(http_ingress_arguments(binding.clone(), facts.clone(), head, body, peer_user.clone()).iter());", "\n",
+      "        match exchange(&stream, &contract, &arguments_of, &bound_host, bound_port, deadline, timeout) \{", "\n",
       "            Exchange::Idle => \{\}", "\n",
-      "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),", "\n",
-      "            Exchange::Overran => exit_after_deadline(&mut stream, &contract),", "\n",
-      "            Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&mut stream, &contract, reason),", "\n",
+      "            Exchange::Answer(response) => write_response(&stream, &native_serve_outgoing(response)),", "\n",
+      "            Exchange::Overran => exit_after_deadline(&stream, &contract),", "\n",
+      "            Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&stream, &contract, reason),", "\n",
       "            Exchange::Handle(call, armed) => \{", "\n",
       "                let (reply, answer) = std::sync::mpsc::channel::<WireParts>();", "\n",
       "                let replace = if generation.calls.send((call, reply)).is_err() \{", "\n",
-      "                    write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));", "\n",
+      "                    write_response(&stream, &native_serve_outgoing(native_serve_handler_failed()));", "\n",
       "                    true", "\n",
       "                \} else \{", "\n",
       "                    match answer.recv_timeout(remaining(armed, deadline).unwrap_or_default()) \{", "\n",
       "                        Ok(parts) => \{", "\n",
-      "                            write_parts(&mut stream, &parts);", "\n",
+      "                            write_parts(&stream, &parts);", "\n",
       "                            false", "\n",
       "                        \}", "\n",
       "                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => \{", "\n",
-      "                            write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));", "\n",
+      "                            write_response(&stream, &native_serve_outgoing(native_serve_handler_failed()));", "\n",
       "                            true", "\n",
       "                        \}", "\n",
-      "                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&mut stream, &contract),", "\n",
+      "                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&stream, &contract),", "\n",
       "                    \}", "\n",
       "                \};", "\n",
       "                if replace \{", "\n",
@@ -21704,9 +21947,47 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "            \}", "\n",
       "        \}", "\n",
       "    \}", "\n",
-      "\}", "\n"
+      "\}", "\n",
+      ""
     )
   }
+}
+
+// One `Rc::new(HttpIngressDeclaredParameter { .. })` per request parameter, in declared order.
+fn native_ingress_request_parameter_values(parameters: List<NativeIngressRequestParameter>) -> String {
+  parameters |> map(p => concat("Rc::new(HttpIngressDeclaredParameter \{ name: \"", p.name, "\".to_string(), shape: HttpIngressArgumentShape::", match p.shape { NativeIngressTextShape => "HttpIngressTextShape"  NativeIngressHeadersShape => "HttpIngressHeadersShape" }, " \})")) |> join(separator: ", ")
+}
+
+type NativeIngressPositionalRender {
+  index: Int
+  items: List<String>
+}
+
+// The worker's slice pattern: one binder per request parameter, of the variant its shape crosses as.
+fn native_ingress_worker_pattern(parameters: List<NativeIngressRequestParameter>) -> String {
+  let r = parameters |> fold(init: NativeIngressPositionalRender { index: 0, items: [] }, f: (acc, p) => NativeIngressPositionalRender {
+    index: acc.index + 1,
+    items: concat(acc.items, [concat(match p.shape { NativeIngressTextShape => "WireArgument::Text(argument_"  NativeIngressHeadersShape => "WireArgument::Headers(argument_" }, to_string(value: acc.index), ")")]),
+  })
+  r.items |> join(separator: ", ")
+}
+
+// The handler's request arguments, rebuilt on the worker into each parameter's type.
+fn native_ingress_worker_arguments(parameters: List<NativeIngressRequestParameter>) -> String {
+  let r = parameters |> fold(init: NativeIngressPositionalRender { index: 0, items: [] }, f: (acc, p) => NativeIngressPositionalRender {
+    index: acc.index + 1,
+    items: concat(acc.items, [match p.shape {
+      NativeIngressTextShape => concat("argument_", to_string(value: acc.index), ".clone()")
+      NativeIngressHeadersShape => concat("Rc::new(argument_", to_string(value: acc.index), ".iter().map(|(name, value)| Rc::new(ServeRequestHeader \{ name: name.clone(), value: value.clone() \})).collect::<Vec<_>>().into())")
+    }]),
+  })
+  r.items |> join(separator: ", ")
+}
+
+// A positional argument list whose first part may be empty: the startup and effect arguments are
+// rendered with a leading separator.
+fn native_ingress_call_arguments(parts: String) -> String {
+  if starts_with(s: parts, prefix: ", ") { substring(s: parts, start: 2, end: string_length(s: parts)) } else { parts }
 }
 
 // Bind the handlers NativeEffectRealizationAdmission admitted for v2_cli_main (today the existing
