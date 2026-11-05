@@ -61,10 +61,16 @@ import extdeps.systemd.systemctl {
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_argv, coreutils_rm_force_recursive_argv }
 import extdeps.shadow.account_deletion { userdel_remove_account_argv, userdel_user_not_found_exit }
 import extdeps.tailscale.serve {
-  TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, tailscale_serve_off_argv,
-  tailscale_serve_status_json_argv, tailscale_serve_status_route_proxy_targets, tailscale_serve_route_key,
+  TailscaleServeEndpoint, TailscaleServeMount, ServeRootMount, tailscale_serve_off_command,
+  tailscale_serve_status_json_command, tailscale_serve_status_route_proxy_targets, tailscale_serve_route_key,
   TailscaleServeStatusProjection, ServeStatusProxies, ServeStatusUnreadable,
 }
+// THE PROGRAM NAME IS NOT THIS MODULE'S TO SPELL. tailscale's own argv builders return the arguments
+// WITHOUT the binary (the systemctl builders spell theirs), so the off command and the status command
+// are taken as ArgvCommand and rendered with argv_words -- the same way gunbc.live_deploy.tailnet_door_cutover_host
+// reads the serve status. A hand-written ["serve", ...] under `sudo -n --` asks sudo to run a program
+// named `serve`, which is exactly how the first actuation of this retirement failed.
+import extdeps.exec.command { argv_words }
 import extdeps.posix.getent { getent_key_not_found_exit }
 
 // ── The removal roster ─────────────────────────────────────────────────────────────────────────
@@ -96,13 +102,13 @@ data ntfy_retire_front_door_endpoint: TailscaleServeEndpoint = TailscaleServeEnd
 // THE ROSTER, in the order the members come off. Removal order matters: the unit is stopped and
 // disabled before its file goes, the file before daemon-reload, the account before its directories,
 // so no leg leaves a running process holding a tree it is about to delete.
-data ntfy_retire_members: List<NonEmptyStr> = [
-  "unit" as NonEmptyStr,
-  "front door" as NonEmptyStr,
-  "account" as NonEmptyStr,
-  "config directory" as NonEmptyStr,
-  "state root" as NonEmptyStr,
-  "binary" as NonEmptyStr,
+data ntfy_retire_members: List<NtfyRetireMember> = [
+  MemberUnit,
+  MemberFrontDoor,
+  MemberAccount,
+  MemberConfigDir,
+  MemberStateRoot,
+  MemberBinary,
 ]
 
 // ── What the operator is asked to approve ──────────────────────────────────────────────────────
@@ -201,14 +207,32 @@ fn ntfy_retire_remove_binary_argv() -> List<String> {
 }
 
 fn ntfy_retire_front_door_off_argv() -> List<String> {
-  tailscale_serve_off_argv(endpoint: ntfy_retire_front_door_endpoint)
+  argv_words(command: tailscale_serve_off_command(endpoint: ntfy_retire_front_door_endpoint))
 }
 
+// THE ROSTER MEMBERS ARE A CLOSED SET, so they are a coproduct and not six strings. A leg's subject
+// and a verdict's member are the SAME type, which is what makes the resume rule decidable: the join in
+// ntfy_retire_leg_decision cannot be fed a spelling the readback never emits, so "nothing was read
+// about this member" stops being a state reachable by accident. DESIGN.md 5: "Stronger than catching a
+// wrong state is making it unwritable -- correctness by construction, not validation." A typo in a
+// string roster row would have skipped nothing and said nothing; it would only have made every leg for
+// that member run on every pass -- the very failure this module exists to survive.
+type NtfyRetireMember
+  = MemberUnit
+  | MemberFrontDoor
+  | MemberAccount
+  | MemberConfigDir
+  | MemberStateRoot
+  | MemberBinary
+
 // THE LEGS IN ORDER, each named. The name is what a refusal says: "unit-stop refused: ..." is a
-// locator, where an unnamed chain of legs would leave the operator reading exit codes.
+// locator, where an unnamed chain of legs would leave the operator reading exit codes. SUBJECT is the
+// roster member the leg removes: the pre-leg reads decide whether it has anything to do (see
+// ntfy_retire_leg_should_run), so the subject must be the member the readback attests, not a free text.
 type NtfyRetireLeg {
   name: String
   argv: List<String>
+  subject: NtfyRetireMember
   // The exit code this leg's tool returns when the thing it was told to remove is NOT on the host at
   // all. Most tools have no such answer -- systemctl stops a unit that is not running without
   // complaint, `rm -f` and `tailscale serve --https=8443 off` report nothing -- so they declare
@@ -225,15 +249,15 @@ type NtfyRetireSubjectAbsentAnswer
   | SubjectAbsentExit { exit_code: Int }
 
 data ntfy_retire_legs: List<NtfyRetireLeg> = [
-  NtfyRetireLeg { name: "unit-stop", argv: ntfy_retire_stop_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "unit-disable", argv: ntfy_retire_disable_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "unit-file-remove", argv: ntfy_retire_remove_unit_file_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "daemon-reload", argv: ntfy_retire_daemon_reload_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "account-remove", argv: ntfy_retire_remove_account_argv(), subject_absent: SubjectAbsentExit { exit_code: userdel_user_not_found_exit } },
-  NtfyRetireLeg { name: "config-dir-remove", argv: ntfy_retire_remove_config_dir_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "state-root-remove", argv: ntfy_retire_remove_state_root_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "binary-remove", argv: ntfy_retire_remove_binary_argv(), subject_absent: NoSubjectAbsentAnswer },
-  NtfyRetireLeg { name: "front-door-off", argv: ntfy_retire_front_door_off_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-stop", subject: MemberUnit, argv: ntfy_retire_stop_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-disable", subject: MemberUnit, argv: ntfy_retire_disable_unit_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "unit-file-remove", subject: MemberUnit, argv: ntfy_retire_remove_unit_file_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "daemon-reload", subject: MemberUnit, argv: ntfy_retire_daemon_reload_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "account-remove", subject: MemberAccount, argv: ntfy_retire_remove_account_argv(), subject_absent: SubjectAbsentExit { exit_code: userdel_user_not_found_exit } },
+  NtfyRetireLeg { name: "config-dir-remove", subject: MemberConfigDir, argv: ntfy_retire_remove_config_dir_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "state-root-remove", subject: MemberStateRoot, argv: ntfy_retire_remove_state_root_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "binary-remove", subject: MemberBinary, argv: ntfy_retire_remove_binary_argv(), subject_absent: NoSubjectAbsentAnswer },
+  NtfyRetireLeg { name: "front-door-off", subject: MemberFrontDoor, argv: ntfy_retire_front_door_off_argv(), subject_absent: NoSubjectAbsentAnswer },
 ]
 
 // ── The readback ───────────────────────────────────────────────────────────────────────────────
@@ -341,9 +365,19 @@ fn ntfy_retire_account_read(read: SshSessionExecResult) -> NtfyRetireRead {
 // THE TAILSCALE PROBER. tailscale's status is the account of what is served; the route key is the port
 // and mount the handler was configured at, and an absent handler projects to no targets at all. An
 // unreadable status is NOT read as absence -- a parse gap must not retire a listener.
-fn ntfy_retire_front_door_read(status_json: String) -> NtfyRetireRead {
-  match tailscale_serve_status_route_proxy_targets(
-    status_json: status_json,
+fn ntfy_retire_front_door_read(status_read: SshSessionExecResult) -> NtfyRetireRead {
+  // THE EXIT CODE IS PART OF THE READ. A `tailscale serve status` that never ran -- sudo refused, the
+  // program was not where it is cataloged, the daemon was down -- prints nothing, and an empty document
+  // parses to "no routes". Reading that as an ABSENT front door is the fabricated default DESIGN.md 5
+  // refuses: the run would certify a closed listener it never observed. Only a status that exited 0 is
+  // a status.
+  if status_read.exit_code != ntfy_retire_present_path_exit {
+    ReadUnreadable {
+      evidence: concat("tailscale serve status exited ", concat(to_string(status_read.exit_code), ": not a status answer, so the listener's state is unknown")),
+    }
+  } else {
+    match tailscale_serve_status_route_proxy_targets(
+      status_json: status_read.stdout,
     key: tailscale_serve_route_key(endpoint: ntfy_retire_front_door_endpoint),
   ) {
     ServeStatusProxies { targets: targets } =>
@@ -354,6 +388,7 @@ fn ntfy_retire_front_door_read(status_json: String) -> NtfyRetireRead {
       }
     ServeStatusUnreadable =>
       ReadUnreadable { evidence: "tailscale serve status did not parse: the listener's state is unknown" }
+  }
   }
 }
 
@@ -398,9 +433,9 @@ fn ntfy_retire_unit_read(load_state: SshSessionExecResult, unit_path_exit: Int) 
 // reported as UNREADABLE and fails the run: it is not absent, and calling it still-present would be
 // just as much a claim about the host as calling it gone.
 type NtfyRetireVerdict
-  = RetireMemberAbsent { member: NonEmptyStr, evidence: String }
-  | RetireMemberPresent { member: NonEmptyStr, evidence: String }
-  | RetireMemberUnreadable { member: NonEmptyStr, evidence: String }
+  = RetireMemberAbsent { member: NtfyRetireMember, evidence: String }
+  | RetireMemberPresent { member: NtfyRetireMember, evidence: String }
+  | RetireMemberUnreadable { member: NtfyRetireMember, evidence: String }
 
 fn ntfy_retire_verdict_text(v: NtfyRetireVerdict) -> String {
   match v {
@@ -420,7 +455,7 @@ fn ntfy_retire_verdict_text(v: NtfyRetireVerdict) -> String {
 // gunbc.test.claim.approval_ntfy_retirement_witness
 // red_a_read_that_was_never_made_never_becomes_an_absent_verdict pins that the classifiers, not the
 // printing, decide the state.
-fn ntfy_retire_verdict_from_read(member: NonEmptyStr, read: NtfyRetireRead) -> NtfyRetireVerdict {
+fn ntfy_retire_verdict_from_read(member: NtfyRetireMember, read: NtfyRetireRead) -> NtfyRetireVerdict {
   match read {
     ReadAbsent { evidence: e } => RetireMemberAbsent { member: member, evidence: e }
     ReadPresent { evidence: e } => RetireMemberPresent { member: member, evidence: e }
@@ -448,8 +483,17 @@ fn ntfy_retire_receipt_is_clean(vs: List<NtfyRetireVerdict>) -> Bool {
   })) == 1)
 }
 
-fn member_text(member: NonEmptyStr) -> String {
-  member as String
+// THE ONE PLACE THE MEMBERS ARE SPOKEN: the receipt and the leg decisions print through here, so the
+// words belong to the coproduct rather than to whatever string a caller brought.
+fn member_text(member: NtfyRetireMember) -> String {
+  match member {
+    MemberUnit => "unit"
+    MemberFrontDoor => "front door"
+    MemberAccount => "account"
+    MemberConfigDir => "config directory"
+    MemberStateRoot => "state root"
+    MemberBinary => "binary"
+  }
 }
 
 // THE RECEIPT IS WRITTEN TO THE STEP'S OWN SUMMARY, the artifact a run leaves that a later reader
@@ -518,9 +562,13 @@ fn approval_ntfy_retire_wet() -> ProcessExit
             SshTargetRefused { endpoint: e, refusal: why } =>
               exit_failure(reason: concat("approval ntfy retirement: ", ssh_target_refusal_text(endpoint: e, refusal: why)))
             SshTargetResolved { target: target } =>
-              match ntfy_retire_legs_outcome(target: target, context: context) {
-                ExitSuccess => ntfy_retire_readback(target: target, context: context)
-                other => other
+              match ntfy_retire_verdict_reads(target: target, context: context) {
+                ReadsRefused { reason: why } => exit_failure(reason: why)
+                ReadsObserved { verdicts: pre } =>
+                  // A member whose state the probes could not read is not a member the run may
+                  // remove, because it cannot then tell whether it removed anything or proved nothing.
+                  // Refuse before the first leg, while the host is still the host the operator approved.
+                  ntfy_retire_proceed_after_reads(target: target, context: context, pre: pre)
               }
           }
       }
@@ -528,30 +576,145 @@ fn approval_ntfy_retire_wet() -> ProcessExit
   }
 }
 
-// THE LEGS, run in order, each through the elevated transport. Any leg that does not exit 0 stops
-// the run: a half-removed member is exactly what the readback exists to catch, and continuing past
-// a failed leg would let the receipt describe a host the run did not finish changing.
-fn ntfy_retire_legs_outcome(target: SshTarget, context: FleetSshExecutionContext) -> ProcessExit
+// THE LEGS, run in order, each through the elevated transport -- but a leg runs only when the read
+// before the legs says its subject is still on the host. This is a retirement, so its target state is
+// ABSENCE, and a run that has to be resumed after a half-finished pass (the first actuation of this
+// retirement died at the front door with everything else already removed) would otherwise fail on the
+// first leg it re-ran and could never close what is left: `systemctl stop` of a unit systemd no longer
+// knows is an error, not a no-op. Skipping is not guessing: the skip is decided by the member's own
+// three-state read, it is recorded in the receipt next to the evidence that justified it, and the
+// readback still has to find every member absent for the step to pass. A leg whose subject is read
+// PRESENT, or on which nothing was read at all, runs -- and any leg that does not exit 0 stops the
+// run, because a half-removed member is exactly what the readback exists to catch.
+type NtfyRetireLegRun
+  = LegsRefused { reason: String }
+  | LegsDone { decisions: List<String> }
+
+// WHAT A LEG DECIDES TO DO, with the sentence the receipt prints for it. A skip quotes the read that
+// justified it, so the receipt is evidence rather than a claim: "skipped -- binary already read absent:
+// test -e exited 1" can be checked against the probe, where "skipped: nothing to do" could not.
+type NtfyRetireLegDecision
+  = LegDecisionRun { note: String }
+  | LegDecisionSkip { note: String }
+
+fn ntfy_retire_leg_decision(leg: NtfyRetireLeg, verdicts: List<NtfyRetireVerdict>) -> NtfyRetireLegDecision {
+  let for_subject = filter(verdicts, v => match v {
+    RetireMemberAbsent { member: m, evidence: _ } => (m == leg.subject)
+    RetireMemberPresent { member: m, evidence: _ } => (m == leg.subject)
+    RetireMemberUnreadable { member: m, evidence: _ } => (m == leg.subject)
+  })
+  match list_at_optional(xs: for_subject, index: 0) {
+    // NOTHING WAS READ ABOUT THIS MEMBER. With the members a coproduct this arm is no longer
+    // reachable by a mismatched spelling -- a leg's subject and a verdict's member are the same type,
+    // and the actuation reads every roster member before the first leg. It stays as the conservative
+    // answer for the only gap that remains: a verdict list that genuinely omits a member. The run does
+    // not conclude the member is gone -- the roster is the standard -- it removes it and lets the
+    // readback judge the host.
+    Absent => LegDecisionRun { note: concat("leg ", concat(leg.name, ": ran (nothing was read about its subject)")) }
+    Present { value: v } => match v {
+      RetireMemberAbsent { member: m, evidence: e } =>
+        LegDecisionSkip {
+          note: concat("leg ", concat(leg.name, concat(": skipped -- ", concat(member_text(member: m), concat(" already read absent: ", e))))),
+        }
+      RetireMemberPresent { member: m, evidence: e } =>
+        LegDecisionRun {
+          note: concat("leg ", concat(leg.name, concat(": ran -- ", concat(member_text(member: m), concat(" read present: ", e))))),
+        }
+      // The actuation refuses the run before any leg when a member reads unreadable, so this arm is
+      // defensive; the conservative answer is to attempt the removal, never to skip on a gap.
+      RetireMemberUnreadable { member: m, evidence: e } =>
+        LegDecisionRun {
+          note: concat("leg ", concat(leg.name, concat(": ran (its subject read unreadable: ", e), ")")),
+        }
+    }
+  }
+}
+
+// WHICH MEMBERS THE READS COULD NOT ANSWER FOR. This used to answer Bool, which is the shape this
+// repository's review policy flags: it collapses one gap and every gap into the same answer, and it
+// throws away WHICH member -- so the refusal could only say "a roster member's state was unreadable",
+// leaving the operator to re-derive which one from the log. The list is the answer; the refusal below
+// prints the members with the evidence each read gave.
+fn ntfy_retire_unreadable_members(vs: List<NtfyRetireVerdict>) -> List<NtfyRetireVerdict> {
+  filter(vs, v => match v {
+    RetireMemberAbsent { member: _, evidence: _ } => false
+    RetireMemberPresent { member: _, evidence: _ } => false
+    RetireMemberUnreadable { member: _, evidence: _ } => true
+  })
+}
+
+fn ntfy_retire_unreadable_report(gaps: List<NtfyRetireVerdict>) -> String {
+  join(map(gaps, v => match v {
+    RetireMemberUnreadable { member: m, evidence: e } => concat(member_text(member: m), concat(": ", e))
+    RetireMemberAbsent { member: m, evidence: _ } => member_text(member: m)
+    RetireMemberPresent { member: m, evidence: _ } => member_text(member: m)
+  }), separator: "; ")
+}
+
+// THE GATE BEFORE THE FIRST LEG. No removal starts while any roster member's state is unknown: a
+// member nobody could read is not a member the run may remove, because it could then neither prove it
+// removed anything nor prove there was nothing to remove. Refusing here happens while the host is still
+// the host the operator approved, and the refusal names the members it could not read.
+fn ntfy_retire_proceed_after_reads(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  pre: List<NtfyRetireVerdict>,
+) -> ProcessExit
   uses net: std.resources.Network
 {
-  match ntfy_retire_leg_step(target: target, context: context, index: 0) {
-    ExitSuccess => ExitSuccess
-    other => other
+  let gaps = ntfy_retire_unreadable_members(vs: pre)
+  if count(gaps) == 0 {
+    match ntfy_retire_legs_outcome(target: target, context: context, verdicts: pre) {
+      LegsRefused { reason: why } => exit_failure(reason: why)
+      LegsDone { decisions: decisions } =>
+        ntfy_retire_readback(target: target, context: context, decisions: decisions)
+    }
+  } else {
+    let core = concat(
+      to_string(count(gaps)),
+      concat(" of ", concat(to_string(count(ntfy_retire_members)), " roster members: ")),
+    )
+    exit_failure(reason: concat(
+      "approval ntfy retirement: the pre-removal reads could not answer for ",
+      concat(core, concat(ntfy_retire_unreadable_report(gaps: gaps), "; the run will not remove on a read that said nothing")),
+    ))
   }
+}
+
+// THE LEGS, run in order; each one's own decision is made by ntfy_retire_leg_decision.
+fn ntfy_retire_legs_outcome(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  verdicts: List<NtfyRetireVerdict>,
+) -> NtfyRetireLegRun
+  uses net: std.resources.Network
+{
+  ntfy_retire_leg_step(target: target, context: context, index: 0, decisions: [], verdicts: verdicts)
 }
 
 // A leg chain written as an explicit index walk rather than a fold, because the language's total
 // recursion over a list cannot carry the transport effect through each arm.
-fn ntfy_retire_leg_step(target: SshTarget, context: FleetSshExecutionContext, index: Int) -> ProcessExit
+fn ntfy_retire_leg_step(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  index: Int,
+  decisions: List<String>,
+  verdicts: List<NtfyRetireVerdict>,
+) -> NtfyRetireLegRun
   uses net: std.resources.Network
 {
   match list_at_optional(xs: ntfy_retire_legs, index: index) {
-    Absent => ExitSuccess
-    Present { value: leg } =>
-      match ntfy_retire_elevated_exec(target: target, context: context, leg: leg) {
-        ExitSuccess => ntfy_retire_leg_step(target: target, context: context, index: index + 1)
-        other => other
-      }
+    Absent => LegsDone { decisions: decisions }
+    Present { value: leg } => match ntfy_retire_leg_decision(leg: leg, verdicts: verdicts) {
+      LegDecisionRun { note: note } =>
+        match ntfy_retire_elevated_exec(target: target, context: context, leg: leg) {
+          LegSucceeded =>
+            ntfy_retire_leg_step(target: target, context: context, index: index + 1, decisions: concat(decisions, [note]), verdicts: verdicts)
+          LegRefused { reason: why } => LegsRefused { reason: why }
+        }
+      LegDecisionSkip { note: note } =>
+        ntfy_retire_leg_step(target: target, context: context, index: index + 1, decisions: concat(decisions, [note]), verdicts: verdicts)
+    }
   }
 }
 
@@ -560,23 +723,30 @@ fn ntfy_retire_elevated_argv(command: List<String>) -> List<String> {
   concat([inv.bin_path], inv.args)
 }
 
+// A LEG ANSWERS WITH A VALUE, not with a step exit: the walk that runs the legs has to report what it
+// did -- which legs ran, which were skipped -- and a leg that stopped the run has to carry its reason
+// up to the one place that turns a reason into a failed step.
+type NtfyRetireLegResult
+  = LegSucceeded
+  | LegRefused { reason: String }
+
 fn ntfy_retire_elevated_exec(
   target: SshTarget,
   context: FleetSshExecutionContext,
   leg: NtfyRetireLeg,
-) -> ProcessExit
+) -> NtfyRetireLegResult
   uses net: std.resources.Network
 {
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ntfy_retire_elevated_argv(command: leg.argv)) {
     TypedArgvExecRefused { reason: why } =>
-      exit_failure(reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" refused: ", why))))
+      LegRefused { reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" refused: ", why))) }
     TypedArgvExecConverged { result: r } =>
       if r.success {
-        ExitSuccess
+        LegSucceeded
       } else if ntfy_retire_leg_answers_subject_absent(leg: leg, exit_code: r.exit_code) {
-        exit_failure(reason: ntfy_retire_subject_absent_reason(leg: leg, exit_code: r.exit_code))
+        LegRefused { reason: ntfy_retire_subject_absent_reason(leg: leg, exit_code: r.exit_code) }
       } else {
-        exit_failure(reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" exited ", to_string(r.exit_code)))))
+        LegRefused { reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" exited ", to_string(r.exit_code)))) }
       }
   }
 }
@@ -604,10 +774,16 @@ fn ntfy_retire_subject_absent_reason(leg: NtfyRetireLeg, exit_code: Int) -> Stri
   )
 }
 
-// THE READBACK, one probe per roster member, printed as the receipt. A member found still present
-// fails the run -- the receipt is not a report the operator may agree with, it is the condition the
-// step passes on.
-fn ntfy_retire_readback(target: SshTarget, context: FleetSshExecutionContext) -> ProcessExit
+// THE READS, one probe per roster member, returned as values. The SAME chain runs twice in a pass:
+// once before the legs, to decide which of them has anything to remove, and once after, as the receipt.
+// It answers with a value rather than failing the step because the two uses decide differently -- the
+// actuation refuses before touching the host when a member reads unreadable, the readback fails the run
+// when a member is found still present -- and a function that exits cannot serve both.
+type NtfyRetireVerdictReads
+  = ReadsRefused { reason: String }
+  | ReadsObserved { verdicts: List<NtfyRetireVerdict> }
+
+fn ntfy_retire_verdict_reads(target: SshTarget, context: FleetSshExecutionContext) -> NtfyRetireVerdictReads
   uses net: std.resources.Network
 {
   // THE ELEVATION CONTROL RUNS FIRST. Every absence below comes from a probe whose answer is "not
@@ -618,35 +794,35 @@ fn ntfy_retire_readback(target: SshTarget, context: FleetSshExecutionContext) ->
   // never read.
   match ntfy_retire_probe_exec(target: target, context: context, command: ntfy_retire_elevation_control_argv, step: "elevation-control") {
     TypedArgvExecRefused { reason: why } =>
-      exit_failure(reason: concat("approval ntfy retirement: the elevation control probe could not reach the host: ", why))
+      ReadsRefused { reason: concat("approval ntfy retirement: the elevation control probe could not reach the host: ", why) }
     TypedArgvExecConverged { result: control } =>
       if !ntfy_retire_elevation_control_is_proven(exit_code: control.exit_code) {
-        exit_failure(reason: concat("approval ntfy retirement: the elevated probe channel did not prove itself (test -d / exited ", concat(to_string(control.exit_code), "): no absence is read from a probe that never ran")))
+        ReadsRefused { reason: concat("approval ntfy retirement: the elevated probe channel did not prove itself (test -d / exited ", concat(to_string(control.exit_code), "): no absence is read from a probe that never ran")) }
       } else {
         match ntfy_retire_probe_exec(target: target, context: context, command: systemctl_show_load_state_argv(unit: ntfy_retire_unit_name), step: "unit-load-state-read") {
-        TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
+        TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
         TypedArgvExecConverged { result: unit_read } =>
           match ntfy_retire_probe_exec(target: target, context: context, command: ["getent", "passwd", ntfy_retire_account_name as String], step: "account-read") {
-            TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
+            TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
             TypedArgvExecConverged { result: account_read } =>
-              match ntfy_retire_probe_exec(target: target, context: context, command: tailscale_serve_status_json_argv(), step: "serve-status-read") {
-                TypedArgvExecRefused { reason: why } => exit_failure(reason: concat("approval ntfy retirement: ", why))
+              match ntfy_retire_probe_exec(target: target, context: context, command: argv_words(command: tailscale_serve_status_json_command()), step: "serve-status-read") {
+                TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
                 TypedArgvExecConverged { result: serve_read } =>
                   match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_unit_path) {
                     PathProbeTransportRefused { reason: _ } =>
-                      exit_failure(reason: "approval ntfy retirement: the unit path probe could not reach the host")
+                      ReadsRefused { reason: "approval ntfy retirement: the unit path probe could not reach the host" }
                     PathProbeObserved { exit_code: unit_path_exit } =>
                       match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_config_dir) {
                         PathProbeTransportRefused { reason: _ } =>
-                          exit_failure(reason: "approval ntfy retirement: the config directory probe could not reach the host")
+                          ReadsRefused { reason: "approval ntfy retirement: the config directory probe could not reach the host" }
                         PathProbeObserved { exit_code: config_exit } =>
                           match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_state_root) {
                             PathProbeTransportRefused { reason: _ } =>
-                              exit_failure(reason: "approval ntfy retirement: the state root probe could not reach the host")
+                              ReadsRefused { reason: "approval ntfy retirement: the state root probe could not reach the host" }
                             PathProbeObserved { exit_code: state_exit } =>
                               match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_binary_path) {
                                 PathProbeTransportRefused { reason: _ } =>
-                                  exit_failure(reason: "approval ntfy retirement: the binary probe could not reach the host")
+                                  ReadsRefused { reason: "approval ntfy retirement: the binary probe could not reach the host" }
                                 PathProbeObserved { exit_code: binary_exit } => {
                                   // EVERY VERDICT IS CHOSEN BY THE READ, through the prober's own
                                   // classifier and one shared verdict function. Nothing here names a
@@ -655,40 +831,31 @@ fn ntfy_retire_readback(target: SshTarget, context: FleetSshExecutionContext) ->
                                   // and fails the run.
                                   let verdicts: List<NtfyRetireVerdict> = [
                                     ntfy_retire_verdict_from_read(
-                                      member: "unit" as NonEmptyStr,
+                                      member: MemberUnit,
                                       read: ntfy_retire_unit_read(load_state: unit_read, unit_path_exit: unit_path_exit),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: "front door" as NonEmptyStr,
-                                      read: ntfy_retire_front_door_read(status_json: serve_read.stdout),
+                                      member: MemberFrontDoor,
+                                      read: ntfy_retire_front_door_read(status_read: serve_read),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: "account" as NonEmptyStr,
+                                      member: MemberAccount,
                                       read: ntfy_retire_account_read(read: account_read),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: "config directory" as NonEmptyStr,
+                                      member: MemberConfigDir,
                                       read: ntfy_retire_path_read(exit_code: config_exit),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: "state root" as NonEmptyStr,
+                                      member: MemberStateRoot,
                                       read: ntfy_retire_path_read(exit_code: state_exit),
                                     ),
                                     ntfy_retire_verdict_from_read(
-                                      member: "binary" as NonEmptyStr,
+                                      member: MemberBinary,
                                       read: ntfy_retire_path_read(exit_code: binary_exit),
                                     ),
                                   ]
-                                  match ntfy_retire_receipt_write(text: ntfy_retire_receipt_text(vs: verdicts)) {
-                                    RetireReceiptWritten { path: _ } =>
-                                      if ntfy_retire_receipt_is_clean(vs: verdicts) {
-                                        ExitSuccess
-                                      } else {
-                                        exit_failure(reason: "approval ntfy retirement: the readback did not read every roster member absent")
-                                      }
-                                    RetireReceiptWriteFailed { reason: why } =>
-                                      exit_failure(reason: concat("approval ntfy retirement: the readback receipt could not be written: ", why))
-                                  }
+                                  ReadsObserved { verdicts: verdicts }
                                 }
                               }
                           }
@@ -698,6 +865,45 @@ fn ntfy_retire_readback(target: SshTarget, context: FleetSshExecutionContext) ->
         }
       }
   }
+  }
+}
+
+// THE READBACK: the same reads, taken again after the legs, turned into the receipt the step passes
+// on. A member found still present fails the run -- the receipt is not a report the operator may agree
+// with, it is the condition the step passes on -- and the legs' own decisions are printed beside the
+// verdicts, so a pass says both what was removed and what was found already gone.
+fn ntfy_retire_readback(
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  decisions: List<String>,
+) -> ProcessExit
+  uses net: std.resources.Network
+{
+  match ntfy_retire_verdict_reads(target: target, context: context) {
+    ReadsRefused { reason: why } => exit_failure(reason: why)
+    ReadsObserved { verdicts: verdicts } =>
+      match ntfy_retire_receipt_write(text: ntfy_retire_receipt_text_with_legs(vs: verdicts, decisions: decisions)) {
+        RetireReceiptWritten { path: _ } =>
+          if ntfy_retire_receipt_is_clean(vs: verdicts) {
+            ExitSuccess
+          } else {
+            exit_failure(reason: "approval ntfy retirement: the readback did not read every roster member absent")
+          }
+        RetireReceiptWriteFailed { reason: why } =>
+          exit_failure(reason: concat("approval ntfy retirement: the readback receipt could not be written: ", why))
+      }
+  }
+}
+
+// THE RECEIPT IS THE MEMBERS' VERDICTS PLUS THE LEGS' DECISIONS. The verdicts are the condition; the
+// decisions are the account of what this pass did, and they are only trustworthy because each one names
+// the read it was decided by.
+fn ntfy_retire_receipt_text_with_legs(vs: List<NtfyRetireVerdict>, decisions: List<String>) -> String {
+  let members = ntfy_retire_receipt_text(vs: vs)
+  if count(decisions) == 0 {
+    members
+  } else {
+    concat(members, concat("\n", join(parts: decisions, separator: "\n")))
   }
 }
 

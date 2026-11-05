@@ -15,7 +15,9 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
   attempt_process_for_node, BeltAttemptPanesObserved,
   belt_seat_discharge_pass_outcome_from,
+  belt_validation_units, belt_claims_of_entry, belt_claim_passed, belt_claim_stdout, belt_covered_claims_all_passed,
 }
+import gunbc.roadmap.roadmap_execution_contract { GunbcClaimValidation, CargoFmtValidation }
 import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatDischargeSkipped, SeatEnsureNoop, SeatEnsureRefused, SeatEnsureRed }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
@@ -232,7 +234,7 @@ import gunbc.roadmap.roadmap_launch_admission {
   LaunchCensusRow,
   LaunchGateVerdict, GatePassed, GateRefused, GateNotReached,
   launch_gate_live, launch_gate_revision, launch_gate_landed,
-  launch_identity_exemplar, launch_refusal_exemplars, launch_refusal_reason,
+  launch_identity_exemplar, launch_refusal_exemplars,
   LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
 }
 import gunbc.roadmap.roadmap_readiness { ReadinessGap, GapAccepted, GapDependencies, GapContract, readiness_gap_label }
@@ -254,7 +256,10 @@ import gunbc.fleet.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
   TreeLandedOnAdmitted, TreeNotLandedOnAdmitted, TreeLandedUnobserved,
 }
-import extdeps.languages.json.emit { serialize_json, json_string }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import extdeps.languages.json.emit { json_string }
+import gunbc.roadmap.roadmap_launch_admission { launch_refusal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_verification_receipt {
   VerificationSubject,
@@ -267,7 +272,7 @@ import gunbc.roadmap.roadmap_verification_receipt {
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
 import gunbc.roadmap.roadmap_belt_actuate { belt_spawn_addressing }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_spawn_commands_for_launch, DispatchWorkerFirst, DispatchWorkerContinuedFrom, dispatch_worker_run_start_ref, DispatchSpawnReady, DispatchSpawnRefused }
-import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance, srv2_preview_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { SnapshotFreeLaunch, CodexWithoutSnapshot }
 import gunbc.compute.compute_seat_ensure { SeatDischargeSkipped }
@@ -3063,4 +3068,40 @@ test fn continue_over_an_ended_lineage_cuts_the_next_attempt_from_the_prior_bran
   })
     && dispatch_worker_run_start_ref(run: DispatchWorkerContinuedFrom { branch: "roadmap/n1/a1" }, base_ref: "origin/main") == "roadmap/n1/a1"
     && dispatch_worker_run_start_ref(run: DispatchWorkerFirst, base_ref: "origin/main") == "origin/main"
+}
+
+// ONE ENTRY IS ONE RUN, EACH CLAIM ITS OWN VERDICT. Three claims of entry e plus one of entry g and a non-claim
+// collapse to three units (first claim of e, g, the non-claim); the e unit covers all three e claims. In a
+// claim_batch document where `a` passes, `b` fails and `c` printed no line, only `a` passed: b's FAIL cannot
+// be read as a's, c's absence is not a pass, and the group as a whole is not passed.
+test fn claims_of_one_entry_are_one_unit_and_each_keeps_its_own_verdict() -> Bool {
+  let e = "dag/test/claim/e.dag" as FilePath
+  let g = "dag/test/claim/g.dag" as FilePath
+  let a = GunbcClaimValidation { entry: e, function: "a" as NonEmptyStr }
+  let b = GunbcClaimValidation { entry: e, function: "b" as NonEmptyStr }
+  let c = GunbcClaimValidation { entry: e, function: "c" as NonEmptyStr }
+  let other = GunbcClaimValidation { entry: g, function: "a" as NonEmptyStr }
+  let all = [a, b, other, c, CargoFmtValidation]
+  let doc = "PASS a\nFAIL b (returned `false`)\nPASS other_fn"
+  count(belt_validation_units(validations: all)) == 3
+    && count(belt_claims_of_entry(validations: all, entry: e)) == 3
+    && belt_claim_passed(document: doc, function: "a" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "b" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "c" as NonEmptyStr)
+    && string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "FAIL b")
+    && !string_contains(s: belt_claim_stdout(document: doc, function: "b" as NonEmptyStr), pattern: "PASS a")
+    && !belt_covered_claims_all_passed(covered: belt_claims_of_entry(validations: all, entry: e), document: doc)
+    && belt_covered_claims_all_passed(covered: [a], document: doc)
+    && belt_claim_passes_beside_a_longer_name_that_fails()
+}
+
+// A claim whose name is the prefix of a sibling's keeps its own verdict: `holds` passed, `holds_after_merge`
+// failed, and neither line belongs to the other (the bare FAIL form included).
+fn belt_claim_passes_beside_a_longer_name_that_fails() -> Bool {
+  let doc = "PASS holds\nFAIL holds_after_merge (returned `false`)\nFAIL bare\nPASS bare_two"
+  belt_claim_passed(document: doc, function: "holds" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "holds_after_merge" as NonEmptyStr)
+    && !belt_claim_passed(document: doc, function: "bare" as NonEmptyStr)
+    && belt_claim_passed(document: doc, function: "bare_two" as NonEmptyStr)
+    && !string_contains(s: belt_claim_stdout(document: doc, function: "holds" as NonEmptyStr), pattern: "FAIL")
 }
