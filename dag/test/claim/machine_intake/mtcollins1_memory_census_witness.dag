@@ -1,6 +1,7 @@
 module test.claim.machine_intake.mtcollins1_memory_census_witness
 
-import std.types { Bool, Int, List, list_length }
+import std.types { Bool, Int, List }
+import std.algebra { length }
 import std.nat { Nat }
 import extdeps.memory { host_memory_population_nominal_bytes }
 import extdeps.memory.types { HostMemoryPopulation, MemoryPopulationRow }
@@ -148,8 +149,8 @@ fn every_binding_has_exactly_one_agreeing_slot(bindings: List<MtCollins1Firmware
 }
 
 test fn firmware_channel_map_agrees_with_the_smbios_slot_table() -> Bool {
-  list_length(items: mtcollins1_firmware_channel_bindings) == 16
-    && list_length(items: population_roles(standing: mt_collins_channel_population_roles)) == 16
+  length(xs: mtcollins1_firmware_channel_bindings) == 16
+    && length(xs: population_roles(standing: mt_collins_channel_population_roles)) == 16
     && every_binding_has_exactly_one_agreeing_slot(
          bindings: mtcollins1_firmware_channel_bindings,
          slots: mtcollins1_slots,
@@ -182,7 +183,7 @@ fn populated_on_even_connector_count(slots: List<MtCollins1SlotObservation>) -> 
 // in exactly that configuration, so a census that reported a module on an even connector would
 // contradict either the reading or the identification of connectors, and must not pass quietly.
 test fn all_thirty_two_connectors_are_present_and_only_odd_ones_are_populated() -> Bool {
-  list_length(items: mtcollins1_slots) == 32
+  length(xs: mtcollins1_slots) == 32
     && populated_count(slots: mtcollins1_slots) == 16
     && populated_on_even_connector_count(slots: mtcollins1_slots) == 0
 }
@@ -350,7 +351,7 @@ fn scan_media_samples(samples: List<MtCollins1MediaRedirectionSample>) -> MediaS
 // flattened these rows to a single repeated status, the observation would have become a snapshot
 // while still being cited as a transition, and this goes red.
 test fn the_redirection_samples_are_a_time_series_containing_a_transition() -> Bool {
-  list_length(items: mtcollins1_media_redirection_samples) == 4
+  length(xs: mtcollins1_media_redirection_samples) == 4
     && scan_media_samples(samples: mtcollins1_media_redirection_samples).offsets_increase
     && scan_media_samples(samples: mtcollins1_media_redirection_samples).a_transition_occurred
 }
@@ -415,7 +416,7 @@ fn every_declaration_admitted_at_most_once(rows: List<MtCollins1ConsumptionFront
 // What is actually load-bearing is that the list is non-empty and that EVERY row earns its
 // admission, which is a property of the rows rather than of how many there are.
 test fn the_declared_frontier_names_a_consumer_and_a_trigger() -> Bool {
-  list_length(items: mtcollins1_consumption_frontier) > 0
+  length(xs: mtcollins1_consumption_frontier) > 0
     && the_two_frontier_kinds_mint_distinct_triggers()
     && every_declaration_admitted_at_most_once(rows: mtcollins1_consumption_frontier)
     && fold(mtcollins1_consumption_frontier, init: true, f: fn(acc, r) { acc && frontier_row_is_constructor_minted(f: r) })
@@ -501,7 +502,7 @@ fn binding_matches_some_ampere_role(b: MtCollins1FirmwareChannelBinding, roles: 
 // that is where the mapping lives -- and a change that DROPPED a channel would surface here rather
 // than as a mysteriously failing slot comparison.
 test fn every_observed_channel_resolves_to_exactly_one_upstream_role() -> Bool {
-  list_length(items: population_roles(standing: mt_collins_channel_population_roles)) == 16
+  length(xs: population_roles(standing: mt_collins_channel_population_roles)) == 16
     && fold(mtcollins1_firmware_channel_bindings, init: true, f: fn(acc, b) {
          acc && binding_matches_some_ampere_role(b: b, roles: population_roles(standing: mt_collins_channel_population_roles)) == 1
        })
@@ -581,7 +582,7 @@ test fn the_population_by_catalog_identity_accounts_for_all_sixteen() -> Bool {
   bindings_of_part(part: hma82gr7afr4n_vk_catalog.part_number) == 10
     && bindings_of_part(part: hma82gr7afr8n_vk_catalog.part_number) == 5
     && bindings_of_part(part: hma82gr7cjr8n_vk_catalog.part_number) == 1
-    && list_length(items: mtcollins1_firmware_channel_bindings) == 16
+    && length(xs: mtcollins1_firmware_channel_bindings) == 16
 }
 
 // ── the fill consequence, derived from the specification rather than from the sample ───────────

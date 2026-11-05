@@ -1,4 +1,5 @@
 module gunbc.heal_workflow
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
 import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
 import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplate, Inputs, Github, LiteralText, Interpolation, LogicalOr, interpolate, serialize_template }
@@ -412,12 +413,13 @@ fn heal_candidate_upload_step() -> Step {
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
-        kv(key: "path", value: yaml_string(s: heal_candidate_directory)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: heal_candidate_artifact_retention_days))
-      ]
+      value: workflow_artifact_upload_with(
+        name: heal_repair_candidate_artifact_name as String,
+        path: heal_candidate_directory,
+        retention_days: Present { value: heal_candidate_artifact_retention_days },
+        compression_level: none,
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: none,

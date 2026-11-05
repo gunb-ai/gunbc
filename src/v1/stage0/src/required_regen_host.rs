@@ -4106,17 +4106,46 @@ fn rebuild_scope_decision_with(
     .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
 }
 
-/// The modules the host shell crate declares PLUS the shell's own root, read from the same file:
-/// the rebuild-scope fold owns a mirror through this declaration alone, so the root file is a
-/// fact this read supplies (its stem), not a spelling the fold recognises. `closure_modules`
-/// reads the declaration transitively, so a hand file a root module declares is owned too.
-fn host_shell_scope_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
-    let mut modules = super::emitted_closure_compile_host::closure_modules(lib_rs)?;
-    let root = lib_rs
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .ok_or_else(|| format!("refusal: shell root {} has no file stem", lib_rs.display()))?;
-    modules.push(root.to_string());
+/// The modules the host shell package declares PLUS each of its crate roots, read from the files
+/// that declare them: the rebuild-scope fold owns a mirror through this declaration alone, so a
+/// root file is a fact this read supplies (its stem), not a spelling the fold recognises. A
+/// package has one root per target: `lib.rs` AND the path of every `[[bin]]` in its manifest
+/// (the generated `main.rs` is the `gunbc` bin's root and no `mod` declares it, so reading
+/// `lib.rs` alone left it `MirrorHasNoOwningPackage`). `closure_modules` reads each root's
+/// declarations transitively, so a hand file any root declares is owned too. An unreadable
+/// manifest or bin root is returned, never rendered as an empty roster.
+fn host_shell_scope_modules(lib_rs: &Path, manifest: &Path) -> Result<Vec<String>, String> {
+    let package_dir = manifest
+        .parent()
+        .ok_or_else(|| format!("refusal: manifest {} has no directory", manifest.display()))?;
+    let mut roots = vec![lib_rs.to_path_buf()];
+    let text = std::fs::read_to_string(manifest)
+        .map_err(|e| format!("refusal: shell manifest {}: {e}", manifest.display()))?;
+    // ONE READER of the manifest's bin roster (`cli_run`), not a second TOML walk here.
+    match super::parse_stage0_cargo_manifest_bin_paths(&text) {
+        super::Stage0CargoManifestBinParse::Parsed {
+            authored_relative_paths,
+        } => {
+            for path in authored_relative_paths {
+                roots.push(package_dir.join(path));
+            }
+        }
+        super::Stage0CargoManifestBinParse::Refused { detail } => {
+            return Err(format!(
+                "refusal: shell manifest {}: {detail}",
+                manifest.display()
+            ));
+        }
+    }
+    let mut modules = Vec::new();
+    for root in &roots {
+        modules.extend(super::emitted_closure_compile_host::closure_modules(root)?);
+        let stem = root
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| format!("refusal: shell root {} has no file stem", root.display()))?;
+        modules.push(stem.to_string());
+    }
     Ok(modules)
 }
 
@@ -4873,7 +4902,7 @@ struct SeedHandoff {
     built_exe: String,
     /// The round's checkpoint subject if the image that owns the round established one (a
     /// base-mirror round always has). Encoded explicitly as present or absent: a handoff without
-    /// the field is `HandoffUndecodable`, never a cue to recompute.
+    /// the field is `HandoffPredatesRoundSubject`, never a cue to recompute.
     round_subject: Option<RegenConvergenceCheckpointSubject>,
 }
 
@@ -4910,6 +4939,15 @@ enum SeedHandoffRefusal {
     },
     /// The carried observation does not decode.
     HandoffUndecodable {
+        value: String,
+    },
+    /// The carried observation is well formed up to the point where the round-subject field is
+    /// due and ends there: the image that wrote it predates that field (first written by 0256037,
+    /// #15855). Refused, never read as an absent subject. Distinct from `HandoffUndecodable` so it
+    /// can be counted: its remedy is known (merge the base into the head), an undecodable value's
+    /// is not.
+    HandoffPredatesRoundSubject {
+        missing_field: &'static str,
         value: String,
     },
     ReExecFailed {
@@ -4952,6 +4990,15 @@ impl std::fmt::Display for SeedHandoffRefusal {
                 f,
                 "refusal: HandoffUndecodable: {p}: {REGEN_ROUND_COST_REEXEC_ENV}={value:?}"
             ),
+            Self::HandoffPredatesRoundSubject {
+                missing_field,
+                value,
+            } => write!(
+                f,
+                "refusal: HandoffPredatesRoundSubject: {p}: the pre-exec image predates the \
+                 round-subject handoff (base 0256037): its handoff ends where `{missing_field}` \
+                 is due ({REGEN_ROUND_COST_REEXEC_ENV}={value:?}); merge the base into the head"
+            ),
             Self::ReExecFailed { path, cause } => write!(
                 f,
                 "refusal: ReExecFailed: {p}: the seed build replaced the running executable and \
@@ -4993,6 +5040,11 @@ impl SeedHandoff {
         let mut field = |key: &str| -> Result<String, SeedHandoffRefusal> {
             match it.next() {
                 Some(Some((k, v))) if k == key => Ok(v.to_string()),
+                // The input ends exactly where the subject field is due: the previous encoding.
+                None if key == "subject" => Err(SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                    missing_field: "subject",
+                    value: value.to_string(),
+                }),
                 _ => Err(bad()),
             }
         };
@@ -7620,7 +7672,10 @@ fn install_convergence_stage(
     // The generated shell declares the emitted modules not owned by a partition.
     // Read the same declaration surface convergence_surface_roles uses for seed
     // membership; missing partition ownership alone must never imply shell ownership.
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
     let changed_mirrors: Vec<String> = basenames
         .iter()
         .chain(base_rewritten_mirrors)
@@ -9023,7 +9078,10 @@ pub fn run_regen_round_cost(
         drained_marks,
     )
     .map_err(|cause| cause.to_string())?;
-    let declared_shell_modules = host_shell_scope_modules(&stage0_src.join("lib.rs"))?;
+    let declared_shell_modules = host_shell_scope_modules(
+        &stage0_src.join("lib.rs"),
+        &stage0_src.join("../Cargo.toml"),
+    )?;
 
     // ONE AUTHORITY FOR THE RECEIPT'S BASE ARM, read by whichever image reports. The parent holds
     // what its own seed did. The handoff child seeds nothing (the handoff rule), so it DERIVES the
@@ -11979,7 +12037,21 @@ mod host_shell_scope_modules_tests {
         std::fs::write(dir.join("deeper.rs"), "").unwrap();
         std::fs::write(dir.join("sibling.rs"), "").unwrap();
         std::fs::write(dir.join("stray.rs"), "").unwrap();
-        let modules = host_shell_scope_modules(&dir.join("lib.rs")).unwrap();
+        // A second target root: `main.rs` is the `[[bin]]` root no `mod` declares, and it declares
+        // `bin_child` itself. Reading lib.rs alone owns neither.
+        std::fs::write(dir.join("main.rs"), "mod bin_child;\n").unwrap();
+        std::fs::write(dir.join("bin_child.rs"), "").unwrap();
+        // A second `[[bin]]` under `bin/`, as `infer_semantics_witness` is in the seed: a changed
+        // file there refused `MirrorHasNoOwningPackage` (#15175 heal, run 41934097748).
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin/witness.rs"), "").unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[[bin]]\nname = \"x\"\npath = \"main.rs\"\n\n[[bin]]\nname = \"witness\"\npath = \"bin/witness.rs\"\n",
+        )
+        .unwrap();
+        let modules =
+            host_shell_scope_modules(&dir.join("lib.rs"), &dir.join("Cargo.toml")).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         for owned in [
             "cli_run",
@@ -11989,6 +12061,9 @@ mod host_shell_scope_modules_tests {
             "deeper",
             "sibling",
             "lib",
+            "main",
+            "bin_child",
+            "witness",
         ] {
             assert!(
                 modules.iter().any(|m| m == owned),
@@ -13131,13 +13206,37 @@ mod round_checkpoint_subject_tests {
         );
     }
 
-    /// RED: a handoff in the previous encoding (no subject) refuses at decode, and so does one with
-    /// a trailing field; neither is read as a cue to recompute.
+    /// RED: a handoff in the previous encoding (no subject) refuses at decode with its own typed
+    /// arm naming the missing field and the remedy; a truncated subject and a trailing field stay
+    /// `HandoffUndecodable`. None is read as a cue to recompute.
     #[test]
     fn a_handoff_without_the_subject_refuses() {
         let old = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B";
+        let refused = SeedHandoff::decode(old)
+            .err()
+            .expect("the old encoding must refuse");
+        assert_eq!(
+            refused,
+            SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                missing_field: "subject",
+                value: old.to_string(),
+            }
+        );
+        let rendered = refused.to_string();
+        assert!(
+            rendered.starts_with("refusal: HandoffPredatesRoundSubject: ")
+                && rendered.contains("predates the round-subject handoff")
+                && rendered.contains("merge the base into the head"),
+            "{rendered}"
+        );
+        // An old encoding that carried an unreadable cpu reading is the same arm.
         assert!(matches!(
-            SeedHandoff::decode(old),
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=unreadable;source=T;built_exe=B"),
+            Err(SeedHandoffRefusal::HandoffPredatesRoundSubject { .. })
+        ));
+        // Ending earlier than the subject field is not this arm: it is not a well-formed old handoff.
+        assert!(matches!(
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=5;source=T"),
             Err(SeedHandoffRefusal::HandoffUndecodable { .. })
         ));
         let truncated = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B;subject=present";
