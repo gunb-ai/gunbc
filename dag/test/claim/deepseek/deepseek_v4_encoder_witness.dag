@@ -1,6 +1,7 @@
 module test.claim.deepseek.deepseek_v4_encoder_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
 import extdeps.deepseek.deepseek_v4 {
   DeepseekV4ReasoningMode, DeepseekV4NonThink, DeepseekV4ThinkHigh, DeepseekV4ThinkMax,
   deepseek_v4_reasoning_mode_wire, deepseek_v4_effort_has_preamble, deepseek_v4_think_max_preamble,
@@ -32,7 +33,7 @@ test fn only_think_max_carries_a_preamble() -> Bool {
 // THE ENCODER HAS NO "low". The hosted API does; a harness that sent it to this encoder would be
 // sending a value the artifact ignores, which the rendering row below also shows.
 test fn the_encoder_accepts_max_and_high_and_nothing_else() -> Bool {
-  list_length(items: deepseek_v4_encoder_effort_values) == 2
+  length(xs: deepseek_v4_encoder_effort_values) == 2
     && !any(deepseek_v4_encoder_effort_values, v => (v as String) == "low")
 }
 

@@ -4024,7 +4024,8 @@ fn build_cache_ensure_executed(
             // run, so there is no extraction, no move into /usr/local/bin and no chmod.
             first.executed
           } else {
-            // The count comes from the ONE list_length authority, named by module path rather than
+            // The count comes from the ONE length authority, std.algebra length (std.types list_length
+            // was its duplicate and is deleted), named by module path rather than
             // by bare name. A site-local `list_length` in gunbc.site.aligned_columns was an exact
             // re-mint of std.types.list_length<T>; it broke the bare call here (the whole-corpus
             // effect census refused it: no established callee identity) and was deleted at the root
@@ -4032,11 +4033,11 @@ fn build_cache_ensure_executed(
             // qualification STAYS even with the fork gone: a bare name in the flat namespace is
             // green only by ambient coverage that any later re-mint silently breaks — the callee
             // identity is named, not assumed.
-            // Authority: dag/std/types.dag `list_length`. Recurring failure mode:
+            // Authority: std.algebra `length`. Recurring failure mode:
             // bare_name_resolved_only_by_the_flat_namespace.
             let rest = build_cache_plan_remainder(
               all: ops,
-              already_run: std.types.list_length(items: prefix)
+              already_run: std.algebra.length(xs: prefix)
             )
             build_cache_run_ensure_ops(
               state: first,

@@ -1,6 +1,7 @@
 module std.durable_append_log
 
-import std.types { NonEmptyStr, String, Bool, Int, List, list_length }
+import std.types { NonEmptyStr, String, Bool, Int, List }
+import std.algebra { length }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { ByteSize, byte_size }
@@ -105,11 +106,11 @@ type AppendLogReadback
   | AppendLogStandingUnobserved { cause: NonEmptyStr }
   | AppendLogUnreadable { cause: CasUnreadableSlot }
 
-// THE RECORD COUNT IS DERIVED from the returned records by the one list length (std.types list_length) and
+// THE RECORD COUNT IS DERIVED from the returned records by the one list length (std.algebra length) and
 // the one checked crossing to a natural number, never carried beside them: a second count could disagree with
 // the list and position the next append over a record that already exists.
 fn append_stream_head(observed: AppendStreamObservation) -> AppendLogHead? {
-  match checked_int_to_nat(n: list_length(items: observed.complete_records)) {
+  match checked_int_to_nat(n: length(xs: observed.complete_records)) {
     Present { value: n } => Present { value: AppendLogHead { record_count: n, byte_length: observed.settled_bytes } }
     Absent => Absent
   }

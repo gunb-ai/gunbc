@@ -3,7 +3,7 @@ module gunbc.roadmap.roadmap_attempt_metering
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents, attempt_state_directory_text, attempt_state_text }
 import std.types { Bool, Int, List, NonEmptyStr, String, EpochSecs }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.types { path_segment_is_safe }
 import std.content_hash { content_hash_tagged_structural, content_hash_atom }
 import std.measure { Second, second, second_count, TokenCount, token_count, token_count_value }
@@ -279,7 +279,7 @@ fn role_tokens_from_events(body: String) -> RoleTokens {
         StrictLineRefused { cause: _ } => [] as List<RoundTokens>
       })
       TokensObserved {
-        rounds: list_length(items: rows),
+        rounds: length(xs: rows),
         input_tokens: fold(rows, init: token_count(count: 0), f: (acc, r) => token_count_sum(a: acc, b: r.input_tokens)),
         output_tokens: fold(rows, init: token_count(count: 0), f: (acc, r) => token_count_sum(a: acc, b: r.output_tokens)),
         terminal: metering_role_terminal(body: body),
@@ -329,8 +329,8 @@ fn seat_held_from_events(pointer: HarnessSeatPointer, oldest_first: List<ChainEn
       PoolUpstreamObserved { remaining: _, term_seconds: _ } => acc
       PoolResetObserved { reset_at: _ } => acc
     })
-  let na = list_length(items: s.acquired)
-  let nr = list_length(items: s.released)
+  let na = length(xs: s.acquired)
+  let nr = length(xs: s.released)
   if na == 0 {
     SeatRefused { cause: join(["the ledger carries no acquisition for seat ", seat_ref], "") }
   } else if na > 1 {
@@ -442,7 +442,7 @@ fn metering_standing_of(record: AttemptMeteringRecord, seal: String?) -> Meterin
     Present { value: d } =>
       match record.sealed_roster {
         Present { value: bound } =>
-          if bound == d && list_length(items: record.roles) > 0 && all(record.roles, u => metered_role_usage_final(u: u)) {
+          if bound == d && length(xs: record.roles) > 0 && all(record.roles, u => metered_role_usage_final(u: u)) {
             MeteringStandingFinal
           } else {
             MeteringStandingProvisional
@@ -478,7 +478,7 @@ fn metering_record_inadmissible(record: AttemptMeteringRecord, roster: List<Mete
   let roster_wires = map(roster, r => metered_role_wire(role: r))
   let refs = flat_map(record.roles, u => seat_reference(seat: u.seat))
   let owner_gaps = flat_map(record.roles, u => match metering_row_owner_gap(record: record, u: u) { Present { value: c } => [join([metered_role_wire(role: u.role), ": ", c], "")] Absent => [] as List<String> })
-  if list_length(items: record.roles) == 0 {
+  if length(xs: record.roles) == 0 {
     Present { value: "the record meters no launch; the worker is always launched" }
   } else if metering_wire_repeats(wires: wires) {
     Present { value: "a launch appears more than once in the record" }
@@ -513,7 +513,7 @@ type MeteringSeatTimeTotal
   | MeteringSeatTimeIncomplete { cause: String }
 
 fn metering_token_total(record: AttemptMeteringRecord, output: Bool) -> MeteringTokenTotal {
-  if list_length(items: record.roles) == 0 {
+  if length(xs: record.roles) == 0 {
     MeteringTokensIncomplete { cause: "the record meters no launch" }
   } else {
     fold(record.roles, init: MeteringTokensObserved { value: token_count(count: 0) }, f: (acc, u) =>
@@ -542,7 +542,7 @@ fn metering_seat_gap(u: MeteredRoleUsage) -> String {
 }
 
 fn metering_seat_time_total(record: AttemptMeteringRecord) -> MeteringSeatTimeTotal {
-  if list_length(items: record.roles) == 0 {
+  if length(xs: record.roles) == 0 {
     MeteringSeatTimeIncomplete { cause: "the record meters no launch" }
   } else {
     fold(record.roles, init: MeteringSeatTimeObserved { held: second(count: 0) }, f: (acc, u) =>
@@ -1107,7 +1107,7 @@ type OptionalFileRead
 // reading as an empty one.
 fn metering_read_file(path: String) -> OptionalFileRead {
   let parts = split(s: path, delimiter: "/")
-  let dir = join(take(parts, list_length(items: parts) - 1), "/")
+  let dir = join(take(parts, length(xs: parts) - 1), "/")
   let name = fold(parts, init: "", f: (_a, x) => x)
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)

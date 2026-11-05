@@ -39,6 +39,7 @@ import std.types { Bool, EpochMs, List }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 
 import gunbc.machine_intake.receipt { EvidenceRef }
+import std.algebra { length }
 
 // ── CAN THE PUBLISHED FACTORY PASSWORD BE WRITTEN BACK IN? A PER-RELEASE FACT ─────────────────
 //
@@ -321,7 +322,7 @@ fn asrock_altrad8ud_published_factory_password_write_policy_sighted_on_catalog(
   //     send someone to re-measure a board that had been measured twice, and would erase the one cause the
   //     type already had an arm for.
   // No arm defaults and no arm picks a row: choosing the first would put a coin flip behind wiping a chassis.
-  match list_length(items: matches) {
+  match length(xs: matches) {
     0 => ControllerNeverMeasured { observed: observed }
     1 =>
       match matches |> first() {

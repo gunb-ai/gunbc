@@ -22,7 +22,7 @@ import std.measure {
   second_count,
 }
 import std.nat { Nat }
-import std.types { list_length }
+import std.algebra { length }
 import std.optional { Present, Absent }
 import std.machine_shape {
   DomainId,
@@ -77,7 +77,7 @@ test fn catalog_derivation_matches_row() -> Bool {
   let shape = shape_from_rtx5090_catalog()
   match shape.domains.first() {
     Present { value: domain } =>
-      match domain.memory.skip(n: list_length(items: domain.memory) - 1).first() {
+      match domain.memory.skip(n: length(xs: domain.memory) - 1).first() {
         Present { value: device } =>
           match machine_shape_domain_lane_count(shape: shape) {
             Present { value: lanes } =>
@@ -120,7 +120,7 @@ test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
   match shape_from_rtx5090_catalog().domains.first() {
     Present { value: domain } => {
       let memory = domain.memory
-      list_length(items: memory) == 3
+      length(xs: memory) == 3
         && match memory.first() {
           Present { value: level } => byte_size_count(b: level.capacity) == rtx5090_sm_register_bytes
           Absent => false
@@ -135,7 +135,7 @@ test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
 }
 
 test fn gpu_sm_cache_absent_when_ungranted() -> Bool {
-  list_length(items: shape_from_m5_catalog().domains.first().memory) == 1
+  length(xs: shape_from_m5_catalog().domains.first().memory) == 1
 }
 
 test fn energy_derived_not_stored() -> Bool {

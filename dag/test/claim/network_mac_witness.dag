@@ -1,6 +1,7 @@
 module test.claim.network_mac_witness
 
-import std.types { Int, String, Bool, List, NonEmptyStr, list_length }
+import std.types { Int, String, Bool, List, NonEmptyStr }
+import std.algebra { length }
 import extdeps.network.mac {
   Eui48Address, mac_address, render_mac_address, parse_mac_address,
   MacParseResult, MacParsed, MacParseFailed,
@@ -170,7 +171,7 @@ test fn the_two_flag_bits_are_read_independently() -> Bool {
 
 test fn the_oui_is_the_first_three_octets() -> Bool {
   let o = mac_oui(addr: srv3_burned_in())
-  list_length(items: o) == 3
+  length(xs: o) == 3
     && fold(o, init: 0, f: fn(acc, x) { acc * 1000 + x }) == 72 * 1000000 + 33 * 1000 + 11
 }
 

@@ -81,8 +81,8 @@ module gunbc.provisioning.ubuntu_autoinstall_seed
 // consequence here is the console stanza, which is DERIVED from the strategy rather than stored beside it
 // — so a strategy name cannot quietly change what the seed promises.
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { list_append }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_append, length }
 import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.decl_ref { decl_ref }
@@ -1525,7 +1525,7 @@ fn admit_admin_access_authorisation(
   match keys_are_the_admitted_authorisation(keys: authorised_keys) {
     False => Absent
     True =>
-      match list_length(items: authorised_keys) == 0 {
+      match length(xs: authorised_keys) == 0 {
         True =>
           match console_entry {
             ConsoleEntryUnlocked { reason: _ } =>
@@ -1549,7 +1549,7 @@ fn admit_admin_access_authorisation(
 }
 
 fn authorised_key_count(authorisation: AdminAccessAuthorisation) -> Int {
-  list_length(items: authorisation.authorised_keys)
+  length(xs: authorisation.authorised_keys)
 }
 
 // The keyboard layout the seed states. This axis EXISTS because the upstream payload requires a
@@ -1673,10 +1673,10 @@ fn disk_selection_provenance(
     chosen: bound_disk_identity(
       device: admitted,
       matched: candidate_count(selector: selector, observed: observed),
-      observed: list_length(items: observed),
+      observed: length(xs: observed),
     ),
     matched: candidate_count(selector: selector, observed: observed),
-    observed: list_length(items: observed),
+    observed: length(xs: observed),
   }
 }
 
@@ -2091,7 +2091,7 @@ fn audit_ubuntu_autoinstall_seed(
     False =>
       match entry.console_entry {
         ConsoleEntryLocked =>
-          match list_length(items: entry.authorised_keys) {
+          match length(xs: entry.authorised_keys) {
             0 =>
               SeedRefused {
                 cause: NoEntrypointAtAll,
@@ -2128,7 +2128,7 @@ fn key_only_posture_admits_no_entry(
   match credential {
     PasswordHandle { handle: _ } => false
     PasswordUnset =>
-      match list_length(items: entry.authorised_keys) {
+      match length(xs: entry.authorised_keys) {
         0 => true
         n => false
       }
@@ -2593,7 +2593,7 @@ fn admin_password_hash_receipt(
 // the string, and nothing else.
 fn admin_digest_refusal(crypt_digest: NonEmptyStr) -> Optional<AdminPasswordRefusalCause> {
   let segments = (crypt_digest as String).split(sep: "$")
-  let count = list_length(items: segments)
+  let count = length(xs: segments)
   // ONE LAYOUT FOR THE WHOLE WALK: every position-sensitive arm receives this value rather than deriving a
   // position of its own, because two derivations is exactly how two arms came to disagree about where the salt
   // lives (see crypt_layout).

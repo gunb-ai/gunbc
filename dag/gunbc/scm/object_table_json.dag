@@ -109,7 +109,6 @@ import std.types {
   Bool,
   Int,
   List,
-  list_length,
   Map
 }
 import gunbc.scm.object_store {

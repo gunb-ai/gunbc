@@ -57,7 +57,7 @@ import gunbc.os_install_mechanism {
   srv4_install_mechanism_solution,
 }
 import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
-import std.types { Bool, List, list_length }
+import std.types { Bool, List }
 import extdeps.firmware.types { firmware_semantic_version }
 
 data unknown_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.254", protocol: Redfish }

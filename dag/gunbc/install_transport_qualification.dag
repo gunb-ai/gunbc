@@ -1,6 +1,7 @@
 module gunbc.install_transport_qualification
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, list_length }
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+import std.algebra { length }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.access { BootDeliveryTarget, same_boot_delivery_target }
 
@@ -155,9 +156,9 @@ fn configfs_reinstall_path_standing(
 ) -> ReinstallPathStanding {
   let absent = requirements_observed_absent(observations: observations)
   let unobserved = requirements_unobserved(observations: observations)
-  if list_length(items: absent) > 0 {
+  if length(xs: absent) > 0 {
     ReinstallPathRefused { observed_absent: absent }
-  } else if list_length(items: unobserved) > 0 {
+  } else if length(xs: unobserved) > 0 {
     ReinstallPathUnestablished { missing_probes: unobserved }
   } else {
     ReinstallPathEstablished { qualified_by: observations }

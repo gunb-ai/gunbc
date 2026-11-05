@@ -67,6 +67,7 @@ import gunbc.machine_intake.ampere_smpro_observation { SmproProbeOutcome, smpro_
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
 }
+import std.algebra { length }
 
 // ── MT. COLLINS FIRMWARE UPDATE AS A CONVERGENCE ─────────────────────────────────────────────────
 //
@@ -695,7 +696,7 @@ fn step_for(p: MtCollinsHpmStepProcedure) -> FirmwareFlashStep {
 // which every required right reads granted exactly once.
 fn right_refusal(t: FirmwareTarget, receipt: ManagedRightsReceipt, right: ManagedAccountRight) -> FirmwareConvergenceRefusal? {
   let readings = filter(receipt.rights, x => (x.right == right))
-  match list_length(readings) {
+  match length(readings) {
     0 => Present { value: ManagedRightMissingFromReceipt { target: t, right: right } }
     1 =>
       match readings.first() {
@@ -1027,15 +1028,15 @@ fn pending_step_verdict(
 // already recorded. Gating either check on "no record yet" let a history of four records converge over
 // an empty CPU inventory and no retained image.
 fn count_installed(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.installed, i => (i.target == t)))
+  length(filter(world.installed, i => (i.target == t)))
 }
 
 fn count_rollback(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
+  length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
 }
 
 fn count_records(records: List<FlashStepRecord>, t: FirmwareTarget) -> Int {
-  list_length(filter(records, r => (r.target == t)))
+  length(filter(records, r => (r.target == t)))
 }
 
 // THE INVENTORY IS ONE ROW PER SOCKET, NOT A ROW COUNT (review on 76e6f8c). Sockets are 0 up to the
@@ -1047,12 +1048,12 @@ fn cpu_inventory_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRe
   match (filter(world.cpus, c => (c.socket as Int) >= expected)).first() {
     Present { value: c } => Present { value: CpuSocketOutOfRange { socket: c.socket, socket_count: expected } }
     Absent =>
-      match (filter(world.cpus, c => list_length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
+      match (filter(world.cpus, c => length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
         Present { value: c } => Present { value: CpuSocketReadTwice { socket: c.socket } }
         Absent =>
-          match list_length(world.cpus) == expected {
+          match length(world.cpus) == expected {
             true => Absent
-            false => Present { value: CpuInventoryIncomplete { observed: list_length(world.cpus), expected: expected } }
+            false => Present { value: CpuInventoryIncomplete { observed: length(world.cpus), expected: expected } }
           }
       }
   }

@@ -41,6 +41,7 @@ import gunbc.machine_intake.bmc_secure_redfish_frontier {
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject }
 import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
+import std.algebra { length }
 import v2.std.decl_index { decl_facts }
 
 data factory_password: String = "openbmc"
@@ -279,14 +280,14 @@ test fn the_typed_surface_read_keeps_unmodeled_separate_from_serving_none() -> B
     Present { value: _ } => false
   }
   let serves_none = match bmc_redfish_surface(world: world_with([])) {
-    Present { value: accounts } => list_length(items: accounts) == 0
+    Present { value: accounts } => length(xs: accounts) == 0
     Absent => false
   }
   let the_two_are_distinguishable = bmc_redfish_surface(world: bmc_world(power: BmcPowerOn))
     != bmc_redfish_surface(world: world_with([]))
   // the RED: the plain census collapses them -- proves WHY the surface read must be the consumed surface.
-  let census_cannot_distinguish = list_length(items: bmc_redfish_census(world: bmc_world(power: BmcPowerOn))) == 0
-    && list_length(items: bmc_redfish_census(world: world_with([]))) == 0
+  let census_cannot_distinguish = length(xs: bmc_redfish_census(world: bmc_world(power: BmcPowerOn))) == 0
+    && length(xs: bmc_redfish_census(world: world_with([]))) == 0
   unmodeled && serves_none && the_two_are_distinguishable && census_cannot_distinguish
 }
 
@@ -341,7 +342,7 @@ test fn the_bmc_secure_redfish_consumers_are_rostered_as_pending_frontiers() -> 
   let write_rows = bmc_secure_redfish_write_consumer_frontier_rows()
   let extdeps_rows = bmc_secure_redfish_extdeps_consumer_frontier_rows()
   let everything = bmc_secure_redfish_consumer_frontier_rows()
-  let counts = list_length(items: read_rows) == 3 && list_length(items: write_rows) == 1 && list_length(items: extdeps_rows) == 6 && list_length(items: everything) == 10
+  let counts = length(xs: read_rows) == 3 && length(xs: write_rows) == 1 && length(xs: extdeps_rows) == 6 && length(xs: everything) == 10
   let every_row_disciplined = !any(xs: everything, predicate: fn(row) {
     !(redfish_frontier_enrolled(row: row)
       && redfish_frontier_trigger_module(row: row) == bmc_secure_redfish_trigger_module

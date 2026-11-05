@@ -1,5 +1,7 @@
 module test.claim.nbd_proxy_virtual_media_install
 
+import std.algebra { length }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -50,7 +52,7 @@ test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
     mechanism: NbdProxyVirtualMediaInstall,
     export: srv3_nbd_proxy_export_placeholder
   )
-  list_length(items: steps) == 3
+  length(xs: steps) == 3
     && match steps.first() {
       ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
         e == VmSlotIndexEndpoint
@@ -71,7 +73,7 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
     mechanism: PxeHttpInstall,
     export: srv3_nbd_proxy_export_placeholder
   )
-  list_length(items: steps) == 3
+  length(xs: steps) == 3
     && match steps.first() {
       ActuatorPxeNetworkBootStaging => true
       _ => false
@@ -163,7 +165,7 @@ test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
     ),
     image: srv3_resolved_image_fixture,
   ) {
-    ActuatorPlanUnrealized { refusals: rs } => list_length(items: rs) == 1
+    ActuatorPlanUnrealized { refusals: rs } => length(xs: rs) == 1
     ActuatorPlanRealized { intents: _ } => false
   }
 }

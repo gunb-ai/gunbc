@@ -12,6 +12,7 @@ import gunbc.regen_affected_set {
   regen_affected_set
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.algebra { length }
 import gunbc.stage0.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
@@ -718,7 +719,7 @@ fn stage0_partition_move_explained_by_bound(changed_paths: List<String>, bound: 
 // whole-compiler arm selected by a second cause, not a widened catch-all; an unexplained
 // partition move still refuses at the host (PartitionMoveUnexplained).
 fn stage0_stage_rebuild_is_whole_compiler(boundary_files: List<String>) -> Bool {
-  list_length(items: boundary_files) > 0
+  length(xs: boundary_files) > 0
 }
 
 // THE ROUND BOUND of the regen convergence loop, a declared policy row. Exceeding it is a typed

@@ -1,6 +1,7 @@
 module test.claim.random_bytes_csprng_witness
 
 import extdeps.entropy { Urandom }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,14 +25,14 @@ pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
 
 test fn random_bytes_count_holds() -> Bool {
   match getrandom_octets(count: 16) {
-    Present { value: bs } => list_length(items: bs) == 16
+    Present { value: bs } => length(xs: bs) == 16
     Absent => false
   }
 }
 
 test fn random_bytes_zero_holds() -> Bool {
   match getrandom_octets(count: 0) {
-    Present { value: bs } => list_length(items: bs) == 0
+    Present { value: bs } => length(xs: bs) == 0
     Absent => false
   }
 }

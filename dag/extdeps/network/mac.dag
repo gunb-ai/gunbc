@@ -1,6 +1,7 @@
 module extdeps.network.mac
 
-import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
+import std.types { Int, String, Bool, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { UInt8, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -238,12 +239,12 @@ type MacOctetResult =
 // cause rather than arriving at the codec as "not hex".
 fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   match parts |> get(position) {
-    Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
+    Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: length(xs: parts) } }
     Present { value: raw } => {
       let points = chars(text: raw)
-      if list_length(items: points) != 2 {
+      if length(xs: points) != 2 {
         MacOctetErr {
-          error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
+          error: MacOctetWrongWidth { position: position, raw: raw, observed_width: length(xs: points) },
         }
       } else {
         match base16_decode_lower(hex: raw) {
@@ -261,8 +262,8 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
 
 fn parse_mac_address(text: String) -> MacParseResult {
   let parts = split(s: text, delimiter: ":")
-  if list_length(items: parts) != 6 {
-    MacParseFailed { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
+  if length(xs: parts) != 6 {
+    MacParseFailed { error: MacWrongOctetCount { observed_count: length(xs: parts) } }
   } else {
     match parse_mac_octet_at(parts: parts, position: 0) {
       MacOctetErr { error: e0 } => MacParseFailed { error: e0 }

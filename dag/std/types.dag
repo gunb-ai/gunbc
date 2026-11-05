@@ -165,10 +165,6 @@ type List<element> = FreeMonoid<element>
 type Set<element> = FinitePowerSet<element>
 type Map<key, value> = FinitelySupportedFunction<key, value>
 
-fn list_length<T>(items: List<T>) -> Int {
-  fold(items, init: 0, f: (acc, _) => acc + 1)
-}
-
 type CommitSha    = String
 
 // The located syntax wall for an EXTERNALLY SUPPLIED Git head: lowercase 40-hex. It lives here,

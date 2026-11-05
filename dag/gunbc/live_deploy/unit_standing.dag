@@ -1,7 +1,7 @@
 module gunbc.live_deploy.unit_standing
 
-import std.types { String, Bool, NonEmptyStr, Int, List, list_length }
-import std.algebra { trim }
+import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.algebra { trim, length }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty,
@@ -273,7 +273,7 @@ type ExecStartRead
 
 fn exec_start_argv_of_show_value(value: String) -> ExecStartRead {
   let parts = split(s: value, delimiter: "argv[]=")
-  if list_length(items: parts) < 2 {
+  if length(xs: parts) < 2 {
     ExecStartUnparseable { value: value }
   } else {
     let tail = fold(parts, init: "", f: fn(_, seg) { seg })

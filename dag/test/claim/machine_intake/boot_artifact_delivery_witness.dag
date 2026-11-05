@@ -1,11 +1,11 @@
 module test.claim.machine_intake.boot_artifact_delivery_witness
 
-import std.algebra { FreeSemigroup }
+import std.algebra { FreeSemigroup, length }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.board_authority { BoardFruObservation, BoardUnbound }
 import test.fixture.board_fru_observation { collins_fru_read, asrock_fru_read }
 import gunbc.board_authority_binding { board_authority_bindings }
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -597,7 +597,7 @@ test fn redfish_virtual_media_planned_from_bound_context_and_probe_receipt() -> 
             && p.target.endpoint == megarac_endpoint
             && p.boot_control == BootFromRemovableMedia
             && p.boot_control_route.route == redfish_route
-            && list_length(items: p.eligibility.evidence_manifest) == 9
+            && length(xs: p.eligibility.evidence_manifest) == 9
             && p.eligibility.selected == SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia }
         _ => false
       }
@@ -695,7 +695,7 @@ test fn observation_whose_manifest_omits_its_bytes_does_not_bind() -> Bool {
 test fn probe_bytes_absent_from_the_manifest_do_not_bind() -> Bool {
   let receipt = receipt_of(subject: intake_subject, standing: BmcAccessObserved { observation: observation_of(identity: mt_collins_identity, surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }) }, manifest: manifest_of(digests: [discovery_digest]))
   match bind(profile: vm_profile, receipt: receipt) {
-    AccessContextProbeEvidenceMismatch { endpoint: e, manifest: m, raw_response: r } => e == megarac_endpoint && list_length(items: m) == 1 && r == probe_https.raw_response
+    AccessContextProbeEvidenceMismatch { endpoint: e, manifest: m, raw_response: r } => e == megarac_endpoint && length(xs: m) == 1 && r == probe_https.raw_response
     _ => false
   }
 }
@@ -774,7 +774,7 @@ test fn offered_protocol_not_admitted_by_the_probe_refuses() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProtocolNotAdmitted { offered: o, admitted: a } => o == TransferHttps && list_length(items: a) == 1 _ => false }
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProtocolNotAdmitted { offered: o, admitted: a } => o == TransferHttps && length(xs: a) == 1 _ => false }
             _ => false
           }
         _ => false
@@ -825,7 +825,7 @@ fn refuses_as_probe_contradiction(s: BootDeliverySolution, expected: RedfishVirt
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProbeContradictory { progress: p, admitted: a } => p == expected && list_length(items: a) == 1 _ => false }
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProbeContradictory { progress: p, admitted: a } => p == expected && length(xs: a) == 1 _ => false }
             _ => false
           }
         _ => false
@@ -885,7 +885,7 @@ test fn boot_control_route_is_the_observed_one_never_the_catalogued_preference()
   let ambiguous = match solve_with_control(control: [control_over_redfish, control_over_ipmi]) {
     BootDeliveryRefused { cause: c } =>
       match c {
-        DeliveryBootControlRouteAmbiguous { observed: rs } => list_length(items: rs) == 2
+        DeliveryBootControlRouteAmbiguous { observed: rs } => length(xs: rs) == 2
         _ => false
       }
     BootDeliveryPlanned { plan: _ } => false
@@ -1035,7 +1035,7 @@ test fn no_virtual_media_and_no_network_boot_evidence_refuses_without_pxe() -> B
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
-            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateNetworkBootUnestablished { missing: m } => list_length(items: m) == 4 _ => false }
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateNetworkBootUnestablished { missing: m } => length(xs: m) == 4 _ => false }
             _ => false
           }
         _ => false
@@ -1069,7 +1069,7 @@ test fn established_configfs_path_selects_usb_gadget_delivery() -> Bool {
         OpenBmcConfigfsUsbGadget { params: params } =>
           params.udc == configfs_offer.udc
             && match p.eligibility.selected {
-                 SelectedFromConfigfsQualification { qualified_by: q } => list_length(items: q) == 8
+                 SelectedFromConfigfsQualification { qualified_by: q } => length(xs: q) == 8
                  _ => false
                }
         _ => false
@@ -1091,7 +1091,7 @@ test fn empty_configfs_observation_population_does_not_establish() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcConfigfsUsbGadget) {
-            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateConfigfsUnestablished { missing: m } => list_length(items: m) == 8 _ => false }
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateConfigfsUnestablished { missing: m } => length(xs: m) == 8 _ => false }
             _ => false
           }
         _ => false

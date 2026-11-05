@@ -1,6 +1,7 @@
 module gunbc.boot_artifact_delivery
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_equal }
 import extdeps.uri { Uri }
@@ -976,7 +977,7 @@ fn observed_boot_control_route(ctx: BoundBmcAccessContext) -> ObservedBootContro
   match first_route_outside_profile(ctx: ctx) {
     Present { value: o } => BootControlRouteNotInProfile { observed: o }
     Absent => {
-      let n = list_length(items: observed)
+      let n = length(xs: observed)
       if n == 0 {
         BootControlRouteUnobserved
       } else if n == 1 {

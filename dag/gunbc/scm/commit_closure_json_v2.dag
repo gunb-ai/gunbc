@@ -26,7 +26,7 @@ module gunbc.scm.commit_closure_json_v2
 // own change, at a moment when the open-PR population can absorb it -- not folded into an
 // unrelated subject.
 
-import std.types { Bool, Int, List, String, list_length, Map }
+import std.types { Bool, Int, List, String, Map }
 
 import std.content_hash { fnv1a64_structural_hex_digest }
 import gunbc.scm.commit_closure {
@@ -144,7 +144,7 @@ import v2.std.node {
   symbol_intern_lexeme,
   symbol_lexeme,
 }
-import std.algebra { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup, length }
 
 import gunbc.scm.object_store {
   ObjectId,
@@ -441,7 +441,7 @@ fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeO
         }
       }
     WellKinded { admitted: image, unresolved: missing } =>
-      if list_length(items: missing) == 0 {
+      if length(xs: missing) == 0 {
         ClosureDocEncoded { value: encode_closure_document(image: image) }
       } else {
         ClosureDocEncodeRefused {
@@ -679,10 +679,10 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
 // census for its whole wrong-kind population means a fourth kind cannot reintroduce it either.
 fn loaded_closure_standing(store: ObjectStore, root: SemanticNodeTarget) -> LoadStanding {
   let census = closure_census(closure: CommitClosure { store: store, root: root })
-  if list_length(items: wrong_kind_identities(census: census)) > 0 {
+  if length(xs: wrong_kind_identities(census: census)) > 0 {
     LoadRequirementAtWrongKind
   } else {
-    if list_length(items: census.absent) == 0 {
+    if length(xs: census.absent) == 0 {
       LoadComplete
     } else {
       LoadPartial

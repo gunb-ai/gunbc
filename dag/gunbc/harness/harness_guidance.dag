@@ -10,6 +10,7 @@ import gunbc.roadmap.roadmap_submission {
 import gunbc.harness.harness_prompt_context {
   PromptInput, AuthorityInput, DerivedConclusionInput, PromptSegment, prompt_segment_render,
 }
+import std.algebra { length }
 
 // THE PROMPT IS A SYLLOGISM: GROUNDED PREMISES IN, DERIVED CONCLUSIONS OUT.
 //
@@ -440,7 +441,7 @@ fn premise_rounds_dropped(p: HarnessPremise) -> Int? {
 }
 
 fn any_premise(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Bool) -> Bool {
-  list_length(items: rows |> filter(r => f(r.premise))) > 0
+  length(xs: rows |> filter(r => f(r.premise))) > 0
 }
 
 fn first_rounds(rows: List<HarnessGroundedPremise>, f: fn(HarnessPremise) -> Int?) -> Int? {

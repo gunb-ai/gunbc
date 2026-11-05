@@ -53,6 +53,7 @@ import extdeps.bmc.ipmitool_observed_output {
   BootdevEchoStanding, BootdevEchoDerivedFromShape, BootdevEchoTranscribed,
   bootdev_cdrom_echo_capture, ipmitool_bootdev_cdrom_reply_standing,
 }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -825,7 +826,7 @@ test fn a_clear_that_did_not_land_is_still_read_as_pending() -> Bool {
 test fn the_clears_echo_is_a_firmware_keyed_derived_row() -> Bool {
   match ipmitool_bootdev_none_reply_standing {
     BootdevEchoDerivedFromShape { shape_captures: captures, read_obligation: _, read_on_release: keyed } =>
-      list_length(items: captures) == 2
+      length(xs: captures) == 2
         && any(captures, c => string_contains(s: c as String, pattern: "30-bootdev.txt"))
         && any(captures, c => string_contains(s: c as String, pattern: "intake-write-exercise.json"))
         // THE KEY IS THE ROW'S OWN, and it is the release the model runs: the derived row states the
