@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.block_body_call_with_split_argument_list_fails_parse
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A CALL ARGUMENT LIST MAY BE SPLIT ACROSS LINES IN AN ARGUMENT POSITION AND MAY NOT IN A BLOCK-BODY
+// POSITION. The same text parses in one position and is refused in the other, so nothing the author can
+// see tells them which layout the grammar accepts, and the only signal is a CI run of a draft branch.
+data block_body_call_with_split_argument_list_fails_parse: RecurringFailureMode = RecurringFailureMode {
+  identity: "block_body_call_with_split_argument_list_fails_parse" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of the .dag grammar to accept a call whose argument list begins on the line after the callee at any position a call may appear, so the layout is not a fact about where the call happens" } },
+
+  receipts: [
+    "INVALID STATE: a call written with the opening parenthesis at the end of a line and its arguments on the following lines, in the BODY position of an if/else branch. HARM: the module is refused at parse time with a message that points inside a legal argument list, so the author sees a complaint about named arguments when the layout of the call is what was refused. The repair the author reaches for -- rewriting the call onto one line -- is invisible from the message.",
+    "THE REFUSAL, verbatim from CI (witnesses workflow, gunbc-self-host-emit step, 2026-11-05): `parse-failed at src/v2/std/inhabitance.dag:875:17: expected RParen, found Colon` then `v2 seed load failed: 1 module(s) carried parse failures` and `error: Failed to load v2 seed for emit: v2 seed load failed: 1 module(s) carried parse failures`.",
+    "THE SHAPE, quoted from the failing file at head 89fc92644f0431beb8dc35ef654ac8fa9cecdd92 (a block-body branch whose value is a call with a split argument list): `    application_argument_does_not_inhabit_diagnostic(` then `      obligation: obligation,` -- the column in the message is the colon after the first argument's label. This is the layout that failed, not a reduction: no smaller reproduction was executed, because the only parser that judges a .dag is the bootstrap itself, and a reduction would need one run per attempt.",
+    "THE POSITION CLASS, measured in the same tree: a call with the same split argument list parses in an ARGUMENT position, so the seed is full of legal instances of it -- `diagnostics_singleton(d: application_argument_does_not_inhabit_diagnostic(` with `obligation: obligation,` on the following line, `outcome_rejected(` with the callee and its arguments on the following lines (v2.compiler.infer, both call-argument refusal sites). A block-body position is where `if` and `else` produce their branch values; the split layout is refused there. Whether the grammar distinguishes the two positions by design or by an accident of its statement/expression split is not established by this row; the trigger below decides it.",
+    "WHAT THE AUTHOR DID: wrote the same three calls on one line each and bound the shared value with `let`, both layouts legal. The class therefore costs a rewrite of correct code rather than a wrong program, and it was caught only because a DRAFT branch's CI ran the emit step: a .dag edit has no local parse check, so this is the second time on this PR that the only compile signal for a seed edit was CI or a fleet row.",
+    "RUNG FOUND AT: mitigatable -- the class is loud (a parse error naming a file, line and column) and the mitigation is a layout rewrite, but the message names the wrong construct, so it sends the author to the argument list rather than to the line break. REPAIR: not attempted here, and not in the PR that met it; the grammar fix is the trigger.",
+    "NEXT TRIGGER: the grammar change that makes an argument list that begins on the line after the callee parse at every position a call may appear (or a parser diagnostic that names the layout: the column should point at the callee's line break, not at the first argument's label). Until then the mitigation is to keep such calls on one line, or bind the value with `let` and use it in the branch.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.std.inhabitance", decl_name: "inhabitance_refusal_diagnostic", field: WholeDeclaration },
+  ],
+}
