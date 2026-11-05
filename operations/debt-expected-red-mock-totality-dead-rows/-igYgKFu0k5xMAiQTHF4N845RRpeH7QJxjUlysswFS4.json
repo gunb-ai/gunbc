@@ -1,0 +1,1 @@
+{"id": "46ffc6c7be62c8eb", "event": {"schema": "roadmap-event/v3", "node": "debt-expected-red-mock-totality-dead-rows", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "1ebd693d513e811b", "kind": "claimed", "recorded_at": "2026-11-05T13:06:29Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
