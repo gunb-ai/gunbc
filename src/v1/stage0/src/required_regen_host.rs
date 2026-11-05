@@ -11668,9 +11668,13 @@ mod host_shell_scope_modules_tests {
         // `bin_child` itself. Reading lib.rs alone owns neither.
         std::fs::write(dir.join("main.rs"), "mod bin_child;\n").unwrap();
         std::fs::write(dir.join("bin_child.rs"), "").unwrap();
+        // A second `[[bin]]` under `bin/`, as `infer_semantics_witness` is in the seed: a changed
+        // file there refused `MirrorHasNoOwningPackage` (#15175 heal, run 41934097748).
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin/witness.rs"), "").unwrap();
         std::fs::write(
             dir.join("Cargo.toml"),
-            "[[bin]]\nname = \"x\"\npath = \"main.rs\"\n",
+            "[[bin]]\nname = \"x\"\npath = \"main.rs\"\n\n[[bin]]\nname = \"witness\"\npath = \"bin/witness.rs\"\n",
         )
         .unwrap();
         let modules =
@@ -11686,6 +11690,7 @@ mod host_shell_scope_modules_tests {
             "lib",
             "main",
             "bin_child",
+            "witness",
         ] {
             assert!(
                 modules.iter().any(|m| m == owned),
