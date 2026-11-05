@@ -58,6 +58,8 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoadRefused,
 }
 import gunbc.roadmap.roadmap_acceptance_history_observation { current_roadmap_acceptance_history_prior_observation, acceptance_history_integrity_verdict_from_prior_observation }
+import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_close_history }
+import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified, closing_contract_authoring_contract, gunbc_claim_execution_contract, gunbc_claims_execution_contract }
 import gunbc.roadmap.roadmap_status {
   SupersededLine,
@@ -5057,8 +5059,16 @@ type RoadmapAcceptanceReceiptsProjection
 
 data acceptance_history_replay_refused_detail: String = "acceptance history replay refused: an event did not apply to the replayed state, so no live receipt set can be derived from this history"
 
+// ONE AUTHORITY, TWO CARRIERS (operator close route, 2026-11-04): the acceptance fact is read as
+// jsonl-prefix ++ runtime-tail. The committed JSONL carrier is the seed; the fabric event-log chain
+// partition (gunbc.roadmap.roadmap_operator_acceptance) is the tail the serve close route writes.
+// roadmap_operator_close_history folds the tail through the SAME parser and replay law and FAILS
+// CLOSED on an unreadable tail or an inadmissible merge — it never silently drops a carrier half.
+// An unplaced binding (no runtime store exists) reads the seed alone, so every non-serve reader of
+// this authority behaves exactly as before. This is the single acceptance-fact load; nothing else
+// reads node acceptance.
 fn roadmap_acceptance_event_history_load() -> RoadmapAcceptanceEventHistoryLoad {
-  load_roadmap_acceptance_event_history(path: roadmap_acceptance_event_history_carrier_repo_path)
+  roadmap_operator_close_history(store: fabric_state_storage_binding())
 }
 
 // roadmap_acceptance_event_history_load is the single authority for acceptance facts, loading from

@@ -47,7 +47,7 @@ import gunbc.auth.approval_device_wire {
   PushRegistration, push_update_json, decode_push_update, WireDecoded, WireRefused,
 }
 import gunbc.durable_cas_file_store {
-  OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
+  CasSlotKeysAbsent, OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   SlotStore, file_slot_store, slot_observe, slot_commit, slot_keys, slot_observe_windowed, slot_commit_windowed,
   cas_generation_window, CasGenerationWindow, CasGenerationWindowAdmitted, CasGenerationWindowTooNarrow, VerifiedCasAttempt,
 }
@@ -616,6 +616,7 @@ type GoogleEnrolmentListing
 
 fn list_google_enrolments(devices: ApprovalDeviceStore) -> GoogleEnrolmentListing {
   match slot_keys(store: devices.slots) {
+    CasSlotKeysAbsent { root: r } => GoogleEnrolmentListingRefused { detail: join(["no enrolment store is present at ", r as String, " -- an absent store is a census answer, not an empty census, so no device is reported unenrolled"], "") as NonEmptyStr }
     CasSlotKeysListingRefused { root: _, detail: d } => GoogleEnrolmentListingRefused { detail: d as NonEmptyStr }
     CasSlotKeysSubjectRefused { root: r, cause: c } => GoogleEnrolmentListingRefused { detail: join(["store root ", r as String, " is not an admissible directory: ", c], "") as NonEmptyStr }
     CasSlotKeysListed { keys: keys } =>

@@ -68,13 +68,14 @@ data serve_liveness_path: NonEmptyStr = "/livez"
 // ── THE PRODUCER, FOR THE DOOR WHERE A FOLD CAN RUN ─────────────────────────────────────────
 // The paragraph above deleted this module's first producer because no fold could run where the
 // SEED writes the document, so a `.dag` copy was a second producer with no consumer. The native
-// serve door (gunbc.native_serve, std.compiler_entry NativeServeDriver) is a place a fold CAN run
+// serve door (gunbc.native_serve, std.compiler_entry NativeIngressDriver) is a place a fold CAN run
 // before the handler is entered -- the whole program is compiled -- so there the document is
 // produced here, from the member name gunbc.running_release_identity owns, and the main writes the
-// value it is handed. This is now the authority for the document; the seed's `format!` in
-// cli_run handle_serve is the remaining second copy, and gunbc.serve_liveness_seed_growth stays
-// standing for it until the seed seam is cut over. observe_serve_liveness reads this producer's
-// output in the native-serve instrument, so producer and reader are joined by execution.
+// value it is handed. This is now the ONLY producer of the document: the seed's ingress realization
+// (gunbc.http_ingress http_ingress_pre_evaluation_routes, evaluated once at startup and answered from
+// its rendered bytes without entering the evaluator) replaced the seed's `format!` copy when the serve
+// verb was deleted. observe_serve_liveness reads this producer's output in the native-serve
+// instrument, so producer and reader are joined by execution.
 fn serve_liveness_document(revision: CommitSha, entry_function: String, bound_host: String, bound_port: Int) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "live", value: json_bool(b: true)),

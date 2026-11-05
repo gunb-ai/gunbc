@@ -25,7 +25,7 @@ test fn foreign_browser_cannot_consume_and_cached_replay_cannot_exchange() -> Pr
   let directory = shell.Mktemp.Dir()
   if !directory.success { exit_failure(reason: "the fixture directory could not be created") } else {
     let instance = isolated_dashboard_instance(deployment: deployment_id(name: "login-hold-fixture" as NonEmptyStr), instance_id: "login-hold-fixture", layout: srv1_host_layout(), root: directory.path as FilePath,
-      serve_function: "unused", listen_port: 18744, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, provision_transport: DashboardLocalProvision)
+      serve_function: "unused", listen_port: 18744, source_anchor_ref: "refs/heads/fixture", actuation: DashboardObserveOnly, actuator_host: srv1_host_layout().host_identity)
     let made = shell.Mkdir.Parents(path: login_transaction_store_slots_path(instance: instance))
     let transaction = OidcLoginTransaction { state: "hold-browser-state", nonce: "hold-browser-nonce", created_at: "2026-09-28T00:00:00Z", expires_at: "2099-01-01T00:00:00Z",
       verifier: OidcPkceCodeVerifier { verifier: "fixture-pkce-only-never-a-google-code" }, return_path: RelativeReturnPath { path: "/" } }

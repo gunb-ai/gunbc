@@ -17,6 +17,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import std.algebra { is_empty }
 import extdeps.crypto.hash { sha256sum_program }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

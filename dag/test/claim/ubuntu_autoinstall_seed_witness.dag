@@ -8,8 +8,8 @@ module test.claim.ubuntu_autoinstall_seed_witness
 // thing this cut can do is install onto the wrong disk of an 8-bay board) and the credential posture
 // (a headless box nobody can log into must be unrepresentable as valid).
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { Cons, Empty, list_append, trim }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { Cons, Empty, list_append, trim, length }
 import std.measure { byte_size }
 import std.optional { Optional, Absent, Present }
 import extdeps.debian.debconf {
@@ -116,7 +116,9 @@ import gunbc.provisioning.public_nocloud_seed {
   seed_credential_keys,
 }
 import extdeps.bmc.endpoint { AmiMegaRac, SupermicroAten }
-import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiHttpBoot, UefiPxe }
+import test.fixture.boot_delivery_plans { removable_media_solution, pxe_solution, refused_solution, solution_selecting_control, incoherent_pxe_solution, removable_media_solution_for }
+import gunbc.boot_artifact_delivery { BootDeliverySolution, BootControlTarget, BootFromNetworkPxe, BootFromUefiHttp, BootFromRemovableMedia }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, BiosX86, UefiArm64, HttpBootArm64 }
 import extdeps.uri { Https, Uri }
 import extdeps.os.ubuntu_kernel_nic_coverage { Noble2404GaLinux68 }
 import gunbc.machine_intake.bmc_first_contact_standing {
@@ -133,6 +135,7 @@ import gunbc.machine_intake.subject {
   UnitKeyStanding,
 }
 import gunbc.provisioning.ubuntu_autoinstall_seed {
+  build_seed_for_control,
   // The per-board profile rows and the architecture row table, imported by the amd64 render witness and the
   // no-rows RED: a board's driver set is a ROW the witness can read, not a literal the witness would have to
   // re-declare (which would make the test the authority on what the board carries).
@@ -144,6 +147,7 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   BoardSeedProfile,
   IgbNicModule,
   KeyOnlyPostureAdmitsNoKeys,
+  PxeClientArchitectureUnobserved,
   KipmiSiDriver,
   IpmiWatchdogDriver,
   PackageSilenceUnestablishedForArchitecture,
@@ -230,13 +234,11 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   PackagePrompts,
   PasswordHandle,
   PasswordUnset,
-  PxeStrategy,
   RunnerBacked,
   SeededNetplan,
   SeedAddressFamily,
   SeedAddressing,
   SeedAudit,
-  SeedDeliveryStrategy,
   SeedLocale,
   SeedNetworkPosture,
   SelectionRefused,
@@ -291,7 +293,6 @@ import gunbc.provisioning.ubuntu_autoinstall_seed {
   DebconfAnswersCarried,
   TargetRefused,
   UsLayout,
-  VirtualMediaStrategy,
   admit_admin_access_authorisation,
   admit_provisioning_target,
   admin_password_handle,
@@ -694,7 +695,7 @@ fn audit_refuses_naming_one_of_its_own_packages(
   packages: List<PackageIntent>,
   entry: AdminAccessAuthorisation,
 ) -> Bool {
-  match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+  match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
     SeedIsNonInteractive => false
     SeedRefused { cause: cause } =>
       match cause {
@@ -710,6 +711,7 @@ fn audit_refuses_naming_one_of_its_own_packages(
         // leaked in" from reading as success.
         PackageSilenceUnestablishedForArchitecture { name: _, architecture: _ } => false
         KeyOnlyPostureAdmitsNoKeys => false
+        PxeClientArchitectureUnobserved => false
       }
   }
 }
@@ -729,28 +731,10 @@ data unclassified_but_seeded_packages: List<PackageIntent> = [
   },
 ]
 
-data pxe_strategy: SeedDeliveryStrategy = PxeStrategy {
-  boot_mode: UefiPxe { tftp_root: Uri { scheme: Https, locator: "tftp.internal.invalid" } },
-}
-
-data http_boot_strategy: SeedDeliveryStrategy = PxeStrategy { boot_mode: UefiHttpBoot }
-
-data virtual_media_strategy: SeedDeliveryStrategy = VirtualMediaStrategy {
-  media_stem: "gunbc-altra-arm64-2026-10-17" as NonEmptyStr,
-}
-
 // BIOS PXE IS THE THIRD TRANSPORT AND THE ONLY ONE THAT SHARES A CONSOLE STANZA WITH VIRTUAL MEDIA: both
 // suppress the console, so any test of "the transport reaches the digest" that compares PXE against virtual
 // media can pass on the console clause alone. This fixture is what forces the transport token itself to
 // carry the difference.
-data legacy_bios_strategy: SeedDeliveryStrategy = PxeStrategy {
-  boot_mode: LegacyBiosPxe { tftp_root: Uri { scheme: Https, locator: "pxe-edge.internal.invalid" } },
-}
-
-data same_stem_virtual_media: SeedDeliveryStrategy = VirtualMediaStrategy {
-  media_stem: "gunbc-altra-arm64-2026-10-17" as NonEmptyStr,
-}
-
 data unlocked_console: ConsoleEntryAuthorisation = ConsoleEntryUnlocked {
   reason: BmcSolConsoleUnlocked,
 }
@@ -936,7 +920,7 @@ test fn no_keys_is_admitted_only_when_the_console_is_deliberately_unlocked() -> 
 test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: NoEntrypointAtAll } => false
         _ => true
       }
@@ -948,9 +932,9 @@ test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
 // it would render identically, so a boot log could not tell "this unit authenticates by key alone" from
 // "someone forgot the handle", even though the operational consequences differ completely.
 test fn dropping_the_password_handle_changes_the_seed() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: with_handle } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: without_handle } =>
           !content_hash_eq_structural(
             left: ubuntu_autoinstall_seed_digest(seed: with_handle),
@@ -972,27 +956,27 @@ test fn dropping_the_password_handle_changes_the_seed() -> Bool {
 // header octets / an algorithm with no parser), so weakening one clause reddens exactly its row.
 test fn no_malformed_key_reaches_the_seed_through_the_builder() -> Bool {
   // POSITIVE CONTROL FIRST: the real provisioning key, same route, DOES build.
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Absent => false
     Present { value: _ } =>
-      list_length(items: [key_not_base64_length, key_trailing_octets, key_declared_wrong_length, keys_rsa, keys_ecdsa]) == 5
-        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_not_base64_length, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      length(xs: [key_not_base64_length, key_trailing_octets, key_declared_wrong_length, keys_rsa, keys_ecdsa]) == 5
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_not_base64_length, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
             Absent => true
             Present { value: _ } => false
           })
-        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_trailing_octets, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_trailing_octets, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
             Absent => true
             Present { value: _ } => false
           })
-        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_declared_wrong_length, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: key_declared_wrong_length, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
             Absent => true
             Present { value: _ } => false
           })
-        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: keys_rsa, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: keys_rsa, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
             Absent => true
             Present { value: _ } => false
           })
-        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: keys_ecdsa, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+        && (match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: keys_ecdsa, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
             Absent => true
             Present { value: _ } => false
           })
@@ -1006,7 +990,7 @@ test fn no_malformed_key_reaches_the_seed_through_the_builder() -> Bool {
 // CATCHES: a prompting package entering the seed unseeded (the hang nobody can answer), or the audit
 // refusing seeded packages.
 test fn unseeded_prompting_package_refuses_the_seed() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: unseeded_tzdata_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: unseeded_tzdata_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Absent => true
     Present { value: _ } => false
   }
@@ -1016,7 +1000,7 @@ test fn unseeded_prompting_package_refuses_the_seed() -> Bool {
 // nothing to answer the archive-location question with, so the seed is interactive although no package
 // prompts.
 test fn absent_mirror_refuses_the_seed() -> Bool {
-  match build_seed_fixture( network: posture_no_mirror, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: posture_no_mirror, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Absent => true
     Present { value: _ } => false
   }
@@ -1030,15 +1014,15 @@ test fn absent_mirror_refuses_the_seed() -> Bool {
 test fn each_refusal_names_its_own_mechanism() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+      match audit_ubuntu_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: ArchiveMirrorAbsent } =>
-          match audit_ubuntu_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+          match audit_ubuntu_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
             SeedRefused { cause: AddressingIsInstallerManaged } =>
-              match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+              match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
                 SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
                   match named {
                     "tzdata" =>
-                      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+                      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
                         SeedRefused { cause: PackagePromptingUnclassified { name: un } } =>
                           un == "some-fleet-exporter" as NonEmptyStr
                         _ => false
@@ -1060,9 +1044,9 @@ test fn each_refusal_names_its_own_mechanism() -> Bool {
 // and that they say different things, which is what keeps a swap of the two tokens from surviving. It also
 // asserts the key count rides in the token, so dropping an authorized key moves the render.
 test fn the_entrypoint_token_distinguishes_the_two_reachable_postures() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: via_console } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: via_keys } => entrypoint_tokens_are_distinguishable(
           console_seed: via_console,
           keys_seed: via_keys,
@@ -1075,7 +1059,7 @@ test fn the_entrypoint_token_distinguishes_the_two_reachable_postures() -> Bool 
 
 // CATCHES: installer-managed addressing (the multi-NIC "which interface?" prompt) being accepted.
 test fn installer_managed_addressing_refuses_the_seed() -> Bool {
-  match build_seed_fixture( network: posture_installer_managed, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: posture_installer_managed, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Absent => true
     Present { value: _ } => false
   }
@@ -1084,7 +1068,7 @@ test fn installer_managed_addressing_refuses_the_seed() -> Bool {
 // CATCHES: the audit being replaced by a constant, so a well-formed seed stops being accepted (the
 // other half of every refusal test above: those prove refusal, this proves acceptance).
 test fn a_fully_answerless_seed_is_accepted_with_its_proof() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: _ } => true
     Absent => false
   }
@@ -1193,7 +1177,7 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Absent => false
     Present { value: entry } =>
-      match board_seed_profile(board: SupermicroH11SslBoard, delivery: virtual_media_strategy) {
+      match board_seed_profile(board: SupermicroH11SslBoard, delivery: BootFromRemovableMedia) {
         BoardSeedProfile { install_drivers: drivers, loadable_modules: modules, late_drivers: late_drivers, late_packages: late_packages } =>
           match build_ubuntu_autoinstall_seed(
             target: target_x86(),
@@ -1208,7 +1192,7 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
             credential: PasswordUnset,
             password_read: password_read_for(credential: PasswordUnset),
             locale: EnUsUtf8,
-            delivery: virtual_media_strategy,
+            solution: removable_media_solution_for(architecture: X86_64),
             keyboard: UsLayout,
           ) {
             Absent => false
@@ -1339,7 +1323,7 @@ test fn an_x86_seed_carrying_an_arm64_only_package_row_refuses() -> Bool {
         late_packages: [],
         locale: EnUsUtf8,
         entry: entry,
-        strategy: virtual_media_strategy,
+        strategy: BootFromRemovableMedia, client_arch: none,
         architecture: X86_64,
         credential: PasswordUnset,
       ) {
@@ -1367,7 +1351,7 @@ test fn an_architecture_with_no_package_rows_refuses_at_the_door_and_the_gate() 
       match reason {
         PlatformUnsupported { architecture: _ } =>
           // WITH NO ROWS, NO SEED BUILDS: the same emptiness the door reads, read again where a seed would.
-          list_length(items: package_rows_for_architecture(architecture: Riscv64)) == 0
+          length(xs: package_rows_for_architecture(architecture: Riscv64)) == 0
         _ => false
       }
   }
@@ -1388,7 +1372,7 @@ test fn a_key_only_posture_with_no_keys_refuses() -> Bool {
              late_packages: [],
              locale: EnUsUtf8,
              entry: entry,
-             strategy: virtual_media_strategy,
+             strategy: BootFromRemovableMedia, client_arch: none,
              architecture: Aarch64,
              credential: PasswordUnset,
            ) {
@@ -1407,7 +1391,7 @@ test fn a_key_only_posture_with_no_keys_refuses() -> Bool {
                  late_packages: [],
                  locale: EnUsUtf8,
                  entry: bare_entry,
-                 strategy: virtual_media_strategy,
+                 strategy: BootFromRemovableMedia, client_arch: none,
                  architecture: Aarch64,
                  credential: PasswordUnset,
                ) {
@@ -1415,6 +1399,7 @@ test fn a_key_only_posture_with_no_keys_refuses() -> Bool {
                  SeedRefused { cause: cause } =>
                    match cause {
                      KeyOnlyPostureAdmitsNoKeys => true
+                     PxeClientArchitectureUnobserved => false
                      PackageSilenceUnestablishedForArchitecture { name: _, architecture: _ } => false
                      PackagePrompts { name: _, question: _ } => false
                      PackagePromptingUnclassified { name: _ } => false
@@ -1431,7 +1416,7 @@ test fn a_key_only_posture_with_no_keys_refuses() -> Bool {
 test fn a_refused_target_yields_no_seed() -> Bool {
   match admit_provisioning_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
     TargetRefused { reason: _ } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: admit_provisioning_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ),
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: admit_provisioning_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ),
       ) {
         Absent => true
         Present { value: _ } => false
@@ -1447,9 +1432,9 @@ test fn a_refused_target_yields_no_seed() -> Bool {
 // CATCHES: a rendering that reads a list in call order, which would make two callers with the same
 // package set produce two different seed identities.
 test fn package_order_does_not_move_the_digest() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: first } =>
-      match build_seed_fixture( network: network_posture, packages: reversed_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: reversed_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: second } =>
           content_hash_eq_structural(
             left: ubuntu_autoinstall_seed_digest(seed: first),
@@ -1464,9 +1449,9 @@ test fn package_order_does_not_move_the_digest() -> Bool {
 // CATCHES: the delivery strategy being decorative in the digest — two installs that differ in transport
 // would be indistinguishable in a boot log.
 test fn the_transport_moves_the_digest() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: via_media } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromNetworkPxe, client_arch: Present { value: UefiArm64 }, target: target_altra, ) {
         Present { value: via_pxe } =>
           !content_hash_eq_structural(
             left: ubuntu_autoinstall_seed_digest(seed: via_media),
@@ -1526,7 +1511,7 @@ test fn a_host_named_after_the_absence_token_is_never_spelled_as_no_host_at_all(
       entry_keys: one_key,
       console: locked_console,
       credential: seeded_handle,
-      delivery: virtual_media_strategy,
+      delivery: BootFromRemovableMedia, client_arch: none,
       target: target_altra,
     ) {
       Absent => false
@@ -1588,9 +1573,9 @@ test fn only_a_persistent_device_is_ever_authorised_to_be_erased_onto() -> Bool 
 // CATCHES: a rotated credential leaving the digest alone, which would let a boot log claim "seed X" for
 // an install that used a stale secret.
 test fn a_rotated_credential_moves_the_digest() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: before } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: after } =>
           !content_hash_eq_structural(
             left: ubuntu_autoinstall_seed_digest(seed: before),
@@ -1605,14 +1590,8 @@ test fn a_rotated_credential_moves_the_digest() -> Bool {
 // CATCHES: the console stanza being stored rather than derived from the transport — a virtual-media seed
 // must not promise a console a PXE seed may allow, and vice versa.
 test fn the_console_stanza_is_derived_from_the_transport() -> Bool {
-  match console_stanza_for(strategy: virtual_media_strategy) {
-    ConsoleSuppressed =>
-      match console_stanza_for(strategy: pxe_strategy) {
-        ConsoleAnsweredByUnattended => true
-        ConsoleSuppressed => false
-      }
-    ConsoleAnsweredByUnattended => false
-  }
+  console_stanza_is_suppressed(stanza: console_stanza_for(strategy: BootFromRemovableMedia, client_arch: none))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: BootFromNetworkPxe, client_arch: Present { value: UefiArm64 }))
 }
 
 // CATCHES: the transport token collapsing every ClientNetworkBootMode member to one spelling. BIOS PXE and
@@ -1620,22 +1599,16 @@ test fn the_console_stanza_is_derived_from_the_transport() -> Bool {
 // hash alike, the digest cannot answer "which transport did this board boot", and the pair of states a boot
 // log most needs to tell apart — firmware-side PXE vs BMC-served media — become one answer.
 test fn two_transports_sharing_a_console_stanza_do_not_share_a_digest() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: legacy_bios_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromNetworkPxe, client_arch: Present { value: BiosX86 }, target: target_altra, ) {
     Present { value: via_bios } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: same_stem_virtual_media, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: via_media } =>
-          match console_stanza_for(strategy: legacy_bios_strategy) {
-            ConsoleSuppressed =>
-              match console_stanza_for(strategy: same_stem_virtual_media) {
-                ConsoleSuppressed =>
-                  !content_hash_eq_structural(
-                    left: ubuntu_autoinstall_seed_digest(seed: via_bios),
-                    right: ubuntu_autoinstall_seed_digest(seed: via_media),
-                  )
-                ConsoleAnsweredByUnattended => false
-              }
-            ConsoleAnsweredByUnattended => false
-          }
+          console_stanza_is_suppressed(stanza: console_stanza_for(strategy: BootFromNetworkPxe, client_arch: Present { value: BiosX86 }))
+            && console_stanza_is_suppressed(stanza: console_stanza_for(strategy: BootFromRemovableMedia, client_arch: none))
+            && !content_hash_eq_structural(
+              left: ubuntu_autoinstall_seed_digest(seed: via_bios),
+              right: ubuntu_autoinstall_seed_digest(seed: via_media),
+            )
         Absent => false
       }
     Absent => false
@@ -1647,9 +1620,9 @@ test fn two_transports_sharing_a_console_stanza_do_not_share_a_digest() -> Bool 
 // distinction survives — and a future ClientNetworkBootMode member must not be able to borrow either
 // spelling silently.
 test fn the_boot_mode_moves_the_digest_within_one_transport() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromNetworkPxe, client_arch: Present { value: UefiArm64 }, target: target_altra, ) {
     Present { value: via_tftp } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromUefiHttp, client_arch: Present { value: HttpBootArm64 }, target: target_altra, ) {
         Present { value: via_http } =>
           !content_hash_eq_structural(
             left: ubuntu_autoinstall_seed_digest(seed: via_tftp),
@@ -1793,8 +1766,8 @@ test fn the_crypt_figures_are_cited_and_the_door_reads_them() -> Bool {
             && salt_min == char_count(1) && salt_max == char_count(16)
             && width == char_count(86)
             && cost_min == char_count(4) && cost_max == char_count(9)
-            && list_length(items: alphabet) == 64
-            && list_length(items: forbidden) == 4
+            && length(xs: alphabet) == 64
+            && length(xs: forbidden) == 4
           {
             False => false
             True =>
@@ -2012,7 +1985,7 @@ test fn a_binding_confirms_the_very_seed_it_was_built_from() -> Bool {
 test fn a_different_seed_is_reported_as_a_different_seed() -> Bool {
   match built_seed_and_binding() {
     Present { value: pair } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: other } =>
           match check_binding_against_seed( binding: pair.binding, seed: other, unit_key: unit_a_key, attempt: attempt_one, ) {
             BoundConfigurationDiffersFromSeed => true
@@ -2052,9 +2025,9 @@ test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
   // refuses makes the row false rather than substituting anything (review: merry-fox-82). The previous version
   // called a helper whose refused arm returned a fixed-string digest, so the row could have been satisfied by
   // comparing two stand-ins while reading as a comparison of two bindings' digests.
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: seed } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra_b, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra_b, ) {
         Present { value: sibling } =>
           match binding_digest_of(seed: seed, unit: unit_a_key, attempt: attempt_one) {
             Absent => false
@@ -2083,7 +2056,7 @@ test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
 // target that blamed the disk would send the operator to the storage shelf for a firmware
 // standing that was never observed.
 test fn a_refused_target_binds_with_a_target_blocker_not_a_disk_blocker() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: seed } =>
       match bind_ubuntu_autoinstall_seed( seed: seed, target: target_refused_by_unbound_key(), unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
@@ -2107,7 +2080,7 @@ fn target_refused_by_unbound_key() -> ProvisioningTargetAdmission {
 }
 
 test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: seed } =>
       match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: twin_selector, observed: bay_population),
         ) {
@@ -2147,7 +2120,7 @@ fn built_seed_and_binding() -> Optional<SeedAndBinding> {
 // The same built seed bound to a caller-named unit and intake attempt, so a consumer's fixture can bind the
 // seed to the subject of the plan it is armed with.
 fn built_seed_and_binding_for(unit: UnitKey, attempt: IntakeAttemptId) -> Optional<SeedAndBinding> {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: seed } =>
       match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
@@ -2334,13 +2307,14 @@ fn build_seed_fixture_with_modules(
   entry_keys: List<SshPublicKey>,
   console: ConsoleEntryAuthorisation,
   credential: AdminCredentialPosture,
-  delivery: SeedDeliveryStrategy,
+  delivery: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
   target: ProvisioningTargetAdmission,
   modules: List<LoadableModuleClass>,
 ) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
     Present { value: entry } =>
-      build_ubuntu_autoinstall_seed(
+      build_seed_for_control(
         target: target,
         network: network,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
@@ -2354,6 +2328,7 @@ fn build_seed_fixture_with_modules(
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
         delivery: delivery,
+        client_arch: client_arch,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -2378,12 +2353,13 @@ fn build_seed_fixture_under_rule(
   entry_keys: List<SshPublicKey>,
   console: ConsoleEntryAuthorisation,
   credential: AdminCredentialPosture,
-  delivery: SeedDeliveryStrategy,
+  delivery: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
   target: ProvisioningTargetAdmission,
 ) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
     Present { value: entry } =>
-      build_ubuntu_autoinstall_seed(
+      build_seed_for_control(
         target: target,
         network: network,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
@@ -2397,6 +2373,7 @@ fn build_seed_fixture_under_rule(
         password_read: password_read_for(credential: credential),
         locale: EnUsUtf8,
         delivery: delivery,
+        client_arch: client_arch,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -2411,7 +2388,8 @@ fn build_seed_fixture(
   entry_keys: List<SshPublicKey>,
   console: ConsoleEntryAuthorisation,
   credential: AdminCredentialPosture,
-  delivery: SeedDeliveryStrategy,
+  delivery: BootControlTarget,
+  client_arch: DhcpProcessorArchitecture?,
   target: ProvisioningTargetAdmission,
 ) -> Optional<UbuntuAutoinstallSeed> {
   build_seed_fixture_under_rule(
@@ -2422,6 +2400,7 @@ fn build_seed_fixture(
     console: console,
     credential: credential,
     delivery: delivery,
+    client_arch: client_arch,
     target: target,
   )}
 
@@ -2448,7 +2427,7 @@ fn build_seed_fixture_with_read(
         credential: credential,
         password_read: read,
         locale: EnUsUtf8,
-        delivery: virtual_media_strategy,
+        solution: removable_media_solution,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -2476,12 +2455,12 @@ test fn unreadable_serial_and_zero_match_are_different_refusals() -> Bool {
 // carry a question — this module has not observed one, and printing a plausible question is the fabricated
 // output the audit exists to prevent.
 test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: unclassified_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: unclassified_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: _ } => false
     Absent =>
       match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
         Present { value: entry } =>
-          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
             SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
             _ => false
           }
@@ -2496,7 +2475,7 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
 test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
         _ => false
       }
@@ -2510,10 +2489,10 @@ test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
 // console story can still differ in the digest via the transport token, so digest equality would prove nothing
 // about this function, and digest inequality would prove the wrong thing.
 test fn each_transport_states_its_own_console_story() -> Bool {
-  console_stanza_is_suppressed(stanza: console_stanza_for(strategy: legacy_bios_strategy))
-    && console_stanza_is_suppressed(stanza: console_stanza_for(strategy: virtual_media_strategy))
-    && console_stanza_is_answered(stanza: console_stanza_for(strategy: pxe_strategy))
-    && console_stanza_is_answered(stanza: console_stanza_for(strategy: http_boot_strategy))
+  console_stanza_is_suppressed(stanza: console_stanza_for(strategy: BootFromNetworkPxe, client_arch: Present { value: BiosX86 }))
+    && console_stanza_is_suppressed(stanza: console_stanza_for(strategy: BootFromRemovableMedia, client_arch: none))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: BootFromNetworkPxe, client_arch: Present { value: UefiArm64 }))
+    && console_stanza_is_answered(stanza: console_stanza_for(strategy: BootFromUefiHttp, client_arch: Present { value: HttpBootArm64 }))
 }
 
 // THE STANZA'S RENDERED SPELLING, NOT JUST ITS ARM. The witness above checks the semantic arm; this checks
@@ -2527,10 +2506,10 @@ test fn the_stanza_token_says_suppression_or_answering_and_never_both() -> Bool 
 }
 
 fn suppressed_transports_render_suppressed() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: legacy_bios_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromNetworkPxe, client_arch: Present { value: BiosX86 }, target: target_altra, ) {
     Absent => false
     Present { value: bios } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Absent => false
         Present { value: media } =>
           render_ubuntu_autoinstall_seed(seed: bios).contains("console=suppressed")
@@ -2542,10 +2521,10 @@ fn suppressed_transports_render_suppressed() -> Bool {
 }
 
 fn answered_transports_render_unattended_answer() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromNetworkPxe, client_arch: Present { value: UefiArm64 }, target: target_altra, ) {
     Absent => false
     Present { value: pxe } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromUefiHttp, client_arch: Present { value: HttpBootArm64 }, target: target_altra, ) {
         Absent => false
         Present { value: http } =>
           render_ubuntu_autoinstall_seed(seed: pxe).contains("console=unattended-answer")
@@ -2556,17 +2535,19 @@ fn answered_transports_render_unattended_answer() -> Bool {
   }
 }
 
-fn console_stanza_is_suppressed(stanza: NonInteractiveConsoleStanza) -> Bool {
+fn console_stanza_is_suppressed(stanza: NonInteractiveConsoleStanza?) -> Bool {
   match stanza {
-    ConsoleSuppressed => true
-    ConsoleAnsweredByUnattended => false
+    Present { value: ConsoleSuppressed } => true
+    Present { value: ConsoleAnsweredByUnattended } => false
+    Absent => false
   }
 }
 
-fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
+fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza?) -> Bool {
   match stanza {
-    ConsoleSuppressed => false
-    ConsoleAnsweredByUnattended => true
+    Present { value: ConsoleAnsweredByUnattended } => true
+    Present { value: ConsoleSuppressed } => false
+    Absent => false
   }
 }
 
@@ -2578,9 +2559,9 @@ fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
 test fn the_closed_question_count_moves_only_with_answers() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
         SeedIsNonInteractive { evidence: one_answer } =>
-          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
             SeedIsNonInteractive { evidence: two_answers } =>
               two_answers.questions_closed > one_answer.questions_closed
             _ => false
@@ -2599,7 +2580,7 @@ test fn the_closed_question_count_moves_only_with_answers() -> Bool {
 test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
           named == "tzdata" as NonEmptyStr
             // BOTH keys, not one. The shipped package asks tzdata/Areas and then tzdata/Zones/<area>, and the
@@ -2624,7 +2605,7 @@ test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
 test fn the_closed_question_count_is_the_exact_arithmetic() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromRemovableMedia, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
         // TWO answered debconf questions + seeded addressing + present mirror + the entrypoint the caller had
         // to earn. Not a magic number: two packages each in the QuestionAnswered arm, then one each of the
         // three structural terms questions_closed_count adds.
@@ -2671,7 +2652,7 @@ test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
     modules: [AhciPlatformModule, NvmeBlockModule],
   ) {
@@ -2694,9 +2675,9 @@ test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
 // today — which is precisely why it needs a witness: an unobserved string is where a placeholder survives.
 // Rotating a version is already covered (a_rotated_credential_moves_the_digest); this covers MOVING THE STORE.
 test fn a_relocated_credential_moves_the_digest() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: in_store } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: relocated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: relocated_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: relocated } =>
           !content_hash_eq_structural(
             left: ubuntu_autoinstall_seed_digest(seed: in_store),
@@ -2716,9 +2697,9 @@ test fn a_relocated_credential_moves_the_digest() -> Bool {
 // after the fact, when the remedies are opposite. Pinning the spelling rather than only digest-inequality is
 // what makes the collapse go red even if some other token happens to differ.
 test fn the_password_stanza_states_which_posture_was_chosen() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: unset_seed } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: handle_seed } =>
           render_ubuntu_autoinstall_seed(seed: unset_seed).contains("password=unset")
             && !render_ubuntu_autoinstall_seed(seed: unset_seed).contains("password=handle")
@@ -2745,7 +2726,7 @@ test fn the_loadable_module_axis_moves_the_digest() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
     modules: [AhciPlatformModule, NvmeBlockModule],
   ) {
@@ -2756,7 +2737,7 @@ test fn the_loadable_module_axis_moves_the_digest() -> Bool {
         entry_keys: one_key,
         console: locked_console,
         credential: seeded_handle,
-        delivery: virtual_media_strategy,
+        delivery: BootFromRemovableMedia, client_arch: none,
         target: target_altra,
         modules: [],
       ) {
@@ -2799,9 +2780,9 @@ fn entrypoint_tokens_are_distinguishable(
 // that renders both identically hides the thing an operator would act on. Both must render, differently, and
 // both must move the digest.
 test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
-  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+  match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
     Present { value: sol } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_serial_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_serial_console, credential: seeded_handle, delivery: BootFromRemovableMedia, client_arch: none, target: target_altra, ) {
         Present { value: getty } =>
           render_ubuntu_autoinstall_seed(seed: sol).contains("console=unlocked-bmc-sol")
             && render_ubuntu_autoinstall_seed(seed: getty).contains("console=unlocked-serial-getty")
@@ -2817,7 +2798,7 @@ test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
 }
 
 fn list_length_is(candidates: List<NonEmptyStr>, expected: Int) -> Bool {
-  list_length(items: candidates) == expected
+  length(xs: candidates) == expected
 }
 
 // ---------------------------------------------------------------------------
@@ -2957,7 +2938,7 @@ test fn a_disk_selected_under_a_different_rule_cannot_be_bound() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3018,7 +2999,7 @@ test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3146,7 +3127,7 @@ test fn a_receipt_from_another_secret_version_is_refused_by_name() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3197,7 +3178,7 @@ test fn a_seed_with_no_password_locks_the_account_instead_of_setting_a_default()
     entry_keys: one_key,
     console: locked_console,
     credential: PasswordUnset,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3304,7 +3285,7 @@ test fn a_key_only_seed_reports_no_credential_rather_than_an_error() -> Bool {
     entry_keys: one_key,
     console: unlocked_console,
     credential: PasswordUnset,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3648,7 +3629,7 @@ test fn equal_count_substitutions_of_material_content_move_the_digest() -> Bool 
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3659,7 +3640,7 @@ test fn equal_count_substitutions_of_material_content_move_the_digest() -> Bool 
         entry_keys: one_key,
         console: locked_console,
         credential: seeded_handle,
-        delivery: virtual_media_strategy,
+        delivery: BootFromRemovableMedia, client_arch: none,
         target: target_altra,
       ) {
         Absent => false
@@ -3670,7 +3651,7 @@ test fn equal_count_substitutions_of_material_content_move_the_digest() -> Bool 
             entry_keys: one_key,
             console: locked_console,
             credential: seeded_handle,
-            delivery: virtual_media_strategy,
+            delivery: BootFromRemovableMedia, client_arch: none,
             target: target_altra,
           ) {
             Absent => false
@@ -3716,6 +3697,7 @@ test fn the_produced_seed_carries_a_proof_that_agrees_with_a_fresh_audit() -> Bo
         late_packages: pair.seed.late_packages,
         locale: pair.seed.locale,
         strategy: pair.seed.delivery,
+        client_arch: pair.seed.client_arch,
         architecture: pair.seed.target.architecture,
       ) {
         SeedIsNonInteractive { evidence: fresh } =>
@@ -3737,7 +3719,7 @@ test fn the_produced_seed_installs_the_altra_late_package_set() -> Bool {
   match built_seed_and_binding() {
     Absent => false
     Present { value: pair } =>
-      list_length(items: pair.seed.late_packages) >= 4
+      length(xs: pair.seed.late_packages) >= 4
         && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("nvme-cli"))
         && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("ipmitool"))
         && pair.seed.late_packages.any(intent => package_intent_diagnostic(intent: intent).contains("dmidecode"))
@@ -3780,7 +3762,7 @@ fn built_second_unit_binding() -> Optional<SeedAndBinding> {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => Absent
@@ -3811,7 +3793,7 @@ test fn a_half_answered_tzdata_is_refused_though_it_was_answered() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Present { value: _ } => false
@@ -3829,7 +3811,7 @@ test fn a_fully_answered_tzdata_builds() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3855,7 +3837,7 @@ test fn a_salt_that_merely_contains_the_cost_marker_is_still_accepted() -> Bool 
 // all), and re-adding it, or adding anything else nobody has verified, fails here.
 test fn the_prompting_package_table_is_the_verified_set_exactly() -> Bool {
   let names = known_prompting_packages().map(row => known_prompting_package_name(package: row))
-  list_length(items: names) == 7
+  length(xs: names) == 7
     && names.any(row => row == ("console-setup" as NonEmptyStr))
     && names.any(row => row == ("keyboard-configuration" as NonEmptyStr))
     && names.any(row => row == ("tzdata" as NonEmptyStr))
@@ -3952,7 +3934,7 @@ test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -3963,13 +3945,13 @@ test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
         entry_keys: one_other_key,
         console: locked_console,
         credential: seeded_handle,
-        delivery: virtual_media_strategy,
+        delivery: BootFromRemovableMedia, client_arch: none,
         target: target_altra,
       ) {
         Absent => false
         Present { value: with_other } =>
-          list_length(items: with_first.entry.authorised_keys)
-            == list_length(items: with_other.entry.authorised_keys)
+          length(xs: with_first.entry.authorised_keys)
+            == length(xs: with_other.entry.authorised_keys)
             && !content_hash_eq_structural(
               left: ubuntu_autoinstall_seed_digest(seed: with_first),
               right: ubuntu_autoinstall_seed_digest(seed: with_other),
@@ -4071,7 +4053,7 @@ test fn the_authorised_key_line_counts_the_keys_it_was_given() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -4082,13 +4064,13 @@ test fn the_authorised_key_line_counts_the_keys_it_was_given() -> Bool {
         entry_keys: two_distinct_keys,
         console: locked_console,
         credential: seeded_handle,
-        delivery: virtual_media_strategy,
+        delivery: BootFromRemovableMedia, client_arch: none,
         target: target_altra,
       ) {
         Absent => false
         Present { value: two } =>
-          list_length(items: one.entry.authorised_keys) == 1
-            && list_length(items: two.entry.authorised_keys) == 2
+          length(xs: one.entry.authorised_keys) == 1
+            && length(xs: two.entry.authorised_keys) == 2
             && render_ubuntu_autoinstall_seed(seed: one).contains("keys=")
             && render_ubuntu_autoinstall_seed(seed: one).contains("count=1")
             && render_ubuntu_autoinstall_seed(seed: two).contains("count=2")
@@ -4123,7 +4105,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
         late_packages: [],
         locale: EnUsUtf8,
         entry: entry,
-        strategy: virtual_media_strategy,
+        strategy: BootFromRemovableMedia, client_arch: none,
         architecture: Aarch64, credential: seeded_handle,
       ) {
         SeedRefused { cause: _ } => false
@@ -4134,7 +4116,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
             late_packages: board_required_late_package_rows(),
             locale: EnUsUtf8,
             entry: entry,
-            strategy: virtual_media_strategy,
+            strategy: BootFromRemovableMedia, client_arch: none,
             architecture: Aarch64, credential: seeded_handle,
           ) {
             SeedRefused { cause: _ } => false
@@ -4155,7 +4137,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                 }],
                 locale: EnUsUtf8,
                 entry: entry,
-                strategy: virtual_media_strategy,
+                strategy: BootFromRemovableMedia, client_arch: none,
                 architecture: Aarch64, credential: seeded_handle,
               ) {
                 SeedRefused { cause: _ } => false
@@ -4177,7 +4159,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                       entry_keys: one_key,
                       console: locked_console,
                       credential: seeded_handle,
-                      delivery: virtual_media_strategy,
+                      delivery: BootFromRemovableMedia, client_arch: none,
                       target: target_altra,
                     ) {
                       Absent => false
@@ -4213,7 +4195,7 @@ fn build_seed_with_late(late: List<PackageIntent>) -> Optional<UbuntuAutoinstall
         credential: seeded_handle,
         password_read: password_read_for(credential: seeded_handle),
         locale: EnUsUtf8,
-        delivery: virtual_media_strategy,
+        solution: removable_media_solution,
         keyboard: UsLayout,
       )
     Absent => Absent
@@ -4235,7 +4217,7 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => false
@@ -4365,11 +4347,11 @@ test fn everything_the_shipping_library_accepted_is_accepted_here_too() -> Bool 
   // is in the mutation harness. The three per-arm counts partition the row set, so a row MOVED between arms —
   // the cheapest way to make one of these sweeps pass by accident — reddens this line.
   disagreements == 0
-    && list_length(items: crypt_library_verdicts()) == 24
+    && length(xs: crypt_library_verdicts()) == 24
     && accepted_row_count() == 7
     && stored_hash_gap_row_count() == 4
     && refused_row_count() == 13
-    && list_length(items: crypt_library_acceptance.observed_on) == 3
+    && length(xs: crypt_library_acceptance.observed_on) == 3
     && crypt_library_acceptance.observed_build.contains("4.4.36-4build1")
 }
 
@@ -4527,7 +4509,7 @@ test fn an_admitted_answer_value_moves_the_seed_digest_without_moving_admission(
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     // BOTH SEEDS MUST BE BUILT, not one built and one refused: a comparison against a refusal is not a
@@ -4540,7 +4522,7 @@ test fn an_admitted_answer_value_moves_the_seed_digest_without_moving_admission(
         entry_keys: one_key,
         console: locked_console,
         credential: seeded_handle,
-        delivery: virtual_media_strategy,
+        delivery: BootFromRemovableMedia, client_arch: none,
         target: target_altra,
       ) {
         Absent => false
@@ -4564,7 +4546,7 @@ fn binding_with_packages(packages: List<PackageIntent>) -> Optional<UbuntuAutoin
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => Absent
@@ -4706,7 +4688,7 @@ test fn an_answer_record_written_by_another_package_closes_nothing_and_the_seed_
         late_packages: [],
         locale: EnUsUtf8,
         entry: entry,
-        strategy: virtual_media_strategy,
+        strategy: BootFromRemovableMedia, client_arch: none,
         architecture: Aarch64, credential: seeded_handle,
       ) {
         SeedIsNonInteractive { evidence: _ } => false
@@ -4749,7 +4731,7 @@ test fn a_comment_naming_every_question_is_not_an_answer_and_the_seed_is_refused
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     // REFUSED, through the public producer — not merely reported by a helper the producer never calls.
@@ -4765,7 +4747,7 @@ test fn an_area_and_a_zone_that_do_not_join_are_refused_and_the_zone_key_names_t
     entry_keys: one_key,
     console: locked_console,
     credential: seeded_handle,
-    delivery: virtual_media_strategy,
+    delivery: BootFromRemovableMedia, client_arch: none,
     target: target_altra,
   ) {
     Absent => true
@@ -5311,7 +5293,7 @@ fn flag_for_area_plus_answered_zone() -> List<DebconfSelectionRecord> {
 test fn a_seen_flag_closes_nothing_and_the_seed_is_refused_as_prompting() -> Bool {
   match flag_for_area_plus_answered_zone() {
     records =>
-      match list_length(items: records) {
+      match length(xs: records) {
         // BOTH RECORDS MINTED: the flag is legal, so a refusal to mint it here would silently turn this row into a
         // test of a two-record seed with one record missing.
         2 =>
@@ -5323,7 +5305,7 @@ test fn a_seen_flag_closes_nothing_and_the_seed_is_refused_as_prompting() -> Boo
                 late_packages: [],
                 locale: EnUsUtf8,
                 entry: entry,
-                strategy: virtual_media_strategy,
+                strategy: BootFromRemovableMedia, client_arch: none,
                 architecture: Aarch64, credential: seeded_handle,
               ) {
                 SeedIsNonInteractive { evidence: _ } => false
@@ -5399,7 +5381,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
   // refusal below: an audit that credited an owner-mismatched record would still refuse THIS seed (its own
   // owner is "tzdata extra", which never matches tzdata's question), so the refusal alone cannot tell a
   // well-formed refusal from an accepted-but-ignored record. The two claims together pin the whole path.
-  match list_length(items: debconf_answer(
+  match length(xs: debconf_answer(
     owner: "tzdata extra" as NonEmptyStr,
     kind: AnswerSelect,
     label: "tzdata/Areas" as NonEmptyStr,
@@ -5423,7 +5405,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
             late_packages: [],
             locale: EnUsUtf8,
             entry: entry,
-            strategy: virtual_media_strategy,
+            strategy: BootFromRemovableMedia, client_arch: none,
             architecture: Aarch64, credential: seeded_handle,
           ) {
             SeedIsNonInteractive { evidence: _ } => false
@@ -5684,7 +5666,7 @@ fn refusals_from_both_doors(members: List<String>, missing: Int) -> Bool {
 }
 
 test fn perl_whitespace_class_is_six_members_and_both_doors_know_all_six() -> Bool {
-  match list_length(items: perl_whitespace_members) {
+  match length(xs: perl_whitespace_members) {
     // THE CLAIMED SIZE OF PERL's \s. If upstream's reader ever decodes Unicode whitespace, the row grows and this
     // number moves with it — but never silently, and never in one door only.
     6 => refusals_from_both_doors(members: perl_whitespace_members, missing: 0)
@@ -5722,7 +5704,7 @@ fn nothing_arm_refuses(members: List<String>) -> Bool {
 data perl_added_whitespace: List<String> = ["\u{c}", "\u{b}", "\r"]
 
 test fn the_three_perl_added_separators_are_refused_by_the_nothing_arm() -> Bool {
-  match list_length(items: perl_added_whitespace) {
+  match length(xs: perl_added_whitespace) {
     3 => nothing_arm_refuses(members: perl_added_whitespace)
     _ => false
   }
@@ -5734,7 +5716,7 @@ test fn the_three_perl_added_separators_are_refused_by_the_nothing_arm() -> Bool
 // different list than the one it enforces, and this is the row that forbids that. Compared by length AND by
 // containment of each member in both directions, so a member substituted for another (say 0x85 for 0x0b) reddens.
 test fn the_mint_separator_authority_is_the_six_ascii_class_it_proclaims() -> Bool {
-  match list_length(items: debconf_perl_whitespace) {
+  match length(xs: debconf_perl_whitespace) {
     6 =>
       fold(
         perl_whitespace_members,
@@ -5928,7 +5910,7 @@ test fn a_trailing_continuation_never_swallows_the_record_below_it() -> Bool {
           // THE TWO-RECORD BATCH: the swallowing record and a clean one below it. The swallowing record mints to
           // no records at all, so the joined file is the clean answer alone — the swallowing record has no line
           // with which to reach the record below it, and there is no trailing `\` anywhere in what is served.
-          match list_length(items: debconf_answer_for(
+          match length(xs: debconf_answer_for(
             package: TzdataPackage,
             kind: AnswerSelect,
             label: "tzdata/Areas" as NonEmptyStr,
@@ -6033,5 +6015,116 @@ test fn the_source_locator_truly_delegates_to_the_version_it_is_given() -> Bool 
     built =>
       built.contains(needle: "/api/src/debconf/9.9.9-fake/tools/")
         && !built.contains(needle: "1.5.86ubuntu1")
+  }
+}
+
+// CATCHES: an unobserved PXE client borrowing a stanza. BIOS and UEFI PXE answer differently, so with no
+// observed architecture the audit refuses with its own cause rather than choosing one.
+test fn pxe_with_no_observed_client_architecture_is_refused() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: BootFromNetworkPxe, client_arch: none, architecture: Aarch64, credential: seeded_handle, ) {
+        SeedRefused { cause: PxeClientArchitectureUnobserved } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn build_seed_for_solution(solution: BootDeliverySolution) -> Optional<UbuntuAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      build_ubuntu_autoinstall_seed(
+        target: target_altra,
+        network: network_posture,
+        install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule],
+        late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: clean_packages,
+        late_packages: board_required_late_package_rows(),
+        disk: serial_selector,
+        entry: entry,
+        credential: seeded_handle,
+        password_read: password_read_for(credential: seeded_handle),
+        locale: EnUsUtf8,
+        solution: solution,
+        keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+// RED: a refused delivery solution yields no seed — the route is the solver's, never a caller's choice.
+test fn a_refused_delivery_solution_yields_no_seed() -> Bool {
+  match build_seed_for_solution(solution: refused_solution) {
+    Absent => True
+    Present { value: _ } => False
+  }
+}
+
+// RED: the seed builder admits the plan first; a PXE delivery beside a removable-media control yields no seed
+// (the arm refuses the same plan as PlanBootControlNotTheDeliverys), instead of a fabricated virtual-media seed.
+test fn an_incoherent_plan_yields_no_seed() -> Bool {
+  match build_seed_for_solution(solution: incoherent_pxe_solution) {
+    Absent => True
+    Present { value: _ } => False
+  }
+}
+
+fn seed_for_artifact_architecture(artifact: Architecture, target: ProvisioningTargetAdmission) -> Optional<UbuntuAutoinstallSeed> {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Present { value: entry } =>
+      build_ubuntu_autoinstall_seed(
+        target: target, network: network_posture, install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
+        loadable_modules: [AhciPlatformModule, NvmeBlockModule], late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
+        install_packages: clean_packages, late_packages: [], disk: serial_selector, entry: entry,
+        credential: seeded_handle, password_read: password_read_for(credential: seeded_handle), locale: EnUsUtf8,
+        solution: removable_media_solution_for(architecture: artifact), keyboard: UsLayout,
+      )
+    Absent => Absent
+  }
+}
+
+// RED: an arm64 artifact plan beside an admitted x86_64 target yields no seed (media the target cannot boot).
+test fn an_arm64_plan_for_an_x86_target_yields_no_seed() -> Bool {
+  match seed_for_artifact_architecture(artifact: Aarch64, target: target_x86()) {
+    Absent => True
+    Present { value: _ } => False
+  }
+}
+
+// Positive control for the join: the same builder with matching architectures produces a seed.
+test fn a_plan_and_target_of_one_architecture_build_a_seed() -> Bool {
+  match seed_for_artifact_architecture(artifact: Aarch64, target: target_altra) {
+    Present { value: _ } => True
+    Absent => False
+  }
+}
+
+// RED: a plan that selected PXE cannot produce a removable-media seed; the seed's route is the plan's.
+test fn the_seed_route_is_the_selected_plans_control_target() -> Bool {
+  match build_seed_for_solution(solution: pxe_solution) {
+    Absent => False
+    Present { value: s } =>
+      match s.delivery {
+        BootFromNetworkPxe => True
+        BootFromRemovableMedia => False
+        BootFromUefiHttp => False
+      }
+  }
+}
+
+// RED: the seed's client architecture is the one the plan observed; there is no caller input to contradict it.
+// A BIOS-observing PXE plan yields a seed carrying BiosX86 (console suppressed), a UEFI-observing one UefiArm64.
+test fn the_seed_client_arch_is_the_plans_observation() -> Bool {
+  let bios = build_seed_for_solution(solution: solution_selecting_control(control: BootFromNetworkPxe, client_arch: Present { value: BiosX86 }))
+  let uefi = build_seed_for_solution(solution: pxe_solution)
+  match bios {
+    Present { value: b } =>
+      match uefi {
+        Present { value: u } => b.client_arch == Present { value: BiosX86 } && u.client_arch == Present { value: UefiArm64 }
+        Absent => false
+      }
+    Absent => false
   }
 }

@@ -1,5 +1,6 @@
 module v2.lens.enforcement.inventory
 import std.optional { Absent, Optional, Present }
+import std.algebra { list_head }
 import v2.workflow.witness_admission { witness_consumer_cadence_for_row, witness_row_excluded_from_discovery }
 
 

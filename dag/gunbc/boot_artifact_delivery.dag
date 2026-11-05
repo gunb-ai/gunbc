@@ -1,8 +1,11 @@
 module gunbc.boot_artifact_delivery
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
+import extdeps.bmc.types { BootTargetCd, BootTargetPxe, BootTargetUefiHttp, RedfishBootSourceOverrideTarget }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_equal }
+import std.list { first_where }
 import extdeps.uri { Uri }
 import product.placement_supply { SiteIdentity }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
@@ -156,8 +159,8 @@ import gunbc.network_boot_delivery {
 // MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its
 // operation contract requires; and every staged offer must name the requested digest, so 'the
 // URI serves digest B while the request names digest A' is a typed refusal.
-// gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access
-// context and therefore always refuses at AccessContextProfileLookupNotRun.
+// gunbc.fleet.fleet_boot_delivery_solution never binds an access context for the install path and
+// therefore every host refuses at AccessContextProfileLookupNotRun.
 
 type BootControlObligation
   = SetOneShotTarget
@@ -236,6 +239,17 @@ fn boot_artifact_delivery_boot_control(delivery: BootArtifactDelivery) -> BootCo
     OpenBmcConfigfsUsbGadget { params: _ } => BootFromRemovableMedia
     UefiHttpBoot { params: _ } => BootFromUefiHttp
     PxeChainBoot { evidence: _ } => BootFromNetworkPxe
+  }
+}
+
+// The Redfish boot-source override a control target is armed with. One answer for every install
+// consumer: a consumer that cannot realize an arm refuses the arm locally, it does not re-derive
+// the target.
+fn redfish_boot_target_of_control(control: BootControlTarget) -> RedfishBootSourceOverrideTarget {
+  match control {
+    BootFromRemovableMedia => BootTargetCd
+    BootFromNetworkPxe => BootTargetPxe
+    BootFromUefiHttp => BootTargetUefiHttp
   }
 }
 
@@ -914,12 +928,10 @@ fn network_addressed_candidate_verdicts(ev: BoundBootDeliveryEvidence, request: 
   ]
 }
 
+// One lookup answers which standing a candidate was given; eligibility reads it rather than
+// walking the verdicts a second way. A candidate never considered is not eligible.
 fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate: BootDeliveryCandidate) -> Bool {
-  fold(
-    verdicts,
-    init: false,
-    f: (acc, v) => acc || (v.candidate == candidate && v.standing == CandidateEligible),
-  )
+  boot_delivery_candidate_standing_of(verdicts: verdicts, candidate: candidate) == Present { value: CandidateEligible }
 }
 
 // Build the delivery an ELIGIBLE candidate names. Every BMC-side parameter is
@@ -1186,7 +1198,7 @@ fn observed_boot_control_route(ctx: BoundBmcAccessContext) -> ObservedBootContro
   match first_route_outside_profile(ctx: ctx) {
     Present { value: o } => BootControlRouteNotInProfile { observed: o }
     Absent => {
-      let n = list_length(items: observed)
+      let n = length(xs: observed)
       if n == 0 {
         BootControlRouteUnobserved
       } else if n == 1 {
@@ -1295,13 +1307,16 @@ fn solve_controller_addressed_delivery(
   }
 }
 
+// THE STANDING ONE CANDIDATE WAS GIVEN, or Absent when the verdicts never considered it. A
+// candidate that was not judged has no cause to report: answering CandidateCapabilityAbsent for
+// it would fabricate a finding about a capability nobody read (DESIGN.md Sec 5), and a caller
+// matching on that cause could not tell "the gate refused" from "the gate never ran".
 fn boot_delivery_candidate_standing_of(
   verdicts: List<BootDeliveryCandidateVerdict>,
   candidate: BootDeliveryCandidate,
-) -> BootDeliveryCandidateStanding {
-  fold(
-    verdicts,
-    init: CandidateIneligible { cause: CandidateCapabilityAbsent },
-    f: (acc, v) => if v.candidate == candidate { v.standing } else { acc },
-  )
+) -> BootDeliveryCandidateStanding? {
+  match first_where(verdicts, v => v.candidate == candidate) {
+    Present { value: v } => Present { value: v.standing }
+    Absent => none
+  }
 }

@@ -851,14 +851,21 @@ fn presentation_evidence_text(e: MegaRacPresentationEvidence) -> String {
     " cd_error_code before any write=", cd_reading_text(r: e.cd_before_any_write),
     " at ready=", cd_reading_text(r: e.cd_at_ready),
     " general settings at ready ", raw_read_text(r: e.general_at_ready),
+    // THE IN-INTERVAL LOOK IS PRINTED, because the wait's ready path prints no look anywhere else: the
+    // document between the StartMedia write and the started reading exists in the corpus only if this line
+    // carries it.
+    " in-interval look ", readiness_look_text(l: e.in_interval),
   ], "")
 }
 
 fn readiness_reading_text(r: AttachReadiness) -> String {
   match r {
-    ReadinessStarted { row: w } => concat("started, session_index ", optional_text(v: w.session_index))
-    ReadinessConnecting { row: w } => concat("connecting (status ", concat(to_string(w.redirection_wire), concat("), session_index ", optional_text(v: w.session_index))))
-    ReadinessStartedUnbound { row: w } => concat("started with no bound session, session_index ", optional_text(v: w.session_index))
+    ReadinessStarted { row: w, configurations: c } =>
+      join(["started, session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
+    ReadinessConnecting { row: w, configurations: c } =>
+      join(["connecting (status ", to_string(w.redirection_wire), "), session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
+    ReadinessStartedUnbound { row: w, configurations: c } =>
+      join(["started with no bound session, session_index ", optional_text(v: w.session_index), " configurations: ", c], "")
     ReadinessNotPresented { configurations: c } => concat("not presented: ", c)
     ReadinessUnanswered { detail: d } => concat("configurations GET unanswered: ", d)
     ReadinessUncatalogued { image_name: n, unread: u, configurations: c } => join(["UNCATALOGUED ", redirection_unread_text(unread: u), " on '", n, "': ", c], "")
@@ -2662,7 +2669,7 @@ fn redfish_collection_assembly(pages: List<RedfishCollectionPage>, member_bound:
       match first.member_count {
         Absent => CollectionRefused { detail: "the first page carries no Members@odata.count, so completeness cannot be established" }
         Present { value: total } => {
-          let links = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
+          let links: List<String> = fold(pages, init: [], f: (acc, p) => concat(acc, p.member_links))
           let last_has_next = match reverse(pages).first() { Absent => false Present { value: p } => p.next_link != none }
           let refused_links = filter(links, l => match redfish_same_origin_link(link: l) { RedfishLinkRefused { cause: _ } => true RedfishLinkSameOrigin { path: _ } => false })
           let disagreeing = filter(pages, p => p.member_count != Present { value: total })

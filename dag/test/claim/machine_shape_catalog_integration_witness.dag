@@ -8,7 +8,7 @@ import extdeps.cpu.machine_shape {
 import std.logic { Bool }
 import std.nat { Nat }
 import std.measure { byte_size_count, hardware_thread_count_value }
-import std.types { list_length }
+import std.algebra { length }
 import std.machine_shape {
   DomainId,
   LevelId,
@@ -47,7 +47,7 @@ test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
   match cpu_catalog_shape().domains.first() {
     Present { value: domain } => {
       let memory = domain.memory
-      list_length(items: memory) == 3
+      length(xs: memory) == 3
         && match memory.first() {
           Present { value: level } => level.id == ampere_l1_level && byte_size_count(b: level.capacity) == ampere_l1_bytes_per_core
           Absent => false
