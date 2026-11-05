@@ -2985,7 +2985,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_BNEYWCR707T5D0BRH8G6VZKGY5",
       id: "literal-elaboration",
-      owner: "self-host",
+      owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Record, map and construct literals elaborate from what the author wrote",
@@ -3001,7 +3001,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_5E5PRY6BBZP5EQSMXJ7AZV102T",
       id: "shared-check-lets-and-matches",
-      owner: "self-host",
+      owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Lets and match binders are judged by the one relation",
@@ -3351,6 +3351,166 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "Every native-seven member reaches its expected verdict through the v2-emitted Cargo route, with its per-test binding served from the store on a second run."
         )),
       parent: in_project(project: "demand-engine", contribution: "Realizes and materializes the first production evaluation judgment -- native test verdicts -- and is the consumer that pulls the second-generation generator cut."),
+    ),
+    roadmap_node(
+      identity: "rn_TK873VBHV5PD59HTKKZ3AG1Q0N",
+      id: "main-recovery",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_workflow.dag"),
+      line: ticket(t: fields(
+          headline: "Restore green, healable main after #15175; re-land routed generic equality only with generated-artifact coverage",
+          boundary: "Main went red after #15175 routed generic equality; #15927 and #15922 are the evidence. Recovery means main passes the required job and heal converges, then the routed equality re-lands together with coverage of the generated artifacts it moves.",
+          displaced_cost: "A red main blocks every PR's merge ref and makes every generated-artifact drift unattributable.",
+          first_slice: "Land the recovery PRs, then confirm heal converges on main with no changed_paths.",
+          red_control: "Re-landing routed generic equality without generated-artifact coverage leaves main red or unhealable; the control fails on that re-land.",
+          out_of_scope: "Compiler semantics of generic equality beyond its re-landing.",
+          handback: "Main green and heal-converged, and routed generic equality re-landed with generated-artifact coverage."
+        )),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "Required CI and heal must be green on main before any node's evidence can be trusted."),
+    ),
+    roadmap_node(
+      identity: "rn_KEZP25E994JZR4SV3JTA80C9AK",
+      id: "heal-publisher-token-ordering",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_publisher_workflow.dag"),
+      line: ticket(t: fields(
+          headline: "The heal publisher acquires its token before the compare-and-set push",
+          boundary: "gunbc.heal_publisher_workflow pushes one bot commit compare-and-set on the head; the token acquisition order relative to that push is a stated ordering.",
+          displaced_cost: "A publisher that pushes before its token is valid fails after the work is done, or pushes under the wrong identity.",
+          first_slice: "State the ordering on the workflow carrier and emit it.",
+          red_control: "A workflow emitted with the push step before the token step is refused.",
+          out_of_scope: "Heal convergence logic.",
+          handback: "The emitted workflow orders token before push, with the refusal control green."
+        )),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "The publisher must hold its token before it pushes, or a heal round is lost silently."),
+    ),
+    roadmap_node(
+      identity: "rn_FAPGXTTG8FND30WGPFVX9N7WF6",
+      id: "heal-90min-wall",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_workflow.dag"),
+      line: ticket(t: fields(
+          headline: "A heal run is bounded by a 90-minute wall",
+          boundary: "gunbc.heal_workflow declares a timeout of ninety minutes; if main already carries it this node is retired by the handback evidence.",
+          displaced_cost: "An unbounded heal run occupies a slot indefinitely.",
+          first_slice: "Check whether the emitted workflow already carries timeout-minutes 90; if not, declare it.",
+          red_control: "An emitted heal workflow without the wall is refused.",
+          out_of_scope: "Per-step timeouts.",
+          handback: "The emitted heal workflow carries the 90-minute wall."
+        )),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "A heal round that never ends holds the runner and hides the non-converging case."),
+    ),
+    roadmap_node(
+      identity: "rn_6MV8NZ834D8RQEEEQ33P9XP7PX",
+      id: "srv2-admission-cutover",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
+      line: ticket(t: fields(
+          headline: "srv2 is admitted by its own declared admission, not by srv1's",
+          boundary: "srv2's admission is cut over to the srv2-specific declaration; the two hosts' admission bytes diverged and are not interchangeable.",
+          displaced_cost: "Admitting srv2 from srv1's reading misstates what srv2 will accept.",
+          first_slice: "Declare srv2's admission from its host bytes and cut the consumer over.",
+          red_control: "An admission claim for srv2 sourced from srv1's reading is refused.",
+          out_of_scope: "srv1 admission; compiler nodes take no dependency on this node.",
+          handback: "srv2's admission is declared from its own reading and its consumers read it."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "Host capability standing for srv2 changes only when its admission is read from its own bytes."),
+    ),
+    roadmap_node(
+      identity: "rn_G3XZ3T2WKP9DK2W7YP6AHC1C1D",
+      id: "butch-gpu-pci-restoration",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/fleet_health.dag"),
+      line: ticket(t: fields(
+          headline: "Butch's GPUs enumerate on PCI and its capability standing is restored",
+          boundary: "Butch lost its GPU/PCI devices; restoration means they enumerate again and the host's capability standing is updated from that observation.",
+          displaced_cost: "A host standing as GPU-capable that does not enumerate its GPUs misprices and misplaces work.",
+          first_slice: "Observe PCI enumeration on Butch under an operator-granted host ruling.",
+          red_control: "A capability row for Butch's GPUs without an enumeration observation is refused.",
+          out_of_scope: "Other hosts; compiler nodes take no dependency on this node.",
+          handback: "PCI enumeration observed and Butch's capability standing restored."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "Butch's GPU capacity returns to the fleet's capability standing only once the PCI devices enumerate."),
+    ),
+    roadmap_node(
+      identity: "rn_7ME72B8M9148N2PYJVVP9NG8MH",
+      id: "loop-executor-decision",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: fields(
+          headline: "DECISION: which executor runs loop-bearing native tests",
+          boundary: "An operator decision, accepted manually, on the Loop executor the native verdict route uses; native-test-verdict-realization cannot proceed until it is ruled.",
+          displaced_cost: "Realizing verdicts without a ruled Loop executor forks the executor choice per test.",
+          first_slice: "Put the options and a recommendation to the operator.",
+          red_control: "A native verdict route that executes a Loop by an executor the decision did not name is refused.",
+          out_of_scope: "Implementing the executor.",
+          handback: "The operator's ruling recorded as the acceptance of this node."
+        )),
+      parent: in_project(project: "demand-engine", contribution: "Native test verdicts need a ruled executor for the loop-bearing tests they must realize."),
+    ),
+    roadmap_node(
+      identity: "rn_BHYEQ1B5XWVMRYH9XGMHZFD17J",
+      id: "pr-13936-disposition",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_authority.dag"),
+      line: ticket(t: fields(
+          headline: "PR 13936 is re-carved, superseded or retired",
+          boundary: "Choose one disposition for #13936 and record the surviving pieces' homes.",
+          displaced_cost: "An undisposed PR leaves its content discoverable only by branch name.",
+          first_slice: "Read the PR's content and propose the disposition.",
+          red_control: "A closed #13936 whose content has no named home is refused.",
+          out_of_scope: "Implementing the carved pieces.",
+          handback: "A disposition with every piece's new home named."
+        )),
+      parent: in_project(project: "gunbc-project-root", contribution: "An unresolved large PR keeps its content half-owned by two places."),
+    ),
+    roadmap_node(
+      identity: "rn_D6P5F7PMNTS3NCERX9E5T0XD8X",
+      id: "roadmap-interlock-consolidation",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/compiler_frontend_program_interlock.dag"),
+      line: ticket(t: fields(
+          headline: "One V2 dependency authority: roadmap_authority and the frontend interlock are reconciled",
+          boundary: "Which model is canonical is an open operator decision; this node carries the consolidation once ruled.",
+          displaced_cost: "Two dependency models answer one question and diverge on the first amendment.",
+          first_slice: "Options note to the operator.",
+          red_control: "A milestone in the interlock with no roadmap node, or the reverse, is refused after the ruling.",
+          out_of_scope: "Changing the interlock before the ruling.",
+          handback: "The ruled model implemented and the other derived from it or deleted."
+        )),
+      parent: in_project(project: "gunbc-project-root", contribution: "Two dependency authorities for the V2 program are one fork."),
+    ),
+    roadmap_node(
+      identity: "rn_7Q2KJQMA57JE6BMDHHD44D22B0",
+      id: "pr-roadmap-provenance",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_authority.dag"),
+      line: ticket(t: fields(
+          headline: "Every PR declares Advances, Candidate-Closes or No-Roadmap-Impact, validated on open",
+          boundary: "A PR body names node ids it advances, node ids it may close, or a no-impact reason; ids are checked against the declared nodes. Merge appends an event moving the node to review and never accepts it.",
+          displaced_cost: "PRs land with no account of what roadmap node they moved.",
+          first_slice: "Parser and validator over the PR body, with the merge event.",
+          red_control: "A PR naming an undeclared id, or none of the three forms, is refused; a merge that records acceptance is refused.",
+          out_of_scope: "Acceptance, which stays manual.",
+          handback: "Validation on open and a merge event that only moves to review."
+        )),
+      parent: in_project(project: "gunbc-project-root", contribution: "Every V2 PR must be accountable to the roadmap."),
+    ),
+    roadmap_node(
+      identity: "rn_9AE92ZTFS19DDG6AN5XFCWWCDD",
+      id: "event-derived-program-metrics",
+      owner: "program",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_log.dag"),
+      line: ticket(t: fields(
+          headline: "Program metrics are derived from roadmap_event_log",
+          boundary: "Counts of claimed, blocked, handed-back and returned nodes are folded from events; acceptance state comes only from the acceptance history load.",
+          displaced_cost: "Hand-kept progress figures drift from the events.",
+          first_slice: "A fold over events yielding per-node state.",
+          red_control: "A metric computed from anything but the event log or the acceptance history load is refused.",
+          out_of_scope: "Census gates.",
+          handback: "The fold, consumed by a projection."
+        )),
+      parent: in_project(project: "gunbc-project-root", contribution: "Program progress is read from events, not from edited statuses."),
     ),
     roadmap_node(
       identity: "rn_KQ7EP7P290B24W2FHFW9Y4K1F4",
@@ -4762,6 +4922,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "native-seven", parent: "literal-elaboration"),
     edge(child: "native-seven", parent: "shared-check-lets-and-matches"),
     edge(child: "native-seven", parent: "native-test-verdict-realization"),
+    edge(child: "native-test-verdict-realization", parent: "loop-executor-decision"),
     edge(child: "native-seven", parent: "declaration-provider-outcomes"),
     edge(child: "native-seven", parent: "v2-namespace-cutover"),
     edge(child: "cross-module-declarations", parent: "declaration-identity-switchover"),
