@@ -1291,6 +1291,15 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+// THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
+// .mtcollins1_ui_status_asset_observation). Read-only: GETs over the session the lane already opens,
+// no media action, no power, no SEL. It is dispatched under the fan observation's mode because the
+// mode list is a closed choice and this probe shares that lane's credential, host and authority.
+data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag",
+  function: "mtcollins1_ui_status_asset_observation_wet",
+}
+
 data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
   function: "mtcollins1_fan_observe_boot_phase_wet",
@@ -1631,6 +1640,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_ui_status_asset_observe_target,
     gunbc_ci_mtcollins1_fan_observe_boot_phase_target,
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
@@ -2217,6 +2227,20 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
       receipt_rel: mtcollins1_fan_observation_receipt_path
     )
   )
+}
+
+// THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
+// credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
+// "did the file arrive" check and the invocation itself are all bash_build nodes rendered by
+// v2.workflow.bash_emit - so this step carries no hand-spelled shell and needs no scaffold marker.
+// The stem only names its temp files; the secret is the SAME pinned BMC credential version the fan
+// lane reads, exported through mtcollins1_fan_credential_path_env by
+// gunbc_ci_mtcollins1_probe_credential_statements, and the probe prints that variable's NAME, never
+// its contents. Strict (typed_fetch_failure: false) because this probe has no fetch-status file of its
+// own: an unreadable credential fails closed at the export, and the probe then refuses at its own
+// credential gate without ever contacting the controller.
+fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> String {
+  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-status", target: gunbc_ci_mtcollins1_ui_status_asset_observe_target)
 }
 
 // THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit

@@ -130,7 +130,7 @@ fn e1_part_owing(designator: NonEmptyStr, row: ElectronicComponentRow, owes: Non
 }
 
 fn pi3ch480_marking_table_obligation() -> NonEmptyStr {
-  "read the customer-marking table of Diodes Incorporated's PI3CH480 data sheet (Document Number DS40329 Rev 5.2, December 2021) and either publish the mark it gives on extdeps.electronic_component.diodes_pi3ch480.pi3ch480_qex or correct that row, and confirm the Q (QSOP-16) entry rather than the L (TSSOP-16) or ZD (UQFN 3x3) one"
+  "Diodes Incorporated's PI3CH480 data sheet (Document Number DS40329 Rev 5.2, December 2021, page 8) publishes the Q (QSOP-16) mark \"PI3CH / 480QE_ / ZYWXX\", now carried by extdeps.electronic_component.diodes_pi3ch480.pi3ch480_qex; what remains owing is this position's own marking reading compared with that published mark, which the post-marking-PR identification join performs"
 }
 
 fn e1_unclaimed(designator: NonEmptyStr) -> P4261DesignPosition {

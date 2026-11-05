@@ -99,7 +99,7 @@ fn eam_verdict_of(outcome: NativeCensusModuleOutcome) -> EamVerdict {
       EamRefused {
         reason: d.head.reason,
         at_atom: match d.head.at {
-          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at)
+          NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         }
       }

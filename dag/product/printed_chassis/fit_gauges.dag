@@ -1,9 +1,8 @@
 module product.printed_chassis.fit_gauges
 
 import std.types { String, NonEmptyStr, List }
-import extdeps.standards.micro_atx {
-  MountingLocationId, LocB, LocC, LocH, LocL, LocM, LocR, micro_atx_mounting_locations,
-}
+import extdeps.standards.motherboard_mounting_location { MountingLocationId, LocB, LocC, LocH, LocL, LocM, LocR }
+import extdeps.standards.micro_atx { micro_atx_mounting_locations }
 import extdeps.printing.bambu_lab_a1_mini { a1_mini_build_envelope }
 import product.printed_chassis.standoff_gauge {
   StandoffGaugeAdmission, GaugeAdmitted, GaugeLocationNotEnumerated, GaugeLocationDuplicated,

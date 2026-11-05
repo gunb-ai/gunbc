@@ -313,7 +313,7 @@ data user_work_slice_high_gap: ByteSize = byte_size(1073741824)
 data user_manager_remainder: ByteSize = byte_size(4294967296)
 
 // MemoryMax IS THE POOL APPROPRIATION, not a transcribed GiB. per-slot bytes are
-// gunbc_runner_slot_desired().memory_max (the same ceiling dispatch_worker_memory_max names).
+// gunbc_runner_slot_desired().memory_max (no longer the ceiling dispatch_worker_memory_max names: that is authored separately since 2026-11-04).
 // Slot count is gunbc.live_deploy.user_work_pool_slots -- kept out of this leaf so unit_bounds
 // can import the name here without closing a cycle through roadmap_belt.
 fn user_work_slice_memory_max_of(slots: Nat) -> ByteSize {
