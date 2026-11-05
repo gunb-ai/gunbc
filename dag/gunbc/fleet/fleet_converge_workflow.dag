@@ -973,6 +973,137 @@ data fleet_converge_fleet_ssh_key_modes: List<FleetConvergeWorkflowMode> = filte
 
 data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_ssh_key_modes)
 
+// WHICH MODES CONSUME THE FLEET IDENTITY TOKEN is declared per mode, exhaustively, for the same
+// reason the fleet key is: the credential prelude's `wif_auth` step mints an access token for the
+// fleet-cloud-convergence service account, and a mode whose enabled steps never read
+// `steps.wif_auth.outputs.access_token` must not hold that token (DESIGN section 3c: a dependency
+// is admitted by its consumer; a privileged credential minted for nothing is the dangling red at
+// run time). Before this declaration the step ran for every mode outside the run-scoped rows and
+// three image/allocation modes, so a read-only diagnostic such as host_memory_observe minted the
+// token and discarded it (the effect review of 2026-11-05 at main f08a6ae4e44, ruled on by the
+// fleet admin: no dispatch while that mint stays enabled).
+//
+// THE EVIDENCE FOR THE NOT-CONSUMED ARMS, and its scope. Every job- and step-level `if` of the
+// emitted fleet-converge.yml at f08a6ae4e44 was evaluated for each dispatchable mode, and the
+// fleet-converge job's enabled steps were read for any reference to the token. Twelve modes have
+// none: the three image/allocation modes and hetzner_cloud_server_read (each already excluded, the
+// last signing in through its own granted account), and eight that minted it unused --
+// host_memory_observe, microvm_slot_reserve, microvm_slot_start,
+// mtcollins1_census_qemu_host_observe, mtcollins1_census_qemu_toolchain_converge,
+// workspace_transcript_rate_observe, fabric_writer_identity_observe and boot_medium_reader_probe.
+// None of their enabled steps calls gcloud or a googleapis endpoint either, and the auth action
+// writes no credentials file here (create_credentials_file: false), so nothing can pick the token
+// up implicitly. Every other arm answers Consumed: either an enabled step reads the token (the
+// fleet key materialization reads it to fetch the key, and 27 modes' own steps read it), or the
+// mode was not examined here (the spark modes and the srv1 root mutations, whose jobs do not run
+// this prelude). That is the status quo, not a finding that they need it. The two errors are not
+// symmetric: a NotConsumed arm on a consuming mode strands that step without a token, and it
+// fails loudly at its first secret read, while a Consumed arm on a non-consuming mode only keeps
+// the unused mint this declaration exists to remove. So an arm moves to NotConsumed only on
+// evidence.
+type FleetIdentityDemand = FleetIdentityConsumed | FleetIdentityNotConsumed
+
+fn fleet_converge_mode_fleet_identity_demand(mode: FleetConvergeWorkflowMode) -> FleetIdentityDemand {
+  match mode {
+    OrgActionsObserve => FleetIdentityConsumed
+    OrgRunnerRosterObserve => FleetIdentityConsumed
+    AppKeyVersionVerify => FleetIdentityConsumed
+    R2BucketEnsure => FleetIdentityConsumed
+    R2BucketAdminMint => FleetIdentityConsumed
+    R2WorkspaceObjectReadMint => FleetIdentityConsumed
+    R2WorkspaceObjectWriteMint => FleetIdentityConsumed
+    R2CacheObjectReadMint => FleetIdentityConsumed
+    HetznerCloudServerRead => FleetIdentityNotConsumed
+    ExportHostReaderConverge => FleetIdentityConsumed
+    BootMediumReaderProbe => FleetIdentityNotConsumed
+    FleetKeypairMint => FleetIdentityConsumed
+    FlexPass => FleetIdentityConsumed
+    FlexTemplateEnsure => FleetIdentityConsumed
+    BranchRunGrant => FleetIdentityConsumed
+    QualificationFloor => FleetIdentityConsumed
+    QualificationAttempt => FleetIdentityConsumed
+    R2CacheObjectWriteMint => FleetIdentityConsumed
+    R2ConditionalPutRaceProbe => FleetIdentityConsumed
+    WorkspaceSourcePack => FleetIdentityConsumed
+    WorkspaceCheckpointMeasure => FleetIdentityConsumed
+    WorkspaceCheckpointRestore => FleetIdentityConsumed
+    WorkspaceTranscriptRateObserve => FleetIdentityNotConsumed
+    FullHostPlan => FleetIdentityConsumed
+    LaunchEnvironmentPlan => FleetIdentityConsumed
+    AllocationStorePlan => FleetIdentityConsumed
+    WorkspaceCommissioningPlan => FleetIdentityConsumed
+    WorkspaceAllocationPlan => FleetIdentityNotConsumed
+    WorkspaceImageBuild => FleetIdentityNotConsumed
+    RevisionJobImageBuild => FleetIdentityNotConsumed
+    FleetApply => FleetIdentityConsumed
+    AppControlPlaneObserve => FleetIdentityConsumed
+    MicrovmHostConverge => FleetIdentityConsumed
+    MicrovmNetworkObserve => FleetIdentityConsumed
+    MicrovmNetworkApply => FleetIdentityConsumed
+    GuestImageObserve => FleetIdentityConsumed
+    GuestImageConverge => FleetIdentityConsumed
+    MicrovmBootProbe => FleetIdentityConsumed
+    SparkGrants => FleetIdentityConsumed
+    SparkBootstrap => FleetIdentityConsumed
+    SparkServingApply => FleetIdentityConsumed
+    SparkNativeServingApply => FleetIdentityConsumed
+    SparkRuntimeImageProbe => FleetIdentityConsumed
+    SparkWirelessLinkConverge => FleetIdentityConsumed
+    SparkGrantsObserve => FleetIdentityConsumed
+    Srv1RootMutation(mode) => FleetIdentityConsumed
+    MicrovmSlotReserve => FleetIdentityNotConsumed
+    MicrovmSlotStart => FleetIdentityNotConsumed
+    RlmLaunchDeploymentReceipt => FleetIdentityConsumed
+    HostResetReturn => FleetIdentityConsumed
+    RunnerHostFileObserve => FleetIdentityConsumed
+    HostMemoryObserve => FleetIdentityNotConsumed
+    RunnerHostFileConverge => FleetIdentityConsumed
+    HostPrimaryNetworkObserve => FleetIdentityConsumed
+    HostPrimaryNetworkConverge => FleetIdentityConsumed
+    BoardFunctionConverge => FleetIdentityConsumed
+    RunnerHostWithdraw => FleetIdentityConsumed
+    RunnerHostRestore => FleetIdentityConsumed
+    SitePxeEdgeObserve => FleetIdentityConsumed
+    SitePxeEdgeConverge => FleetIdentityConsumed
+    RunnerPasswordSessionToolConverge => FleetIdentityConsumed
+    RunnerBrowserToolchainConverge => FleetIdentityConsumed
+    RunnerUserSessionConverge => FleetIdentityConsumed
+    RunnerGpuContainerToolchainConverge => FleetIdentityConsumed
+    HostCredentialCustodyConverge => FleetIdentityConsumed
+    R2MintPreflight => FleetIdentityConsumed
+    R2ObjectWriteMint => FleetIdentityConsumed
+    ApprovalKeyringConverge => FleetIdentityConsumed
+    MtCollins1Boot => FleetIdentityConsumed
+    MtCollins1FanObserve => FleetIdentityConsumed
+    MtCollins1KvmObserverObserve => FleetIdentityConsumed
+    FabricWriterIdentityObserve => FleetIdentityNotConsumed
+    MtCollins1CensusImagePublish => FleetIdentityConsumed
+    MtCollins1RunnerImagePublish => FleetIdentityConsumed
+    MtCollins1CensusMemberReadback => FleetIdentityConsumed
+    MtCollins1CensusQemuHostObserve => FleetIdentityNotConsumed
+    MtCollins1CensusQemuToolchainConverge => FleetIdentityNotConsumed
+    MicrovmRunnerGroupEnsure => FleetIdentityConsumed
+    ServiceRunnerLostBootSweep => FleetIdentityConsumed
+    ServiceRunnerLostBootSweepDryRun => FleetIdentityConsumed
+    GcpIamConverge => FleetIdentityConsumed
+    NamecheapObserve => FleetIdentityConsumed
+    ReviewSheetConverge => FleetIdentityConsumed
+    ArrivalConverge => FleetIdentityConsumed
+    PrinterWorkflow => FleetIdentityConsumed
+  }
+}
+
+fn fleet_identity_demand_consumed(d: FleetIdentityDemand) -> Bool {
+  match d {
+    FleetIdentityConsumed => true
+    FleetIdentityNotConsumed => false
+  }
+}
+
+data fleet_converge_fleet_identity_modes: List<FleetConvergeWorkflowMode> = filter(fleet_converge_workflow_modes, m => fleet_identity_demand_consumed(d: fleet_converge_mode_fleet_identity_demand(mode: m)))
+
+data fleet_converge_fleet_identity_consumer_step_if: String = fleet_converge_any_mode_step_if(modes: fleet_converge_fleet_identity_modes)
+
 data fleet_converge_spark_target_modes: List<FleetConvergeWorkflowMode> = [
   SparkGrants,
   SparkBootstrap,
@@ -5616,7 +5747,7 @@ fn fleet_converge_credential_prelude_steps() -> List<Step> {
     [
       ci_release_bins_download_step(),
       ci_release_bins_unpack_verify_step_for(pair_modes: fleet_converge_compiler_pair_mode_wires()),
-      fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && !("), concat(fleet_converge_any_mode_step_if(modes: [WorkspaceImageBuild, RevisionJobImageBuild, WorkspaceAllocationPlan]), ")"))),
+      fleet_converge_fleet_identity_auth_step(if_condition: concat(concat(fleet_converge_fleet_identity_step_if, " && ("), concat(fleet_converge_fleet_identity_consumer_step_if, ")"))),
     ],
     concat(
       fleet_converge_granted_account_auth_steps(),

@@ -1,0 +1,107 @@
+module test.claim.fleet.fleet_identity_demand_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_job, fleet_converge_workflow_modes,
+  fleet_converge_mode_fleet_identity_demand, FleetIdentityConsumed, FleetIdentityNotConsumed,
+  fleet_converge_fleet_identity_modes, fleet_converge_fleet_identity_consumer_step_if,
+  fleet_converge_fleet_identity_step_if, fleet_converge_fleet_ssh_key_modes, fleet_converge_mode_step_if,
+  FleetConvergeWorkflowMode, HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart,
+  MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve,
+  FabricWriterIdentityObserve, BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild,
+  RevisionJobImageBuild, HetznerCloudServerRead, FullHostPlan, OrgActionsObserve, R2MintPreflight,
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { YamlString }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The one expression every fleet-identity consumer reads (gunbc.fleet.fleet_workflow_steps names the
+// step `wif_auth` so every consumer's env reads it).
+data fleet_identity_token_expression: String = "${{ steps.wif_auth.outputs.access_token }}"
+
+fn step_id_of(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn step_if_of(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn step_reads_fleet_identity_token(s: Step) -> Bool {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: e, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => any(kvs, x => match x.value { YamlString { value: v } => v == fleet_identity_token_expression  _ => false })
+        Absent => false
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: e, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      match e {
+        Present { value: kvs } => any(kvs, x => match x.value { YamlString { value: v } => v == fleet_identity_token_expression  _ => false })
+        Absent => false
+      }
+  }
+}
+
+fn fleet_auth_steps() -> List<Step> {
+  filter(fleet_converge_job().steps, s => step_id_of(s: s) == "wif_auth")
+}
+
+data not_consumed_modes: List<FleetConvergeWorkflowMode> = [
+  HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart, MtCollins1CensusQemuHostObserve,
+  MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve,
+  BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
+  HetznerCloudServerRead,
+]
+
+// THE DIAGNOSTIC THAT PROMPTED THIS: a host_memory_observe dispatch must not mint the fleet token. RED
+// if its arm is Consumed, or if the mode reaches the derived consumer roster by any other route.
+test fn host_memory_observe_does_not_mint_the_fleet_identity() -> Bool {
+  fleet_converge_mode_fleet_identity_demand(mode: HostMemoryObserve) == FleetIdentityNotConsumed
+    && !fleet_converge_fleet_identity_modes.contains(HostMemoryObserve)
+}
+
+// EVERY EVIDENCED NON-CONSUMER is off the roster, and nothing else is: the roster is exactly the
+// modes minus these twelve, so a thirteenth arm moved to NotConsumed without evidence goes red here.
+test fn the_twelve_evidenced_non_consumers_and_only_they_are_off_the_roster() -> Bool {
+  all(not_consumed_modes, m => !fleet_converge_fleet_identity_modes.contains(m))
+    && fleet_converge_fleet_identity_modes.length() + not_consumed_modes.length() == fleet_converge_workflow_modes.length()
+}
+
+// CONSUMERS KEEP THE MINT: the fleet key materialization reads the token to fetch the key, so every
+// key-consuming mode is a fleet-identity consumer (RED: any key mode declared NotConsumed would strand
+// the key step). A mode whose own step reads it (org_actions_observe, r2_mint_preflight) keeps it too.
+test fn every_fleet_key_mode_and_the_own_step_readers_keep_the_mint() -> Bool {
+  all(fleet_converge_fleet_ssh_key_modes, m => fleet_converge_fleet_identity_modes.contains(m))
+    && fleet_converge_fleet_identity_modes.contains(FullHostPlan)
+    && fleet_converge_fleet_identity_modes.contains(OrgActionsObserve)
+    && fleet_converge_fleet_identity_modes.contains(R2MintPreflight)
+}
+
+// NO TOKEN READER IS GATED ON A NOT-CONSUMED MODE ALONE: a step that reads the token and runs for
+// exactly one mode must run for a consuming one. This is the step-side half of the join; it reads
+// the job the workflow is emitted from, not a copy.
+test fn no_single_mode_token_reader_is_gated_on_a_non_consumer() -> Bool {
+  let readers = filter(fleet_converge_job().steps, s => step_reads_fleet_identity_token(s: s))
+  readers.length() > 0
+    && all(readers, s => all(not_consumed_modes, m => step_if_of(s: s) != fleet_converge_mode_step_if(mode: m)))
+}
+
+// THE EMITTED STEP IS THE DERIVATION: exactly one fleet auth step in the job, and its condition is
+// the run-scoped exclusion conjoined with the consumer roster, nothing hand-written beside it.
+test fn the_emitted_auth_step_is_gated_on_the_consumer_roster() -> Bool {
+  let auth = fleet_auth_steps()
+  auth.length() == 1
+    && match auth.first() {
+      Present { value: s } => step_if_of(s: s) == concat(concat(fleet_converge_fleet_identity_step_if, " && ("), concat(fleet_converge_fleet_identity_consumer_step_if, ")"))
+      Absent => false
+    }
+}
