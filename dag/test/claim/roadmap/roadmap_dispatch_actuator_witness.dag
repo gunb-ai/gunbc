@@ -1,7 +1,7 @@
 module test.claim.roadmap.roadmap_dispatch_actuator_witness
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptAuditEvents, AttemptDirectoryPublication, AttemptDirectoryRoot, AttemptDirectoryWire, AttemptWorkerEvents, AttemptWorkerLog, attempt_state_directory_text, attempt_state_text , attempt_log_member_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider }
+import gunbc.roadmap.dispatch_worker_unit_confinement { ClaudeCodeProvider, CodexDispatchProvider, GunbcHarnessProvider }
 import gunbc.roadmap.roadmap_sizing {
   NodeSizing, IntricacyHigh, IntricacyLow, VolumeLarge, VolumeSmall,
 }
