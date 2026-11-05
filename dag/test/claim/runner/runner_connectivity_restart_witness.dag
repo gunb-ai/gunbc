@@ -14,7 +14,7 @@ import gunbc.fleet.fleet_runner_connectivity {
 import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
 import gunbc.runner.runner_connectivity_restart {
   RestartLegDecision, RestartLegPermit, RestartLegRefuse,
-  restart_leg_decision, restart_leg_permits,
+  restart_leg_decision,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,7 +57,6 @@ test fn detached_and_orphaned_restart_without_a_lost_agent() -> Bool {
 // read lands), and an unexpected registration each REFUSE -- the gate is not simply "not healthy."
 test fn healthy_is_never_restarted() -> Bool {
   !permitted(d: restart_leg_decision(verdict: healthy(), lost: not_lost()))
-    && !restart_leg_permits(decision: restart_leg_decision(verdict: healthy(), lost: not_lost()))
 }
 
 test fn labels_diverge_is_a_relabel_not_a_restart() -> Bool {
@@ -103,10 +102,4 @@ test fn a_refused_lost_agent_read_confers_no_permission() -> Bool {
 // is not a local slot -- there is no slot to take.
 test fn a_lost_agent_cannot_reclaim_an_unexpected_registration() -> Bool {
   !permitted(d: restart_leg_decision(verdict: unexpected(), lost: lost()))
-}
-
-// POSITIVE CONTROL on the convenience predicate.
-test fn the_permits_predicate_agrees_with_the_decision() -> Bool {
-  restart_leg_permits(decision: RestartLegPermit { slot: slot(idx: 7), why: "x" as NonEmptyStr })
-    && !restart_leg_permits(decision: RestartLegRefuse { why: "x" as NonEmptyStr })
 }

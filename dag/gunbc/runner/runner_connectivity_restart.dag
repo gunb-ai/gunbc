@@ -1,6 +1,6 @@
 module gunbc.runner.runner_connectivity_restart
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { String, NonEmptyStr }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import gunbc.fleet.fleet_runner_connectivity {
   RunnerSlotConnectivityVerdict, RunnerSlotIdentity,
@@ -56,12 +56,5 @@ fn restart_leg_decision(verdict: RunnerSlotConnectivityVerdict, lost: LostAgentO
       RestartLegRefuse { why: concat("the slot's connectivity is unknown, not actionable, and could-not-see is never a permission that a slot-less lost-agent read can supply: ", r) }
     SlotConnectivityUnexpectedRegistration { registration_id: _, registration_name: _, decoded: _ } =>
       RestartLegRefuse { why: "the registration is not a local slot; there is nothing here to restart" }
-  }
-}
-
-fn restart_leg_permits(decision: RestartLegDecision) -> Bool {
-  match decision {
-    RestartLegPermit { slot: _, why: _ } => True
-    RestartLegRefuse { why: _ } => False
   }
 }
