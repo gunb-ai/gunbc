@@ -6443,14 +6443,20 @@ fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>)
   count(source) == count(installed) && tree_hash_lines(entries: source) == tree_hash_lines(entries: installed)
 }
 
-// Every ancestor directory of every file, parents before children (bytewise sort puts a prefix first).
-fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
-  let all = flat_map(files, f => tree_path_prefixes(path: f.path))
-  // sorted, so duplicates are adjacent: compare with the last kept entry only
-  let walked = fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+// ONE SORTED UNIQUE SPELLING FOR A LIST OF TREE PATHS: parents before children (the total order
+// puts a prefix first), duplicates adjacent and dropped by comparing with the last kept entry only.
+// Every enumeration that must create or compare directories walks THIS spine -- the file ancestors
+// and the metadata entries below cannot drift apart in ordering or dedup discipline (§3).
+fn tree_sorted_unique_paths(xs: List<String>) -> List<String> {
+  let walked = fold(list_sort_by_key(xs: xs, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
     if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
   )
   walked.out
+}
+
+// Every ancestor directory of every file, parents before children (bytewise sort puts a prefix first).
+fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
+  tree_sorted_unique_paths(xs: flat_map(files, f => tree_path_prefixes(path: f.path)))
 }
 
 type TreeDedupWalk {
@@ -6607,7 +6613,7 @@ fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWa
 // parser's does. The starting point's own row (find %P prints the empty string for it) is not an
 // entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
 fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetadataEntry> {
-  if string_length(s: line) == 0 || starts_with(s: line, prefix: "|") {
+  if line.length() == 0 || starts_with(s: line, prefix: "|") {
     Absent
   } else {
     match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
@@ -6615,15 +6621,15 @@ fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetada
       Present { value: f } =>
         if !tree_metadata_text_is_octal_digits(text: f.mode)
           || !tree_metadata_text_is_octal_digits(text: f.size)
-          || string_length(s: f.rel) == 0
-          || string_length(s: f.owner) == 0
-          || string_length(s: f.group) == 0 {
+          || f.rel.length() == 0
+          || f.owner.length() == 0
+          || f.group.length() == 0 {
           Absent
         } else {
           match f.kind {
             "f" => Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: RegularEntryKind, mode: f.mode, owner: f.owner, group: f.group } }
             "d" => Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: DirectoryEntryKind, mode: f.mode, owner: f.owner, group: f.group } }
-            "l" => if string_length(s: f.target) == 0 { Absent } else { Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: SymlinkEntryKind { target: f.target }, mode: f.mode, owner: f.owner, group: f.group } } }
+            "l" => if f.target.length() == 0 { Absent } else { Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: SymlinkEntryKind { target: f.target }, mode: f.mode, owner: f.owner, group: f.group } } }
             _ => Absent
           }
         }
@@ -6721,7 +6727,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
             if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
               let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
-              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
+              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if l.length() > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
               if lines != count(parsed) {
                 TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as <rel>|<type>|<mode>|<owner>|<group>|<size>|<link>; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
               } else { TreeMetadataObserved { entries: concat(es, parsed) } }
@@ -6737,21 +6743,12 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 // and the old enumeration never made it, so the link's own step died on a missing parent. Deduped on
 // the sorted spine.
 fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadataEntry>) -> List<String> {
-  let from_files = tree_ancestor_directories(files: files)
-  let from_entries = fold(metadata, init: [], f: (acc, e) => concat(acc, tree_path_prefixes(path: e.path)))
-  let sorted_paths = list_sort_by_key(xs: concat(from_files, from_entries), key: p => p, order: tree_path_total_order)
-  let walked = fold(sorted_paths, init: TreePathDedupWalk { kept: [], last: Absent }, f: (w, p) =>
-    match w.last {
-      Present { value: l } => if l == p { TreePathDedupWalk { kept: w.kept, last: Present { value: l } } } else { TreePathDedupWalk { kept: concat(w.kept, [p]), last: Present { value: p } } }
-      Absent => TreePathDedupWalk { kept: concat(w.kept, [p]), last: Present { value: p } }
-    }
-  )
-  walked.kept
-}
-
-type TreePathDedupWalk {
-  kept: List<String>
-  last: Optional<String>
+  let from_files = flat_map(files, f => tree_path_prefixes(path: f.path))
+  let from_entries = flat_map(metadata, e => match e.kind {
+    DirectoryEntryKind => list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path)
+    _ => tree_path_prefixes(path: e.path)
+  })
+  tree_sorted_unique_paths(xs: concat(from_files, from_entries))
 }
 
 // THE SOURCES' SYMBOLIC LINKS, in the order the metadata read gave them (they are written after the
