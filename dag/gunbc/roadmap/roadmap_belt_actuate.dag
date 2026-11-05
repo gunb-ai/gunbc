@@ -15401,6 +15401,7 @@ fn belt_attempt_obligation_receipt_read(instance: HostDashboardInstance, node_id
 type BeltExitDrainEntry
   = BeltExitEntryHanded { entry: String, enqueue: BeltObligationEnqueue }
   | BeltExitEntryClaimed { entry: String }
+  | BeltExitObligationEnded { entry: String }
   | BeltExitEntryRefused { entry: String, reason: String }
   | BeltExitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
@@ -15508,9 +15509,14 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
   }
 }
 
+// THE CONSUME IS THE OBLIGATION UNIT'S OWN END OBSERVATION: it lands only after the user manager said the unit is
+// absent or finished, so it is typed (BeltExitObligationEnded) and owes the seat-discharge pass through the launch
+// obligation. Before this, a killed obligation's exit was routed as a rescue that answered nothing, so a seat the
+// obligation held was never visited (srv1, 2026-11-04: charged for four hours). No age, no doubt: an active or
+// unreadable unit returns before this point and owes nothing.
 fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitInbox, AttemptExitDone) {
-    Absent => [] as List<BeltExitDrainEntry>
+    Absent => [BeltExitObligationEnded { entry: entry }]
     Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitDone }, cause: why }]
   }
 }
@@ -15536,9 +15542,13 @@ fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltOb
         BeltExitEntryClaimed { entry } => belt_exit_entry_is_worker(entry: entry)
         _ => false
       })
+      let obligation_ended = any(rescued, r => match r {
+        BeltExitObligationEnded { entry: _ } => true
+        _ => false
+      })
       BeltExitDrained {
         entries: concat(concat(reconciled, rescued), concat(claims, swept)),
-        launch: if claimed_a_worker { Present { value: launch() } } else { none },
+        launch: if claimed_a_worker || obligation_ended { Present { value: launch() } } else { none },
       }
     }
   }
@@ -15557,6 +15567,7 @@ fn belt_exit_drain_entry_json(e: BeltExitDrainEntry) -> JsonValue {
   match e {
     BeltExitEntryHanded { entry, enqueue } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "handed", value: belt_obligation_enqueue_json(e: enqueue))])
     BeltExitEntryClaimed { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "claimed", value: json_string(s: "queued"))])
+    BeltExitObligationEnded { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "obligation_ended", value: json_string(s: "done"))])
     BeltExitEntryRefused { entry, reason } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "refused", value: json_string(s: reason))])
     BeltExitEntryUnmovable { entry, step, cause } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "unmovable", value: json_object(members: [json_kv(key: "step", value: json_string(s: spool_stall_step_text(step: step))), json_kv(key: "cause", value: json_string(s: cause))]))])
   }
@@ -15584,6 +15595,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
           BeltExitEntryRefused { entry, reason } => [join([entry, ": ", reason], "")]
           BeltExitEntryUnmovable { entry, step, cause } => [join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays on disk): ", cause], "")]
           BeltExitEntryClaimed { entry: _ } => [] as List<String>
+          BeltExitObligationEnded { entry: _ } => [] as List<String>
           BeltExitEntryHanded { entry: _, enqueue: _ } => [] as List<String>
         }),
         match launch {
@@ -15614,6 +15626,7 @@ fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
     BeltExitDrained { entries, launch: _ } => {
       let claimed = entries |> filter(e => match e {
         BeltExitEntryClaimed { entry: _ } => true
+        BeltExitObligationEnded { entry: _ } => true
         _ => false
       })
       let unmovable = entries |> flat_map(e => match e {
