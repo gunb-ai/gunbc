@@ -1,0 +1,1 @@
+{"id": "119c70ba64c08671", "event": {"schema": "roadmap-event/v3", "node": "fleet-state-frontier-closing-contract", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "2dd035b02ac85e25", "kind": "claimed", "recorded_at": "2026-11-05T16:17:43Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
