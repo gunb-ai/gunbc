@@ -211,6 +211,15 @@ pub use demand_acquire::{
 };
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+
+/// The `slot-watchdog` verb's host realization: the loop, the kill and the receipt are
+/// `required_regen_host::run_slot_watchdog`; the verdict and every number are the authority's.
+pub fn run_slot_watchdog_verb(slot_cgroup: String, source_roots: Vec<String>) -> i32 {
+    required_regen_host::run_slot_watchdog(required_regen_host::SlotWatchdogConfig {
+        slot_cgroup: std::path::PathBuf::from(slot_cgroup),
+        source_roots,
+    })
+}
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
 // the emitted crate's exported surface is unchanged; the obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.

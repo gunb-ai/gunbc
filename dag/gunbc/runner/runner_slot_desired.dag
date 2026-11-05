@@ -269,3 +269,19 @@ data gunbc_runner_slot_watchdog_user_cpu_share_floor: BasisPoint = basis_point(c
 // The whole window the two conditions must hold over. Short enough that a livelock dies in minutes,
 // long enough that a startup or allocation burst (seconds) cannot fill it.
 data gunbc_runner_slot_watchdog_window_minimum_wall: Millisecond = millisecond(count: 120000)
+
+// THE WATCHDOG'S CLOCK AND ITS KILL GRACE, rows the unit's host verb reads through
+// gunbc.host.memory_stall_refusal rather than carrying in Rust or argv. The sample interval is a
+// fifth of the window so the baseline the verdict differences is within 20% of the minimum;
+// the grace is how long the job tree is given between SIGTERM and SIGKILL. Policy, no specimen: the
+// srv1 run-4 stall held its text-refault loop for minutes, so a 10 s sample and 15 s grace cost the
+// livelock nothing and a healthy step's cleanup (cargo, rustc) its normal exit.
+data gunbc_runner_slot_watchdog_sample_interval: Millisecond = millisecond(count: 10000)
+
+data gunbc_runner_slot_watchdog_term_grace: Millisecond = millisecond(count: 15000)
+
+// WHERE THE REFUSAL RECEIPT LANDS: one file per slot, named for the slot's cgroup leaf, under a
+// tmpfs directory the watchdog's own unit owns (RuntimeDirectory). The CI failure class reads the
+// receipt's first token, MemoryStallRefusedReclaimLivelock, and classes it Structural: the overrun
+// is the subject's.
+data gunbc_runner_slot_watchdog_receipt_dir: String = "/run/gunbc-slot-watchdog"

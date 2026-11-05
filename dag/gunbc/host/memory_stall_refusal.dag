@@ -9,6 +9,9 @@ import gunbc.runner.runner_slot_desired {
   gunbc_runner_slot_watchdog_envelope_event_rate_line,
   gunbc_runner_slot_watchdog_user_cpu_share_floor,
   gunbc_runner_slot_watchdog_window_minimum_wall,
+  gunbc_runner_slot_watchdog_sample_interval,
+  gunbc_runner_slot_watchdog_term_grace,
+  gunbc_runner_slot_watchdog_receipt_dir,
 }
 import std.optional { Present, Absent }
 import std.measure {
@@ -607,4 +610,23 @@ fn supervised_slot_verdict(w: SupervisedSubjectWindow) -> SupervisedSubjectVerdi
     Present { value: livelock } => livelock
     Absent => supervised_subject_verdict(w: w)
   }
+}
+
+// THE HOST VERB'S SHAPE, ASKED OF THE AUTHORITY: the seed reads these four answers through the
+// interpreter, so no number or path is restated in Rust or on the unit's argv. The baseline window
+// is the livelock arm's own minimum wall.
+fn supervised_slot_baseline_window_ms() -> Int {
+  millisecond_count(m: gunbc_runner_slot_watchdog_window_minimum_wall)
+}
+
+fn supervised_slot_sample_interval_ms() -> Int {
+  millisecond_count(m: gunbc_runner_slot_watchdog_sample_interval)
+}
+
+fn supervised_slot_term_grace_ms() -> Int {
+  millisecond_count(m: gunbc_runner_slot_watchdog_term_grace)
+}
+
+fn supervised_slot_receipt_dir() -> String {
+  gunbc_runner_slot_watchdog_receipt_dir
 }

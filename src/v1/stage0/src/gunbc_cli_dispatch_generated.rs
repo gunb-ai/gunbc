@@ -113,6 +113,19 @@ pub enum Commands {
         #[arg(value_name = "TARGET_PATTERN")]
         target: String,
     },
+    /// Watch one runner slot's cgroup for a reclaim livelock and end the job's process tree
+    /// when gunbc.host.memory_stall_refusal supervised_slot_verdict refuses. Takes no threshold:
+    /// the verdict, its clock, its grace and its receipt directory are the authority's rows
+    /// (gunbc.runner.runner_slot_desired). Kills every cgroup member except the Runner.Listener
+    /// and its ancestors; refuses to choose survivors where no Listener is found.
+    SlotWatchdog {
+        /// Source root directories the verdict authority is loaded from.
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
+        /// The slot's cgroup v2 directory, for example /sys/fs/cgroup/system-actions-runner.slice/actions-runner@srv1-01.service.
+        #[arg(long)]
+        slot_cgroup: String,
+    },
 }
 
 pub trait CliDispatchHost {
@@ -136,6 +149,7 @@ pub trait CliDispatchHost {
         args: Vec<String>,
     ) -> !;
     fn invoke_bound_target_producer(&self, target: String) -> !;
+    fn slot_watchdog_verb(&self, source_roots: Vec<String>, slot_cgroup: String) -> !;
 }
 
 pub fn dispatch<H: CliDispatchHost>(
@@ -224,5 +238,12 @@ pub fn dispatch<H: CliDispatchHost>(
         (Commands::Test { target }, _) => {
             __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
         }
+        (
+            Commands::SlotWatchdog {
+                source_roots,
+                slot_cgroup,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.slot_watchdog_verb(source_roots, slot_cgroup),
     }
 }

@@ -711,6 +711,38 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       options: [],
       realization: CliInvokesBoundTargetProducer,
       emission: CarriedByGeneratedDispatch
+    },
+    CliSubcommandRow {
+      verb: "slot-watchdog",
+      variant: "SlotWatchdog",
+      doc: [
+        "Watch one runner slot's cgroup for a reclaim livelock and end the job's process tree",
+        "when gunbc.host.memory_stall_refusal supervised_slot_verdict refuses. Takes no threshold:",
+        "the verdict, its clock, its grace and its receipt directory are the authority's rows",
+        "(gunbc.runner.runner_slot_desired). Kills every cgroup member except the Runner.Listener",
+        "and its ancestors; refuses to choose survivors where no Listener is found."
+      ],
+      operands: [],
+      options: [
+        CliOptionRow {
+          field: "source_roots",
+          long: "source-root",
+          value: CliTextValue { text_default: none },
+          arity: CliRepeated,
+          doc: ["Source root directories the verdict authority is loaded from."],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "slot_cgroup",
+          long: "slot-cgroup",
+          value: CliTextValue { text_default: none },
+          arity: CliRequired,
+          doc: ["The slot's cgroup v2 directory, for example /sys/fs/cgroup/system-actions-runner.slice/actions-runner@srv1-01.service."],
+          emission: CarriedByGeneratedDispatch
+        }
+      ],
+      realization: CliDelegatesToHostFn { symbol: "slot_watchdog_verb" },
+      emission: CarriedByGeneratedDispatch
     }
   ]
 }
