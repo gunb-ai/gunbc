@@ -144,20 +144,29 @@ type RoundOneMirrorAuthority
   = FromBaseMirror {
       commit: NonEmptyStr,
       crate_paths: Nat,
-      head_added_paths_kept: Nat
+      head_added_paths_kept: Nat,
+      head_deleted_paths: Nat
     }
   | SeedBuiltFromHead
 
 fn regen_round_base_mirror_line(authority: RoundOneMirrorAuthority) -> String {
   match authority {
-    FromBaseMirror { commit: c, crate_paths: n, head_added_paths_kept: k } =>
+    FromBaseMirror {
+      commit: c,
+      crate_paths: n,
+      head_added_paths_kept: k,
+      head_deleted_paths: d
+    } =>
       concat(
         concat(
           concat(
             concat(concat("regen-round-cost: base_mirror_commit=", c), concat(" crate=", crate_under_authority())),
             concat(" crate_paths=", to_string(n))
           ),
-          concat(" head_added_paths_kept=", to_string(k))
+          concat(
+            concat(" head_added_paths_kept=", to_string(k)),
+            concat(" head_deleted_paths=", to_string(d))
+          )
         ),
         "\n"
       )
@@ -171,7 +180,13 @@ fn regen_round_base_mirror_line(authority: RoundOneMirrorAuthority) -> String {
 // was the whole subject, which is the reading that hid the base/head chimera (RFM
 // `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`). The count of head-added
 // paths is recorded too, because a path base never had stays at the head, and that is exactly
-// where a new hand-written call to a new generated method lives.
+// where a new hand-written call to a new generated method lives. And `head_deleted_paths` counts the
+// paths BASE tracks that the HEAD does not -- the paths the change DELETED. Round 1 restores them so
+// the crate it compiles is base's crate rather than a base/head chimera, and the journal's
+// `AbsentBeforeInstall` entries remove them again before anything is published. Before this count
+// existed the receipt could not show that delta at all: PR #15418's receipt printed `paths=300` while
+// base tracked 303 crate paths, and the hidden paths are the ones rustc then reported as
+// `error[E0583]: file not found for module`.
 fn crate_under_authority() -> String {
   "src/v1/stage0"
 }
