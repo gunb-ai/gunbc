@@ -150,10 +150,12 @@ final class AppState: ObservableObject {
                 let client = try requireClient()
                 let push = registration(client.config, desired)
                 let body = WireEncode.pushUpdate(push)
-                let requestedAt = Self.now()
-                let auth = try await assertion(e, requestedAt: requestedAt,
-                                               clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
-                try await client.updatePush(push, auth)
+                try await signedInOrder {
+                    let requestedAt = Self.now()
+                    let auth = try await self.assertion(e, requestedAt: requestedAt,
+                                                        clientData: devicePushUpdateClientData(enrollmentId: e.enrollment_id, requestedAt: requestedAt, pushBodyJson: body))
+                    try await client.updatePush(push, auth)
+                }
                 // Record success only if the token is STILL desired and the enrolment the update
                 // was made for is STILL the current one; otherwise loop and re-derive.
                 guard apnsToken == desired, case .enrolled(var now) = state, now.enrollment_id == e.enrollment_id,
@@ -250,6 +252,28 @@ final class AppState: ObservableObject {
         }
     }
 
+    // ── Signed requests, one at a time ───────────────────────────────────────────────────────
+    /// Every request carries an App Attest assertion, and the broker admits an assertion only if its
+    /// counter exceeds the last one it admitted (gunbc.auth.approval_assertion_counter): anything at
+    /// or below is refused as a replay. The counter is fixed when the assertion is made, so two
+    /// requests in flight at once could arrive out of order and the later-made one refuse the
+    /// earlier -- the intermittent "assertion counter 351 does not exceed the last admitted 352: a
+    /// replay" seen on 2026-11-05 when a pull-to-refresh overlapped another re-list. So making the
+    /// assertion and sending it is ONE step, and the steps run one at a time in the order they were
+    /// asked for. Each runs in its own task rather than the caller's, so a view that goes away no
+    /// longer cancels a request it already signed (those surfaced as "server unreached ... cancelled").
+    private var signedTail: Task<Void, Never>?
+
+    private func signedInOrder<T: Sendable>(_ step: @escaping @MainActor @Sendable () async throws -> T) async throws -> T {
+        let previous = signedTail
+        let task = Task { @MainActor () async throws -> T in
+            await previous?.value
+            return try await step()
+        }
+        signedTail = Task { _ = try? await task.value }
+        return try await task.value
+    }
+
     // ── Authenticated reads ──────────────────────────────────────────────────────────────────
     /// An App Attest assertion over device_read_client_data for this path, now. No Face ID: reading
     /// is not deciding. requested_at is a Timestamp in the .dag's spelling (RFC 3339, UTC, seconds).
@@ -280,7 +304,8 @@ final class AppState: ObservableObject {
         if Demo.on { return try await Demo.fetch(escalationId) }
         #endif
         let path = Route.request(escalationId)
-        return try await requireClient().fetch(path, try await readAuth(path: path))
+        let client = try requireClient()
+        return try await signedInOrder { try await client.fetch(path, try await self.readAuth(path: path)) }
     }
 
     // ── Inbox ────────────────────────────────────────────────────────────────────────────────
@@ -303,7 +328,8 @@ final class AppState: ObservableObject {
         }
         #endif
         do {
-            let fresh = try await requireClient().pending(try await readAuth(path: Route.pending))
+            let client = try requireClient()
+            let fresh = try await signedInOrder { try await client.pending(try await self.readAuth(path: Route.pending)) }
             let changed = fresh != pending
             pending = fresh
             record(.inboxRefresh, .succeeded)
@@ -345,8 +371,10 @@ final class AppState: ObservableObject {
             throw k
         }
         let signature = try DecisionKey.sign(key, bytes)
-        let proof = try await AppAttest.assert(keyId: e.attest_key_id, clientData: bytes)
-        let outcome = try await client.redeem(SignedRedemption(signing_input: input, signature: signature, platform_proof: proof))
+        let outcome = try await signedInOrder {
+            let proof = try await AppAttest.assert(keyId: e.attest_key_id, clientData: bytes)
+            return try await client.redeem(SignedRedemption(signing_input: input, signature: signature, platform_proof: proof))
+        }
         // DeviceRedemptionOutcome arms that end this enrolment's authority, by their wire name.
         if outcome.outcome == OutcomeName.enrollmentRevoked || outcome.outcome == OutcomeName.enrollmentUnknown {
             try transition(.revoked(e, reason: outcome.message))
