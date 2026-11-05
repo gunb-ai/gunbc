@@ -2989,13 +2989,13 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Record, map and construct literals elaborate from what the author wrote",
-          boundary: "The MQ track: anonymous record literals (#12740), construct tags as declaration references (#12714), carets (#12420), list literals (#12208), fold encoding (#12550 open), maps (#12758 open).",
+          boundary: "The MQ track: anonymous record literals (#12740), construct tags as declaration references (#12714), carets (#12420), list literals (#12208), fold encoding (#12550), maps (#12758) and #12759, all merged 2026-09-30 to 2026-10-01. What remains is the residue those PRs did not close, to be named by the owner.",
           displaced_cost: "An unelaborated literal refuses its whole file, and importers then fail as unbound.",
-          first_slice: "Land #12550 and #12758.",
-          red_control: "A map literal with duplicate keys of an extensional key type refuses (keys domain, std.algebra algebra_profile_equality_extensional).",
+          first_slice: "Name the remaining literal-elaboration residue after the merged MQ PRs, or retire the node.",
+          red_control: "A map literal with kernel-String keys and a duplicate refuses at the second occurrence, compared over decoded text (v2.compiler.resolve resolve_map_key_type_is_string_literal_type admits only kernel String keys). The equality-profile requirement applies when key-type confinement is lifted, gated on gunbc.rung_drop native_equality_operand_judgment.",
           out_of_scope: "Core type merges.",
-          handback: "The plans' remaining PRs merged, with the specimens green."
-        ), on: "2026-09-30", note: "Not yet centered: #12758 and #12550 in review.")),
+          handback: "The residue named and its PRs merged with specimens green, or the node retired."
+        ), on: "2026-09-30", note: "Ticket text corrected: the MQ PRs it named as open have merged.")),
       parent: in_project(project: "v2-frontend", contribution: "Literals and constructs elaborated from their annotation is what lets the std files the native seven import ingest at all."),
     ),
     roadmap_node(
