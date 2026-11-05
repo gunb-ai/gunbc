@@ -1,6 +1,6 @@
 module gunbc.live_deploy.serve_binary
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { String, NonEmptyStr }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, DashboardServeBinaryOrigin, dashboard_instance_serve_binary_origin, dashboard_instance_apply_workdir }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionNotInstalled, release_locus_binary_path }
 
