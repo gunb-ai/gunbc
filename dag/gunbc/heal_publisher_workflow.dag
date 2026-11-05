@@ -149,7 +149,7 @@ data heal_publisher_round_outcome_file: String = heal_publisher_round_outcome_di
 // take the else arm.
 data heal_publisher_trigger_conclusion_env_name: String = "HEAL_TRIGGER_RUN_CONCLUSION"
 
-fn heal_publisher_trigger_conclusion_env() -> List<Kv> {
+fn heal_publisher_trigger_conclusion_env() -> List<YamlKeyValue> {
   [kv(key: heal_publisher_trigger_conclusion_env_name, value: yaml_string(s: "${{ github.event.workflow_run.conclusion }}"))]
 }
 
