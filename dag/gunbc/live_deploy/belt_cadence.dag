@@ -64,18 +64,13 @@ type EntryCompileSample {
 data verify_entry_compile_samples: List<EntryCompileSample> = [
   EntryCompileSample {
     entry: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
-    seconds: second(count: 646),
-    // neat-gull-366 2026-11-05, local -j8 build slot, process_invocation_total ms=645578 (not an srv1 unit reading)
+    seconds: second(count: 4143),
+    // loyal-deer-449 2026-11-05, srv1 at 4a5b8feb, systemd-run scope, 2 runs 4142.6 s and 3987.4 s, the slower recorded; local -j8 readings were ~6x faster and are NOT used
   },
   EntryCompileSample {
-    entry: "dag/test/claim/shell/shell_dag_ci_deploy_invoke_prelude_witness.dag",
-    seconds: second(count: 954),
-    // neat-gull-366 2026-11-05, local build slot, process_invocation_total ms=953602 (not an srv1 unit reading)
-  },
-  EntryCompileSample {
-    entry: "dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness.dag",
-    seconds: second(count: 811),
-    // neat-gull-366 2026-11-05, local build slot, process_invocation_total ms=810405 (not an srv1 unit reading)
+    entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag",
+    seconds: second(count: 4018),
+    // loyal-deer-449 2026-11-05, srv1 at 4a5b8feb, systemd-run scope, 2 runs 3903.0 s and 4017.8 s, the slower recorded
   },
 ]
 
