@@ -596,8 +596,16 @@ fn wet_plant_confined_tree(instance: HostDashboardInstance) -> Bool {
       ),
     )
     && wet_ok(command: mkdir_parents_command(path: repo))
-    && wet_ok(command: mkdir_parents_command(path: join([repo, "/.git/hooks"], "")))
-    && wet_ok(command: mkdir_parents_command(path: join([repo, "/.git/objects"], "")))
+    // THE TREE IS A REPOSITORY, NOT A DIRECTORY NAMED .git. srv2's fifth S1 (stern, 2026-11-05) and
+    // the local re-run at 74683828 both showed what the hand-made .git/hooks + .git/objects meant:
+    // any leg that LAUNCHES now has to name the tree's commit (the locus is named by revision, and
+    // the inner side's CLI walks to the .git ancestor), and `git rev-parse --verify HEAD` answered
+    // `fatal: not a git repository` -- so those legs refused with 'the plant's git add/commit did
+    // not land' while the claims that plant through wet_plant_guest_sources went green. Same tree,
+    // two answers, because two routes prepared it. One route now: the production commit sequence
+    // (git init -q, git add -A -f, git commit with the host-said principal's identity and
+    // --allow-empty), which creates hooks/ and objects/ itself.
+    && wet_make_source_repository(instance: instance)
     && wet_plant_unit_credential(instance: instance)
 }
 
@@ -1618,6 +1626,11 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
   let probe = join([wt, "/.gunbc-worker-write-probe"], "")
   let log_probe = join([scratch, "/.gunbc-worker-write-probe"], "")
   let verdict = wet_claim_is_confined(instance: inst, root: root)
+    // THE PLANT THIS CLAIM WAS MISSING. Its unit shape launches, so it has to name the tree's
+    // commit like every other launching leg; without a plant `git rev-parse --verify HEAD` answered
+    // 'not a git repository' and the leg refused for the wrong reason (measured at 74683828, and
+    // the same route is what would have made a third srv2 run fail).
+    && wet_plant_confined_tree(instance: inst)
     && prepare_probe_attempt(instance: inst)
     && sandbox_touch_wrote(
       instance: inst,
@@ -3069,6 +3082,19 @@ test fn the_supplied_source_is_a_real_repository() -> Bool {
     && wet_path_exists(path: join([repo, "/.git"], ""))
     && wet_ok(command: git_rev_parse_tree_command(repository_dir: repo, revision: "HEAD" as NonEmptyStr))
     && wet_out(command: git_rev_parse_tree_command(repository_dir: repo, revision: "HEAD" as NonEmptyStr)) != ""
+    // AND THE OTHER PLANT ROUTE PRODUCES THE SAME THING. srv2's fifth S1 and the local re-run at
+    // 74683828 caught two routes preparing one tree: wet_plant_guest_sources committed through
+    // git init/add/commit, while wet_plant_confined_tree only mkdir'd a .git/hooks and .git/objects
+    // SKELETON -- a directory named .git, not a repository. The legs that launch (they have to name
+    // the tree's commit for the locus) refused with 'not a git repository' while this claim, which
+    // uses the committing route, stayed green: two answers, one tree, because two routes prepared
+    // it. Both routes now go through wet_make_source_repository, and this claim asks BOTH of them
+    // the same question, so a plant route that stops producing a repository is RED here rather
+    // than a status code on another host. The hooks/ readback is the same claim asking that the
+    // directories the refusal legs write into (.git/hooks/post-commit, .git/objects/...) exist.
+    && wet_plant_confined_tree(instance: inst)
+    && witness_guest_tree_revision(instance: inst) != ""
+    && wet_path_exists(path: join([repo, "/.git/hooks"], ""))
   // CLEANUP IS NOT A CONJUNCT. The srv2 run left twenty claim roots because a leg that fails
   // before the end of an `&&` chain never reaches a removal sitting at the end of it; the same
   // defect showed up in this file's own BROKEN run, where a claim that was already FAIL left
