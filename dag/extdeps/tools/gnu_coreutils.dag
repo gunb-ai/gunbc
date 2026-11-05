@@ -346,27 +346,6 @@ fn pwd_command() -> ArgvCommand {
   argv_command(program: pwd_program(), arguments: [])
 }
 
-// MODELLED AGAINST coreutils 9.7 (`printenv --help`, "printenv invocation"): "Print the values of
-// the specified environment VARIABLE(s). If no VARIABLE is specified, print name and value pairs
-// for them all." One NAME is passed, so stdout is that value and nothing else -- no shell expands
-// anything, which is the point: a claim asks the host what the operator named, and gets one line
-// back. The unset case is the one a witness must not paper over: measured on 9.7, `printenv
-// DEFINITELY_NOT_SET_VAR_XYZ` writes NOTHING to stdout and exits 1. A caller that reads this
-// through an outcome-aware path therefore sees no output, gets "", and refuses -- a claim that
-// reads a path this way can never mint one, and a host on which nobody provisioned the input is
-// RED rather than green-by-default.
-// The argv[0] the caller hands shell.Exec.RunArgv. Deliberately NOT a ProgramIdentity row: minting one
-// goes through `uncataloged_program`, whose callers are enumerated in extdeps.exec.program, and this
-// project does not grow that roster (operator ruling: no allowlists as architecture). PATH-resolved and
-// bare, exactly as `systemctl_binary_name` is for systemctl above; a host where the seam cannot exec it
-// refuses the claim rather than defaulting.
-data printenv_program_invocation: NonEmptyStr = "printenv" as NonEmptyStr
-
-// An argv TAIL (argv[0] comes from `printenv_program_invocation`), for the reason given there.
-fn printenv_value_argv(name: String) -> List<String> {
-  [name]
-}
-
 // THE HOST'S OWN BASENAME, for the one thing a witness must not do to a path it did not name: take it
 // apart with a hand-rolled scan of its own. GNU coreutils 9.7 `basename` prints the final component of
 // its argument after stripping trailing slashes
@@ -374,8 +353,11 @@ fn printenv_value_argv(name: String) -> List<String> {
 // `basename /tmp/x-AB12cd` writes `x-AB12cd` and exits 0, while `basename /` writes `/` -- the one
 // output a caller of `witness_claim_leaf` must refuse, because a claim root is a `mktemp -d` leaf and a
 // root with no final segment is a broken claim, not a nameable thing.
-// The argv[0] the caller hands shell.Exec.RunArgv, for the same roster reason as
-// `printenv_program_invocation` above.
+// The argv[0] the caller hands shell.Exec.RunArgv. Deliberately NOT a ProgramIdentity row: minting one
+// goes through `uncataloged_program`, whose callers are enumerated in extdeps.exec.program, and this
+// project does not grow that roster (operator ruling: no allowlists as architecture). PATH-resolved and
+// bare, exactly as `systemctl_binary_name` is for systemctl above; a host where the seam cannot exec it
+// refuses the claim rather than defaulting.
 data basename_program_invocation: NonEmptyStr = "basename" as NonEmptyStr
 
 // An argv TAIL (argv[0] comes from `basename_program_invocation`), for the reason given there.

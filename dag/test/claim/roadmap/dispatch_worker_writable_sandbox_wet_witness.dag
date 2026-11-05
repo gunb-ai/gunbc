@@ -82,9 +82,12 @@ import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, rm_recursive_force_command, mkdir_parents_command, tee_append_command,
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, cp_command, cp_program, cp_recursive_argv, pwd_command,
-  printenv_value_argv, printenv_program_invocation,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+// The fleet's ONE environment read: `shell.Env.Get` (extdeps/shell.dag, transport shell
+// { argv: ["printenv", "{name}"] }, `value: String?`, exit 1 "Variable not set"). A second
+// printenv argv path beside it was a parallel authority and is deleted (review 90936).
+import extdeps.shell
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
 import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitStartRequest,
@@ -313,12 +316,19 @@ fn wet_make_source_repository(instance: HostDashboardInstance) -> Bool {
 // a claim to name the running image by itself: `/proc/self/exe` resolves against the process that
 // OPENS it, so an `install -m 0755 /proc/self/exe <dst>` copies `/usr/bin/install`, not the guest
 // -- a planted binary of the wrong identity would make every launcher leg refuse for a reason that
-// has nothing to do with confinement. So the path comes from the environment through `printenv`
-// (no shell expansion), and BOTH readings are required before anything is written: the name is
+// has nothing to do with confinement. So the path comes from the environment through the fleet's
+// one modeled read (`shell.Env.Get`, which realizes as `printenv {name}` with no shell expansion
+// of anything we build), and BOTH readings are required before anything is written: the name is
 // non-empty, and what it names is executable to the host-said principal. Unset or non-executable
 // refuses the leg; nothing here mints a binary, and no host is required to have a `gunbc` on PATH.
 fn wet_plant_guest_binary(instance: HostDashboardInstance) -> Bool {
-  let named = wet_argv_out(program: printenv_program_invocation, arguments: printenv_value_argv(name: wet_served_binary_env_var))
+  // The name is ELIMINATED, not cast: `shell.Env.Get` answers `value: String?` because the
+// variable may be unset, and the absence is read in a match rather than re-typed away (the trap
+// extdeps/shell/credentials.dag records for `as Secret`, where an unset variable became a
+// plausible-looking value). An unset variable therefore reaches `named == ""` and the leg refuses,
+// exactly as it refuses a name that does not name an executable -- a host where nobody
+// provisioned the input is RED, never green-by-default.
+  let named = wet_environment_value(name: wet_served_binary_env_var)
   named != ""
     && wet_path_is_executable(path: named)
     && wet_ok(command: mkdir_parents_command(path: path_parent_directory(path: instance.serve_binary as String)))
@@ -330,6 +340,16 @@ fn wet_plant_guest_binary(instance: HostDashboardInstance) -> Bool {
 }
 
 data wet_served_binary_env_var: NonEmptyStr = "GUNBC_WET_SERVE_BINARY"
+
+// One modeled read of one variable, so the leg's host-facing read is the operation the fleet
+// already has. Absent means unset: the caller's `!= ""` is the refusal, and nothing here mints a
+// value the host did not answer.
+fn wet_environment_value(name: NonEmptyStr) -> String {
+  match shell.Env.Get(name: name).value {
+    Absent => ""
+    Present { value: read } => read
+  }
+}
 
 fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
   wet_plant_guest_sources(instance: instance) && wet_plant_guest_binary(instance: instance)
