@@ -27,7 +27,7 @@ import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id, git_object_id_wire_hex }
-import extdeps.systemd { SystemdUnitProperty, ExecStopProperty, BindPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { SystemdUnitProperty, ExecStopProperty, ExecStopPostProperty, BindPathsProperty, systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
   SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty, NamedUnitSetting,
