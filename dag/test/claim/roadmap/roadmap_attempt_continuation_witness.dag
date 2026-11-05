@@ -40,7 +40,7 @@ fn pri(
     branch: "roadmap/n1/a1",
     // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree is here.
     // The reaped-worktree cases build their own observation (they exercise the branch standing instead).
-    worktree: WorktreeHere { revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    worktree: WorktreeHere,
     branch_head: BranchLive,
     worker_terminal: true,
     capture: capture,
@@ -302,7 +302,7 @@ test fn reaped_worktree_with_completed_ledger_is_already_complete_not_a_spawn() 
     goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
   )
   (match continuation_plan(obs: Present { value: o }) {
-    AlreadyComplete { reason } => reason.contains("COMPLETE")
+    AlreadyComplete { reason } => reason.contains("nothing spawns")
     _ => false
   })
     // RED CONTROL: finished work never spawns a new attempt, and is never mistaken for a first attempt.
@@ -321,7 +321,7 @@ test fn reaped_worktree_with_a_verdict_in_flight_joins_not_double_spawns() -> Bo
     goal_audit: none,
   )
   (match continuation_plan(obs: Present { value: o }) {
-    AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("reaped") && reason.contains("no attempt spawns beside it")
+    AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("no attempt spawns beside it")
     _ => false
   })
     // RED CONTROL: an in-flight verdict is never doubled by a new attempt.

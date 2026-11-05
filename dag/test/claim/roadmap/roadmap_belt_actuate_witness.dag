@@ -2837,7 +2837,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       branch: "dispatch/node-a-acd172fe81b806160",
       // A LIVE (non-terminal) attempt is running with its worktree present and branch live; the join
       // decision is taken on worker_terminal before the standing is consulted, so these are inert here.
-      worktree: WorktreeHere { revision: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      worktree: WorktreeHere,
       branch_head: BranchLive,
       worker_terminal: false,
       capture: CaptureAbsent,

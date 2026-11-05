@@ -2833,7 +2833,7 @@ fn belt_worktree_standing(instance: HostDashboardInstance, node_id: RoadmapNodeI
       // whose head cannot be read is a git FAULT on a live directory -- NOT a reaping -- so it is Unknown and
       // the decision refuses rather than restoring (git worktree add, no --force, over live uncommitted work).
       match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-        WorktreeHeadObserved { revision } => WorktreeHere { revision: revision as String }
+        WorktreeHeadObserved { revision: _ } => WorktreeHere
         WorktreeHeadUnobserved { reason } =>
           WorktreeUnknown { reason: join(["the worktree directory is present but its head could not be read -- a git fault on a live worktree, not a reaping, so the lineage refuses rather than restoring over it: ", reason], "") }
       }
