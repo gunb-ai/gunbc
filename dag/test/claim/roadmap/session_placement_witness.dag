@@ -20,7 +20,7 @@ import gunbc.compute.attempt_lifecycle {
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance, srv1_live_dashboard_instance, srv1_lab_dashboard_instance, belt_max_concurrent_default, srv1_lab_belt_max_concurrent }
-import gunbc.compute.host_capacity { host_capacity_pool_slots, host_capacity_pool_appropriation, compute_memory_ceiling }
+import gunbc.compute.host_capacity { host_capacity_pool_slots, host_capacity_pool_appropriation, compute_memory_ceiling, ComputeSeatCharge, SeatChargeNeverAcquired }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties,
   AttemptUnitUnreadable, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished,
@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import extdeps.systemd { systemd_unit_property_wire }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused }
 
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool }
+import gunbc.roadmap.roadmap_session_placement { SettleRetireUncharged, SessionPlacementGrant, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, attempt_worker_unit_observe_for_instance, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, session_placement_pool }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -247,6 +247,8 @@ test fn a_record_or_release_from_another_attempt_or_fence_is_refused() -> Bool {
 
 fn releases(d: SessionSettleDecision) -> Bool {
   match d {
+    // A retirement as bookkeeping issues no release -- that is the whole point of it.
+    SettleRetireUncharged { record: _, generation: _, attempt: _, returned_at: _, by: _, ledger_generation: _, trigger_reading: _ } => false
     SettleTerminateAndRelease { record: _, generation: _, attempt: _, reason: _ } => true
     SettleReleaseOnly { record: _, attempt: _, reason: _ } => true
     SettleKeep { why: _, explain: _ } => false
@@ -263,13 +265,13 @@ fn launching(rec: AttemptRecord) -> AttemptRecord {
 test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
   let k = unit_a() as NonEmptyStr
   let rec = slot_a(opened: 1000)
-  releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline + 1, release_settled: false))
-    && !releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline - 1, release_settled: false))
-    && releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitTerminatedSuccess { detail: "0" }, now: 1001, release_settled: false))
-    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitStillRunning { detail: "active" }, now: 99999, release_settled: false))
-    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitLifecycleUnknown { detail: "systemctl refused" }, now: 99999, release_settled: false))
-    && !releases(d: session_settle_decide(key: k, slot: AttemptSlotUnreadable { detail: "torn" }, lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false))
-    && !releases(d: session_settle_decide(key: unit_b() as NonEmptyStr, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false))
+  releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline + 1, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline - 1, release_settled: false, charge: SeatChargeNeverAcquired))
+    && releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitTerminatedSuccess { detail: "0" }, now: 1001, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitStillRunning { detail: "active" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitLifecycleUnknown { detail: "systemctl refused" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: AttemptSlotUnreadable { detail: "torn" }, lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: unit_b() as NonEmptyStr, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
 }
 
 // THE UNIT CARRIES THE GRANT, THROUGH THE SHARED FOLD: MemoryMax is the granted amount (not the

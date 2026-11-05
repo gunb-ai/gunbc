@@ -17,7 +17,7 @@ import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
-  HostDashboardInstance, isolated_dashboard_instance, isolated_dashboard_instance_admitting,
+  HostDashboardInstance, DashboardExistingRepo, isolated_dashboard_instance, isolated_dashboard_instance_admitting,
   DashboardActuating, DashboardLocalProvision, dashboard_home_provision_parent_root,
   fleet_admitted_revision_source, WorkerIsServiceUser, WorkerDedicatedAccount,
   belt_max_concurrent_default, dispatch_worker_memory_ceiling,
@@ -52,7 +52,7 @@ fn instance_service_at(root: String) -> HostDashboardInstance {
     listen_port: 18097,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -64,9 +64,9 @@ fn instance_dedicated_at(root: String) -> HostDashboardInstance {
     root: root as FilePath,
     serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
     listen_port: 18097,
-    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    source_seed: DashboardExistingRepo { anchor_ref: "refs/heads/main" as NonEmptyStr },
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
     admitted_revision: fleet_admitted_revision_source,
     dispatch_base_ref: "origin/main" as NonEmptyStr,
     publication_base_branch: "main" as NonEmptyStr,
