@@ -79,7 +79,7 @@ import v2.std.node {
   core_edge_target_lookup,
   match_arm_node_conforms,
   node_child_slots,
-  node_subtree_nodes, branch_positional_arity_admitted
+  node_subtree_nodes, branch_positional_shape_admitted
 }
 
 type ActivationNotDerivedReason
@@ -160,15 +160,16 @@ fn activation_positional_count(site: Node) -> Int {
   )
 }
 
-// A BRANCH: the condition selects the then slot and, when there is one, the else slot. The ARITY IS THE
-// TABLE'S QUESTION (v2.std.node branch_positional_arity_admitted: two positionals with the else slot
-// Absent, or three), not a literal here -- a second spelling of the same shape rule is a second answer to
-// one question (DESIGN 3). An else-less Branch is a SINGLE-alternative selection: the condition selects
-// the then arm and nothing else is reachable, so the row is admitted with one alternative rather than
-// refused as malformed.
+// A BRANCH: the condition selects the then slot and, when there is one, the else slot. Whether the Branch
+// is readable AT ALL is the table owner's whole-node question (v2.std.node branch_positional_shape_admitted:
+// every edge positional, and an arity the table reads -- three, or two with the else slot Absent), not a
+// child count taken beside the table (DESIGN 3: a second spelling of one shape rule is a second answer to
+// one question). An else-less Branch is a SINGLE-alternative selection: the condition selects the then arm
+// and nothing else is reachable, so the row is admitted with one alternative rather than refused as
+// malformed.
 fn activation_branch(acc: ActivationDependencies, site: Node) -> ActivationDependencies {
   let positional = activation_positional_count(site: site)
-  if branch_positional_arity_admitted(count: positional) && positional == length(xs: site.children) {
+  if branch_positional_shape_admitted(n: site) {
     match branch_slot_target(n: site, slot: BranchConditionSlot) {
       Present { value: condition } =>
         match branch_slot_target(n: site, slot: BranchThenSlot) {

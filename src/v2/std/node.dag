@@ -789,17 +789,23 @@ fn bind_positional_slot(ordinal: Int) -> BindSlot {
   }
 }
 
-// THE POSITIONAL ARITIES THE Bind TABLE READS: three (binder, value, body) or two (value, body, NO BINDER).
-// One place answers it; a consumer that preflights a whole Bind asks bind_positional_shape_admitted rather
-// than counting children beside the table (DESIGN 3: the arity fact lives where the roles live).
-fn bind_positional_arity_admitted(n: Node) -> Bool {
+// THE POSITIONAL ARITIES A SLOT TABLE IS READ AT: its full arity, or one slot Absent. ONE ANSWER FOR BOTH
+// TABLES (v2.std.node bind_slot_target and branch_slot_target): three positionals, or two with the LAST
+// slot absent -- for the Bind that is the binder (a statement Bind owns no value), for the Branch the else
+// arm (an else-less if). The two arities could not diverge, because the absent slot IS the encoding of "no
+// binder" and "no else": a behavior admitting a different arity set would be a different fact, and no
+// consumer asks the two tables about arity separately (DESIGN 6b: the second local implementation of one
+// rule is the trigger to generalize it, and under 6b "no answer is a reject"). A consumer that preflights
+// a WHOLE node asks bind_positional_shape_admitted / branch_positional_shape_admitted rather than counting
+// children beside the table (DESIGN 3: the arity fact lives where the roles live).
+fn positional_arity_admitted(n: Node) -> Bool {
   let arity = count(positional_child_target_nodes(node: n))
   (arity == 2) || (arity == 3)
 }
 
 // IS THE Bind READABLE AT ALL: the Bind edge discipline AND an admitted positional arity.
 fn bind_positional_shape_admitted(n: Node) -> Bool {
-  edges_conform(children: n.children, d: PositionalPlusNamedMarkerEdges) && bind_positional_arity_admitted(n: n)
+  edges_conform(children: n.children, d: PositionalPlusNamedMarkerEdges) && positional_arity_admitted(n: n)
 }
 
 // THE ROLE OF A Bind's POSITIONAL CHILD, given how many positionals the Bind has. A three-positional Bind
@@ -831,7 +837,7 @@ fn bind_positional_slot_in_arity(ordinal: Int, arity: Int) -> Optional<BindSlot>
 // ordinals by its own arity (bind_positional_slot_in_arity), so a binder-absent Bind answers Absent at
 // BindBinderSlot and still answers Present for its value and body.
 fn bind_slot_target(n: Node, slot: BindSlot) -> Optional<Node> {
-  if bind_positional_arity_admitted(n: n) {
+  if positional_arity_admitted(n: n) {
     bind_slot_target_in_arity(n: n, slot: slot)
   } else {
     optional_absent()
@@ -874,26 +880,18 @@ fn match_role_slots_step(acc: List<ChildSlot>, s: ChildSlot, role: MatchSlot) ->
 // "malformed": a malformed Branch answers Absent for EVERY slot, the else-less one answers Absent for the
 // else slot only.
 fn branch_slot_target(n: Node, slot: BranchSlot) -> Optional<Node> {
-  if branch_positional_arity_admitted(n: n) {
+  if positional_arity_admitted(n: n) {
     branch_slot_target_in_arity(n: n, slot: slot)
   } else {
     optional_absent()
   }
 }
 
-// THE POSITIONAL ARITIES THE Branch TABLE READS: three (condition, then, else) or two (condition, then, no
-// else). One place answers it; a consumer that preflights a whole Branch asks branch_positional_shape_admitted
-// rather than counting children beside the table (DESIGN 3: the arity fact lives where the roles live).
-fn branch_positional_arity_admitted(n: Node) -> Bool {
-  let arity = count(positional_child_target_nodes(node: n))
-  (arity == 2) || (arity == 3)
-}
-
 // IS THE Branch READABLE AT ALL: every edge positional and an admitted positional arity. This is the whole-node
 // question the consumers used to answer by counting children; the labeled-child case (three positionals plus
 // a labeled edge) fails here, as it did in their preflights.
 fn branch_positional_shape_admitted(n: Node) -> Bool {
-  all_edges_positional(children: n.children) && branch_positional_arity_admitted(n: n)
+  all_edges_positional(children: n.children) && positional_arity_admitted(n: n)
 }
 
 fn branch_slot_target_in_arity(n: Node, slot: BranchSlot) -> Optional<Node> {
