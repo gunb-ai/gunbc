@@ -1307,9 +1307,14 @@ fn declared_hand_maintained_roster(workspace: &Path) -> Result<HandMaintainedRos
 
 fn read_declared_hand_maintained_roster(workspace: &Path) -> Result<HandMaintainedRoster, String> {
     const LAYOUT_ENTRY_RELPATH: &str = "src/v2/compiler/self_host/stage0_crate_layout.dag";
-    // The same three roots the claim cells and the v2 closure use; the layout authority
-    // itself lives under src/v2 and imports std.* from dag/ and v2.* from src/v2.
-    let closure_roots: Vec<String> = ["dag", "src/v1", "src/v2"]
+    // THE TWO ROOTS THE AUTHORITY ACTUALLY NEEDS, which are also exactly the roots the regen
+    // round's own image carries (`heal.yml:113`: `claim_executor --regen-round-cost --base-mirror
+    // --source-root dag --source-root src/v2`). The layout file lives under src/v2 and its
+    // imports are std.* from `dag/` and v2.* from `src/v2` -- no v1 module is reachable from it
+    // (`v1.lens` imports bind to the Rust compiler-classes, compiled into this image, not to a
+    // `src/v1` root; the entry compiles and typechecks with `--source-root dag --source-root
+    // src/v2` alone). Asking for a third root here would demand a corpus the round does not own.
+    let closure_roots: Vec<String> = ["dag", "src/v2"]
         .iter()
         .map(|root| workspace.join(root).to_string_lossy().into_owned())
         .collect();
@@ -1333,24 +1338,34 @@ fn read_declared_hand_maintained_roster(workspace: &Path) -> Result<HandMaintain
     //
     // THE ROUND'S ALREADY-BUILT POOL IS CARRIED, not re-produced, per DESIGN's order on produced
     // values: this process's route returns the index it already owns for exactly these roots
-    // (`try_process_shared_index`), so a regen round that has walked, parsed and typed the corpus
-    // once pays nothing more here. What that route REFUSES is a SECOND resident pool over
-    // different roots -- and its own comment names the sanctioned answer: a reader of another pool
-    // owns its index. So only that refusal reaches for a private `build_multi_entry_index`; any
-    // other failure of that route is a failure to read the corpus, and is reported as one rather
-    // than being paid for a second time.
-    let index = match super::entry_resolve::try_process_shared_index(&closure_roots) {
-        Ok(shared) => shared,
-        Err(cause) if cause.contains("SharedIndexSecondResidentPool") => {
-            std::rc::Rc::new(super::build_multi_entry_index(&closure_roots))
-        }
-        Err(cause) => {
-            return Err(format!(
-                "required-regen: the corpus behind the crate-layout authority could not be \
-                 reached for the hand-maintained roster: {cause}"
-            ));
-        }
-    };
+    // (`try_process_shared_index`), so a round that has walked, parsed and typed the corpus once
+    // pays nothing more here. THERE IS NO PRIVATE FALLBACK, and none was ever reachable: every
+    // named caller of this reader runs in the claim_executor's regen modes (the round itself, the
+    // affected-set bound, the one-mirror probe), and a fresh image of those modes reaches this
+    // read before anything in that process has demanded the shared slot -- `bin/claim_executor`
+    // itself resolves no entry, and the round's own emitted-tree read deliberately owns a private
+    // index that never touches the slot. So the slot is empty here (the route builds once) or it
+    // already holds THIS corpus (a hit). A foreign resident pool would be a caller this reader
+    // cannot see demanding a different corpus under the same thread, and the answer to that is a
+    // visible refusal, never a silently paid second front-end -- an absorbing fallback is the
+    // invalid state, not the escape hatch.
+    let carried = super::entry_resolve::process_shared_index_is_resident(&closure_roots);
+    let index =
+        super::entry_resolve::try_process_shared_index(&closure_roots).map_err(|cause| {
+            format!(
+            "required-regen: the corpus behind the crate-layout authority could not be carried \
+             by this process's one resident index: {cause}"
+        )
+        })?;
+    eprintln!(
+        "required-regen: roster corpus {} over {} roots",
+        if carried {
+            "carried from the resident index"
+        } else {
+            "read once into the resident index"
+        },
+        closure_roots.len()
+    );
     let (graph, indices) = super::resolve_entry_with_index(&index, entry_path_str.as_str())
         .map_err(|e| {
             format!(
@@ -3504,6 +3519,7 @@ mod tests {
     fn the_roster_reader_refuses_without_the_layout_authority() {
         let root = temp_dir("roster-reader-no-authority");
         fs::create_dir_all(root.join("dag")).expect("create dag root");
+        fs::create_dir_all(root.join("src/v2")).expect("create src/v2 root");
         fs::create_dir_all(root.join("src/v1/stage0/src")).expect("create stage0 src");
         let err = declared_hand_maintained_roster(&root)
             .expect_err("no authority in the tree must refuse, never fall back");
@@ -3563,15 +3579,21 @@ mod tests {
             "the directory rows come through the same reader"
         );
         // THE PRODUCED POOL IS CARRIED, NOT RE-PRODUCED. The reader takes the process-shared
-        // index for these roots, so after one read the corpus behind them is resident on this
-        // thread and asking for it again is a cache hit -- what a regen round that already
-        // walked, parsed and typed the corpus pays for this read. The bound is not a budget:
-        // it asserts "hit", and a cold walk+parse+typecheck of this corpus is orders of
-        // magnitude above it (the read's own wall, printed with --nocapture for the record).
-        let roots: Vec<String> = ["dag", "src/v1", "src/v2"]
+        // index for the roots the authority's closure actually needs (dag + src/v2 -- its imports
+        // are std.* and v2.*, never a src/v1 root), so after one read the corpus behind them is
+        // resident on this thread and asking for it again is a cache hit -- what a regen round
+        // that already walked, parsed and typed the corpus pays for this read. The bound is not
+        // a budget: it asserts "hit", and a cold walk+parse+typecheck of this corpus is orders
+        // of magnitude above it (the read's own wall, printed with --nocapture for the record).
+        let roots: Vec<String> = ["dag", "src/v2"]
             .iter()
             .map(|root| workspace.join(root).to_string_lossy().into_owned())
             .collect();
+        assert!(
+            crate::cli_run::entry_resolve::process_shared_index_is_resident(&roots),
+            "the reader's own demand left this corpus resident -- the roster read carried or \
+             built THE ONE pool, it did not build a private one beside the round's"
+        );
         let asked = std::time::Instant::now();
         let carried = crate::cli_run::entry_resolve::try_process_shared_index(&roots)
             .expect("the corpus the reader read is resident for these roots");
