@@ -185,6 +185,23 @@ type RegulatorPinRole
   | SoftStartProgram
   | FeedbackInput
   | PowerGoodOpenDrain
+  // The arms below are named as the datasheets name each pin's function. FAN65004C/D Rev. 3 Table 2
+  // (page 5): NC, LG, MODE, ILIM, COMP, RT, SYNC, VCC, PVCC, EXTBIAS, HVBIAS, VINMON, PH, PGND.
+  // MPQ8633A Rev. 1.1 pin table (page 11): CS, MODE, TRK/REF, RGND, VCC, PGND.
+  | PowerGround
+  | RegulatorNoConnection
+  | LowSideGateDrive
+  | RegulatorModeSelect
+  | CurrentLimitSet
+  | CompensationOutput
+  | FrequencySet
+  | SynchronizationPort
+  | BiasSupply
+  | InputVoltageMonitor
+  | BootstrapSwitchReturn
+  | CurrentSense
+  | TrackingReference
+  | RemoteSenseGround
 
 type RegulatorPin {
   number: Nat

@@ -7,7 +7,7 @@ import extdeps.vendor.onsemi { onsemi }
 import std.measure { millivolt, ampere }
 import extdeps.electronic_component.types {
   ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
-  RegulatorSupplyInput, SwitchNode, RegulatorGround, BootstrapSupply, EnableInput, SoftStartProgram, FeedbackInput, PowerGoodOpenDrain,
+  BiasSupply, BootstrapSupply, BootstrapSwitchReturn, CompensationOutput, CurrentLimitSet, EnableInput, FeedbackInput, FrequencySet, InputVoltageMonitor, LowSideGateDrive, RegulatorModeSelect, RegulatorNoConnection, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, SoftStartProgram, SwitchNode, SynchronizationPort,
 }
 
 // onsemi's FAN65004C, "Voltage Mode, 65 V, 6 A" synchronous buck regulator, datasheet FAN65004C/D Rev. 3,
@@ -23,10 +23,8 @@ import extdeps.electronic_component.types {
 // DISCREPANCY TO REPORT, NOT FORCED: the published third line has eight glyphs (AWLYYWWG); the board
 // reading for U1_P3 has seven. Whether a trailing G is present is an operator photo question.
 //
-// PINS: only pins whose function maps to an existing RegulatorPinRole are listed (VIN 1-3 and 31-35, SW
-// 7-10, FB 15, SS 17, GND 18 and 25, PGOOD 20, EN/UVLO 22, BOOT 29). PGND, NC, LG, MODE, ILIM, COMP, RT,
-// SYNC, VCC, PVCC, EXTBIAS, HVBIAS and PH are in Table 2 but unmodeled: no consumer reads them. Switching
-// frequency (100 kHz to 1 MHz set by RT) is not modeled for the same reason.
+// PINS: every numbered pin of Table 2 (pins 1-35; the VIN and PGND pads carry no number and stay out).
+// Switching frequency (100 kHz to 1 MHz set by RT) is not modeled: no consumer reads it.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "www.onsemi.com/pdf/datasheet/fan65004c-d.pdf" }
 }
@@ -53,17 +51,33 @@ data fan65004c: ElectronicComponentRow = ElectronicComponentRow {
       RegulatorPin { number: 1, name: "VIN", role: RegulatorSupplyInput },
       RegulatorPin { number: 2, name: "VIN", role: RegulatorSupplyInput },
       RegulatorPin { number: 3, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 4, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 5, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 6, name: "PGND", role: PowerGround },
       RegulatorPin { number: 7, name: "SW", role: SwitchNode },
       RegulatorPin { number: 8, name: "SW", role: SwitchNode },
       RegulatorPin { number: 9, name: "SW", role: SwitchNode },
       RegulatorPin { number: 10, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 11, name: "NC", role: RegulatorNoConnection },
+      RegulatorPin { number: 12, name: "LG", role: LowSideGateDrive },
+      RegulatorPin { number: 13, name: "MODE", role: RegulatorModeSelect },
+      RegulatorPin { number: 14, name: "ILIM", role: CurrentLimitSet },
       RegulatorPin { number: 15, name: "FB", role: FeedbackInput },
+      RegulatorPin { number: 16, name: "COMP", role: CompensationOutput },
       RegulatorPin { number: 17, name: "SS", role: SoftStartProgram },
       RegulatorPin { number: 18, name: "GND", role: RegulatorGround },
+      RegulatorPin { number: 19, name: "RT", role: FrequencySet },
       RegulatorPin { number: 20, name: "PGOOD", role: PowerGoodOpenDrain },
+      RegulatorPin { number: 21, name: "SYNC", role: SynchronizationPort },
       RegulatorPin { number: 22, name: "EN/UVLO", role: EnableInput },
+      RegulatorPin { number: 23, name: "VCC", role: BiasSupply },
+      RegulatorPin { number: 24, name: "PVCC", role: BiasSupply },
       RegulatorPin { number: 25, name: "GND", role: RegulatorGround },
+      RegulatorPin { number: 26, name: "EXTBIAS", role: BiasSupply },
+      RegulatorPin { number: 27, name: "HVBIAS", role: BiasSupply },
+      RegulatorPin { number: 28, name: "VINMON", role: InputVoltageMonitor },
       RegulatorPin { number: 29, name: "BOOT", role: BootstrapSupply },
+      RegulatorPin { number: 30, name: "PH", role: BootstrapSwitchReturn },
       RegulatorPin { number: 31, name: "VIN", role: RegulatorSupplyInput },
       RegulatorPin { number: 32, name: "VIN", role: RegulatorSupplyInput },
       RegulatorPin { number: 33, name: "VIN", role: RegulatorSupplyInput },
