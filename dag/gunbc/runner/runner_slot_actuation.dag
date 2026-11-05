@@ -930,7 +930,13 @@ fn proc_absolute_start_of(proc_stat: String?, clock_ticks_text: String?, start_t
                 ClockTicksObserved { per_second: hz } =>
                   match start_ticks {
                     Absent => StartUnread { cause: "the process start time was not read" as NonEmptyStr }
-                    Present { value: ticks } => StartObserved { started_at_seconds: (btime as Int) + (ticks / hz) }
+                    Present { value: ticks } =>
+                      let abs = (btime as Int) + (ticks / hz)
+                      if abs < 0 {
+                        StartUnread { cause: "the computed absolute process start precedes the epoch" as NonEmptyStr }
+                      } else {
+                        StartObserved { started_at: abs }
+                      }
                   }
               }
           }

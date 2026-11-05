@@ -51,7 +51,7 @@ data jit_ghost_rows: List<GitHubSelfHostedRunnerRegistration> = [
 // second after the current row's minted epoch (1793701320) -- inside the declared mint-to-exec bound, so a
 // genuine same-boot match, not a recycled pid.
 fn real_main() -> RunnerUnitMainProcess {
-  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 333, start_time: "t" as NonEmptyStr }, absolute_start: StartObserved { started_at_seconds: 1793701321 } }
+  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 333, start_time: "t" as NonEmptyStr }, absolute_start: StartObserved { started_at: 1793701321 } }
 }
 
 fn roster_with_current_row(online: Bool) -> OrganizationRunnerRosterEvidence {
@@ -100,20 +100,32 @@ test fn a_healthy_slot_is_never_restarted_without_a_lost_job() -> Bool {
   }
 }
 
-// DISCRIMINATING PAIR (item 4, LOST AGENT): the very slot that is Healthy (online) -- refused a moment ago --
-// IS reclaimed once a full lost-agent detection says the job never reached an agent; and the same Healthy
-// verdict with no lost detection stays refused. Detection is what turns the reclaim on.
-test fn a_lost_agent_detection_reclaims_a_slot_that_is_otherwise_healthy() -> Bool {
+// DISCRIMINATING RED (review 90967): a HEALTHY slot is NOT restarted just because some job somewhere in the
+// org is stranded. A lost-agent detection requires a null runner, so it names NO slot -- it cannot say this
+// healthy slot is the one the job belongs to, so it must not override the healthy verdict. This is the exact
+// permissive path the pre-fix code took; asserting Refuse here is what catches the defect.
+test fn a_stranded_job_does_not_restart_a_healthy_slot() -> Bool {
   match leg(main: real_main(), roster: roster_with_current_row(online: true), lost: lost_job()) {
-    RestartLegPermit { slot: _, why: _ } => true
-    RestartLegRefuse { why: _ } => false
+    RestartLegPermit { slot: _, why: _ } => false
+    RestartLegRefuse { why: _ } => true
   }
 }
 
-// A stranded job over an unreadable roster is reclaimed too (the measured case: a job in_progress with a
-// null runner and null startedAt for hours), while the same unreadable roster with no detection is refused.
-test fn a_lost_agent_detection_reclaims_an_unknown_slot() -> Bool {
+// DISCRIMINATING RED (review 90967): a slot we could not read (Unknown) is likewise NOT restarted on the
+// strength of a slot-less stranded-job signal. could-not-see is never a permission, and a detection that
+// names no slot cannot supply one.
+test fn a_stranded_job_does_not_restart_an_unknown_slot() -> Bool {
   match leg(main: committed_incarnation_main_process_unread, roster: roster_ghosts_only(), lost: lost_job()) {
+    RestartLegPermit { slot: _, why: _ } => false
+    RestartLegRefuse { why: _ } => true
+  }
+}
+
+// POSITIVE CONTROL (item 4 reclaim, done right): a Detached slot -- which the VERDICT itself names as
+// reclaimable -- is reclaimed, and a stranded job corroborates it. The permission comes from the verdict that
+// can name the slot; the lost-agent read deepens the reason, it does not open the door.
+test fn a_stranded_job_corroborates_the_reclaim_of_a_detached_slot() -> Bool {
+  match leg(main: real_main(), roster: roster_with_current_row(online: false), lost: lost_job()) {
     RestartLegPermit { slot: _, why: _ } => true
     RestartLegRefuse { why: _ } => false
   }

@@ -1,6 +1,6 @@
 module gunbc.runner.runner_local_state
 
-import std.types { String, NonEmptyStr, Bool, List, Timestamp }
+import std.types { String, NonEmptyStr, Bool, List, Timestamp, EpochSecs }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.systemd {
@@ -83,7 +83,7 @@ type RunnerMaterializationObservation
 // zero would make every pid-matched row look either fresh or ancient depending on the sign of the
 // comparison.
 type ProcessAbsoluteStart
-  = StartObserved { started_at_seconds: Int }
+  = StartObserved { started_at: EpochSecs }
   | StartUnread { cause: NonEmptyStr }
 
 type RunnerUnitMainProcess

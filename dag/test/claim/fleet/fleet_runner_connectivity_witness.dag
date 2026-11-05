@@ -423,7 +423,7 @@ fn jit_main(pid: Nat) -> RunnerUnitMainProcess {
   // Absolute start one second after the fixture rows' minted epoch (1793701320), i.e. the wrapper minted
   // its name and exec-ed within the declared fork-to-exec bound -- a genuine same-boot match, not a
   // recycled pid. The recycled-pid and unread-start arms are covered in the honest-main-reads region.
-  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: pid, start_time: "t" as NonEmptyStr }, absolute_start: StartObserved { started_at_seconds: 1793701321 } }
+  MainProcess { process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: pid, start_time: "t" as NonEmptyStr }, absolute_start: StartObserved { started_at: 1793701321 } }
 }
 
 fn jit_complete_roster(rows: List<GitHubSelfHostedRunnerRegistration>) -> OrganizationRunnerRosterEvidence {
@@ -549,20 +549,20 @@ fn jit_main_at(pid: Nat, abs: ProcessAbsoluteStart) -> RunnerUnitMainProcess {
 // POSITIVE CONTROL (same-boot match): the row's mint (1793701320) and the process start (1793701321)
 // agree within the fork-to-exec bound, so the online pid-matched row is the current incarnation.
 test fn a_same_boot_pid_match_is_the_current_incarnation() -> Bool {
-  connectivity_verdict_is_healthy(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at_seconds: 1793701321 }), roster: current_333_online_roster()))
+  connectivity_verdict_is_healthy(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at: 1793701321 }), roster: current_333_online_roster()))
 }
 
 // DISCRIMINATING RED (recycled across a reboot): an online row keeps srv4-01's pid 333 from a dead boot,
 // but the running process started long after that row was minted. Without the start comparison this is
 // the false-HEALTHY (or false-wedged) case; with it the slot is Unknown, never Healthy or Detached.
 test fn a_pid_recycled_across_a_reboot_is_unknown_not_healthy() -> Bool {
-  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at_seconds: 1793701720 }), roster: current_333_online_roster()))
+  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at: 1793701720 }), roster: current_333_online_roster()))
 }
 
 // DISCRIMINATING RED (minted after start): the row claims a mint AFTER the process began, which no
 // genuine wrapper can do -- a pid borrowed from a name it never owned. Unknown, not Healthy.
 test fn a_row_minted_after_the_process_started_is_unknown() -> Bool {
-  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at_seconds: 1793701220 }), roster: current_333_online_roster()))
+  connectivity_verdict_is_unknown(v: srv4_01_verdict(main: jit_main_at(pid: 333, abs: StartObserved { started_at: 1793701220 }), roster: current_333_online_roster()))
 }
 
 // DISCRIMINATING RED (unread start): with the absolute start unread the current incarnation cannot be

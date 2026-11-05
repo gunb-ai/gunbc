@@ -29,7 +29,7 @@ fn reading(load: String, file: String, active: String) -> SlotActuationReading {
 }
 
 fn with_pid(pid: Nat, boot: String) -> RunnerUnitMainProcess {
-  MainProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: "12345" as NonEmptyStr }, absolute_start: StartObserved { started_at_seconds: 1793701321 } }
+  MainProcess { process: ProcessIdentity { boot_id: boot as NonEmptyStr, pid: pid, start_time: "12345" as NonEmptyStr }, absolute_start: StartObserved { started_at: 1793701321 } }
 }
 
 // ── The restart plan is narrower than activation on load, broader on active ────────────────────────
@@ -101,7 +101,7 @@ test fn a_missing_or_unread_main_after_does_not_read_back_as_restarted() -> Bool
 // the recycled-pid comparison needs, assembled from reads rather than assumed.
 test fn the_absolute_start_is_btime_plus_ticks_over_the_read_tick_rate() -> Bool {
   match proc_absolute_start_of(proc_stat: present_string(value: "cpu 0 0 0\nbtime 1793700000\nintr 1\n"), clock_ticks_text: present_string(value: "100\n"), start_ticks: present_int(value: 100)) {
-    StartObserved { started_at_seconds: s } => s == 1793700001
+    StartObserved { started_at: s } => s == 1793700001
     StartUnread { cause: _ } => false
   }
 }
@@ -126,7 +126,7 @@ fn absent_int() -> Int? { Absent }
 fn is_start_unread(v: ProcessAbsoluteStart) -> Bool {
   match v {
     StartUnread { cause: _ } => true
-    StartObserved { started_at_seconds: _ } => false
+    StartObserved { started_at: _ } => false
   }
 }
 

@@ -131,7 +131,7 @@ fn loaded_unit(slot: RunnerSlotIdentity, state: SystemdUnitActiveState) -> Runne
     enabled: true,
     active_state: state,
     control_group: "/system.slice/system-actions.slice/x.service" as NonEmptyStr,
-    main_process: MainProcess { process: pid_at(pid: 4001), absolute_start: StartObserved { started_at_seconds: 1793701321 } },
+    main_process: MainProcess { process: pid_at(pid: 4001), absolute_start: StartObserved { started_at: 1793701321 } },
   }
 }
 

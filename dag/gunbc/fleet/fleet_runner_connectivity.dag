@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_runner_connectivity
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.types { String, NonEmptyStr, Bool, Int, List, Duration }
 import std.nat { Nat, nat_range_inclusive }
 import std.disposition { Disposition, Terminal }
 import product.host_identity { HostIdentity }
@@ -690,7 +690,7 @@ fn newest_registration(regs: List<GitHubSelfHostedRunnerRegistration>, incarnati
 // minted more than this bound BEFORE the process started is a pid recycled across a reboot. The bound is
 // declared with its reason, not tuned: two minutes comfortably covers a wrapper minting its name and
 // then exec-ing config.sh under any load, while staying far under the hours a stale registration survives.
-data jit_wrapper_mint_to_exec_bound_seconds: Int = 120
+data jit_wrapper_mint_to_exec_bound: Duration = 120
 
 fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incarnation: LocalRunnerSlotIncarnation, pid: Int, abs: ProcessAbsoluteStart) -> SlotIncarnationRegistration {
   match newest_registration(regs: filter(jit, r => match registration_jit_name(reg: r, incarnation: incarnation) {
@@ -706,13 +706,13 @@ fn jit_registration_for_pid(jit: List<GitHubSelfHostedRunnerRegistration>, incar
         StartUnread { cause: c } => IncarnationRegistrationUnresolved {
           reason: concat("the pid-matched registration cannot be trusted against the running process because its absolute start is unread: ", c as String)
         }
-        StartObserved { started_at_seconds: s } =>
+        StartObserved { started_at: s } =>
           match registration_jit_name(reg: reg, incarnation: incarnation) {
             Absent => IncarnationRegistrationUnresolved { reason: "the pid-matched registration does not carry this incarnation's name" }
             Present { value: n } =>
               if n.minted_epoch > s {
                 IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted AFTER the running process started: a recycled pid, not this incarnation" }
-              } else if (s - n.minted_epoch) > jit_wrapper_mint_to_exec_bound_seconds {
+              } else if (s - n.minted_epoch) > jit_wrapper_mint_to_exec_bound {
                 IncarnationRegistrationUnresolved { reason: "the pid-matched registration was minted far BEFORE the running process started: a pid recycled across a reboot, not this incarnation" }
               } else {
                 IncarnationRegistrationFound { registration: reg }
