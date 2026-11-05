@@ -2298,7 +2298,7 @@ pub fn explicit_return_conformance_diags(
 pub fn explicit_return_conformance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
+            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -5222,6 +5222,13 @@ pub struct EqualityArmWalk {
     pub plans: Rc<Vec<Rc<DeclarationEqualityPlan>>>,
 }
 
+pub fn equality_member_type_node(ch: Rc<Node>) -> Rc<Node> {
+    match ch.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => ch.clone(),
+        _ => crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+    }
+}
+
 pub fn equality_field_walk(
     owner_name: String,
     ch: Rc<Node>,
@@ -5230,7 +5237,7 @@ pub fn equality_field_walk(
     depth: i64,
 ) -> Rc<EqualityWalk> {
     {
-        let ft = crate::v1_compiler_infer_types::child_type_node(ch.clone());
+        let ft = equality_member_type_node(ch.clone());
         if (ft.connective.clone() == Connective::Arrow) {
             equality_walk_refused(equality_refused(
                 owner_name,
@@ -5553,7 +5560,7 @@ pub fn equality_container_walk(
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
                     let w = equality_operand_walk(
-                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                        equality_member_type_node(ch.clone()),
                         scope.clone(),
                         visited.clone(),
                         v1_rt::int_add(depth.clone(), 1),
@@ -29585,6 +29592,29 @@ pub fn substitute_generics(
     }
 }
 
+pub fn substitute_generics_resolved_type(
+    n: Rc<Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: rt, .. }) => {
+            let new_rt = substitute_generics_apply(rt.clone(), subst, source_indices);
+            if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
+                n.clone()
+            } else {
+                crate::v1_compiler_infer_env::node_with_inferred(
+                    n.clone(),
+                    Some(Rc::new(InferredNode::Resolved {
+                        node: new_rt.clone(),
+                    })),
+                )
+            }
+        }
+        _ => n.clone(),
+    }
+}
+
 pub fn substitute_generics_apply(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
@@ -29618,7 +29648,11 @@ pub fn substitute_generics_apply(
                             n.clone(),
                             c.clone(),
                         ),
-                        std::option::Option::None => n.clone(),
+                        std::option::Option::None => substitute_generics_resolved_type(
+                            n.clone(),
+                            subst.clone(),
+                            source_indices.clone(),
+                        ),
                     }
                 } else {
                     {
@@ -31488,39 +31522,131 @@ pub fn exposure_view_for_node(
             }
             __result
         });
-        match (identity.clone() == "::".to_string()) {
-            true => Rc::new(TypeHeadExposure::StuckTypeHead {
-                cause: "declaration identity unavailable".to_string(),
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv, .. }) => {
+                Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                    type_identity: v1_rt::concat(
+                        v1_rt::concat("<type-parameter:".to_string(), tv.clone()),
+                        ">".to_string(),
+                    ),
+                })
+            }
+            _ => exposure_view_for_declared_node(
+                n.clone(),
+                identity,
+                head_erasing_properties,
+                source_indices.clone(),
+            ),
+        }
+    }
+}
+
+pub fn stuck_head_cause(n: Rc<Node>) -> String {
+    {
+        let connective = match n.connective.clone() {
+            Connective::Arrow => "Arrow".to_string(),
+            Connective::Disj => "Disj".to_string(),
+            Connective::Conj => "Conj".to_string(),
+            Connective::NoConnective => "NoConnective".to_string(),
+        };
+        let inferred_head = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv, .. }) => v1_rt::concat(
+                v1_rt::concat("TypeVariable(".to_string(), tv.clone()),
+                ")".to_string(),
+            ),
+            Some(InferredNode::Resolved { node: r, .. }) => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("Resolved(name=".to_string(), r.name.clone()),
+                        ", span_file=".to_string(),
+                    ),
+                    r.span.file.clone(),
+                ),
+                ")".to_string(),
+            ),
+            Some(InferredNode::CompilerError { message: m, .. }) => v1_rt::concat(
+                v1_rt::concat("CompilerError(".to_string(), m.clone()),
+                ")".to_string(),
+            ),
+            Some(_) => "other-inferred".to_string(),
+            std::option::Option::None => "no-inferred".to_string(),
+        };
+        let occurrence = match (*n.occurrence_identity.clone()).clone() {
+            NodeOccurrenceIdentity::OccurrenceSynthetic => "synthetic".to_string(),
+            _ => "minted-or-projected".to_string(),
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "declaration identity unavailable [node name='"
+                                                    .to_string(),
+                                                n.name.clone(),
+                                            ),
+                                            "' span_file='".to_string(),
+                                        ),
+                                        n.span.file.clone(),
+                                    ),
+                                    "' connective=".to_string(),
+                                ),
+                                connective.clone(),
+                            ),
+                            " inferred=".to_string(),
+                        ),
+                        inferred_head.clone(),
+                    ),
+                    " occurrence=".to_string(),
+                ),
+                occurrence.clone(),
+            ),
+            "]".to_string(),
+        )
+    }
+}
+
+pub fn exposure_view_for_declared_node(
+    n: Rc<Node>,
+    identity: String,
+    head_erasing_properties: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeHeadExposure> {
+    match (identity.clone() == "::".to_string()) {
+        true => Rc::new(TypeHeadExposure::StuckTypeHead {
+            cause: stuck_head_cause(n.clone()),
+        }),
+        false => match ((n.type_annotation.clone() != std::option::Option::None)
+            || ((head_erasing_properties.clone().len() as i64) > 0))
+        {
+            true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                type_identity: identity.clone(),
             }),
-            false => match ((n.type_annotation.clone() != std::option::Option::None)
-                || ((head_erasing_properties.clone().len() as i64) > 0))
-            {
-                true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
-                    type_identity: identity.clone(),
+            false => match n.connective.clone() {
+                Connective::Arrow => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                    view: Rc::new(TypeHeadView::CallableHead {
+                        type_identity: identity.clone(),
+                    }),
                 }),
-                false => match n.connective.clone() {
-                    Connective::Arrow => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                        view: Rc::new(TypeHeadView::CallableHead {
-                            type_identity: identity.clone(),
-                        }),
+                Connective::Disj => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                    view: Rc::new(TypeHeadView::CoproductHead {
+                        type_identity: identity.clone(),
                     }),
-                    Connective::Disj => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                        view: Rc::new(TypeHeadView::CoproductHead {
-                            type_identity: identity.clone(),
-                        }),
+                }),
+                Connective::Conj => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                    view: Rc::new(TypeHeadView::ProductHead {
+                        type_identity: identity.clone(),
                     }),
-                    Connective::Conj => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                        view: Rc::new(TypeHeadView::ProductHead {
-                            type_identity: identity.clone(),
-                        }),
-                    }),
-                    Connective::NoConnective => match ((n.children.clone().len() as i64) > 0) {
-                        true => {
-                            let constructor_name = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                n.clone(),
-                            );
-                            match (constructor_name.clone() == "".to_string()) {
+                }),
+                Connective::NoConnective => match ((n.children.clone().len() as i64) > 0) {
+                    true => {
+                        let constructor_name =
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                        match (constructor_name.clone() == "".to_string()) {
     true => Rc::new(TypeHeadExposure::MalformedApplicationHead {
     cause: "application has no constructor identity".to_string(),
 }),
@@ -31531,27 +31657,24 @@ pub fn exposure_view_for_node(
 }),
 }),
 }
-                        }
-                        false => {
-                            let name = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                n.clone(),
-                            );
-                            match crate::std_types::is_kernel_type(name) {
-                                true => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                                    view: Rc::new(TypeHeadView::KernelScalarHead {
-                                        type_identity: identity.clone(),
-                                    }),
-                                }),
-                                false => Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                    }
+                    false => {
+                        let name =
+                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                        match crate::std_types::is_kernel_type(name) {
+                            true => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                                view: Rc::new(TypeHeadView::KernelScalarHead {
                                     type_identity: identity.clone(),
                                 }),
-                            }
+                            }),
+                            false => Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                                type_identity: identity.clone(),
+                            }),
                         }
-                    },
+                    }
                 },
             },
-        }
+        },
     }
 }
 
@@ -38098,6 +38221,7 @@ pub fn equality_synthetic_type(module_name: String, name: String) -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: sp.clone(),
+            ident: std::option::Option::None,
             ident_span: Some(sp.clone()),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
@@ -38116,7 +38240,6 @@ pub fn equality_synthetic_type(module_name: String, name: String) -> Rc<Node> {
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
@@ -38134,6 +38257,7 @@ pub fn equality_synthetic_fn(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: name.clone(),
             span: sp.clone(),
+            ident: std::option::Option::None,
             ident_span: Some(sp.clone()),
             children: Rc::new(vec![]),
             params: params.clone(),
@@ -38154,7 +38278,6 @@ pub fn equality_synthetic_fn(
             declaration_marker: DeclarationMarker::Unmarked,
             declaration: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
         })
     }
 }
