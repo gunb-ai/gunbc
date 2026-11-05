@@ -704,9 +704,15 @@ fn runner_host_lab_apply_operator_block(deploy: RunnerHostDeploy) -> String {
 }
 
 
-// THE GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law stated as a predicate so a
-// future edit that points both at one account fails a witness rather than silently creating an
-// account that authorizes itself.
+// THE RUNNER GRANTEE IS NEVER THE BOOTSTRAP PRINCIPAL. This is the privilege law for the RUNNER
+// grants (the job user's and the deploy slot's), stated as a predicate so a future edit that points
+// both at one account fails a witness rather than silently creating an account that authorizes
+// itself. Its scope is the runner grants, not every sudoers line: the lab apply's operator block
+// above is the one declared exception (operator decision A, 2026-11-05), because that apply runs AS
+// the bootstrap principal. The exception is bounded to the five retirement and rollback operations
+// of one declared unit and fragment, and the witness
+// test.claim.runner.lab_apply_operator_grant_witness pins that no other bootstrap-principal line
+// is rendered.
 fn bootstrap_principal_is_not_the_grantee(
   bootstrap: ExecutorBootstrapPrincipal,
   deploy: RunnerHostDeploy,
