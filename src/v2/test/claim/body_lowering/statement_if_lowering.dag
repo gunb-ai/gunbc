@@ -1,4 +1,4 @@
-module v2.test.claim.lowering.statement_if_lowering
+module v2.test.claim.body_lowering.statement_if_lowering
 
 import v2.compiler.source_root_eval {
   NativeCensusModuleFileRefused,
