@@ -4873,7 +4873,7 @@ struct SeedHandoff {
     built_exe: String,
     /// The round's checkpoint subject if the image that owns the round established one (a
     /// base-mirror round always has). Encoded explicitly as present or absent: a handoff without
-    /// the field is `HandoffUndecodable`, never a cue to recompute.
+    /// the field is `HandoffPredatesRoundSubject`, never a cue to recompute.
     round_subject: Option<RegenConvergenceCheckpointSubject>,
 }
 
@@ -4910,6 +4910,15 @@ enum SeedHandoffRefusal {
     },
     /// The carried observation does not decode.
     HandoffUndecodable {
+        value: String,
+    },
+    /// The carried observation is well formed up to the point where the round-subject field is
+    /// due and ends there: the image that wrote it predates that field (first written by 0256037,
+    /// #15855). Refused, never read as an absent subject. Distinct from `HandoffUndecodable` so it
+    /// can be counted: its remedy is known (merge the base into the head), an undecodable value's
+    /// is not.
+    HandoffPredatesRoundSubject {
+        missing_field: &'static str,
         value: String,
     },
     ReExecFailed {
@@ -4952,6 +4961,15 @@ impl std::fmt::Display for SeedHandoffRefusal {
                 f,
                 "refusal: HandoffUndecodable: {p}: {REGEN_ROUND_COST_REEXEC_ENV}={value:?}"
             ),
+            Self::HandoffPredatesRoundSubject {
+                missing_field,
+                value,
+            } => write!(
+                f,
+                "refusal: HandoffPredatesRoundSubject: {p}: the pre-exec image predates the \
+                 round-subject handoff (base 0256037): its handoff ends where `{missing_field}` \
+                 is due ({REGEN_ROUND_COST_REEXEC_ENV}={value:?}); merge the base into the head"
+            ),
             Self::ReExecFailed { path, cause } => write!(
                 f,
                 "refusal: ReExecFailed: {p}: the seed build replaced the running executable and \
@@ -4993,6 +5011,11 @@ impl SeedHandoff {
         let mut field = |key: &str| -> Result<String, SeedHandoffRefusal> {
             match it.next() {
                 Some(Some((k, v))) if k == key => Ok(v.to_string()),
+                // The input ends exactly where the subject field is due: the previous encoding.
+                None if key == "subject" => Err(SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                    missing_field: "subject",
+                    value: value.to_string(),
+                }),
                 _ => Err(bad()),
             }
         };
@@ -13131,13 +13154,37 @@ mod round_checkpoint_subject_tests {
         );
     }
 
-    /// RED: a handoff in the previous encoding (no subject) refuses at decode, and so does one with
-    /// a trailing field; neither is read as a cue to recompute.
+    /// RED: a handoff in the previous encoding (no subject) refuses at decode with its own typed
+    /// arm naming the missing field and the remedy; a truncated subject and a trailing field stay
+    /// `HandoffUndecodable`. None is read as a cue to recompute.
     #[test]
     fn a_handoff_without_the_subject_refuses() {
         let old = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B";
+        let refused = SeedHandoff::decode(old)
+            .err()
+            .expect("the old encoding must refuse");
+        assert_eq!(
+            refused,
+            SeedHandoffRefusal::HandoffPredatesRoundSubject {
+                missing_field: "subject",
+                value: old.to_string(),
+            }
+        );
+        let rendered = refused.to_string();
+        assert!(
+            rendered.starts_with("refusal: HandoffPredatesRoundSubject: ")
+                && rendered.contains("predates the round-subject handoff")
+                && rendered.contains("merge the base into the head"),
+            "{rendered}"
+        );
+        // An old encoding that carried an unreadable cpu reading is the same arm.
         assert!(matches!(
-            SeedHandoff::decode(old),
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=unreadable;source=T;built_exe=B"),
+            Err(SeedHandoffRefusal::HandoffPredatesRoundSubject { .. })
+        ));
+        // Ending earlier than the subject field is not this arm: it is not a well-formed old handoff.
+        assert!(matches!(
+            SeedHandoff::decode("crates=3;wall_ms=4;cpu_ms=5;source=T"),
             Err(SeedHandoffRefusal::HandoffUndecodable { .. })
         ));
         let truncated = "crates=3;wall_ms=4;cpu_ms=5;source=T;built_exe=B;subject=present";
