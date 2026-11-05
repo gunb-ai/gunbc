@@ -10770,20 +10770,44 @@ fn belt_dispatch_node_for_instance_over(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
-  let standing = belt_launch_host_standing(instance: instance)
-  belt_dispatch_node_staged_over(
-    instance: instance,
-    standing: standing,
-    graph: match launch_host_refusal(standing: standing) {
-      Present { value: _ } =>
-        LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
-      Absent => launch_graph_of_projection(proj: plan())
-    },
-    merged: authored_merged_prs(),
-    node_id: node_id,
-    request: request,
-    executor: executor,
-  )
+  // CONTINUE AND START FRESH REFUSE ON A RETIRED NODE (belt_node_lineage_terminal_read, the one
+  // node-terminal read; RETIRE is a node terminal, PR #15856). Both operator verbs reach the launch
+  // through this entry, so the refusal lives here and no action path can leave it unset -- a retired
+  // lineage spawns nothing under either verb, and the refusal is located (NodeRetired carries the
+  // terminality the history recorded). A terminality that cannot be read is refused too, fail-closed.
+  let history = roadmap_operator_close_history(store: fabric_state_storage_binding())
+  match belt_node_lineage_terminal_read(instance: instance, node_id: node_id, history: history) {
+    LineageTerminal { why } =>
+      SpawnNotAdmitted {
+        node_id: node_id,
+        refusal: LaunchTransitionInhibited {
+          reason: join(["NodeRetired: the node's lineage is terminal, so neither CONTINUE nor START FRESH spawns: ", why], ""),
+        },
+      }
+    LineageTerminalUnreadable { reason } =>
+      SpawnNotAdmitted {
+        node_id: node_id,
+        refusal: LaunchTransitionInhibited {
+          reason: join(["node terminality is unreadable, so CONTINUE and START FRESH refuse rather than spawn onto a possibly-retired lineage: ", reason], ""),
+        },
+      }
+    LineageOpen => {
+      let standing = belt_launch_host_standing(instance: instance)
+      belt_dispatch_node_staged_over(
+        instance: instance,
+        standing: standing,
+        graph: match launch_host_refusal(standing: standing) {
+          Present { value: _ } =>
+            LaunchGraphUnobserved { detail: "host standing refuses before a plan read" }
+          Absent => launch_graph_of_projection(proj: plan())
+        },
+        merged: authored_merged_prs(),
+        node_id: node_id,
+        request: request,
+        executor: executor,
+      )
+    }
+  }
 }
 
 // THE ROUTE'S DECISION PATH after the staged host observation, and the seam the hermetic
