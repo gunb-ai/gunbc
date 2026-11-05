@@ -1,0 +1,94 @@
+module test.claim.live_deploy_verify_run_bound_witness
+
+import std.types { Bool, String, Int, List }
+import std.measure { Second, second, second_count }
+import std.algebra { string_contains }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { TranscribedUncited }
+import gunbc.live_deploy.belt_cadence {
+  EntryCompileSample, VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_note,
+  verify_run_bound_for, verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
+  verify_unit_outer_run_bound, verify_slowest_sample, verify_outer_run_bound_for, verify_run_bound_derived_line, verify_uncited_sample_count,
+}
+
+data fixture_samples: List<EntryCompileSample> = [
+  EntryCompileSample { entry: "a.dag", seconds: second(count: 100), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
+  EntryCompileSample { entry: "b.dag", seconds: second(count: 200), standing: TranscribedUncited { read_obligation: "fixture" as NonEmptyStr } },
+]
+
+// A normal node: two sampled entries run within the sum of their figures plus 50% headroom plus the slack.
+test fn verify_bound_of_a_normal_node_is_the_sum_with_headroom_and_slack() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "b.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunBounded { bound, entries } => second_count(s: bound) == 300 + 150 + 60 && entries == 2
+    VerifyRunOverCeiling { entries: _, ceiling: _ } => false
+    VerifyRunUnsampled { entry: _ } => false
+    VerifyRunProvisional { bound: _, entries: _, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => false
+  }
+}
+
+// Over the ceiling refuses typed, naming both counts, before any run.
+test fn verify_bound_over_the_ceiling_refuses_typed() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "b.dag", "a.dag"], samples: fixture_samples, ceiling: 2, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunOverCeiling { entries, ceiling } => entries == 3 && ceiling == 2
+    VerifyRunBounded { bound: _, entries: _ } => false
+    VerifyRunUnsampled { entry: _ } => false
+    VerifyRunProvisional { bound: _, entries: _, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => false
+  }
+}
+
+// With NO recorded sample there is nothing to borrow: the entry refuses typed, naming it; it never defaults.
+test fn verify_bound_with_no_recorded_sample_at_all_refuses_typed() -> Bool {
+  match verify_run_bound_for(entries: ["c.dag"], samples: [] as List<EntryCompileSample>, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunUnsampled { entry } => entry == "c.dag"
+    _ => false
+  }
+}
+
+// An unsampled entry runs under a PROVISIONAL bound: the slowest recorded sample is its figure, the bet names the
+// entry and the sample it borrowed, and the receipt line says so.
+test fn verify_bound_of_an_unsampled_entry_is_a_named_provisional_bet() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "c.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunProvisional { bound, entries, unsampled, borrowed_entry, borrowed_seconds } =>
+      second_count(s: bound) == 300 + 150 + 60 && entries == 2 && unsampled == ["c.dag"] && borrowed_entry == "b.dag" && second_count(s: borrowed_seconds) == 200
+    _ => false
+  }
+}
+
+// The receipt line names the bet and is empty when every entry is sampled.
+test fn the_provisional_bet_is_visible_in_the_receipt_line_and_a_sampled_node_has_none() -> Bool {
+  let bet = verify_run_bound_note(bound: verify_run_bound_for(entries: ["c.dag", "d.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)))
+  let sampled = verify_run_bound_note(bound: verify_run_bound_for(entries: ["a.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)))
+  string_contains(s: bet, pattern: "ProvisionalUnsampled: 2 entries") && string_contains(s: bet, pattern: "b.dag") && sampled == ""
+}
+
+// The unit's outer net is derived from the same rows and clears the ceiling's worth of the slowest figure.
+test fn verify_outer_bound_clears_the_ceiling_of_the_slowest_sample() -> Bool {
+  let slowest = match verify_slowest_sample(samples: verify_entry_compile_samples) {
+    Present { value: v } => second_count(s: v.seconds)
+    Absent => 0
+  }
+  slowest > 0 && second_count(s: verify_unit_outer_run_bound()) > slowest * verify_entries_ceiling
+    && verify_run_headroom_percent > 0 && second_count(s: verify_run_slack) > 0
+    && length(verify_entry_compile_samples) > 0
+}
+
+// With no samples the outer net is the slack alone, and no node with an entry can start a run under it: every
+// such node refuses typed first, so the small net is never the limit of a live run.
+test fn an_empty_sample_list_gives_the_slack_net_and_refuses_every_node_with_an_entry() -> Bool {
+  second_count(s: verify_outer_run_bound_for(samples: [], ceiling: 8, headroom_percent: 50, slack: second(count: 60))) == 60
+    && (match verify_run_bound_for(entries: ["a.dag"], samples: [], ceiling: 8, headroom_percent: 50, slack: second(count: 60)) {
+      VerifyRunUnsampled { entry } => entry == "a.dag"
+      _ => false
+    })
+}
+
+// The derived per-node figure has a consumer (the receipt line) and says it is not the kill limit.
+test fn the_derived_bound_reaches_the_receipt_line_and_says_it_is_not_the_kill_limit() -> Bool {
+  let line = verify_run_bound_derived_line(bound: verify_run_bound_for(entries: ["a.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)))
+  string_contains(s: line, pattern: "derived verify bound 210 s for 1 entries") && string_contains(s: line, pattern: "enforced kill limit") && string_contains(s: line, pattern: "TranscribedUncited")
+    && verify_run_bound_derived_line(bound: VerifyRunOverCeiling { entries: 9, ceiling: 4 }) == ""
+}
+
+test fn uncited_rows_are_counted_and_cited_ones_are_not() -> Bool {
+  verify_uncited_sample_count(samples: fixture_samples) == 2 && verify_uncited_sample_count(samples: []) == 0
+}
