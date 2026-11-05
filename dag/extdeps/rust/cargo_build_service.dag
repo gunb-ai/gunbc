@@ -163,10 +163,11 @@ service CargoBuild {
     // extdeps.rust.cargo_build_service CargoBuild has no native realization: operation 'Build' binds no
     // transport: shell transport output key 'outcome' has no modeled channel'. So a cargo that never
     // spawned stays a hard evaluation refusal here (the interpreter's own shell-spawn-refused diagnostic
-    // points the reader at a ShellOutcome output field the native realization cannot lower), and the four
-    // corpus modules that declare one -- extdeps.shell.exec, extdeps.github.ci_runner,
-    // extdeps.github.organizations, extdeps.systemd.systemctl -- have never been realized natively. That
-    // gap is filed as gunbc.recurring_failure_mode
+    // points the reader at a ShellOutcome output field the native realization cannot lower), and no module
+    // that declares one has ever been realized natively. HOW MANY declare it, and which, is that row's
+    // fact to state and not this comment's to restate: an earlier cut of this comment kept its own list,
+    // went stale against the row it cited, and drew a review finding for it (DESIGN 3: one place states a
+    // fact). The gap is filed as gunbc.recurring_failure_mode
     // transport_output_field_without_a_native_realization_channel; it is not papered over by declaring the
     // field and letting the emission refuse.
     output {
