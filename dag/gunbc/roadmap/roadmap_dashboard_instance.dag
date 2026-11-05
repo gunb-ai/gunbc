@@ -31,7 +31,7 @@ import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
-import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, gibibyte, gibibyte_to_byte_size }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_frame_root,
@@ -40,7 +40,6 @@ import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
   MacbookLocal, Srv2Deploy,
 }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -729,8 +728,9 @@ type DashboardToolchain {
 // system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
 // difference between a typed preflight refusal naming the capability and a dispatch that dies
 // mid-attempt on an illegal option.
-// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, DERIVED FROM THE SLOT AUTHORITY RATHER THAN
-// AUTHORED HERE. The first cut of this row was `byte_size(count: 17179869184)` with a hand
+// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY. HISTORY: IT WAS DERIVED FROM THE SLOT AUTHORITY, AND
+// IS AUTHORED AGAIN SINCE 2026-11-04 (see the row below); the paragraphs that follow are the reasoning
+// of the derived form, retained as method. The first cut of this row was `byte_size(count: 17179869184)` with a hand
 // justification about observed peaks, and that was the section 3 violation in its purest form: the
 // number is EXACTLY gunbc_runner_slot_desired().memory_max, which is not a coincidence to be
 // noted but an authority to be consumed. That row carries an operator ruling derived from 186
@@ -757,7 +757,13 @@ type DashboardToolchain {
 // the runner slots use, at which point this row stops being a per-attempt ceiling standing alone
 // and becomes one term in an allocation the fabric can express. Until then it is honest about being
 // a ceiling with no width beside it.
-data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
+// CUT LOOSE FROM THE RUNNER SLOT 2026-11-04 (review 90824 on #15850). This row was the CI runner slot
+// reused as the agent-session lease; the slot rose to 25 GiB (gunbc.design_ruling
+// slot_memory_overrun_crashes_not_throttles), and the operator's belt ruling says workers get "a much
+// smaller memory allocation, if any" -- so a slot ruling must not move them. It is authored at the 22 GiB
+// it carried when srv1-lab's belt width of 6 was justified (6 x 22 fits, 7 does not), and a later
+// worker-specific ruling lowers it; it no longer tracks the slot.
+data dispatch_worker_memory_ceiling: ByteSize = byte_size(23622320128)
 
 // THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
 // belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
@@ -781,12 +787,12 @@ data srv1_lab_belt_max_concurrent: Nat = 6
 
 // THE SRV1 LAB'S WORKER (SESSION) MEMORY CEILING, AS A STATED POLICY FIGURE -- NOT the CI runner slot.
 // A worker's builds and tests belong in the compute pool (gunbc.compute ComputeBuildPool / its own units),
-// not inside its own cgroup; sizing the agent session at the 22 GiB runner slot (dispatch_worker_memory_ceiling,
-// the default every other row keeps) reserved 22 GiB per seat for a build the session does not run. The
+// not inside its own cgroup; sizing the agent session at the 22 GiB default (dispatch_worker_memory_ceiling,
+// the figure every other row keeps) reserved 22 GiB per seat for a build the session does not run. The
 // operator set this to 8 GiB on 2026-11-04 ("lets try it and fix it if it breaks something"); the authority
 // is the dated row gunbc.design_ruling.worker_session_memory_is_a_per_instance_policy_figure, NOT arithmetic
-// authored beside this literal (contrast the note above dispatch_worker_memory_ceiling, which keeps the slot
-// derivation precisely because it IS an authority). The figure is a policy, not a measurement: it is sized
+// authored beside this literal (dispatch_worker_memory_ceiling, the default above, is likewise authored since it
+// was cut loose from the runner slot on 2026-11-04). The figure is a policy, not a measurement: it is sized
 // from the harness worker's MEASURED resting footprint (~6.7 GiB memory.current) with headroom for the agent's
 // own non-build working set. The 15.8 GiB peak is NOT the sizing basis -- that peak came from the agent running
 // builds/tests IN-CGROUP and leaves with the compute-routing change (quiet-dove-609), which this row depends on
