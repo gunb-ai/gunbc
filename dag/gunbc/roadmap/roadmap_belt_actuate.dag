@@ -80,7 +80,7 @@ import gunbc.dispatch_attempt_launch {
   prepared_attempt_executor_origin,
   DispatchExecutorOrigin,
 }
-import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
+import gunbc.roadmap.roadmap_dispatch_actuator { DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request, DispatchWorkerRun, DispatchWorkerFirst, DispatchWorkerResumed, DispatchWorkerContinuedFrom, DispatchAttemptSelection, DispatchAttemptPrepared, DispatchAttemptSelectionRefused, dispatch_harness_attempt_selection, prepared_attempt_provider, RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded, filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name, dispatch_review_unit_name, dispatch_review_unit_command, dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv }
 import extdeps.systemd.systemd_run {
   systemd_run_option_words_refused_cause_detail, systemd_run_property_assignments,
   SystemdRunPropertyAssignmentsReady, SystemdRunPropertyAssignmentsRefused,
@@ -457,7 +457,7 @@ import gunbc.fleet.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.git {
-  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
+  shape_git_rev_parse_head_args, shape_git_rev_parse_verify_quiet_argv, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
   shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
   git_dir_path_from_gitfile, git_untrusted_config_env_words,
   git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
@@ -562,9 +562,9 @@ import gunbc.scm.object_table_json { object_id_key }
 import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitted, PublishWithheld, publish_admission }
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
-  continuation_decision,
+  PriorExecutionObservation,
+  ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Resume,
+  continuation_plan,
 }
 import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, session_recovery_of_events }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking }
@@ -2436,14 +2436,14 @@ type BeltSpawnKey
   = BeltSpawnKeyOf { attempt_key: String }
   | BeltSpawnKeyRefused { detail: String }
 
-fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationDecision) -> BeltSpawnKey {
+fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationPlan) -> BeltSpawnKey {
   match decision {
-    ContinuationResume { reason: _, attempt_key, ordinal: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
-    ContinuationSpawnFresh { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationRefused { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    Resume { reason: _, attempt_key, ordinal: _, checkpoint: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    StartInitial { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    NextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    Refuse { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    AlreadyRunning { reason: _, attempt_key: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    AlreadyComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
 }
 
@@ -2572,7 +2572,7 @@ fn belt_actuate_spawn_exec_for_instance(
   launch: LaunchIdentity,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
-  decision: ContinuationDecision,
+  decision: ContinuationPlan,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     probed_at: probed_at,
@@ -2600,16 +2600,17 @@ fn belt_actuate_spawn_exec_for_instance(
 type BeltSpawnRoute
   = SpawnRouteWorker
   | SpawnRouteResume { attempt_key: String, ordinal: Int }
+  | SpawnRouteNextAttempt { from_branch: String }
   | SpawnRouteNone { step: String, detail: String }
 
-fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRoute {
+fn belt_spawn_route_for_decision(decision: ContinuationPlan) -> BeltSpawnRoute {
   match decision {
-    ContinuationSpawnFresh { reason: _ } => SpawnRouteWorker
-    ContinuationResume { reason: _, attempt_key, ordinal, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
-    ContinuationRefused { reason } => SpawnRouteNone { step: "continuation", detail: reason }
-    ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
-    ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
-    ContinuationEnded { reason } => SpawnRouteNone { step: "lineage-ended", detail: reason }
+    StartInitial { reason: _ } => SpawnRouteWorker
+    Resume { reason: _, attempt_key, ordinal, checkpoint: _, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
+    NextAttempt { reason: _, from_branch } => SpawnRouteNextAttempt { from_branch: from_branch }
+    Refuse { reason } => SpawnRouteNone { step: "continuation", detail: reason }
+    AlreadyRunning { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-already-running", detail: reason }
+    AlreadyComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
   }
 }
 
@@ -2648,7 +2649,7 @@ fn belt_actuate_spawn_exec_modeled(
   launch: LaunchIdentity,
   prepared: PreparedAttemptLaunch,
   request: AttemptLaunchRequest,
-  decision: ContinuationDecision,
+  decision: ContinuationPlan,
 ) -> BeltSpawnOutcome {
   let addressing = belt_spawn_addressing(prepared: prepared)
   let instance = addressing.instance
@@ -2688,6 +2689,19 @@ fn belt_actuate_spawn_exec_modeled(
           run: DispatchWorkerResumed { ordinal: ordinal },
         )
       }
+    // CONTINUE: the lineage ended without an approved candidate, so a NEW attempt starts from the
+    // existing branch's head -- the general restore. The worktree-add branches the new attempt off
+    // that branch (dispatch_worker_run_start_ref), re-establishing a reaped worktree under a still-live
+    // branch so the prior attempt's committed work is the new attempt's base. A branch that is gone is
+    // a typed BranchAbsent refusal, taken at the continuation read (belt_prior_attempt_capture).
+    SpawnRouteNextAttempt { from_branch } =>
+      belt_actuate_spawn_with_origin(
+        workdir: workdir, admission_receipt: admission_receipt,
+        provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+        prepared: prepared,
+        request: request,
+        run: DispatchWorkerContinuedFrom { branch: from_branch },
+      )
   }
 }
 
@@ -2696,14 +2710,14 @@ fn belt_actuate_spawn_exec_modeled(
 // dashboard shows; an unobservable ledger refuses here as it does there, because a spawn that cannot
 // tell whether committed work exists must not start over on top of it. The capture observation is
 // the same head-grain read the verify gate makes.
-fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationDecision {
+fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationPlan {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
-      ContinuationRefused { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
+      Refuse { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
       let mine = attempts |> filter(p => p.node_id == node.node as String)
       match mine.first() {
-        Absent => continuation_decision(prior: none)
+        Absent => continuation_plan(obs: none)
         Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node: node, progress: p)
       }
     }
@@ -2711,14 +2725,14 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 }
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
-fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationDecision {
-  continuation_decision(
-    prior: Present { value: PriorAttemptFacts {
+fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationPlan {
+  continuation_plan(
+    obs: Present { value: PriorExecutionObservation {
       node_id: node.node as String,
       attempt_key: progress.attempt_key,
       branch: progress.branch,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
-      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key, branch: progress.branch),
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
@@ -2744,12 +2758,22 @@ fn belt_prior_attempt_recovery(instance: HostDashboardInstance, node_id: Roadmap
 // verify gate binds -- the capture record at the worktree's current head -- through the same
 // reader, so the two passes can never disagree about what the terminal worker declared. A head
 // that cannot be observed is not a yield: it is unknown, and the decision refuses on it.
-fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> SubmissionCaptureObservation {
+fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, branch: String) -> SubmissionCaptureObservation {
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
-    WorktreeHeadUnobserved { reason } =>
-      CaptureUnreadable {
-        reason: join(["the prior attempt's worktree head cannot be observed: ", reason], ""),
+    WorktreeHeadUnobserved { reason: _ } =>
+      // LAB BUG #2 (the reaped worktree must not block the decision): the worktree is gone -- reaped
+      // after the attempt's work was committed -- but the durable fact is the BRANCH, not the worktree.
+      // If the branch is still live, the prior attempt DID hand in work: read it as a candidate-less
+      // capture so the decision CONTINUES (NextAttempt) and the general restore re-adds the worktree
+      // from that branch's head. Only when the branch itself is gone is there nothing to restore -- the
+      // typed BranchAbsent refusal, a Refuse and never a fallback into a base-ref spawn.
+      if belt_branch_head_present(instance: instance, branch: branch) {
+        CaptureAbsent
+      } else {
+        CaptureUnreadable {
+          reason: join(["BranchAbsent: the prior attempt ", attempt_key, "'s branch ", branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], ""),
+        }
       }
     WorktreeHeadObserved { revision } =>
       belt_submission_capture_for_head(
@@ -2758,6 +2782,27 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
         node_id: node_id, attempt_key: attempt_key,
         head_sha: revision as String,
       )
+  }
+}
+
+// WHETHER A BRANCH THE CONTINUE VERB WOULD RESTORE ONTO STILL EXISTS. `git rev-parse --verify --quiet
+// <ref>` exits 1 silently when the ref is absent, so an empty stdout is the typed absence test; the
+// read is against the repository (instance.repo_root), the shared object store every attempt worktree
+// hangs off, so it answers even after the worktree itself has been reaped.
+fn belt_branch_head_present(instance: HostDashboardInstance, branch: String) -> Bool {
+  match belt_exec(
+    cmd: host_exec_argv(
+      program: dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: GitWorkspaceCapability,
+      ),
+      args: shape_git_rev_parse_verify_quiet_argv(repo: instance.repo_root as FilePath, ref_name: branch as GitRef),
+    ),
+    workdir: instance.repo_root as String,
+  ) {
+    ExecOk { stdout } => string_length(s: trim(stdout)) > 0
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
   }
 }
 
@@ -3041,6 +3086,7 @@ fn belt_spawn_stage(
           Present { value: SpawnFailed { node_id: node.node as String, step: "resume-worktree", detail: join(["the worktree at ", path, " could not be observed before resuming: ", cause], ""), provider: provider_wire_label, launch: launch } }
       }
     DispatchWorkerFirst =>
+      DispatchWorkerContinuedFrom { branch: _ } =>
       match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
         WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
         WorktreeClaimRecorded =>
@@ -9410,6 +9456,33 @@ fn belt_attempt_worker_terminal(provider: ProviderExecutionState, evidence: Work
   belt_provider_is_terminal(provider: provider)
     || belt_worker_process_terminal(evidence: evidence)
     || belt_attempt_unrecoverable(provider: provider, evidence: evidence)
+    // LAB BUG #11 (a node whose last attempt never ran is blocked): an attempt that never started --
+    // the provider never reached a seat AND no worker process was ever observed -- has NO live worker
+    // to join. Reading it as non-terminal parks the lineage forever in AlreadyRunning beside a worker
+    // that does not exist. It is terminal for continuation, so the operator's CONTINUE starts a new
+    // attempt from the branch head. A worker merely not-yet-observed (WorkerProcessUnobserved) is NOT
+    // this case -- unknown is not never-ran -- and stays non-terminal so a starting worker is joined.
+    || belt_attempt_never_ran(provider: provider, evidence: evidence)
+}
+
+fn belt_attempt_never_ran(provider: ProviderExecutionState, evidence: WorkerProcessEvidence) -> Bool {
+  match provider {
+    ProviderNotStarted =>
+      match evidence {
+        WorkerProcessAbsent => true
+        WorkerProcessExited { exit_code: _, last_command: _ } => true
+        WorkerProcessSignaled { signal: _, last_command: _ } => true
+        WorkerProcessRunning { command: _ } => false
+        WorkerProcessUnobserved { reason: _ } => false
+      }
+    ProviderStarting { activity: _ } => false
+    ProviderAwaitingSeat { detail: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderCompleted { activity: _ } => false
+    ProviderFailed { activity: _, detail: _ } => false
+    ProviderBudgetSpent { activity: _, detail: _ } => false
+    ProviderEventsRefused { activity: _, detail: _ } => false
+  }
 }
 
 fn belt_worker_process_terminal(evidence: WorkerProcessEvidence) -> Bool {

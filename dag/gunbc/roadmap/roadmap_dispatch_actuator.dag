@@ -1961,6 +1961,7 @@ data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
 type DispatchWorkerRun
   = DispatchWorkerFirst
   | DispatchWorkerResumed { ordinal: Int }
+  | DispatchWorkerContinuedFrom { branch: String }
 
 data gunbc_harness_worker_function: String = "harness_worker_cli"
 
@@ -1970,6 +1971,21 @@ fn dispatch_worker_run_function(run: DispatchWorkerRun) -> String {
   match run {
     DispatchWorkerFirst => gunbc_harness_worker_function
     DispatchWorkerResumed { ordinal: _ } => gunbc_harness_worker_resume_function
+    DispatchWorkerContinuedFrom { branch: _ } => gunbc_harness_worker_function
+  }
+}
+
+// THE REF A WORKTREE-ADD STARTS FROM. A first attempt branches from the instance's base ref; a
+// CONTINUED attempt (the operator's CONTINUE) branches from the HEAD OF THE EXISTING BRANCH it keeps
+// -- the general restore that re-adds a reaped worktree under a still-live branch does it from that
+// branch, so the prior attempt's committed work is the new attempt's base and is never started over.
+// Only START FRESH abandons the branch and returns to the base ref behind a new lineage generation
+// (ruling gunbc.design_ruling dispatch_is_continue_or_start_fresh).
+fn dispatch_worker_run_start_ref(run: DispatchWorkerRun, base_ref: String) -> String {
+  match run {
+    DispatchWorkerFirst => base_ref
+    DispatchWorkerResumed { ordinal: _ } => base_ref
+    DispatchWorkerContinuedFrom { branch } => branch
   }
 }
 
@@ -1977,6 +1993,7 @@ fn dispatch_worker_run_role(run: DispatchWorkerRun) -> AttemptUnitRole {
   match run {
     DispatchWorkerFirst => AttemptWorkerRole
     DispatchWorkerResumed { ordinal } => AttemptWorkerResumedRole { ordinal: ordinal }
+    DispatchWorkerContinuedFrom { branch: _ } => AttemptWorkerRole
   }
 }
 
@@ -3071,6 +3088,7 @@ fn dispatch_spawn_commands_for_launch(
 fn dispatch_worker_run_admitted(run: DispatchWorkerRun, provider: DispatchCliProvider) -> String? {
   match run {
     DispatchWorkerFirst => none
+    DispatchWorkerContinuedFrom { branch: _ } => none
     DispatchWorkerResumed { ordinal: _ } =>
       match provider {
         GunbcHarnessProvider => none
@@ -3164,7 +3182,7 @@ fn dispatch_spawn_commands_for_admitted_run(
     instance: instance,
     worktree_path: worktree_path,
     branch_name: branch_name,
-    remote_ref: instance.dispatch_base_ref as String,
+    remote_ref: dispatch_worker_run_start_ref(run: run, base_ref: instance.dispatch_base_ref as String),
   )
   let state_prepare = attempt_state_prepare_argvs_for_instance(
     instance: instance,

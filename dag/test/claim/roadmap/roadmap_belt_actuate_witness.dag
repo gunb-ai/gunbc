@@ -192,8 +192,8 @@ import gunbc.roadmap.roadmap_belt_actuate {
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts,
-  continuation_decision,
+  PriorExecutionObservation,
+  continuation_plan,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionCapture, WorkerSubmission, SubmissionBlocked, submission_digest,
@@ -222,7 +222,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  ContinuationSpawnFresh, ContinuationHold, ContinuationRefused, ContinuationComplete, ContinuationEnded, ContinuationResume,
+  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Resume,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -2754,21 +2754,22 @@ test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
 // census -> decision -> spawn route, and NO spawn command is reachable.
 // ------------------------------------------------------------------------------------------------
 
-// THE SPAWN ROUTE OF EVERY NON-SPAWN DECISION IS NONE. Hold (worker running, verification owed),
-// Complete (fully approved), Ended (stopped short of an approved candidate) and Refused carry no
-// spawn, so the spawn fold has no spawn command to reach for; only SpawnFresh reaches a worker.
+// THE SPAWN ROUTE OF EVERY NON-SPAWN PLAN IS NONE. A joined lineage (AlreadyRunning -- worker live,
+// or a segment still owed), the complete lineage, and a refusal carry no spawn, so the spawn fold has
+// no spawn command to reach for; StartInitial reaches a worker off the base ref and NextAttempt
+// (CONTINUE) reaches a restore-from-branch spawn -- and nothing else does.
 test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
-  let hold = belt_spawn_route_for_decision(decision: ContinuationHold { reason: "the prior attempt's worker has not ended" })
-  let complete = belt_spawn_route_for_decision(decision: ContinuationComplete { reason: "the lineage is complete" })
-  let refused = belt_spawn_route_for_decision(decision: ContinuationRefused { reason: "x" })
-  let ended = belt_spawn_route_for_decision(decision: ContinuationEnded { reason: "review requested changes" })
-  let fresh = belt_spawn_route_for_decision(decision: ContinuationSpawnFresh { reason: "no prior" })
-  (match hold { SpawnRouteNone { step, detail: _ } => step == "continuation-hold"  _ => false })
+  let joined = belt_spawn_route_for_decision(decision: AlreadyRunning { reason: "the prior attempt is live", attempt_key: "a1" })
+  let complete = belt_spawn_route_for_decision(decision: AlreadyComplete { reason: "the lineage is complete" })
+  let refused = belt_spawn_route_for_decision(decision: Refuse { reason: "x" })
+  let next_attempt = belt_spawn_route_for_decision(decision: NextAttempt { reason: "review requested changes", from_branch: "roadmap/n1/a1" })
+  let fresh = belt_spawn_route_for_decision(decision: StartInitial { reason: "no prior" })
+  (match joined { SpawnRouteNone { step, detail: _ } => step == "continuation-already-running"  _ => false })
     && (match complete { SpawnRouteNone { step, detail: _ } => step == "continuation-complete"  _ => false })
     && (match refused { SpawnRouteNone { step, detail: _ } => step == "continuation"  _ => false })
-    && (match ended { SpawnRouteNone { step, detail } => step == "lineage-ended" && detail == "review requested changes"  _ => false })
+    && (match next_attempt { SpawnRouteNextAttempt { from_branch } => from_branch == "roadmap/n1/a1"  _ => false })
     && (match fresh { SpawnRouteWorker => true  _ => false })
-    && (match belt_spawn_route_for_decision(decision: ContinuationResume { reason: "r", attempt_key: "a1", ordinal: 2, causes: ["c"] }) {
+    && (match belt_spawn_route_for_decision(decision: Resume { reason: "r", attempt_key: "a1", ordinal: 2, checkpoint: 2, causes: ["c"] }) {
       SpawnRouteResume { attempt_key, ordinal } => attempt_key == "a1" && ordinal == 2
       _ => false
     })
@@ -2800,8 +2801,8 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       }
     _ => false
   }
-  let decision = continuation_decision(
-    prior: Present { value: PriorAttemptFacts {
+  let decision = continuation_plan(
+    obs: Present { value: PriorExecutionObservation {
       node_id: "node-a",
       attempt_key: "cd172fe81b806160",
       branch: "dispatch/node-a-acd172fe81b806160",
@@ -2815,9 +2816,9 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
   )
   live_refusal
     && (match decision {
-      ContinuationHold { reason: _ } =>
+      AlreadyRunning { reason: _, attempt_key: _ } =>
         match belt_spawn_route_for_decision(decision: decision) {
-          SpawnRouteNone { step, detail: _ } => step == "continuation-hold"
+          SpawnRouteNone { step, detail: _ } => step == "continuation-already-running"
           _ => false
         }
       _ => false

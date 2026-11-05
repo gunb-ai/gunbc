@@ -1,18 +1,24 @@
 module test.claim.roadmap.roadmap_attempt_continuation_witness
 
+// THE WITNESS FOR THE ONE DECISION. Each `test fn` is a family of the ContinuationPlan partition,
+// and each carries a DISCRIMINATING RED CONTROL: a negative assertion that the plan is NOT a nearby
+// variant it could be confused with (a joined lineage is not a spawn; a continued lineage is not a
+// completion; a completion spawns nothing). A witness that only asserts the positive arm passes when
+// the decision is wrong in the confusable direction -- the red control is what makes it discriminate.
+
 import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded,
-  continuation_decision,
+  PriorExecutionObservation,
+  ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, AlreadyComplete, Refuse,
+  continuation_plan,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
 import gunbc.roadmap.roadmap_submission {
   WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
   SubmissionCapture, submission_digest, SubmissionCaptureRootBound,
   SubmissionCaptureObservation,
-  CaptureForHead, CaptureAbsent, CaptureUnreadable,
+  CaptureForHead, CaptureAbsent, CaptureUnreadable, CaptureNotAttempted,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
@@ -25,8 +31,8 @@ fn pri(
   verification: WorkflowSegment?,
   review: WorkflowSegment?,
   goal_audit: WorkflowSegment?,
-) -> PriorAttemptFacts {
-  PriorAttemptFacts {
+) -> PriorExecutionObservation {
+  PriorExecutionObservation {
     node_id: "n1",
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
@@ -64,148 +70,146 @@ fn segment(kind: WorkflowSegmentKind, state: WorkflowSegmentState, detail: Strin
   Present { value: WorkflowSegment { kind: kind, state: state, detail: detail } }
 }
 
-fn ended_with(decision: ContinuationDecision, pattern: String) -> Bool {
-  match decision {
-    ContinuationEnded { reason } => reason.contains(pattern) && reason.contains("roadmap/n1/a1") && reason.contains("no attempt is started over it")
+// A CONTINUED lineage carries its branch and says where the new attempt starts -- and it is NOT a
+// completion and NOT a join: the red control on every NextAttempt witness.
+fn continued_on(plan: ContinuationPlan, pattern: String) -> Bool {
+  match plan {
+    NextAttempt { reason, from_branch } =>
+      reason.contains(pattern) && from_branch == "roadmap/n1/a1" && reason.contains("roadmap/n1/a1") && reason.contains("starts from that branch's head")
     _ => false
   }
 }
 
-test fn no_prior_attempt_starts_fresh() -> Bool {
-  match continuation_decision(prior: none) {
-    ContinuationSpawnFresh { reason: _ } => true
+test fn no_prior_attempt_is_the_first_attempt() -> Bool {
+  (match continuation_plan(obs: none) {
+    StartInitial { reason: _ } => true
     _ => false
+  })
+    // RED CONTROL: the first attempt is not mistaken for a continuation (which would need a branch)
+    // nor a join.
+    && !(match continuation_plan(obs: none) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: none) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
+test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
+  let running = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
+  let joined = PriorExecutionObservation {
+    node_id: running.node_id,
+    attempt_key: running.attempt_key,
+    branch: running.branch,
+    worker_terminal: false,
+    capture: running.capture,
+    verification: running.verification,
+    review: running.review,
+    goal_audit: running.goal_audit,
+    recovery: SessionRecoveryNone,
   }
+  (match continuation_plan(obs: Present { value: joined }) {
+    AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("is live") && reason.contains("no second attempt")
+    _ => false
+  })
+    // RED CONTROL: a live attempt is joined, never re-spawned as a first attempt or continued as a
+    // new attempt beside the one that is still running.
+    && !(match continuation_plan(obs: Present { value: joined }) { StartInitial { reason: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: joined }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
 }
 
-// A JUDGED CANDIDATE THAT FAILS ENDS ITS LINEAGE AT EVERY STAGE, with the judgement's located reason
-// and the branch its work stays on -- never a fresh start over committed work, and never a new
-// attempt continuing it (gunbc.plans.harness_session_lifecycle, slice S1).
-test fn a_failed_judgement_ends_the_lineage_at_every_stage() -> Bool {
-  let verify_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red at roadmap_sandbox.dag"), review: none, goal_audit: none)
-  let green = segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations")
-  let review_red = pri(capture: ready_capture(), verification: green, review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing"), goal_audit: none)
-  let approved = segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved")
-  let audit_red = pri(capture: ready_capture(), verification: green, review: approved, goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the contract's red control is absent"))
-  ended_with(decision: continuation_decision(prior: Present { value: verify_red }), pattern: "verification failed: sandbox render red")
-    && ended_with(decision: continuation_decision(prior: Present { value: review_red }), pattern: "review requested changes: dag/a.dag: the arm is missing")
-    && ended_with(decision: continuation_decision(prior: Present { value: audit_red }), pattern: "goal audit requested changes: the contract's red control is absent")
+test fn red_verdict_continues_a_new_attempt_from_branch_head() -> Bool {
+  let verify_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentFailed, detail: "sandbox render red"), review: none, goal_audit: none)
+  let review_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"), review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing"), goal_audit: none)
+  let audit_red = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"), review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"), goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentFailed, detail: "the contract's red control is absent"))
+  continued_on(plan: continuation_plan(obs: Present { value: verify_red }), pattern: "verification failed: sandbox render red")
+    && continued_on(plan: continuation_plan(obs: Present { value: review_red }), pattern: "review requested changes: dag/a.dag: the arm is missing")
+    && continued_on(plan: continuation_plan(obs: Present { value: audit_red }), pattern: "goal audit requested changes: the contract's red control is absent")
 }
 
-test fn a_fully_approved_lineage_is_complete_and_spawns_nothing() -> Bool {
+test fn all_green_completes_and_the_continue_is_a_noop() -> Bool {
   let green = pri(
     capture: ready_capture(),
-    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations"),
+    verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "verified"),
     review: segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
     goal_audit: segment(kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved"),
   )
-  match continuation_decision(prior: Present { value: green }) {
-    ContinuationComplete { reason } => reason.contains("the lineage is complete")
+  (match continuation_plan(obs: Present { value: green }) {
+    AlreadyComplete { reason } => reason.contains("the lineage is complete") && reason.contains("nothing spawns")
+    _ => false
+  })
+    // RED CONTROL: a complete lineage is neither joined into a spawn nor continued; it is done.
+    && !(match continuation_plan(obs: Present { value: green }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: green }) { StartInitial { reason: _ } => true, _ => false })
+}
+
+test fn handed_in_nothing_continues_from_branch_head() -> Bool {
+  let yielded = pri(capture: CaptureAbsent, verification: none, review: none, goal_audit: none)
+  let blocked = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: "the acceptance run was still in flight", limitations: "" }), verification: none, review: none, goal_audit: none)
+  let needs = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionNeedsContext, explanation: "the contract does not say which artifact the lane renders", limitations: "" }), verification: none, review: none, goal_audit: none)
+  continued_on(plan: continuation_plan(obs: Present { value: yielded }), pattern: "without handing in a candidate")
+    && continued_on(plan: continuation_plan(obs: Present { value: blocked }), pattern: "its worker reported it was blocked")
+    && continued_on(plan: continuation_plan(obs: Present { value: needs }), pattern: "its submission declared needs-context")
+}
+
+// LAB BUG #4: a pre-commit-record attempt whose commit step never settled is a LEGACY record; it
+// CONTINUES (a new attempt from the branch head) and is never parked in a forever 'capture owed'.
+test fn legacy_capture_not_attempted_continues_not_parks() -> Bool {
+  let legacy = pri(capture: CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" }, verification: none, review: none, goal_audit: none)
+  continued_on(plan: continuation_plan(obs: Present { value: legacy }), pattern: "commit step never settled")
+    // RED CONTROL: not joined (which would wait forever) and not refused.
+    && !(match continuation_plan(obs: Present { value: legacy }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: legacy }) { Refuse { reason: _ } => true, _ => false })
+}
+
+test fn a_stopped_segment_is_a_refusal_not_a_fallback() -> Bool {
+  let unreadable = pri(capture: CaptureUnreadable { reason: "the capture directory could not be listed" }, verification: none, review: none, goal_audit: none)
+  let stopped = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "stopped"), review: none, goal_audit: none)
+  (match continuation_plan(obs: Present { value: unreadable }) {
+    Refuse { reason } => reason.contains("submission store is unreadable") && reason.contains("the capture directory could not be listed")
+    _ => false
+  })
+    && (match continuation_plan(obs: Present { value: stopped }) {
+      Refuse { reason } => reason.contains("does not inhabit")
+      _ => false
+    })
+    // RED CONTROL: a refusal is never a spawn.
+    && !(match continuation_plan(obs: Present { value: unreadable }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+}
+
+// The unbounded worker explanation is bounded and the truncation is marked.
+test fn worker_explanation_is_bounded() -> Bool {
+  let long_detail = "block-block-block-block-block-block-block-block"
+  let blocked = pri(capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: concat(concat(long_detail, long_detail), concat(long_detail, long_detail)), limitations: "" }), verification: none, review: none, goal_audit: none)
+  match continuation_plan(obs: Present { value: blocked }) {
+    NextAttempt { reason, from_branch: _ } => reason.contains(" ...") && string_length(s: reason) < 1400
     _ => false
   }
 }
 
-// A WORKER THAT STOPPED WITHOUT A CANDIDATE ENDS THE LINEAGE: no capture, a declared blocker, or a
-// declared need for context each carry their account, bounded, and none of them starts over.
-test fn an_end_without_a_candidate_ends_the_lineage_with_its_account() -> Bool {
-  let pending = segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting")
-  let yielded = pri(capture: CaptureAbsent, verification: pending, review: none, goal_audit: none)
-  let blocked = pri(
-    capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: "the acceptance run was still in flight", limitations: "acceptance unconfirmed" }),
-    verification: pending, review: none, goal_audit: none,
-  )
-  let needs = pri(
-    capture: capture_for(submission: WorkerSubmission { readiness: SubmissionNeedsContext, explanation: "the contract does not say which artifact the lane renders", limitations: "" }),
-    verification: pending, review: none, goal_audit: none,
-  )
-  ended_with(decision: continuation_decision(prior: Present { value: yielded }), pattern: "without handing in a candidate")
-    && ended_with(decision: continuation_decision(prior: Present { value: blocked }), pattern: "declared blocked: the acceptance run was still in flight")
-    && ended_with(decision: continuation_decision(prior: Present { value: needs }), pattern: "declared needs-context: the contract does not say which artifact the lane renders")
-}
-
-// THE ACCOUNT IS BOUNDED: an unbounded explanation is cut, and the cut is marked.
-test fn a_long_explanation_is_cut_and_marked() -> Bool {
-  let ten = "0123456789"
-  let long = join([ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten, ten], "")
-  let blocked = pri(
-    capture: capture_for(submission: WorkerSubmission { readiness: SubmissionBlocked, explanation: long, limitations: "" }),
-    verification: none, review: none, goal_audit: none,
-  )
-  match continuation_decision(prior: Present { value: blocked }) {
-    ContinuationEnded { reason } => reason.contains(" ...") && string_length(s: reason) < string_length(s: long) + 300
-    _ => false
-  }
-}
-
-// RED CONTROL: a ready capture is a candidate, and a candidate is verification's to judge -- the
-// decision HOLDS (the belt owes the verification) and never ends or restarts the lineage past an
-// unjudged candidate.
-test fn a_ready_candidate_holds_for_verification() -> Bool {
-  let p = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting"), review: none, goal_audit: none)
-  match continuation_decision(prior: Present { value: p }) {
-    ContinuationHold { reason } => reason.contains("still pending")
-    _ => false
-  }
-}
-
-test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
-  let p = pri(capture: CaptureUnreadable { reason: "the capture directory could not be listed" }, verification: none, review: none, goal_audit: none)
-  match continuation_decision(prior: Present { value: p }) {
-    ContinuationRefused { reason } => reason.contains("the capture directory could not be listed") && reason.contains("does not guess")
-    _ => false
-  }
-}
-
-fn running_prior() -> PriorAttemptFacts {
-  PriorAttemptFacts {
-    node_id: "n1",
-    attempt_key: "a1",
-    branch: "roadmap/n1/a1",
-    worker_terminal: false,
-    capture: CaptureAbsent,
-    verification: none,
-    review: none,
-    goal_audit: none,
-    recovery: SessionRecoveryNone,
-  }
-}
-
-// AN ACTIVE WORKER IS A HOLD: no spawn arm, and no end, is reachable from a running worker.
-test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
-  match continuation_decision(prior: Present { value: running_prior() }) {
-    ContinuationHold { reason } => reason.contains("has not ended")
-    _ => false
-  }
-}
-
-// VERIFICATION OWNED BY THE BELT HOLDS THE LINEAGE: absent, pending, and active segments are the
-// belt's outstanding obligation; a refused verification is an environment fact and the obligation
-// stays outstanding with the retry named; a stopped segment is a state verification does not
-// inhabit and refuses.
-test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool {
+// The waiting states all collapse to the JOIN: a segment owed, pending, active or retried-on-
+// environment is a lineage still in motion, joined rather than waited on by a spawn; a stopped
+// segment (a state it cannot inhabit) is the damaged-record refusal.
+test fn segments_in_motion_join_and_stopped_refuses() -> Bool {
   let owed = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
-  let pending = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting"), review: none, goal_audit: none)
+  let pending = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "queued"), review: none, goal_audit: none)
   let active = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentActive, detail: "running"), review: none, goal_audit: none)
   let refused = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentRefused, detail: "toolchain missing"), review: none, goal_audit: none)
   let stopped = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "stopped"), review: none, goal_audit: none)
-  (match continuation_decision(prior: Present { value: owed }) {
-    ContinuationHold { reason } => reason.contains("verification is owed")
+  (match continuation_plan(obs: Present { value: owed }) {
+    AlreadyRunning { reason, attempt_key: _ } => reason.contains("verification is owed")
     _ => false
   })
-    && (match continuation_decision(prior: Present { value: pending }) {
-      ContinuationHold { reason } => reason.contains("still pending")
+    && (match continuation_plan(obs: Present { value: pending }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("still pending")
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: active }) {
-      ContinuationHold { reason } => reason.contains("running")
+    && (match continuation_plan(obs: Present { value: active }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("running")
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: refused }) {
-      ContinuationHold { reason } => reason.contains("environment fact") && reason.contains("retries")
+    && (match continuation_plan(obs: Present { value: refused }) {
+      AlreadyRunning { reason, attempt_key: _ } => reason.contains("environment fact") && reason.contains("retries")
       _ => false
     })
-    && (match continuation_decision(prior: Present { value: stopped }) {
-      ContinuationRefused { reason } => reason.contains("does not inhabit")
+    && (match continuation_plan(obs: Present { value: stopped }) {
+      Refuse { reason: _ } => true
       _ => false
     })
 }
