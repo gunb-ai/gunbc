@@ -31,7 +31,7 @@ import extdeps.languages.json.parse {
 type UnexplainedEngineRefusal {
   status: HttpStatus
   request_id: String?
-  bytes_sent: String
+  request_body_digest: String
 }
 
 // THE RESUME BOUND IS DECLARED POLICY (operator decision 2026-10-16, condition 6): three resumes of
@@ -72,7 +72,7 @@ fn harness_unexplained_refusal(
               Present { value: UnexplainedEngineRefusal {
                 status: status,
                 request_id: http_header_dump_field(dump: dump, name: "x-request-id"),
-                bytes_sent: content_hash_atom(value: request_body as NonEmptyStr).digest as String,
+                request_body_digest: content_hash_atom(value: request_body as NonEmptyStr).digest as String,
               } }
             }
         }
@@ -326,7 +326,7 @@ fn session_conversation_messages(conversation: JsonValue) -> List<JsonValue> {
 fn session_cause_text(round: Int, refusal: UnexplainedEngineRefusal) -> String {
   join([
     "round ", to_string(value: round), ": the engine answered ", to_string(value: refusal.status),
-    " with an empty body (x-request-id ", session_request_id_text(refusal: refusal), ", bytes sent ", refusal.bytes_sent, ")",
+    " with an empty body (x-request-id ", session_request_id_text(refusal: refusal), ", request body digest ", refusal.request_body_digest, ")",
   ], "")
 }
 
@@ -336,7 +336,7 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
     json_kv(key: "round", value: json_int(n: round)),
     json_kv(key: "status", value: json_int(n: refusal.status)),
     json_kv(key: "request_id", value: json_string(s: session_request_id_text(refusal: refusal))),
-    json_kv(key: "bytes_sent", value: json_string(s: refusal.bytes_sent)),
+    json_kv(key: "request_body_digest", value: json_string(s: refusal.request_body_digest)),
     json_kv(key: "cause", value: json_string(s: session_cause_text(round: round, refusal: refusal))),
     json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
   ]))
