@@ -606,6 +606,8 @@ import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
 import gunbc.live_deploy.belt_cadence {
   belt_tick_run_bound, instance_obligation_run_bound, belt_attempt_obligation_unit_run_bound,
+  VerifyRunBound, VerifyRunBounded, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_for,
+  verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
 }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -9291,7 +9293,45 @@ fn belt_covered_claims_all_passed(covered: List<ValidationOperation>, document: 
   })) == 0
 }
 
+// THE VERIFICATION BOUND IS CHECKED BEFORE ANY RUN STARTS. The node's entries are known here, inside the unit, so
+// an entry count past the declared ceiling, or an entry with no recorded compile sample, is a typed refusal
+// instead of a run the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for).
 fn belt_run_validation_operations(
+  instance: HostDashboardInstance,
+  subject: VerificationSubject,
+  validations: List<ValidationOperation>,
+  worktree: String,
+  oracle_identity: ContentHash,
+  diff_window_path: String?,
+  source_roots: ClaimSourceRootLayout,
+) -> BeltValidationRun {
+  let entries = flat_map(belt_validation_units(validations: validations), v => match v {
+    GunbcClaimValidation { entry, function: _ } => [entry as String]
+    _ => [] as List<String>
+  })
+  match verify_run_bound_for(entries: entries, samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack) {
+    VerifyRunBounded { bound: _, entries: _ } =>
+      belt_run_bounded_validation_units(instance: instance, subject: subject, validations: validations, worktree: worktree, oracle_identity: oracle_identity, diff_window_path: diff_window_path, source_roots: source_roots)
+    VerifyRunOverCeiling { entries: n, ceiling } =>
+      BeltValidationRun {
+        executions: [],
+        verdict: ValidationRefused { cause: ValidationCommandRefused {
+          program: "gunbc-verify-bound",
+          reason: join(["the node verifies ", to_string(value: n), " entries, past the declared per-attempt ceiling of ", to_string(value: ceiling), "; no run started"], ""),
+        } },
+      }
+    VerifyRunUnsampled { entry } =>
+      BeltValidationRun {
+        executions: [],
+        verdict: ValidationRefused { cause: ValidationCommandRefused {
+          program: "gunbc-verify-bound",
+          reason: join(["entry ", entry, " has no recorded compile sample, so its run bound cannot be derived; no run started"], ""),
+        } },
+      }
+  }
+}
+
+fn belt_run_bounded_validation_units(
   instance: HostDashboardInstance,
   subject: VerificationSubject,
   validations: List<ValidationOperation>,

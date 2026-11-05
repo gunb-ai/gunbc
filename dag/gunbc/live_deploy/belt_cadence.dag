@@ -44,16 +44,79 @@ data belt_exit_trigger_limit_burst: Int = 200
 data belt_tick_run_bound: Second = second(count: 2700)
 
 data capture_obligation_run_bound: Second = second(count: 2700)
-data verify_obligation_run_bound: Second = second(count: 2700)
 data review_obligation_run_bound: Second = second(count: 2700)
 data audit_obligation_run_bound: Second = second(count: 2700)
 data publish_obligation_run_bound: Second = second(count: 2700)
 data launch_obligation_run_bound: Second = second(count: 2700)
 
+// THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (DESIGN 6b: the 2700s row it replaces was
+// one number for a cost that scales with the entry count). One claim_batch per entry pays one full entry
+// compile, so the obligation costs the sum of its entries' compile times. Each entry's figure is a
+// RECORDED OBSERVATION; an entry with no sample refuses typed rather than defaulting (DESIGN 5).
+type EntryCompileSample {
+  entry: String
+  seconds: Second
+  observed: String
+}
+
+// Reproduce: `gunbc compile --source-root dag --source-root src/v2 --entry <entry> --output-dir <dir>`;
+// the figure is the `process_invocation_total` phase of its timing lines.
+data verify_entry_compile_samples: List<EntryCompileSample> = [
+  EntryCompileSample {
+    entry: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
+    seconds: second(count: 646),
+    observed: "neat-gull-366 2026-11-05, local -j8 build slot, process_invocation_total ms=645578",
+  },
+]
+
+// POLICY BUDGETS, each with its reason (DESIGN 5 explicit policy budget). The headroom is a falsifiable
+// operator figure: a verify unit killed at its bound for a within-ceiling node means it is wrong.
+data verify_entries_ceiling: Int = 8
+// Reason: srv1's compute pool holds two seats; a node past eight entries is not one attempt's verification
+// and is refused before any run starts, so the outer bound is never the way a predictable overrun ends.
+data verify_run_headroom_percent: Int = 50
+// Reason: compile time on a shared host varies with neighbours; 50% over the recorded figure.
+data verify_run_slack: Second = second(count: 900)
+// Reason: the drain bound (event_backlog_drain_bound) is the corpus-load allowance the same unit pays once.
+
+type VerifyRunBound
+  = VerifyRunBounded { bound: Second, entries: Int }
+  | VerifyRunOverCeiling { entries: Int, ceiling: Int }
+  | VerifyRunUnsampled { entry: String }
+
+fn verify_entry_sample_seconds(samples: List<EntryCompileSample>, entry: String) -> Int? {
+  match filter(samples, s => s.entry == entry) {
+    Empty {} => none
+    Cons { head: first, tail: _ } => Present { value: second_count(s: first.seconds) }
+  }
+}
+
+// The entries are the node's distinct validation entries; the bound is their summed recorded figures
+// plus headroom and slack. samples, ceiling, headroom and slack are supplied so each arm is exercisable.
+fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>, ceiling: Int, headroom_percent: Int, slack: Second) -> VerifyRunBound {
+  if length(entries) > ceiling {
+    VerifyRunOverCeiling { entries: length(entries), ceiling: ceiling }
+  } else {
+    match filter(entries, e => match verify_entry_sample_seconds(samples: samples, entry: e) {
+      Absent => true
+      Present { value: _ } => false
+    }) {
+      Cons { head: missing, tail: _ } => VerifyRunUnsampled { entry: missing }
+      Empty {} => {
+        let total = fold(entries, init: 0, f: (acc, e) => match verify_entry_sample_seconds(samples: samples, entry: e) {
+          Present { value: n } => acc + n
+          Absent => acc
+        })
+        VerifyRunBounded { bound: second(count: total + total * headroom_percent / 100 + second_count(s: slack)), entries: length(entries) }
+      }
+    }
+  }
+}
+
 fn attempt_obligation_run_bound(kind: BeltAttemptObligationKind) -> Second {
   match kind {
     CaptureObligation => capture_obligation_run_bound
-    VerifyObligation => verify_obligation_run_bound
+    VerifyObligation => verify_unit_outer_run_bound()
     ReviewObligation => review_obligation_run_bound
     AuditObligation => audit_obligation_run_bound
     PublishObligation => publish_obligation_run_bound
@@ -69,6 +132,14 @@ fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
     DogfoodStartRecordObligation => belt_tick_run_bound
     SnapshotCensusObligation => belt_tick_run_bound
   }
+}
+
+// The attempt unit's outer safety net: the ceiling's worth of the slowest recorded entry, derived from the
+// same rows, so changing a sample or the ceiling moves it (no second copy).
+fn verify_unit_outer_run_bound() -> Second {
+  let slowest = fold(verify_entry_compile_samples, init: 0, f: (acc, s) => if second_count(s: s.seconds) > acc { second_count(s: s.seconds) } else { acc })
+  let total = slowest * verify_entries_ceiling
+  second(count: total + total * verify_run_headroom_percent / 100 + second_count(s: verify_run_slack))
 }
 
 fn belt_attempt_obligation_unit_run_bound() -> Second {

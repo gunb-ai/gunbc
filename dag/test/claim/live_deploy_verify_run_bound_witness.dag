@@ -1,0 +1,48 @@
+module test.claim.live_deploy_verify_run_bound_witness
+
+import std.types { Bool, String, Int, List }
+import std.measure { Second, second, second_count }
+import gunbc.live_deploy.belt_cadence {
+  EntryCompileSample, VerifyRunBound, VerifyRunBounded, VerifyRunOverCeiling, VerifyRunUnsampled,
+  verify_run_bound_for, verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
+  verify_unit_outer_run_bound,
+}
+
+data fixture_samples: List<EntryCompileSample> = [
+  EntryCompileSample { entry: "a.dag", seconds: second(count: 100), observed: "fixture" },
+  EntryCompileSample { entry: "b.dag", seconds: second(count: 200), observed: "fixture" },
+]
+
+// A normal node: two sampled entries run within the sum of their figures plus 50% headroom plus the slack.
+test fn verify_bound_of_a_normal_node_is_the_sum_with_headroom_and_slack() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "b.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunBounded { bound, entries } => second_count(s: bound) == 300 + 150 + 60 && entries == 2
+    VerifyRunOverCeiling { entries: _, ceiling: _ } => false
+    VerifyRunUnsampled { entry: _ } => false
+  }
+}
+
+// Over the ceiling refuses typed, naming both counts, before any run.
+test fn verify_bound_over_the_ceiling_refuses_typed() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "b.dag", "a.dag"], samples: fixture_samples, ceiling: 2, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunOverCeiling { entries, ceiling } => entries == 3 && ceiling == 2
+    VerifyRunBounded { bound: _, entries: _ } => false
+    VerifyRunUnsampled { entry: _ } => false
+  }
+}
+
+// An entry with no recorded sample refuses typed, naming the entry; it never defaults.
+test fn verify_bound_of_an_unsampled_entry_refuses_typed() -> Bool {
+  match verify_run_bound_for(entries: ["a.dag", "c.dag"], samples: fixture_samples, ceiling: 4, headroom_percent: 50, slack: second(count: 60)) {
+    VerifyRunUnsampled { entry } => entry == "c.dag"
+    VerifyRunBounded { bound: _, entries: _ } => false
+    VerifyRunOverCeiling { entries: _, ceiling: _ } => false
+  }
+}
+
+// The unit's outer net is derived from the same rows and clears the ceiling's worth of the slowest figure.
+test fn verify_outer_bound_clears_the_ceiling_of_the_slowest_sample() -> Bool {
+  second_count(s: verify_unit_outer_run_bound()) > 646 * verify_entries_ceiling
+    && verify_run_headroom_percent > 0 && second_count(s: verify_run_slack) > 0
+    && length(verify_entry_compile_samples) > 0
+}
