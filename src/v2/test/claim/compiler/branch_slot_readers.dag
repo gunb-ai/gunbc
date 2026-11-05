@@ -70,9 +70,9 @@ fn bsr_node_is(found: Optional<Node>, expected: Node) -> Bool {
 
 // ---- program_choose_branch: the interpreter that picks the arm ----
 
-fn bsr_chosen_is(chosen: Outcome<Node>, expected: Node) -> Bool {
+fn bsr_chosen_is(chosen: Outcome<Optional<Node>>, expected: Node) -> Bool {
   match chosen {
-    Accepted { value: n, diagnostics: _ } => content_hash(n: n) == content_hash(n: expected)
+    Accepted { value: found, diagnostics: _ } => bsr_node_is(found: found, expected: expected)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -113,7 +113,7 @@ test fn bsr_a_branch_with_a_fourth_positional_child_is_refused() -> Bool {
   }
 }
 
-fn bsr_reason_is(chosen: Outcome<Node>, reason: Symbol) -> Bool {
+fn bsr_reason_is(chosen: Outcome<Optional<Node>>, reason: Symbol) -> Bool {
   match chosen {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == reason

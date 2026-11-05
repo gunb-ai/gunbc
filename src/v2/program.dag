@@ -277,7 +277,7 @@ fn program_choose_branch(
     if program_runtime_bool_true(value: condition) {
       match program_branch_arm(node: node, slot: BranchThenSlot) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: optional_present(value: arm), diagnostics: d } => Accepted { value: optional_present(value: arm), diagnostics: d }
+        Accepted { value: arm, diagnostics: d } => Accepted { value: optional_present(value: arm), diagnostics: d }
       }
     } else if program_runtime_bool_false(value: condition) {
       program_branch_else_selection(node: node)
