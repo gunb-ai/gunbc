@@ -44,6 +44,7 @@ import extdeps.git.partial_clone {
 }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_converged_ref,
   fleet_admitted_revision_source, srv1_lab_admitted_revision_source,
   srv1_dashboard_lab_id, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
   public_builtin_dashboard_instances, HostDashboardInstance,
@@ -1024,8 +1025,8 @@ test fn the_lab_row_serves_and_forks_from_the_ref_convergence_advances() -> Bool
   match dashboard_instance_for_id(instance_id: srv1_dashboard_lab_id as String) {
     DashboardInstanceForId { instance } =>
       (match instance.source_seed {
-        DashboardSeededByConvergence { anchor_ref, built_binary: _, apply_workdir: _ } =>
-          (anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
+        DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } =>
+          (dashboard_instance_converged_ref(instance: instance) as String) == (srv1_lab_admitted_revision_source.ref_name as String)
         DashboardExistingRepo { anchor_ref: _ } => false
         DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => false
       })

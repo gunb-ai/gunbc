@@ -143,7 +143,6 @@ type DashboardProvisionTransport
 type DashboardSourceSeed
   = DashboardExistingRepo { anchor_ref: NonEmptyStr }
   | DashboardSeededByConvergence {
-      anchor_ref: NonEmptyStr,
       built_binary: Optional<FilePath>,
       apply_workdir: FilePath,
     }
@@ -153,6 +152,13 @@ type DashboardSourceSeed
       anchor_ref: NonEmptyStr,
       history_remote: NonEmptyStr,
     }
+
+// THE ONE REF A CONVERGENCE-SEEDED INSTANCE IS RESET TO AND PREFLIGHT-VERIFIED AGAINST: the instance's own
+// admitted_revision.ref_name, read where convergence wrote it. The seed arm carries no ref of its own, so the
+// plan and the preflight cannot name different revisions (one fact, one place, section 3).
+fn dashboard_instance_converged_ref(instance: HostDashboardInstance) -> NonEmptyStr {
+  instance.admitted_revision.ref_name as NonEmptyStr
+}
 
 // THE ADMITTED BINDING IS A FIELD, NOT A CHECK SOMEONE MAY RUN. gunbc.provider_account models which
 // account a credential belongs to and how many concurrent sessions its persistence behaviour can
@@ -585,7 +591,7 @@ fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmp
 fn dashboard_instance_apply_workdir(instance: HostDashboardInstance) -> FilePath {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => instance.repo_root
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir } => apply_workdir
+    DashboardSeededByConvergence { built_binary: _, apply_workdir } => apply_workdir
     DashboardGitBundle {
       controller_repo,
       staged_bundle: _,
@@ -600,7 +606,7 @@ fn dashboard_instance_apply_workdir(instance: HostDashboardInstance) -> FilePath
 // bundle and existing-repo arms keep their built seed under the workdir they already named.
 fn dashboard_instance_serve_binary_source(instance: HostDashboardInstance) -> Optional<FilePath> {
   match instance.source_seed {
-    DashboardSeededByConvergence { anchor_ref: _, built_binary, apply_workdir: _ } => built_binary
+    DashboardSeededByConvergence { built_binary, apply_workdir: _ } => built_binary
     DashboardExistingRepo { anchor_ref: _ } =>
       Present {
         value: dashboard_instance_child(
@@ -966,7 +972,7 @@ type DashboardInstanceByInstanceRoot
 fn dashboard_instance_answers_host_lookup(instance: HostDashboardInstance) -> Bool {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => false
+    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => false
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle: _,
@@ -1458,7 +1464,6 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // dispatch fork base, and the convergence writer's target are now THE SAME ref the operator
     // advances: refs/gunbc/srv1-lab-admitted.
     source_seed: DashboardSeededByConvergence {
-      anchor_ref: srv1_lab_admitted_revision_source.ref_name as NonEmptyStr,
       built_binary: Absent,
       apply_workdir: dashboard_apply_neutral_workdir,
     },
@@ -3129,7 +3134,7 @@ fn dashboard_inbox_under(root: FilePath) -> FilePath {
 fn dashboard_instance_inbox_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => []
+    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => []
     DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => [
       OwnedDirectoryDeclared {
         member: "bundle-inbox" as NonEmptyStr,
@@ -3414,7 +3419,7 @@ type DashboardInstanceProvisionOp
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => []
+    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => []
     DashboardGitBundle {
       controller_repo,
       staged_bundle: _,
@@ -3456,10 +3461,10 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
   ]
   let source_ops = match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => []
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => [
+    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => [
       DashboardResetConvergedSourceRepo {
         repo: instance.repo_root,
-        anchor_ref: instance.dispatch_base_ref,
+        anchor_ref: dashboard_instance_converged_ref(instance: instance),
       },
     ]
     DashboardGitBundle {
@@ -3720,7 +3725,7 @@ fn dashboard_source_seed_ready(
 ) -> Bool {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => true
-    DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } => true
+    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => true
     DashboardGitBundle {
       controller_repo: _,
       staged_bundle: _,
@@ -3826,7 +3831,7 @@ fn dashboard_instance_retract_plan(
         DashboardInstanceRetractRefused {
           reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as NonEmptyStr,
         }
-      DashboardSeededByConvergence { anchor_ref: _, built_binary: _, apply_workdir: _ } =>
+      DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } =>
         DashboardInstanceRetractRefused {
           reason: "convergence-seeded dashboard instances own no bundle or local origin; their repository belongs to convergence, not the isolated-instance retractor" as NonEmptyStr,
         }
