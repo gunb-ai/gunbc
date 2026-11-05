@@ -1,7 +1,7 @@
 module gunbc.harness.harness_throughput
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse {
   JsonDocumentParse, JsonDocumentParsed, JsonDocumentUnreadable,
@@ -322,9 +322,9 @@ fn harness_throughput_from_ledger(ledger: HarnessRoundLedger) -> HarnessThroughp
   match ledger {
     RoundsUnobserved { reason: r } => ThroughputUnobserved { reason: r }
     RoundsObserved { rounds: rs } =>
-      if list_length(items: rs) == 0 {
+      if length(xs: rs) == 0 {
         ThroughputUnobserved { reason: "no clocked round yet" as NonEmptyStr }
-      } else if list_length(items: rs) < 2 {
+      } else if length(xs: rs) < 2 {
         ThroughputUnobserved { reason: "one clocked round so far; an interval needs two" as NonEmptyStr }
       } else {
         let first = rs.first()
@@ -341,7 +341,7 @@ fn harness_throughput_from_ledger(ledger: HarnessRoundLedger) -> HarnessThroughp
                   ThroughputObserved {
                     output_tokens: fold(rs.skip(n: 1), init: 0, f: (a, r) => a + r.output_tokens),
                     elapsed_ms: l.epoch_ms - f.epoch_ms,
-                    rounds: list_length(items: rs),
+                    rounds: length(xs: rs),
                   }
                 }
             }
@@ -458,8 +458,8 @@ fn round_remaining_flex(ledger: HarnessRoundLedger, budget_steps: Int) -> Int {
     RoundsUnobserved { reason: _ } => 0
     RoundsObserved { rounds } => {
       let segs = round_segments(ledger: ledger)
-      let n = list_length(items: segs)
-      let spent_rounds = list_length(items: rounds)
+      let n = length(xs: segs)
+      let spent_rounds = length(xs: rounds)
       let remaining_rounds = if spent_rounds >= budget_steps { 0 } else { budget_steps - spent_rounds }
       if n == 0 || remaining_rounds == 0 {
         0

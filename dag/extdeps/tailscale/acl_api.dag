@@ -1,4 +1,5 @@
 module extdeps.tailscale.acl_api
+import std.types { Bearer }
 
 import std.types { Secret, NonEmptyStr, AuthScheme, HttpStatus }
 import extdeps.external_authority { ExternalAuthority }

@@ -2,7 +2,7 @@ module test.claim.native_serve_probe_plan_witness
 
 import std.types { Bool, String, List }
 import gunbc.native_serve_probe_plan {
-  NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
+  NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit,
   native_serve_phase_refusals, native_serve_phase_names,
 }
 
@@ -13,7 +13,7 @@ import gunbc.native_serve_probe_plan {
 // reader disagree exits 1 with the cause, which the dispatch that lands this change runs.
 
 fn all_three() -> List<NativeServePhase> {
-  [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit]
+  [NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeDeadlineExit]
 }
 
 // A declaration the reader judges completely is not refused: both sides empty, and both sides full.
@@ -31,8 +31,8 @@ test fn a_declared_phase_the_reader_cannot_judge_is_refused_by_name() -> Bool {
 
 // The converse: a phase the reader judges that no row runs would read defaults as observations.
 test fn a_judged_phase_nobody_declares_is_refused_by_name() -> Bool {
-  let refusals = native_serve_phase_refusals(declared: [], judged: [NativeServeStuckCeilingExit])
-  count(refusals) == 1 && contains(refusals, "judged by the reader but not declared: stuck-ceiling-exit")
+  let refusals = native_serve_phase_refusals(declared: [], judged: [NativeServeDeadlineExit])
+  count(refusals) == 1 && contains(refusals, "judged by the reader but not declared: deadline-exit")
 }
 
 // Each refusal is independent: one satisfied phase does not hide an unsatisfied one.

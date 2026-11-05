@@ -2513,7 +2513,7 @@ mod compiler_tests {
                 // The signature reads the declaration...
                 assert!(
                     emitted.contains(
-                        "-> Result<(bool, String, String), Box<dyn std::error::Error>>"
+                        "-> std::result::Result<(bool, String, String), std::boxed::Box<dyn std::error::Error>>"
                     ),
                     "signature must project the three declared output types, got:\n{}",
                     emitted
@@ -7311,13 +7311,10 @@ mod compiler_tests {
                 let t = Instant::now();
                 let ownership = crate::v1_compiler_compile::extract_ownership_proofs(typed.clone());
                 let ownership_elapsed = t.elapsed();
-                let own_diags =
-                    crate::v1_compiler_compile::ownership_diagnostics(ownership.clone());
                 eprintln!(
-                    "  Ownership:                    {:>8.2?}  ({} proofs, {} diagnostics)",
+                    "  Ownership:                    {:>8.2?}  ({} proofs)",
                     ownership_elapsed,
-                    ownership.len(),
-                    own_diags.len()
+                    ownership.len()
                 );
 
                 // 6. Emit
@@ -7502,6 +7499,7 @@ mod compiler_tests {
                     String,
                     std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
                 >();
+                let mut equality_by_target = crate::v1_rt::rc_empty_map::<String, bool>();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -7546,6 +7544,7 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
+                        equality_by_target.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
@@ -7588,6 +7587,7 @@ mod compiler_tests {
                             String,
                             std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>,
                         >(),
+                        equality_by_target.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
@@ -7630,6 +7630,11 @@ mod compiler_tests {
                             variant_surfaces.clone(),
                             source_indices.clone(),
                         ),
+                    );
+                    equality_by_target = crate::v1_compiler_infer::equality_table_with_module(
+                        equality_by_target,
+                        typed.clone(),
+                        source_indices.clone(),
                     );
                     mi_raw.insert(name, typed);
                 }

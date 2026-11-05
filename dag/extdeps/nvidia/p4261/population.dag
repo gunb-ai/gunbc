@@ -1,0 +1,451 @@
+module extdeps.nvidia.p4261.population
+
+import std.types { List, NonEmptyStr, String }
+import std.nat { Nat }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.electronic_component.types {
+  Designator,
+  ElectronicComponentRow,
+  designator_eq,
+  designator_of,
+  designator_text,
+}
+import extdeps.electronic_component.intel_10cx085 { cyclone_10_gx_10cx085yf672e6g }
+import extdeps.electronic_component.microchip_cec1736 { cec1736 }
+import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
+import extdeps.electronic_component.onsemi_fsv20100v { onsemi_schottky_fsv20100v }
+import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
+import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
+import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
+import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
+import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
+import extdeps.electronic_component.aos_5_0smdj60a { aos_tvs_5_0smdj60a }
+import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
+import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
+import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
+import extdeps.electronic_component.ti_sn74avc4t774 { sn74avc4t774_rsv }
+import extdeps.electronic_component.ti_sn74lv1t08 { sn74lv1t08_dck }
+import std.measure { ampere, volt }
+import product.electrical.identification { PrintedRating, PrintedFuseRating }
+import extdeps.nvidia.p4261 { P4261AssemblyRevision, p4261_e1, p4261_k1, p4261_revision_eq }
+import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
+import extdeps.electronic_component.ti_tca9546a { tca9546a_pw }
+import extdeps.electronic_component.ti_tusb8042a { tusb8042a_rgc }
+
+// WHICH PART NVIDIA'S P4261 CARRIES AT EACH DESIGN POSITION, PER ASSEMBLY REVISION. A design position
+// is NVIDIA's: the silkscreen designator a revision's layout gives a footprint. Which part the position
+// is populated with is NVIDIA's design fact too, whoever reads it. No NVIDIA bill of materials or
+// assembly drawing for the P4261 has been found, so every claim here is RECONSTRUCTED from the parts
+// this repository read on the boards it holds, and its standing is TranscribedUncited, naming what
+// would ground it. Whether a held board's own readings support a claim -- and on which board -- is the
+// observing layer's assessment (product.p4261.evidence), never a property authored here.
+//
+// A POSITION IS LISTED WHETHER OR NOT ITS POPULATION IS KNOWN. Not knowing which part sits at a
+// position is our coverage gap, so it is the ABSENCE of a claim, never a claim of its own. Nor does an
+// empty footprint read on one board become a claim that the revision leaves the position unpopulated:
+// a footprint emptied by us, or one this unit happens to lack, says nothing about NVIDIA's design
+// intent, so there is no unpopulated arm.
+//
+// A position names its revision and its designator and nothing else: its revision is the only source
+// of the revision a claim is about, so a claim cannot name one revision and sit in another's list.
+//
+// The extdeps -> product import (PrintedRating) reuses the generic electrical vocabulary in place
+// (approved for Stage B): acyclicity is the import graph's only law (DESIGN 3).
+// A position IS its revision plus its designator's exact spelling: the field carries the `Designator`
+// authority, so a position cannot be built from text that was tidied on the way in.
+type P4261Position {
+  revision: P4261AssemblyRevision
+  designator: Designator
+}
+
+// What a reconstructed claim says the position is populated with. PartConstrainedToRows says the part
+// is ONE of these rows -- the reconstruction cannot yet tell which -- not that NVIDIA permits them as
+// interchangeable production alternatives.
+type PopulatedPart
+  = PartRow { row: ElectronicComponentRow }
+  | PartConstrainedToRows { rows: List<ElectronicComponentRow> }
+  | PrintedRatedPart { rating: PrintedRating }
+
+type PopulationClaim {
+  part: PopulatedPart
+  standing: CitedFigureStanding
+}
+
+type P4261DesignPosition {
+  position: P4261Position
+  population: PopulationClaim?
+}
+
+// The only way a position is minted: from the text as read, lifted into the identity type unchanged.
+fn p4261_position(revision: P4261AssemblyRevision, designator: NonEmptyStr) -> P4261Position {
+  P4261Position { revision: revision, designator: designator_of(verbatim: designator) }
+}
+
+// What our reconstruction says about one designator, looked up by EXACT spelling. Consumers ask this
+// instead of casting a designator to text and comparing: a search by a tidied key (underscores gone,
+// case folded) would answer for a position NVIDIA may not have, and an invented position is a
+// fabricated design fact. A miss is Absent, and the caller says so rather than guessing.
+fn p4261_position_at(
+  positions: List<P4261DesignPosition>,
+  verbatim: NonEmptyStr
+) -> P4261DesignPosition? {
+  (filter(
+    positions,
+    p => designator_eq(a: p.position.designator, b: designator_of(verbatim: verbatim))
+  )).first()
+}
+
+fn bom_obligation(revision: P4261AssemblyRevision, designator: NonEmptyStr) -> NonEmptyStr {
+  join(["an NVIDIA bill of materials or assembly drawing for P4261 assembly ", revision.assembly_part_number as String, " revision ", revision.revision_code as String, " naming the part at ", designator as String], "") as NonEmptyStr
+}
+
+fn reconstructed(revision: P4261AssemblyRevision, designator: NonEmptyStr, part: PopulatedPart) -> P4261DesignPosition {
+  P4261DesignPosition {
+    position: p4261_position(revision: revision, designator: designator),
+    population: Present { value: PopulationClaim { part: part, standing: TranscribedUncited { read_obligation: bom_obligation(revision: revision, designator: designator) } } },
+  }
+}
+
+fn unclaimed(revision: P4261AssemblyRevision, designator: NonEmptyStr) -> P4261DesignPosition {
+  P4261DesignPosition { position: p4261_position(revision: revision, designator: designator), population: Absent }
+}
+
+fn e1_part(designator: NonEmptyStr, row: ElectronicComponentRow) -> P4261DesignPosition {
+  reconstructed(revision: p4261_e1, designator: designator, part: PartRow { row: row })
+}
+
+// A claim can owe more than NVIDIA's bill of materials. Where the vendor's own document left a table
+// unread, the gap is carried HERE -- on the reconstruction that uses the row -- and not as a placeholder
+// inside the upstream row (DESIGN §3: an unread source is a downstream coverage obligation). The four
+// PI3CH480 positions are the case today: this document's customer-marking table did not extract, so the
+// row publishes no mark and the Q-body attribution rests on the ordering-code field and the observed body.
+fn e1_part_owing(designator: NonEmptyStr, row: ElectronicComponentRow, owes: NonEmptyStr) -> P4261DesignPosition {
+  P4261DesignPosition {
+    position: p4261_position(revision: p4261_e1, designator: designator),
+    population: Present { value: PopulationClaim {
+      part: PartRow { row: row },
+      standing: TranscribedUncited { read_obligation: join([bom_obligation(revision: p4261_e1, designator: designator) as String, "; and ", owes as String], "") as NonEmptyStr },
+    } },
+  }
+}
+
+fn pi3ch480_marking_table_obligation() -> NonEmptyStr {
+  "Diodes Incorporated's PI3CH480 data sheet (Document Number DS40329 Rev 5.2, December 2021, page 8) publishes the Q (QSOP-16) mark \"PI3CH / 480QE_ / ZYWXX\", now carried by extdeps.electronic_component.diodes_pi3ch480.pi3ch480_qex; what remains owing is this position's own marking reading compared with that published mark, which the post-marking-PR identification join performs"
+}
+
+fn e1_unclaimed(designator: NonEmptyStr) -> P4261DesignPosition {
+  unclaimed(revision: p4261_e1, designator: designator)
+}
+
+fn fuse(amperes: Nat, volts: Nat?) -> PopulatedPart {
+  PrintedRatedPart { rating: PrintedFuseRating { current: ampere(count: amperes), interrupt_voltage: match volts { Absent => Absent, Present { value: v } => Present { value: volt(count: v) } } } }
+}
+
+// The E1's designator-named positions, each read off the silkscreen on the E1 this repository holds.
+data p4261_e1_positions: List<P4261DesignPosition> = [
+
+  // The 2026-11-03b atlas pass: every fully read E1 designator above the passive level, added
+  // by exact spelling. Rows whose reading was uncertain are NOT here (they are held on
+  // the observation side with the photo that would settle them), and rows whose designator
+  // carried a '?' are not here either.
+  e1_unclaimed(designator: "J20"),
+  reconstructed(revision: p4261_e1, designator: "F1", part: fuse(amperes: 12, volts: Absent)),
+  reconstructed(revision: p4261_e1, designator: "F300", part: fuse(amperes: 100, volts: Present { value: 75 })),
+  e1_unclaimed(designator: "F302"),
+  reconstructed(revision: p4261_e1, designator: "D2", part: PartConstrainedToRows { rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a] }),
+  reconstructed(revision: p4261_e1, designator: "D5", part: PartConstrainedToRows { rows: [tvs_5_0smdj60a, aos_tvs_5_0smdj60a] }),
+  e1_part(designator: "C10_P5", row: eeh_zu1j151),
+  e1_part(designator: "C12_P5", row: eeh_zu1j151),
+  // OPEN QUESTION on Q21_P5 and Q22_P5 (the note on the two rows in product.p4261.e1_b holds both
+  // records; it is not restated here). The bench read "017N10LF / HAD228" on both bodies of the stacked
+  // pair from one 2026-10-19 photograph, whose bytes are not in the photograph store; the 2026-11-03
+  // atlas pass did not contradict that, it simply did not repeat it. Until the operator settles it, both
+  // positions keep their claim and both board rows keep their identification, because two findings the
+  // operator measured are derived from those rows -- if the print turns out to sit on only one body, the
+  // input-switch BLOCKING reading and the protected-bus downstream-terminal read become unestablished.
+  // What settles it is in the e1_b note.
+  e1_part(designator: "Q21_P5", row: ipb017n10n5lf),
+  e1_part(designator: "Q22_P5", row: ipb017n10n5lf),
+  e1_part(designator: "U1_P5", row: lm5066i_pwp),
+  e1_part(designator: "U522", row: tmp275_dgk),
+  e1_unclaimed(designator: "Q4_P5"),
+  e1_unclaimed(designator: "D4_P5"),
+  e1_unclaimed(designator: "U2_P5"),
+  e1_unclaimed(designator: "U3_P5"),
+  // Q300 AND Q301 CARRY NO CLAIM. Both were once claimed as Diodes Incorporated's BSS138 on the mark
+  // "K38", which was a stronger statement than the evidence supports: "K38" is a marking several makers
+  // use, and the model holds exactly one BSS138 row, so there is no second candidate row to constrain
+  // the pair to and PartConstrainedToRows would have been a claim dressed up as a bet. The positions
+  // stay listed -- NVIDIA's design has them -- with no population claim. What would settle it is on the
+  // observation that raised it, where observations live: product.p4261.e1_b's e1_k38_candidate carries
+  // the discriminator, "the maker's date-code line, or another maker's marking table, read against
+  // Diodes Incorporated's BSS138 table". A second maker's cited row is what would let a claim return.
+  e1_unclaimed(designator: "Q301"),
+  e1_unclaimed(designator: "Q300"),
+  e1_unclaimed(designator: "U2_P1"),
+  e1_unclaimed(designator: "Q5_P5"),
+  e1_unclaimed(designator: "D5_P5"),
+  e1_unclaimed(designator: "S1"),
+  e1_unclaimed(designator: "S2"),
+  e1_unclaimed(designator: "J68"),
+  e1_unclaimed(designator: "J30"),
+  e1_part(designator: "U21", row: pca9617adp),
+  e1_part(designator: "U53", row: pca9617adp),
+  e1_unclaimed(designator: "U100"),
+  e1_part(designator: "U10_P2", row: mp2333cgtl),
+  e1_part(designator: "U69", row: pca9617adp),
+  e1_part(designator: "U49", row: sn74lv165a_pw),
+  e1_part(designator: "U51", row: sn74lv165a_pw),
+  e1_part(designator: "U55", row: sn74avc4t774_rsv),
+  e1_unclaimed(designator: "U500"),
+  e1_unclaimed(designator: "Y50"),
+  e1_part(designator: "U43", row: sn74lv1t08_dck),
+  e1_unclaimed(designator: "J3"),
+  e1_unclaimed(designator: "J4"),
+  e1_unclaimed(designator: "U3"),
+  e1_part(designator: "U5_2", row: cec1736),
+  e1_part(designator: "U3_2", row: mt25qu01gbbb8e12),
+  e1_part(designator: "U2_2", row: mt25qu01gbbb8e12),
+  e1_part(designator: "U41", row: tca9546a_pw),
+  e1_part(designator: "U22", row: pca9617adp),
+  e1_unclaimed(designator: "J24"),
+  e1_unclaimed(designator: "DS1_2"),
+  e1_unclaimed(designator: "U104"),
+  e1_part(designator: "U4", row: cyclone_10_gx_10cx085yf672e6g),
+
+  e1_part(designator: "U10", row: pca9617adp),
+  e1_part(designator: "U12", row: pca9617adp),
+  e1_part(designator: "U13", row: pca9617adp),
+  e1_part(designator: "U15", row: pca9617adp),
+  e1_part(designator: "U19", row: pca9617adp),
+  e1_part(designator: "U27", row: pca9617adp),
+  e1_part(designator: "U102", row: pca9617adp),
+  e1_part(designator: "U106", row: pca9617adp),
+  e1_part(designator: "U510", row: pca9617adp),
+  e1_part(designator: "U511", row: pca9617adp),
+  e1_unclaimed(designator: "U1"),
+  e1_unclaimed(designator: "U1_2"),
+  e1_unclaimed(designator: "U1_TFP"),
+  e1_unclaimed(designator: "U1_TNE"),
+  e1_unclaimed(designator: "U1_TSE"),
+  e1_unclaimed(designator: "U1_TSW"),
+  e1_unclaimed(designator: "U2"),
+  e1_unclaimed(designator: "U6"),
+  e1_unclaimed(designator: "U9"),
+  e1_unclaimed(designator: "U14"),
+  e1_unclaimed(designator: "U28"),
+  e1_unclaimed(designator: "U30"),
+  e1_unclaimed(designator: "U32"),
+  e1_unclaimed(designator: "U33"),
+  e1_unclaimed(designator: "U38"),
+  e1_unclaimed(designator: "U40"),
+  e1_unclaimed(designator: "U44"),
+  e1_unclaimed(designator: "U52"),
+  e1_unclaimed(designator: "U54"),
+  e1_unclaimed(designator: "U60"),
+  e1_unclaimed(designator: "U70"),
+  e1_unclaimed(designator: "U71"),
+  e1_unclaimed(designator: "U77"),
+  e1_unclaimed(designator: "U78"),
+  e1_unclaimed(designator: "U79"),
+  e1_unclaimed(designator: "U80"),
+  e1_unclaimed(designator: "U81"),
+  e1_unclaimed(designator: "U82"),
+  e1_unclaimed(designator: "U83"),
+  e1_unclaimed(designator: "U85"),
+  e1_unclaimed(designator: "U87"),
+  e1_unclaimed(designator: "U89"),
+  e1_unclaimed(designator: "U90"),
+  e1_unclaimed(designator: "U91"),
+  e1_unclaimed(designator: "U92"),
+  e1_unclaimed(designator: "U93"),
+  e1_unclaimed(designator: "U94"),
+  e1_unclaimed(designator: "U95"),
+  e1_unclaimed(designator: "U97"),
+  e1_unclaimed(designator: "U98"),
+  e1_unclaimed(designator: "U99"),
+  e1_unclaimed(designator: "U103"),
+  e1_unclaimed(designator: "U105"),
+  e1_unclaimed(designator: "U141"),
+  e1_unclaimed(designator: "U145"),
+  e1_unclaimed(designator: "U149"),
+  e1_unclaimed(designator: "U190"),
+  e1_unclaimed(designator: "U210"),
+  e1_unclaimed(designator: "U211"),
+  e1_unclaimed(designator: "U482"),
+  e1_unclaimed(designator: "U485"),
+  e1_unclaimed(designator: "U501"),
+  e1_unclaimed(designator: "U524"),
+  e1_unclaimed(designator: "U540"),
+  e1_unclaimed(designator: "U541"),
+  e1_unclaimed(designator: "U550"),
+  e1_unclaimed(designator: "U551"),
+  e1_unclaimed(designator: "U627"),
+  e1_unclaimed(designator: "D1_P3"),
+  e1_unclaimed(designator: "D2_P3"),
+  e1_unclaimed(designator: "D3_P3"),
+  e1_unclaimed(designator: "U3_P3"),
+  e1_part(designator: "U816", row: tusb8042a_rgc),
+  e1_unclaimed(designator: "U39"),
+  e1_unclaimed(designator: "U451"),
+  e1_unclaimed(designator: "Y1"),
+  e1_unclaimed(designator: "Y45"),
+  e1_unclaimed(designator: "Y46"),
+  e1_unclaimed(designator: "Y805"),
+  e1_unclaimed(designator: "J1"),
+  e1_unclaimed(designator: "J2"),
+  e1_unclaimed(designator: "J5"),
+  e1_unclaimed(designator: "J6"),
+  e1_unclaimed(designator: "J7"),
+  e1_unclaimed(designator: "J8"),
+  e1_unclaimed(designator: "J9"),
+  e1_unclaimed(designator: "J10"),
+  e1_unclaimed(designator: "J11"),
+  e1_unclaimed(designator: "J12"),
+  e1_unclaimed(designator: "J13"),
+  e1_unclaimed(designator: "J14"),
+  e1_unclaimed(designator: "J16"),
+  e1_unclaimed(designator: "J22"),
+  e1_unclaimed(designator: "J31"),
+  e1_unclaimed(designator: "J190"),
+  e1_unclaimed(designator: "J540"),
+  e1_unclaimed(designator: "J620"),
+  e1_unclaimed(designator: "J740"),
+  e1_unclaimed(designator: "J741"),
+  e1_unclaimed(designator: "D1"),
+  e1_unclaimed(designator: "D4"),
+  e1_unclaimed(designator: "Q24"),
+  e1_unclaimed(designator: "Q25"),
+  e1_unclaimed(designator: "Q56"),
+  e1_unclaimed(designator: "Q62"),
+  e1_unclaimed(designator: "Q68"),
+  e1_unclaimed(designator: "Q69"),
+  e1_unclaimed(designator: "Q72"),
+  e1_unclaimed(designator: "Q140"),
+  e1_unclaimed(designator: "Q530"),
+  e1_unclaimed(designator: "Q531"),
+  e1_unclaimed(designator: "Q809"),
+  e1_unclaimed(designator: "DS3"),
+  e1_unclaimed(designator: "DS4"),
+  e1_unclaimed(designator: "DS5"),
+  e1_unclaimed(designator: "DS6"),
+  e1_unclaimed(designator: "DS7"),
+  e1_unclaimed(designator: "DS10"),
+  e1_unclaimed(designator: "DS11"),
+  e1_unclaimed(designator: "DS12"),
+  e1_unclaimed(designator: "DS13"),
+  e1_unclaimed(designator: "C10_P1"),
+  e1_unclaimed(designator: "D1_P1"),
+  e1_unclaimed(designator: "D1_P5"),
+  e1_unclaimed(designator: "D4_P1"),
+  e1_unclaimed(designator: "Q1_P5"),
+  e1_unclaimed(designator: "Q6_P5"),
+  e1_part(designator: "U1_P1", row: lm5066i_pwp),
+  e1_unclaimed(designator: "U50"),
+  e1_unclaimed(designator: "C1_F1"),
+  e1_unclaimed(designator: "C2_F1"),
+  e1_unclaimed(designator: "C4_F1"),
+  e1_unclaimed(designator: "D3_P2"),
+  e1_unclaimed(designator: "D4_P2"),
+  e1_unclaimed(designator: "D5_P2"),
+  e1_unclaimed(designator: "D6_P2"),
+  e1_unclaimed(designator: "D7_P2"),
+  e1_unclaimed(designator: "D15_P2"),
+  e1_unclaimed(designator: "Q1_P2"),
+  e1_unclaimed(designator: "Q2_P2"),
+  e1_unclaimed(designator: "Q3_P2"),
+  e1_unclaimed(designator: "Q4_P2"),
+  e1_unclaimed(designator: "Q5_P2"),
+  e1_unclaimed(designator: "Q6_P2"),
+  e1_unclaimed(designator: "U1_P2"),
+  e1_unclaimed(designator: "U1_P3"),
+  e1_unclaimed(designator: "U2_P2"),
+  e1_unclaimed(designator: "U9_P2"),
+  e1_unclaimed(designator: "U58_P2"),
+  e1_unclaimed(designator: "U60_P2"),
+  e1_part(designator: "U48", row: sn74lv165a_pw),
+  e1_part(designator: "U86", row: sn74lv165a_pw),
+  e1_part_owing(designator: "U66", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
+  e1_part_owing(designator: "U67", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
+  e1_unclaimed(designator: "Q1_2"),
+  e1_unclaimed(designator: "D3_3"),
+  e1_unclaimed(designator: "Q1_3"),
+  e1_unclaimed(designator: "D4_4"),
+  e1_unclaimed(designator: "Q2_4"),
+  e1_part(designator: "U520", row: tmp275_dgk),
+  e1_part(designator: "U521", row: tmp275_dgk),
+  e1_part(designator: "U11", row: pca9617adp),
+  e1_unclaimed(designator: "U16"),
+  e1_unclaimed(designator: "U20"),
+  e1_unclaimed(designator: "U31"),
+  e1_unclaimed(designator: "U74"),
+  e1_unclaimed(designator: "U84"),
+  e1_unclaimed(designator: "U96"),
+  e1_unclaimed(designator: "U107"),
+  e1_unclaimed(designator: "U110"),
+  e1_unclaimed(designator: "U481"),
+  e1_unclaimed(designator: "U523"),
+  e1_unclaimed(designator: "Q11"),
+  e1_unclaimed(designator: "Q63"),
+  e1_unclaimed(designator: "Q64"),
+  e1_unclaimed(designator: "Q65"),
+  e1_unclaimed(designator: "Q66"),
+  e1_unclaimed(designator: "Q67"),
+  e1_unclaimed(designator: "Q70"),
+  e1_unclaimed(designator: "Q71"),
+  e1_unclaimed(designator: "Q73"),
+  e1_unclaimed(designator: "Q74"),
+  e1_unclaimed(designator: "Q75"),
+  e1_part(designator: "D2_P1", row: onsemi_schottky_fsv20100v),
+  e1_part(designator: "D2_P5", row: onsemi_schottky_fsv20100v),
+  e1_unclaimed(designator: "D3_P1"),
+  e1_unclaimed(designator: "D3_P5"),
+  e1_part(designator: "D8_P1", row: onsemi_schottky_fsv20100v),
+  e1_part(designator: "D8_P5", row: onsemi_schottky_fsv20100v),
+  e1_unclaimed(designator: "Q2_P1"),
+  e1_unclaimed(designator: "Q2_P5"),
+  e1_unclaimed(designator: "Q3_P1"),
+  e1_unclaimed(designator: "Q3_P5"),
+  e1_unclaimed(designator: "U3_P1"),
+  e1_unclaimed(designator: "D1_P2"),
+  e1_unclaimed(designator: "D9_P2"),
+  e1_unclaimed(designator: "D10_P2"),
+  e1_unclaimed(designator: "D12_P2"),
+  e1_unclaimed(designator: "D17_P2"),
+  e1_unclaimed(designator: "D18_P2"),
+  e1_unclaimed(designator: "Q7_P2"),
+  e1_unclaimed(designator: "Q8_P2"),
+  e1_unclaimed(designator: "Q9_P2"),
+  e1_unclaimed(designator: "Q11_P2"),
+  e1_unclaimed(designator: "Q12_P2"),
+  e1_part_owing(designator: "U535", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
+  e1_part_owing(designator: "U536", row: pi3ch480_qex, owes: pi3ch480_marking_table_obligation()),
+  e1_unclaimed(designator: "Q2_2"),
+  e1_unclaimed(designator: "U4_2"),
+  e1_unclaimed(designator: "D3_5"),
+  e1_unclaimed(designator: "D17_5"),
+  e1_unclaimed(designator: "Q1_5"),
+  e1_unclaimed(designator: "Q3_5"),
+]
+
+// The K1's designator-named positions, read off the silkscreen on the K1 this repository holds.
+data p4261_k1_positions: List<P4261DesignPosition> = [
+  reconstructed(revision: p4261_k1, designator: "F1", part: fuse(amperes: 12, volts: Absent)),
+  reconstructed(revision: p4261_k1, designator: "F300", part: fuse(amperes: 100, volts: Present { value: 75 })),
+  unclaimed(revision: p4261_k1, designator: "D2"),
+  unclaimed(revision: p4261_k1, designator: "C10_P5"),
+  unclaimed(revision: p4261_k1, designator: "C12_P5"),
+  reconstructed(revision: p4261_k1, designator: "U1_P5", part: PartRow { row: lm5066i_pwp }),
+  unclaimed(revision: p4261_k1, designator: "J68"),
+  unclaimed(revision: p4261_k1, designator: "S1"),
+  unclaimed(revision: p4261_k1, designator: "S2"),
+  unclaimed(revision: p4261_k1, designator: "J30"),
+  unclaimed(revision: p4261_k1, designator: "U100"),
+  reconstructed(revision: p4261_k1, designator: "U10_P2", part: PartRow { row: mp2333cgtl }),
+  unclaimed(revision: p4261_k1, designator: "U2_P2"),
+]
+
+// A revision's design positions: the catalogue whose positions name that revision.
+fn p4261_positions_of(revision: P4261AssemblyRevision) -> List<P4261DesignPosition> {
+  filter(concat(p4261_e1_positions, p4261_k1_positions), d => p4261_revision_eq(a: d.position.revision, b: revision))
+}

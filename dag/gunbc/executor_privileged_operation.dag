@@ -695,7 +695,7 @@ data executor_privileged_operation_converge_command_emit_scaffold: Disposition =
 
 fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperation) -> String {
   let check = operation_precondition_argv(p: executor_privileged_operation_precondition(op: op))
-  if list_length(items: check) == 0 {
+  if length(xs: check) == 0 {
     executor_privileged_operation_shell_command(op: op)
   } else {
     join([

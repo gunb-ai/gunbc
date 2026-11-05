@@ -51,7 +51,7 @@ data cyclone_10_gx_10cx085yf672e6g: ElectronicComponentRow = ElectronicComponent
   vendor: intel,
   ordering_code: "10CX085YF672E6G",
   package: "FBGA-672 (F672)",
-  top_marking: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P <lot line> / TAIWAN, with a two-line trace code and a circled e1 below",
+  top_marking: Present { value: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P <lot line> / TAIWAN, with a two-line trace code and a circled e1 below" },
   specification: ProgrammableLogicSpec { logic: ProgrammableLogicSpecification {
     logic_elements: 85000,
     memory: VolatileConfiguration,

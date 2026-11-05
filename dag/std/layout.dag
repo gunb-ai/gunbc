@@ -2,7 +2,7 @@ module std.layout
 
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.types { List }
-import std.algebra { collection_concat_shape }
+import std.algebra { collection_concat_shape, fold_list }
 
 type Doc
   = DocEmpty
@@ -73,7 +73,7 @@ fn render_go(doc: Doc, indent: String, proto: LayoutProtocol, st: RenderState) -
       }
     DocLine => RenderState { out: concat(st.out, "\n"), at_line_start: true }
     DocConcat { parts: parts } =>
-      fold(parts, init: st, f: (acc, part) => render_go(doc: part, indent: indent, proto: proto, st: acc))
+      fold_list(xs: parts, empty: st, cons: (acc, part) => render_go(doc: part, indent: indent, proto: proto, st: acc))
     DocNest { indent: by, body: body } => render_go(doc: body, indent: concat(indent, nest_indent_text(indent: by, proto: proto)), proto: proto, st: st)
   }
 }

@@ -1,0 +1,75 @@
+module extdeps.electronic_component.diodes_pi3ch480
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.diodes_incorporated { diodes_incorporated }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
+
+// Diodes Incorporated's PI3CH480 data sheet, Document Number DS40329 Rev 5.2, December 2021, fetched from
+// www.diodes.com/assets/Datasheets/PI3CH480.pdf and read 2026-11-03. Four of the five body styles this
+// document publishes share one pinout: the ordering table lists PI3CH480LEX in the L package (TSSOP-16,
+// 173 mil), PI3CH480QEX in the Q package (QSOP-16, 150 mil) and PI3CH480ZHDEX in the ZD package (UQFN 3x3);
+// the ratings table gives V_CC = 1.8 V +/-10% (1.62 V to 1.98 V) and V_CC = 3.3 V +/-10% (2.97 V to 3.63 V);
+// the pin table gives eight data inputs in four pairs (I/O_A0/I/O_A1, I/O_B0/I/O_B1, I/O_C0/I/O_C1,
+// I/O_D0/I/O_D1), four outputs (Y_A..Y_D), a select pin S, an enable EN, V_CC and GND, with the exposed
+// pad tied to GND. Four channels, each choosing between two inputs: that is what the pin names say, and it
+// is what the specification below carries.
+//
+// WHERE THE BOARD OBSERVATIONS LIVE. The four bodies this repository holds were read as "PI3CH" over
+// "480QE" over a traceability code. Those are observations THIS REPOSITORY made, so they are receipts on
+// the observing side -- product.p4261.e1_b records each as an InstalledComponent's MarkingReading, citing
+// the frame and the box it was read from -- and not facts of this module (DESIGN §3). What this module
+// contributes is the document's half of the match: "PI3CH480" is the part number this document publishes,
+// and "QE" is the package/finish field of its ordering code, whose Q entry is the QSOP-16 body listed as
+// PI3CH480QEX.
+//
+// THE MARKING TABLE (page 8, PDF SHA-256 c20c7fd8360c046a93c2886d68175913b5f6f97ace1ac31e574040c7d9fa6e3b)
+// publishes the Q-package top mark "PI3CH / 480QE_ / ZYWXX": line 2 is the part number with the
+// package/finish code, whose final character is printed with a bar over the fab code in the figure and is
+// written "_" here; line 3 is Z (assembly site), YW (year, week), XX (internal). `top_marking` carries
+// that string in the vendor's notation. The ZHD (UQFN) entry of the same table reads "Top mark is not
+// available at this time": that is the documented trigger to widen `top_marking` to NoMarkingPublished,
+// held back because no ZHD row exists and nothing would consume it. The prose sections remain in an
+// undecodable font, so the two sentences under `vendor_application_statements` are the enable
+// description only. The consumer of the mark is the post-marking-PR identification join (a declared
+// frontier); the Q attribution rests on this table's Q entry, and the obligation text in
+// extdeps.nvidia.p4261.population still names the re-read it was written for.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.diodes.com/assets/Datasheets/PI3CH480.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.diodes_pi3ch480",
+      decl_name: "pi3ch480_qex",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data pi3ch480_qex: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: diodes_incorporated,
+  ordering_code: "PI3CH480QEX",
+  package: "QSOP-16 (Q), 150 mil body; exposed pad tied to GND",
+  top_marking: Present { value: "PI3CH / 480QE_ / ZYWXX" },
+  specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
+    channels: 4,
+    inputs_per_channel: 2,
+    supplies: [
+      MillivoltRange { minimum: millivolt(count: 1620), maximum: millivolt(count: 1980) },
+      MillivoltRange { minimum: millivolt(count: 2970), maximum: millivolt(count: 3630) },
+    ],
+  } },
+  vendor_application_statements: [
+    "EN allows the switch outputs to go to the high-impedance state, which provides for hot swapping and for completely isolating the outputs of the switches from all outputs, thus preventing back driving of inputs.",
+    "When the EN pin is LOW, the corresponding switch channel is disabled.",
+  ],
+}

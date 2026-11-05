@@ -31,14 +31,13 @@ pub use crate::std_coercion::TypeDeclarationProvenance;
 use crate::std_coercion::TypeDeclarationProvenance::DeclarationIdentityAbsent;
 pub use crate::std_coercion::TypeRealizationDecision;
 use crate::std_coercion::TypeRealizationDecision::*;
-use crate::std_compiler_entry::CompilerEntryDriver::{
-    DirectIngestDriver, NativeClaimDriver, NativeCliDriver, NativeServeDriver,
-    RetainedHostCliKernel, SourceRootEvalDriver,
-};
 use crate::std_compiler_entry::NativeEffectClass::{NativeEffectDeclaration, NativeOutgoingHttp};
+use crate::std_compiler_entry::NativeEffectRoute::{
+    NativeClaimRoute, NativeCompilerRoute, NativeIngressRoute,
+};
 use crate::std_compiler_entry::NativeEffectScope::{NativeAdmitAllExcept, NativeAdmitOnly};
 pub use crate::std_compiler_entry::{
-    CompilerEntryDriver, NativeEffectClass, NativeEffectDenominator, NativeEffectScope,
+    NativeEffectClass, NativeEffectDenominator, NativeEffectRoute, NativeEffectScope,
 };
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
@@ -543,6 +542,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
             unit_variant_index_observed: false,
+            equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
             name: "".to_string(),
@@ -3462,14 +3462,11 @@ pub fn native_effect_contract_label(c: Rc<NativeEffectContract>) -> String {
     }
 }
 
-pub fn native_route_label(route: CompilerEntryDriver) -> String {
+pub fn native_route_label(route: NativeEffectRoute) -> String {
     match route.clone() {
-        CompilerEntryDriver::NativeCliDriver => "NativeCliDriver".to_string(),
-        CompilerEntryDriver::NativeClaimDriver => "NativeClaimDriver".to_string(),
-        CompilerEntryDriver::NativeServeDriver => "NativeServeDriver".to_string(),
-        CompilerEntryDriver::SourceRootEvalDriver => "SourceRootEvalDriver".to_string(),
-        CompilerEntryDriver::DirectIngestDriver => "DirectIngestDriver".to_string(),
-        CompilerEntryDriver::RetainedHostCliKernel => "RetainedHostCliKernel".to_string(),
+        NativeEffectRoute::NativeCompilerRoute => "NativeCompilerRoute".to_string(),
+        NativeEffectRoute::NativeClaimRoute => "NativeClaimRoute".to_string(),
+        NativeEffectRoute::NativeIngressRoute => "NativeIngressRoute".to_string(),
     }
 }
 

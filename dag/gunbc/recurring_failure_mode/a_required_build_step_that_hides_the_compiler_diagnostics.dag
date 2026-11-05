@@ -1,0 +1,58 @@
+module gunbc.recurring_failure_mode.a_required_build_step_that_hides_the_compiler_diagnostics
+
+import std.types { NonEmptyStr }
+import std.decl_ref { decl_ref }
+import gunbc.recurring_failure_mode { FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A RED REQUIRED STEP WHOSE REASON IS DELETED WITH THE RUNNER.
+//
+// The emitted product-build command in the fleet-converge producer asks cargo for JSON
+// (--message-format json) and redirects the whole subshell's stdout into
+// target/emitted/<product>.cargo.json. Cargo writes its compiler diagnostics to stdout, so every
+// diagnostic goes into that file. What reaches the step log is the stderr side of the pipe: cargo's
+// progress lines and its summary that a crate "could not compile". The log therefore says THAT a
+// product failed and never WHAT failed. The JSON file sits in the runner's target directory, no
+// artifact step uploads it, and the runner is gone when the job ends.
+//
+// WHY THAT IS A FAILURE CLASS AND NOT A MISSED CONVENIENCE. The step is required, and it is the step
+// that gates the fleet lane: a red build there stops a print dispatch, an operator's GO, and every
+// lane waiting behind it. The reader of the red step is a person who is being asked to act, and the
+// artifact they are given cannot answer the question they were asked. The cost is not a missing
+// nicety: it was measured as a full local reproduction of the refused compile -- emit the product,
+// then build the emitted crate -- before the six diagnostics could be read at all.
+//
+// THE STEP ALREADY READS ITS OWN LOG, FOR ONE CLASS ONLY. The failure path greps the captured log for
+// spawn/EAGAIN/sccache signatures and retries once with CARGO_BUILD_JOBS=1. That is a machine reading
+// the human channel to classify one error family, while the same channel is stripped of every other
+// error family's content. So the retry machinery proves the format choice was made for machine
+// consumption, and also proves nothing was chosen for the case where the machine cannot classify it:
+// a genuine compile error takes the same retry, doubling the wall time before the failure lands, and
+// still yields no reason.
+//
+// THE FORMAT CHOICE IS NOT THE DEFECT; THE MISSING RENDERING IS. JSON is what the step needs to find
+// the built executable (it parses the executable path out of the same file). The defect is that the
+// producer chose a machine-readable diagnostic channel and never chose a rendering for the failure
+// case, when cargo itself offers one in the same flag (json-render-diagnostics keeps the human
+// diagnostics on stderr beside the JSON on stdout), and the step already has a human channel it
+// greps.
+data a_required_build_step_that_hides_the_compiler_diagnostics: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_required_build_step_that_hides_the_compiler_diagnostics" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "a fold over emitted build steps that refuses a machine-readable compiler diagnostic format with no human rendering on the failure path, so a required step cannot be written that fails without naming why" } },
+
+  receipts: [
+    "INVALID STATE: a required build step fails, its log names the crate that refused and nothing else, and the compiler's own diagnostics exist only in a JSON file under the runner's target directory that no step uploads. The reader cannot classify the failure from the run, and the evidence is destroyed when the job ends.",
+    "WHERE IT BITES: the fleet-converge build step gates the fleet lane -- it refused the emitted crate for gunbc.auth.approval_device_crypto_serve, which stopped a print dispatch an operator had already been given a GO for. Reading the reason cost a local reproduction of the refused compile: emit the product, then build the emitted crate, before the six diagnostics could be seen.",
+    "EARLIEST UNJUSTIFIED LINK (DESIGN section 6b): not the compiler, not the emitted crate. The producer's emitted product-build command asks --message-format json and redirects the subshell's stdout to target/emitted/<product>.cargo.json, and cargo writes diagnostics to that stdout. The same command text is emitted twice in the producer -- the roster identity line and the build step -- so the gap is one template, not two oversights. Nothing in the template chooses a rendering for the failure case, although cargo offers one in the same flag (json-render-diagnostics: human diagnostics on stderr beside the JSON on stdout) and the step already has a stderr channel it captures and greps.",
+    "THE RETRY MAKES IT WORSE, AND SHOWS THE OMISSION: the failure path greps the captured log for spawn/EAGAIN/sccache signatures and retries once with CARGO_BUILD_JOBS=1. A compile error matches none of those signatures, so it is retried anyway -- doubling the wall time before the failure -- and the retry redirects to the same file, so it still produces no reason in the log.",
+    "RUNG FOUND AT: mitigatable -- the step is deterministic and the fix is one flag plus an echo of the file on the non-zero path. CEILING: mechanically preventable, and the blocker is that no fold inspects emitted step commands for this shape, so the next emitted build step can reintroduce it. NEXT TRIGGER: a fold over emitted build steps that refuses a machine-readable diagnostic format with no human rendering on the failure path.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "gunbc.repo.repo_self_emitted_build", decl_name: "repo_self_emitted_cargo_build_flags"),
+    decl_ref(module_path: "gunbc.repo.repo_self_emitted_build", decl_name: "repo_self_emitted_crate_build_command"),
+    decl_ref(module_path: "gunbc.ci.ci_spec", decl_name: "ci_emitted_release_build_line"),
+  ],
+}

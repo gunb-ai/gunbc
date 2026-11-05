@@ -82,6 +82,7 @@ import extdeps.llm.codex_app_server {
   CodexPlanUnknown,
   codex_plan_type_wire_name,
 }
+import std.algebra { length }
 
 // OBSERVATION BRIDGE (deep-raven-684 msg_a203fe4d): factors dashboard Codex probes into a six-axis
 // ProviderStandingBundle without inferring limit capacity or entitlement availability from
@@ -579,7 +580,7 @@ fn provider_limit_observations_from_codex_buckets(
   credential: ProviderLimitCredentialIdentity,
   buckets: List<CodexRateLimitBucketVerdict>,
 ) -> List<ProviderLimitObservation> {
-  if list_length(items: buckets) == 0 {
+  if length(xs: buckets) == 0 {
     [LimitObservationUnobserved { reason: codex_press_no_buckets_reason }]
   } else {
     map(buckets, b =>

@@ -1,6 +1,7 @@
 module test.claim.memory_per_vcpu_convention_witness
 
-import std.types { Bool, List, list_length }
+import std.types { Bool, List }
+import std.algebra { length }
 import std.nat { Nat }
 import std.measure { gigabyte }
 import extdeps.toolchain.types { Aarch64 }
@@ -48,22 +49,22 @@ test fn w_x64_four_gb_is_supported_but_not_universal() -> Bool {
 // list would be a shrug rather than a standing obligation.
 test fn w_the_origin_is_unattributed_and_the_search_is_recorded() -> Bool {
   let arm_open = match arm64_three_gb_per_vcpu_convention.origin {
-    Unattributed { searched: s } => list_length(items: s) >= 3
+    Unattributed { searched: s } => length(xs: s) >= 3
     Attributed { authority: _ } => false
   }
   let x64_open = match x64_four_gb_per_vcpu_convention.origin {
-    Unattributed { searched: s } => list_length(items: s) >= 3
+    Unattributed { searched: s } => length(xs: s) >= 3
     Attributed { authority: _ } => false
   }
-  arm_open && x64_open && list_length(items: origin_search_receipt()) >= 3
+  arm_open && x64_open && length(xs: origin_search_receipt()) >= 3
 }
 
 // EVERY CONSULTED SET SPANS THE SURVEY: the arm convention consults every surveyed arm64 surface,
 // not a hand-picked subset, so the non-conforming count is a reading of the market.
 test fn w_the_consulted_set_is_the_whole_arm_survey() -> Bool {
-  list_length(items: arm_benchmarks()) == 5
-    && list_length(items: arm64_three_gb_per_vcpu_convention.consulted) == list_length(items: arm_benchmarks())
-    && list_length(items: surveyed_conventions) == 2
+  length(xs: arm_benchmarks()) == 5
+    && length(xs: arm64_three_gb_per_vcpu_convention.consulted) == length(xs: arm_benchmarks())
+    && length(xs: surveyed_conventions) == 2
 }
 
 // RED: A FIGURE NO SURFACE QUOTES COMES BACK UNSUPPORTED. Five GB per arm64 vCPU is quoted

@@ -5,7 +5,8 @@ import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEn
 
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, AwaitingCapability, fleet_converge_apply_terminal_wire }
 
-import std.types { String, Bool, NonEmptyStr, List, Int, list_length }
+import std.types { String, Bool, NonEmptyStr, List, Int }
+import std.algebra { length }
 import product.host_identity { HostIdentity }
 import gunbc.fabric.fabric_cell_converge { fabric_cell_expected_slots }
 import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved, FabricCellObservationDecision }
@@ -487,7 +488,7 @@ test fn every_scope_wire_is_distinct() -> Bool {
     fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
     fleet_converge_scope_wire(scope: LiveDeploy),
   ]
-  all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
+  all(wires, w => length(xs: filter(wires, x => x == w)) == 1)
 }
 
 test fn the_two_scopes_fingerprint_the_same_host_differently() -> Bool {
@@ -550,7 +551,7 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
 // and the row went red with the fold behaving as declared. The fixture's own terms -- 31 surplus
 // slot names, 2 activation transitions -- stay spelled out, because they ARE the incident.
 fn srv1_fabric_refusals() -> Int {
-  if list_length(items: fabric_cell_expected_slots(host: witness_host_srv1 as HostIdentity)) > 0 { 1 } else { 0 }
+  if length(xs: fabric_cell_expected_slots(host: witness_host_srv1 as HostIdentity)) > 0 { 1 } else { 0 }
 }
 
 test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bool {
@@ -627,8 +628,8 @@ test fn the_launch_environment_owns_no_runner_unit_and_no_runner_unit_owns_it() 
   let owned = map(deployment_owned_steps_retract_order(spec: deployment_spec_srv1()), s => s.path as String)
   let concrete = map(srv1_committed_members(), i => runner_slot_unit_name(slot: i) as String)
   let runner_units = concat([runner_unit_template_name as String], concrete)
-  list_length(items: owned) > 0
-    && list_length(items: concrete) > 0
+  length(xs: owned) > 0
+    && length(xs: concrete) > 0
     && !any(owned, p => any(runner_units, u => string_contains(s: p, pattern: u)))
     && !any(owned, p => string_contains(s: p, pattern: runner_unit_prefix))
 }

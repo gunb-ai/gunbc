@@ -19,6 +19,7 @@ import product.fabric.flex_vast_shadow { flex_serving_recipe, flex_host_image }
 import product.fabric.flex_vast_template_control {
   FlexTemplateListed, FlexTemplateEnsured, FlexTemplateNotEnsured, flex_template_outcome,
 }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -40,7 +41,7 @@ fn any_forbidden(env: String) -> Bool {
 
 // The declared template's env carries none of the retired template's credential names.
 test fn the_declared_template_env_carries_no_credential_name() -> Bool {
-  (list_length(flex_template_forbidden_env_names) == 4)
+  (length(flex_template_forbidden_env_names) == 4)
     && !any_forbidden(env: flex_template_env(spec: flex_vast_template_spec))
     && !(flex_launch_onstart(launch: flex_vast_template_spec.launch).contains("R2_"))
     && any_forbidden(env: "-e PORT=18000 -e POOL_API_KEY=x")
@@ -86,7 +87,7 @@ test fn two_mints_differ_and_each_carries_the_launch_and_names_pool_api_key() ->
 test fn the_spec_is_the_args_launch_with_an_empty_stored_onstart() -> Bool {
   (flex_launch_runtype_wire(launch: flex_vast_template_spec.launch) == "args")
     && (flex_launch_args(launch: flex_vast_template_spec.launch) == flex_vast_args_launch)
-    && (list_length(flex_launch_args(launch: flex_vast_template_spec.launch)) == 3)
+    && (length(flex_launch_args(launch: flex_vast_template_spec.launch)) == 3)
     && join(flex_launch_args(launch: flex_vast_template_spec.launch), " ").contains("ONSTART_B64")
     && join(flex_launch_args(launch: flex_vast_template_spec.launch), " ").contains("exec sleep infinity")
 }

@@ -3,11 +3,12 @@ module gunbc.serving.router_dev_policy
 import std.optional { Optional, Present, Absent }
 import std.types { String, Int, Bool, List, Port, NonEmptyStr, Timestamp }
 import std.nat { Nat }
-import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutConfigured, ServingLayoutRefused }
+import gunbc.serving.serving_layout { host_6ce85c_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
-import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second }
+import std.measure { second, second_count, ByteSize, byte_size_count, mebibyte, mebibyte_to_byte_size, Second, money_amount_micro, money_amount_micro_count }
+import std.algebra { list_append }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -94,27 +95,38 @@ fn router_dev_comparison_row_line(q: RouterDevComparisonQuote) -> String {
     + "', input_micro=" + money_micro_text(a: q.input_per_million)
     + ", cached_micro=" + money_micro_text(a: q.cached_per_million)
     + ", output_micro=" + money_micro_text(a: q.output_per_million)
-    + ", input=" + money_micro_text(a: q.input_per_million) + "/1000000"
-    + ", cached=" + money_micro_text(a: q.cached_per_million) + "/1000000"
-    + ", output=" + money_micro_text(a: q.output_per_million) + "/1000000"
     + ", estimated=" + bool_text(b: q.estimated)
     + ", currency='" + currency_alphabetic_code(c: q.currency)
     + "', unit='" + comparison_token_unit
     + "', source='" + (uri_wire(uri: q.authority.uri) as String)
     + "', read_on='" + (q.read_on as String)
-    + "', as_of='" + (q.read_on as String)
     + "', method='" + q.method + "'\}"
 }
 
+// THE ONE RENDERING BOUNDARY from the quote row to the wire shape the live router publishes (float figures per
+// million, `as_of`, `estimated`). The row above is the only stored shape: micro integers and `read_on`. The wire
+// table is derived from it here, once at init, and read by the response headers, /v1/models and the stats
+// documents; the meter reads the row. Header figures are Lua tostring of the derived float, the live rule
+// (the live router's price-header formatting in its header_filter phase), applied at this one place; a price with more than 14 significant digits would round,
+// and the cited quotes carry at most 6. End condition: this boundary and the wire names are deleted when the
+// dashboard and ctrl pool router read the row's own names (their readers are unverified from this session,
+// so the live names stay until the cutover confirms them).
 fn router_dev_comparison_lines() -> List<String> {
   list_append(
-    left: [
-      "ROUTER_COMPARISON = \{}",
-      // A model with no row is unpriced: the lookup answers nil and the meter counts the turn unpriced
-      // rather than inventing a figure to fill the gap.
-      "function router_comparison(model) return ROUTER_COMPARISON[model] end",
+    left: list_append(
+      left: [
+        "ROUTER_COMPARISON = \{}",
+        // A model with no row is unpriced: the lookup answers nil and the meter counts the turn unpriced
+        // rather than inventing a figure to fill the gap.
+        "function router_comparison(model) return ROUTER_COMPARISON[model] end",
+      ],
+      right: map(router_dev_comparison_quotes(), q => router_dev_comparison_row_line(q: q)),
+    ),
+    right: [
+      "ROUTER_COMPARISON_WIRE = \{}",
+      "for model, q in pairs(ROUTER_COMPARISON) do ROUTER_COMPARISON_WIRE[model] = \{model=q.model, quantization=q.quantization, reference_model=q.reference_model, input=q.input_micro / 1000000, cached=q.cached_micro / 1000000, output=q.output_micro / 1000000, estimated=q.estimated, currency=q.currency, unit=q.unit, source=q.source, as_of=q.read_on, method=q.method} end",
+      "function router_comparison_wire(model) return ROUTER_COMPARISON_WIRE[model] end",
     ],
-    right: map(router_dev_comparison_quotes(), q => router_dev_comparison_row_line(q: q))
   )
 }
 
@@ -219,8 +231,8 @@ fn router_dev_models_lines() -> List<String> {
     "  end",
     "end",
     "local data = \{}",
-    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison(ROUTER_ALIAS)}",
-    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison(m)} end",
+    "data[#data + 1] = \{id = ROUTER_ALIAS, object = 'model', owned_by = 'gunbc', max_model_len = all_len, comparison_pricing = router_comparison_wire(ROUTER_ALIAS)}",
+    "for _, m in ipairs(order) do data[#data + 1] = \{id = m, object = 'model', owned_by = 'gunbc', max_model_len = lens[m] or nil, comparison_pricing = router_comparison_wire(m)} end",
     "for _, entry in ipairs(data) do",
     "  entry.routes = \{}",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
@@ -229,6 +241,19 @@ fn router_dev_models_lines() -> List<String> {
     "end",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(\{object = 'list', data = data}))",
+  ]
+}
+
+// ONE reading of which row owns a stored binding or an active counter: a row's own name or any name it
+// retires, resolved against the COMPLETE configured row set and independent of the requested model. Model
+// conflict, carry, retention counting, trim and the rented-pool summary all read it, so a rename cannot change
+// what any of them decides. Rows are written with no retiring name shared or live (router_dev_retiring_name_conflict).
+fn router_dev_row_lines() -> List<String> {
+  [
+    "local owner_of = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do owner_of[u.name] = u.name end",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
+    "local function active(u) local st = ngx.shared.router_state local n = st:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n = n + (st:get('active:' .. old) or 0) end return n end",
   ]
 }
 
@@ -269,7 +294,6 @@ fn router_dev_access_lines() -> List<String> {
     "  local sk = 'pending:' .. tostring(body.model) .. '|' .. session",
     "  state:set(sk, state:get(sk) or ngx.now(), " + to_string(second_count(s: router_dev_pending_ttl())) + ")",
     "end",
-    "local function active(u) local n=state:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n=n+(state:get('active:' .. old) or 0) end return n end",
     "local candidates = \{}",
     // An out-of-service row is out of the model entirely: it is not a candidate, is never picked, and is
     // not reachable by a stale binding. A drained engine left in the file only lets a hand edit or a
@@ -357,18 +381,17 @@ fn router_dev_access_lines() -> List<String> {
     "local stuck = state:get('session:' .. session)",
     // A binding to a RETIRED name belongs to the row that retires it: the engine was renamed, not lost, so its
     // session keeps its placement and its cache.
-    "if stuck and not candidates[stuck] then for _, u in pairs(candidates) do for _, old in ipairs(u.retiring_names or \{}) do if stuck == old then stuck = u.name end end end end",
-    // A binding may name an engine that no longer answers this model. Refuse only when the bound
-    // row is a LIVE row of a different model: the caller is addressing one engine's model while
-    // holding another's cache, and silently re-placing would answer from the wrong weights.
-    // An unknown name, or a row that is out of service or ejected, is not a conflict -- it has no
-    // surviving cache to lose, so the pick below re-places the session onto a live engine. DIVERGENCE FROM THE
-    // LIVE ROUTER, which answers 409 for an unknown name too: that refusal strands the client for the whole
-    // binding span with nothing it can do, since the row it names no longer exists anywhere.
+    "if stuck then stuck = owner_of[stuck] or stuck end",
+    // A binding may name an engine that no longer answers this model. Refuse when the bound row is a LIVE row
+    // of a different model: the caller is addressing one engine's model while holding another's cache, and
+    // silently re-placing would answer from the wrong weights. A name no configured row owns is refused the
+    // same way, as the live router does: unknown does not establish that no cache survives, and re-placing it
+    // is a permission to reconstruct this policy does not grant (that is the relocation operation's to give).
+    // A row that is out of service is not a conflict; the pick below re-places the session.
     "if stuck and stuck ~= '' and not candidates[stuck] and body.model ~= ROUTER_ALIAS then",
     "  local gone = nil",
     "  for _, u in ipairs(ROUTER_UPSTREAMS) do if u.name == stuck then gone = u end end",
-    "  if gone and gone.in_service ~= false then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
+    "  if gone == nil or gone.in_service ~= false then return refuse(409, 'invalid_request_error', 'session is bound to another model') end",
     "end",
     "local function available(u) return candidates[u.name] ~= nil and not state:get('unavailable:' .. u.name) end",
     // NO MOVE ON CONGESTION, for every capped row (operator 2026-10-28: one placement per conversation; deliberate
@@ -393,8 +416,11 @@ fn router_dev_access_lines() -> List<String> {
     // the conversations it retains (the row's derived retain). A bound session always returns to its own row,
     // and a row without retain admits as before.
     // One pass over the shared dict per request, built on first use: bindings expire by TTL, so a maintained
-    // per-row counter would drift on expiry; the scan is bounded by the live bindings and runs only for a new
-    // session facing a row that has a retain.
+    // per-row counter would drift on expiry. The scan walks every key of router_state, not only the bindings:
+    // the live router pays the same cost. DIVERGENCE KEPT ON PURPOSE: bindings stay in router_state as
+    // 'session:<id>' because a graceful reload keeps a same-named lua_shared_dict, so every live binding
+    // survives the cutover. A dedicated bindings dict needs a copy-then-switch migration leg, which belongs
+    // to the cutover (owner calm-moth-166), not to this parity change.
     "local bound_counts = nil",
     "local function bound_count(name)",
     "  if not bound_counts then",
@@ -402,6 +428,7 @@ fn router_dev_access_lines() -> List<String> {
     "    for _, k in ipairs(state:get_keys(0)) do",
     "      if k:sub(1, 8) == 'session:' and k:sub(9) ~= session then",
     "        local row = state:get(k)",
+    "        row = row and (owner_of[row] or row)",
     "        if row then bound_counts[row] = (bound_counts[row] or 0) + 1 end",
     "      end",
     "    end",
@@ -413,12 +440,13 @@ fn router_dev_access_lines() -> List<String> {
   let tail = [
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
     "if bound and available(bound) then",
-    // A bound engine-local session is served by ITS engine or refused: no path from here reaches the pick
-    // loop. Falling through would migrate the very session this rule exists to keep in place, and would do
-    // it at the worst moment -- capacity just taken by another turn. When begin_turn refuses, the answer is
-    // 429 + Retry-After so the client retries the SAME engine rather than paying a 50-115k context re-read
-    // on another one. A soft (shared-cache) bound session falls through to the pick below when its engine
-    // is full, because its prefix cache is the engine's own to dedupe.
+    // A bound session is served by ITS engine or refused, on every owned row and every capped rented row: no
+    // path from here reaches the pick loop while the engine is available. Falling through would migrate the
+    // very session this rule exists to keep in place (operator 2026-10-28: deliberate moves come only through
+    // the relocation operation), and would do it at the worst moment -- capacity just taken by another turn.
+    // The former shared-cache fall-through is dropped on purpose, as the live router drops it. When begin_turn
+    // refuses, the answer is 429 + Retry-After so the client retries the SAME engine rather than paying a
+    // 50-115k context re-read on another one.
     "  local out, effort = forwarded(bound)",
     "  if not out then return unspliceable() end",
     "  if begin_turn(bound) then return serve(bound, session, out, effort) end",
@@ -445,7 +473,7 @@ fn router_dev_access_lines() -> List<String> {
     "end",
     "return serve(pick, session, out, effort)",
   ]
-  concat(concat(head, router_dev_relocation_access_lines()), tail)
+  list_append(left: router_dev_row_lines(), right: concat(concat(head, router_dev_relocation_access_lines()), tail))
 }
 
 // The log phase releases the turn and tallies the outcome: every answered request by status, and each
@@ -456,7 +484,7 @@ fn router_dev_header_lines() -> List<String> {
   [
     "local u = ngx.ctx.route",
     "if u then",
-    "  local p = router_comparison(u.model)",
+    "  local p = router_comparison_wire(u.model)",
     "  ngx.header['X-Gunbc-Upstream'] = u.name",
     "  ngx.header['X-Gunbc-Model'] = u.model",
     // What the engine was actually told, after the row's dialect -- not what the client asked for.
@@ -474,7 +502,7 @@ fn router_dev_header_lines() -> List<String> {
     "    ngx.header['X-Gunbc-Comparison-Estimated'] = tostring(p.estimated)",
     "    ngx.header['X-Gunbc-Comparison-Currency'] = p.currency",
     "    ngx.header['X-Gunbc-Comparison-Unit'] = p.unit",
-    "    ngx.header['X-Gunbc-Comparison-Read-On'] = p.read_on",
+    "    ngx.header['X-Gunbc-Comparison-Read-On'] = p.as_of",
     "    ngx.header['X-Gunbc-Comparison-Source'] = p.source",
     "  end",
     "end",
@@ -623,7 +651,7 @@ fn router_dev_binding_ttl() -> Second { second(count: 21600) }
 // sessions up to retain and unbind the rest, so each unbound session pays one cold turn elsewhere instead of
 // evicting its neighbours on every turn. The least recently seen go first; a row without retain is never trimmed.
 fn router_dev_trim_lines() -> List<String> {
-  [
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\"}}') return end",
@@ -633,6 +661,7 @@ fn router_dev_trim_lines() -> List<String> {
     "for _, k in ipairs(state:get_keys(0)) do",
     "  if k:sub(1, 8) == 'session:' then",
     "    local up = state:get(k)",
+    "    up = up and (owner_of[up] or up)",
     "    if up then by[up] = by[up] or \{} table.insert(by[up], \{key = k, seen = state:get('seen:' .. k:sub(9)) or 0}) end",
     "  end",
     "end",
@@ -648,12 +677,12 @@ fn router_dev_trim_lines() -> List<String> {
     "end",
     "ngx.header['Content-Type'] = 'application/json'",
     "ngx.say(cjson.encode(out))",
-  ]
+  ])
 }
 
 // GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
 fn router_dev_stats_lines() -> List<String> {
-  [
+  list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
     "local h = ngx.var.http_authorization or ''",
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
@@ -676,7 +705,7 @@ fn router_dev_stats_lines() -> List<String> {
     "    completion_tokens = state:get(k .. 'generated') or 0,",
     "    cached_prompt_tokens = state:get(k .. 'cached') or 0,",
     "    cache_unreported_requests = state:get(k .. 'cache_unreported') or 0,",
-    "    comparison_value_usd = (value_micro or 0) / 1000000\}",
+    "    comparison_value_usd = value_micro and value_micro / 1000000 or nil\}",
     "end",
     "local meter = \{version = 2, epoch = state:get('meter:v2:epoch'), models = \{}}",
     "local all = \{version = 2, epoch = meter.epoch, models = \{}}",
@@ -684,8 +713,8 @@ fn router_dev_stats_lines() -> List<String> {
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if u.in_service ~= false then",
     "    local billing = u.overflow and 'rented' or 'owned'",
-    "    if billing == 'owned' and not seen[u.model] then seen[u.model] = true meter.models[#meter.models + 1] = row(u.model, 'owned', router_comparison(u.model)) end",
-    "    if not seen_all[billing .. ':' .. u.model] then seen_all[billing .. ':' .. u.model] = true all.models[#all.models + 1] = row(u.model, billing, router_comparison(u.model)) end",
+    "    if billing == 'owned' and not seen[u.model] then seen[u.model] = true meter.models[#meter.models + 1] = row(u.model, 'owned', router_comparison_wire(u.model)) end",
+    "    if not seen_all[billing .. ':' .. u.model] then seen_all[billing .. ':' .. u.model] = true all.models[#all.models + 1] = row(u.model, billing, router_comparison_wire(u.model)) end",
     "  end",
     "end",
     "out.usage = meter",
@@ -707,9 +736,26 @@ fn router_dev_stats_lines() -> List<String> {
     "out.pending = pend",
     // RENTED POOL ADMISSION: stranded demand asks for a card only when the rented pool is full. An uncapped
     // pool has no cap to be full against.
-    "local rented = \{active = 0, cap = 0}",
-    "for _, u in ipairs(ROUTER_UPSTREAMS) do if u.overflow then rented.active = rented.active + (state:get('active:' .. u.name) or 0) rented.cap = rented.cap + (u.cap or 0) end end",
-    "rented.full = rented.cap > 0 and rented.active >= rented.cap",
+    // A capped row is full at its cap (0 included: no turns); an uncapped rented row admits without a ceiling,
+    // so it is never full while it is in service and not ejected. Active counts read as admission reads them.
+    "local rented = \{active = 0, cap = 0, uncapped = 0}",
+    "local capped_active = 0",
+    "local any_rented = false",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.overflow and u.in_service ~= false then",
+    "    any_rented = true",
+    "    if u.cap == nil then",
+    "      if not state:get('unavailable:' .. u.name) then rented.uncapped = rented.uncapped + 1 end",
+    "      rented.active = rented.active + active(u)",
+    "    else",
+    "      local n = active(u)",
+    "      rented.active = rented.active + n",
+    "      capped_active = capped_active + n",
+    "      rented.cap = rented.cap + u.cap",
+    "    end",
+    "  end",
+    "end",
+    "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
     "out.rented = rented",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",
@@ -718,7 +764,7 @@ fn router_dev_stats_lines() -> List<String> {
     "  for _, k in ipairs(state:get_keys(0)) do if k:find('^session:') then local id=k:sub(9) out.sessions[id]=\{upstream=state:get(k), last_seen=state:get('seen:' .. id)} end end",
     "end",
     "ngx.say(cjson.encode(out))",
-  ]
+  ])
 }
 
 type RouterDevSite {
@@ -932,7 +978,7 @@ fn router_dev_srv1_site() -> RouterDevSite {
 fn router_dev_srv1_host_config_path() -> String { "/home/briansrls/router/nginx.conf" }
 
 fn router_dev_srv1_write_config() -> ProcessExit {
-  match router_dev_row_refusal(rows: router_dev_first_party_upstreams()) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
     Absent => match router_dev_config(site: router_dev_srv1_site()) {
     RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
@@ -999,30 +1045,15 @@ type RouterDevCapacity
   | RentedCapped { turns: Nat }
   | RentedUncapped
 
-fn router_dev_row_is_rented(u: RouterDevUpstream) -> Bool {
-  match u.capacity { OwnedCap { turns: _ } => false RentedCapped { turns: _ } => true RentedUncapped => true }
-}
-
 // HOW MANY CONVERSATIONS A ROW RETAINS. The first-party Strata rows' count is DERIVED from the serving layout
 // (gunbc.serving.serving_layout, ServingReplicaConfig.admitted_conversations) and never typed here.
 // RetentionFrontier is a declared gap: the row's count cannot yet be derived (srv3's and srv1-vllm's layouts
-// are not modeled), so it renders no retain, as the live file does. RetentionUnderivable is the failure arm
-// -- the layout refused or has no replica for the named group -- and the write refuses it rather than
-// rendering a row that silently admits without bound.
+// are not modeled), so it renders no retain, as the live file does. A layout that is refused or names no
+// replica for a group never reaches a row: the h11 projection refuses (RouterDevH11Refused) and every writer stops.
 type RouterDevRetention
   = NoRetention
   | RetentionAdmitted { conversations: Nat }
   | RetentionFrontier
-  | RetentionUnderivable { group: String }
-
-fn router_dev_layout_retention(group: String) -> RouterDevRetention {
-  match host_6ce85c_layout {
-    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
-      fold(rs, init: RetentionUnderivable { group: group }, f: (acc, c) =>
-        if (c.group as String) == group { RetentionAdmitted { conversations: c.admitted_conversations } } else { acc })
-    ServingLayoutRefused { refusal: _ } => RetentionUnderivable { group: group }
-  }
-}
 
 // HOW ONE CLIENT REASONING-EFFORT NAME IS ANSWERED BY ONE UPSTREAM MODEL'S SERVER. The pool alias and
 // each engine accept a DIFFERENT set of effort names, and an engine answers 400 on a name it does not
@@ -1085,7 +1116,6 @@ fn router_dev_upstream_value(u: RouterDevUpstream) -> JsonValue {
   ], tls), [
     json_kv(key: "model", value: json_string(s: u.model)),
     json_kv(key: "max_model_len", value: json_int(n: u.max_model_len)),
-    json_kv(key: "overflow", value: json_bool(b: router_dev_row_is_rented(u: u))),
     json_kv(key: "path_prefix", value: json_string(s: u.path_prefix)),
     json_kv(key: "retiring_names", value: json_array(elements: map(u.retiring_names, n => json_string(s: n)))),
     json_kv(key: "effort_effects", value: json_array(elements: map(u.effort_effects, r => router_dev_effort_rule_value(r: r)))),
@@ -1097,9 +1127,9 @@ fn no_members() -> List<JsonKeyValue> { [] }
 
 fn router_dev_capacity_members(c: RouterDevCapacity) -> List<JsonKeyValue> {
   match c {
-    OwnedCap { turns: n } => [json_kv(key: "cap", value: json_int(n: n as Int))]
-    RentedCapped { turns: n } => [json_kv(key: "cap", value: json_int(n: n as Int))]
-    RentedUncapped => no_members()
+    OwnedCap { turns: n } => [json_kv(key: "overflow", value: json_bool(b: false)), json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedCapped { turns: n } => [json_kv(key: "overflow", value: json_bool(b: true)), json_kv(key: "cap", value: json_int(n: n as Int))]
+    RentedUncapped => [json_kv(key: "overflow", value: json_bool(b: true))]
   }
 }
 
@@ -1108,46 +1138,110 @@ fn router_dev_retention_members(r: RouterDevRetention) -> List<JsonKeyValue> {
     RetentionAdmitted { conversations: n } => [json_kv(key: "retain", value: json_int(n: n as Int))]
     NoRetention => no_members()
     RetentionFrontier => no_members()
-    RetentionUnderivable { group: _ } => no_members()
   }
 }
 
-// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-85 is bus c5), so the bus the
-// row's engine is bound to is a separate argument, and the retention is derived from the layout group of that
-// bus (serving_layout's h11-strata@<bus>), never typed. The port follows the engine, not the name.
-fn router_dev_h11_row(name: String, bus: String, port: Port, retiring: List<String>) -> RouterDevUpstream {
+// An h11 engine row. The router's NAME is not the PCI bus (h11-05 is bus 85, h11-88 is bus c8); the retention
+// is the joined replica's admitted_conversations, handed in by the projection, never typed. The port follows
+// the engine, not the name.
+fn router_dev_h11_row(name: String, port: Port, retiring: List<String>, retention: RouterDevRetention) -> RouterDevUpstream {
   RouterDevUpstream {
     name: name, scheme: UpstreamHttp, host: "192.168.1.202", port: port, tls_name: Absent,
     model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 2 }, max_model_len: 229376, path_prefix: "",
     retiring_names: retiring, in_service: true,
-    retention: router_dev_layout_retention(group: concat("h11-strata@", bus)),
+    retention: retention,
     effort_effects: iq3_s_effort_rules(),
   }
 }
 
+// THE h11 ROWS FOLLOW THE LAYOUT'S REPLICA SET (operator ruling 2026-11-01, A-prime; live parity, #15622 applied
+// 21:11-21:13Z). An engine's NAME, port and retired names are a naming fact; its EXISTENCE and its retention are
+// the layout's: a bus the layout does not grant yields no row, so a router roster cannot outlive the grant. An
+// engine whose bus IS granted keeps its row.
+type RouterDevH11Engine { name: String, bus: String, port: Port, retiring: List<String> }
+
+fn router_dev_h11_engines() -> List<RouterDevH11Engine> {
+  [
+    RouterDevH11Engine { name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"] },
+    RouterDevH11Engine { name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"] },
+    RouterDevH11Engine { name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"] },
+    RouterDevH11Engine { name: "h11-88", bus: "c8", port: 18088 as Port, retiring: [] },
+  ]
+}
+
+// THE PROJECTION READS THE CONFIGURED LAYOUT ONCE and joins each replica to its router naming (group
+// h11-strata@<bus> <-> bus), deriving the row's retention from that joined replica. It REFUSES, never
+// narrows: a refused layout, a granted group with no naming, and a granted group with more than one naming are
+// each a typed refusal that stops the write before any row is rendered. An engine in the naming table that
+// no replica names is the only thing omitted -- that is the A-prime case (c5/c7 left the grant).
+type RouterDevH11Projection
+  = RouterDevH11Projected { rows: List<RouterDevUpstream> }
+  | RouterDevH11Refused { reason: String }
+
+fn router_dev_h11_projection(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevH11Projection {
+  match layout {
+    ServingLayoutRefused { refusal: _ } => RouterDevH11Refused { reason: "the serving layout is refused, so no h11 row set can be derived" }
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } =>
+      fold(rs, init: RouterDevH11Projected { rows: [] }, f: (acc, c) =>
+        match acc {
+          RouterDevH11Refused { reason: r } => RouterDevH11Refused { reason: r }
+          RouterDevH11Projected { rows: so_far } => {
+            let g = c.group as String
+            let named = filter(engines, e => concat("h11-strata@", e.bus) == g)
+            if count(named) == 0 { RouterDevH11Refused { reason: concat("a granted replica has no router naming: ", g) } }
+            else if count(named) > 1 { RouterDevH11Refused { reason: concat("a granted replica has more than one router naming: ", g) } }
+            else {
+              RouterDevH11Projected { rows: concat(so_far, map(named, e =>
+                router_dev_h11_row(name: e.name, port: e.port, retiring: e.retiring, retention: RetentionAdmitted { conversations: c.admitted_conversations }))) }
+            }
+          }
+        })
+  }
+}
+
+type RouterDevFirstParty
+  = RouterDevFirstPartyRows { rows: List<RouterDevUpstream> }
+  | RouterDevFirstPartyRefused { reason: String }
+
+fn router_dev_first_party_for(layout: ServingLayoutResult, engines: List<RouterDevH11Engine>) -> RouterDevFirstParty {
+  match router_dev_h11_projection(layout: layout, engines: engines) {
+    RouterDevH11Refused { reason: r } => RouterDevFirstPartyRefused { reason: r }
+    RouterDevH11Projected { rows: h } => RouterDevFirstPartyRows { rows: concat(router_dev_first_party_head(), concat(h, router_dev_first_party_tail())) }
+  }
+}
+
+fn router_dev_first_party() -> RouterDevFirstParty {
+  router_dev_first_party_for(layout: host_6ce85c_layout, engines: router_dev_h11_engines())
+}
+
 // THE LIVE ROW SET (read from srv1's upstreams.json field names and values, 2026-10-31; keys are joined at
-// deploy and are in no row). Six h11 engines on ports 18081-18088 (86 and c6 are disabled, c1 was removed),
+// deploy and are in no row). The h11 engines follow the layout grant (four since A-prime),
 // srv1's vLLM, srv3's Strata and the ctrl rented pool. A single 16 GB engine serves ~10-13 warm tok/s at 200k,
 // so cap 2. Retiring names count old-worker turns during a graceful rename.
-fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
+// router_dev_first_party() is the one reader: a refused projection is a refusal and never reads as no rows or
+// a smaller fleet.
+
+fn router_dev_first_party_head() -> List<RouterDevUpstream> {
   [
     // Retention is a declared frontier for srv1-vllm and srv3-strata: no layout models their replicas yet.
     RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: RetentionFrontier, effort_effects: qwen3_effort_rules() },
     RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", capacity: OwnedCap { turns: 4 }, max_model_len: 229376, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, retention: RetentionFrontier, effort_effects: iq3_s_effort_rules() },
-    router_dev_h11_row(name: "h11-05", bus: "85", port: 18081 as Port, retiring: ["h11-a16-0"]),
-    router_dev_h11_row(name: "h11-07", bus: "87", port: 18083 as Port, retiring: ["h11-a16-2"]),
-    router_dev_h11_row(name: "h11-08", bus: "88", port: 18084 as Port, retiring: ["h11-a16-3"]),
-    router_dev_h11_row(name: "h11-85", bus: "c5", port: 18085 as Port, retiring: ["h11-a16-4"]),
-    router_dev_h11_row(name: "h11-87", bus: "c7", port: 18087 as Port, retiring: []),
-    router_dev_h11_row(name: "h11-88", bus: "c8", port: 18088 as Port, retiring: []),
+  ]
+}
+
+fn router_dev_first_party_tail() -> List<RouterDevUpstream> {
+  [
     // ctrl owns rental discovery and bidding. This dedicated path never routes back to this router. The pool is
     // capped at 4 turns (live; the figure the scaler reads as rented.cap), and renders as RentedCapped.
     RouterDevUpstream { name: "ctrl-vast-pool", scheme: UpstreamHttps, host: "100.73.169.40", port: 3737, tls_name: Present { value: "srv2.tailecbe08.ts.net" }, model: "Qwen3.8-Flash-Next", capacity: RentedCapped { turns: 4 }, max_model_len: 229376, path_prefix: "/rented-pool", retiring_names: [], in_service: true, retention: NoRetention, effort_effects: qwen3_effort_rules() },
   ]
 }
 
-fn router_dev_first_party_json() -> String {
-  serialize_json(v: json_array(elements: map(router_dev_first_party_upstreams(), u => router_dev_upstream_value(u: u))))
+fn router_dev_first_party_json(fp: RouterDevFirstParty) -> String? {
+  match fp {
+    RouterDevFirstPartyRows { rows: rs } => Present { value: serialize_json(v: json_array(elements: map(rs, u => router_dev_upstream_value(u: u)))) }
+    RouterDevFirstPartyRefused { reason: _ } => Absent
+  }
 }
 
 // The deploy's second render step: the first-party rows, without keys, for the deploy to join keys into
@@ -1186,42 +1280,36 @@ fn router_dev_retiring_name_conflict(rows: List<RouterDevUpstream>) -> String? {
     })
 }
 
-fn router_dev_underivable_retention(rows: List<RouterDevUpstream>) -> String? {
-  fold(rows, init: Absent, f: (acc, u) =>
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => match u.retention {
-        RetentionUnderivable { group: g } => Present { value: concat("a row's retention is not derivable from the serving layout: ", concat(u.name, concat(" (group ", concat(g, ")"))))  }
-        NoRetention => Absent
-        RetentionAdmitted { conversations: _ } => Absent
-        RetentionFrontier => Absent
-      }
-    })
-}
-
 fn router_dev_row_refusal(rows: List<RouterDevUpstream>) -> ProcessExit? {
   match router_dev_retiring_name_conflict(rows: rows) {
     Present { value: why } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", why) } }
-    Absent => match router_dev_underivable_retention(rows: rows) {
-      Present { value: why } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", why) } }
-      Absent => Absent
-    }
+    Absent => Absent
+  }
+}
+
+fn router_dev_first_party_refusal(fp: RouterDevFirstParty) -> ProcessExit? {
+  match fp {
+    RouterDevFirstPartyRefused { reason: r } => Present { value: ExitFailure { code: 1, reason: concat("refused upstream rows: ", r) } }
+    RouterDevFirstPartyRows { rows: rs } => router_dev_row_refusal(rows: rs)
   }
 }
 
 fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
-  match router_dev_row_refusal(rows: router_dev_first_party_upstreams()) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
-    Absent => {
-      let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: router_dev_first_party_json())
-      if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+    Absent => match router_dev_first_party_json(fp: router_dev_first_party()) {
+      Absent => ExitFailure { code: 1, reason: "refused upstream rows: no first-party projection" }
+      Present { value: j } => {
+        let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: j)
+        if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
+      }
     }
   }
 }
 
 // Render a candidate for a graceful reload, without changing the running router's config.
 fn router_dev_srv1_write_candidate() -> ProcessExit {
-  match router_dev_row_refusal(rows: router_dev_first_party_upstreams()) {
+  match router_dev_first_party_refusal(fp: router_dev_first_party()) {
     Present { value: refused } => refused
     Absent => match router_dev_config(site: router_dev_srv1_site()) {
     RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }

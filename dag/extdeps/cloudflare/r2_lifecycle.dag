@@ -1,4 +1,5 @@
 module extdeps.cloudflare.r2_lifecycle
+import std.types { Bearer }
 import std.resources { Network }
 
 import std.types { NonEmptyStr, List, Secret, Int, Bool, Json }

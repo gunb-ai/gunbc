@@ -3,10 +3,8 @@ module gunbc.provisioning.network_install_receipt
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
 import extdeps.ietf.http_semantics { http_status_is_success }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
-import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import extdeps.network.mac { Eui48Address, mac_addresses_are_equal }
+import product.host_identity { HostIdentity }
 import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkDisk, LsblkPart, LsblkLvm, LsblkCrypt, LsblkLoop, LsblkRom, LsblkOtherType }
 import extdeps.toolchain.types { Architecture }
 import extdeps.os.ubuntu_autoinstall { subiquity_installed_autoinstall_record_path }
@@ -173,6 +171,46 @@ type NetworkInstallReceipt
 
 fn network_install_client(subject: NetworkInstallSubject) -> Eui48Address {
   site_pxe_edge_binding_mac(binding: subject.binding)
+}
+
+// THE CURRENT-INSTALL CURRENCY for the T2 provisioned-key comparison
+// (gunbc.plans.host_trust_provisioned_key; side-chat P1 at 7e4e926b, merry-fox-82). A bare
+// NetworkInstallReceipt is NOT accepted as the current install by that comparison: a caller
+// could hand it an OLDER complete receipt that matches an OLDER pin, and a host still
+// presenting that key would bind even though a newer install superseded both. The comparison
+// consumes this carrier instead, minted only by the SELECTION of the latest complete receipt
+// for that host - the fold that bridges the receipt's install-boot client MAC to the fleet
+// identity. sole_constructor confines arm construction to this module (a cross-module record
+// literal is a SoleConstructorViolation; the mechanism is pinned corpus-wide by
+// test.claim.sole_constructor_completeness_audit_probe), and the mint fn's admit_callers roster
+// is the admission point. That selection fold does not exist yet, so today the roster holds
+// only the T2 witness declarations: a production caller can supply only Unestablished, which
+// refuses - never a successful bind. The first production bind ADDS the selection fold's
+// declaration to this roster; that is the named frontier, not a hole.
+type CurrentInstallForHost sole_constructor
+  = CurrentInstallEstablished { host: HostIdentity, install: NetworkInstallReceipt }
+  | CurrentInstallUnestablished { why: NonEmptyStr }
+
+// The refusal-path carrier: freely constructible, because saying "no current install is
+// established for this host" is never a vouch.
+fn current_install_unestablished(why: NonEmptyStr) -> CurrentInstallForHost {
+  CurrentInstallUnestablished { why: why }
+}
+
+// THE VOUCHING CARRIER. Until the selection fold exists, only the declarations in this roster
+// may mint it - the T2 witnesses. Widening this roster IS the enrolment fold's admission; any
+// addition is reviewed as the fold's own landing, not as a witness edit.
+fn current_install_for_host_established(host: HostIdentity, install: NetworkInstallReceipt) -> CurrentInstallForHost admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_pin_and_current_install_record_bind_the_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_current_install_carrier_for_another_host_never_binds"),
+] {
+  CurrentInstallEstablished { host: host, install: install }
 }
 
 // THE PATH THIS CLIENT READS FOR A MEMBER. Under an install binding GRUB reads its per-MAC configuration
@@ -420,28 +458,3 @@ fn network_install_receipt(subject: NetworkInstallSubject, readings: NetworkInst
   }
 }
 
-// The production route this module provides and nothing yet executes, counted in
-// gunbc.census_closure_frontier.
-data network_install_receipt_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "network_install_receipt"),
-    reason: "no run reads the edge's dnsmasq and HTTP logs or the installed host for a real network install, so the fold is evaluated only by its witness over supplied readings",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the phase-3 network install run of gunbc.plans.network_install_architecture_rows reads the edge and the installed host on a real attempt and mints this receipt from those readings; a witness over supplied readings does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstalledRootRead"),
-    reason: "the receipt names the disk under the installed root (its lsblk chain and serial) but does not compare it with the disk the attempt selected, because the install binding's public seed uses the direct layout and carries no target-disk selection; on a multi-disk unit the installer's own choice is recorded, not checked",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the install binding carries the seed's target-disk selection (the generalized seed of #15246 binds one per attempt) and the receipt refuses a root whose disk is not that selection's"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstallerRecordRead"),
-    reason: "the installer's record ties the install to the attempt by the client MAC and the start-to-reading window only: the seed carries no identity minted per attempt (its instance-id is derived from the MAC), so the record cannot name the attempt that wrote it and two attempts on one unit inside one window are not told apart",
-    dissolution: unbound_dissolution(
-      description: "dissolves when the install binding's seed carries an identity derived from the attempt that the installer leaves on the installed root, and the receipt refuses an installed host whose record names another attempt"
-    )
-  ),
-]
