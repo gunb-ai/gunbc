@@ -141,11 +141,15 @@ fn srv1_root_mutation_approval_window() -> Second {
 // TICKETS ARE DERIVED FROM THE WINDOW, never counted off independently: window/cadence covers the whole
 // window and the overrun covers the deadline read itself.
 fn srv1_root_mutation_poll_tick_budget() -> Int {
-  (second_count(s: srv1_root_mutation_poll_window) / (second_count(s: srv1_root_mutation_poll_cadence) as Int)) + srv1_root_mutation_expiry_overrun_ticks
+  (second_count(s: srv1_root_mutation_poll_window) as Int) / (second_count(s: srv1_root_mutation_poll_cadence) as Int)
+    + srv1_root_mutation_expiry_overrun_ticks
 }
 
 fn srv1_root_mutation_approval_step_timeout_minutes() -> Minute {
-  let secs = second_count(s: srv1_root_mutation_prelude_allowance) + second_count(s: srv1_root_mutation_approval_window()) + ((second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_expiry_overrun_ticks) + second_count(s: srv1_root_mutation_step_margin)
+  let secs = (second_count(s: srv1_root_mutation_prelude_allowance) as Int)
+    + (second_count(s: srv1_root_mutation_approval_window()) as Int)
+    + (second_count(s: srv1_root_mutation_poll_cadence) as Int) * srv1_root_mutation_expiry_overrun_ticks
+    + (second_count(s: srv1_root_mutation_step_margin) as Int)
   minute(count: (secs + 59) / 60)
 }
 
