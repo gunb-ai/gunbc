@@ -13,8 +13,9 @@ import extdeps.electronic_component.types {
 // MPS's MPQ8633A, "16V, 12A, Synchronous Step-Down Converter", datasheet Rev. 1.1, 3/26/2024, read
 // 2026-11-05 from the Internet Archive copy of MPS's own document URL (the vendor site refused automated
 // fetches); the PDF's SHA-256 is b0d2a59ef10374c9c56280de31aaf82435ef12c1f0b83db0e4451dd7b32fdc7f.
-// Cited: page 1 (features: 2.7 V to 16 V input with an external 3.3 V VCC bias, 4 V to 16 V with internal
-// bias; 12 A output; QFN 3 mm x 4 mm), page 3 (ordering and top marking) and the pin table on page 11.
+// Cited: page 1 (features: 12 A output; QFN 3 mm x 4 mm), the recommended operating conditions (VIN 4 V to 16 V, the unconditional range this row
+// carries; the features list also names 2.7 V to 16 V only with an external 3.3 V VCC bias, which waits for a
+// consumer that needs a conditional input), page 3 (ordering and top marking) and the pin table on page 11.
 // The marking for MPQ8633AGLE (QFN-21) is "MPYW / 8633 / ALLL / E": MP is MPS's prefix, Y the year code, W
 // the week code, 8633 and A the part number across lines 2 and 3, LLL the lot, E the QFN-21 package line.
 // The no-E variant MPQ8633AGL (QFN-20, not recommended for new designs) prints the same without the E
@@ -79,7 +80,7 @@ data mpq8633agle: ElectronicComponentRow = ElectronicComponentRow {
       RegulatorPin { number: 20, name: "SW", role: SwitchNode },
       RegulatorPin { number: 21, name: "VIN", role: RegulatorSupplyInput },
     ],
-    input: MillivoltRange { minimum: millivolt(count: 2700), maximum: millivolt(count: 16000) },
+    input: MillivoltRange { minimum: millivolt(count: 4000), maximum: millivolt(count: 16000) },
     continuous_output_current: ampere(count: 12),
   } },
   vendor_application_statements: [],

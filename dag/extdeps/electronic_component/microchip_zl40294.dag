@@ -8,8 +8,9 @@ import std.measure { millivolt }
 import extdeps.electronic_component.types { ClockFanoutSpec, ClockFanoutSpecification, ElectronicComponentRow, MillivoltRange }
 
 // Microchip's ZL40294, "20-Output PCIe Gen 6 Clock Fanout Buffer (DB2000QL)", Document DS20006768B
-// (2023), read 2026-11-05; the PDF's SHA-256 is
-// 8b8a385709fff2c188726a3909145d218b9eb6a4f8928f11b4c020fa59b86d2c. Cited pages: the ordering table
+// (2023), read 2026-11-05 from the Internet Archive snapshot of 2025-11-16 of Microchip's own URL (the live
+// unversioned link now serves a later revision, so the archive is the stable copy of revision B); the PDF's SHA-256 is
+// 138f7b1edfd6ea77bc319cb13c42c7c4f259911fe910e89451898ce04e4f9278. Cited pages: the ordering table
 // (page 43) names ZL40294LDG6 (tray) and ZL40294LDF6 (reel) as the same device in an 80-lead 6x6 mm WGQFN;
 // the marking section (page 37) publishes the top mark as the Microchip logo, then "ZL40294", then a
 // "X X e3" line, then the traceability line YYWWNNN (year, week, tracking number), truncatable when the
@@ -29,7 +30,7 @@ import extdeps.electronic_component.types { ClockFanoutSpec, ClockFanoutSpecific
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "ww1.microchip.com/downloads/aemDocuments/documents/TCG/ProductDocuments/DataSheets/ZL40294-20-Output-DB2000QL-Buffer-with-Ultra-Low-Additive-Jitter-DS20006768.pdf"
+    locator: "web.archive.org/web/20251116130216id_/https://ww1.microchip.com/downloads/aemDocuments/documents/TCG/ProductDocuments/DataSheets/ZL40294-20-Output-DB2000QL-Buffer-with-Ultra-Low-Additive-Jitter-DS20006768.pdf"
   }
 }
 

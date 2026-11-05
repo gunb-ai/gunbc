@@ -7,7 +7,7 @@ import extdeps.vendor.onsemi { onsemi }
 import std.measure { millivolt, ampere }
 import extdeps.electronic_component.types {
   ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
-  BiasSupply, BootstrapSupply, BootstrapSwitchReturn, CompensationOutput, CurrentLimitSet, EnableInput, FeedbackInput, FrequencySet, InputVoltageMonitor, LowSideGateDrive, RegulatorModeSelect, RegulatorNoConnection, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, SoftStartProgram, SwitchNode, SynchronizationPort,
+  BiasSupply, BootstrapSupply, BootstrapSwitchReturn, CompensationOutput, CurrentLimitSet, CurrentSense, EnableInput, FeedbackInput, FrequencySet, LowSideGateDrive, RegulatorModeSelect, RegulatorNoConnection, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, SoftStartProgram, SwitchNode, SynchronizationPort,
 }
 
 // onsemi's FAN65004C, "Voltage Mode, 65 V, 6 A" synchronous buck regulator, datasheet FAN65004C/D Rev. 3,
@@ -75,7 +75,7 @@ data fan65004c: ElectronicComponentRow = ElectronicComponentRow {
       RegulatorPin { number: 25, name: "GND", role: RegulatorGround },
       RegulatorPin { number: 26, name: "EXTBIAS", role: BiasSupply },
       RegulatorPin { number: 27, name: "HVBIAS", role: BiasSupply },
-      RegulatorPin { number: 28, name: "VINMON", role: InputVoltageMonitor },
+      RegulatorPin { number: 28, name: "VINMON", role: CurrentSense },
       RegulatorPin { number: 29, name: "BOOT", role: BootstrapSupply },
       RegulatorPin { number: 30, name: "PH", role: BootstrapSwitchReturn },
       RegulatorPin { number: 31, name: "VIN", role: RegulatorSupplyInput },
