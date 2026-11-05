@@ -1340,11 +1340,12 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
 }
 
 // THE CENSUS IS WHAT THE OPERATOR READS BEFORE A CARRY. A slot it cannot read must appear as a slot it
-// cannot read -- not as "absent", and not as "the two payloads differ". (It used to be policed a second
-// way, "and never as generation 0": the reading no longer carries a generation at all, so that default
-// cannot be authored, and a clause whose RED cannot be authored witnesses nothing -- DESIGN 4b. What is
-// left is the property that has a RED: an unreadable side is reported unreadable on both sides and the
-// payload relation stays undecided.) The counts
+// cannot read -- not as "absent", and not as "the two payloads differ". It used to be policed a second
+// way, "never as generation 0"; that row lost the clause because THE INVALID STATE BECAME
+// UNCONSTRUCTIBLE -- the reading has no generation field, so no line can report a generation it did not
+// observe (DESIGN 4b's top rung: the wrong answer has no constructor, rather than a test that hopes to
+// catch one). What is asserted here still has a RED: an unreadable side reports unreadable on both sides
+// and the payload relation stays undecided. The counts
 // are typed data the census computed, so the operator's question ("how much is only in the old root?")
 // is answered by the instrument rather than by a number transcribed into a declaration.
 test fn the_census_reports_a_slot_it_cannot_read_as_unreadable_and_counts_it() -> Bool {
