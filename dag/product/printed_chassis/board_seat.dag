@@ -1,0 +1,74 @@
+module product.printed_chassis.board_seat
+import std.types {Int,List,NonEmptyStr}
+import std.measure {Micrometer,micrometer,micrometer_count}
+import extdeps.boards.asrock_rack {asrock_altrad8ud_socket_placement}
+import extdeps.boards.types {standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.standards.micro_atx {micro_atx_standard_hole_diameter}
+import extdeps.standards.motherboard_mounting_grid {standard_mounting_grid_locations}
+import product.printed_chassis.cassette_layout {current_layout}
+import product.printed_chassis.cassette_profiles {altra_profile}
+import product.printed_chassis.board_mechanical_reference {StandardLocationReference,ImageLocationReference,MountingReferencePending}
+
+// WHERE THE ALTRA SITS ON THE r07 TRAY, in the tray's own frame (product.printed_chassis.assembly_geometry:
+// X across the rear I/O edge, Y up, Z from the rear toward the handle), for the features r06 never carried
+// (product.printed_chassis.fit_observations cassette_r06_print): posts at the board's holes, and an opening
+// under the CPU socket's retention backplate.
+//
+// THE BOARD FRAME TO THE TRAY FRAME. The board frame is along the rear I/O edge from the F/J/M end, depth
+// from the rear edge. The ALTRAD8UD section 1.4 figure is a component-side view, and the transform that
+// fits its seven drawn holes to the microATX grid is a proper rotation: viewed from above with the rear edge
+// away, the F/J/M end is on the right, which is +X in a right-handed frame with Y up and Z toward the
+// handle. The board is centred on the tray (cassette_layout reserves the same margin on every side). So
+// x = board_width/2 - along and z = depth - board_depth/2. A mirror here would put every post off its hole,
+// and no witness can see the board: the first panel printed and offered to the board is what checks it.
+//
+// THE OPERATOR'S RULING (2026-11-05): no standoff hardware and no clips. The board rests on posts printed
+// with the tray, and a nub on each post drops loosely into the hole above it, tall enough that the board
+// does not slip off; gravity holds it down. Lifting forces (unplugging the front power and SlimSAS
+// connectors) are met by holding the board, not by the tray.
+
+type SeatPost {x:Int,z:Int}
+type SeatWindow {x0:Int,x1:Int,z0:Int,z1:Int}
+type BoardSeat = BoardSeatReady {posts:List<SeatPost>,window:SeatWindow} | BoardSeatRefused {cause:NonEmptyStr}
+
+fn um(m:Micrometer) -> Int {micrometer_count(m:m) as Int}
+fn tray_x(along:Micrometer) -> Int {um(m:current_layout().board_width)/2-um(m:along)}
+fn tray_z(depth:Micrometer) -> Int {um(m:depth)-um(m:current_layout().board_depth)/2}
+
+// Design allowances, not measured hardware. The post height is the conventional ATX standoff height; the
+// board's underside clearance is unmeasured (asrock_altrad8ud_open_mounting_unknowns), and the backplate,
+// the tallest thing below the board, stands over the open window rather than on the tray. The post
+// diameter stays inside the plated ring a standoff normally bears on. The nub is the standard's hole
+// diameter less 0.9 mm, so a hole of unmeasured but standard size takes it loosely.
+data seat_post_height:Micrometer = micrometer(count: 6350)
+data seat_post_diameter:Micrometer = micrometer(count: 8000)
+data seat_nub_height:Micrometer = micrometer(count: 6000)
+data seat_nub_diameter:Micrometer = micrometer(count: micrometer_count(m:micro_atx_standard_hole_diameter)-900)
+// The window spans every retention-hole centre the figure shows plus this margin on each side. The
+// backplate is estimated at the hole extent plus about 6 mm (it must reach every through-hole); 10 mm
+// leaves about 4 mm of air beyond that estimate. Lotes AZIF0222's drawing replaces the estimate.
+data backplate_window_margin:Micrometer = micrometer(count: 10000)
+
+fn admitted_posts(rows:List<SeatPost>) -> BoardSeat {
+ if count(rows)==0 {BoardSeatRefused {cause:"The board's roster admits no post, so the tray has nothing to seat it on."}} else {BoardSeatReady {posts:rows,window:socket_window()}}
+}
+fn socket_window() -> SeatWindow {
+ let s=asrock_altrad8ud_socket_placement
+ let m=um(m:backplate_window_margin)
+ SeatWindow {x0:tray_x(along:s.attachment_holes_along_max)-m,x1:tray_x(along:s.attachment_holes_along_min)+m,z0:tray_z(depth:s.attachment_holes_depth_min)-m,z1:tray_z(depth:s.attachment_holes_depth_max)+m}
+}
+// One post for every location the profile's roster admits a standoff at, at that location's coordinate in
+// the roster's own grid. A profile whose mounting is not a standard-location roster seats nothing.
+fn altra_seat() -> BoardSeat {
+ match altra_profile.mounting {
+ StandardLocationReference {roster:r}=>{
+  let grid=standard_mounting_grid_locations(grid:r.grid)
+  let admitted=filter(r.locations,c=>match standoff_placement(standing:c.standing) {StandoffAdmitted=>true StandoffProhibited {cause:_}=>false})
+  admitted_posts(rows:flat_map(admitted,c=>map(filter(grid,m=>m.id==c.location),m=>SeatPost {x:tray_x(along:m.along_rear_edge),z:tray_z(depth:m.depth_from_rear_edge)})))
+ }
+ ImageLocationReference {reading:_}=>BoardSeatRefused {cause:"An image-estimated hole map admits no post."}
+ MountingReferencePending {read_obligation:o}=>BoardSeatRefused {cause:o}
+ }
+}
+fn seat_posts() -> List<SeatPost> {match altra_seat() {BoardSeatReady {posts:p,window:_}=>p BoardSeatRefused {cause:_}=>[]}}
+fn seat_windows() -> List<SeatWindow> {match altra_seat() {BoardSeatReady {posts:_,window:w}=>[w] BoardSeatRefused {cause:_}=>[]}}

@@ -1,0 +1,72 @@
+module test.claim.board_seat_witness
+import std.types {Bool,Int,List,String}
+import product.printed_chassis.board_seat {SeatPost,SeatWindow,altra_seat,BoardSeatReady,BoardSeatRefused,seat_posts,seat_windows,admitted_posts,seat_nub_diameter}
+import product.printed_chassis.cassette {lap_joints,LapJoint,SeamSpan,span_laps,seam_spans,vent_spans,window_keepout,printed_parts,interfaces,lap_seam_length}
+import extdeps.standards.micro_atx {micro_atx_standard_hole_diameter}
+import std.measure {micrometer_count}
+import product.printed_chassis.assembly_geometry {RoundPrism,Block,ProfilePrism}
+
+// The r07 seat on the ALTRAD8UD tray. Expected values are supplied, not re-derived: each post is the
+// microATX coordinate of a confirmed hole (extdeps.standards.micro_atx) put through the board-to-tray map
+// stated in product.printed_chassis.board_seat (x = 121920 - along, z = depth - 133350), and the window is
+// the section 1.4 retention-hole extent (extdeps.boards.asrock_rack asrock_altrad8ud_socket_placement) plus
+// 10 mm, through the same map.
+fn has_post(ps:List<SeatPost>,x:Int,z:Int) -> Bool {count(filter(ps,p=>p.x==x && p.z==z))==1}
+test fn seven_posts_sit_on_the_confirmed_holes() -> Bool {
+ let ps=seat_posts()
+ count(ps)==7
+  && has_post(ps:ps,x:115570,z:-100330) && has_post(ps:ps,x:115570,z:104140)
+  && has_post(ps:ps,x:-41910,z:-123190) && has_post(ps:ps,x:-41910,z:31750) && has_post(ps:ps,x:-41910,z:104140)
+  && has_post(ps:ps,x:-87630,z:-123190) && has_post(ps:ps,x:-107950,z:31750)
+}
+test fn the_window_is_the_retention_hole_extent_plus_its_margin() -> Bool {
+ let ws=seat_windows()
+ count(ws)==1 && all(ws,w=>w.x0== -60 && w.x1==91940 && w.z0== -49450 && w.z1==76550)
+}
+// No post stands in or beside the window, and the nub passes a standard hole with clearance.
+test fn no_post_meets_the_window_and_the_nub_clears_a_standard_hole() -> Bool {
+ all(seat_posts(),p=>all(seat_windows(),w=>{let k=window_keepout(w:w) p.x<k.x0-4000 || p.x>k.x1+4000 || p.z<k.z0-4000 || p.z>k.z1+4000}))
+  && micrometer_count(m:seat_nub_diameter)+800<micrometer_count(m:micro_atx_standard_hole_diameter)
+}
+// Every seam keeps at least one lap and its clamp, and none of them lands in the window's keep-out.
+fn lap_clear(j:LapJoint,w:SeatWindow) -> Bool {
+ let k=window_keepout(w:w)
+ let h=lap_seam_length/2
+ all(j.laps,p=>if j.along_x {p+h<=k.z0 || p-h>=k.z1} else {p+h<=k.x0 || p-h>=k.x1})
+}
+test fn every_seam_keeps_a_lap_and_a_clamp_clear_of_the_window() -> Bool {
+ let js=lap_joints()
+ count(js)==4 && all(js,j=>count(j.laps)>0 && count(filter(j.laps,p=>(if j.along_x {p==j.clamp_z} else {p==j.clamp_x})))==1)
+  && all(js,j=>all(seat_windows(),w=>lap_clear(j:j,w:w)))
+  && count(filter(js,j=>j.id=="left-column" && count(j.laps)==2))==1
+  && count(filter(js,j=>j.id=="right-column" && count(j.laps)==1))==1
+}
+// A span too short for a lap yields none (the seam test above then refuses); one with room for one
+// yields one; with room for two and the gap, two.
+test fn the_lap_rule_refuses_rather_than_overlapping() -> Bool {
+ count(span_laps(s:SeamSpan {lo:0,hi:20000,lo_at_window:true,hi_at_window:true}))==0
+  && count(span_laps(s:SeamSpan {lo:0,hi:40000,lo_at_window:true,hi_at_window:true}))==1
+  && count(span_laps(s:SeamSpan {lo:0,hi:61000,lo_at_window:true,hi_at_window:true}))==2
+}
+// The vent through post H's column is split around it: no remaining span comes within the post's keep.
+test fn vents_split_around_posts_and_the_window() -> Bool {
+ let around_h=vent_spans(x: -38165,r:7465,lo:40165,hi:107385)
+ let beside_window=vent_spans(x:58095,r:7465,lo: -107385,hi: -40165)
+ count(around_h)>0 && all(around_h,s=>s.hi<=31750-14465 || s.lo>=31750+14465)
+  && count(beside_window)==1 && all(beside_window,s=>s.hi<= -49450-4000-7465)
+}
+// A roster admitting no post refuses instead of emitting a tray with nothing to seat the board on.
+test fn a_seat_with_no_posts_refuses() -> Bool {
+ match admitted_posts(rows:[]) {BoardSeatRefused {cause:_}=>true BoardSeatReady {posts:_,window:_}=>false}
+  && match altra_seat() {BoardSeatReady {posts:_,window:_}=>true BoardSeatRefused {cause:_}=>false}
+}
+// The panels carry the posts: one nub per post, distributed by quarter (P1 C,B; P2 F; P3 H,L,R; P4 M).
+fn panel_nubs(id:String) -> Int {
+ count(filter(flat_map(filter(printed_parts(),p=>p.id==id),p=>p.adds),a=>match a {RoundPrism {diameter:d,length:_,axis:_,center:_}=>d==seat_nub_diameter Block {size:_,center:_}=>false ProfilePrism {outline:_,axis:_,length:_,center:_}=>false}))
+}
+test fn each_panel_carries_the_nubs_of_its_quarter() -> Bool {
+ panel_nubs(id:"P1")==2 && panel_nubs(id:"P2")==1 && panel_nubs(id:"P3")==3 && panel_nubs(id:"P4")==1
+}
+test fn the_board_support_interface_counts_the_posts() -> Bool {
+ count(filter(interfaces(),i=>i.id=="board-support" && i.quantity==7))==1
+}
