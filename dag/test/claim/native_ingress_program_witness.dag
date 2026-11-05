@@ -76,7 +76,7 @@ fn nipw_default_descriptor(module_path: String) -> String {
 data nipw_ingress: String = "fn ingress(handler: String, listener: String, cpu_limit_ms: Int) -> HttpIngressAdmission \{\n  HttpIngressRefused \{ reason: listener \}\n\}\n"
 
 fn nipw_handler(uses: String, body: String) -> String {
-  concat("fn handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse\n", concat(uses, concat("\{\n", concat(body, "\}\n"))))
+  concat("fn handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: String) -> ServeWireResponse\n", concat(uses, concat("\{\n", concat(body, "\}\n"))))
 }
 
 // The source the effect-admission witness builds its ingress cases from (test.claim.native_effect_realization_admission_witness).
@@ -146,7 +146,7 @@ test fn an_unrelated_effectful_declaration_in_the_binding_module_is_neither_admi
 test fn a_pure_handler_whose_startup_alone_demands_an_admitted_effect_is_admitted() -> Bool {
   let startup = concat("Present \{ value: NativeIngressStartup \{ fold: ", concat(nipw_ref(module_path: "nipw.serve", decl_name: "boot"), ", bound: 30 \} \}"))
   let descriptor = nipw_descriptor(module_path: "nipw.serve", binding: nipw_ref(module_path: "nipw.serve", decl_name: "ingress"), handler: nipw_ref(module_path: "nipw.serve", decl_name: "handle"), startup: startup)
-  let handler = "fn handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String, at: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: at \}\n\}\n"
+  let handler = "fn handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: String, at: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: at \}\n\}\n"
   let boot = "fn boot(executable_octets: List<Int>) -> NativeServeStartup<String> \{\n  let r = Clock.Now()\n  NativeServeStartupPassed \{ line: r.timestamp, value: r.timestamp \}\n\}\n"
   nipw_admitted(o: nipw_run(entry_source: nipw_with(descriptor: descriptor, driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: boot, imports: "import extdeps.clock \{ Clock \}\n"), peers: [fixture_source("extdeps/clock.dag", nipw_clock_source)]))
 }
@@ -205,15 +205,15 @@ test fn a_constructor_argument_argv_cannot_supply_refuses() -> Bool {
 }
 
 test fn a_handler_whose_request_facts_are_not_the_m2a_contract_refuses() -> Bool {
-  let handler = "fn handle(method: String, target: String, body: String, tailscale_identity: String, release_revision: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: target \}\n\}\n"
+  let handler = "fn handle(method: String, target: String, body: String, tailscale_identity: String, authorization: String, release_revision: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: target \}\n\}\n"
   nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: "", imports: ""), peers: []),
-    marker: "the handler's leading parameters are [method, target, body, tailscale_identity, release_revision]")
+    marker: "the handler's leading parameters are [method, target, body, tailscale_identity, authorization, release_revision]")
 }
 
 test fn a_startup_whose_payload_is_not_the_handlers_trailing_parameter_refuses() -> Bool {
   let startup = concat("Present \{ value: NativeIngressStartup \{ fold: ", concat(nipw_ref(module_path: "nipw.serve", decl_name: "boot"), ", bound: 30 \} \}"))
   let descriptor = nipw_descriptor(module_path: "nipw.serve", binding: nipw_ref(module_path: "nipw.serve", decl_name: "ingress"), handler: nipw_ref(module_path: "nipw.serve", decl_name: "handle"), startup: startup)
-  let handler = "fn handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: String, n: Int) -> ServeWireResponse \{\n  ServeWireResponse \{ status: n, body: path \}\n\}\n"
+  let handler = "fn handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: String, n: Int) -> ServeWireResponse \{\n  ServeWireResponse \{ status: n, body: path \}\n\}\n"
   let boot = "fn boot(executable_octets: List<Int>) -> NativeServeStartup<String> \{\n  NativeServeStartupPassed \{ line: \"ok\", value: \"ok\" \}\n\}\n"
   nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: descriptor, driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: boot, imports: ""), peers: []),
     marker: "the handler's trailing parameter is Int but the startup passes String")

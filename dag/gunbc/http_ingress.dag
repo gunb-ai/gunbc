@@ -417,10 +417,21 @@ fn http_ingress_wire_head(o: NativeServeOutgoing, body_octets: Int) -> String {
 // NativeIngressDriver), and it refuses any selector (http_ingress_native_argv). A budget that is not
 // set is not rendered, and the constructor then refuses the missing argument.
 fn http_ingress_binding_arguments(handler: String, listener: HttpIngressListener, release_revision: String, cpu_limit_ms: Int?, wall_limit_ms: Int?) -> List<String> {
-  concat(
-    ["--arg", concat("handler=", handler), "--arg", concat("listener=", http_ingress_listener_text(listener: listener)), "--arg", concat("release_revision=", release_revision)],
-    concat(http_ingress_limit_argument(name: "cpu_limit_ms", ms: cpu_limit_ms), http_ingress_limit_argument(name: "wall_limit_ms", ms: wall_limit_ms))
-  )
+  concat(http_ingress_binding_identity_arguments(handler: handler, listener: listener),
+    concat(["--arg", concat("release_revision=", release_revision)],
+      http_ingress_binding_limit_arguments(cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms)))
+}
+
+// The two parts of that rendering a deployment's swap identity digests without the release
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text): which handler and which
+// listener, and the budgets. They are the same parts http_ingress_binding_arguments composes, so the
+// digest and the unit cannot drift apart.
+fn http_ingress_binding_identity_arguments(handler: String, listener: HttpIngressListener) -> List<String> {
+  ["--arg", concat("handler=", handler), "--arg", concat("listener=", http_ingress_listener_text(listener: listener))]
+}
+
+fn http_ingress_binding_limit_arguments(cpu_limit_ms: Int?, wall_limit_ms: Int?) -> List<String> {
+  concat(http_ingress_limit_argument(name: "cpu_limit_ms", ms: cpu_limit_ms), http_ingress_limit_argument(name: "wall_limit_ms", ms: wall_limit_ms))
 }
 
 fn http_ingress_limit_argument(name: String, ms: Int?) -> List<String> {

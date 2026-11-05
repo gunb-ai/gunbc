@@ -37,7 +37,6 @@ data native_ingress_emission_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "native_effect_call_arguments", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_native_ingress_driver_main_rs", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.std.core", decl_name: "CompilerDiagnostic", field: NamedField { field_name: "NativeIngressProgramRefused" } },
-    DeclarationRef { module_path: "v1_compiler.cli_run.compile_clean", decl_name: "compile_clean_diagnostic_class_specimen", field: NamedField { field_name: "NativeIngressProgramRefused" } },
     DeclarationRef { module_path: "v1_compiler.cli_run.compile_clean", decl_name: "compile_clean_diagnostic_histogram_key", field: NamedField { field_name: "NativeIngressProgramRefused" } },
     DeclarationRef { module_path: "v1_compiler.cli_run.compile_clean", decl_name: "compile_clean_diagnostic_rendered_pair", field: NamedField { field_name: "NativeIngressProgramRefused" } }
   ],

@@ -201,7 +201,7 @@ import gunbc.live_deploy.lab_host_plan {
   lab_plan_worker_sandbox_choice,
   SystemManagerLauncherSelected,
 }
-import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode, http_ingress_binding_arguments }
+import gunbc.http_ingress { HttpIngressListener, HttpIngressTcp, HttpIngressUnixSocket, http_ingress_listener_text, http_ingress_unix_socket_mode, http_ingress_binding_arguments, http_ingress_binding_identity_arguments, http_ingress_binding_limit_arguments }
 import gunbc.live_deploy.spec {
   deployment_serve_source_roots,
   roadmap_ingress_function, approval_broker_ingress_function,
@@ -392,20 +392,41 @@ fn ingress_binding_argument_text(arguments: List<String>) -> String {
 // binding arguments are rendered once (gunbc.http_ingress http_ingress_binding_arguments) and follow the
 // selectors that choose the constructor; a native binding receives the same arguments with no selector
 // (live_deploy_device_crypto_sidecar_unit_file).
+// ONE SOURCE FOR THE INGRESS ARGV TEXT. The plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) digests the selectors and the
+// binding's identity and limit arguments, minus the binary and the revision, which the record binds
+// separately; the unit renders the same selectors and the whole binding argument list, which
+// gunbc.http_ingress http_ingress_binding_arguments composes from those same identity and limit parts.
+// A renamed, added or reordered ingress argument moves the digest and the unit together (DESIGN §3).
+fn live_deploy_ingress_selector_segments(entry: NonEmptyStr, binding_function: NonEmptyStr) -> List<String> {
+  [
+    " run",
+    deployment_serve_source_root_flags_text(),
+    " --entry ", entry as String, " --function ", binding_function as String,
+  ]
+}
+
+fn live_deploy_ingress_argv_segments(entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr, listener: HttpIngressListener) -> List<String> {
+  concat(live_deploy_ingress_selector_segments(entry: entry, binding_function: binding_function),
+    [ingress_binding_argument_text(arguments: http_ingress_binding_identity_arguments(handler: handler as String, listener: listener))])
+}
+
+fn live_deploy_ingress_limit_argv_segments(cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit) -> List<String> {
+  [ingress_binding_argument_text(arguments: http_ingress_binding_limit_arguments(cpu_limit_ms: ingress_limit_ms(limit: cpu_limit), wall_limit_ms: ingress_limit_ms(limit: wall_limit)))]
+}
+
 fn live_deploy_ingress_execstart(
   binary: String, entry: NonEmptyStr, binding_function: NonEmptyStr, handler: NonEmptyStr,
   listener: HttpIngressListener, revision: ReleaseRevisionBinding,
   cpu_limit: EvaluationLimit, wall_limit: EvaluationLimit,
 ) -> NonEmptyStr {
-  join([
-    binary, " run",
-    deployment_serve_source_root_flags_text(),
-    " --entry ", entry as String, " --function ", binding_function as String,
-    ingress_binding_argument_text(arguments: http_ingress_binding_arguments(
+  join(concat([binary], concat(
+    live_deploy_ingress_selector_segments(entry: entry, binding_function: binding_function),
+    [ingress_binding_argument_text(arguments: http_ingress_binding_arguments(
       handler: handler as String, listener: listener, release_revision: release_revision_execstart_text(binding: revision),
       cpu_limit_ms: ingress_limit_ms(limit: cpu_limit), wall_limit_ms: ingress_limit_ms(limit: wall_limit),
-    )),
-  ], "") as NonEmptyStr
+    ))],
+  )), "") as NonEmptyStr
 }
 
 // THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
@@ -515,15 +536,34 @@ fn live_deploy_serve_unit_emission_at(
 // One unit shape for both of an instance's listeners: the principal, slice, tree, binary, user
 // manager environment and evaluation caps are the same value, and the two differ only in the
 // entry function they launch and the listener they bind.
+// ONE PRODUCER FOR THE PRINCIPAL SERVE UNIT'S INGRESS CHOICE. The unit
+// live_deploy_serve_unit_file_over installs and the plan serve-entry verdict's argument digest
+// (gunbc.live_deploy.pre_swap_admission serve_entry_argv_identity_text) both read the handler,
+// listener and binding function from here -- choosing another listener kind or moving the handler
+// moves the unit and the digest together (DESIGN §3: one fact, one place).
+type ServeUnitIngressArgs {
+  binding_function: NonEmptyStr,
+  handler: NonEmptyStr,
+  listener: HttpIngressListener,
+}
+
+fn live_deploy_serve_unit_ingress_args(service: DeploymentServiceConfig<AdmittedFixedServeBinary>) -> ServeUnitIngressArgs {
+  ServeUnitIngressArgs {
+    binding_function: roadmap_ingress_function,
+    handler: service.serve_function,
+    listener: HttpIngressTcp { host: service.listen.host, port: service.listen.port as Int },
+  }
+}
+
 fn live_deploy_serve_unit_file_over(
   spec: DeploymentSpec, revision: ReleaseRevisionBinding, oidc_env: List<SystemdServiceDirective>,
 ) -> SystemdUnitFile {
-  let svc = spec.service
+  let args = live_deploy_serve_unit_ingress_args(service: spec.service)
   live_deploy_serve_unit_file_over_listener(
     spec: spec, revision: revision, oidc_env: oidc_env,
     description: "gunbc roadmap HTTP server (gunbc run, ingress binding)" as NonEmptyStr,
-    function: svc.serve_function,
-    listener: HttpIngressTcp { host: svc.listen.host, port: svc.listen.port as Int },
+    function: args.handler,
+    listener: args.listener,
   )
 }
 

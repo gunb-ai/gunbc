@@ -34564,6 +34564,10 @@ pub use required_regen_host::{
 
 pub use required_regen_host::RegenAffectedSetOutcome;
 pub use required_regen_host::RegenRoundCostOutcome;
+pub use required_regen_host::{
+    run_checkpoint_subject, run_partition_move_explanation, CheckpointSubjectReceipt,
+    PartitionMoveExplanationReceipt,
+};
 
 /// The affected-set bound of the floor's diff range — see
 /// `required_regen_host::run_regen_affected_set` and `gunbc.regen_affected_set`.

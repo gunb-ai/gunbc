@@ -17388,8 +17388,8 @@ fn emit_rust_tco_if(frame: TcoFrame, fn_name: String, params: List<Node>, regist
 // The invariant that makes plain subtraction safe: the cursor only advances by L inside an arm whose
 // condition proved `len - cursor >= L`, so `cursor <= len` always holds.
 //
-// v2's own emission makes this decision nowhere yet: the debt is the row for `rust_simple_method_specs`
-// in `gunbc.resolver_cost_frontier` `resolver_cost_frontier_rows`.
+// v2's own emission makes this decision nowhere yet: the debt is the unimplemented
+// `rust_simple_method_specs`; its frontier ledger was retired.
 type CursorTail {
   name: String
   depth: Int
@@ -20411,15 +20411,15 @@ fn native_ingress_binding_parameter(p: Node, env: TypeEnv) -> NativeIngressParam
 // The M2a handler contract: exactly the legacy request facts, in order, then the startup value when
 // the program names a startup (gunbc.plans.converged_ingress M2a (4)). M2b replaces this with the
 // binding's fact plan.
-data native_ingress_legacy_facts: List<String> = ["method", "path", "body", "tailscale_identity", "release_revision"]
+data native_ingress_legacy_facts: List<String> = ["method", "path", "body", "tailscale_identity", "authorization", "release_revision"]
 
 fn native_ingress_handler_param_refusals(params: List<Node>, env: TypeEnv) -> List<String> {
   let names = params |> map(p => param_node_name_at(n: p, source_indices: env.source_indices))
-  let legacy = names |> take(5)
+  let legacy = names |> take(native_ingress_legacy_facts |> count)
   if (legacy |> join(separator: ",")) != (native_ingress_legacy_facts |> join(separator: ",")) {
     [concat("the handler's leading parameters are [", concat(legacy |> join(separator: ", "), concat("]; the native door (M2a) passes exactly [", concat(native_ingress_legacy_facts |> join(separator: ", "), "]"))))]
   } else {
-    params |> take(5) |> flat_map(p => {
+    params |> take(native_ingress_legacy_facts |> count) |> flat_map(p => {
       let n = param_node_name_at(n: p, source_indices: env.source_indices)
       let t = param_node_type_expr(n: p)
       // std.types declares CommitSha as String, so a release_revision position resolving to either is the one
@@ -20439,7 +20439,7 @@ fn native_ingress_startup_payload(startup: NativeIngressSite) -> Node? {
 fn native_ingress_handler_refusals(handler: NativeIngressSite, startup: NativeIngressSite?) -> List<String> {
   let env = handler.tm.type_env
   let params = handler.item.params
-  let expected = match startup { Present { value: _ } => 6  Absent => 5 }
+  let expected = (native_ingress_legacy_facts |> count) + match startup { Present { value: _ } => 1  Absent => 0 }
   let arity = if (params |> count) != expected {
     [concat("the handler declares ", concat(to_string(value: params |> count), concat(" parameters; the native door passes ", concat(to_string(value: expected), match startup { Present { value: _ } => " (the legacy request facts, then the startup value)"  Absent => " (the legacy request facts)" }))))]
   } else { [] }
@@ -20449,7 +20449,7 @@ fn native_ingress_handler_refusals(handler: NativeIngressSite, startup: NativeIn
   let payload = match startup {
     Absent => []
     Present { value: st } =>
-      match params |> skip(5) |> first {
+      match params |> skip(native_ingress_legacy_facts |> count) |> first {
         Absent => []
         Present { value: p } =>
           match native_ingress_startup_payload(startup: st) {
@@ -21374,12 +21374,12 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
   let startup_static = if startup { "// Whether the startup line has been printed: every worker generation judges the image, only the first announces.\nstatic STARTUP_ANNOUNCED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);\n\n" } else { "" }
   let worker_call = if handler_effectful {
     concat(
-      "            let response = match runtime.block_on(", handler_path, "(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
+      "            let response = match runtime.block_on(", handler_path, "(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, handler_effect_args, ")) \{", "\n",
       "                Ok(response) => response,", "\n",
       "                Err(cause) => native_serve_effect_failed(cause.to_string()),", "\n",
       "            \};", "\n")
   } else {
-    concat("            let response = ", handler_path, "(call.method, call.path, call.body, call.tailscale_identity, call.release_revision", startup_arg, ");\n")
+    concat("            let response = ", handler_path, "(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision", startup_arg, ");\n")
   }
   // Order of the main: a program with a startup realizes its first worker (which runs the startup fold) BEFORE the bind,
   // so a refusing self-check never becomes reachable; a program with no startup keeps the bind-then-realize order.
@@ -21418,7 +21418,7 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "use ", crate_name, "::std_measure::\{byte_size_count, millisecond_count", if startup { ", second_count" } else { "" }, "\};", "\n",
       "use ", crate_name, "::gunbc_native_serve::\{", "\n",
       "    native_serve_announcement,", effect_failed_import, " native_serve_frame, native_serve_read_refused,", "\n",
-      "    native_serve_deadline_refused, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route,", "\n",
+      "    native_serve_deadline_refused, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route, native_serve_authorization,", "\n",
       "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,", "\n",
       "    NativeServeContract, NativeServeFrame, NativeServeOutgoing, NativeServeRoute, NativeServeStart,", "\n",
       "\};", "\n",
@@ -21482,6 +21482,7 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "    path: String,", "\n",
       "    body: String,", "\n",
       "    tailscale_identity: String,", "\n",
+      "    authorization: String,", "\n",
       "    release_revision: String,", "\n",
       "\}", "\n",
       "\n",
@@ -21585,6 +21586,7 @@ fn emit_native_ingress_driver_main_rs(crate_name: String, program: NativeIngress
       "            path: head.target.clone(),", "\n",
       "            body,", "\n",
       "            tailscale_identity: head.tailscale_identity.clone(),", "\n",
+      "            authorization: native_serve_authorization(head.clone()),", "\n",
       "            release_revision: contract.release_revision.clone(),", "\n",
       "        \}, armed),", "\n",
       "    \}", "\n",

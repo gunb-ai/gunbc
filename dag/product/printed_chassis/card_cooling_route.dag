@@ -7,7 +7,7 @@ import std.optional {Present, Absent}
 import product.printed_chassis.chassis_clearances {ChassisGap, single_card_side_allowance_2026_11_02, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, chassis_gaps, card_end_to_chassis_fan_2026_10_29, power_connector_head_protrusion, cable_bend_keepout, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall, GapRoom, Room, OverSubscribed, NoReading, gap_room, standing_origin, gap_may_be_printed_on}
 import product.printed_chassis.printable_assembly {CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire}
 import product.printed_chassis.side_mount_duct {side_mount_rear_spend, side_mount_side_spend, side_mount_card_gap}
-import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff}
+import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion, plane_on_end_relief_back_reach, plane_on_end_relief_inboard_x, plane_on_end_floor_behind_face}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}

@@ -541,7 +541,7 @@ test fn a_startup_refusal_is_classified_from_its_own_channel_and_reads_no_shared
 test fn the_native_ingress_main_calls_the_exact_constructor_handler_and_startup_by_qualified_path() -> Bool {
   let text = crc_ingress_main(startup: true)
   string_contains(s: text, pattern: "http_ingress_native_contract(c::m::ctor(binding_argument_0, binding_argument_1), c::p::prog())")
-    && string_contains(s: text, pattern: "c::h::handle(call.method, call.path, call.body, call.tailscale_identity, call.release_revision, startup_value.clone())")
+    && string_contains(s: text, pattern: "c::h::handle(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision, startup_value.clone())")
     && string_contains(s: text, pattern: "c::h::boot(")
     && string_contains(s: text, pattern: "vec![\"listener\".to_string(), \"cpu_limit_ms\".to_string()]")
     && !string_contains(s: text, pattern: "--host")

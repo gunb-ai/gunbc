@@ -40,13 +40,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "compile-clean-diagnostic-census".to_string(),
-            },
-            TargetProducer::CompileCleanDiagnosticCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "self-host".to_string(),
             },
             TargetProducer::SelfHost,
@@ -426,7 +419,7 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
                 target: "native-serve-device-crypto".to_string(),
             },
             TargetProducer::NativeServeProgram {
-                entry: "dag/gunbc/auth/approval_device_crypto_ingress.dag",
+                entry: "dag/gunbc/auth/approval_device_crypto_serve.dag",
             },
         ),
         (

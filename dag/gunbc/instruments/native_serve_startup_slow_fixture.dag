@@ -60,7 +60,7 @@ fn slow_startup(executable_octets: List<Int>) -> NativeServeStartup<String> {
   NativeServeStartupPassed { line: concat("slow startup finished after a spin of ", note), value: note }
 }
 
-fn slow_handle(method: String, path: String, body: String, tailscale_identity: String, release_revision: CommitSha, note: String) -> ServeWireResponse {
+fn slow_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha, note: String) -> ServeWireResponse {
   ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: concat("served after a startup that spun ", concat(note, "\n")), headers: [] }
 }
 

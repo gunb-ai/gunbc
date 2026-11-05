@@ -41,17 +41,11 @@ data pre_push_fmt_only_note: String = "The pre-push hook is fmt-only, restored t
 // DissolutionCondition because the contract fits a permanent foreign-executor body awaiting emitter
 // rows (rung_drop models a verdict withdrawn from the gate — nothing is withdrawn here; the artifact
 // and its behavior persist; and not gunbc.retained_shell_script, whose roster Charter 2 exits empty).
-// §3c readers: the row is ENROLLED IN THE PRODUCTION ROSTER FOLD —
-// gunbc.githooks.githooks_pre_push_frontier registers it as a FrontierRow (subject: this
-// declaration) and gunbc.census_closure_frontier.census_closure_frontier_row_groups() folds that
-// group in, so gunbc.dissolution_census.dissolution_census_verdict() resolves this row's trigger
-// against the live declaration index. The claim pair: test.claim.githooks_pre_push_emit
-// witness_carrier_reader_reads_the_row imports this row and calls dissolution_description on it
-// (the executing route — it refuses when a named emitter form, the grammar module, or the
-// scaffold's binding is missing from the trigger text), and test.claim
-// .githooks_pre_push_emit_residual_census.witness_concat_body_is_counted_residual runs the fold
-// and counts exactly one row for this subject without importing either githooks module, so
-// deleting the row or its registration reddens the claim while every module still compiles.
+// §3c readers: the row is registered by gunbc.githooks.githooks_pre_push_frontier as a FrontierRow
+// (subject: this declaration); the roster fold that once resolved its trigger was retired. The claim
+// test.claim.githooks_pre_push_emit witness_carrier_reader_reads_the_row imports this row and calls
+// dissolution_description on it (it refuses when a named emitter form, the grammar module, or the
+// scaffold's binding is missing from the trigger text).
 
 data githooks_pre_push_emit_concat_body_dissolution: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the concat assembly of expected_githooks_pre_push_sh (its shebang/generated-header literals, emit_pre_push_fleet_ref_skip_preamble, emit_local_tidy_line, emit_pre_push_fmt_recipe_echo; the sibling converge block is carried by gunbc.githooks.githooks_repo_local_git_config_emit's own row) — DISSOLVES WHEN gunbc.languages.bash gains the grammar rows v2.workflow.bash_emit renders for: shebang, comment, set -euo pipefail, while-read, case/esac, [[ ]] double-bracket test, $(( )) arithmetic expansion, and >&2 fd redirection (with-redir is file-only today; while/case are ingest-recognized-unmodeled in gunbc.languages.bash_command_fold) — after which the hook body is EMITTED from typed intent (bash_emit_stmts) and the concat fragments are deleted, byte-identically. The hook itself stays shell permanently: git executes it (census §1.A category (a)).")
 
