@@ -336,10 +336,12 @@ test fn filing_decision_refuses_a_2xx_whose_body_does_not_say_filed() -> Bool {
 }
 
 // A curl that never reached the broker (exit 6/7/28: no resolve, no connect, timed out) has no body
-// at all; an empty body must never be read as a filing either.
+// at all; an empty body must never be read as a filing either, and the reason says no answer came
+// rather than quoting a status the broker never sent.
 test fn filing_decision_refuses_a_transport_failure_with_no_body() -> Bool {
   match approval_filing_from_post(success: false, body: "") {
-    ApprovalFilingRefused { reason } => string_contains(s: reason, pattern: "did not answer 2xx")
+    ApprovalFilingRefused { reason } =>
+      string_contains(s: reason, pattern: "no answer at all") && !string_contains(s: reason, pattern: "2xx")
     ApprovalFiled => false
   }
 }

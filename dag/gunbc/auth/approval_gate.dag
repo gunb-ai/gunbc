@@ -275,7 +275,14 @@ type ApprovalFiling
 // caller-side half of the fail-open class gunbc.plans.transport_argv_anemia_dissolution names.
 fn approval_filing_from_post(success: Bool, body: String) -> ApprovalFiling {
   if !success {
-    ApprovalFilingRefused { reason: join(["POST /approvals did not answer 2xx, so nothing is polled: ", body], "") }
+    // The two ways a POST fails are told apart in the reason: an answer the transport reports as a
+    // failure carries the broker's own words (--fail-with-body keeps the body), while a curl that
+    // never got an answer (no resolve, no connect, timeout) has nothing to quote.
+    if body == "" {
+      ApprovalFilingRefused { reason: "POST /approvals returned no answer at all, so nothing is polled" }
+    } else {
+      ApprovalFilingRefused { reason: join(["POST /approvals did not answer 2xx, so nothing is polled: ", body], "") }
+    }
   } else if submission_body_admits_poll(body: body) {
     ApprovalFiled
   } else {
