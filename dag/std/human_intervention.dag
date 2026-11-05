@@ -1,8 +1,8 @@
 module std.human_intervention
 
-import std.types { list_length, NonEmptyStr, Int, List, Bool, brand }
+import std.types { NonEmptyStr, Int, List, Bool, brand }
 import std.decl_ref { DeclarationRef }
-import std.algebra { Ordering, Less, Equal, Greater }
+import std.algebra { Ordering, Less, Equal, Greater, length }
 
 // Human burden is a FREQUENCY, never a scalar. "This strategy needs 3 manual steps" is the
 // state-space conflation DESIGN's failure-mode list names: a step performed once for the
@@ -64,13 +64,13 @@ fn human_intervention_frequency_eq(a: HumanInterventionFrequency, b: HumanInterv
 
 // DERIVED. A stored count is a second representation of the list beside it and goes stale the
 // moment an intervention is added (DESIGN §2/§3). Int rather than std.nat.Nat because
-// list_length — the one authority for "how many elements" — answers in Int; minting a second
+// std.algebra length — the one authority for "how many elements" — answers in Int; minting a second
 // cardinal here to satisfy a name is the re-invention the decomposition test forbids.
 fn human_intervention_count_at(
   burden: ProvisioningHumanBurden,
   frequency: HumanInterventionFrequency
 ) -> Int {
-  list_length(items: filter(
+  length(xs: filter(
     xs: burden.interventions,
     f: i => human_intervention_frequency_eq(a: i.frequency, b: frequency)
   ))
