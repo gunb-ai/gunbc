@@ -145,11 +145,11 @@ fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
 // THE ONE SPELLING of the entry-metadata wire format: the argv below and the receiver's refusal
 // message both read through here, so a grammar edit cannot drift into a stale second copy.
 fn find_tree_entry_metadata_printf() -> String {
-  "%P|%y|%m|%u|%g|%l|%s\n"
+  "%P|%y|%m|%u|%g|%l|%s\\n"
 }
 
 fn find_tree_entry_metadata_command(root: String) -> ArgvCommand {
-  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%l|%s\\n"])
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", find_tree_entry_metadata_printf()])
 }
 
 // THE DIRECT CHILDREN OF A DIRECTORY WHOSE NAME MATCHES A GLOB, one bare name per line (-maxdepth 1,
