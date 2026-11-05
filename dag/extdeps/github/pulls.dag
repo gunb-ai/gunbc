@@ -56,7 +56,7 @@ type PullRequestViewState
 fn github_pull_request_view_state(word: NonEmptyStr) -> PullRequestViewState {
   if word == "OPEN" || word == "open" { PullRequestViewOpen }
   else if word == "CLOSED" || word == "closed" { PullRequestViewClosed }
-  else if word == "MERGED" || word == "merged" { PullRequestViewMerged }
+  else if word == "MERGED" { PullRequestViewMerged }
   else { PullRequestViewUnknown { word: word } }
 }
 

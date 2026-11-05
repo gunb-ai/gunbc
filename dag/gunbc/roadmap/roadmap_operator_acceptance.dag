@@ -1,7 +1,5 @@
 // operator acceptance: the daily close, durable and deterministic.
-//
-// The operator works the served daily workspace every day. When a node's pull request has merged,
-// the node must CLOSE: an acceptance fact, durable across restart, visible on the next page read,
+//// the node must CLOSE: an acceptance fact, durable across restart, visible on the next page read,
 // with no hand-commit and no redeploy. Before this module the only way was to hand-append an
 // AcceptanceRecorded line to the committed JSONL carrier and redeploy — an operator act with no
 // route at all.
@@ -40,7 +38,7 @@ import std.integer { nat_to_int }
 import std.optional { Present, Absent, Optional }
 import std.content_hash { serialize_content_hash, Fnv1a64 }
 import std.decimal { decimal_digit_char }
-import extdeps.units.iso8601_calendar { iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_civil_from_days, iso8601_floor_div, iso8601_seconds_per_day, iso8601_two_digits }
 import extdeps.github.pulls { PullRequestViewState, PullRequestViewOpen, PullRequestViewClosed, PullRequestViewMerged, PullRequestViewUnknown, github_pull_request_view_state_text }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric.fabric_event_log {
@@ -287,7 +285,7 @@ type OperatorCloseInputs {
   repo: NonEmptyStr
   pr_number: Int
   accepted_by: NonEmptyStr
-  accepted_on: NonEmptyStr
+  accepted_on: Iso8601CivilDate
   witness_module: NonEmptyStr
   witness_fn: NonEmptyStr
   first_artifact: NonEmptyStr
@@ -304,7 +302,6 @@ type OperatorCloseRefusal
   // (DESIGN §5). The node's NodeReadyForReview standing is where its PR is recorded; a mismatch
   // says both numbers, and no other standing can substitute.
   | ClosePrNotForNode { pr_number: Int, expected: NonEmptyStr }
-  | CloseInvalidDate { field: NonEmptyStr }
   | CloseEvidenceMissing { field: NonEmptyStr }
   | ClosePrUnreadable { cause: NonEmptyStr }
   | ClosePrNotFound { pr_number: Int }
@@ -513,10 +510,10 @@ fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAccepta
   RoadmapAcceptanceReceipt {
     node: inputs.node,
     criteria_digest: roadmap_criteria_digest(t: inputs.ticket),
-    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: inputs.accepted_on },
+    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: roadmap_operator_render_civil_date(date: inputs.accepted_on) },
     handback: HandbackDelivered { first_artifact: inputs.first_artifact, further_artifacts: inputs.further_artifacts },
     accepted_by: inputs.accepted_by,
-    accepted_on: inputs.accepted_on,
+    accepted_on: roadmap_operator_render_civil_date(date: inputs.accepted_on),
   }
 }
 
@@ -524,7 +521,13 @@ fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAccepta
 // carrier's form); the receipt needs real red-control and handback evidence — empty witness fields
 // are refused here, with the field named, rather than minting an admissible-looking nothing.
 fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRefusal? {
-  if !roadmap_operator_is_date_text(inputs.accepted_on) { Present { value: CloseInvalidDate { field: "accepted_on" as NonEmptyStr } } } else if string_length(s: inputs.witness_module as String) == 0 || string_length(s: inputs.witness_fn as String) == 0 { Present { value: CloseEvidenceMissing { field: "red_control witness" as NonEmptyStr } } } else if string_length(s: inputs.first_artifact as String) == 0 { Present { value: CloseEvidenceMissing { field: "handback first_artifact" as NonEmptyStr } } } else if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
+  // The date needs NO check: OperatorCloseInputs.accepted_on is an Iso8601CivilDate the caller
+  // obtained from the calendar authority (derived from the clock, or built through
+  // iso8601_civil_date_checked) — a wrong state is unwritable, not validated (§5). The
+  // witness_module/witness_fn/first_artifact emptiness branches were deleted for the same reason:
+  // NonEmptyStr already holds that constraint, so a check restating it is a second representation
+  // (§2/§3). What is actually unchecked below is the receipt LINE — a String — so it is checked.
+  if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
 }
 
 // Idempotency by operation key, read from the chain itself: the same key carrying the same close
@@ -610,23 +613,6 @@ fn head_expectation_disagrees(head: HeadExpectation, tip: HeadExpectation) -> Bo
   }
 }
 
-// YYYY-MM-DD: ten characters, digits with dashes at positions 4 and 7 (zero-based) — the shape the
-// carrier's accepted_on takes. Strict enough to keep a bad date from poisoning an otherwise valid
-// append; deliberately not a calendar (a close's content replays; calendars are the reader's).
-fn roadmap_operator_is_date_text(text: NonEmptyStr) -> Bool {
-  let s = text as String
-  string_length(s: s) == 10 &&
-    decimal_digit_char(ch: char_at(s: s, pos: 0)) &&
-    decimal_digit_char(ch: char_at(s: s, pos: 1)) &&
-    decimal_digit_char(ch: char_at(s: s, pos: 2)) &&
-    decimal_digit_char(ch: char_at(s: s, pos: 3)) &&
-    char_at(s: s, pos: 4) == "-" &&
-    decimal_digit_char(ch: char_at(s: s, pos: 5)) &&
-    decimal_digit_char(ch: char_at(s: s, pos: 6)) &&
-    char_at(s: s, pos: 7) == "-" &&
-    decimal_digit_char(ch: char_at(s: s, pos: 8)) &&
-    decimal_digit_char(ch: char_at(s: s, pos: 9))
-}
 
 // ── LINEAGE TERMINALITY: THE ONE RULE ────────────────────────────────────────────────────────────
 // A closed node's lineage is terminal: no further verify/review obligation may spawn for it. Not a
@@ -670,8 +656,12 @@ fn roadmap_operator_close_history(store: FabricStorageBinding) -> RoadmapAccepta
 // proleptic-Gregorian reading are THE calendar's, not a copy: extdeps.units.iso8601_calendar
 // owns Hinnant's arithmetic (floor division included, so a negative epoch second lands on the
 // right day), and its two-digit form pads the fields.
-fn roadmap_operator_date_from_epoch_secs(secs: EpochSecs) -> String {
-  let days = iso8601_floor_div(a: secs, b: iso8601_seconds_per_day())
-  let date = iso8601_civil_from_days(days: days)
-  join([to_string(value: date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day)], "")
+fn roadmap_operator_date_from_epoch_secs(secs: EpochSecs) -> Iso8601CivilDate {
+  iso8601_civil_from_days(days: iso8601_floor_div(a: secs, b: iso8601_seconds_per_day()))
+}
+
+// Text only at the write: the wire carrier's accepted_on takes YYYY-MM-DD; the two-digit form is
+// the calendar's, and this is the one place the civil date becomes text.
+fn roadmap_operator_render_civil_date(date: Iso8601CivilDate) -> NonEmptyStr {
+  join([to_string(value: date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day)], "") as NonEmptyStr
 }

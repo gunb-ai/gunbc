@@ -1160,7 +1160,7 @@ fn serve_issue_close_response_over(
                     repo: repo as NonEmptyStr,
                     pr_number: pr_number,
                     accepted_by: principal_ref_label(p: author) as NonEmptyStr,
-                    accepted_on: roadmap_operator_date_from_epoch_secs(secs: epoch_secs_of_millis(millis: ms)) as NonEmptyStr,
+                    accepted_on: roadmap_operator_date_from_epoch_secs(secs: epoch_secs_of_millis(millis: ms)),
                     witness_module: get("witness_module") as NonEmptyStr,
                     witness_fn: get("witness_fn") as NonEmptyStr,
                     first_artifact: get("first_artifact") as NonEmptyStr,
@@ -1212,7 +1212,6 @@ fn serve_close_refusal_response(node_id: String, reason: OperatorCloseRefusal) -
     CloseUnknownNode { node: n } => serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["close refused: unknown node ", n, "\n"], ""))
     CloseAlreadyClosed { node: n } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: ", n, " is already closed\n"], ""))
     ClosePrNotForNode { pr_number: p, expected: e } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: pull ", to_string(value: p), " is not this node's review PR (the node's standing names ", e as String, ")\n"], ""))
-    CloseInvalidDate { field: f } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: ", f, " must be a YYYY-MM-DD date\n"], ""))
     CloseEvidenceMissing { field: f } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: the receipt requires ", f, "\n"], ""))
     ClosePrUnreadable { cause: c } => serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["close refused: GitHub could not be read, and a merge nobody read is not a merge: ", c, "\n"], ""))
     ClosePrNotFound { pr_number: n } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " was not found in the roster\n"], ""))

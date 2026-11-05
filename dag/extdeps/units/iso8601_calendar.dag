@@ -1,5 +1,6 @@
 module extdeps.units.iso8601_calendar
 
+import std.optional { Present, Absent, Optional }
 import std.types { Int, String }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 
@@ -72,6 +73,14 @@ fn iso8601_civil_from_days(days: Int) -> Iso8601CivilDate {
 
 // The day-in-month bound with the leap rule, so a calendar-impossible day (Feb 30, Apr 31) is refused
 // by a reader rather than normalized through the day count.
+// The checked constructor for hand-authored civil dates: the calendar's own month-length law
+// (leap included) decides, so an invalid day never reaches a product the code carries as a date.
+fn iso8601_civil_date_checked(year: Int, month: Int, day: Int) -> Iso8601CivilDate? {
+  if month < 1 || month > 12 || day < 1 { none }
+  else if day > iso8601_gregorian_days_in_month(y: year, m: month) { none }
+  else { Present { value: Iso8601CivilDate { year: year, month: month, day: day } } }
+}
+
 fn iso8601_gregorian_days_in_month(y: Int, m: Int) -> Int {
   if m == 2 {
     if y - (y / 4) * 4 == 0 && (y - (y / 100) * 100 != 0 || y - (y / 400) * 400 == 0) { 29 } else { 28 }
