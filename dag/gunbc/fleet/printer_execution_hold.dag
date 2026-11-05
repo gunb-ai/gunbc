@@ -18,7 +18,7 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldDeadHolderReleaseStoreUnavailable,FileHoldDeadHolderReleaseKeyNotAddressable,
   file_hold_nonholder_release_assess,FileHoldNonHolderReleaseAssessment,FileHoldNonHolderReleasePlanned,FileHoldNonHolderReleaseNotEligible,file_hold_ref,
 }
-import gunbc.process_hold_identity {process_hold_text,process_hold_marker,process_hold_decode,text_at,self_process_identity,SelfIdentified,SelfUnidentified,holder_process_liveness}
+import gunbc.process_hold_identity {process_hold_text,process_hold_owner_read,ProcessHoldOwnerRead,ProcessHoldOwnerNamesNoProcess,ProcessHoldOwnerProcessUndecodable,self_process_identity,SelfIdentified,SelfUnidentified,holder_process_liveness}
 import gunbc.build_cache.build_cache_instance {ProcessIdentity}
 import std.optional {Present,Absent}
 import std.types {Timestamp}
@@ -201,14 +201,10 @@ type PrinterExecutionHoldHolder
   | PrinterExecutionHoldHolderUnobservable { cause:NonEmptyStr }
 
 fn printer_execution_hold_holder(holder:DurableHoldOwnerRef) -> PrinterExecutionHoldHolder {
-  let halves = split(s:holder as String,delimiter:process_hold_marker)
-  if count(halves) != 2 || text_at(xs:halves,i:0) == "" {
-    PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner names no process this module can observe (it was written without one, or not by this module)" as NonEmptyStr }
-  } else {
-    match process_hold_decode(text:concat("boot=",text_at(xs:halves,i:1))) {
-      Present{value:h}=>PrinterExecutionHoldHolderProcess { escalation_id:text_at(xs:halves,i:0) as NonEmptyStr, process:h.process, pid_namespace:h.pid_namespace }
-      Absent=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner carries a process part this module cannot decode" as NonEmptyStr }
-    }
+  match process_hold_owner_read(owner:holder as String) {
+    ProcessHoldOwnerNamesNoProcess=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner names no process this module can observe (it was written without one, or not by this module)" as NonEmptyStr }
+    ProcessHoldOwnerProcessUndecodable=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner carries a process part this module cannot decode" as NonEmptyStr }
+    ProcessHoldOwnerRead{head:id,holder:h}=>PrinterExecutionHoldHolderProcess { escalation_id:id, process:h.process, pid_namespace:h.pid_namespace }
   }
 }
 // HOW THIS ROOT OBSERVES ITS HOLDER'S LIVENESS. A holder that names a process is answered from

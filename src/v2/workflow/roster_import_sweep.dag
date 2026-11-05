@@ -68,8 +68,8 @@ import gunbc.durable_exclusive_hold_file_store {
   FileHoldReleaseKeyNotSlotAddressable,
 }
 import gunbc.process_hold_identity {
-  ProcessHoldHolder, process_hold_text, process_hold_marker, process_hold_decode, text_at, self_process_identity,
-  SelfIdentified, SelfUnidentified, holder_process_liveness,
+  ProcessHoldHolder, process_hold_text, process_hold_owner_read, ProcessHoldOwnerRead, ProcessHoldOwnerNamesNoProcess,
+  ProcessHoldOwnerProcessUndecodable, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
 }
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
 import std.keyed_row { KeyedRow, keyed_row_find }
@@ -923,9 +923,10 @@ fn roster_hold_reclaim_ref(dead_holder: DurableHoldOwnerRef, evidence: NonEmptyS
 
 // The holder's process, read back from its owner text; anything else is not a holder this module can look at.
 fn roster_hold_owner_process(owner: DurableHoldOwnerRef) -> ProcessHoldHolder? {
-  let halves: List<String> = split(s: owner as String, delimiter: process_hold_marker)
-  if length(xs: halves) != 2 || text_at(xs: halves, i: 0) != roster_hold_owner_prefix { none } else {
-    process_hold_decode(text: "boot=" + text_at(xs: halves, i: 1))
+  match process_hold_owner_read(owner: owner as String) {
+    ProcessHoldOwnerRead { head: h, holder: p } => if (h as String) == roster_hold_owner_prefix { Present { value: p } } else { none }
+    ProcessHoldOwnerNamesNoProcess => none
+    ProcessHoldOwnerProcessUndecodable => none
   }
 }
 
@@ -1027,6 +1028,12 @@ fn roster_hold_try(root_dir: String, owner: DurableHoldOwnerRef, window: CasGene
   }
 }
 
+// DIVERGES WITH A STATED REASON (DESIGN 3b / 6b): this occupied flow (live -> busy, unobservable -> refuse, dead ->
+// recover once and retry) is the windowed twin of extdeps.realization.materialization_store_local local_store_hold_occupied.
+// The keep-all form is already one combinator, gunbc.durable_exclusive_hold_file_store file_hold_recover_dead_holder;
+// no windowed combinator exists, and the two windowed consumers map the outcomes into different refusal sets. TRIGGER:
+// a third windowed hold consumer, at which point a windowed file_hold_recover_dead_holder lands in that module and both
+// leaves are deleted onto it.
 // AN OCCUPIED SLOT IS LOOKED AT ONCE. A live holder refuses, naming itself; an unobservable one refuses with the cause
 // (a holder that cannot be shown dead is not reclaimed); a holder observed dead is recovered at the generation the refused
 // acquire saw, and the acquire is tried once more. A slot still held after that is busy: the retry is bounded by construction.
