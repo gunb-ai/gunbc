@@ -83,7 +83,6 @@ import extdeps.tools.gnu_coreutils {
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, cp_command, cp_program, cp_recursive_argv, pwd_command,
   printenv_value_argv, printenv_program_invocation,
-  sleep_program_invocation, sleep_for_argv,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
@@ -450,8 +449,17 @@ fn wet_clean_claim_root(root: String) -> Bool {
       // "Directory not empty" while a git child of the claim was still closing its tree. The verdict
       // is reported apart from cleanup (see the plant claim); the retry is here so leftover scratch
       // under the fixture's own prefix does not accumulate when the only fault was timing.
-      || (shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"]).exit_code == 0
-        && wet_ok(command: rm_recursive_force_command(path: root))))
+      || (wet_settle() && wet_ok(command: rm_recursive_force_command(path: root))))
+}
+
+// ONE BEAT, ONE ROUTE. `sleep 1` through shell.Exec.RunArgv, the same way this witness already waits,
+// declared once because two clean-up sites need the same beat: the retry after an `rm` that failed on
+// a directory a git child was still closing (stern, srv2 54f3b519 and fa64a4b9, `…/source/.git:
+// Directory not empty`), and the retry before the final readback of the claim root. No new extdeps
+// row: this witness names its host verbs to RunArgv, whose program is a caller-named word by design
+// (extdeps/shell/exec.dag), which is also why no caller roster is touched.
+fn wet_settle() -> Bool {
+  shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"]).exit_code == 0
 }
 
 // THE SPOOL TREE THE ROW DERIVES, CREATED BEFORE ANY LEG MAY NAME IT. The drain writes each request
@@ -948,9 +956,7 @@ fn wet_launch_claim_verdict(verdict: Bool, root: NonEmptyStr) -> Bool {
   let removed_by_claim = wet_clean_claim_root(root: root as String)
   let removed_after_elevation = removed_by_claim || wet_rm_elevated(root: root)
   let removed_after_settle =
-    removed_after_elevation
-      || (wet_argv_ok(program: sleep_program_invocation, arguments: sleep_for_argv(seconds: "1"))
-        && wet_rm_elevated(root: root))
+    removed_after_elevation || (wet_settle() && wet_rm_elevated(root: root))
   let gone = wet_stage(stage: "claim-root-gone", ok: removed_after_settle && wet_claim_root_is_absent(root: root))
   let _ = wet_stage(stage: "claim-root-housekeeping", ok: removed_after_settle)
   verdict && gone
