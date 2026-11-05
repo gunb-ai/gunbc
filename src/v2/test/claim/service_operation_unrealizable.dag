@@ -3,8 +3,7 @@ module v2.test.claim.service_operation_unrealizable
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
 import v2.compiler.infer { infer_service_operation_realizability_diags }
 import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target, wall_unreadable_callee_application }
-import v2.std.qualified_name { qualified_name_init }
-import v2.std.node_query { declaration_reference_path_optional }
+import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_init }
 import v2.std.symbol_index { OperationRealization, OperationRealizable, OperationUnrealizable, SymbolIndex, empty_symbol_index, symbol_index_mark_operation_realization, symbol_index_mark_service_payload }
 import std.optional { Absent, Present }
 import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
