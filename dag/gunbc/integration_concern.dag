@@ -513,10 +513,10 @@ data cas_fold_claims_have_no_executing_witness: IntegrationConcern = Integration
 data served_observation_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
   identity: "served_observation_written_by_hand_beside_the_store",
   kind: SuspectedFork {
-    authorities: FreeSemigroup {
-      head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
-      tail: [
-        decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_index_put"),
+      rest: [
         decl_ref(module_path: "gunbc.roadmap.roadmap_served_observation", decl_name: "served_observation_body_put"),
       ],
     },
@@ -571,10 +571,10 @@ data served_observation_written_by_hand_beside_the_store: IntegrationConcern = I
 data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = IntegrationConcern {
   identity: "metering_roster_written_by_hand_beside_the_store",
   kind: SuspectedFork {
-    authorities: FreeSemigroup {
-      head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
-      tail: [
-        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_create_once"),
+      rest: [
         decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_roster_seal_under_hold"),
       ],
     },
@@ -626,10 +626,10 @@ data metering_roster_written_by_hand_beside_the_store: IntegrationConcern = Inte
 data attempt_request_binding_races_itself_beside_the_store: IntegrationConcern = IntegrationConcern {
   identity: "attempt_request_binding_races_itself_beside_the_store",
   kind: SuspectedFork {
-    authorities: FreeSemigroup {
-      head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
-      tail: [
-        decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_request_record", decl_name: "attempt_request_binding_commit"),
+      rest: [
         decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_store", decl_name: "attempt_state_create_new_at"),
       ],
     },
