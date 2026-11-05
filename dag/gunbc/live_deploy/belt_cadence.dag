@@ -1,6 +1,7 @@
 module gunbc.live_deploy.belt_cadence
 
 import std.measure { Second, second, second_count }
+import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
   belt_attempt_obligation_order,
@@ -71,10 +72,10 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
 
 // POLICY BUDGETS, each with its reason (DESIGN 5 explicit policy budget). The headroom is a falsifiable
 // operator figure: a verify unit killed at its bound for a within-ceiling node means it is wrong.
-data verify_entries_ceiling: Int = 8
+data verify_entries_ceiling: Nat = 8
 // Reason: srv1's compute pool holds two seats; a node past eight entries is not one attempt's verification
 // and is refused before any run starts, so the outer bound is never the way a predictable overrun ends.
-data verify_run_headroom_percent: Int = 50
+data verify_run_headroom_percent: Nat = 50
 // Reason: compile time on a shared host varies with neighbours; 50% over the recorded figure.
 data verify_run_slack: Second = second(count: 900)
 // Reason: the drain bound (event_backlog_drain_bound) is the corpus-load allowance the same unit pays once.
@@ -84,7 +85,7 @@ type VerifyRunBound
   | VerifyRunOverCeiling { entries: Int, ceiling: Int }
   | VerifyRunUnsampled { entry: String }
 
-fn verify_entry_sample_seconds(samples: List<EntryCompileSample>, entry: String) -> Int? {
+fn verify_entry_sample_seconds(samples: List<EntryCompileSample>, entry: String) -> Nat? {
   match filter(samples, s => s.entry == entry) {
     Empty {} => none
     Cons { head: first, tail: _ } => Present { value: second_count(s: first.seconds) }
@@ -93,9 +94,9 @@ fn verify_entry_sample_seconds(samples: List<EntryCompileSample>, entry: String)
 
 // The entries are the node's distinct validation entries; the bound is their summed recorded figures
 // plus headroom and slack. samples, ceiling, headroom and slack are supplied so each arm is exercisable.
-fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>, ceiling: Int, headroom_percent: Int, slack: Second) -> VerifyRunBound {
-  if length(entries) > ceiling {
-    VerifyRunOverCeiling { entries: length(entries), ceiling: ceiling }
+fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>, ceiling: Nat, headroom_percent: Nat, slack: Second) -> VerifyRunBound {
+  if length(entries) > nat_to_int(n: ceiling) {
+    VerifyRunOverCeiling { entries: length(entries), ceiling: nat_to_int(n: ceiling) }
   } else {
     match filter(entries, e => match verify_entry_sample_seconds(samples: samples, entry: e) {
       Absent => true
@@ -103,7 +104,7 @@ fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>
     }) {
       Cons { head: missing, tail: _ } => VerifyRunUnsampled { entry: missing }
       Empty {} => {
-        let total = fold(entries, init: 0, f: (acc, e) => match verify_entry_sample_seconds(samples: samples, entry: e) {
+        let total = fold(entries, init: second_count(s: second(count: 0)), f: (acc, e) => match verify_entry_sample_seconds(samples: samples, entry: e) {
           Present { value: n } => acc + n
           Absent => acc
         })
@@ -137,7 +138,7 @@ fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
 // The attempt unit's outer safety net: the ceiling's worth of the slowest recorded entry, derived from the
 // same rows, so changing a sample or the ceiling moves it (no second copy).
 fn verify_unit_outer_run_bound() -> Second {
-  let slowest = fold(verify_entry_compile_samples, init: 0, f: (acc, s) => if second_count(s: s.seconds) > acc { second_count(s: s.seconds) } else { acc })
+  let slowest = fold(verify_entry_compile_samples, init: second_count(s: second(count: 0)), f: (acc, s) => if second_count(s: s.seconds) > acc { second_count(s: s.seconds) } else { acc })
   let total = slowest * verify_entries_ceiling
   second(count: total + total * verify_run_headroom_percent / 100 + second_count(s: verify_run_slack))
 }
