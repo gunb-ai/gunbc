@@ -76,7 +76,7 @@ data router_dev_upstream_rows_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.serving.router_dev_policy",
-    decl_name: "router_dev_first_party_upstreams",
+    decl_name: "router_dev_first_party",
     field: WholeDeclaration
   }
 }
@@ -105,3 +105,17 @@ data router_dev_falsifier_shell_scaffold: Disposition = Scaffold {
   }
 }
 
+
+// 6. HAND-WRITTEN SHELL IN THE FALSIFIER'S UNCAPPED IN-FLIGHT CASE. uncapped_inflight_script runs a held turn in
+// the background, waits for the fixture's 'entered' line, reads stats, then collects the turn, as one sh -c
+// program. Transient: the order is the fact under test, and DockerCli has no logs or exec operation to model it
+// as steps yet, so the shell text is the authority until bash emission replaces it. Dissolves when
+// extdeps.languages.bash.grammar carries bash_and_list_production and the script is emitted from argv nodes.
+data router_dev_uncapped_inflight_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.instruments.router_proxy_falsifier",
+    decl_name: "uncapped_inflight_script",
+    field: WholeDeclaration
+  }
+}

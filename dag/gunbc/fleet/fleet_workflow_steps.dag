@@ -768,6 +768,13 @@ data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 // class as 35230228049, one step over.
 data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
 
+// THE PLAN'S SERVE-ENTRY VERDICT STEP PAYS THE FOLD THE PLAN OWNS: the cold serve-entry compile
+// measured, in the transaction it replaces, typecheck_files ms=452671 plus
+// resolve_entry_graph_inclusive ms=614964 -- about 18 minutes of work (job 117824998335) -- and
+// the pair build, document write, and process start sit around it. Half an hour is that work
+// with room, and it stays far under the job backstop.
+data gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes: Duration = 30
+
 data gunbc_ci_spark_serving_step_timeout_minutes: Duration = 60
 
 // The Spark vLLM runtime-image-build step is gone with that module (#13779). Its 180-minute
