@@ -737,7 +737,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           long: "slot-cgroup",
           value: CliTextValue { text_default: none },
           arity: CliRequired,
-          doc: ["The slot's cgroup v2 directory, for example /sys/fs/cgroup/system-actions-runner.slice/actions-runner@srv1-01.service."],
+          doc: ["The slot, as a cgroup v2 directory, or as its unit name (actions-runner@srv1-01.service), which is found under /sys/fs/cgroup."],
           emission: CarriedByGeneratedDispatch
         }
       ],

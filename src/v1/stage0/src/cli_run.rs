@@ -212,11 +212,59 @@ pub use demand_acquire::{
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 
+/// A slot is named by a cgroup directory, or by its unit name (no `/`), which is found as a directory of
+/// that name at most two levels under /sys/fs/cgroup (the fleet slot sits at
+/// system.slice/system-actions_runner.slice/<unit>, a spelling observed to differ between hosts, so it is
+/// found rather than assumed). Zero or several matches refuse; nothing is guessed.
+fn resolve_slot_cgroup(spec: &str) -> Result<std::path::PathBuf, String> {
+    if spec.contains('/') {
+        return Ok(std::path::PathBuf::from(spec));
+    }
+    let root = std::path::Path::new("/sys/fs/cgroup");
+    let mut found = Vec::new();
+    let mut level = vec![root.to_path_buf()];
+    for _ in 0..3 {
+        let mut next = Vec::new();
+        for dir in &level {
+            let Ok(rd) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                if p.file_name().and_then(|n| n.to_str()) == Some(spec) {
+                    found.push(p.clone());
+                }
+                next.push(p);
+            }
+        }
+        level = next;
+    }
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        0 => Err(format!(
+            "no cgroup directory named {spec} under /sys/fs/cgroup"
+        )),
+        n => Err(format!(
+            "{n} cgroup directories named {spec}; refusing to choose"
+        )),
+    }
+}
+
 /// The `slot-watchdog` verb's host realization: the loop, the kill and the receipt are
 /// `required_regen_host::run_slot_watchdog`; the verdict and every number are the authority's.
 pub fn run_slot_watchdog_verb(slot_cgroup: String, source_roots: Vec<String>) -> i32 {
+    let slot_cgroup = match resolve_slot_cgroup(&slot_cgroup) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("REFUSED: {e}");
+            return 2;
+        }
+    };
     required_regen_host::run_slot_watchdog(required_regen_host::SlotWatchdogConfig {
-        slot_cgroup: std::path::PathBuf::from(slot_cgroup),
+        slot_cgroup,
         source_roots,
     })
 }

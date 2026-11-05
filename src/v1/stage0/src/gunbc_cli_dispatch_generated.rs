@@ -122,7 +122,7 @@ pub enum Commands {
         /// Source root directories the verdict authority is loaded from.
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-        /// The slot's cgroup v2 directory, for example /sys/fs/cgroup/system-actions-runner.slice/actions-runner@srv1-01.service.
+        /// The slot, as a cgroup v2 directory, or as its unit name (actions-runner@srv1-01.service), which is found under /sys/fs/cgroup.
         #[arg(long)]
         slot_cgroup: String,
     },

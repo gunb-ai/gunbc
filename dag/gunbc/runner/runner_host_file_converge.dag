@@ -145,6 +145,7 @@ import gunbc.runner.runner_unit_file {
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for, runner_job_user_env_name }
 import extdeps.docker.endpoint { docker_host_env_var }
+import gunbc.runner.runner_slot_watchdog_unit { gunbc_slot_watchdog_unit_path, gunbc_slot_watchdog_slice_path, gunbc_slot_watchdog_unit_text, gunbc_slot_watchdog_slice_text, gunbc_slot_watchdog_wants_dropin_path, gunbc_slot_watchdog_wants_dropin_text }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
@@ -284,7 +285,7 @@ fn runner_slot_cpu_desired(host: HostIdentity) -> RunnerSlotCpuDesired {
 }
 
 fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> List<FleetHostFileDesired> {
-  [
+  concat(runner_host_slot_watchdog_files(), [
     FleetHostFileDesired {
       subject: "runner-teardown-dropin" as NonEmptyStr,
       path: runner_unit_teardown_dropin_path() as FilePath,
@@ -298,6 +299,35 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
       content: needrestart_conf_d_text(overrides: [
         NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
       ]),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
+    },
+  ])
+}
+
+// THE SLOT PROGRESS WATCHDOG'S FILES (gunbc.runner.runner_slot_watchdog_unit): its own slice, the template
+// unit and the slot template's Wants= drop-in. They ride the same converge and byte readback as the teardown
+// drop-in beside them, so a host that has them and a host that lacks them are told apart by the same reading.
+fn runner_host_slot_watchdog_files() -> List<FleetHostFileDesired> {
+  [
+    FleetHostFileDesired {
+      subject: "slot-watchdog-slice" as NonEmptyStr,
+      path: gunbc_slot_watchdog_slice_path as FilePath,
+      content: gunbc_slot_watchdog_slice_text(),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
+    },
+    FleetHostFileDesired {
+      subject: "slot-watchdog-unit" as NonEmptyStr,
+      path: gunbc_slot_watchdog_unit_path as FilePath,
+      content: gunbc_slot_watchdog_unit_text(),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
+    },
+    FleetHostFileDesired {
+      subject: "slot-watchdog-wants-dropin" as NonEmptyStr,
+      path: gunbc_slot_watchdog_wants_dropin_path() as FilePath,
+      content: gunbc_slot_watchdog_wants_dropin_text(),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
       validation: NoValidation,
     },
