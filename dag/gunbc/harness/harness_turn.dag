@@ -3,7 +3,7 @@ module gunbc.harness.harness_turn
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, JsonBool, JsonObject, JsonArray, JsonString, json_kv, json_string, json_int, json_array, json_object, serialize_json,
 }
@@ -2130,7 +2130,7 @@ fn harness_supervision_bounded(text: String) -> String {
 data harness_supervision_observed_message_cap: Int = 120
 
 fn harness_supervision_observation_text(messages: List<JsonValue>, round_steps: Int) -> String {
-  let n = list_length(items: messages)
+  let n = length(xs: messages)
   let tail = if 3 * round_steps < harness_supervision_observed_message_cap { 3 * round_steps } else { harness_supervision_observed_message_cap }
   let from = if n - tail < 1 { 1 } else { n - tail }
   join(
@@ -2369,7 +2369,7 @@ fn harness_messages_with_steer(shape: HarnessWireShape, messages: List<JsonValue
   match shape {
     OpenAiChatCompletionsShape => concat(messages, [harness_user_text_message_json(shape: shape, text: steer)])
     AnthropicMessagesShape => {
-      let n = list_length(items: messages)
+      let n = length(xs: messages)
       match messages.last() {
         Absent => [harness_user_text_message_json(shape: shape, text: steer)]
         Present { value: last } =>
