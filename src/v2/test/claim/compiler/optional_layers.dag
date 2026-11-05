@@ -135,7 +135,7 @@ test fn list_of_t_binds_t_to_the_element_type() -> Bool {
     instances: Empty,
     declarations: empty_symbol_index()
   ) {
-    InferFormalShapeMismatch => false
+    InferFormalShapeMismatch { decision: _ } => false
     InferFormalMatched { instances: bound } =>
       node_same_occurrence(a: infer_type_instantiated(t: ol_list_of(element: ol_atom(id: ^ol_t)), instances: bound), b: ol_list_of(element: ol_atom(id: ^ol_int)))
   }
@@ -149,7 +149,7 @@ test fn an_int_at_a_list_formal_is_a_shape_mismatch() -> Bool {
     instances: Empty,
     declarations: empty_symbol_index()
   ) {
-    InferFormalShapeMismatch => true
+    InferFormalShapeMismatch { decision: _ } => true
     InferFormalMatched { instances: _ } => false
   }
 }
@@ -164,7 +164,7 @@ test fn optional_t_matches_optional_int_and_binds_t() -> Bool {
     instances: Empty,
     declarations: empty_symbol_index()
   ) {
-    InferFormalShapeMismatch => false
+    InferFormalShapeMismatch { decision: _ } => false
     InferFormalMatched { instances: bound } =>
       node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: produced)
   }
@@ -180,7 +180,7 @@ test fn substituting_u_optional_into_t_optional_composes_two_layers() -> Bool {
     instances: Empty,
     declarations: empty_symbol_index()
   ) {
-    InferFormalShapeMismatch => false
+    InferFormalShapeMismatch { decision: _ } => false
     InferFormalMatched { instances: bound } =>
       node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: wrap_type_node_occupancy(base: ol_atom(id: ^ol_u), depth: two_optional_layers()))
   }
@@ -194,7 +194,7 @@ test fn one_optional_layer_does_not_match_a_required_int() -> Bool {
     instances: Empty,
     declarations: empty_symbol_index()
   ) {
-    InferFormalShapeMismatch => true
+    InferFormalShapeMismatch { decision: _ } => true
     InferFormalMatched { instances: _ } => false
   }
 }

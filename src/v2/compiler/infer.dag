@@ -64,7 +64,8 @@ import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, conte
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canonical_grounding_from_derived_type }
-import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, inhabitance_refusal_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
+import v2.std.exact_structural_equality_zip_fold_predicate { ComparisonArgumentCountDiffers, ComparisonRootsDiffer }
+import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, InhabitanceStructuralDecision, inhabitance_structural_decision, inhabitance_refusal_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
 import v2.std.diagnostic { CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending, bind_outcome_accepted, non_empty_diagnostics_append }
 import v2.std.logic { Bool, bool_node }
 import v2.std.type_binder { GenericTypeDecl, KindBound, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, refinement_declaration_of_node, type_annotation_optional, type_decl_view, type_param_bound, type_param_names, where_predicate_set_edge }
@@ -4672,7 +4673,10 @@ fn infer_no_type_variable_instances() -> List<TypeVariableInstance> {
 // bases; a layer-count mismatch is InferFormalShapeMismatch, never a collapsed Optional.
 type InferFormalMatch
   = InferFormalMatched { instances: List<TypeVariableInstance> }
-  | InferFormalShapeMismatch
+  // the mismatch carries WHICH structural question answered no, decided at the branch that mismatches:
+  // a shape judgement has the same answers the inhabitance verdict has, and naming them here keeps one
+  // mapping from question to reason for the whole front end.
+  | InferFormalShapeMismatch { decision: InhabitanceStructuralDecision }
 
 fn infer_type_variable_binder(t: Node, type_params: List<Symbol>) -> Optional<Symbol> {
   match t.kind {
@@ -4702,21 +4706,22 @@ fn infer_match_generic_formal(formal: Node, produced: Node, type_params: List<Sy
               let f = infer_type_head_and_args(t: formal)
               let p = infer_type_head_and_args(t: produced)
               if length(xs: f.args) != length(xs: p.args) {
-                InferFormalShapeMismatch
+                InferFormalShapeMismatch { decision: inhabitance_structural_decision(comparison: ComparisonArgumentCountDiffers { source_arity: length(xs: f.args), candidate_arity: length(xs: p.args) }) }
               } else if inhabitance_node_mentions_type_variable(n: f.head, type_variables: type_params) {
                 InferFormalMatched { instances: instances }
               } else if !node_equal_ignoring_provenance(a: f.head, b: p.head) {
-                InferFormalShapeMismatch
+                InferFormalShapeMismatch { decision: inhabitance_structural_decision(comparison: ComparisonRootsDiffer) }
               } else {
                 fold(zip_map(a: f.args, b: p.args, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
                   match acc {
-                    InferFormalShapeMismatch => acc
+                    InferFormalShapeMismatch { decision: _ } => acc
                     InferFormalMatched { instances: so_far } => infer_match_generic_formal(formal: pair.formal, produced: pair.produced, type_params: type_params, instances: so_far, declarations: declarations)
                   }
                 })
               }
-            TypeNode { connective: _ } => InferFormalShapeMismatch
-            ComputationNode { behavior: _ } => InferFormalShapeMismatch
+            // a formal instantiation against a produced type that is not an instantiation: the heads differ
+            TypeNode { connective: _ } => InferFormalShapeMismatch { decision: inhabitance_structural_decision(comparison: ComparisonRootsDiffer) }
+            ComputationNode { behavior: _ } => InferFormalShapeMismatch { decision: inhabitance_structural_decision(comparison: ComparisonRootsDiffer) }
           }
         TypeNode { connective: Arrow } =>
           match produced.kind {
@@ -4797,12 +4802,12 @@ fn infer_match_generic_arrow_inputs(formal: Node, produced: Node, formal_inputs:
   } else {
     let inputs = fold(zip_map(a: formal_inputs, b: produced_inputs, f: fn(fa, pa) { InferTypePair { formal: fa, produced: pa } }), init: InferFormalMatched { instances: instances }, f: fn(acc, pair) {
       match acc {
-        InferFormalShapeMismatch => acc
+        InferFormalShapeMismatch { decision: _ } => acc
         InferFormalMatched { instances: so_far } => infer_match_generic_formal(formal: pair.formal, produced: pair.produced, type_params: type_params, instances: so_far, declarations: declarations)
       }
     })
     let whole = match inputs {
-      InferFormalShapeMismatch => inputs
+      InferFormalShapeMismatch { decision: _ } => inputs
       InferFormalMatched { instances: so_far } =>
         match list_at_optional(xs: positional_child_target_nodes(node: formal), index: 1) {
           Absent => inputs
@@ -4814,7 +4819,7 @@ fn infer_match_generic_arrow_inputs(formal: Node, produced: Node, formal_inputs:
         }
     }
     match whole {
-      InferFormalShapeMismatch => InferFormalMatched { instances: instances }
+      InferFormalShapeMismatch { decision: _ } => InferFormalMatched { instances: instances }
       InferFormalMatched { instances: _ } => whole
     }
   }
@@ -4993,10 +4998,10 @@ fn infer_type_alias_normalized_at(t: Node, bodies: SymbolIndex, bindings: Symbol
 fn infer_match_generic_formal_or_carrier(formal: Node, produced: Node, type_params: List<Symbol>, instances: List<TypeVariableInstance>, declarations: SymbolIndex, bindings: SymbolIndex) -> InferFormalMatch {
   match infer_match_generic_formal(formal: formal, produced: produced, type_params: type_params, instances: instances, declarations: declarations) {
     InferFormalMatched { instances: matched } => InferFormalMatched { instances: matched }
-    InferFormalShapeMismatch =>
+    InferFormalShapeMismatch { decision: decision_value } =>
       match refinement_declared_carrier(index: declarations, source_type: produced) {
         Present { value: carrier } => infer_match_generic_formal(formal: formal, produced: infer_type_alias_normalized_at(t: carrier, bodies: declarations, bindings: bindings), type_params: type_params, instances: instances, declarations: declarations)
-        Absent => InferFormalShapeMismatch
+        Absent => InferFormalShapeMismatch { decision: decision_value }
       }
   }
 }
@@ -5407,7 +5412,7 @@ fn infer_close_produced_at_declared(
         declarations: declarations,
         bindings: bindings
       ) {
-        InferFormalShapeMismatch => instances
+        InferFormalShapeMismatch { decision: _ } => instances
         InferFormalMatched { instances: matched } => matched
       }
   }
@@ -5472,15 +5477,15 @@ fn infer_judge_generic_formal(
       }
     Present { value: produced } =>
       match infer_match_generic_formal_or_carrier(formal: infer_type_alias_normalized_at(t: formal.declared, bodies: declarations, bindings: bindings), produced: infer_type_alias_normalized_at(t: produced, bodies: declarations, bindings: bindings), type_params: type_params, instances: instances, declarations: declarations, bindings: bindings) {
-        InferFormalShapeMismatch =>
+        InferFormalShapeMismatch { decision: shape_decision } =>
           outcome_rejected(
             inhabitance_refusal_diagnostic(
               obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations, bindings: bindings),
-              refusal_class: RefusalStructuralMismatch,
               // The generic-formal route decides by SHAPE (its head or its argument count); it never runs the
-              // witness fold, so reporting a search reason there would say a search ran when none did. The reason
-              // names the shape judgement that failed, and its class is the mismatch it actually showed.
-              find_witness_reason: ^infer_generic_formal_shape_mismatch
+              // witness fold, so reporting a search reason there would say a search ran when none did. The
+              // matcher's own branch decided which shape question answered no, and that is what is reported.
+              refusal_class: shape_decision.refusal_class,
+              find_witness_reason: shape_decision.reason
             )
           )
         InferFormalMatched { instances: matched } =>
@@ -5846,7 +5851,7 @@ fn infer_row_declares_fields(row: AlgebraInhabitanceDecl, fields: List<Symbol>) 
 
 fn infer_row_inhabitant_matched_optional(row_inhabitant: Node, wanted: Node, declarations: SymbolIndex, bindings: SymbolIndex) -> Optional<List<TypeVariableInstance>> {
   match infer_match_generic_formal(formal: row_inhabitant, produced: wanted, type_params: dag_algebra_inhabitance_row_type_params(), instances: Empty, declarations: declarations) {
-    InferFormalShapeMismatch => optional_absent()
+    InferFormalShapeMismatch { decision: _ } => optional_absent()
     InferFormalMatched { instances: matched } =>
       if node_equal_ignoring_provenance(
         a: infer_type_alias_normalized_at(t: infer_type_instantiated(t: row_inhabitant, instances: matched), bodies: declarations, bindings: bindings),
@@ -5900,7 +5905,7 @@ fn infer_expected_return_seed(site: InferJudgedSite, entries: Map<Node, List<Inf
         JudgedAtConstruct { pattern: pattern } =>
           match infer_match_generic_formal(formal: pattern, produced: infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings), type_params: type_params, instances: infer_no_type_variable_instances(), declarations: declarations) {
             InferFormalMatched { instances: seeded } => seeded
-            InferFormalShapeMismatch => infer_no_type_variable_instances()
+            InferFormalShapeMismatch { decision: _ } => infer_no_type_variable_instances()
           }
         JudgedAtApplication { application: application } =>
           match infer_application_callee_arrow_with_facts(node: application, entries: entries) {
@@ -5912,7 +5917,7 @@ fn infer_expected_return_seed(site: InferJudgedSite, entries: Map<Node, List<Inf
                   if inhabitance_node_mentions_type_variable(n: returned, type_variables: type_params) {
                     match infer_match_generic_formal(formal: infer_type_alias_normalized_at(t: returned, bodies: declarations, bindings: bindings), produced: infer_type_alias_normalized_at(t: declared, bodies: declarations, bindings: bindings), type_params: type_params, instances: infer_no_type_variable_instances(), declarations: declarations) {
                       InferFormalMatched { instances: seeded } => seeded
-                      InferFormalShapeMismatch => infer_no_type_variable_instances()
+                      InferFormalShapeMismatch { decision: _ } => infer_no_type_variable_instances()
                     }
                   } else {
                     infer_no_type_variable_instances()
@@ -10122,7 +10127,7 @@ fn infer_settled_actual_instances(pairs: List<InhabitanceFormalArg>, entries: Ma
                 bindings: bindings
               ) {
                 InferFormalMatched { instances: matched } => matched
-                InferFormalShapeMismatch => instances
+                InferFormalShapeMismatch { decision: _ } => instances
               }
           }
       }

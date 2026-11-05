@@ -100,7 +100,7 @@ test fn ccc_int_binds_the_carrier_formal() -> Bool {
     Absent => false
     Present { value: formal } =>
       match infer_match_generic_formal(formal: formal, produced: ccc_int_type(), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
-        InferFormalShapeMismatch => false
+        InferFormalShapeMismatch { decision: _ } => false
         InferFormalMatched { instances: _ } => true
       }
   }

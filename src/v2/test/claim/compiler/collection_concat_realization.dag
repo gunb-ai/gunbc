@@ -137,7 +137,7 @@ test fn cca_mismatched_element_instantiates_to_a_different_list() -> Bool {
     Absent => false
     Present { value: formal } =>
       match infer_match_generic_formal(formal: formal, produced: cca_list_of(element: cca_pair_type()), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
-        InferFormalShapeMismatch => false
+        InferFormalShapeMismatch { decision: _ } => false
         InferFormalMatched { instances: bound } =>
           node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: cca_list_of(element: cca_pair_type()))
             && !node_same_occurrence(a: infer_type_instantiated(t: formal, instances: bound), b: cca_list_of(element: cca_int_type()))

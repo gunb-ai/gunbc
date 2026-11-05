@@ -390,7 +390,7 @@ fn fvt_formal_f() -> Node {
 
 fn fvt_learned(produced: Node, binder: Symbol) -> Optional<Node> {
   match infer_match_generic_formal(formal: fvt_formal_f(), produced: produced, type_params: [^A, ^B, ^R], instances: [], declarations: empty_symbol_index()) {
-    InferFormalShapeMismatch => optional_absent()
+    InferFormalShapeMismatch { decision: _ } => optional_absent()
     InferFormalMatched { instances: learned } => type_variable_instance_lookup(instances: learned, binder: binder)
   }
 }

@@ -171,7 +171,7 @@ fn fmb_list_of(element: Node) -> Node {
 test fn fmb_mixed_carriers_refuse() -> Bool {
   let carrier = collection_roster_carrier_type()
   match infer_match_generic_formal(formal: carrier, produced: fmb_kernel_type(spelling: "String"), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
-    InferFormalShapeMismatch => false
+    InferFormalShapeMismatch { decision: _ } => false
     InferFormalMatched { instances: bound } =>
       node_same_occurrence(a: infer_type_instantiated(t: carrier, instances: bound), b: fmb_kernel_type(spelling: "String"))
         && !node_same_occurrence(a: infer_type_instantiated(t: carrier, instances: bound), b: fmb_list_of(element: fmb_kernel_type(spelling: "Int")))
