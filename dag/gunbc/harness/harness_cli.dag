@@ -779,18 +779,22 @@ fn harness_seat_pointer_refused_exit(binding: HarnessSeatBinding, detail: String
   ExitFailure { code: 1, reason: join(["harness seat pointer write failed: ", detail, "; seat ", harness_seat_release_wire(r: released)], "") }
 }
 
-// A WORKER IS SUPERVISED WHEN IT CARRIES A CHAIN. The alignment check needs the rendered chain to ask
-// its question and a directory under the attempt's own state to leave its verdict in; a worker spawned
-// without a chain (a local probe) is unsupervised and keeps the hard round budget.
-fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, check_directory: String) -> HarnessSupervision {
+// A DISPATCHED WORKER IS ALWAYS SUPERVISED, so a missing chain is a refusal and never an unsupervised run.
+// The alignment check needs the rendered chain to ask its question and a directory under the attempt's own
+// state to leave its verdict in; the belt always resolves a chain before it dispatches, so an empty
+// fingerprint means the binding was lost upstream. A local probe that wants no supervision calls
+// harness_run_turn with Unsupervised, not this entry.
+fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, check_directory: String) -> HarnessSupervision? {
   if chain_fingerprint == "" {
-    Unsupervised
+    none
   } else {
-    SupervisedRounds {
-      chain_fingerprint: chain_fingerprint,
-      check_prompt: check_prompt,
-      check_directory: check_directory,
-      round_steps: harness_worker_step_budget,
+    Present {
+      value: SupervisedRounds {
+        chain_fingerprint: chain_fingerprint,
+        check_prompt: check_prompt,
+        check_directory: check_directory,
+        round_steps: harness_worker_step_budget,
+      },
     }
   }
 }
@@ -942,6 +946,9 @@ fn harness_worker_turn_cli(
   run: HarnessWorkerRun,
   turn: HarnessCallerTurn?,
 ) -> ProcessExit {
+  match harness_worker_supervision(chain_fingerprint: alignment_chain_fingerprint, check_prompt: supervision_prompt, check_directory: supervision_dir) {
+    none => ExitFailure { code: 2, reason: "harness worker refused: no alignment chain fingerprint was passed, and a dispatched worker is always supervised against its chain; a local probe runs harness_run_turn with Unsupervised instead" }
+    Present { value: supervision } => {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree)
   let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: turn, validation: ValidationRoutedTo { repo_root: repo_root })
   match harness_binding_answer(binding: binding) {
@@ -959,11 +966,7 @@ fn harness_worker_turn_cli(
               events_path: events_path as FilePath,
               backend: backend,
               system_prompt: system_prompt,
-              supervision: harness_worker_supervision(
-                chain_fingerprint: alignment_chain_fingerprint,
-                check_prompt: supervision_prompt,
-                check_directory: supervision_dir,
-              ),
+              supervision: supervision,
             )
           let outcome = match run {
             WorkerRunFresh => harness_run_turn(config: config, prompt: brief, step_budget: harness_worker_step_budget)
@@ -974,6 +977,8 @@ fn harness_worker_turn_cli(
           harness_worker_exit_completed(outcome: outcome, seat: seat_release, completion: completion)
         }
       }
+    }
+  }
     }
   }
 }
