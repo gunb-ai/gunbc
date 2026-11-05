@@ -205,14 +205,11 @@ test fn nds_a_mutated_row_count_is_refused() -> Bool {
 //                                        and nothing else in the fixture shape
 // The red run drives the row-carried fixture through the row-absent claim; see the PR's witness script.
 
-data nds_eq_row_carried_source: String =
-  "module v2.test.nds_eq_row_carried\n\nfn k(a: Int, b: Int) -> Bool {\n  a == b\n}\n"
+data nds_eq_row_carried_source: String = "module v2.test.nds_eq_row_carried\n\nfn k(a: Int, b: Int) -> Bool {\n  a == b\n}\n"
 
-data nds_eq_row_absent_source: String =
-  "module v2.test.nds_eq_row_absent\n\nfn k(a: Bool, b: Bool) -> Bool {\n  a == b\n}\n"
+data nds_eq_row_absent_source: String = "module v2.test.nds_eq_row_absent\n\nfn k(a: Bool, b: Bool) -> Bool {\n  a == b\n}\n"
 
-data nds_eq_no_comparison_source: String =
-  "module v2.test.nds_eq_no_comparison\n\nfn k(a: Bool, b: Bool) -> Bool {\n  true\n}\n"
+data nds_eq_no_comparison_source: String = "module v2.test.nds_eq_no_comparison\n\nfn k(a: Bool, b: Bool) -> Bool {\n  true\n}\n"
 
 fn nds_eq_prepared(source: String, id: Symbol, module: Symbol, file: String) -> Optional<NativeTestPreparedModule> {
   nds_prepared(read: nds_read(source: source, id: id, file: file), module: [^v2, ^test, module])
