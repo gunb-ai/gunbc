@@ -88,6 +88,7 @@ import gunbc.machine_intake.pre_os_bringup_verdict {
   TrainingRefusedByFirmware,
   pre_os_bringup_verdict,
 }
+import std.algebra { length }
 import gunbc.machine_intake.mtcollins1_32dimm_bringup_observation {
   check_bounded_terminal,
   check_collectors_before_actuation,
@@ -490,8 +491,8 @@ test fn a_platform_that_exposes_per_slot_evidence_localizes_by_pointer_never_by_
 
 test fn the_corpus_window_holds_twenty_closed_cycles_one_with_progress_and_one_open_pending() -> Bool {
   let cycles = boot_cycles(window: mtcollins1_sel_window())
-  list_length(items: cycles.closed) == 20
-    && list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen)) == 1
+  length(xs: cycles.closed) == 20
+    && length(xs: filter(xs: cycles.closed, f: c => c.progress_seen)) == 1
     && match cycles.open {
       Present { value: c } => c.restart_record_id == 1102 && c.progress_seen == false
       Absent => false
@@ -534,7 +535,7 @@ test fn a_candidate_absent_from_the_window_is_not_reported_as_never_beside() -> 
     never_beside_candidates: [ghost],
     profile: mtcollins1_pre_os_capabilities,
   )
-  list_length(items: assoc.never_within_same_cycle_as) == 0 && list_length(items: assoc.candidates_absent_from_window) == 1
+  length(xs: assoc.never_within_same_cycle_as) == 0 && length(xs: assoc.candidates_absent_from_window) == 1
 }
 
 test fn a_payload_absent_from_the_window_has_no_first_seen_record() -> Bool {

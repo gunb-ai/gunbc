@@ -22,9 +22,7 @@ import v2.workflow.floor_terminal_ledger {
 import gunbc.target_binding {
   TargetProducer,
   HeadsReadingDifferentialProducer,
-  CompileCleanDiagnosticCensusProducer,
   HeadsReadingDifferentialStanding,
-  CompileCleanDiagnosticCensusStanding,
 }
 import std.optional { Optional, Present, Absent }
 import std.types { String, Bool, NonEmptyStr }
@@ -136,7 +134,6 @@ type TestStanding
   | TestRunByFloor { disposition: ClaimDisposition }
   | TestReportedByBazel { status: BlazeTestStatus }
   | TestMeasuredByHeadsReadingDifferential { standing: HeadsReadingDifferentialStanding }
-  | TestMeasuredByCompileCleanDiagnosticCensus { standing: CompileCleanDiagnosticCensusStanding }
 
 type TargetStanding {
   target: Label
@@ -280,9 +277,6 @@ fn test_standing_verdict(t: TestStanding) -> StandingVerdict {
     TestReportedByBazel { status: s } => blaze_test_status_verdict(s: s)
     TestMeasuredByHeadsReadingDifferential { standing: _ } => StandingUnsatisfied {
       cause: TestProducerOutsideRequiredAggregate { producer: HeadsReadingDifferentialProducer {} }
-    }
-    TestMeasuredByCompileCleanDiagnosticCensus { standing: _ } => StandingUnsatisfied {
-      cause: TestProducerOutsideRequiredAggregate { producer: CompileCleanDiagnosticCensusProducer {} }
     }
   }
 }
@@ -701,9 +695,6 @@ fn blaze_test_status_of_test_standing(t: TestStanding) -> BlazeTestStatusExport 
     }
     TestMeasuredByHeadsReadingDifferential { standing: _ } => TestStandingNotExportable {
       producer: HeadsReadingDifferentialProducer {}
-    }
-    TestMeasuredByCompileCleanDiagnosticCensus { standing: _ } => TestStandingNotExportable {
-      producer: CompileCleanDiagnosticCensusProducer {}
     }
   }
 }

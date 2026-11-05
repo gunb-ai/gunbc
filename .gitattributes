@@ -64,6 +64,7 @@ src/v1/stage0/src/declaration_index.rs !merge
 src/v1/stage0/src/emitted_closure_compile_host.rs !merge
 src/v1/stage0/src/evaluation_budget_consequence_falsifier_host.rs !merge
 src/v1/stage0/src/generated_artifact_boundary_host.rs !merge
+src/v1/stage0/src/instrument_registry_generated.rs !merge
 src/v1/stage0/src/main.rs !merge
 src/v1/stage0/src/memory_governor.rs !merge
 src/v1/stage0/src/namespace_baseline.rs !merge

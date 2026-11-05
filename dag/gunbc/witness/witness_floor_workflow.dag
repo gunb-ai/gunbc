@@ -1,4 +1,5 @@
 module gunbc.witness.witness_floor_workflow
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused, AbsenceExpected }
 import std.optional { Absent, Optional, Present }
 
 
@@ -125,7 +126,7 @@ import v2.workflow.required_ci_measurement_shell {
   required_ci_measurement_build_outcome_var
 }
 import v2.std.diagnostic { Outcome }
-import std.types { Bool, List, String, Int }
+import std.types { Bool, List, String, Int, NonEmptyStr }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
 //
@@ -1108,12 +1109,13 @@ fn floor_attempt_receipt_upload_step() -> Step {
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: floor_attempt_receipt_artifact_name())),
-        kv(key: "path", value: yaml_string(s: join([floor_attempt_receipt_filename, floor_attempt_command_log_filename], "\n"))),
-        kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
-        kv(key: "retention-days", value: yaml_int(n: 14)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: floor_attempt_receipt_artifact_name(),
+        path: join([floor_attempt_receipt_filename, floor_attempt_command_log_filename], "\n"),
+        retention_days: Present { value: 14 },
+        compression_level: none,
+        absence: AbsenceExpected { reason: "this is the required gate's own workflow (witnesses.yml, job v2-bootstrap): whether a missing floor attempt receipt should fail the required job is that gate's decision, not this policy change's, so its behaviour is kept as it was." as NonEmptyStr },
+      )
     },
     env: none,
     if_condition: Present { value: "always()" },
@@ -1581,12 +1583,13 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: artifact_name)),
-        kv(key: "path", value: yaml_string(s: path)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: 14)),
-      ]
+      value: workflow_artifact_upload_with(
+        name: artifact_name,
+        path: path,
+        retention_days: Present { value: 14 },
+        compression_level: none,
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: Present { value: condition },

@@ -3,7 +3,8 @@ module test.claim.replacement_cut_witness
 // Imported from the definer rather than left as bare references, per the
 // accidental-coverage class the import-strip diagnosis names: a module this
 // new is in nobody else's closure, so bare references would not bind.
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.replacement_cut {
   ReplacementCutId,
@@ -218,7 +219,7 @@ test fn undecided_consumer_blocks_the_cut() -> Bool {
     region: two_region(),
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "undispositioned-consumer", subject: "undispositioned caller")
 }
 
@@ -228,7 +229,7 @@ test fn surviving_consumer_without_coverage_refuses() -> Bool {
     region: two_region(),
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "uncovered-surviving", subject: "surviving invariant consumer")
 }
 
@@ -238,7 +239,7 @@ test fn undecided_evidence_blocks_the_cut() -> Bool {
     region: two_region(),
     evidence: [EvidenceUndecided { evidence: nes(s: "parked witness") }],
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "undispositioned-evidence", subject: "parked witness")
 }
 
@@ -261,7 +262,7 @@ test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
     region: [],
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "empty-covered-region", subject: "")
 }
 
@@ -271,7 +272,7 @@ test fn every_cause_is_counted_not_first_wins() -> Bool {
     region: [],
     evidence: [EvidenceUndecided { evidence: nes(s: "parked witness") }],
   )))
-  list_length(items: causes) == 4
+  length(xs: causes) == 4
     && causes_include(causes: causes, tag: "undispositioned-consumer", subject: "undispositioned caller")
     && causes_include(causes: causes, tag: "uncovered-surviving", subject: "surviving invariant consumer")
     && causes_include(causes: causes, tag: "undispositioned-evidence", subject: "parked witness")
@@ -302,7 +303,7 @@ test fn coverage_by_the_old_root_is_fallback_wearing_a_disposition() -> Bool {
     region: two_region(),
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "covered-by-old-root", subject: "consumer leaning on x")
 }
 
@@ -316,7 +317,7 @@ test fn replacement_naming_the_old_root_refuses() -> Bool {
     region: two_region(),
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "replacement-names-old-root", subject: "circular client")
 }
 
@@ -326,7 +327,7 @@ test fn duplicate_consumer_refuses_even_when_dispositions_agree() -> Bool {
     region: two_region(),
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "consumer-duplicated", subject: "workaround built to compensate for x")
 }
 
@@ -343,7 +344,7 @@ test fn duplicate_evidence_subject_refuses() -> Bool {
       },
     ],
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "evidence-duplicated", subject: "one witness")
 }
 
@@ -353,7 +354,7 @@ test fn duplicate_region_member_refuses() -> Bool {
     region: [fixture_ref(name: "x_root_module"), fixture_ref(name: "x_root_module")],
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "region-member-duplicated", subject: "x_root_module")
 }
 
@@ -398,7 +399,7 @@ test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Boo
     oracle: NoExternalOracleRequired { justification: nes(s: "boundary compared by construction, no differential run") },
   ))
   causes_include(causes: causes_of(admission: ambiguous), tag: "external-roles-enumerated-empty", subject: "")
-    && list_length(items: causes_of(admission: ambiguous)) == 1
+    && length(xs: causes_of(admission: ambiguous)) == 1
     && (match justified {
       PlanAdmitted { admitted: a } => a.covered_region_count == 2
       PlanRefused { causes: _ } => false
@@ -500,7 +501,7 @@ test fn descent_parent_unauthored_naming_its_own_root_refuses() -> Bool {
       basis: nes(s: "claims the boundary it is cutting is also the boundary above it"),
     },
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && causes_include(causes: causes, tag: "self-referential-descent", subject: "")
 }
 
@@ -718,7 +719,7 @@ test fn an_exact_and_a_remeasurement_registration_sharing_an_id_refuse() -> Bool
     remeasure_registration(identity: "cut-same"),
   ]))
   registry_includes(causes: causes, tag: "duplicate-id", subject: "cut-same")
-    && list_length(items: causes) == 1
+    && length(xs: causes) == 1
 }
 
 // THE COUNT IS THE ASSERTION HERE, and it is enrolled because it was wrong before review caught it:
@@ -736,7 +737,7 @@ test fn a_duplicated_identity_yields_one_cause_per_extra_row_not_one_per_row() -
     remeasure_registration(identity: "cut-dup"),
     remeasure_registration(identity: "cut-dup"),
   ]))
-  list_length(items: two) == 1 && list_length(items: three) == 2
+  length(xs: two) == 1 && length(xs: three) == 2
 }
 
 // DescentParentUnauthored stays truthful while no exact parent exists: it names a boundary and
@@ -801,7 +802,7 @@ test fn a_refusal_names_the_defective_relation_not_merely_the_consumer() -> Bool
     region: two_region(),
     evidence: dispositioned_evidence(),
   )))
-  list_length(items: causes) == 1
+  length(xs: causes) == 1
     && cause_names_key(causes: causes, tag: "undispositioned-consumer", consumer_name: "dual caller", authority: other_authority())
     && !cause_names_key(causes: causes, tag: "undispositioned-consumer", consumer_name: "dual caller", authority: fixture_authority())
 }

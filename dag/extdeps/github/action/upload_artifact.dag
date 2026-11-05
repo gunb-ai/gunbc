@@ -1,6 +1,8 @@
 module extdeps.github.action.upload_artifact
 
-import std.types { List }
+import std.types { List, String, Int }
+import std.optional { Present, Absent }
+import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string, yaml_int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -51,3 +53,51 @@ data upload_artifact_manifest_readings: List<ActionManifestReading> = [
     declared: JavaScriptAction { node_major: 24 },
   },
 ]
+
+// THE INPUTS A STEP PASSES TO THE ACTION (`with:`), read from action.yml at v6.0.0
+// (github.com/actions/upload-artifact/blob/b7c566a772e6b6bfb58ed0dc250532a479d7789f/action.yml, 2026-11-04).
+// Only the inputs this repository sets are modeled: name, path, if-no-files-found, retention-days and
+// compression-level. overwrite and include-hidden-files are declared upstream and left at their defaults, so
+// they are absent here rather than modeled with a value nobody passes.
+//
+// if-no-files-found, upstream: `warn` outputs a warning and does not fail the action, `error` fails it,
+// `ignore` does neither. Its upstream default is warn, so a step that omits the input passes when nothing
+// matched; which value a consumer wants is its own policy, not this module's.
+type MissingFilesBehavior = NoFilesWarn | NoFilesError | NoFilesIgnore
+
+fn missing_files_behavior_wire(behavior: MissingFilesBehavior) -> String {
+  match behavior {
+    NoFilesWarn => "warn"
+    NoFilesError => "error"
+    NoFilesIgnore => "ignore"
+  }
+}
+
+// retention-days: 0 means the repository's default; upstream bounds it to 1..90 unless the repository
+// raises the maximum. compression-level: 0..9, upstream default 6. Both are absent when not passed.
+type UploadArtifactInputs {
+  name: String
+  path: String
+  if_no_files_found: MissingFilesBehavior
+  retention_days: Int?
+  compression_level: Int?
+}
+
+// THE `with:` ENTRIES IN action.yml's INPUT NAMES, in one fixed order (name, path, if-no-files-found,
+// retention-days, compression-level), so every step that uploads renders the same keys the same way.
+fn upload_artifact_with(inputs: UploadArtifactInputs) -> List<YamlKeyValue> {
+  let required = [
+    kv(key: "name", value: yaml_string(s: inputs.name)),
+    kv(key: "path", value: yaml_string(s: inputs.path)),
+    kv(key: "if-no-files-found", value: yaml_string(s: missing_files_behavior_wire(behavior: inputs.if_no_files_found))),
+  ]
+  let retention = match inputs.retention_days {
+    Present { value: d } => [kv(key: "retention-days", value: yaml_int(n: d))]
+    Absent => []
+  }
+  let compression = match inputs.compression_level {
+    Present { value: c } => [kv(key: "compression-level", value: yaml_int(n: c))]
+    Absent => []
+  }
+  concat(concat(required, retention), compression)
+}

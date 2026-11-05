@@ -1,5 +1,7 @@
 module test.claim.machine_word_witness
 
+import std.algebra { length }
+
 // THIS FILE IMPORTS NOTHING, AND THE ONE TYPE IT NAMES ACROSS A MODULE BOUNDARY IS WRITTEN OUT IN
 // FULL. It briefly imported std.machine_word Octet, and a bare Octet was ambiguous against
 // extdeps.network.ipv4's -- which is what made its 60 claims fail to resolve on srv1. The octet is
@@ -696,7 +698,7 @@ test fn negative_octet_count_refuses_holds() -> Bool {
 
 test fn zero_octet_count_renders_nothing_for_zero_holds() -> Bool {
   match int_to_octets(value: 0, count: 0, endianness: BigEndian) {
-    RawOctetsReady { octets: o } => list_length(items: o) == 0
+    RawOctetsReady { octets: o } => length(xs: o) == 0
     RawOctetsRefused { cause: _ } => false
   }
 }
