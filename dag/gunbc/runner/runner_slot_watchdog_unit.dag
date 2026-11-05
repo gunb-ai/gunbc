@@ -8,7 +8,6 @@ import extdeps.systemd.unit_file {
   serialize_systemd_drop_in, systemd_instance_name_specifier
 }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
-import gunbc.host_state_root { host_state_tree_root }
 
 // THE SLOT PROGRESS WATCHDOG'S UNIT. One template instance per runner slot, in a slice of its own.
 //
@@ -43,12 +42,6 @@ data gunbc_slot_watchdog_slice_path: NonEmptyStr = join(["/etc/systemd/system/",
 
 data gunbc_slot_watchdog_binary_path: NonEmptyStr = "/usr/local/bin/gunbc" as NonEmptyStr
 
-// FRONTIER, NOT ASSUMED: where the verdict authority's source tree lives on a fleet host is not modeled
-// anywhere. The verb needs it (it evaluates gunbc.host.memory_stall_refusal). This row names the path the
-// converge's consumer will read; PROVISIONING that tree is not done by this module and the live readback must
-// show it present before the unit is called converged.
-data gunbc_slot_watchdog_source_root: NonEmptyStr = join([host_state_tree_root.path as String, "/slot-watchdog-authority"], "") as NonEmptyStr
-
 data gunbc_slot_watchdog_instance_unit_ref: String = join([gunbc_slot_watchdog_unit_prefix, systemd_instance_name_specifier, ".service"], "")
 
 fn gunbc_slot_watchdog_slot_unit_ref() -> String {
@@ -63,7 +56,10 @@ fn gunbc_slot_watchdog_slice_text() -> String {
   })
 }
 
-fn gunbc_slot_watchdog_unit_text() -> String {
+// THE CHECKOUT IS A PARAMETER: the admitted-revision checkout the binary was built from
+// (gunbc.live_deploy.serve_binary_build). The verb refuses to start unless that checkout's HEAD equals its own
+// build identity, so one revision names the binary and the verdict it evaluates.
+fn gunbc_slot_watchdog_unit_text(checkout: NonEmptyStr) -> String {
   serialize_systemd_unit_file(file: ServiceUnitFile {
     unit: [
       Description { text: join(["Slot progress watchdog (", systemd_instance_name_specifier, ")"], "") as NonEmptyStr },
@@ -76,7 +72,8 @@ fn gunbc_slot_watchdog_unit_text() -> String {
       ServiceSlice { name: gunbc_slot_watchdog_slice_name },
       ExecStart { command: join([
         gunbc_slot_watchdog_binary_path as String, " slot-watchdog --slot-cgroup ",
-        gunbc_slot_watchdog_slot_unit_ref(), " --source-root ", gunbc_slot_watchdog_source_root as String,
+        gunbc_slot_watchdog_slot_unit_ref(), " --source-root ", join([checkout as String, "/dag"], ""),
+        " --source-root ", join([checkout as String, "/src/v2"], ""),
       ], "") as NonEmptyStr },
       Restart { policy: "always" as NonEmptyStr },
       RestartSec { duration: "5" as NonEmptyStr },

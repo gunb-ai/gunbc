@@ -266,6 +266,7 @@ pub fn run_slot_watchdog_verb(slot_cgroup: String, source_roots: Vec<String>) ->
     required_regen_host::run_slot_watchdog(required_regen_host::SlotWatchdogConfig {
         slot_cgroup,
         source_roots,
+        build_identity: env!("GUNBC_BUILD_IDENTITY").to_string(),
     })
 }
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so

@@ -2460,6 +2460,35 @@ fn write_receipt(path: &Path, receipt: &RegenReceipt) -> Result<(), String> {
 pub struct SlotWatchdogConfig {
     pub slot_cgroup: PathBuf,
     pub source_roots: Vec<String>,
+    /// The binary's own build identity (`GUNBC_BUILD_IDENTITY`): the commit it was built from.
+    pub build_identity: String,
+}
+
+/// One revision must name both the binary and the verdict it evaluates (gunbc.live_deploy.serve_binary_build):
+/// the source root's checkout HEAD must EQUAL the binary's build identity. A `-dirty` identity, a materialized
+/// tree identity or a different HEAD is a typed refusal, never a warning.
+pub(crate) fn slot_watchdog_identity_refusal(build_identity: &str, head: &str) -> Option<String> {
+    if build_identity == head {
+        None
+    } else {
+        Some(format!(
+            "refusal: SlotWatchdogSourceIdentityMismatch: the binary was built from `{build_identity}` but the source root's checkout HEAD is `{head}`; one revision must name both"
+        ))
+    }
+}
+
+fn slot_watchdog_source_head(root: &str) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(["--no-optional-locks", "-C", root, "rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("refusal: SlotWatchdogSourceHeadUnreadable: git -C {root}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "refusal: SlotWatchdogSourceHeadUnreadable: git -C {root} rev-parse HEAD exited {}",
+            out.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 /// The four answers the authority gives about the verb's own shape (see
@@ -2613,6 +2642,17 @@ fn slot_write_refusal_receipt(
 /// The watchdog loop. Returns only on a setup refusal (the authority did not load): a watchdog that
 /// cannot judge exits non-zero so its unit shows failed rather than standing guard over nothing.
 pub fn run_slot_watchdog(cfg: SlotWatchdogConfig) -> i32 {
+    for root in &cfg.source_roots {
+        let verdict = slot_watchdog_source_head(root)
+            .map(|head| slot_watchdog_identity_refusal(&cfg.build_identity, &head));
+        match verdict {
+            Ok(None) => {}
+            Ok(Some(refusal)) | Err(refusal) => {
+                eprintln!("{refusal}");
+                return 2;
+            }
+        }
+    }
     let model = match SupervisedSubjectModel::load(&cfg.source_roots) {
         Ok(m) => m,
         Err(e) => {
@@ -2704,6 +2744,14 @@ mod tests {
         let (victims, spared) = slot_job_tree_victims(&[10, 11, 12, 13, 14], 999, &table).unwrap();
         assert_eq!(victims, vec![12, 13, 14]);
         assert_eq!(spared.into_iter().collect::<Vec<_>>(), vec![10, 11]);
+    }
+
+    #[test]
+    fn slot_watchdog_refuses_a_checkout_that_is_not_the_binarys_revision() {
+        let c = "a".repeat(40);
+        assert!(slot_watchdog_identity_refusal(&c, &c).is_none());
+        assert!(slot_watchdog_identity_refusal(&format!("{c}-dirty"), &c).is_some());
+        assert!(slot_watchdog_identity_refusal(&c, &"b".repeat(40)).is_some());
     }
 
     #[test]
