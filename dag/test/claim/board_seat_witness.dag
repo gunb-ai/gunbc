@@ -4,6 +4,9 @@ import product.printed_chassis.board_seat {SeatPost,SeatWindow,altra_seat,BoardS
 import product.printed_chassis.cassette {lap_joints,LapJoint,SeamSpan,span_laps,seam_spans,vent_spans,window_keepout,printed_parts,interfaces,lap_seam_length}
 import extdeps.standards.micro_atx {micro_atx_standard_hole_diameter}
 import std.measure {micrometer_count}
+import product.printed_chassis.cassette {board_support_interface_for}
+import product.printed_chassis.residential_review {residential_assembly_for,residential_assembly,ResidentialAssemblyReady,ResidentialAssemblyRefused}
+import product.printed_chassis.assembly_geometry {Unresolved,Proposed}
 import product.printed_chassis.assembly_geometry {RoundPrism,Block,ProfilePrism}
 
 // The r07 seat on the ALTRAD8UD tray. Expected values are supplied, not re-derived: each post is the
@@ -69,4 +72,15 @@ test fn each_panel_carries_the_nubs_of_its_quarter() -> Bool {
 }
 test fn the_board_support_interface_counts_the_posts() -> Bool {
  count(filter(interfaces(),i=>i.id=="board-support" && i.quantity==7))==1
+}
+
+// A refused seat stops the line where printing reads it: the residential assembly the print route selects
+// refuses with the seat's cause, and the board-support interface goes Unresolved carrying it, rather than a
+// tray with no posts and no window passing as r07 (review 91282). The real seat is ready, so both pass.
+test fn a_refused_seat_refuses_the_assembly_and_the_interface_names_why() -> Bool {
+ let refused=BoardSeatRefused {cause:"seat-red-control"}
+ let assembly_red=match residential_assembly_for(seat:refused) {ResidentialAssemblyRefused {reason:r}=>string_contains(s:r,pattern:"seat-red-control") _=>false}
+ let interface_red=match board_support_interface_for(seat:refused).status {Unresolved=>string_contains(s:board_support_interface_for(seat:refused).requirement,pattern:"seat-red-control") && board_support_interface_for(seat:refused).quantity==0 _=>false}
+ let real=match residential_assembly() {ResidentialAssemblyReady {parts:_,joints:_,pitch:_,cooling:_}=>true _=>false}
+ assembly_red && interface_red && real
 }

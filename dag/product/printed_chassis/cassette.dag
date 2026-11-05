@@ -4,7 +4,7 @@ import std.types { Bool, Int, String, List }
 import std.measure { Micrometer, micrometer, micrometer_count }
 import std.affine_space {signed_frame_component_count}
 import std.euclidean_geometry { Axis3X, Axis3Y, Axis3Z }
-import product.printed_chassis.board_seat {SeatPost,SeatWindow,seat_posts,seat_windows,seat_post_height,seat_post_diameter,seat_nub_height,seat_nub_diameter}
+import product.printed_chassis.board_seat {BoardSeat,SeatPost,SeatWindow,seat_posts,seat_windows,altra_seat,BoardSeatReady,BoardSeatRefused,seat_post_height,seat_post_diameter,seat_nub_height,seat_nub_diameter}
 import product.printed_chassis.assembly_geometry {
   Primitive, Block, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance,
   Cassette, FixedFrame, LayOnXZ, LayOnXY, LayOnYZ, block, round, prism, rounded_rectangle, part, mechanical_interface, M3PanelClamp,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,BoardSupportPending,GravitySeatOnLocatingNubs,ProtectedDcBranch,BondingHardwarePending,Proposed,OriginalPlateFitOnly,Unresolved,
@@ -221,13 +221,23 @@ fn printed_parts() -> List<AssemblyPart> {
  rear_socket(sx: -1,id:"S1"),rear_socket(sx:1,id:"S2"),
  retaining_pin(x:0-um(m: tray_w)/2+7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K3"),retaining_pin(x:um(m: tray_w)/2-7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K4"),retaining_pin(x: -39000,z:rear_plate_z+26000,bottom: -6000,top:4000,id:"K5")]
 }
+// The board-support interface reads the seat. A refused seat is an unresolved interface carrying the
+// seat's cause, never a Proposed gravity seat with zero posts.
+fn board_support_interface() -> MechanicalInterface {board_support_interface_for(seat:altra_seat())}
+fn board_support_interface_for(seat:BoardSeat) -> MechanicalInterface {
+ match seat {
+  BoardSeatReady {posts:ps,window:_}=>mechanical_interface(id:"board-support",members:["BOARD","P1","P2","P3","P4"],fastener:GravitySeatOnLocatingNubs,quantity:count(ps),status:Proposed,requirement:"r07: the board rests on a printed post at each hole the Altra fit gauges confirmed (product.printed_chassis.fit_observations altra_fit_gauge_set_fit), each with a nub that drops loosely into the hole; gravity holds it (operator, 2026-11-05). The CPU socket backplate stands over an open window. Hold the board when unplugging the front power and SlimSAS connectors. Underside clearance and the backplate outline remain estimates (product.printed_chassis.board_seat)")
+  BoardSeatRefused {cause:c}=>mechanical_interface(id:"board-support",members:["BOARD","P1","P2","P3","P4"],fastener:BoardSupportPending,quantity:0,status:Unresolved,requirement:concat("The board seat refused: ",c as String))
+ }
+}
 fn interfaces() -> List<MechanicalInterface> {
  [mechanical_interface(id:"keyed-panel-laps",members:["P1","P2","P3","P4"],fastener:M3PanelClamp,quantity:4,status:Proposed,requirement:"Two keyed laps and one clamp per seam. Four top-accessible screws for the entire tray; joint clearance and engagement need assembly review."),
  mechanical_interface(id:"slide-in-arms",members:["P1","P2","E1","E2","S1","S2"],fastener:M4SocketThroughBolt,quantity:2,status:Proposed,requirement:"Place arms in separate open sockets; retain each socket/arm/tray stack with one M4 through-bolt, washers and nut."),
  mechanical_interface(id:"rear-bank-keys",members:["M1","M2","M3","K5"],fastener:PrintedRetainingPin,quantity:1,status:Proposed,requirement:"Center slides over outer keyed feet; one retainer holds the assembled bank."),
  mechanical_interface(id:"rear-bank-arms",members:["M1","M3","E1","E2","K3","K4"],fastener:PrintedRetainingPin,quantity:2,status:Proposed,requirement:"Seat rear bank on arms and insert two retainers."),
  mechanical_interface(id:"fan-and-guard",members:["M1","M2","M3","G1","G2","G3","F1","F2","F3"],fastener:M4FanThroughBolt,quantity:6,status:OriginalPlateFitOnly,requirement:"Two diagonal bolts per fan; opposite integral pins register it. Nominal 39 mm stack plus washers/nut; final bolt engagement unresolved."),
- mechanical_interface(id:"board-support",members:["BOARD","P1","P2","P3","P4"],fastener:GravitySeatOnLocatingNubs,quantity:count(seat_posts()),status:Proposed,requirement:"r07: the board rests on a printed post at each hole the Altra fit gauges confirmed (product.printed_chassis.fit_observations altra_fit_gauge_set_fit), each with a nub that drops loosely into the hole; gravity holds it (operator, 2026-11-05). The CPU socket backplate stands over an open window. Hold the board when unplugging the front power and SlimSAS connectors. Underside clearance and the backplate outline remain estimates (product.printed_chassis.board_seat)"),
+ board_support_interface(),
+
  mechanical_interface(id:"shared-power",members:["PSU","PDB","DC","FEEDS"],fastener:ProtectedDcBranch,quantity:4,status:Unresolved,requirement:"Select rated protected/isolatable branches and fixed shared 12 V supply; no live hot-swap."),
  mechanical_interface(id:"rack-ground",members:["FRAME","SHELF","PSU"],fastener:BondingHardwarePending,quantity:0,status:Unresolved,requirement:"Metal rack joining, runner attachment and permanent protective-earth bond remain hardware interfaces.")]
 }
