@@ -71,11 +71,17 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     let custom = Rc::new(custom_root_module_census(source_roots)?);
     let mut seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = Vec::new();
     loop {
-        let index = build_demand_acquired_index(source_roots, entry_file, &custom, &seeds)?;
+        let index = build_demand_acquired_index(
+            source_roots,
+            entry_file,
+            &custom,
+            &seeds,
+            CustomRootDuplicate::Refuse,
+        )?;
         let roots = source_roots.to_vec();
         let census = custom.clone();
         *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-            layout_provider_answer(&roots, &census, module)
+            layout_provider_answer(&roots, &census, module, CustomRootDuplicate::Refuse)
         }));
         match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
             super::entry_resolve::CoreResolve::Resolved(graph, si, diags) => {
@@ -105,11 +111,11 @@ pub(crate) fn demand_acquired_index_for_entry(
     duplicates: CustomRootDuplicate,
 ) -> Result<Rc<MultiEntryIndex>, String> {
     let custom = custom_root_module_census_under(source_roots, duplicates)?;
-    let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[])?;
+    let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[], duplicates)?;
     let roots = source_roots.to_vec();
     let census = Rc::new(custom);
     *index.provider_layout.borrow_mut() = Some(Rc::new(move |module: &str| {
-        layout_provider_answer(&roots, &census, module)
+        layout_provider_answer(&roots, &census, module, duplicates)
     }));
     Ok(index)
 }
@@ -119,12 +125,21 @@ fn build_demand_acquired_index(
     entry_file: &str,
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
+    duplicates: CustomRootDuplicate,
 ) -> Result<Rc<MultiEntryIndex>, String> {
     super::pre_entry_phase::mark_demand_acquired_path();
     let source_files = super::pre_entry_phase::timed(
         "demand_layout_acquire",
         super::pre_entry_phase::PhaseScale::Closure,
-        || acquire_layout_closure_seeded(source_roots, entry_file, custom, provider_seeds),
+        || {
+            acquire_layout_closure_seeded(
+                source_roots,
+                entry_file,
+                custom,
+                provider_seeds,
+                duplicates,
+            )
+        },
     )?;
     super::pre_entry_phase::record_demand_acquired_modules(source_files.len());
     let facts = module_graph_facts_from_acquired(&source_files, source_roots);
@@ -142,8 +157,9 @@ pub(crate) fn layout_provider_answer(
     source_roots: &[String],
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     module: &str,
+    duplicates: CustomRootDuplicate,
 ) -> super::entry_resolve::ProviderLayoutAnswer {
-    match read_layout_module(source_roots, custom, module) {
+    match read_layout_module(source_roots, custom, module, duplicates) {
         Ok(Some(source)) => super::entry_resolve::ProviderLayoutAnswer::Holds(source),
         Ok(None) => super::entry_resolve::ProviderLayoutAnswer::Lacks,
         Err(_) => super::entry_resolve::ProviderLayoutAnswer::Unreadable,
@@ -155,7 +171,13 @@ pub(crate) fn acquire_layout_closure(
     entry_file: &str,
 ) -> Result<ModuleSourceIndex, String> {
     let custom = custom_root_module_census(source_roots)?;
-    acquire_layout_closure_seeded(source_roots, entry_file, &custom, &[])
+    acquire_layout_closure_seeded(
+        source_roots,
+        entry_file,
+        &custom,
+        &[],
+        CustomRootDuplicate::Refuse,
+    )
 }
 
 /// The entry's layout closure, also closing over `provider_seeds` -- providers generated references
@@ -168,6 +190,7 @@ pub(crate) fn acquire_layout_closure_seeded(
     entry_file: &str,
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     provider_seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)],
+    duplicates: CustomRootDuplicate,
 ) -> Result<ModuleSourceIndex, String> {
     let path = Path::new(entry_file);
     if !path.is_file() {
@@ -210,7 +233,8 @@ pub(crate) fn acquire_layout_closure_seeded(
             if index.contains_key(&name) {
                 continue;
             }
-            let Some(acquired) = read_layout_module(source_roots, &custom, &name)? else {
+            let Some(acquired) = read_layout_module(source_roots, &custom, &name, duplicates)?
+            else {
                 continue;
             };
             known.insert(name.clone());
@@ -373,23 +397,66 @@ fn longest_layout_module_prefix(
     None
 }
 
+/// ONE MODULE'S SOURCE UNDER THE POOL ROOTS, BY SOURCE-ROOT AUTHORITY: each root, in order, is asked
+/// whether it holds `name` -- a governed root through the layout path (`read_governed_layout_module`),
+/// a custom root through the custom census (only a file that lies under that root). The first root
+/// that holds it owns it under `FirstRootWins`; under `Refuse` a second DISTINCT file in another root
+/// is the duplicate refusal, whichever kinds the two roots are. This is the whole-tree builders'
+/// meaning (`try_build_module_index[_primary_precedence]`), which the census-first read had changed:
+/// the custom census skips governed roots, so a governed/custom duplicate was never seen and custom
+/// won silently under either policy and either root order. `gunbc run` (Refuse) shares the rule.
 fn read_layout_module(
     source_roots: &[String],
     custom: &std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
     name: &str,
-) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
+    duplicates: CustomRootDuplicate,
+) -> Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String> {
     if let Some(derived) = read_derived_roster_module(name)? {
         return Ok(Some(derived));
     }
-    if let Some(custom_src) = custom.get(name) {
-        return Ok(Some(custom_src.clone()));
+    let mut owner: Option<Rc<v1_compiler_compile::SourceFile>> = None;
+    for root in source_roots {
+        let held = if source_root_is_governed_layout(root) {
+            read_governed_layout_module(std::slice::from_ref(root), name)?
+        } else {
+            custom
+                .get(name)
+                .filter(|src| {
+                    let path = Path::new(&src.path);
+                    let abs = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        workspace_root().join(path)
+                    };
+                    under_source_roots(std::slice::from_ref(root), &abs)
+                })
+                .cloned()
+        };
+        let Some(held) = held else { continue };
+        match &owner {
+            None => {
+                if duplicates == CustomRootDuplicate::FirstRootWins {
+                    return Ok(Some(held));
+                }
+                owner = Some(held);
+            }
+            Some(first) if first.path == held.path => {}
+            Some(first) => {
+                return Err(format!(
+                    "module {name} is declared in both {} and {}",
+                    first.path, held.path
+                ))
+            }
+        }
     }
-    if !source_roots
-        .iter()
-        .any(|root| source_root_is_governed_layout(root))
-    {
-        return Ok(None);
-    }
+    Ok(owner)
+}
+
+/// The layout-path read of a governed module, admitted only when its file lies under one of `roots`.
+fn read_governed_layout_module(
+    source_roots: &[String],
+    name: &str,
+) -> Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String> {
     let Ok(rel) = module_storage_relative(name) else {
         return Ok(None);
     };
@@ -425,7 +492,7 @@ fn read_layout_module(
 /// the tree walk mints them in memory (`derived_row_roster::acquire_dir_files`).
 fn read_derived_roster_module(
     name: &str,
-) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
+) -> Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String> {
     let Some(roster) = super::derived_row_roster::DERIVED_ROW_ROSTERS
         .iter()
         .copied()
@@ -808,15 +875,25 @@ mod tests {
             format!("module {name}\n\nfn probe() -> Int {{ 1 }}\n"),
         )
         .expect("probe file");
-        let holds = matches!(super::layout_provider_answer(&roots, &custom, &name), ProviderLayoutAnswer::Holds(src) if src.content.contains("fn probe"));
+        let holds = matches!(super::layout_provider_answer(&roots, &custom, &name, super::CustomRootDuplicate::Refuse), ProviderLayoutAnswer::Holds(src) if src.content.contains("fn probe"));
         std::fs::write(&file, [0xffu8, 0xfe, 0xfd]).expect("corrupt the probe");
         let unreadable = matches!(
-            super::layout_provider_answer(&roots, &custom, &name),
+            super::layout_provider_answer(
+                &roots,
+                &custom,
+                &name,
+                super::CustomRootDuplicate::Refuse
+            ),
             ProviderLayoutAnswer::Unreadable
         );
         let _ = std::fs::remove_file(&file);
         let lacks = matches!(
-            super::layout_provider_answer(&roots, &custom, &name),
+            super::layout_provider_answer(
+                &roots,
+                &custom,
+                &name,
+                super::CustomRootDuplicate::Refuse
+            ),
             ProviderLayoutAnswer::Lacks
         );
         assert!(holds, "a readable module must be Holds with its bytes");
@@ -867,6 +944,70 @@ mod tests {
         );
     }
 
+    /// GOVERNED/CUSTOM DUPLICATE, BOTH ROOT ORDERS x BOTH POLICIES (operator finding 2): the module
+    /// `test.fixture.gc_dup_<pid>` is declared under the governed `dag` root AND in a custom root.
+    /// Whole-tree meaning: FirstRootWins keeps the first root's file; Refuse refuses either order.
+    /// RED: the census-first read picked custom in all four cells.
+    #[test]
+    fn a_governed_custom_duplicate_obeys_root_order_and_policy() {
+        let ws = super::super::process_workspace_root();
+        let pid = std::process::id();
+        let name = format!("test.fixture.gc_dup_{pid}");
+        let gfile = ws.join(format!("dag/test/fixture/gc_dup_{pid}.dag"));
+        std::fs::write(
+            &gfile,
+            format!("module {name}\n\nfn which() -> Int {{ 1 }}\n"),
+        )
+        .expect("gov");
+        let dir = fixture_dir();
+        std::fs::write(
+            dir.join("c.dag"),
+            format!("module {name}\n\nfn which() -> Int {{ 2 }}\n"),
+        )
+        .expect("custom");
+        let dag = ws.join("dag").to_string_lossy().to_string();
+        let cust = dir.to_string_lossy().to_string();
+        let read = |roots: &Vec<String>, d| {
+            let census = super::custom_root_module_census_under(roots, d).expect("census");
+            super::read_layout_module(roots, &census, &name, d)
+        };
+        let gov_first = vec![dag.clone(), cust.clone()];
+        let cust_first = vec![cust, dag];
+        let which =
+            |r: Result<Option<std::rc::Rc<crate::v1_compiler_compile::SourceFile>>, String>| {
+                r.expect("admitted")
+                    .expect("held")
+                    .content
+                    .contains("{ 1 }")
+            };
+        let outcome = (
+            which(read(&gov_first, super::CustomRootDuplicate::FirstRootWins)),
+            !which(read(&cust_first, super::CustomRootDuplicate::FirstRootWins)),
+            read(&gov_first, super::CustomRootDuplicate::Refuse).err(),
+            read(&cust_first, super::CustomRootDuplicate::Refuse).err(),
+        );
+        let _ = std::fs::remove_file(&gfile);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(outcome.0, "[dag, custom] primary precedence: governed wins");
+        assert!(outcome.1, "[custom, dag] primary precedence: custom wins");
+        assert!(
+            outcome
+                .2
+                .as_deref()
+                .is_some_and(|c| c.contains("declared in both")),
+            "[dag, custom] strict refuses: {:?}",
+            outcome.2
+        );
+        assert!(
+            outcome
+                .3
+                .as_deref()
+                .is_some_and(|c| c.contains("declared in both")),
+            "[custom, dag] strict refuses: {:?}",
+            outcome.3
+        );
+    }
+
     /// The seeded rebuild under a custom source root uses the retained snapshot: the provider's file
     /// is corrupted after the layout answered Holds, and acquisition still succeeds with the bytes
     /// the answer read. A census taken inside the rebuild would read the corrupted file and refuse.
@@ -884,9 +1025,12 @@ mod tests {
         )
         .expect("provider");
         let custom = super::custom_root_module_census(&roots).expect("census");
-        let ProviderLayoutAnswer::Holds(snapshot) =
-            super::layout_provider_answer(&roots, &custom, "probe_provider")
-        else {
+        let ProviderLayoutAnswer::Holds(snapshot) = super::layout_provider_answer(
+            &roots,
+            &custom,
+            "probe_provider",
+            super::CustomRootDuplicate::Refuse,
+        ) else {
             panic!("the custom-root provider must be Holds");
         };
         std::fs::write(&provider, [0xffu8, 0xfe, 0xfd]).expect("corrupt the provider");
@@ -895,6 +1039,7 @@ mod tests {
             &entry.to_string_lossy(),
             &custom,
             &[("probe_provider".to_string(), snapshot)],
+            super::CustomRootDuplicate::Refuse,
         );
         let _ = std::fs::remove_dir_all(&dir);
         let index = rebuilt.expect("the seeded rebuild must not read the provider again");
