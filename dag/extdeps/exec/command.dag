@@ -247,6 +247,13 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     // neither a path nor an account. Its caller is the boot medium reader probe, which reads whether the
     // reader account's password field is ACTUALLY locked instead of inferring that from `useradd --system`.
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_shadow_command"),
+    // getent group <name>: the third database of the same read-only identity lookup, admitted for the
+    // same reason as its siblings -- it names a database the utility resolves itself, neither a path nor
+    // an account, and it writes nothing. Its caller is gunbc.fleet.approval_ntfy_retirement, which reads
+    // the group a retired service account leaves behind (userdel removes the identity; a group of that
+    // name with another member survives), because the account's absence is exactly the state that does
+    // NOT prove the group is gone.
+    decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_group_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
