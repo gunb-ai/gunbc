@@ -1,0 +1,100 @@
+module test.claim.runner.runner_connectivity_restart_witness
+
+import std.types { Bool, Int, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_runner_connectivity {
+  RunnerSlotConnectivityVerdict,
+  SlotConnectivityHealthy, SlotConnectivityDetached, SlotConnectivityLabelsDiverge,
+  SlotConnectivityOrphaned, SlotConnectivityUnknown, SlotConnectivityUnexpectedRegistration,
+  RegistrationNamesNoCommittedSlot,
+}
+import gunbc.runner.runner_lost_agent { LostAgentObservation, LostAgentDetected, JobNotLost, LostAgentReadRefused }
+import std.measure { second }
+import gunbc.runner.runner_connectivity_restart {
+  RestartLegDecision, RestartLegPermit, RestartLegRefuse,
+  restart_leg_decision, restart_leg_permits,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn slot(idx: Int) -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: idx }
+}
+
+// ── verdict boundary values, supplied here ───────────────────────────────────────────────────────
+fn healthy() -> RunnerSlotConnectivityVerdict { SlotConnectivityHealthy { slot: slot(idx: 1), registration_id: 1 } }
+fn detached() -> RunnerSlotConnectivityVerdict { SlotConnectivityDetached { slot: slot(idx: 2), registration_id: 2 } }
+fn labels_diverge() -> RunnerSlotConnectivityVerdict { SlotConnectivityLabelsDiverge { slot: slot(idx: 3), registration_id: 3 } }
+fn orphaned() -> RunnerSlotConnectivityVerdict { SlotConnectivityOrphaned { slot: slot(idx: 4) } }
+fn unknown() -> RunnerSlotConnectivityVerdict { SlotConnectivityUnknown { slot: slot(idx: 5), reason: "the roster read did not answer this slot" } }
+fn unexpected() -> RunnerSlotConnectivityVerdict {
+  SlotConnectivityUnexpectedRegistration {
+    registration_id: 9,
+    registration_name: "a-foreign-runner" as NonEmptyStr,
+    decoded: RegistrationNamesNoCommittedSlot { registration_name: "a-foreign-runner" as NonEmptyStr },
+  }
+}
+
+fn not_lost() -> LostAgentObservation { JobNotLost { job_id: 1, reason: "the job is progressing" as NonEmptyStr } }
+fn lost() -> LostAgentObservation { LostAgentDetected { job_id: 126894416098, over_by: second(count: 3600) } }
+fn lost_refused() -> LostAgentObservation { LostAgentReadRefused { job_id: 1, reason: "the jobs API did not answer" as NonEmptyStr } }
+
+fn permitted(d: RestartLegDecision) -> Bool {
+  match d { RestartLegPermit { slot: _, why: _ } => true RestartLegRefuse { why: _ } => false }
+}
+
+// ── without a lost-agent signal, ONLY detached or orphaned restart ────────────────────────────────
+
+// POSITIVE CONTROLS.
+test fn detached_and_orphaned_restart_without_a_lost_agent() -> Bool {
+  permitted(d: restart_leg_decision(verdict: detached(), lost: not_lost()))
+    && permitted(d: restart_leg_decision(verdict: orphaned(), lost: not_lost()))
+}
+
+// DISCRIMINATING REDS. Healthy, labels-diverge, unknown (which is where an unresolved or unreadable
+// read lands), and an unexpected registration each REFUSE — the gate is not simply "not healthy."
+test fn healthy_is_never_restarted() -> Bool {
+  !permitted(d: restart_leg_decision(verdict: healthy(), lost: not_lost()))
+    && !restart_leg_permits(decision: restart_leg_decision(verdict: healthy(), lost: not_lost()))
+}
+
+test fn labels_diverge_is_a_relabel_not_a_restart() -> Bool {
+  !permitted(d: restart_leg_decision(verdict: labels_diverge(), lost: not_lost()))
+}
+
+test fn unknown_unresolved_or_unreadable_is_refused_not_restarted() -> Bool {
+  !permitted(d: restart_leg_decision(verdict: unknown(), lost: not_lost()))
+}
+
+test fn an_unexpected_registration_has_nothing_to_restart() -> Bool {
+  !permitted(d: restart_leg_decision(verdict: unexpected(), lost: not_lost()))
+}
+
+// ── a full lost-agent detection is its own positive trigger, independent of the verdict ────────────
+
+// POSITIVE CONTROL. A slot the roster calls online, with a job stranded against it, is reclaimed —
+// the verdict alone could not say this.
+test fn a_lost_agent_reclaims_an_otherwise_healthy_slot() -> Bool {
+  permitted(d: restart_leg_decision(verdict: healthy(), lost: lost()))
+    && permitted(d: restart_leg_decision(verdict: unknown(), lost: lost()))
+}
+
+// DISCRIMINATING RED. A lost-agent read that was REFUSED (a field we could not see) is not a detection
+// and confers no permission: the healthy slot stays up.
+test fn a_refused_lost_agent_read_confers_no_permission() -> Bool {
+  !permitted(d: restart_leg_decision(verdict: healthy(), lost: lost_refused()))
+}
+
+// DISCRIMINATING RED. Even a full lost-agent detection cannot authorize a restart on a registration that
+// is not a local slot — there is no slot to take.
+test fn a_lost_agent_cannot_reclaim_an_unexpected_registration() -> Bool {
+  !permitted(d: restart_leg_decision(verdict: unexpected(), lost: lost()))
+}
+
+// POSITIVE CONTROL on the convenience predicate.
+test fn the_permits_predicate_agrees_with_the_decision() -> Bool {
+  restart_leg_permits(decision: RestartLegPermit { slot: slot(idx: 7), why: "x" as NonEmptyStr })
+    && !restart_leg_permits(decision: RestartLegRefuse { why: "x" as NonEmptyStr })
+}
