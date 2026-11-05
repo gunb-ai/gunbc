@@ -2603,11 +2603,26 @@ type BeltSpawnRoute
   | SpawnRouteNextAttempt { from_branch: String }
   | SpawnRouteNone { step: String, detail: String }
 
-fn belt_spawn_route_for_decision(decision: ContinuationPlan) -> BeltSpawnRoute {
+fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLaunchRequest) -> BeltSpawnRoute {
   match decision {
     StartInitial { reason: _ } => SpawnRouteWorker
     Resume { reason: _, attempt_key, ordinal, checkpoint: _, causes: _ } => SpawnRouteResume { attempt_key: attempt_key, ordinal: ordinal }
-    NextAttempt { reason: _, from_branch } => SpawnRouteNextAttempt { from_branch: from_branch }
+    // CONTINUE starts the next attempt from the branch head ONLY on an operator/claim request. The belt's
+    // own autonomous wake must NOT start a fresh attempt against adverse evidence (a failed verification,
+    // a changes-requested review, a blocked/needs-context submission): under DESIGN §5 a flapping engine
+    // is bounded and visible, and this module's own standard is that the OPERATOR chooses, so a lineage is
+    // never continued against its evidence. LaunchAutonomous joins or resumes an in-flight session; it
+    // never opens a fresh attempt -- that waits for the operator's CONTINUE, which arrives as a claim.
+    // Under the pre-redesign code these outcomes were ContinuationEnded and spawned nothing; this gate
+    // restores that property on the autonomous path while the operator's CONTINUE (a claim) does spawn.
+    NextAttempt { reason: _, from_branch } =>
+      match request {
+        LaunchAutonomous => SpawnRouteNone {
+          step: "continuation-await-operator",
+          detail: join(["the lineage ended without an approved candidate (", reason, "); the autonomous wake does not start a new attempt against that evidence -- the operator's CONTINUE (a claim request) starts the next attempt from the branch head"], ""),
+        }
+        LaunchForClaim { node: _, claim: _ } => SpawnRouteNextAttempt { from_branch: from_branch }
+      }
     Refuse { reason } => SpawnRouteNone { step: "continuation", detail: reason }
     AlreadyRunning { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-already-running", detail: reason }
     AlreadyComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
@@ -2654,7 +2669,7 @@ fn belt_actuate_spawn_exec_modeled(
   let addressing = belt_spawn_addressing(prepared: prepared)
   let instance = addressing.instance
   let node = addressing.node
-  match belt_spawn_route_for_decision(decision: decision) {
+  match belt_spawn_route_for_decision(decision: decision, request: request) {
     SpawnRouteNone { step, detail } =>
       SpawnFailed {
         node_id: node.node as String,
@@ -2768,12 +2783,26 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
       // capture so the decision CONTINUES (NextAttempt) and the general restore re-adds the worktree
       // from that branch's head. Only when the branch itself is gone is there nothing to restore -- the
       // typed BranchAbsent refusal, a Refuse and never a fallback into a base-ref spawn.
-      if belt_branch_head_present(instance: instance, branch: branch) {
-        CaptureAbsent
-      } else {
-        CaptureUnreadable {
-          reason: join(["BranchAbsent: the prior attempt ", attempt_key, "'s branch ", branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], ""),
-        }
+      match belt_branch_head_observe(instance: instance, branch: branch) {
+        BranchHeadPresent { revision: _ } =>
+          // LAB BUG #2 (the reaped worktree must not block the decision): the worktree is gone -- reaped
+          // after the attempt's work was committed -- but the durable fact is the BRANCH, not the worktree.
+          // If the branch is still live, the prior attempt DID hand in work: read it as a candidate-less
+          // capture so the decision CONTINUES (NextAttempt) and the general restore re-adds the worktree
+          // from that branch's head.
+          CaptureAbsent
+        BranchHeadAbsent =>
+          // Only the genuine exit-1 miss is the typed BranchAbsent refusal -- a Refuse, never a fallback
+          // into a base-ref spawn.
+          CaptureUnreadable {
+            reason: join(["BranchAbsent: the prior attempt ", attempt_key, "'s branch ", branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], ""),
+          }
+        BranchHeadUndeterminable { reason } =>
+          // A failed or refused git check is NOT the fact that the branch is gone: it is unknown. Refuse on
+          // the unknown (never spawn), but say it is undeterminable rather than asserting absence.
+          CaptureUnreadable {
+            reason: join(["could not determine whether the prior attempt ", attempt_key, "'s branch ", branch, " is present; a failed branch check is not reported as an absent branch: ", reason], ""),
+          }
       }
     WorktreeHeadObserved { revision } =>
       belt_submission_capture_for_head(
@@ -2785,25 +2814,61 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
   }
 }
 
-// WHETHER A BRANCH THE CONTINUE VERB WOULD RESTORE ONTO STILL EXISTS. `git rev-parse --verify --quiet
-// <ref>` exits 1 silently when the ref is absent, so an empty stdout is the typed absence test; the
-// read is against the repository (instance.repo_root), the shared object store every attempt worktree
-// hangs off, so it answers even after the worktree itself has been reaped.
-fn belt_branch_head_present(instance: HostDashboardInstance, branch: String) -> Bool {
-  match belt_exec(
-    cmd: host_exec_argv(
-      program: dispatch_capability_program(
-        environment: instance.execution_environment,
-        cap: GitWorkspaceCapability,
-      ),
-      args: shape_git_rev_parse_verify_quiet_argv(repo: instance.repo_root as FilePath, ref_name: branch as GitRef),
-    ),
-    workdir: instance.repo_root as String,
-  ) {
-    ExecOk { stdout } => string_length(s: trim(stdout)) > 0
-    ExecFailed { program: _, exit_code: _, stderr: _ } => false
-    ExecRefused { program: _, reason: _ } => false
+// WHETHER A BRANCH THE CONTINUE VERB WOULD RESTORE ONTO STILL EXISTS -- A TYPED OBSERVATION, NOT A
+// BOOL. `git rev-parse --verify --quiet <ref>` exits 1 with empty stdout when the ref is genuinely
+// absent; a fatal git fault (not a repo, a lock, exit 128) and a refused capability (git missing) also
+// arrive non-zero but say NOTHING about whether the ref exists. Collapsing those into one `false` would
+// report "a failed git command" as the FACT that the branch is gone -- the worktree-head note above
+// forbids exactly that: the observation carries why it failed, and absence is asserted only on the exit-1
+// miss. The read is against instance.repo_root (the shared object store every attempt worktree hangs off),
+// so it answers even after the worktree itself has been reaped.
+type BeltBranchHead
+  = BranchHeadPresent { revision: NonEmptyStr }
+  | BranchHeadAbsent
+  | BranchHeadUndeterminable { reason: String }
+
+fn belt_branch_head_of(outcome: BeltExecOutcome) -> BeltBranchHead {
+  match outcome {
+    ExecOk { stdout } =>
+      // --verify prints the object id on a successful resolve; an empty success is anomalous, so it is
+      // NOT read as absence.
+      if trim(stdout) == "" {
+        BranchHeadUndeterminable {
+          reason: "git reported no object id yet exited zero, which --verify does not do for a resolvable or missing ref",
+        }
+      } else {
+        BranchHeadPresent { revision: trim(stdout) as NonEmptyStr }
+      }
+    ExecFailed { program, exit_code, stderr } =>
+      // rev-parse --verify --quiet exits 1 for a genuinely-unresolvable ref; every other non-zero is a
+      // fault of the git invocation itself and must not be read as the branch being gone.
+      if exit_code == 1 {
+        BranchHeadAbsent
+      } else {
+        BranchHeadUndeterminable {
+          reason: join([program, " could not check the branch (exit ", to_string(exit_code), "): ", stderr], ""),
+        }
+      }
+    ExecRefused { program, reason } =>
+      BranchHeadUndeterminable {
+        reason: join([program, " was not available to check the branch: ", reason], ""),
+      }
   }
+}
+
+fn belt_branch_head_observe(instance: HostDashboardInstance, branch: String) -> BeltBranchHead {
+  belt_branch_head_of(
+    outcome: belt_exec(
+      cmd: host_exec_argv(
+        program: dispatch_capability_program(
+          environment: instance.execution_environment,
+          cap: GitWorkspaceCapability,
+        ),
+        args: shape_git_rev_parse_verify_quiet_argv(repo: instance.repo_root as FilePath, ref_name: branch as GitRef),
+      ),
+      workdir: instance.repo_root as String,
+    ),
+  )
 }
 
 fn belt_actuate_spawn_with_origin(
