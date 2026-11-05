@@ -67,6 +67,7 @@ import product.p4261.e1_position_receipts {
   ReceiptBasis,
   e1_held_receipts,
   e1_position_receipts,
+  e1_unread_candidate_source_key,
 }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
@@ -75,9 +76,11 @@ import product.electrical.photograph { CitationVerdict, Checkable, Broken, citat
 import product.electrical.continuity { OperatorPhotograph }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 
-// The candidate's own receipt row, quoted from the module rather than retyped per assertion: if the
-// generator changes how it names a row, the test that pins the candidate fails rather than drifting.
-data C3_F1_SOURCE_KEY: NonEmptyStr = "merged inventory, top side, placed cell A1, photos 't4_07'"
+// The candidate's own receipt row is named by the module that generated it -- see the import of
+// e1_unread_candidate_source_key. This used to be `data C3_F1_SOURCE_KEY = "merged inventory, top side,
+// placed cell A1, photos 't4_07'"`, a copy of a string the generator owns, kept in step by attention;
+// when the key's format changed the copy went stale and the pin failed, which is the good outcome of a
+// copy. The copy is gone instead of refreshed.
 
 fn is_position(d: NonEmptyStr) -> Bool {
   match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
@@ -291,19 +294,52 @@ test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
         Absent { } => false
       })
     // One arm, one rule, for both kinds of candidate. A candidate has no designator to present, so its
-    // board row is one that presents NOTHING and carries the name as text in its obligation -- and the
-    // count is over rows whose obligation carries THIS candidate's name, which must be exactly one. The
-    // `any` this replaces never mentioned the candidate: it asked whether some unresolved row presented
-    // nothing, which C3_F1's row answers for the whole set, so all ten partly-read rows could be deleted
-    // and this stayed green (parent's D1, 2026-11-04). Counting catches both directions: a row flipped
-    // back to `Present` leaves no Absent row to count, and a name copied into two rows makes two.
-    DesignatorCandidate { source_key: _, proposed_name: n, standing: _, receipt_read: _,
+    // board row is one that presents NOTHING. Deleting such a row throws away the one observation the
+    // C3_F1 correction is about: that a label was seen.
+    //
+    // THE ROW IS FOUND BY ITS KEY, NOT BY ITS PROSE. The row that IS this candidate is the one whose
+    // `candidate_source` is this receipt's own `source_key` AND which presents no designator -- the
+    // shape parent asked for on 2026-11-05. The version before this one matched
+    // `string_contains(u.obligation, n)`: an identity join over prose. Rewording an obligation made the
+    // observation vanish from the join, an incidental mention could stand in for it, and two receipts
+    // proposing the SAME spelling were satisfied by one row. The proposed name stays in the obligation
+    // for a reader and carries no weight here.
+    //
+    // Counting, not `any`: a deleted row leaves none, a key used twice makes two, and a row flipped
+    // back to `Present` leaves none either. Both directions of the key are held -- this is receipt ->
+    // board, and `a_candidate_board_row_is_keyed_to_a_receipt` below is board -> receipt.
+    DesignatorCandidate { source_key: k, proposed_name: _, standing: _, receipt_read: _,
                           partly_legible_in: _, obligation: _, why: _ } =>
-      1 == count(filter(p4261_e1_layout.unresolved, u => match u.designator {
-        // A candidate's name presented as a read designator is the contradiction this whole correction
-        // removed -- for a partly-read label exactly as much as for an unread one.
-        Present { value: _ } => false
-        Absent { } => string_contains(s: u.obligation, pattern: n)
+      1 == count(filter(p4261_e1_layout.unresolved, u => match u.candidate_source {
+        Absent { } => false
+        Present { value: c } =>
+          string_eq(a: c as String, b: k as String)
+            && match u.designator {
+              // a candidate's spelling presented as a read designator is the contradiction this whole
+              // correction removed -- for a partly-read label exactly as much as for an unread one
+              Present { value: _ } => false
+              Absent { } => true
+            }
+      }))
+  })
+}
+
+// 6c. THE KEY IS HELD IN BOTH DIRECTIONS. The test above says every candidate has exactly one board
+// row keyed to it. This says the thing the receipts cannot say about themselves: a board row that
+// claims to be somebody's candidate is keyed to exactly ONE candidate that exists. A key typed wrong,
+// a key pointed at another candidate, a key copied onto a second row, or a key invented for a receipt
+// that never existed all fail here -- and the keys are strings hand-written into e1_b.dag, copied from
+// the generated module when it changed rather than retyped, which is what makes a drift loud.
+test fn a_candidate_board_row_is_keyed_to_a_receipt() -> Bool {
+  p4261_e1_layout.unresolved.all(u => match u.candidate_source {
+    // a row that is nobody's candidate is not this test's business
+    Absent { } => true
+    Present { value: k } =>
+      1 == count(filter(e1_held_receipts, r => match r {
+        HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } => false
+        DesignatorCandidate { source_key: rk, proposed_name: _, standing: _, receipt_read: _,
+                              partly_legible_in: _, obligation: _, why: _ } =>
+          string_eq(a: rk as String, b: k as String)
       }))
   })
 }
@@ -524,6 +560,20 @@ test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
     // mints no position of its own, which is what its own test below holds.
     && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3"), b: r.designator))
     && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3_2"), b: r.designator))
+    // The other half of the same rule, read from the receipts' side: no board row -- not the one keyed
+    // to a candidate, not any other -- presents a candidate's proposed spelling as if it had been read.
+    // The arm above refuses a row vouching for itself through a candidate's text; this refuses the
+    // spelling appearing anywhere as a designator, so moving it to a different row is not an escape.
+    // A candidate's name belongs in an obligation, as text, which is where its own row carries it.
+    && e1_held_receipts.all(h => match h {
+      HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } => true
+      DesignatorCandidate { source_key: _, proposed_name: n, standing: _, receipt_read: _,
+                            partly_legible_in: _, obligation: _, why: _ } =>
+        !any(p4261_e1_layout.unresolved, u => match u.designator {
+          Present { value: d } => string_eq(a: d as String, b: n as String)
+          Absent { } => false
+        })
+    })
 }
 
 test fn every_body_sighting_is_at_a_position_the_authority_admitted() -> Bool {
@@ -878,7 +928,7 @@ fn is_unread_candidate(held: HeldReceipt) -> Bool {
       match rr {
         PartlyRead { } => false
         NotRead { } =>
-          string_eq(a: k as String, b: C3_F1_SOURCE_KEY)
+          string_eq(a: k as String, b: e1_unread_candidate_source_key)
           && string_eq(a: n as String, b: "C3_F1")
       }
   }

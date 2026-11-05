@@ -276,6 +276,12 @@ type ManagementIoObservation
   | FlatCableConnectors { count: Nat, evidence: EvidenceRef }
 
 type UnresolvedPart {
+  /// WHICH RECEIPT THIS ROW IS, when the row is a candidate rather than a read of its own. The key
+  /// is the receipt's own source_key, never its proposed spelling: two receipts can propose the same
+  /// name and remain two observations, and a reworded obligation must not be able to unmake the join.
+  /// Absent says this row is nobody's candidate. The receipts live in
+  /// product.p4261.e1_position_receipts; p4261_atlas_pass_witness checks the key in both directions.
+  candidate_source: NonEmptyStr?
   designator: NonEmptyStr?
   marking: NonEmptyStr?
   obligation: NonEmptyStr
