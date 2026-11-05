@@ -1540,7 +1540,7 @@ test fn a_charge_returned_before_any_pass_reached_the_slot_is_read_from_the_part
     // the ledger release did NOT touch the slot: it is still the launching record no pass could reach
     && slot_is_launching(dir: dir)
     && (match charge {
-      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, by: ReturnedByRelease { reason: _ }, generation: g } =>
+      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, by: ReturnedByRelease { reason: why_returned }, generation: g } =>
         // The return is at or after the acquisition: the fixture's release lands in the same clock second as
         // its acquire, and a row that demanded a strictly later second would be asserting the fixture's
         // scheduling, not anything the product promised. WHAT makes this positive evidence is that the
