@@ -3,8 +3,8 @@ module v2.std.exact_structural_equality_zip_fold_predicate
 import std.nat { Nat, Succ, Zero }
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { contains, length, list_snoc_item, zip_map }
-import v2.std.node { Edge, Node, Symbol, node_equal_ignoring_provenance, well_formed }
+import std.algebra { contains, length, list_snoc_item, skip, zip_map }
+import v2.std.node { Edge, Node, NodeKind, Symbol, node_equal_ignoring_provenance, well_formed }
 
 // WHY THE EXACT STRUCTURAL COMPARISON REFUSED IS PART OF THE ANSWER. This predicate is what
 // v2.std.find_witness folds, and a Bool answered five different questions with one word: a malformed
@@ -99,6 +99,22 @@ fn exact_structural_comparison(
   }
 }
 
+// THE ARGUMENT CHILDREN OF A NODE. An application carries its type constructor as child 0 and its
+// arguments after it -- this is the corpus's own reading: infer_type_head_and_args takes head = child 0
+// and args = skip(children, 1). An ordinal that names an ARGUMENT is therefore counted over the children
+// after the constructor; counting child slots instead is off by one on every application and would name
+// the constructor edge as if it were an argument.
+fn exact_structural_argument_children(node: Node) -> List<Edge> {
+  if exact_structural_is_application(kind: node.kind) { skip(xs: node.children, n: 1) } else { node.children }
+}
+
+fn exact_structural_is_application(kind: NodeKind) -> Bool {
+  match kind {
+    TypeNode { connective: Instantiation } => true
+    _ => false
+  }
+}
+
 // A node whose own root is one of the scoped variables: an Atom type node whose identity is a binder. The
 // identity test is the corpus's own (`TypeNode { connective: Atom { identity: id } }`, the same shape
 // inhabitance_node_mentions_type_variable reads); this one does not walk the subtree, because a variable
@@ -132,17 +148,17 @@ fn exact_structural_shape(
     } else {
       ComparisonRootsDiffer { argument_ordinal_path: argument_ordinal_path }
     }
-  } else if count(source_facts.children) != count(candidate.children) {
+  } else if count(exact_structural_argument_children(node: source_facts)) != count(exact_structural_argument_children(node: candidate)) {
     ComparisonArgumentCountDiffers {
-      source_arity: count(source_facts.children),
-      candidate_arity: count(candidate.children),
+      source_arity: count(exact_structural_argument_children(node: source_facts)),
+      candidate_arity: count(exact_structural_argument_children(node: candidate)),
       argument_ordinal_path: argument_ordinal_path
     }
   } else {
     let scan = fold(
       zip_map(
-        a: source_facts.children,
-        b: candidate.children,
+        a: exact_structural_argument_children(node: source_facts),
+        b: exact_structural_argument_children(node: candidate),
         f: fn(source_edge, candidate_edge) { ExactStructuralChildPair { source: source_edge, candidate: candidate_edge } }
       ),
       init: ExactStructuralScan { decided: optional_absent(), undecided: optional_absent(), ordinal: Zero },
