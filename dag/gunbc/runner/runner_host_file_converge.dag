@@ -61,7 +61,7 @@ import extdeps.needrestart {
 }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers, runner_slot_job_role_tree_mode, DeployJobSlot, CiJobSlot, RunnerSlotJobRole, runner_instance_job_role }
+import gunbc.runner.runner_slot_job_role { runner_host_has_deploy_slot, deploy_slot_account_operation, runner_slot_job_role, runner_slot_job_user, runner_slot_job_role_runs_containers, runner_slot_job_role_tree_mode, DeployJobSlot, CiJobSlot, RunnerSlotJobRole, runner_instance_job_role }
 import gunbc.ci.deploy_slot_tenancy {
   deploy_slot_job_user, DeploySlotHostReading, DeploySlotHostRead, DeploySlotHostUnread, deploy_slot_host_walls_hold, deploy_slot_host_reading_line,
   DeploySlotPathReading, DeploySlotPathRead, DeploySlotPathAbsent, DeploySlotPathUnread,
@@ -157,7 +157,7 @@ import gunbc.runner.runner_slot_actuation {
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
 }
-import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, deploy_slot_identities }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
