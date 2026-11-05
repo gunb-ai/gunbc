@@ -1,0 +1,1 @@
+{"id": "00ecbde8733621b6", "event": {"schema": "roadmap-event/v3", "node": "v2-emitter-direct-rust-door", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "7e7bedd623161606", "kind": "claimed", "recorded_at": "2026-11-05T16:09:07Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
