@@ -8368,7 +8368,7 @@ fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
 // Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
 // and must still be judged (DESIGN §5: refuse, never widen).
 fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
-  dag_node_is_module_surface(node: carrier) &&
+  (dag_node_is_module_surface(node: carrier) || service_payload_node_is_marked(node: carrier)) &&
     dag_authored_name_is_parse_production_projection(name: name)
 }
 
