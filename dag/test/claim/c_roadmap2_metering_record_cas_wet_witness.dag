@@ -10,6 +10,8 @@ import extdeps.shell
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_workflow_progress { WorkflowAttemptProgress }
+import gunbc.roadmap.roadmap_belt_actuate { belt_metering_departed }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.durable_cas_file_store { cas_file_slot_path, ExpectSlotAbsent, ExpectSlotGeneration }
@@ -30,6 +32,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   metered_role_seat_owner, metering_record_head, metering_record_slot_key, metering_launch_entry_name,
   metering_roster_admit, metering_roster_digest,
   metering_roster_for_attempt, metering_roster_seal,
+  metering_attempt_index_admit,
 }
 
 // THE METERING RECORD IS COMPARE-AND-SET, AND THESE CLAIMS RUN THE REAL ROUTE IN AN ISOLATED INSTANCE UNDER
@@ -440,5 +443,41 @@ test fn an_entry_that_names_the_worker_is_refused_by_name_and_the_roster_refuses
         c == join(["the roster entry ", name, " does not carry the launch its name encodes"], "")
       _ => false
     }
+  }
+}
+
+// THE DEPARTED PASS ADOPTS BEFORE IT SEALS. The belt's departed branch runs the same adoption act ahead of
+// the seal persist: an attempt that left the ledger while holding ONLY the pre-seal plain record (it died
+// before its first metering tick) is migrated by the pass, not stranded behind the reader's typed
+// migration refusal. The live ledger here is empty, so every INDEXED attempt is departed, and the index
+// admit is the spawn pass's own production route. The persist inside the pass then observes the adopted
+// Final head and answers AlreadyFinal -- the pass's own idempotence arm.
+test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> Bool {
+  let dir = fx_root("departed-adopt")
+  let instance = fx_instance("departed-adopt", dir)
+  let key = fx_key("departed-adopt")
+  let digest = metering_roster_digest(launches: [MeteredWorker {}])
+  let bytes = attempt_metering_json(record: fx_final_record(key: key, digest: digest))
+  let sealed = fx_sealed_attempt(instance: instance, key: key)
+  match fx_store(instance: instance, key: key) {
+    Absent => false
+    Present { value: store } => sealed
+      && attempt_metering_create_once(store: store, entry: metering_attempt_record_name(), content: bytes) is AttemptMeteringCreated
+      && match metering_attempt_index_admit(instance: instance, node_id: fx_node() as String, attempt_key: key) {
+           Present { value: _ } => false
+           Absent => match belt_metering_departed(instance: instance, attempts: [] as List<WorkflowAttemptProgress>).first() {
+             Present { value: MeteringAlreadyFinal } => match metering_record_head(store: store) {
+               MeteringRecordHeadCommitted { generation: g, content: head } =>
+                 cas_generation_count(g: g) == cas_generation_count(g: cas_generation_first())
+                   && head == bytes
+                   && match attempt_metering_read(store: store, entry: metering_attempt_record_name()) {
+                       OptionalFileAbsent => true
+                       _ => false
+                     }
+               _ => false
+             }
+             _ => false
+           }
+         }
   }
 }

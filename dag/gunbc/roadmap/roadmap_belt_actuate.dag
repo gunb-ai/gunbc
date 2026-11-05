@@ -8834,7 +8834,13 @@ fn belt_metering_departed(
         if any(attempts, p => p.node_id == a.node_id && p.attempt_key == a.attempt_key) {
           [] as List<MeteringPersist>
         } else {
-          [metering_persist_for_attempt(instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key, departed: true)]
+          // A departed attempt can hold ONLY the pre-seal plain record if it left the ledger before its
+          // first metering tick. The same adoption act runs here ahead of the seal persist, so the
+          // departed pass never strands a verified record behind the reader's migration refusal.
+          match attempt_metering_adopt_pre_seal_record(
+            instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key) {
+            _ => [metering_persist_for_attempt(instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key, departed: true)]
+          }
         })
   }
 }
