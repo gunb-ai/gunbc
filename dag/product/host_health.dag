@@ -3,7 +3,7 @@ module product.host_health
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Celsius, celsius, celsius_count }
 import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
-import extdeps.external_authority { TranscribedUncited }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import product.host_identity { HostIdentity }
 import product.fan_tach { FanTachWindow }
 import product.fan_tach_health {
@@ -510,15 +510,22 @@ fn judge_temperature(expectation: TemperatureExpectation, windows: List<Temperat
               judged: 1,
             }
             FromCitedFigure { value: limit_value, standing: standing } => match standing {
-              // A figure transcribed without its source is a bet (DESIGN 4d): it is never a wall, so
-              // neither a divergence nor a green can rest on it.
+              // Only a figure cited to its authority is a wall (DESIGN 4d). A transcribed-uncited figure is a
+              // bet, and an observed one is this repository's measurement, not a vendor-grade limit: neither
+              // yields a divergence or a green, and a new standing variant must be decided here.
               TranscribedUncited { read_obligation: _ } => SignalVerdict {
                 deviations: bmc,
                 unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
                 refusal: none,
                 judged: 1,
               }
-              _ => SignalVerdict {
+              ObservedByReceipt { observed: _ } => SignalVerdict {
+                deviations: bmc,
+                unknowns: [ThermalLimitUnestablished { sensor: w.sensor }],
+                refusal: none,
+                judged: 1,
+              }
+              CitedToAuthority { authority: _ } => SignalVerdict {
                 deviations: flat_map([
                   bmc,
                   if maximum > celsius_count(limit_value) {
