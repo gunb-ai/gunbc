@@ -94,8 +94,8 @@ module gunbc.scm.commit_closure
 // and object_store's declared rung delete in one motion; until then "Merkle" here continues to mean
 // structural consistency and not authentication.
 
-import std.types { Bool, Int, List, list_length }
-import std.algebra { Cons, Empty, FreeSemigroup }
+import std.types { Bool, Int, List }
+import std.algebra { Cons, Empty, FreeSemigroup, length }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
@@ -318,7 +318,7 @@ type WellKindedAdmission
 // its evidence guards.
 fn admit_well_kinded_closure(closure: CommitClosure) -> WellKindedAdmission {
   let derived = derive_semantic_closure(store: closure.store, root: closure.root)
-  if list_length(items: wrong_kind_identities(census: derived.census)) > 0 {
+  if length(xs: wrong_kind_identities(census: derived.census)) > 0 {
     NotWellKinded {
       source_occupied: derived.census.source_occupied,
       manifest_occupied: derived.census.manifest_occupied,
@@ -781,6 +781,6 @@ fn wrong_kind_identities(census: ClosureCensus) -> List<ObjectId> {
 // fetched to finish it.
 fn closure_is_complete(closure: CommitClosure) -> Bool {
   let census = closure_census(closure: closure)
-  (list_length(items: census.absent) == 0)
-    && (list_length(items: wrong_kind_identities(census: census)) == 0)
+  (length(xs: census.absent) == 0)
+    && (length(xs: wrong_kind_identities(census: census)) == 0)
 }

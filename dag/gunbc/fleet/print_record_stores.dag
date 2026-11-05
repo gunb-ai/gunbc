@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, Fil
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
-import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused }
+import gunbc.durable_cas_file_store { listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_store_absent_detail }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWritableSetgid }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import gunbc.host_state_root { HostStateTree }
@@ -77,8 +77,13 @@ type PrintCompletionStoreReading
 // (the member is the directory they always lived in), so that mint has no legacy entries to refuse on. Each lists
 // its own member directory and refuses a directory it cannot list rather than reading it as empty.
 fn print_request_store(tree: HostStateTree) -> PrintRequestStoreReading {
-  match listed_slot_store(member: print_request_slots.member as String, root: print_request_path(tree: tree)) {
-    SlotStoreAbsent { member: _, root: _ } => PrintRequestStoreUnready { detail: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
+  print_request_store_admitted(admission: listed_slot_store(member: print_request_slots.member as String, root: print_request_path(tree: tree)))
+}
+
+// Each store's admission fold takes the listing's answer, so a witness can supply each arm hermetically.
+fn print_request_store_admitted(admission: SlotStoreAdmission) -> PrintRequestStoreReading {
+  match admission {
+    SlotStoreAbsent { member: m, root: r } => PrintRequestStoreUnready { detail: slot_store_absent_detail(member: m, root: r) }
     SlotStoreRefused { detail: d } => PrintRequestStoreUnready { detail: d }
     SlotStoreListed { root: r } => PrintRequestStoreReady { store: PrintRequestStore { root: r } }
   }
@@ -93,11 +98,16 @@ fn print_completion_store(tree: HostStateTree) -> PrintCompletionStoreReading {
   match printer_starts_legacy_scan(tree: tree, owns: n => print_completion_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => PrintCompletionStoreUnready { detail: d }
     PrinterStartsLegacyEntries { names: n } => PrintCompletionStoreUnready { detail: join(["printer-starts still holds the flat layout (", join(n, ", "), "); gunbc.fleet.printer_state_layout moves it"], "") }
-    PrinterStartsClean => match listed_slot_store(member: print_completion_slots.member as String, root: print_completion_path(tree: tree)) {
-      SlotStoreAbsent { member: _, root: _ } => PrintCompletionStoreUnready { detail: "the store's own directory was never created -- admission answers absence, and an absent store is not an empty store" }
-      SlotStoreRefused { detail: d } => PrintCompletionStoreUnready { detail: d }
-      SlotStoreListed { root: r } => PrintCompletionStoreReady { store: PrintCompletionStore { root: r } }
-    }
+    PrinterStartsClean => print_completion_store_admitted(admission: listed_slot_store(member: print_completion_slots.member as String, root: print_completion_path(tree: tree)))
+  }
+}
+
+// Reached only once the parent holds no flat-layout completion record (PrinterStartsClean above).
+fn print_completion_store_admitted(admission: SlotStoreAdmission) -> PrintCompletionStoreReading {
+  match admission {
+    SlotStoreAbsent { member: m, root: r } => PrintCompletionStoreUnready { detail: slot_store_absent_detail(member: m, root: r) }
+    SlotStoreRefused { detail: d } => PrintCompletionStoreUnready { detail: d }
+    SlotStoreListed { root: r } => PrintCompletionStoreReady { store: PrintCompletionStore { root: r } }
   }
 }
 

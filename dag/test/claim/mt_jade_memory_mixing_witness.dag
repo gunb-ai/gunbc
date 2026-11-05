@@ -1,6 +1,7 @@
 module test.claim.mt_jade_memory_mixing_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef }
 import extdeps.ocp.mt_jade.subject { internet_archive_mt_jade_capture_authority, MtJadeRev1_0, mt_jade_reference_platform }
@@ -166,9 +167,9 @@ test fn w_the_same_channel_row_carries_all_three_printed_verdicts() -> Bool {
 // both. The row count is asserted beside it only as a second, weaker reading.
 test fn w_every_printed_cell_of_table_3_resolves() -> Bool {
   fold(mt_jade_dimm_mixing_placements, init: true, f: (acc, p) => acc && every_axis_resolves_at(placement: p))
-    && list_length(items: mt_jade_dimm_mixing_axes) == 7
-    && list_length(items: mt_jade_dimm_mixing_placements) == 2
-    && list_length(items: mt_jade_mixed_dimm_support_table) == 14
+    && length(xs: mt_jade_dimm_mixing_axes) == 7
+    && length(xs: mt_jade_dimm_mixing_placements) == 2
+    && length(xs: mt_jade_mixed_dimm_support_table) == 14
 }
 
 // THE REFUSAL ARMS EXECUTE, rather than existing as unreachable decoration. A cell whose coordinate
@@ -221,7 +222,7 @@ test fn w_the_printed_labels_distinguish_every_axis_and_verdict() -> Bool {
 test fn w_the_mixing_model_scope_points_at_the_table_and_cites_both_locators() -> Bool {
   external_subject_ref_eq(a: mt_jade_memory_mixing_model_scope.subject, b: expected_mt_jade_mixing_subject_ref)
     && (mt_jade_memory_mixing_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
-    && list_length(items: mt_jade_memory_mixing_model_scope.further_citations) == 1
+    && length(xs: mt_jade_memory_mixing_model_scope.further_citations) == 1
     && (internet_archive_mt_jade_capture_authority.uri.locator as String) == "web.archive.org/web/20220603132323id_/https://www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
     && (mt_jade_memory_mixing_subject.marketing_name as String) == (mt_jade_reference_platform.marketing_name as String)
     && match mt_jade_memory_mixing_subject.revision { MtJadeRev1_0 {} => true }

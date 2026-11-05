@@ -23,7 +23,7 @@ import gunbc.site.avatar_marks { unknown_avatar_svg, group_avatar_svg, unassigne
 import gunbc.roadmap.roadmap_nesting { RoadmapMembership, roadmap_memberships }
 import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, membership_index, project_root_for_node_in }
 import gunbc.roadmap.roadmap_lineage { lineage_lookup }
-import std.algebra { empty_map, map_insert, map_lookup }
+import std.algebra { empty_map, map_insert, map_lookup, length }
 
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 
@@ -42,7 +42,7 @@ import gunbc.principal_projection {
 }
 import gunbc.auth.profile_projection { PrincipalProfile }
 import gunbc.roadmap.roadmap_component { standing_chip_class }
-import std.types { list_length, Map }
+import std.types { Map }
 import gunbc.harness.harness_throughput {
   HarnessRoundLedger, RoundsUnobserved, RoundsObserved, RoundObservation,
   RoundSegment, RoundSegmentKind, ReadRound, WriteRound, UnmeasuredRound, round_segments, round_segment_kind_word, round_playback, RoundPlayback, round_remaining_flex, harness_round_budget_steps,
@@ -1213,12 +1213,12 @@ fn round_segment_node(play: RoundPlayback, pulsing: Bool) -> Fragment {
 
 fn round_strip_nodes(ledger: HarnessRoundLedger, live: Bool) -> List<Fragment> {
   let plays = round_playback(segs: round_segments(ledger: ledger), playback_ms: round_strip_playback_ms)
-  let total = list_length(items: plays)
+  let total = length(xs: plays)
   if total == 0 {
     []
   } else {
     let nodes = fold(plays, init: [], f: (acc, p) =>
-      concat(acc, [round_segment_node(play: p, pulsing: live && list_length(items: acc) + 1 == total)]))
+      concat(acc, [round_segment_node(play: p, pulsing: live && length(xs: acc) + 1 == total)]))
     let remaining = if live { round_remaining_flex(ledger: ledger, budget_steps: harness_round_budget_steps) } else { 0 }
     let tail = if remaining > 0 {
       [ el_attrs("span", [
@@ -3041,7 +3041,7 @@ fn roadmap_page_impl_with_stylesheet(doc: RoadmapDocument, merged: List<Int>, ma
   let body_base = [
     el_class("main", "roadmap", main_children),
   ]
-  let body_children = if list_length(main_children) == 0 {
+  let body_children = if length(main_children) == 0 {
     body_base
   } else {
     concat(body_base, [ dispatch_client_script() ])

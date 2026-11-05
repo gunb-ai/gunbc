@@ -1,6 +1,7 @@
 module product.compute_board.truth_table_projection
 
-import std.types { String, NonEmptyStr, List, list_length }
+import std.types { String, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { Int }
 import product.compute_board.digital_control {
   Conjunction,
@@ -248,7 +249,7 @@ fn row_render(
   outputs: List<DigitalSignal>,
   assignments: List<SignalAssignment>
 ) -> RowRender {
-  let depth = list_length(items: intent.equations) + 1
+  let depth = length(xs: intent.equations) + 1
   let input_cells = map(assignments, a => text_cell(text: bit(v: a.value)))
   fold(outputs, init: RowRendered { row: MarkdownTableRow { cells: input_cells } }, f: fn(acc, s) {
     match acc {
@@ -299,9 +300,9 @@ fn project_intent_to_truth_table(
   match first_unrenderable(signals: intent.signals) {
     Present { value: bad } => TruthTableRefused { cause: TruthTableNameUnrenderable { signal: bad } }
     Absent =>
-      if list_length(items: inputs) > truth_table_max_inputs {
+      if length(xs: inputs) > truth_table_max_inputs {
         TruthTableRefused {
-          cause: TruthTableInputPopulationTooWide { inputs: list_length(items: inputs) }
+          cause: TruthTableInputPopulationTooWide { inputs: length(xs: inputs) }
         }
       } else {
         let columns = concat(inputs, outputs)

@@ -1,6 +1,7 @@
 module v2.workflow.legacy_baseline_capture
 
-import std.types { String, List, Int, Bool, NonEmptyStr, list_length }
+import std.types { String, List, Int, Bool, NonEmptyStr }
+import std.algebra { length }
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity {
   ValidatedOccurrenceTransport,
@@ -399,6 +400,6 @@ fn capture_refusal_label(cause: LegacyBaselineCaptureRefusal) -> String {
   match cause {
     ObserverNeverReachedDecision {} => "the observer never reached its decision stage"
     BridgeRowSpellingEmpty { malformed: m } =>
-      concat("the repair bridge emitted a row with an empty spelling (", concat(to_string(list_length(items: m)), " row(s), located by index)"))
+      concat("the repair bridge emitted a row with an empty spelling (", concat(to_string(length(xs: m)), " row(s), located by index)"))
   }
 }
