@@ -1,6 +1,7 @@
 module gunbc.compute.host_capacity
 
 import std.types { String, Bool, Int, NonEmptyStr, EpochSecs }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.nat { Nat }
 import std.measure { Measure, Memory, Kibi, Kibibyte, kibibyte, kibibyte_count, kibibyte_from_byte_size_floor, ByteSize, byte_size_count }
 import extdeps.linux.procfs
@@ -690,81 +691,115 @@ type ComputeSeatCharge
 
 type SeatChargeScan { acquired_at: EpochSecs?, returned_at: EpochSecs?, release_reason: String? }
 
-// One pass over the partition's own events, answering the SAME question the ledger's existing reading
-// answers: compute_seat_acquisition_at in this module sets the hold on PoolAcquired and clears it on
-// PoolReleased / PoolSettled / PoolLapsed, and keeps it across PoolResetObserved. This scan keeps that
-// arm-for-arm semantics (it is a second READING of one fact, not a second authority over it) and adds only
-// the one extra thing the settlement needs: the instant and reason of the return, and whether the history
-// was read to its end. An unread history answers Unproven, never NeverAcquired and never Returned.
-fn seat_charge_scan_step(state: SeatChargeScan, wrapped: ChainEnvelope<PoolEvent>, reference: NonEmptyStr) -> SeatChargeScan {
+// ONE STEP FOR EVERY REFERENCE AT ONCE. DESIGN 2: when several demands share a least common ancestor in
+// state, carry, rewire or SHARE the first value. The settle pass needs this answer for every listed slot, and
+// asking it once per slot reads and walks one partition K times over - a slots-by-events fold, and DESIGN 6b
+// fixes a proven cost-shape defect regardless of how small the realized numbers are today. So the fold carries
+// a map from reference to scan, keyed by the reference each event itself names.
+//
+// The arm-by-arm meaning is the ledger's own, unchanged from the reading this one replaces: an acquisition
+// opens the scan, a release or a settlement closes it, a lapse clears it. The lapse arm clears the WHOLE map,
+// which is what a lapse does to a pool: it clears every hold, so from that event forward the partition holds no
+// acquisition for any reference (SeatChargeNeverAcquired says "the partition holds no acquisition for it",
+// which is the true statement about the history after a lapse and not a claim that none was ever written; and
+// the settle decision treats that answer exactly as it treats a still-held or unproven one - the ordinary
+// trigger, never a retirement - so nothing is retired on the strength of a lapse).
+fn seat_charge_scan_cleared() -> Map<String, SeatChargeScan> { empty_map() }
+
+fn seat_charge_scan_all_step(state: Map<String, SeatChargeScan>, wrapped: ChainEnvelope<PoolEvent>) -> Map<String, SeatChargeScan> {
   let event = wrapped.event
   match event.payload {
     PoolAcquired { reference: r, amount: _, term_seconds: _ } =>
-      if (r as String) == (reference as String) { SeatChargeScan { acquired_at: Present { value: event.recorded_at }, returned_at: Absent, release_reason: Absent } } else { state }
+      map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: Present { value: event.recorded_at }, returned_at: Absent, release_reason: Absent })
     PoolReleased { reference: r, reason: why } =>
-      if (r as String) == (reference as String) {
-        match state.acquired_at {
-          Present { value: at } => SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: why as String } }
-          Absent => state
-        }
-      } else { state }
+      match map_lookup(m: state, key: r as String) {
+        Present { value: s } =>
+          match s.acquired_at {
+            Present { value: at } => map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: why as String } })
+            Absent => state
+          }
+        Absent => state
+      }
     PoolSettled { reference: r, actual: _ } =>
-      if (r as String) == (reference as String) { SeatChargeScan { acquired_at: state.acquired_at, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } } } else { state }
-    // A lapse clears every hold in the partition, so from the lapse forward the partition holds no
-    // acquisition for this reference at all, and the scan restarts empty. That is what
-    // SeatChargeNeverAcquired says — "the partition holds no acquisition for it" — and it is the true
-    // statement about the history AFTER the lapse, not a claim that none was ever written. The settle
-    // decision treats that answer exactly as it treats a still-held or unproven one (the ordinary
-    // trigger, never a retirement), so a lapsed charge is never retired on the strength of the lapse.
-    PoolLapsed => SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }
+      match map_lookup(m: state, key: r as String) {
+        Present { value: s } => map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: s.acquired_at, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } })
+        Absent => map_insert(m: state, key: r as String, value: SeatChargeScan { acquired_at: Absent, returned_at: Present { value: event.recorded_at }, release_reason: Present { value: "settled" } })
+      }
+    PoolLapsed => seat_charge_scan_cleared()
     PoolUpstreamObserved { remaining: _, term_seconds: _ } => state
     PoolResetObserved { reset_at: _ } => state
   }
 }
 
+// THE PARTITION READ AND WALKED ONCE FOR THE WHOLE PASS. An unread history is one refusal for the whole
+// reading - it does not degrade into "never acquired" for some references and "returned" for others, which is
+// what a per-reference read on a shared partition risks when one read succeeds and another does not.
+type SeatChargeReading
+  = ChargeScansRead { scans: Map<String, SeatChargeScan>, generation: Nat }
+  | ChargeScansUnreadable { detail: String }
+
 // WHY THERE IS NO CEILING PARAMETER. The bound is a property of the read, not of the caller:
 // compute_partition_read_budget is the same budget the acquisition read uses, and a caller-chosen
 // ceiling over one partition's history would be a second, unenforced number sitting beside it. A chain
-// that cannot be read to its end is SeatChargeUnproven, never "not returned".
-fn compute_seat_charge_returned(store: FabricStorageBinding, partition: PartitionId, reference: NonEmptyStr) -> ComputeSeatCharge {
+// that cannot be read to its end is a refusal, never "not returned".
+fn compute_seat_charge_scans(store: FabricStorageBinding, partition: PartitionId) -> SeatChargeReading {
   match event_log_read_partition(store: store, partition: partition, budget: compute_partition_read_budget) {
-    PartitionReadRefused { cause: c } => SeatChargeUnproven { detail: event_log_refusal_wire(cause: c) }
+    PartitionReadRefused { cause: c } => ChargeScansUnreadable { detail: event_log_refusal_wire(cause: c) }
     PartitionReadOk { head: _, walk: walk } =>
       match walk {
         ChainIncomplete { missing: m, newest_first_so_far: _ } =>
-          SeatChargeUnproven { detail: join(["the partition chain is missing event ", m as String, "; an incomplete history cannot prove a charge was returned"], "") }
+          ChargeScansUnreadable { detail: join(["the partition chain is missing event ", m as String, "; an incomplete history cannot prove a charge was returned"], "") }
         ChainBudgetExhausted { at: a } =>
-          SeatChargeUnproven { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
+          ChargeScansUnreadable { detail: join(["the partition chain exceeded the read budget at ", a as String, "; the history was not read to its end"], "") }
+        // THE GENERATION THE READING SITS AT IS PART OF THE PROOF, not decoration: it is the number a
+        // settlement quotes when it says a charge was already returned. A walked chain that cannot name it
+        // refuses rather than handing back a number that looks like one (DESIGN 5: a path that cannot answer
+        // gives a typed, located diagnostic). chain_generation reports Present for every ChainWalked, so this
+        // refusal arm is a door that does not open today; it is written because a fabricated default is the
+        // kind of thing that quietly becomes true the day someone widens the walk.
         ChainWalked { oldest_first: xs } =>
-          // THE GENERATION THE RETURN SITS AT IS PART OF THE PROOF, not decoration: it is the number the
-          // settlement detail quotes when it says a charge was already returned. So it is read before the
-          // fold is consulted, and a walked chain that cannot name its generation refuses instead of
-          // handing back a number that looks like one (DESIGN 5: a path that cannot answer gives a typed,
-          // located diagnostic). chain_generation reports Present for every ChainWalked, so the refusal
-          // arm is a door that does not open today; it is written because a fabricated default is the kind
-          // of thing that quietly becomes true the day someone widens the walk.
           match chain_generation(walk: walk) {
-            Absent => SeatChargeUnproven { detail: "the walked chain reported no generation; a charge whose ledger generation cannot be read is not something this reading will call returned" }
+            Absent => ChargeScansUnreadable { detail: "the walked chain reported no generation; a charge whose ledger generation cannot be read is not something this reading will call returned" }
             Present { value: generation } =>
-          match fold(xs, init: SeatChargeScan { acquired_at: Absent, returned_at: Absent, release_reason: Absent }, f: fn(acc, wrapped) { seat_charge_scan_step(state: acc, wrapped: wrapped, reference: reference) }) {
+              ChargeScansRead { scans: fold(xs, init: seat_charge_scan_cleared(), f: fn(acc, wrapped) { seat_charge_scan_all_step(state: acc, wrapped: wrapped) }), generation: generation }
+          }
+      }
+  }
+}
+
+// ONE REFERENCE ANSWERED OUT OF THAT FOLD, with the same coproduct the pass already decides on. The
+// generation named on a returned charge is the generation this reading was taken at - one value for one
+// reading of one partition, which is what a settlement record should quote.
+fn seat_charge_of_scan(reading: SeatChargeReading, reference: NonEmptyStr) -> ComputeSeatCharge {
+  match reading {
+    ChargeScansUnreadable { detail: d } => SeatChargeUnproven { detail: d }
+    ChargeScansRead { scans: scans, generation: generation } =>
+      match map_lookup(m: scans, key: reference as String) {
+        Absent => SeatChargeNeverAcquired { reference: reference }
+        Present { value: scan } =>
+          match scan {
             SeatChargeScan { acquired_at: Absent, returned_at: _, release_reason: _ } => SeatChargeNeverAcquired { reference: reference }
             SeatChargeScan { acquired_at: Present { value: at }, returned_at: Absent, release_reason: _ } => SeatChargeStillHeld { reference: reference, acquired_at: at }
             SeatChargeScan { acquired_at: Present { value: at }, returned_at: Present { value: back }, release_reason: why } =>
               SeatChargeReturned {
-                reference: reference,
-                acquired_at: at,
-                returned_at: back,
+                reference: reference, acquired_at: at, returned_at: back,
                 // Every step that can set a return also names it: gunbc.product.capacity.pool_events PoolReleased
-                // carries reason: NonEmptyStr, and seat_charge_scan_step writes "settled" for PoolSettled. So the
-                // Absent arm cannot be reached from a real history; it stands only because the coproduct demands
-                // it, and it is named here rather than left to read as a fallback that fires.
+                // carries reason: NonEmptyStr, and seat_charge_scan_all_step writes "settled" for PoolSettled. So
+                // the Absent arm cannot be reached from a real history; it stands only because the coproduct
+                // demands it, and it is named here rather than left to read as a fallback that fires.
                 release_reason: match why { Present { value: w } => w as NonEmptyStr  Absent => "not named" as NonEmptyStr },
                 generation: generation,
               }
           }
-          }
       }
   }
+}
+
+// THE SINGLE-REFERENCE QUESTION IS THE SAME FOLD, ANSWERED ONCE. It stays because a caller that genuinely has
+// one reference (a witness, an operator report) should not have to build the pass's fold, and because two scan
+// semantics sitting side by side is exactly the second-authority mistake this reading exists to avoid.
+fn compute_seat_charge_returned(store: FabricStorageBinding, partition: PartitionId, reference: NonEmptyStr) -> ComputeSeatCharge {
+  seat_charge_of_scan(reading: compute_seat_charge_scans(store: store, partition: partition), reference: reference)
 }
 
 fn compute_seat_charge_wire(c: ComputeSeatCharge) -> String {

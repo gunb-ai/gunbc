@@ -6,6 +6,10 @@ import extdeps.systemd.systemctl
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
+// The settle decision now takes the charge's fate as a reading (gunbc.compute.host_capacity). An activation
+// door settles exactly one unit, so it asks the single-reference question, which is one read of one partition
+// for one key -- the shape the pass pays once for ALL its keys.
+import gunbc.compute.host_capacity { compute_seat_charge_returned }
 import gunbc.compute.attempt_lifecycle {
   AttemptSlotKeysAbsent, attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
   AttemptRecord, UnitLifecycle, UnitLifecycleUnknown,
@@ -235,7 +239,7 @@ fn session_activation_apply(
       match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
         Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
         Present { value: unit } => {
-          let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now)
+          let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now, charge: compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: unit))
           if activation_released_wire(s: settled) && session_activation_settled(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of) {
             ActivationRolledBack { unit: unit as String, detail: reason }
           } else if activation_released_wire(s: settled) {
@@ -249,7 +253,7 @@ fn session_activation_apply(
       match session_unit_wire(node_id: node_id, attempt_key: attempt_key) {
         Absent => ActivationRefused { unit: "", reason: session_unit_unnameable_detail(node_id: node_id, attempt_key: attempt_key) }
         Present { value: unit } => {
-          let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now)
+          let settled = session_settle_one(stores: stores, host: host, key: unit, lifecycle: lifecycle, now: now, charge: compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: unit))
           if activation_released_wire(s: settled) {
             session_activation_collect(stores: stores, host: host, node_id: node_id, attempt_key: attempt_key, loaded_of: loaded_of, reset_failed: reset_failed, detail: reason)
           } else {
