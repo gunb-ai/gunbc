@@ -273,7 +273,16 @@ type SlotRestartPlan
 // killing it is the remedy. This module's §3b note maps busy into the payload-free SlotActivityObservation
 // (the same currency the sibling drain consults via read_slot_worker_over) rather than reading a worker
 // ProcessIdentity it would discard; a caller needing the identity uses RunnerSlotBusyStanding directly.
-fn slot_restart_plan(r: SlotActuationReading, worker: SlotActivityObservation, lost: LostAgentObservation) -> SlotRestartPlan {
+// The identity of the job a busy slot's worker is executing, read at the OBSERVATION BOUNDARY (the wet
+// restart arm reads the Runner.Worker's job id from its _diag Worker log / the job's runner id) exactly
+// like the boot-time read -- NEVER assumed. Unread when the source cannot be read. This binds a lost-agent
+// permit to the job it is actually for (the #15819 class): a null-runner lost-agent observation names no
+// slot, so without this a lost job X anywhere would authorize killing an unrelated job Y on a busy slot.
+type SlotRunningJobId
+  = RunningJobObserved { job_id: Int }
+  | RunningJobUnread { cause: NonEmptyStr }
+
+fn slot_restart_plan(r: SlotActuationReading, worker: SlotActivityObservation, slot_job: SlotRunningJobId, lost: LostAgentObservation) -> SlotRestartPlan {
   match r.load {
     UnitLoadNotFound => RestartRefused { reason: "the slot's unit is not installed on this host (LoadState=not-found): restart does not install it" }
     UnitLoadBadSetting => RestartRefused { reason: "the slot's unit file has a bad setting (LoadState=bad-setting)" }
@@ -283,13 +292,21 @@ fn slot_restart_plan(r: SlotActuationReading, worker: SlotActivityObservation, l
       SlotIdle => RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
       SlotActivityUnobserved { cause: c } =>
         RestartRefused { reason: concat("whether the slot is executing a job could not be read, so it is not restarted: ", c as String) }
-      SlotHasLiveWorker => match lost {
-        LostAgentDetected { job_id: _, over_by: _ } =>
-          RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
-        JobNotLost { job_id: _, reason: why } =>
-          RestartRefused { reason: concat("the slot is executing a job that is not the orphaned one (", why as String, "); a restart would kill a live job") }
-        LostAgentReadRefused { job_id: _, reason: why } =>
-          RestartRefused { reason: concat("the slot is executing a job and the lost-agent reading was refused, so the running job is not presumed orphaned: ", why as String) }
+      SlotHasLiveWorker => match slot_job {
+        RunningJobUnread { cause: c } =>
+          RestartRefused { reason: concat("the slot is executing a job but its job identity could not be read, so it cannot be bound to the orphaned job: ", c as String) }
+        RunningJobObserved { job_id: running } => match lost {
+          LostAgentDetected { job_id: orphaned, over_by: _ } =>
+            if running == orphaned {
+              RestartSteps { steps: [systemctl_restart_argv(unit: r.unit)] }
+            } else {
+              RestartRefused { reason: "the slot is executing a different job than the orphaned one the restart is for; a restart would kill an unrelated live job" }
+            }
+          JobNotLost { job_id: _, reason: why } =>
+            RestartRefused { reason: concat("the slot is executing a job that is not the orphaned one (", why as String, "); a restart would kill a live job") }
+          LostAgentReadRefused { job_id: _, reason: why } =>
+            RestartRefused { reason: concat("the slot is executing a job and the lost-agent reading was refused, so the running job is not presumed orphaned: ", why as String) }
+        }
       }
     }
   }
@@ -662,13 +679,13 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
 // runner-liveness-reconcile timer; nothing here runs live in this PR. Its WITNESS (runner_slot_restart_witness)
 // supplies the target, context, unit and `before` at the boundary and discriminates the refuse arms and the
 // changed-MainPID readback. DISSOLVES when the reconcile timer is re-enabled and the wet arm drives it.
-fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess, lost: LostAgentObservation) -> SlotActuationOutcome
+fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr, before: RunnerUnitMainProcess, slot_job: SlotRunningJobId, lost: LostAgentObservation) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
     SlotRead { reading: r } => {
       let worker = if slot_state_active(active: r.active) { read_slot_worker_over(target: target, context: context, unit: unit) } else { SlotIdle }
-      match slot_restart_plan(r: r, worker: worker, lost: lost) {
+      match slot_restart_plan(r: r, worker: worker, slot_job: slot_job, lost: lost) {
         RestartRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         RestartSteps { steps: ss } =>
           match run_slot_steps_over(target: target, context: context, steps: ss) {
