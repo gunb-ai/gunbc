@@ -8,7 +8,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, PositionDirectCallArgument, Rejected, Some, diagnostic_inhabitance_position, diagnostics_has_reason }
 import v2.std.node { Symbol, Node, Edge, Positional, TypeNode, Instantiation, NotADeclaration, node_synthetic }
 import v2.std.inhabitance { DeclaredTypeObligation, InhabitanceRefused, InhabitanceUndecidable, Inhabits, declared_type_inhabitance, position_declared_return }
 import v2.extdeps.languages.dag { dag_type_atom_node }
@@ -18,7 +18,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
-import std.algebra { Empty, FreeMonoid }
+import std.algebra { Empty, FreeMonoid, fold_list }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
@@ -131,6 +131,42 @@ fn skp_accepted(subject: String) -> Bool {
   }
 }
 
+// (3) The refusal ALSO names WHERE it was decided, as DATA -- the separate typed position slot, read
+// through the ONE accessor v2.std.diagnostic.diagnostic_inhabitance_position (never via a reason filter).
+// For a direct call argument the site is the DeclaredTypePosition arm PositionDirectCallArgument, and the
+// argument_ordinal_path is populated (a genuine child pair answered no; a top-pair arm would carry [], but
+// arguments_differ only ever arises from a child pair, so a populated path is exactly what a sibling
+// mismatch must record). This is #15868's InhabitanceJudgmentLocus; asserting it here keeps the mechanism
+// (reason) and the position (locus) both named and both non-forkable.
+fn skp_call_arg_position_names_direct_call_argument(subject: String) -> Bool {
+  match rcf_verdict(resolved: skp_resolve_subject(subject: subject)) {
+    RcfInferRefused { diagnostics: d } => skp_diags_direct_call_argument(d: d)
+    RcfInferAccepted { diagnostics: _ } => false
+    RcfResolveRefused => false
+  }
+}
+
+fn skp_diags_direct_call_argument(d: Diagnostics) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: nds } =>
+      skp_diag_direct_call_argument(diag: nds.head)
+      || fold_list(xs: nds.tail, empty: false, cons: fn(acc, diag) { acc || skp_diag_direct_call_argument(diag: diag) })
+  }
+}
+
+fn skp_diag_direct_call_argument(diag: Diagnostic) -> Bool {
+  if diag.reason != ^inhabitance_structural_arguments_differ {
+    false
+  } else {
+    match diagnostic_inhabitance_position(d: diag) {
+      Present { value: PositionDirectCallArgument { argument_ordinal_path: path } } =>
+        fold_list(xs: path, empty: false, cons: fn(_acc, _x) { true })
+      _ => false
+    }
+  }
+}
+
 test fn skp_call_argument_with_a_nested_variable_beside_a_concrete_mismatch_refuses_with_arguments_differ() -> Bool {
   skp_call_arg_refuses_with_arguments_differ(subject: "gunbc.skp_nested_var_red")
 }
@@ -153,6 +189,18 @@ test fn skp_call_argument_with_a_nested_concrete_mismatch_beside_a_variable_is_n
 
 test fn skp_call_argument_with_a_variable_beside_a_concrete_mismatch_is_not_accepted() -> Bool {
   skp_call_arg_is_not_accepted(subject: "gunbc.skp_red")
+}
+
+test fn skp_call_argument_with_a_variable_beside_a_concrete_mismatch_refuses_at_direct_call_argument_position() -> Bool {
+  skp_call_arg_position_names_direct_call_argument(subject: "gunbc.skp_red")
+}
+
+test fn skp_call_argument_with_a_nested_variable_beside_a_concrete_mismatch_refuses_at_direct_call_argument_position() -> Bool {
+  skp_call_arg_position_names_direct_call_argument(subject: "gunbc.skp_nested_var_red")
+}
+
+test fn skp_call_argument_with_a_nested_concrete_mismatch_beside_a_variable_refuses_at_direct_call_argument_position() -> Bool {
+  skp_call_arg_position_names_direct_call_argument(subject: "gunbc.skp_nested_sibling_red")
 }
 
 test fn skp_call_argument_with_a_variable_and_agreeing_siblings_is_accepted_holds() -> Bool {
