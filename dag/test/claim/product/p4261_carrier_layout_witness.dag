@@ -142,6 +142,9 @@ import product.electrical.continuity {
   junction_between,
 }
 import product.electrical.identification {
+  ObservedLeadCount,
+  numbered_pins,
+  pin_number_name,
   marking_text,
   seen_unordered,
   identification_established,
@@ -168,7 +171,6 @@ import product.p4261.carrier {
   RowRead,
   away_side,
   latch_side,
-  lv165a_pins,
   ManagementIoSurvey,
   AnalysisSelection,
   MeasuredBoard,
@@ -179,6 +181,8 @@ import product.p4261.carrier {
 }
 import product.p4261.bench { inductor_pad_far_u4, inductor_pad_near_u4, inductor_pad_unrecorded }
 import product.p4261.e1_b {
+  e1_probed_positions,
+  e1_lead_count_rows,
   e1_after_lift_rail_resistances,
   e1_after_short_resistances,
   e1_back_cluster,
@@ -309,6 +313,8 @@ import product.p4261.e1_b {
   p4261_e1_layout,
 }
 import product.p4261.k1_a {
+  k1_probed_positions,
+  k1_lead_count_rows,
   k1_label_photo,
   k1_200,
   k1_beige,
@@ -2392,13 +2398,105 @@ test fn a_bridge_is_a_recorded_stimulus_and_a_zero_volt_point_is_not_a_ground() 
 // a U51 pin runs is read from the pin: 3 and 11 are read by the part, 7 and 9 driven by it, 1, 2 and
 // 15 controls or clocks into it, 8 and 16 its supply or return, 17 no pin at all; Q300, a marking
 // candidate, has no pin roles to read.
+// A specimen's body is what the bench probed, named by the position counted on it. A manufacturer's
+// numbering is a fact about the PART: a consumer reaches it through the identification, and when an
+// identification is only a candidate those names become unavailable -- the refusal the model already
+// implements for pin roles. The terminal LIST is different: it sits on the specimen row, so writing a named
+// part's numbering onto it makes the datasheet a second authority for what the specimen is. That is what
+// happened three times: sixteen HTSSOP-28 pin names on U49 and U51, and twenty-nine LM5066I terminal names on
+// K1's U1_P5, each copied from carrier.dag onto a specimen whose bench had probed eight positions, none, and
+// two respectively. The check looks at EVERY row the identification arm names -- IdentifiedByMarking,
+// MarkingSharedByMakers and MarkingCandidate alike -- because the failure was a candidate wearing its
+// candidate row's numbering, and a guard that consulted only identified_row(c) would have gone quiet at the
+// exact moment the defect appeared.
+fn rows_the_identification_names(c: InstalledComponent) -> List<ElectronicComponentRow> {
+  match c.identification {
+    IdentifiedByMarking { row, marking: _ } => [row]
+    MarkingSharedByMakers { rows, marking: _ } => rows
+    MarkingCandidate { row, marking: _, discriminator: _ } => [row]
+    RatingPrintedOnBody { rating: _, marking: _ } => []
+    ResistanceCodeRead { milliohms: _, marking: _ } => []
+    MarkingUnresolved { marking: _, discriminator: _ } => []
+    FootprintUnpopulated { evidence: _ } => []
+    BodySeenMarkingUnread { evidence: _ } => []
+  }
+}
+
+fn body_wears_a_named_parts_numbering(c: InstalledComponent) -> Bool {
+  count(c.terminals) > 0
+    && any(rows_the_identification_names(c), r =>
+      count(c.terminals) == count(numbered_pins(row: r))
+        && all(c.terminals, x => any(map(numbered_pins(row: r), n => pin_number_name(number: n)), t => (x as String) == (t as String))))
+}
+
+// THE OTHER HALF, and the half the carriers exist to make checkable: a body that matches a named part's
+// numbering is refused UNLESS the bench itself established that body -- the leads it counted on the
+// body, or the positions a probe touched. The justification is read from the board's own observation
+// carriers (product.electrical.identification's ObservedLeadCount and ObservedProbedPosition), selected
+// by component identity, so the datasheet is never its own authority. A body with no carrier row and no
+// probes cannot be justified this way and stays refused, which is the point: the only way a body of a
+// datasheet's size survives is by being OBSERVED at that size. Bodies whose names are not a datasheet
+// numbering at all -- a connector housing's own rows, a bead's "top end" and "bottom end" -- never reach
+// this test, because the guard asks the question only of a body that already matches a named row.
+fn body_is_justified(c: InstalledComponent, probes: List<NonEmptyStr>, counted: List<ObservedLeadCount>) -> Bool {
+  let body = map(c.terminals, t => (t as String))
+  (count(counted) > 0
+    && all(counted, r => count(body) == r.count)
+    && all(body, n => n.contains("pin "))
+    && all(body, b => count(filter(body, x => (x as String) == (b as String))) == 1)
+    && all(probes, p => any(body, b => (b as String) == (p as String))))
+    || (count(counted) == 0
+      && count(probes) > 0
+      && count(body) == count(probes)
+      && all(body, b => any(probes, p => (b as String) == (p as String)))
+      && all(probes, p => any(body, b => (b as String) == (p as String))))
+}
+
+
+test fn a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering() -> Bool {
+  // Every specimen on both boards: a body may be the leads counted on it or the positions probed on it,
+  // never the numbering of a row its identification names. RED on a tree where a body is sized from a
+  // datasheet, because the carriers that justify a body are the only thing that lets a matching size pass.
+  all(p4261_e1_layout.components,
+    c => !body_wears_a_named_parts_numbering(c)
+      || body_is_justified(c, probes: e1_probed_positions(c: c.component), counted: e1_lead_count_rows(c: c.component)))
+    && all(p4261_k1_layout.components,
+      c => !body_wears_a_named_parts_numbering(c)
+        || body_is_justified(c, probes: k1_probed_positions(c: c.component), counted: k1_lead_count_rows(c: c.component)))
+}
+
+// Two controls on the guard itself, because a guard nobody can show firing is a guard that has silently
+// stopped meaning anything. The first proves the candidate arm is consulted: U55 stands today as a
+// MarkingCandidate, and if rows_the_identification_names returned nothing for that arm the main check would
+// have gone quiet at the moment the defect appeared -- which is how the first version of this guard was
+// wrong. The second proves size alone does not trip it: J20 carries a long terminal list from its own housing
+// rows, as many positions as some other part's pin table, and must stay unflagged.
+test fn the_guard_consults_a_candidates_named_row_and_ignores_size_alone() -> Bool {
+  all(component_of(layout: p4261_e1_layout, c: e1_u55), c =>
+        match c.identification {
+          MarkingCandidate { row: _, marking: _, discriminator: _ } =>
+            count(rows_the_identification_names(c: c)) == 1
+          _ => false
+        })
+    && all(component_of(layout: p4261_e1_layout, c: e1_j20), c =>
+        // Non-empty, so the control is not vacuous, and unflagged. The old claim here was that J20 carries
+        // more than twenty terminals -- a number I had not measured, which is the same failure this whole
+        // exercise exists to stop. J20's terminals come from its own housing rows, not from any part table,
+        // and it names no row in its identification, so size alone cannot trip the guard.
+        count(c.terminals) > 0 && !body_wears_a_named_parts_numbering(c: c))
+}
+
 test fn u49_and_u51_are_shift_registers_with_pin_roles() -> Bool {
   let parts = concat(component_of(layout: p4261_e1_layout, c: e1_u49), component_of(layout: p4261_e1_layout, c: e1_u51))
   count(parts) == 2
     && all(parts, c => match identification_text(i: c.identification) { Absent => false, Present { value: t } => t.contains("Texas Instruments Incorporated SN74LV165APWR, from the marking 'LV165A / 2BKG4 / AEC0'") })
     && all(parts, c => match mosfet_of(c: c) { Absent => true, Present { value: _ } => false })
     && all(parts, c => match controller_of(c: c) { Absent => true, Present { value: _ } => false })
-    && all(parts, c => count(c.terminals) == 16)
+    // What the bench probed, not what the datasheet numbers: eight counted positions on U51, and nothing on
+    // U49, where no probe was ever put. TI numbers sixteen pins on the SN74LV165A; that is the part's fact and
+    // a consumer reaches it through identified_row(c), so it cannot be what makes this body sixteen-wide.
+    && all(component_of(layout: p4261_e1_layout, c: e1_u49), c => count(c.terminals) == 0)
+    && all(component_of(layout: p4261_e1_layout, c: e1_u51), c => count(c.terminals) == count(e1_u51_probed_pins))
     && finding_holds(layout: p4261_e1_layout, f: ComponentIdentified { component: e1_u51 })
     && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 3).contains("U51 pin 3 (E) is READ by the part")
     && register_pin_direction_text(layout: p4261_e1_layout, c: e1_u51, number: 11).contains("U51 pin 11 (A) is READ by the part")
@@ -2470,10 +2568,10 @@ test fn q300_lead_b_reaches_u51_through_a_junction_not_a_join() -> Bool {
   let two_k = RangeFullScale { ohms: 2000 }
   let twenty_k = RangeFullScale { ohms: 20000 }
   count(e1_u51_resistances) == 14
-    && count(filter(e1_u51_resistances, o => any(lv165a_pins, n => reads_pair(o: o, a: e1_q300_lead_b, b: e1_u51_pin(n: n))))) == 13
+    && count(filter(e1_u51_resistances, o => any(e1_u51_probed_pins, n => reads_pair(o: o, a: e1_q300_lead_b, b: e1_u51_pin(n: n))))) == 13
     && range_arm(s: pin8) == 0 && range_bounds(s: pin8) == [600, 20000]
     && range_arm(s: to_return) == 2
-    && !any(lv165a_pins, n => one_node(net: live, a: e1_q300_lead_b, b: e1_u51_pin(n: n)))
+    && !any(e1_u51_probed_pins, n => one_node(net: live, a: e1_q300_lead_b, b: e1_u51_pin(n: n)))
     && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to U51 pin 8 reads MOVING WITH THE RANGE, 600 to 20000 ohm across 3 recorded ranges in 5 readings: a path holding a junction, not a conductor, and no join")
     && carrier_input_reading(layout: p4261_e1_layout).contains("Q300 lead b to J20's black lead is valued on one recorded range only (1 readings)")
     && carrier_input_reading(layout: p4261_k1_layout).contains("U55 is not a component of this carrier's observation") == false

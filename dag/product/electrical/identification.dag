@@ -946,6 +946,37 @@ type InstalledComponent {
   seen: ReadingOrder
 }
 
+// WHAT THE BENCH ESTABLISHED ABOUT A BODY, APART FROM WHAT THE PART IS. A specimen's terminals are
+// positions on a physical body, so they come from the body: either the positions a probe touched, or
+// the leads counted around the pin-1 mark. They NEVER come from the numbering of a part the row is
+// identified as or a candidate for: a datasheet table says how a maker numbers its leads, which is a
+// fact about the PART and says nothing about how many leads this body has or which ones were reached
+// (DESIGN §4d). Before this carrier existed, that line held only in prose, so a predicate could not
+// check it; the guard is product.p4261.carrier_layout_witness's
+// a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering.
+//
+// A count and a probe set are different observations, so they are different rows: a part may have all
+// its leads counted and only two of them probed. Where a part has both, the probed positions are
+// positions ON the counted body, so the probe set is a subset of the counted positions -- a body whose
+// probes fall outside its own lead count is a contradiction, not a wider sample. Rows live on the
+// board that observed them, in the same pattern as product.p4261.e1_body_sightings: one row per
+// observation, each citing the frame or statement it was read from.
+type ObservedLeadCount {
+  component: ComponentInstanceIdentity
+  count: Nat
+  counted_from: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+// One position of one body that a probe touched, named as the bench counted it (the pin-1 mark fixes
+// the direction, and the numbering is the body's, not a maker's). `evidence` is the frame or statement
+// that establishes the probe: a position nobody reached is not an observation.
+type ObservedProbedPosition {
+  component: ComponentInstanceIdentity
+  position: NonEmptyStr
+  evidence: EvidenceRef
+}
+
 // WHAT AN OBSERVATION ESTABLISHES ABOUT PRESENCE. A part read in any way -- a matched, shared,
 // candidate or unresolved marking, a printed rating, a resistance code -- was seen on the board; an
 // empty footprint was seen without one. An entry with no marking read and no other reading records a

@@ -87,6 +87,7 @@ import product.electrical.carrier_phase {
   TransientPassing,
 }
 import product.electrical.connectivity {
+  component_identity_eq,
   component_instance_identity,
   ComponentInstanceIdentity,
   ElectricalDesignIdentity,
@@ -157,6 +158,8 @@ import product.electrical.continuity {
   Unpowered,
 }
 import product.electrical.identification {
+  ObservedLeadCount,
+  ObservedProbedPosition,
   seen_unordered,
   ComponentIdentification,
   FootprintUnpopulated,
@@ -205,8 +208,6 @@ import product.p4261.carrier {
   RowRead,
   away_side,
   latch_side,
-  lm5066i_terminals,
-  lv165a_pins,
   MappedOnHousing,
   MeasuredBoard,
   MicroUsbPlugFits,
@@ -1108,6 +1109,71 @@ data e1_u51_swapped_said: NonEmptyStr = "ZB15: at 20k, red on pin 8, black on Q3
 
 data e1_u51_pins_photo: EvidenceRef = e1_unstored_photo(taken_on: "2026-10-20", locator: "bench-session upload, U51 with its pins numbered 1 to 8 along the row nearer Q300's trace in the crop u51_pins (not on Drive)")
 
+// The terminals of U51 the bench actually probed, named by the position counted on the body -- the NUMBER,
+// not TI's name for that position. The 2026-10-20 session put red on Q300's lead b and black on pins 1
+// through 8 in turn ("8: 2.5 / 7: 6 / 6: 2.5 / 5: 6 / 4: 6 / 3: 5 / 2: 5 / 1: 5"); 9 through 16 were never
+// touched, so nothing claims them here. TI's names for those numbers (GND, SH/LD, the Q outputs) belong to
+// the PART and are reachable only through identified_row(c), so a U51 that stands only as a candidate
+// exposes no TI name. These 16 names used to be written onto the specimen from lv165a_pins, which made the
+// datasheet a second authority for what the specimen is; the fix is that a specimen's body is what was seen.
+// WHAT THE BENCH ESTABLISHED ABOUT TWO BODIES, apart from what the parts are. One row per
+// observation, each citing the frame or statement it came from -- the carriers are in
+// product.electrical.identification, and the guard that reads them is
+// product.p4261.carrier_layout_witness's a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering:
+// a specimen's terminals are the leads counted here or the positions probed below, never the numbering
+// of a row its identification names (DESIGN §4d).
+//
+// U55: the bench counted sixteen leads on the body, which is why the row's body has sixteen positions.
+// The frame is the one whose reading record has 'ZVK' over '22J' beside U92 and U93; the count is read
+// off the body, and no SN74AVC4T774 table is consulted for it -- the candidate's own pin table is where
+// the datasheet could have crept in, because that table also happens to have sixteen entries.
+// U43: five leads on an SC70 body, the bench's words "U43, a five-lead SC70 marked WEJ", in the frame
+// recorded by e1_u43_photo. TI's DCK numbering has five entries too; it is not where this five came from.
+data e1_observed_lead_counts: List<ObservedLeadCount> = [
+  ObservedLeadCount {
+    component: e1_u55,
+    count: 16,
+    counted_from: "leads counted on the body from the pin-1 mark",
+    evidence: e1_u55_photo,
+  },
+  ObservedLeadCount {
+    component: e1_u43,
+    count: 5,
+    counted_from: "five leads counted on the SC70 body",
+    evidence: e1_u43_photo,
+  },
+]
+
+// Every position a probe touched on an E1 body, one row each. U51's eight are the 2026-10-20 session's
+// own sweep -- red on Q300's lead b, black on pins 1 through 8 in turn, "8: 2.5 / 7: 6 / 6: 2.5 / 5: 6 /
+// 4: 6 / 3: 5 / 2: 5 / 1: 5" -- and pins 9 through 16 were never touched, so they are absent here and
+// absent from the specimen's body. The names are positions counted on the body; TI's names for those
+// numbers belong to the part and are reachable only through identified_row(c).
+data e1_observed_probed_positions: List<ObservedProbedPosition> = [
+  ObservedProbedPosition { component: e1_u51, position: "pin 1", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 2", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 3", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 4", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 5", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 6", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 7", evidence: e1_lv165a_photo },
+  ObservedProbedPosition { component: e1_u51, position: "pin 8", evidence: e1_lv165a_photo },
+]
+
+// The positions of one body that were probed, selected by COMPONENT IDENTITY -- the design is part of
+// the comparison, so a K1 designator can never select an E1 row.
+fn e1_probed_positions(c: ComponentInstanceIdentity) -> List<NonEmptyStr> {
+  map(filter(e1_observed_probed_positions, p => component_identity_eq(a: p.component, b: c)), p => p.position)
+}
+
+// How many leads the bench counted on that body; zero rows means no count was ever recorded, which is
+// not the same as a count of zero.
+fn e1_lead_count_rows(c: ComponentInstanceIdentity) -> List<ObservedLeadCount> {
+  filter(e1_observed_lead_counts, r => component_identity_eq(a: r.component, b: c))
+}
+
+data e1_u51_probed_pins: List<NonEmptyStr> = e1_probed_positions(c: e1_u51)
+
 fn e1_u51_pin(n: NonEmptyStr) -> ElectricalTerminalRef {
   e1_terminal(c: e1_u51, name: n)
 }
@@ -1152,6 +1218,7 @@ data e1_u51_resistances: List<ResistanceObservation> = [
 data e1_u55: ComponentInstanceIdentity = e1_component(local: "U55")
 
 data e1_u55_footprint: ComponentInstanceIdentity = e1_component(local: "bare two-pad footprint below U55 (designator unread)")
+
 
 data e1_u55_pins: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5", "pin 6", "pin 7", "pin 8", "pin 9", "pin 10", "pin 11", "pin 12", "pin 13", "pin 14", "pin 15", "pin 16"]
 
@@ -1251,6 +1318,7 @@ data e1_u500_upper_part: ComponentInstanceIdentity = e1_component(local: "small 
 data e1_u43_chain_via: ComponentInstanceIdentity = e1_component(local: "via beside the U43 chain, below the small resistor")
 
 data e1_u500_contacts: List<NonEmptyStr> = ["upper-left contact", "upper-right contact", "right contact 2", "right contact 3", "lower-right contact", "lower-left contact", "left contact 3", "left contact 2"]
+
 
 data e1_u43_leads: List<NonEmptyStr> = ["pin 1", "pin 2", "pin 3", "pin 4", "pin 5"]
 
@@ -2728,8 +2796,13 @@ data p4261_e1_layout: CarrierLayoutObservation = CarrierLayoutObservation {
     InstalledComponent { seen: AfterIncidents { keys: [e1_u10p2_lift.key] }, component: e1_converter_near_footprint, terminals: names(ns: footprint_pad_terminals), identification: FootprintUnpopulated { evidence: e1_u10p2_lift_said } },
     InstalledComponent { seen: seen_unordered(), component: e1_u69, terminals: [], identification: IdentifiedByMarking { row: pca9617adp, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "P617A / 01 14 / 226", sighting: Present { value: e1_atlas_frame(content: Sha256Digest { hex: "d062aeddc9478e7bc0289e4e4c1f9f27e853284f2d08e4ac342d63345879507d" as Sha256DigestHex }, left: 972, top: 1402, width: 540, height: 560) } }, rest: [] }, evidence: OperatorPhotograph { citation: e1_atlas_frame(content: Sha256Digest { hex: "d062aeddc9478e7bc0289e4e4c1f9f27e853284f2d08e4ac342d63345879507d" as Sha256DigestHex }, left: 972, top: 1402, width: 540, height: 560) } } }},
     InstalledComponent { seen: seen_unordered(), component: e1_j30, terminals: names(ns: e1_j30_points), identification: MarkingUnresolved { marking: Absent, discriminator: "a three-position header silkscreened J30 beside U41 and D7_P2 (bench-session upload 2304eac4; J31, beside Q530, is another header): which of A, B, C the operator's 'pin 1' and 3.1 V point were, and each position to J20's black lead unpowered on a recorded range against the baseline" } },
-    InstalledComponent { seen: seen_unordered(), component: e1_u49, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "LV165A / 2BKG4 / AEC0", sighting: Absent }, rest: [] }, evidence: e1_lv165a_photo } }},
-    InstalledComponent { seen: seen_unordered(), component: e1_u51, terminals: names(ns: lv165a_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "LV165A / 2BKG4 / AEC0", sighting: Absent }, rest: [] }, evidence: e1_lv165a_photo } }},
+    // No terminal of U49 was ever probed. The sixteen TI pin names that used to sit in this field came
+    // from lv165a_pins, which is TI's numbering for the SN74LV165A: a fact about the PART. Written onto a
+    // specimen it made the datasheet a second authority for what the specimen is, and unlike a pin role it
+    // survived the identification being only a candidate. The bench probed nothing here, so nothing is
+    // claimed; TI's names are reachable through identified_row(c) when the marking settles.
+    InstalledComponent { seen: seen_unordered(), component: e1_u49, terminals: [], identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "LV165A / 2BKG4 / AEC0", sighting: Absent }, rest: [] }, evidence: e1_lv165a_photo } }},
+    InstalledComponent { seen: seen_unordered(), component: e1_u51, terminals: names(ns: e1_u51_probed_pins), identification: IdentifiedByMarking { row: sn74lv165a_pw, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "LV165A / 2BKG4 / AEC0", sighting: Absent }, rest: [] }, evidence: e1_lv165a_photo } }},
     InstalledComponent { seen: seen_unordered(), component: e1_u55, terminals: names(ns: e1_u55_pins), identification: MarkingCandidate { row: sn74avc4t774_rsv, marking: MarkingReading { content: Transcribed { first: GlyphSpan { text: "ZVK / 22J", sighting: Absent }, rest: [ReadingCircumstance { span: "ZVK the device marking; 22J a lot trace line", noted: "what each of the two lines is, as the bench annotated it", sighting: Absent }] }, evidence: e1_u55_photo }, discriminator: "no TI logo is read on the package and a marking code can be reused by another maker; unpowered against a baseline, pin 8 at the return and pins 13 and 14 each to one end of the two capacitors above the part read the orientation and the two supplies, and powered, VCCA and VCCB within 1.1 V to 3.6 V" }},
     InstalledComponent { seen: seen_unordered(), component: e1_u55_footprint, terminals: names(ns: ["left pad", "right pad"]), identification: FootprintUnpopulated { evidence: e1_u55_photo } },
     InstalledComponent { seen: seen_unordered(), component: e1_u55_left_capacitor, terminals: names(ns: ["end nearer U55", "end farther from U55"]), identification: MarkingUnresolved { marking: Absent, discriminator: "an unmarked capacitor above U55's pin 14; read it out of circuit or from the board's documentation" } },
