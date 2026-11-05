@@ -168,7 +168,10 @@ type InhabitanceVerdict
   // on the obligation and its own edge on the diagnostic (inhabitance_position_symbol), and naming a
   // refusal by position is what let one symbol stand for nine different mechanisms. See
   // v2.std.exact_structural_equality_zip_fold_predicate.
-  | InhabitanceRefused { find_witness_reason: Symbol }
+  // `refusal_class` is set once, by the decision that produced `find_witness_reason` -- never re-derived
+  // from the symbol afterwards, so there is one authority for which class a refusal is (keen-heron-809's
+  // condition on this PR).
+  | InhabitanceRefused { find_witness_reason: Symbol, refusal_class: InhabitanceRefusalClass }
   | InhabitanceUndecidable { reason: InhabitanceUndecidableReason }
 
 // Five producers, one relation: v2.compiler.infer builds PositionDirectCallArgument per argument of
@@ -464,13 +467,13 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation) -> InhabitanceV
     produced: obligation.produced,
     type_variables: obligation.type_variables
   ) {
-    InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason() }
+    InhabitanceRefused { find_witness_reason: inhabitance_optional_at_required_reason(), refusal_class: RefusalStructuralMismatch }
   } else {
     match inhabitance_optional_layer_judgement(declared: obligation.declared, produced: obligation.produced) {
       OptionalLayerDepthMismatch =>
-        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch }
       OptionalLayerWrapperMalformed =>
-        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason() }
+        InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_wrapper_malformed_reason(), refusal_class: RefusalStructuralMismatch }
       OptionalLayerInhabitanceHolds => declared_type_inhabitance_optional(obligation: obligation)
     }
   }
@@ -579,7 +582,7 @@ fn declared_type_inhabitance_optional(obligation: DeclaredTypeObligation) -> Inh
           match type_node_occupancy_child(n: declared_payload) {
             Present { value: _ } =>
               match type_node_occupancy_child(n: produced_payload) {
-                Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason() }
+                Absent => InhabitanceRefused { find_witness_reason: inhabitance_optional_layer_depth_mismatch_reason(), refusal_class: RefusalStructuralMismatch }
                 Present { value: _ } =>
                   declared_type_inhabitance(obligation: inhabitance_with_payloads(obligation: obligation, declared: declared_payload, produced: produced_payload, carrier: Absent))
               }
@@ -679,12 +682,10 @@ fn declared_type_inhabitance_exact(obligation: DeclaredTypeObligation) -> Inhabi
         Rejected { diagnostics: r } =>
           declared_type_inhabitance_declared_carrier(
             obligation: obligation,
-            exact_refusal: InhabitanceRefused {
-              find_witness_reason: declared_type_inhabitance_exact_refusal_reason(
-                obligation: obligation,
-                find_witness_reason: diagnostics_fatal_reason(d: r)
-              )
-            }
+            exact_refusal: declared_type_inhabitance_refusal(
+              obligation: obligation,
+              find_witness_reason: diagnostics_fatal_reason(d: r)
+            )
           )
       }
   }
@@ -748,23 +749,28 @@ fn inhabitance_position_context_edges(position: DeclaredTypePosition) -> List<Ed
 // gunbc.recurring_failure_mode rows then cited `arrow_body_does_not_inhabit_declared_return` for nine
 // different mechanisms, and no row could say which shape refused for which reason. The decision comes
 // from the same two nodes the fold just compared, through the one verdict in
-// v2.std.exact_structural_equality_zip_fold_predicate, so there is one decision and not two.
-fn declared_type_inhabitance_exact_refusal_reason(
+// v2.std.exact_structural_equality_zip_fold_predicate, so there is one decision and not two. The class of
+// the refusal travels with the reason it produced: nothing re-derives it from the symbol later.
+fn declared_type_inhabitance_refusal(
   obligation: DeclaredTypeObligation,
   find_witness_reason: Symbol
-) -> Symbol {
+) -> InhabitanceVerdict {
+  let refusal_decision = declared_type_inhabitance_refusal_decision(obligation: obligation, find_witness_reason: find_witness_reason)
+  InhabitanceRefused { find_witness_reason: refusal_decision.reason, refusal_class: refusal_decision.refusal_class }
+}
+
+// The decision for a refusal of the exact comparison: when the fold itself declined for a reason of its
+// own (a preservation rule that is not realized, an ambiguous candidate set, an invalid witness) that
+// reason carries its own class; when the fold found no candidate the structural verdict says which
+// question answered no and which class that question is.
+fn declared_type_inhabitance_refusal_decision(
+  obligation: DeclaredTypeObligation,
+  find_witness_reason: Symbol
+) -> InhabitanceStructuralDecision {
   if find_witness_reason == ^find_witness_reason_no_candidate {
-    inhabitance_structural_decision_reason(
-      comparison: exact_structural_comparison(
-        source_facts: obligation.produced,
-        algebra: obligation.produced,
-        candidate: obligation.declared
-      )
-    )
+    inhabitance_structural_decision(comparison: exact_structural_comparison(source_facts: obligation.produced, algebra: obligation.produced, candidate: obligation.declared))
   } else {
-    // A rule that is not realized, an ambiguous candidate set, an invalid witness: those are
-    // find_witness's own decisions and keep their own names.
-    find_witness_reason
+    InhabitanceStructuralDecision { refusal_class: RefusalWitnessSearchDecision, reason: find_witness_reason }
   }
 }
 
@@ -776,7 +782,6 @@ type InhabitanceRefusalClass
   = RefusalStructuralMismatch
   | RefusalComparisonCouldNotRun
   | RefusalWitnessSearchDecision
-  | RefusalClassUndecidedAtThisSite
 
 type InhabitanceStructuralDecision { refusal_class: InhabitanceRefusalClass, reason: Symbol }
 
@@ -807,43 +812,6 @@ fn inhabitance_structural_decision(comparison: ExactStructuralComparison) -> Inh
   }
 }
 
-fn inhabitance_structural_decision_reason(comparison: ExactStructuralComparison) -> Symbol {
-  inhabitance_structural_decision(comparison: comparison).reason
-}
-
-// THE CLASS OF A REFUSAL THE COMPILER HAS ALREADY DECIDED. The verdict's arms carry their class at the
-// branch that decided them (inhabitance_structural_decision); the diagnostic is built later, from the
-// reason the verdict carries, so this projects each minted reason back to its class. Every symbol this
-// module mints is named: the three mismatch arms, the five comparison-could-not-run arms, the optional-layer
-// trio (which answers the inhabitance question, and keeps the class its ruling left it in), and
-// v2.std.find_witness's own decisions (the search itself declined: the preservation rule is not realized,
-// the candidate set is ambiguous, the witness is invalid). A reason named by none of them lands in
-// RefusalClassUndecidedAtThisSite, which is refused WITHOUT a suggested correction -- so a reason added
-// later can never arrive as a type error by default.
-fn inhabitance_refusal_class_for_reason(reason: Symbol) -> InhabitanceRefusalClass {
-  if reason == ^inhabitance_comparison_witness_absent_under_holding_comparison
-    || reason == ^inhabitance_comparison_source_facts_malformed
-    || reason == ^inhabitance_comparison_algebra_malformed
-    || reason == ^inhabitance_comparison_candidate_malformed
-    || reason == ^inhabitance_comparison_algebra_not_source_facts {
-    RefusalComparisonCouldNotRun
-  } else if reason == ^inhabitance_structural_roots_differ
-    || reason == ^inhabitance_structural_argument_count_differs
-    || reason == ^inhabitance_structural_arguments_differ
-    || reason == inhabitance_optional_at_required_reason()
-    || reason == inhabitance_optional_layer_depth_mismatch_reason()
-    || reason == inhabitance_optional_layer_wrapper_malformed_reason() {
-    RefusalStructuralMismatch
-  } else if reason == ^find_witness_reason_not_realized
-    || reason == ^find_witness_reason_ambiguous_candidate
-    || reason == ^find_witness_reason_invalid_witness
-    || reason == ^find_witness_reason_no_candidate {
-    RefusalWitnessSearchDecision
-  } else {
-    RefusalClassUndecidedAtThisSite
-  }
-}
-
 // THE DIAGNOSTIC SHARED BY REFUSALS THAT DO NOT ANSWER THE INHABITANCE QUESTION. No suggested node: the
 // value's type is not what is wrong, so there is no edit at this site that would make it inhabit. For a
 // comparison-could-not-run refusal the fix lives in whatever produced the unreadable input; for a reason
@@ -867,19 +835,13 @@ fn inhabitance_refusal_without_suggestion_diagnostic(
 // without a suggestion, so a reader is never sent to fix a type error the compiler never showed.
 fn inhabitance_refusal_diagnostic(
   obligation: DeclaredTypeObligation,
+  refusal_class: InhabitanceRefusalClass,
   find_witness_reason: Symbol
 ) -> Diagnostic {
-  if inhabitance_refusal_class_for_reason(reason: find_witness_reason) == RefusalStructuralMismatch
-    || inhabitance_refusal_class_for_reason(reason: find_witness_reason) == RefusalWitnessSearchDecision {
-    application_argument_does_not_inhabit_diagnostic(
-      obligation: obligation,
-      find_witness_reason: find_witness_reason
-    )
-  } else {
-    inhabitance_refusal_without_suggestion_diagnostic(
-      obligation: obligation,
-      find_witness_reason: find_witness_reason
-    )
+  match refusal_class {
+    RefusalStructuralMismatch => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason)
+    RefusalWitnessSearchDecision => application_argument_does_not_inhabit_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason)
+    RefusalComparisonCouldNotRun => inhabitance_refusal_without_suggestion_diagnostic(obligation: obligation, find_witness_reason: find_witness_reason)
   }
 }
 

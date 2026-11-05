@@ -64,7 +64,7 @@ import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, conte
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canonical_grounding_from_derived_type }
-import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, inhabitance_refusal_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
+import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, RefusalWitnessSearchDecision, inhabitance_refusal_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
 import v2.std.diagnostic { CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending, bind_outcome_accepted, non_empty_diagnostics_append }
 import v2.std.logic { Bool, bool_node }
 import v2.std.type_binder { GenericTypeDecl, KindBound, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, refinement_declaration_of_node, type_annotation_optional, type_decl_view, type_param_bound, type_param_names, where_predicate_set_edge }
@@ -2608,7 +2608,7 @@ fn infer_coproduct_coverage_obligation(
     Inhabits { homomorphism: _ } => outcome_accepted(value: covered_carrier)
     InhabitanceUndecidable { reason: _ } =>
       outcome_rejected(infer_match_coverage_undecidable_diagnostic(node: node))
-    InhabitanceRefused { find_witness_reason: _ } =>
+    InhabitanceRefused { find_witness_reason: _, refusal_class: _ } =>
       outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
   }
 }
@@ -4600,10 +4600,11 @@ fn infer_judge_declared_position(
                 Rejected { diagnostics: r } => Rejected { diagnostics: r }
                 Accepted { value: _, diagnostics: d } => Accepted { value: closed, diagnostics: d }
               }
-            InhabitanceRefused { find_witness_reason: fw_reason } =>
+            InhabitanceRefused { find_witness_reason: fw_reason, refusal_class: refusal_class } =>
               outcome_rejected(
                 inhabitance_refusal_diagnostic(
                   obligation: obligation,
+                  refusal_class: refusal_class,
                   find_witness_reason: fw_reason
                 )
               )
@@ -5475,6 +5476,7 @@ fn infer_judge_generic_formal(
           outcome_rejected(
             inhabitance_refusal_diagnostic(
               obligation: infer_declared_type_obligation(position: position, parameter_identity: formal.parameter_identity, declared: infer_declared_type_denotation(declared: infer_type_instantiated(t: formal.declared, instances: instances)), produced: produced, application: application, type_variables: type_params, declarations: declarations, bindings: bindings),
+              refusal_class: RefusalWitnessSearchDecision,
               find_witness_reason: ^find_witness_reason_no_candidate
             )
           )
@@ -6024,7 +6026,7 @@ fn infer_literal_refinement_demand(
                     ) {
                       Inhabits { homomorphism: _ } =>
                         Present { value: InferLiteralRefinementDemand { site: pair.arg, predicate: predicate, target: target, carrier: refinement.carrier } }
-                      InhabitanceRefused { find_witness_reason: _ } => Absent
+                      InhabitanceRefused { find_witness_reason: _, refusal_class: _ } => Absent
                       InhabitanceUndecidable { reason: _ } => Absent
                     }
                 }
@@ -9795,12 +9797,12 @@ fn infer_fold_member_judged_frame(frame: InferFrame, formal: FoldMemberFormal, m
     Inhabits { homomorphism: _ } => InferFrame { instances: frame.instances, binder_types: frame.binder_types, entering: InferFrameEnteredPlain, declared_position_expected: Absent, rigid_binders: frame.rigid_binders }
     InhabitanceUndecidable { reason: _ } =>
       infer_frame_with_advisory(frame: frame, reason: ^infer_reason_fold_member_formal_undecided, at: formal.formal.type_node)
-    InhabitanceRefused { find_witness_reason: fw_reason } =>
+    InhabitanceRefused { find_witness_reason: fw_reason, refusal_class: refusal_class } =>
       InferFrame {
         instances: frame.instances,
         binder_types: frame.binder_types,
         entering: InferFrameEnteredRefused {
-          refused: diagnostics_singleton(d: inhabitance_refusal_diagnostic(obligation: obligation, find_witness_reason: fw_reason))
+          refused: diagnostics_singleton(d: inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: refusal_class, find_witness_reason: fw_reason))
         },
         declared_position_expected: Absent,
         rigid_binders: frame.rigid_binders
@@ -10887,8 +10889,8 @@ fn infer_fold_judge(declared: Node, produced: Node, at: Node, step: Node, resolv
   match declared_type_inhabitance(obligation: obligation) {
     Inhabits { homomorphism: _ } => Accepted { value: true, diagnostics: None }
     InhabitanceUndecidable { reason: reason } => infer_inhabitance_undecidable_accepted(application: at, reason: reason)
-    InhabitanceRefused { find_witness_reason: fw_reason } =>
-      outcome_rejected(inhabitance_refusal_diagnostic(obligation: obligation, find_witness_reason: fw_reason))
+    InhabitanceRefused { find_witness_reason: fw_reason, refusal_class: refusal_class } =>
+      outcome_rejected(inhabitance_refusal_diagnostic(obligation: obligation, refusal_class: refusal_class, find_witness_reason: fw_reason))
   }
 }
 
