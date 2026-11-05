@@ -1,0 +1,99 @@
+module v2.compiler.self_host.direct_rust_door_written_compile
+
+import extdeps.rust.rustc
+import std.types { Bool, Int }
+import v2.compiler.self_host.candidate_generation {
+  WrittenProvenancedRustArtifact,
+  generate_written_rust_candidate_from_ingest,
+  written_provenanced_rust_artifact_ok
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_module_path,
+  direct_rust_door_target_model
+}
+import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
+  direct_rust_door_missing_rules_target
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.text { String }
+
+// THE WRITTEN-SOURCE HALF OF v2-emitter-direct-rust-door, AND IT IS THE SAME PRODUCTION ROUTE.
+// The closing group (v2_emitter_direct_rust_door_contract) observes the Rust source as an in-memory
+// string; the node's handback owes the source WRITTEN TO A FILE, rustc's result ON THAT FILE, and the
+// missing-rule refusal executed on that same route. generate_written_rust_candidate_from_ingest is
+// that route (ingest -> assemble -> infer -> module emission -> producer receipt -> write); this
+// module adds the one step it lacked, the cited rustc.Check.CheckSourceFile on the path it wrote, and
+// takes the TargetModel as a parameter so the planted incomplete model walks the identical route
+// rather than a second path beside it.
+//
+// HOST-EFFECT MODULE (Filesystem.Write, a rustc subprocess): it executes only on a wet run, never in
+// the hermetic envelope, for the reason v2.workflow.dag_acceptance_rustc gives.
+
+type WrittenRustCompileObservation
+  = WrittenSourceCompiled {
+      written: WrittenProvenancedRustArtifact,
+      compile_accepted: Bool,
+      compile_exit_code: Int,
+      compile_stderr: String
+    }
+  | WrittenRouteRefused
+
+fn observe_written_rust_compile(
+  workspace_dir: String,
+  target: TargetModel
+) -> WrittenRustCompileObservation {
+  match generate_written_rust_candidate_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    target: target,
+    module_path: direct_rust_door_module_path,
+    workspace_dir: workspace_dir
+  ) {
+    Rejected { diagnostics: _ } => WrittenRouteRefused
+    Accepted { value: written, diagnostics: _ } =>
+      let result = rustc.Check.CheckSourceFile(path: written.write.main_rs_path, edition: "2021")
+      WrittenSourceCompiled {
+        written: written,
+        compile_accepted: result.success,
+        compile_exit_code: result.exit_code,
+        compile_stderr: result.stderr
+      }
+  }
+}
+
+fn direct_rust_door_written_production() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "target/direct-rust-door-written/production",
+    target: direct_rust_door_target_model()
+  )
+}
+
+fn direct_rust_door_written_missing_rule() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "target/direct-rust-door-written/missing-rule",
+    target: direct_rust_door_missing_rules_target
+  )
+}
+
+// The written file is the production source (not merely any file rustc accepts), produced by the
+// v2 emitter with no seed-emitter reach (written_provenanced_rust_artifact_ok folds both writes and
+// producer identity), and rustc accepted THAT path.
+fn written_compile_holds(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenSourceCompiled { written: written, compile_accepted: accepted, compile_exit_code: _, compile_stderr: _ } =>
+      accepted && written_provenanced_rust_artifact_ok(written: written)
+    WrittenRouteRefused => false
+  }
+}
+
+// The missing-rule control on the SAME route: refusing means no artifact, hence no file written and
+// no rustc run — a refusal that still compiled something would be the guess this node forbids.
+fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenRouteRefused => true
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
+  }
+}
