@@ -95,6 +95,17 @@ test fn a_missing_or_unread_main_after_does_not_read_back_as_restarted() -> Bool
     && !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: NoMainProcess, after_main: MainProcessUnread { cause: "show refused" as NonEmptyStr })
 }
 
+// DISCRIMINATING RED (unread BEFORE): if the main could NOT be read before the restart, a live active main
+// seen afterwards does not prove a cycle -- could-not-see is never a readback that a restart happened
+// (DESIGN section 5). This is the complement of the NoMainProcess cold-start control above: definitively
+// having no main is a real before whose first live main IS a cycle, whereas an unread before is not an
+// observation at all and cannot distinguish a cycle from a no-op. The two collapse to the same Absent pid
+// through slot_main_process_pid, so the readback must classify the before by variant to tell them apart.
+// (review 91001)
+test fn an_unread_before_never_reads_back_as_restarted() -> Bool {
+  !slot_restart_read_back_holds(r: reading(load: "loaded", file: "enabled", active: "active"), before: MainProcessUnread { cause: "show refused" as NonEmptyStr }, after_main: with_pid(pid: 444, boot: "b1"))
+}
+
 // ── The boundary absolute start: boot epoch + start ticks / READ clock rate, never a zero ─────────
 
 // POSITIVE CONTROL: btime 1793700000 with 100 ticks at 100 Hz is a start of 1793700001 — the wall clock

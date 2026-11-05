@@ -290,15 +290,31 @@ fn slot_main_process_pid(m: RunnerUnitMainProcess) -> Nat? {
 fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainProcess, after_main: RunnerUnitMainProcess) -> Bool {
   let loaded = match r.load { UnitLoaded => true UnitLoadMasked => false UnitLoadNotFound => false UnitLoadBadSetting => false UnitLoadError => false }
   let after_pid = slot_main_process_pid(m: after_main)
-  let before_pid = slot_main_process_pid(m: before)
+  // The BEFORE side is classified by variant, NOT collapsed through slot_main_process_pid: that helper maps
+  // both NoMainProcess (definitively no main -> a live main after is a genuine cold-start cycle) and
+  // MainProcessUnread (the unit was not readable -> we cannot tell a cycle from a no-op) to Absent, and
+  // conflating them would let an unread before confirm a restart it never observed. A restart leg may reach
+  // the actuation with an unread before only on the roster-driven Detached/Orphaned arms, which never consult
+  // main; could-not-see is therefore never a readback that a restart happened (DESIGN section 5).
+  let before_confirms_cycle = match before {
+    NoMainProcess => true
+    MainProcessUnread { cause: _ } => false
+    MainProcess { process: _, absolute_start: _ } => true
+    MainProcessUngrounded { pid: _, cause: _ } => true
+  }
+  let before_changed = match slot_main_process_pid(m: before) {
+    Absent => true
+    Present { value: b } => match after_pid {
+      Absent => false
+      Present { value: a } => a != b
+    }
+  }
   loaded
     && slot_state_active(active: r.active)
+    && before_confirms_cycle
     && match after_pid {
       Absent => false
-      Present { value: a } => match before_pid {
-        Absent => true
-        Present { value: b } => a != b
-      }
+      Present { value: _ } => before_changed
     }
 }
 
