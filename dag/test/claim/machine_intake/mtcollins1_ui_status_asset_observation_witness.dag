@@ -875,8 +875,8 @@ data witness_expected_mapping: NonEmptyStr = "0:\"Ejected\"" as NonEmptyStr
 // the absence below proves nothing), and it really is between the offsets the receipt names.
 test fn w_a_credential_between_the_sites_never_reaches_the_receipt() -> Bool {
   let asset = witness_asset_with_payloads(
-    filler: concat(";e.headers.push({", concat(witness_injected_credential, "});")),
-    tail: ":1:\"Inserted\"}",
+    filler: concat(";session_token_read=", concat(witness_injected_credential, ";")),
+    tail: ":1:\"Inserted\"\}",
   )
   let found = witness_extract(asset)
   match ui_octets_index_of(hay: ui_octets_of(asset), needle: ui_octets_of(witness_injected_credential)) {
@@ -926,7 +926,7 @@ test fn w_a_credential_between_the_sites_never_reaches_the_receipt() -> Bool {
 test fn w_a_credential_adjacent_to_the_mapping_is_outside_the_excerpt() -> Bool {
   let asset = witness_asset_with_payloads(
     filler: "",
-    tail: concat(concat(":1:\"Inserted\";document.cookie=", witness_injected_credential), "}"),
+    tail: concat(concat(":1:\"Inserted\";document.cookie=", witness_injected_credential), "\}"),
   )
   let found = witness_extract(asset)
   match ui_octets_index_of(hay: ui_octets_of(asset), needle: ui_octets_of(witness_injected_credential)) {
