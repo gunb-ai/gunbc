@@ -1149,7 +1149,12 @@ fn session_worker_unit_lifecycle_with_standing(instance: HostDashboardInstance, 
         loaded: loaded,
         evidence: evidence,
         record: attempt_exit_worker_record_matching(
-          subject: (n, a) => (dispatch_attempt_unit_name(node_id: n, attempt_key: a) as String) == (unit as String),
+          subject: (n, a) => match dispatch_attempt_unit_name(node_id: n, attempt_key: a) {
+            SystemdUnitNameAdmitted { name } => (systemd_unit_name_wire(name: name) as String) == (unit as String)
+            SystemdUnitNameStemEmpty => false
+            SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => false
+            SystemdUnitNameOverlong { length: _ } => false
+          },
           listings: attempt_exit_stage_listings(instance_root: instance.instance_root as String),
         ),
       )
