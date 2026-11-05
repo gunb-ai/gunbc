@@ -36,6 +36,9 @@ import gunbc.live_deploy.serve_binary_build {
 }
 import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated_argv, RetireUnitFragment, SystemdDaemonReload }
 import extdeps.access.posix { file_mode_of_octal_text }
 // THE GROUP ROW, FOR THE TWO PRODUCTION BINDINGS IN THIS MODULE: the operation the plan builds, and the
 // readback refusal that checks it. Both compare the tree's group against the SAME declaration the grant
@@ -90,7 +93,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterMaskVendorFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
@@ -154,6 +157,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardMigrateGitWorkerSubtree,
   DashboardMoveAttemptStateEntries,
   DashboardAssertLegacyWriterExcluded,
+  DashboardRetireLegacyWriters,
   dashboard_ensure_git_shared_repository_posture, dashboard_instance_worker_git_subtree_migration,
   dashboard_git_worker_subtree_path, dashboard_git_worker_directory_children,
   dashboard_git_worker_subtree_confined_children, dashboard_git_subtree_readback_is_granted,
@@ -1191,6 +1195,17 @@ fn dashboard_apply_provision_op(
     // readback lists both directories again and refuses unless nothing legacy remains and every entry is present.
     // THE ACTIVATION GATE: the last step of the plan, before the new dispatcher is started (a declared operator
     // act for this instance). It re-observes the exclusion and refuses if any declared unit is running or unmasked.
+    // THE RETIREMENT LEG, before any entry moves: each declared unit is read, retired when it is not already
+    // excluded, and read again. An undeclared or conflicting fence has no unit to retire and refuses.
+    DashboardRetireLegacyWriters { fence: fence } =>
+      match fence {
+        LegacyWriterUndeclared => dashboard_exec_refused(detail: "no legacy dispatcher unit is declared for this instance (legacy_writer_fences); nothing can be retired")
+        LegacyWriterFenceConflict { instance_id: id, rows: n } =>
+          dashboard_exec_refused(detail: join(["legacy_writer_fences declares ", to_string(value: n), " rows for instance ", id as String, "; one fence per instance"], ""))
+        LegacyWriterUnits { systemctl: ctl, units: units, rollback_store: store } =>
+          fold(units, init: dashboard_exec_ok(stdout: ""), f: (acc, unit) =>
+            if acc.success { dashboard_retire_legacy_writer(instance: instance, ctl: ctl, store: store, unit: unit) } else { acc })
+      }
     DashboardAssertLegacyWriterExcluded { fence: fence } => {
       let drift = dashboard_legacy_writer_drift(instance: instance, fence: fence, undeclared_refuses: false)
       if drift != "" {
@@ -1369,7 +1384,7 @@ fn dashboard_apply_provision_op(
 }
 
 // THE ONE OBSERVATION of the legacy writer's exclusion, shared by every boundary that depends on it: "" when every
-// declared unit is stopped (inactive/failed) AND masked, else the typed reason. An unreadable unit reads as not
+// declared unit is stopped (inactive/failed) AND not loadable (not-found or masked), else the typed reason. An unreadable unit reads as not
 // stopped. undeclared_refuses is true where entries are being taken (nothing to observe is a refusal) and false
 // where a fence-less instance has no entry to protect (the Noop and activation routes).
 fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyWriterFence, undeclared_refuses: Bool) -> String {
@@ -1382,15 +1397,80 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
       }
     LegacyWriterFenceConflict { instance_id: id, rows: n } =>
       join(["legacy_writer_fences declares ", to_string(value: n), " rows for instance ", id as String, "; one fence per instance, so the old writer cannot be observed excluded"], "")
-    LegacyWriterUnits { systemctl: ctl, units: units } =>
-      match legacy_writer_exclusion_all(exclusions: map(units, unit => {
-        let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-active", unit as String])
-        let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: ["is-enabled", unit as String])
-        legacy_writer_exclusion(unit: unit as String, active_state: trim(s: active.stdout), enabled_state: trim(s: enabled.stdout))
-      })) {
+    LegacyWriterUnits { systemctl: ctl, units: units, rollback_store: _ } =>
+      match legacy_writer_exclusion_all(exclusions: map(units, unit =>
+        legacy_writer_exclusion(unit: unit.name as String, reading: dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name))
+      )) {
         LegacyWriterNotExcluded { reason: why } => why
         LegacyWriterExcluded => ""
       }
+  }
+}
+
+// ONE unit's reading: `systemctl show -p LoadState -p ActiveState -p FragmentPath <unit>` through the target
+// (unprivileged: show reads the manager). A failed or partial read yields empty fields, which the exclusion refuses.
+fn dashboard_legacy_writer_reading(instance: HostDashboardInstance, systemctl: NonEmptyStr, unit: NonEmptyStr) -> LegacyWriterUnitReading {
+  let cmd = systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState, FragmentPathProperty])
+  let r = dashboard_target_exec(instance: instance, program: systemctl as FilePath, args: cmd.arguments)
+  if r.success {
+    LegacyWriterUnitReading {
+      load_state: dashboard_show_word(text: r.stdout, key: "LoadState"),
+      active_state: dashboard_show_word(text: r.stdout, key: "ActiveState"),
+      fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath"),
+    }
+  } else {
+    LegacyWriterUnitReading { load_state: "", active_state: "", fragment_path: "" }
+  }
+}
+
+fn dashboard_show_word(text: String, key: String) -> String {
+  match systemctl_show_property_value(text: text, key: key) {
+    Present { value: v } => trim(s: v)
+    Absent => ""
+  }
+}
+
+// A privileged operation run through the target: the elevated argv is the one the sudoers grant is rendered from.
+fn dashboard_run_privileged(instance: HostDashboardInstance, op: ExecutorPrivilegedOperation) -> DashboardExecResult {
+  let argv = executor_privileged_operation_elevated_argv(op: op)
+  match first(argv) {
+    Present { value: program } => dashboard_target_exec(instance: instance, program: program as FilePath, args: drop(argv, 1))
+    Absent => dashboard_exec_refused(detail: "a privileged operation rendered an empty argv")
+  }
+}
+
+// THE RETIREMENT LEG, per declared unit: read, decide (legacy_writer_retirement), act through typed privileged
+// operations, read again, and require exclusion. On a failed act or a unit still not excluded, the retained bytes go
+// back and the leg refuses; the receipt text names the unit, the plan, the fragment digest before and the retained digest after.
+fn dashboard_retire_legacy_writer(instance: HostDashboardInstance, ctl: NonEmptyStr, store: NonEmptyStr, unit: LegacyWriterUnit) -> DashboardExecResult {
+  let before = dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name)
+  let plan = legacy_writer_retirement(unit: unit, reading: before)
+  match plan {
+    LegacyWriterAlreadyExcluded => dashboard_exec_ok(stdout: join([unit.name as String, ": already excluded (LoadState ", before.load_state, ", ActiveState ", before.active_state, ")"], ""))
+    LegacyWriterRetirementRefused { reason: why } => dashboard_exec_refused(detail: why)
+    LegacyWriterRetireEtcFragment => dashboard_retire_legacy_writer_act(instance: instance, ctl: ctl, store: store, unit: unit, plan: plan)
+    LegacyWriterMaskVendorFragment => dashboard_retire_legacy_writer_act(instance: instance, ctl: ctl, store: store, unit: unit, plan: plan)
+  }
+}
+
+fn dashboard_retire_legacy_writer_act(instance: HostDashboardInstance, ctl: NonEmptyStr, store: NonEmptyStr, unit: LegacyWriterUnit, plan: LegacyWriterRetirement) -> DashboardExecResult {
+  let digest_before = dashboard_target_digest(instance: instance, path: unit.etc_fragment as String)
+  let ran = fold(legacy_writer_retirement_operations(rollback_store: store, unit: unit, plan: plan), init: dashboard_exec_ok(stdout: ""), f: (acc, op) =>
+    if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
+  let after = dashboard_legacy_writer_reading(instance: instance, systemctl: ctl, unit: unit.name)
+  let excluded = legacy_writer_exclusion(unit: unit.name as String, reading: after)
+  match excluded {
+    LegacyWriterExcluded =>
+      if ran.success {
+        dashboard_exec_ok(stdout: join([unit.name as String, ": retired (fragment sha256 ", digest_before, ", retained at ", legacy_writer_retained_path(rollback_store: store, unit: unit) as String, ")"], ""))
+      } else {
+        ran
+      }
+    LegacyWriterNotExcluded { reason: why } => {
+      let restored = fold(legacy_writer_restore_operations(rollback_store: store, unit: unit, plan: plan), init: dashboard_exec_ok(stdout: ""), f: (acc, op) =>
+        if acc.success { dashboard_run_privileged(instance: instance, op: op) } else { acc })
+      dashboard_exec_refused(detail: join([unit.name as String, ": retirement did not reach exclusion (", why, "; act ", if ran.success { "ran" } else { ran.stderr }, "); rollback ", if restored.success { "restored the retained fragment" } else { restored.stderr }], ""))
+    }
   }
 }
 
@@ -2792,6 +2872,7 @@ fn dashboard_bootstrap_only_ops(
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
       DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
       DashboardAssertLegacyWriterExcluded { fence: _ } => false
+      DashboardRetireLegacyWriters { fence: _ } => false
     })
 }
 

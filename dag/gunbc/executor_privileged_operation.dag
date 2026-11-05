@@ -38,7 +38,7 @@ import gunbc.ensure { EnsurePlan, EnsurePlanAvailable, EnsurePlanUnavailable }
 import std.algebra { fold_list, length }
 
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
-import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb, systemctl_mask_verb, systemctl_now_flag }
+import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb, systemctl_mask_verb, systemctl_now_flag, systemctl_stop_verb }
 import gunbc.fleet.fleet_posix_accounts {
   ci_runner_sudo_binary_path,
   SudoInstall,
@@ -52,6 +52,7 @@ import gunbc.fleet.fleet_posix_accounts {
   SudoNfct,
   SudoStat,
   SudoLs,
+  SudoMv,
 }
 import extdeps.tools.conntrack { conntrack_list_expectations_arguments }
 import extdeps.nftables.ruleset { nft_list_ruleset_arguments, nft_list_table_arguments_wire }
@@ -79,6 +80,8 @@ type ExecutorPrivilegedOperation
   | SystemdEnableUnit { unit: NonEmptyStr }
   | SystemdStartUnit { unit: NonEmptyStr }
   | SystemdMaskNowUnit { unit: NonEmptyStr }
+  | SystemdStopUnit { unit: NonEmptyStr }
+  | RetireUnitFragment { fragment: NonEmptyStr, retained: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
   | EnsureJobAccount { login: NonEmptyStr, shell: NonEmptyStr, home: NonEmptyStr }
@@ -247,6 +250,20 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       systemctl_now_flag,
       u
     ]
+    SystemdStopUnit { unit: u } => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      systemctl_stop_verb,
+      u
+    ]
+    // THE RETIREMENT OF A UNIT FRAGMENT IS A RENAME, NOT A DELETE: the bytes stay at `retained` (the
+    // apply's rollback store) so a refused apply can put them back. -n never clobbers a retained copy.
+    RetireUnitFragment { fragment: f, retained: r } => [
+      ci_runner_sudo_binary_path(b: SudoMv),
+      "-n" as NonEmptyStr,
+      "--" as NonEmptyStr,
+      f,
+      r
+    ]
     SystemdSetUnitProperty { unit: u, assignment: a } => [
       ci_runner_sudo_binary_path(b: SudoSystemctl),
       systemctl_set_property_verb,
@@ -268,6 +285,8 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     SystemdEnableUnit { unit: _ } => RunsAsRoot
     SystemdStartUnit { unit: _ } => RunsAsRoot
     SystemdMaskNowUnit { unit: _ } => RunsAsRoot
+    SystemdStopUnit { unit: _ } => RunsAsRoot
+    RetireUnitFragment { fragment: _, retained: _ } => RunsAsRoot
     SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
     EnsureSystemAccount { login: _, shell: _ } => RunsAsRoot
     EnsureJobAccount { login: _, shell: _, home: _ } => RunsAsRoot
@@ -646,6 +665,8 @@ fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -
     SystemdEnableUnit { unit: _ } => NoPrecondition
     SystemdStartUnit { unit: _ } => NoPrecondition
     SystemdMaskNowUnit { unit: _ } => NoPrecondition
+    SystemdStopUnit { unit: _ } => NoPrecondition
+    RetireUnitFragment { fragment: _, retained: _ } => NoPrecondition
     SystemdSetUnitProperty { unit: _, assignment: _ } => NoPrecondition
     InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => NoPrecondition
     SystemdReloadUnit { unit: _ } => NoPrecondition

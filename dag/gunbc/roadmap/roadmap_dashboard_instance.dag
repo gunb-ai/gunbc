@@ -25,7 +25,7 @@ import extdeps.git {
 import std.optional { Optional, Present, Absent }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit, legacy_writer_fence_for }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
@@ -3432,6 +3432,11 @@ type DashboardInstanceProvisionOp
       // (gunbc.roadmap.roadmap_attempt_state_layout_move legacy_writer_exclusion).
       fence: LegacyWriterFence,
     }
+  // THE RETIREMENT OF THE LEGACY WRITER UNITS, before any entry moves: each declared unit is read (LoadState,
+  // ActiveState, FragmentPath) and, when it can still start, retired by typed privileged operations: an /etc
+  // fragment is stopped and renamed into the rollback store with the manager reloaded; a vendor fragment is
+  // masked. The unit is read again and must be excluded, else the retained bytes are restored and the apply refuses.
+  | DashboardRetireLegacyWriters { fence: LegacyWriterFence }
   // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
   | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
 
@@ -3519,13 +3524,13 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     ]
   }
   let attempt_state_moves = map(attempt_state_move_rows, row => DashboardMoveAttemptStateEntries { row: row, fence: dashboard_instance_legacy_writer_fence(instance: instance) })
-  concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
+  concat([DashboardRetireLegacyWriters { fence: dashboard_instance_legacy_writer_fence(instance: instance) }], concat(attempt_state_moves, concat(controller_source_ops, concat(common, concat(source_ops, concat(
     shared_git_posture,
     concat(
       dashboard_instance_provider_verification_ops(instance: instance),
       [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
     ),
-  )))))
+  ))))))
 }
 
 fn dashboard_instance_provider_verification_ops(
@@ -3650,11 +3655,17 @@ fn dashboard_instance_provision_op_row(
         target: repo as String,
         detail: "bounded re-group of objects/, refs/ and logs/ to the attempt group with g+w and setgid (objects/ also +t); confined children pruned; read back path by path before the receipt",
       }
+    DashboardRetireLegacyWriters { fence: _ } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "retire-legacy-writers" as NonEmptyStr,
+        target: "legacy dispatcher units" as String,
+        detail: "read each declared legacy writer unit; an /etc fragment is stopped and renamed into the rollback store (digest recorded) and the manager reloaded, a vendor fragment is masked; read again and refused unless excluded, retained bytes restored on refusal",
+      }
     DashboardAssertLegacyWriterExcluded { fence: _ } =>
       DashboardInstanceProvisionPlanRow {
         kind: "assert-legacy-writer-excluded" as NonEmptyStr,
         target: "legacy dispatcher units" as String,
-        detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
+        detail: "activation gate: every declared legacy writer unit is observed stopped and not loadable (not-found or masked) again before the new dispatcher may start",
       }
     DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
       DashboardInstanceProvisionPlanRow {
@@ -3682,7 +3693,11 @@ data legacy_writer_fences: List<LegacyWriterFenceRow> = [
     instance_id: srv1_dashboard_lab_id,
     fence: LegacyWriterUnits {
       systemctl: "/usr/bin/systemctl" as NonEmptyStr,
-      units: ["gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr],
+      units: [LegacyWriterUnit {
+        name: "gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+        etc_fragment: "/etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service" as NonEmptyStr,
+      }],
+      rollback_store: "/etc/systemd/system" as NonEmptyStr,
     },
   },
 ]
