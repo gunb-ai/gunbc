@@ -5,12 +5,12 @@ module test.claim.runner.lab_apply_operator_grant_witness
 // ExecutorPrivilegedOperation values, and this pairs them at the rendered srv1 sudoers bytes.
 
 import std.types { String, NonEmptyStr, Bool, List }
-import gunbc.executor_privileged_operation { executor_privileged_operation_sudoers_line, SystemdMaskNowUnit }
+import gunbc.executor_privileged_operation { executor_privileged_operation_sudoers_line }
 import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_content }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { legacy_writer_grant_operations, legacy_writer_retirement_operations, legacy_writer_restore_operations, LegacyWriterRetireEtcFragment, LegacyWriterMaskVendorFragment, LegacyWriterUnits, LegacyWriterUnit }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { legacy_writer_grant_operations, legacy_writer_retirement_operations, legacy_writer_restore_operations, LegacyWriterRetireEtcFragment, LegacyWriterUnits, LegacyWriterUnit }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, dashboard_instance_legacy_writer_fence }
 
 fn srv1_sudoers() -> String {

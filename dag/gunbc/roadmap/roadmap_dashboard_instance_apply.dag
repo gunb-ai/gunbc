@@ -38,7 +38,7 @@ import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
-import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated_argv, RetireUnitFragment, SystemdDaemonReload }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated }
 import extdeps.access.posix { file_mode_of_octal_text }
 // THE GROUP ROW, FOR THE TWO PRODUCTION BINDINGS IN THIS MODULE: the operation the plan builds, and the
 // readback refusal that checks it. Both compare the tree's group against the SAME declaration the grant
@@ -93,7 +93,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterMaskVendorFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
@@ -1432,11 +1432,8 @@ fn dashboard_show_word(text: String, key: String) -> String {
 
 // A privileged operation run through the target: the elevated argv is the one the sudoers grant is rendered from.
 fn dashboard_run_privileged(instance: HostDashboardInstance, op: ExecutorPrivilegedOperation) -> DashboardExecResult {
-  let argv = executor_privileged_operation_elevated_argv(op: op)
-  match first(argv) {
-    Present { value: program } => dashboard_target_exec(instance: instance, program: program as FilePath, args: drop(argv, 1))
-    Absent => dashboard_exec_refused(detail: "a privileged operation rendered an empty argv")
-  }
+  let e = executor_privileged_operation_elevated(op: op)
+  dashboard_target_exec(instance: instance, program: e.bin_path as FilePath, args: e.args)
 }
 
 // THE RETIREMENT LEG, per declared unit: read, decide (legacy_writer_retirement), act through typed privileged
@@ -1449,7 +1446,6 @@ fn dashboard_retire_legacy_writer(instance: HostDashboardInstance, ctl: NonEmpty
     LegacyWriterAlreadyExcluded => dashboard_exec_ok(stdout: join([unit.name as String, ": already excluded (LoadState ", before.load_state, ", ActiveState ", before.active_state, ")"], ""))
     LegacyWriterRetirementRefused { reason: why } => dashboard_exec_refused(detail: why)
     LegacyWriterRetireEtcFragment => dashboard_retire_legacy_writer_act(instance: instance, ctl: ctl, store: store, unit: unit, plan: plan)
-    LegacyWriterMaskVendorFragment => dashboard_retire_legacy_writer_act(instance: instance, ctl: ctl, store: store, unit: unit, plan: plan)
   }
 }
 
