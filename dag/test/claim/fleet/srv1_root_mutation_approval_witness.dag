@@ -7,19 +7,31 @@ module test.claim.fleet.srv1_root_mutation_approval_witness
 // the part that is cheap and load-bearing: the gate fold, the request, the inheritance, the window row and
 // the timing -- all read from the run module, at one interface each (DESIGN 3).
 
-import std.types { Bool, Int, NonEmptyStr, String, List, Timestamp }
+import std.types { Bool, Int, NonEmptyStr, String, List }
 import std.algebra { string_contains, list_map }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.scoped_authorization { AuthorizationRequest, AuthorizationScope }
-import extdeps.github.actions { Job, Step, RunStep, UsesStep }
-import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpired }
-import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired, approval_request_window, approval_expires_at }
+import gunbc.auth.approval_gate {
+  approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied, ApprovalExpired,
+  approval_request_window, ApprovalPending, PollBudgetExhausted, ApprovalStoreUnreadable,
+}
 import std.measure { second_count, minute_count }
 import std.integer { nat_to_int }
 import extdeps.github.actions { max_job_timeout_minutes }
+// IMPORTS THAT THE SPLIT HAD TO RESTORE. These names were used here all along and never reached a
+// typechecker, because the file never got past the projection's typecheck; splitting the projection out
+// is what made the missing imports visible (stern's run at eab572a3). The family coproduct and its wire
+// live in gunbc.fleet.srv1_root_mutation_mode, which is where a mode's name, job id and authority are
+// declared -- not in the workflow that projects them.
+import gunbc.fleet.srv1_root_mutation_mode {
+  Srv1RootMutationMode, Srv1RootMutationModeRead, DashboardDeploy, MicrovmControllerInstall,
+  ApprovalNtfyRetire, ModeRead, ModeWireUnreadable, srv1_root_mutation_modes,
+  srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id, srv1_root_mutation_mode_authority,
+  srv1_root_mutation_mode_of_wire,
+}
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inheritance, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
   microvm_controller_install_root_scopes, srv1_root_write_scope,

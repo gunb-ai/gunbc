@@ -49,12 +49,19 @@ import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, s
 import gunbc.auth.authorization_pattern_selection { EntailedByApprovedConvergence }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
+// The family's own wire and job id, declared in gunbc.fleet.srv1_root_mutation_mode: the workflow module
+// DELEGATES to these, and a claim that compares the two must name the callee, or its effect summary
+// cannot be joined (stern's run at eab572a3).
+import gunbc.fleet.srv1_root_mutation_mode {
+  Srv1RootMutationMode, srv1_root_mutation_mode_wire, srv1_root_mutation_mode_job_id,
+  srv1_root_mutation_modes,
+}
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_dashboard_deploy_job, fleet_converge_approval_broker_dark_install_job, fleet_converge_microvm_controller_install_job,
   fleet_converge_dashboard_deploy_selected_inputs, fleet_converge_microvm_controller_install_selected_inputs,
   fleet_converge_approval_broker_dark_install_selected_inputs,
   fleet_converge_approval_ntfy_retire_job, fleet_converge_approval_ntfy_retire_selected_inputs,
-  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation,
+  fleet_converge_workflow_mode_wire, fleet_converge_printer_job, Srv1RootMutation,, fleet_converge_mode_job_id
 }
 
 // THE GENERATOR AND THE AUTHORITY SPEAK THE SAME WIRE AND THE SAME JOB NAME: the dispatch vocabulary
