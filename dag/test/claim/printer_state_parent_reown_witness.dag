@@ -19,6 +19,8 @@ import gunbc.owned_directory {
   owned_directory_observe, owned_directory_install_plan_of, owned_directory_path,
   owned_directory_stat_format, owned_directory_parent,
 }
+import gunbc.ci.ci_spec { gunbc_ci_printer_workflow_target, gunbc_ci_printer_workflow_invoke }
+import gunbc.fleet.fleet_converge_workflow { PrinterWorkflow, fleet_converge_workflow_mode_wire, fleet_converge_mode_job_id }
 import gunbc.fleet.printer_state_parent_reown {
   printer_state_parent_reown, printer_state_parent_reown_prior, printer_state_parent_reown_prior_text,
   printer_state_parent_reown_target, printer_state_directory_identity_text,
@@ -314,4 +316,20 @@ test fn witness_the_pass_runs_the_leg_for_every_state_but_the_declared_identity(
     && leg_runs(a_symlink_there)
     && leg_runs(EnsureAbsent { reason: "the witness listing did not name the path" })
     && leg_runs(EnsureInaccessible { reason: "the witness listing of its parent failed" })
+}
+
+// WHICH DISPATCH CARRIES THE LEG, claimed rather than trusted. The operator's order says the re-own runs in
+// the same window as printing and before printing, so the route matters as much as the transition: the mode
+// word an operator types at fleet-converge, the job that word selects, the run step the model projects for
+// that job, and the entry whose converge operation reaches ensure_printer_state_directories -- the function
+// this module's leg was inserted into, ahead of the directory fold -- are ONE named chain. Change the
+// printer mode's wire word, its job id, the projected target's entry, or move the leg out of that entry, and
+// a row here goes false.
+test fn witness_the_dispatched_printer_mode_names_the_entry_that_carries_the_leg() -> Bool {
+  let invoke_script = gunbc_ci_printer_workflow_invoke()
+  fleet_converge_workflow_mode_wire(mode: PrinterWorkflow) == "printer"
+    && fleet_converge_mode_job_id(mode: PrinterWorkflow) == "printer" as NonEmptyStr
+    && gunbc_ci_printer_workflow_target.entry as String == "dag/gunbc/fleet/printer_workflow_run.dag"
+    && gunbc_ci_printer_workflow_target.function as String == "run"
+    && string_contains(s: invoke_script, pattern: "printer_workflow_run")
 }
