@@ -339,9 +339,9 @@ data slice1_swap_knob_name: String = "per_slot_memory_swap_max_bytes"
 fn slice1_swap_read(swap_raw: String) -> RunnerUnitLiveReadRow {
   RunnerUnitLiveReadRow {
     unit: "actions-runner@srv1-01.service",
-    memory_max_raw: "23622320128",
+    memory_max_raw: "26843545600",
     memory_swap_max_raw: swap_raw,
-    memory_high_raw: "22548578304",
+    memory_high_raw: "26843545600",
     memory_current_raw: "",
     probed_at: "2026-10-14",
   }
