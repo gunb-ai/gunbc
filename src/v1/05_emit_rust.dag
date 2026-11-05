@@ -12403,6 +12403,13 @@ fn rust_by_ref_bridge_argument(base: String) -> String {
 // inherited by the sub-expressions that rendering does -- the leak again, one variant over. A method
 // callee that needs its own type arguments named is its own shape, named as the next rung in
 // `gunbc.recurring_failure_mode` `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`.
+//
+// NOT THE SAME QUESTION AS `rust_call_arg_function_value_adapt`'s INLINE MATCH ON `ExprCall`. That arm
+// accepts a call result and a field access alike, because what it decides is whether an argument CARRIES
+// an rc-owned value and therefore needs the forwarding closure -- a fact about ownership. This decides
+// whether an expression HAS A CALLEE at all, which is the only thing that can name type arguments. The
+// arms overlap and the questions do not; folding them together would let an ownership decision settle an
+// inference one, so they stay two readings with two names.
 fn rust_by_ref_bridge_expression_is_call(texpr: Node) -> Bool {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => true
