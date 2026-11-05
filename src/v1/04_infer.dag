@@ -10072,7 +10072,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
         InferResult {
-          typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: "error type cascade", span: span),
+          typed: make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: SemanticExprError, message: concat("error type cascade [field=", field_name, " base_name=", base_rt.name, " resolved_base.inferred=", match resolved_base.inferred { Present { value: CompilerError { message: bm, span: _ } } => concat("CompilerError(", bm, ")")  Present { value: _ } => "present-non-error"  Absent => "none" }, " base_rt.inferred=", match base_rt.inferred { Present { value: CompilerError { message: rm, span: _ } } => concat("CompilerError(", rm, ")")  Present { value: _ } => "present-non-error"  Absent => "none" }, "]"), span: span),
           emissions: infer_emissions_concat(left: base_emissions, right: infer_emissions_of_diagnostics(diagnostics: resolved_base_diags))
         }
       } else {
