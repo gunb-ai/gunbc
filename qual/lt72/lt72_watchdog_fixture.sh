@@ -8,8 +8,8 @@
 # Slot shape: transient USER unit (flat leaf), MemoryMax=MemoryHigh=$ENV, swap 0, holding a fake Runner.Listener (sleep copy named so) and a fake Runner.Worker tree.
 # Env: verb runs UNPRIVILEGED; /run/gunbc-slot-watchdog must be pre-created and writable. The job runs a private fadvised copy of python (py-job) in ALL modes. The verb gets the ABSOLUTE slot cgroup dir (user units sit >3 levels down).
 set -u
-MODE=${1:?mode}; BIN=${2:?gunbc}; CHK=${3:?checkout}; ENV=${4:-2G}; SECS=${5:-420}; HIGH=${6:-$ENV}
-OUT=/var/tmp/lt72-wd-$MODE-$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$OUT/bin"; echo "envelope=$ENV high=$HIGH" >"$OUT/shape.txt"
+MODE=${1:?mode}; BIN=${2:?gunbc}; CHK=${3:?checkout}; ENV=${4:-2G}; SECS=${5:-420}; HIGH=${6:-$ENV}; SHAPE=${7:-tree}
+OUT=/var/tmp/lt72-wd-$MODE-$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$OUT/bin"; echo "envelope=$ENV high=$HIGH shape=$SHAPE" >"$OUT/shape.txt"
 cp "$(command -v sleep)" "$OUT/bin/Runner.Listener"
 cp "$(command -v python3)" "$OUT/bin/Runner.Worker" 2>/dev/null || ln -s "$(command -v python3)" "$OUT/bin/Runner.Worker"
 # private interpreter copy for the JOB (new inodes, page cache evicted) so its text is charged to the slot, as in probe run 4
@@ -35,13 +35,18 @@ if EDGE:
 else:
     sz=256<<10
     while mx()==0 and len(chunks) < (cap>>18)+256: chunks.append(bytearray(b"\x01")*sz)
-print("held",len(chunks),cur(),flush=True)
+LOG=open(os.environ["OUT"]+"/job.log","a",buffering=1)
+def log(m): LOG.write("%s %s\n"%(__import__("time").time(),m)); LOG.flush()
+def evs():
+    d=dict(l.split() for l in open(cg+"/memory.events")); return d["high"],d["max"]
+log("held chunks=%d current=%d events(high,max)=%s"%(len(chunks),cur(),evs()))
 src="def f(a,b):\n    return [a*i+b for i in range(100)]\n"*40
 x=0; i=0
 while True:
     buf=bytearray(2<<20); buf[::4096]=b"\x01"*len(buf[::4096]); del buf
     json.dumps({"k":list(range(200))}); re.compile("(a|b)+c%d"%(i%97)); ast.parse(src); i+=1
-    x=(x*1103515245+12345)&0xffffffff';;
+    x=(x*1103515245+12345)&0xffffffff
+    if i%1000==0: log("iter=%d current=%d events(high,max)=%s"%(i,cur(),evs()))';;
 cpusteady) PY='
 import os
 h=bytearray(b"\x01")*int(int(os.environ["CAP"])*0.6); x=0
@@ -62,8 +67,14 @@ while True:
             for _ in range(2000): x=(x*1103515245+12345)&0xffffffff';;
 *) echo bad mode; exit 2;; esac
 # slot: Listener + Worker tree (Worker spawns a child shell that spawns the workload, so the tree is >1 deep)
+if [ "$SHAPE" = main ]; then
+  # job is the unit's MAIN process (probe-run-4 shape): bash starts the Listener then execs py-job. NB the Listener is then a child of the job, so the verb would spare the job as an ancestor: this shape is for the PRECONDITION only.
+  CMD="$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/py-job -c \"\$PY\""
+else
+  CMD="$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"$OUT/bin/py-job -c \\\"\$PY\\\"\"])'"
+fi
 systemd-run --user --unit="$UNIT" --collect -p MemoryMax="$ENV" -p MemoryHigh="$HIGH" -p MemorySwapMax=0 -p KillMode=control-group \
-  -E EDGE="$([ "$MODE" = livelockedge ] && echo 1 || echo 0)" -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" -E LD_LIBRARY_PATH="$OUT/lib" bash -c "$OUT/bin/Runner.Listener 100000 & echo \$! >$OUT/listener.pid; exec $OUT/bin/Runner.Worker -c 'import os,subprocess; subprocess.run([\"bash\",\"-c\",\"$OUT/bin/py-job -c \\\"\$PY\\\"\"])'" >"$OUT/launch.txt" 2>&1
+  -E EDGE="$([ "$MODE" = livelockedge ] && echo 1 || echo 0)" -E CAP="$CAPB" -E OUT="$OUT" -E PY="$PY" -E LD_LIBRARY_PATH="$OUT/lib" bash -c "$CMD" >"$OUT/launch.txt" 2>&1
 sleep 2
 CG=/sys/fs/cgroup$(systemctl --user show "$UNIT" -p ControlGroup --value); echo "$CG" >"$OUT/cgroup.txt"
 LPID=$(cat "$OUT/listener.pid"); echo "listener pid $LPID" >>"$OUT/cgroup.txt"
@@ -82,7 +93,7 @@ if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ]; then
   E1=$(evsum); U1=$(awk '/user_usec/{print $2}' "$CG/cpu.stat")
   echo "precondition ev_delta=$((E1-E0)) user_usec_delta=$((U1-U0)) over 20s" | tee "$OUT/precondition.txt"
   if [ $((E1-E0)) -le 1000 ] || [ $((U1-U0)) -ge 4000000 ]; then
-    echo "livelock not established" | tee -a "$OUT/precondition.txt"; kill $SAMP 2>/dev/null; systemctl --user stop "$UNIT"; exit 3
+    echo "livelock not established" | tee -a "$OUT/precondition.txt"; tail -n 5 "$OUT/job.log" 2>&1 | tee -a "$OUT/precondition.txt"; kill $SAMP 2>/dev/null; systemctl --user stop "$UNIT"; exit 3
   fi
 fi
 # the verb under test, with a hard stop at $SECS (fixture, not production)
@@ -90,6 +101,6 @@ fi
 echo "verb_rc=$?" >"$OUT/verdict.txt"
 sleep 3
 { echo "listener_alive_after=$(kill -0 "$LPID" 2>/dev/null && echo 1 || echo 0)"; echo "procs_after=$(wc -l <"$CG/cgroup.procs" 2>/dev/null)"; echo "current_after=$(cat $CG/memory.current 2>/dev/null)"; } >>"$OUT/verdict.txt"
-grep -E 'Maximum resident' "$OUT/verb.time" >>"$OUT/verdict.txt"
+grep -E 'Maximum resident' "$OUT/verb.time" >>"$OUT/verdict.txt"; { echo "--- job.log (head/tail) ---"; head -n 2 "$OUT/job.log"; tail -n 3 "$OUT/job.log"; } >>"$OUT/verdict.txt" 2>&1
 wait $SAMP 2>/dev/null; systemctl --user stop "$UNIT" 2>/dev/null; rm -f "$OUT/churn.dat"
 echo "$OUT"; cat "$OUT/verdict.txt"; tail -n 4 "$OUT/samples.tsv"; head -c 600 "$OUT/verb.out"
