@@ -257,11 +257,22 @@ type WorkInfrastructureRefusal
 // refusal later, to an EACCES somewhere in the ledger or the compute root, which is not an exclusion
 // at all: it depends on modes the deploy happens to have set. So the worker is refused HERE, by the
 // account its process runs as, by the decision gunbc.compute.work_provider_local compute_principal_refusal.
-// The principal carries the account name the observation reported, or the unobservable stand-in; it
-// is never a numeric id, because a host-specific uid literal is not portable ground (DESIGN 4d).
+// The principal carries the account name the observation reported; the unread case is the variant below
+// this one, which carries no name at all. It is never a numeric id, because a host-specific uid literal
+// is not portable ground (DESIGN 4d).
 // The refusal's readable text is its own sentence in work_refusal_detail below, in the same shape
 // as every other cause here: what was refused, of which instance, and the remedy.
   | ComputePrincipalNotServiceUser { instance_id: String, principal: String }
+  // THE RUNNING ACCOUNT COULD NOT BE READ AT ALL -- a different fact from the row above, which names an
+  // account and says it is the wrong one. Carrying it separately is what keeps the gate from closing on
+  // string inequality: an unread principal is not a principal, and a refusal that named a stand-in such
+  // as "unobserved" would report a failed read as if an account had been read (DESIGN 5: a typed, located
+  // diagnostic, no plausible output fabricated; DESIGN 6b: forcing absence into a sentinel is a fork;
+  // DESIGN 3b keeps a failure cause's own meaning rather than erasing it into an optional). The `detail`
+  // is the observation's own failure, not a guess. Produced by gunbc.compute.work_provider_local
+  // compute_principal_refusal; rendered by work_refusal_detail below; refused-before-any-shared-state for
+  // the same reason as the row above.
+  | ComputePrincipalUnobserved { instance_id: String, detail: String }
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
@@ -333,6 +344,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     StoreUnavailable { detail } => join(["store unavailable: ", detail], "")
     MaterializationStoreUndeclared { instance_id } => join(["instance ", instance_id, " declares no materialization store, so it has nowhere to commit or read a result; declare one before it runs compute"], "")
     ComputePrincipalNotServiceUser { instance_id, principal } => join(["compute refuses to run as '", principal, "' on instance ", instance_id, ": only the instance's own service user runs compute, and this is refused at admission -- before the materialization store, the capacity ledger or the compute root are touched -- so a principal the instance does not trust never reaches shared state; run the work through the instance's service user (the belt's verification obligation does), never through the dedicated worker's account"], "")
+    ComputePrincipalUnobserved { instance_id, detail } => join(["compute cannot name the account it would run as on instance ", instance_id, " (", detail, "), so it refuses at admission rather than admit on an unread principal: the gate is by account and an unread account is not an account, so this is refused before the materialization store, the capacity ledger or the compute root are touched"], "")
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")

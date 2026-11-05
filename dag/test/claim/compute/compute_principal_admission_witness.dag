@@ -27,11 +27,20 @@ module test.claim.compute.compute_principal_admission_witness
 //     store, or the attempt group as owner goes red.
 // (c) the dedicated worker's own account is refused at admission with ComputePrincipalNotServiceUser
 //     on BOTH arms of the RED control: the lab WITH its store, and a still-store-less instance where
-//     the pre-change route would have answered MaterializationStoreUndeclared. Delete the gate arm
-//     from gunbc.compute.work_provider_local compute_provide_admitted_as and the first cause flips to
-//     a post-gate cause (toolchain/subject/store) and the second to MaterializationStoreUndeclared --
-//     both claims go red together. This is the claim the standing decision is carried by: it is NOT
-//     carried by the absence of a store any more.
+//     the pre-change route would have answered MaterializationStoreUndeclared. Take the gate out of
+//     gunbc.compute.work_provider_local compute_provide_admitted_as and both claims go red: deleting
+//     its `Present { value: refusal }` arm outright stops the closure compiling at all (the match must
+//     still handle a refusal), and letting that arm fall through instead flips the first cause to a
+//     post-gate cause (toolchain/subject/store) and the second to MaterializationStoreUndeclared.
+//     This is the claim the standing decision is carried by: it is NOT carried by the absence of a
+//     store any more.
+// (e) an UNREAD principal refuses as a cause OF ITS OWN (ComputePrincipalUnobserved), carrying the read's
+//     own failure and naming no account at all -- never as a wrong name. Delete the refused arm from
+//     gunbc.compute.work_provider_local compute_principal_refusal and this goes red. The unread case has
+//     no name field to collide with, so the gate cannot be closed by string inequality: spelling the
+//     unread case as a stand-in string (review 91359) would have admitted a failed read for any instance
+//     whose service user happened to carry that string, and would have reported a failed read as if an
+//     account had been read (DESIGN 5, 6b, 3b).
 // (d) positive control: the service user's own principal passes the gate and the store resolves
 //     Present at the declared path -- tighten the gate past the principal (e.g. compare against a
 //     host uid literal, or invert it) and the belt's own route goes red here.
@@ -58,13 +67,13 @@ import gunbc.owned_directory {
 }
 import gunbc.compute.work_provider_local {
   ProvideResult, compute_store, compute_principal_refusal,
-  compute_provide_admitted_as, compute_unobservable_principal,
+  compute_provide_admitted_as, ComputePrincipalObserved, ComputePrincipalObservationRefused,
 }
 import gunbc.compute.compute_store_owned_directories { compute_store_owned_directories }
 import gunbc.compute.attempt_lifecycle { AttemptOwner, DirectInvocation }
 import gunbc.compute.work_request {
   WorkRefusedByInfrastructure, WorkInfrastructureRefusal,
-  ComputePrincipalNotServiceUser, work_default_build, work_refusal_detail,
+  ComputePrincipalNotServiceUser, ComputePrincipalUnobserved, work_default_build, work_refusal_detail,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
 import extdeps.access.posix { file_mode_octal }
@@ -202,7 +211,7 @@ test fn the_lab_store_is_demanded_owner_only_and_the_attempt_group_gets_nothing(
 test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let refused = compute_provide_admitted_as(
-    instance: lab, principal: worker_account(), owner: witness_owner(),
+    instance: lab, observation: ComputePrincipalObserved { user: worker_account() }, owner: witness_owner(),
     commit: witness_commit(), op: work_default_build(),
   )
   (
@@ -216,18 +225,49 @@ test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bo
           ].all(phrase => string_contains(s: work_refusal_detail(r: ComputePrincipalNotServiceUser { instance_id: instance_id, principal: principal }), pattern: phrase))
       Present { value: _ } => false
     }
-    // THE UNOBSERVABLE ACCOUNT REFUSES TOO -- fail-closed: a process whose account cannot be read is
-    // not the service user either, so it never reaches the store. Making the stand-in pass, or making
-    // it fall through to the toolchain arm, goes red here.
-    && match compute_principal_refusal(instance: lab, principal: compute_unobservable_principal) {
-      Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+    // THE UNREAD ACCOUNT REFUSES TOO -- fail-closed: a process whose account cannot be read never
+    // reaches the store. It refuses as itself, with the read's own failure, and not as a wrong name.
+    && match compute_principal_refusal(
+      instance: lab,
+      observation: ComputePrincipalObservationRefused { detail: "witness: `id -un` exited non-zero" },
+    ) {
+      Present { value: ComputePrincipalUnobserved { instance_id: _, detail: _ } } => true
       _ => false
     }
     // AND A THIRD ACCOUNT -- neither the worker nor the service user -- is refused: the gate is the
     // instance's owner, not "not the worker".
-    && match compute_principal_refusal(instance: lab, principal: "some-other-account") {
+    && match compute_principal_refusal(instance: lab, observation: ComputePrincipalObserved { user: "some-other-account" }) {
       Present { value: _ } => true
       Absent => false
+    }
+  )
+}
+
+// (e, THE RED CONTROL FOR THE UNREAD CASE) AN UNREAD PRINCIPAL REFUSES AS ITSELF, NOT AS A WRONG NAME.
+// Two causes, never conflated: an account that was read and is the wrong one, and an account that was
+// never read. The second carries the read's own failure and no name, so nothing about the instance's
+// service user can make it pass -- which is exactly the hole a stand-in string left open.
+test fn an_unread_principal_refuses_as_itself_not_as_a_wrong_name() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let unread = ComputePrincipalObservationRefused { detail: "witness: `id -un` exited non-zero" }
+  (
+    // The unread case is its own cause, and the refusal repeats the read's failure rather than naming
+    // an account: a caller cannot read it as "the principal was some account that was not the owner".
+    match compute_principal_refusal(instance: lab, observation: unread) {
+      Present { value: ComputePrincipalUnobserved { instance_id: instance_id, detail: detail } } =>
+        instance_id == (lab.instance_id as String)
+          && string_contains(s: detail, pattern: "exited non-zero")
+          && string_contains(
+            s: work_refusal_detail(r: ComputePrincipalUnobserved { instance_id: instance_id, detail: detail }),
+            pattern: "unread account",
+          )
+      _ => false
+    }
+    // And a principal that WAS read, of an account that is not the instance's service user, is still
+    // the OTHER cause -- the two arms cannot be collapsed into one without going red here.
+    && match compute_principal_refusal(instance: lab, observation: ComputePrincipalObserved { user: worker_account() }) {
+      Present { value: ComputePrincipalNotServiceUser { instance_id: _, principal: _ } } => true
+      _ => false
     }
   )
 }
@@ -237,9 +277,11 @@ test fn the_dedicated_worker_is_refused_by_principal_before_shared_state() -> Bo
 // purpose absence the brief calls out as the whole exclusion, and the failure mode this change must
 // not fall back on. So the SAME admission call is made against an instance that STILL declares no
 // store (srv2's lab, whose consumer requests no compute): the worker's refusal there must STILL be
-// the principal cause. Remove the gate arm from compute_provide_admitted_as and this call answers
-// with MaterializationStoreUndeclared exactly as it did before the change -- the control goes red,
-// which is the point: the worker's exclusion is no longer allowed to depend on an absent store.
+// the principal cause. Take the gate out of compute_provide_admitted_as and this call answers with
+// MaterializationStoreUndeclared exactly as it did before the change -- the control goes red either
+// way: deleting the refusal arm outright stops the closure compiling, and letting it fall through
+// shows the cause flip. Which is the point: the worker's exclusion is no longer allowed to depend on
+// an absent store.
 test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
   let store_less = srv2_lab_dashboard_instance()
   (
@@ -250,7 +292,7 @@ test fn an_absent_store_is_not_the_workers_exclusion_anymore() -> Bool {
     }
     // Yet the worker is refused by WHO IT IS, not by the missing store.
     && match provide_result_cause(r: compute_provide_admitted_as(
-      instance: store_less, principal: worker_account(), owner: witness_owner(),
+      instance: store_less, observation: ComputePrincipalObserved { user: worker_account() }, owner: witness_owner(),
       commit: witness_commit(), op: work_default_build(),
     )) {
       Absent => false
@@ -270,7 +312,7 @@ test fn the_service_users_path_reaches_the_store() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   (
     // The gate answers nothing for the instance's own service user -- no refusal of any kind.
-    match compute_principal_refusal(instance: lab, principal: service_account(instance: lab)) {
+    match compute_principal_refusal(instance: lab, observation: ComputePrincipalObserved { user: service_account(instance: lab) }) {
       Absent => true
       Present { value: _ } => false
     }
@@ -286,7 +328,7 @@ test fn the_service_users_path_reaches_the_store() -> Bool {
     // A gate that refused prod's own dispatches goes red here.
     && match compute_principal_refusal(
       instance: srv1_live_dashboard_instance(),
-      principal: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String,
+      observation: ComputePrincipalObserved { user: dashboard_instance_worker_user(instance: srv1_live_dashboard_instance()) as String },
     ) {
       Absent => true
       Present { value: _ } => false

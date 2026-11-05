@@ -135,7 +135,8 @@ import gunbc.compute.work_request {
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
-  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ComputePrincipalNotServiceUser, UnitLaunchRefused,
+  CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ComputePrincipalNotServiceUser,
+  ComputePrincipalUnobserved, UnitLaunchRefused,
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
@@ -2916,36 +2917,64 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // A refusal whose principal is not the service user is refused for EVERY instance, including
 // macbook-local and srv2-deploy: the rule is about the principal, not about the lab.
 //
-// AN UNOBSERVABLE ACCOUNT REFUSES. If `id -un` cannot name the running account the request is refused
-// with the unobservable stand-in: DESIGN 5 fails closed, and admitting on an unread principal is the
-// shape this gate exists to remove.
-fn compute_principal_refusal(instance: HostDashboardInstance, principal: String) -> WorkInfrastructureRefusal? {
-  if principal == (instance.directory_owner.user as String) {
-    none
-  } else {
-    Present {
-      value: ComputePrincipalNotServiceUser {
-        instance_id: instance.instance_id as String,
-        principal: principal,
+// AN UNOBSERVABLE ACCOUNT REFUSES, and refuses as itself: if `id -un` cannot name the running account
+// the request is refused with ComputePrincipalUnobserved, which carries the read's own failure rather
+// than a name. DESIGN 5 fails closed, and admitting on an unread principal is the shape this gate
+// exists to remove -- so the unread case is a cause of its own, not a string that happens to differ
+// from the service user.
+fn compute_principal_refusal(instance: HostDashboardInstance, observation: ComputePrincipalObservation) -> WorkInfrastructureRefusal? {
+  match observation {
+    ComputePrincipalObservationRefused { detail } =>
+      Present {
+        value: ComputePrincipalUnobserved {
+          instance_id: instance.instance_id as String,
+          detail: detail,
+        }
       }
-    }
+    ComputePrincipalObserved { user } =>
+      if user == (instance.directory_owner.user as String) {
+        none
+      } else {
+        Present {
+          value: ComputePrincipalNotServiceUser {
+            instance_id: instance.instance_id as String,
+            principal: user,
+          }
+        }
+      }
   }
 }
 
-// THE RUNNING ACCOUNT, read through the observation the corpus already has. Empty output is unreadable,
-// in the same shape as the fabric readback that first used this observation.
-data compute_unobservable_principal: String = "unobserved"
+// THE RUNNING ACCOUNT, read through the observation the corpus already has (shell.Id.UserName -- the
+// same read gunbc.fabric.fabric_source_snapshot observe_provider_principal makes). What the read yields
+// is either an account or a refusal carrying its own reason; never a stand-in name. The absence lives
+// in the type, so the gate cannot be closed by string inequality: had the unread case been spelled as a
+// sentinel such as "unobserved", a service user actually named that would have been ADMITTED on a
+// failed read, and the refusal would have reported a failed read as if an account had been read
+// (DESIGN 5: typed, located diagnostic, no plausible output fabricated; DESIGN 6b: a sentinel value is
+// a fork; DESIGN 3b: a failure cause keeps its own meaning instead of being erased into an optional).
+// One read yields one value: re-running `id -un` to recover the reason would let the name and the
+// reason come from two readings, the one-field-over this corpus was already written against
+// (gunbc.fabric.fabric_source_snapshot, review 69871 on gunbc#11960). The shape mirrors the module's
+// own ToolchainObservation two homes up: observed, or refused with a detail.
+// Its executing consumers: compute_principal_refusal below, which turns the refused case into the typed
+// cause ComputePrincipalUnobserved, and compute_provide_admitted, which reads it once per request.
+type ComputePrincipalObservation
+  = ComputePrincipalObserved { user: String }
+  | ComputePrincipalObservationRefused { detail: String }
 
-fn compute_running_principal() -> String {
+fn compute_principal_observation() -> ComputePrincipalObservation {
   let named = shell.Id.UserName()
   if !named.success {
-    compute_unobservable_principal
+    ComputePrincipalObservationRefused {
+      detail: join(["`id -un` exited non-zero: ", trim(s: named.stderr)], ""),
+    }
   } else {
     let trimmed = trim(s: named.stdout)
     if trimmed == "" {
-      compute_unobservable_principal
+      ComputePrincipalObservationRefused { detail: "`id -un` exited zero with empty stdout" }
     } else {
-      trimmed
+      ComputePrincipalObserved { user: trimmed }
     }
   }
 }
@@ -2955,11 +2984,12 @@ fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit:
 }
 
 // The admitted route as the RUNNING account: the gate reads the principal through the observation and
-// refuses before any of the routes below can run.
+// refuses before any of the routes below can run. The observation is read ONCE here and carried, so the
+// name the gate compares and the reason a refusal reports come from the same reading.
 fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   compute_provide_admitted_as(
     instance: instance,
-    principal: compute_running_principal(),
+    observation: compute_principal_observation(),
     owner: owner, commit: commit, op: op,
   )
 }
@@ -2972,8 +3002,8 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // whose RED control removes the gate arm and expects the refusal's cause to change on a STILL
 // store-less instance: a refusal that is only about the missing store would survive that removal,
 // and this one does not.
-fn compute_provide_admitted_as(instance: HostDashboardInstance, principal: String, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  match compute_principal_refusal(instance: instance, principal: principal) {
+fn compute_provide_admitted_as(instance: HostDashboardInstance, observation: ComputePrincipalObservation, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
+  match compute_principal_refusal(instance: instance, observation: observation) {
     Present { value: refusal } =>
       compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: refusal }, subject: ExactTree { tree: compute_null_tree() }, op: op)
     Absent =>
