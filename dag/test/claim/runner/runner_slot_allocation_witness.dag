@@ -5,6 +5,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runne
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import std.nat { Nat }
 import gunbc.fleet.fleet_intent { ComputeHost, CpuProcessor, srv3_host, fleet_intent_cpu }
 import extdeps.cpu.types { CpuFacts }

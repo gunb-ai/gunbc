@@ -168,15 +168,20 @@ test fn witness_deploy_account_holds_per_unit_grants_and_no_whole_binary_entry()
 // the provisioner's install command are one operation, so the grant is the command that runs. RED: the one
 // executor mode for every slot, which left srv1-02's runner key readable by ghrunner.
 test fn witness_each_slot_directory_is_granted_at_its_roles_mode() -> Bool {
-  match runner_host_deploy_for(host: operator_host_srv1) {
+  let srv1_ok = match runner_host_deploy_for(host: operator_host_srv1) {
     RunnerHostDeployFound { deploy: d } => {
       let body = runner_host_sudoers_content(deploy: d, artifact_path: "x")
       string_contains(s: body, pattern: "/usr/bin/install -d -m 00700 -o ghdeploy -g ghdeploy /opt/actions-runner/srv1-02\n")
-        && string_contains(s: body, pattern: "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv1-01\n")
         && !string_contains(s: body, pattern: "/usr/bin/install -d -m 00755 -o ghdeploy")
     }
     _ => false
   }
+  // srv1 carries no CI slot at the 25 GiB slot (the deploy slot is charged first), so the CI mode is read on srv3.
+  let ci_ok = match runner_host_deploy_for(host: operator_host_srv3) {
+    RunnerHostDeployFound { deploy: d } => string_contains(s: runner_host_sudoers_content(deploy: d, artifact_path: "x"), pattern: "/usr/bin/install -d -m 00755 -o ghrunner -g ghrunner /opt/actions-runner/srv3-01\n")
+    _ => false
+  }
+  srv1_ok && ci_ok
 }
 
 // ── THE CONFIDENTIALITY WALL, JUDGED OVER SUPPLIED READINGS ──────────────────────────────────────
