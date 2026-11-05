@@ -114,6 +114,12 @@ data heal_publisher_service_account: ServiceAccountEmail = "heal-publisher@gunba
 
 data heal_publisher_service_account_display_name: NonEmptyStr = "Heal publisher (WIF-only, one secret, no keys)"
 
+// THE CREDENTIAL'S LIFETIME, and it is a fact about this identity, not about the workflow that happens
+// to request it: the publisher's Secret Manager read must be authorized by a token no longer live than
+// five minutes. It lived as the federation step's access_token_lifetime input until the exchange moved
+// into the seed; it is the same 300s, and a second spelling of it anywhere is the divergence to watch.
+data heal_publisher_cloud_token_lifetime: String = "300s"
+
 fn public_heal_publisher_federation() -> HealPublisherFederation {
   HealPublisherFederation {
     repository: gunbc_repository,
@@ -246,6 +252,23 @@ fn heal_publisher_federation_provider_resource(f: HealPublisherFederation) -> St
 
 fn heal_publisher_wif_provider_resource() -> String {
   heal_publisher_federation_provider_resource(f: public_heal_publisher_federation())
+}
+
+// ONE PROVIDER RESOURCE, TWO AUDIENCES, because the two halves of the federation name it differently
+// and neither spelling is free: the runner-side assertion carries it as an https URL audience, while the
+// Cloud STS exchange carries it as the `//`-prefixed resource form. These are the spellings the pinned
+// google-github-actions/auth client (7c6bc770dae815cd3e89ee6cdf493a5fab2cc093) sends today -- src/main.ts:80-81
+// defaults the assertion audience to https://iam.googleapis.com/<provider>, and
+// src/client/workload_identity_federation.ts:60 builds the exchange audience as //iam.googleapis.com/<provider>
+// -- so the seed is reproducing the identity the live provider has been admitting, not inventing one.
+// Nothing here asserts that the provider's ADMITTING condition matches the declared one below; this file
+// already says only a real token exchange distinguishes those two facts.
+fn heal_publisher_assertion_audience() -> NonEmptyStr {
+  concat("https://iam.googleapis.com/", heal_publisher_wif_provider_resource()) as NonEmptyStr
+}
+
+fn heal_publisher_exchange_audience() -> NonEmptyStr {
+  concat("//iam.googleapis.com/", heal_publisher_wif_provider_resource()) as NonEmptyStr
 }
 
 // EVERY IDENTITY IN THE POOL, which is the point of the pool being its own: the provider's condition
