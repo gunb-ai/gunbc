@@ -612,8 +612,26 @@ fn eval_grounding_not_derived_digest_node() -> Node {
   }
 }
 
+// THE NO-VALUE ARM CONTRIBUTES ITS OWN TAG to the digest preimage: two facts that differ only in this
+// arm vs another must not share a key (a keys/hashing completeness defect, ruling keen-heron-809).
+fn eval_grounding_no_value_digest_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^eval_grounding_no_value_digest_tag } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
 fn inferred_facts_digest(facts: InferredFacts) -> Hash {
   match facts.grounding {
+    GroundingNoValue { node: n } =>
+      combine_hash(
+        a: combine_hash(
+          a: content_hash(n: eval_grounding_no_value_digest_node()),
+          b: content_hash(n: n)
+        ),
+        b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+      )
     DerivedGrounding { grounding: g } =>
       combine_hash(
         a: content_hash(n: g.node),

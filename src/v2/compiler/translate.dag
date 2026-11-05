@@ -313,12 +313,24 @@ fn translate_grounding_not_derived_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
+fn translate_grounding_no_value_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^translate_rejected_grounding_not_derived,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
         GroundingNotDerived { node: n, site: _ } =>
           outcome_rejected(d: translate_grounding_not_derived_diagnostic(node: n))
+        // A node that PRODUCES NO VALUE has no type to emit; emission demands one, so it refuses here
+        // with its own reason -- not the not-derived reason, which would report a decided answer as a gap.
+        GroundingNoValue { node: n } =>
+          outcome_rejected(d: translate_grounding_no_value_diagnostic(node: n))
         DerivedGrounding { grounding: _ } =>
           outcome_accepted(GroundingGatePassed {})
       }
