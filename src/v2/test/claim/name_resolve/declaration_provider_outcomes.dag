@@ -22,7 +22,7 @@ import v2.compiler.resolve {
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.compiler.native_test_vocabulary { FileRefusalAtLine, FileRefusalLink, native_test_file_refusal_fatal_link }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree, SourceRootRef, V2Tree }
+import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -78,12 +78,6 @@ data dpo_broken_source: String = "module v2.test.dpo.broken\nmodule v2.test.dpo.
 
 data dpo_broken_user_source: String = "module v2.test.dpo.broken_user\n\nimport v2.test.dpo.broken { X }\nfn b(x: X) -> X { x }\n"
 
-data dpo_v2lib_source: String = "module v2.test.dpo.v2lib\n\ntype Lib = L\n"
-
-data dpo_xtree_source: String = "module v2.test.dpo.xtree\n\nimport v2.test.dpo.v2lib { Lib }\ntype Rec { value: Lib }\ntype Plain = Int\n"
-
-data dpo_xtree_user_source: String = "module v2.test.dpo.xtree_user\n\nimport v2.test.dpo.xtree { Plain }\nfn xp(x: Plain) -> Plain { x }\n"
-
 fn dpo_read(text: String, id: Symbol, path: String, root: SourceRootRef) -> DagSourceReadWitness {
   DagSourceReadWitness {
     source: Medium { carried: text, fidelity: Lossless },
@@ -108,10 +102,7 @@ fn dpo_ingest() -> List<DagSourceReadWitness> {
     dpo_read(text: dpo_uses_gone_source, id: ^dpo_uses_gone, path: "src/v2/test/fixture/dpo/uses_gone.dag", root: DagTree),
     dpo_read(text: dpo_ghost_user_source, id: ^dpo_ghost_user, path: "src/v2/test/fixture/dpo/ghost_user.dag", root: DagTree),
     dpo_read(text: dpo_broken_source, id: ^dpo_broken, path: "src/v2/test/fixture/dpo/broken.dag", root: DagTree),
-    dpo_read(text: dpo_broken_user_source, id: ^dpo_broken_user, path: "src/v2/test/fixture/dpo/broken_user.dag", root: DagTree),
-    dpo_read(text: dpo_v2lib_source, id: ^dpo_v2lib, path: "src/v2/test/fixture/dpo/v2lib.dag", root: V2Tree),
-    dpo_read(text: dpo_xtree_source, id: ^dpo_xtree, path: "src/v2/test/fixture/dpo/xtree.dag", root: DagTree),
-    dpo_read(text: dpo_xtree_user_source, id: ^dpo_xtree_user, path: "src/v2/test/fixture/dpo/xtree_user.dag", root: DagTree)
+    dpo_read(text: dpo_broken_user_source, id: ^dpo_broken_user, path: "src/v2/test/fixture/dpo/broken_user.dag", root: DagTree)
   ]
 }
 
@@ -321,7 +312,7 @@ test fn dpo_one_namespace_per_module() -> Bool {
       match context.resolution {
         Rejected { diagnostics: _ } => false
         Accepted { value: shared, diagnostics: _ } =>
-          closure_declarations_demand(shared: shared).context.namespaces_built == 16
+          closure_declarations_demand(shared: shared).context.namespaces_built == 13
       }
   }
 }
@@ -359,9 +350,8 @@ test fn dpo_listed_import_of_ghost_module_refuses_the_module() -> Bool {
   }
 }
 
-// The module-wide arm, produced by the real resolver: a DagTree module importing a V2Tree one is refused at
-// namespace admission (cross-tree policy), so every declaration of it is unavailable, including the one that
-// demands nothing cross-tree. The outcome row is ModuleUnavailable as the closure produced it.
+// Is this module a ModuleUnavailable row of the roster? Read by the gone and ghost controls, which carry the
+// module-wide arm through real admission refusals.
 fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedName) -> Bool {
   fold(outcomes, init: false, f: fn(found, o) {
     found || match o {
@@ -369,23 +359,6 @@ fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedNam
       ModuleObserved { module: _, declarations: _ } => false
     }
   })
-}
-
-test fn dpo_real_module_unavailable_is_module_wide() -> Bool {
-  match dpo_outcomes() {
-    Absent => false
-    Present { value: outcomes } =>
-      dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.xtree"))
-        && !dpo_is_module_unavailable(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.mixed"))
-        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Plain"))
-        && !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.xtree.Rec"))
-        && match dpo_verdict(module: "v2.test.dpo.xtree_user", path: ^dpo_xtree_user) {
-          Absent => false
-          Present { value: v } =>
-            dpo_refuses_with(v: v, reason: ^resolve_reason_declarer_refused)
-              && dpo_chain_names(v: v, reason: ^resolve_cross_tree_import_denied)
-        }
-  }
 }
 
 // red_control "a malformed header ... makes every declaration unavailable", on the ambiguous header above.
