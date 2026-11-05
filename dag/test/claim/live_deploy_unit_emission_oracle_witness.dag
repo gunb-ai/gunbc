@@ -34,7 +34,7 @@ import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 import gunbc.live_deploy.emit {
-  emit_slice_unit_doc, live_deploy_protocol, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
+  emit_slice_unit_doc, live_deploy_protocol, serve_grammar_refused_poison, emit_belt_service_unit_doc, emit_systemd_unit_doc, live_deploy_belt_service_unit_file, live_deploy_belt_exit_path_unit_file, live_deploy_belt_answer_path_unit_file, live_deploy_belt_exit_drain_service_unit_file, live_deploy_belt_discovery_service_unit_file, live_deploy_belt_credential_recovery_unit_file, live_deploy_belt_credential_recovery_timer_unit_file, live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused, live_deploy_slice_unit_file, user_manager_environment_directives, ingress_limit_ms, emit_approval_broker_unit_doc, approval_broker_slice_unit_file, repository_convergence_slice_unit_file, emit_repository_convergence_slice_unit_doc, user_work_slice_unit_file, UserWorkSliceUnitFileReady, UserWorkSliceUnitFileRefused, attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused, live_deploy_approval_broker_unit_file, emit_tree_remote_unit_doc, tree_remote_convergence_oneshot,
   emit_device_crypto_sidecar_unit_doc, device_crypto_sidecar_binary_path,
 }
 import gunbc.live_deploy.release_locus {
@@ -1201,4 +1201,20 @@ test fn the_host_seed_admission_still_emits_and_the_refusal_is_not_a_blanket() -
       string_contains(s: serialize_systemd_unit_file(file: file), pattern: "/opt/gunbc/bin/gunbc run --source-root")
     _ => false
   }
+}
+
+// The unit-doc rendering route (roadmap_dashboard_service_status_cli) has no type channel to
+// read, so the grammar refusal must reach the operator as loud poison text — the same
+// __GUNBC_*_REFUSED__ discipline the OIDC readback refusal already keeps (DESIGN section 5).
+test fn the_grammar_refusal_poisons_the_unit_doc_route() -> Bool {
+  let doc = emit_systemd_unit_doc(
+    spec: spec_with_serve_binary(binary: admit_fixed_serve_path(
+      path: "/opt/gunbc/unknown-build/gunbc" as NonEmptyStr,
+      source: SourceUndeclared { reason: "no recorded lane" })),
+    revision: live_revision(), now_epoch: claim_oidc_now_for(spec: live_spec()))
+  let text = render(doc: doc, proto: live_deploy_protocol)
+  string_contains(s: text, pattern: serve_grammar_refused_poison)
+    && string_contains(s: text, pattern: "/opt/gunbc/unknown-build/gunbc")
+    && string_contains(s: text, pattern: "no recorded lane")
+    && !(string_contains(s: text, pattern: "ExecStart="))
 }

@@ -164,11 +164,15 @@ fn srv2_deploy_desired_deployment() -> DesiredDeployment {
     names: derived_deployment_names(instance: instance),
     selected_identity: srv2_deploy_selected_identity(),
     admitted_branch: production_admitted_branch,
-    // srv2's serve binary is srv2_deploy_serve_binary, declared as the CARGO RELEASE BUILD
-    // of the gunbc repository at srv2_deploy_repo_root (join of cargo_default_release_dir
-    // with that root) — a build of this repository, so it speaks the seed CLI grammar, at
-    // the revision this instance admits.
-    serve_binary_source: SeedBuiltAtRevision { revision: instance.admitted_revision.ref_name as NonEmptyStr },
+    // srv2's serve binary is the operator-declared cargo release path (srv2_deploy_serve_binary).
+    // The PATH SAYS where a cargo build of this repository would land; no modeled lane records
+    // anything BUILDING it at the admitted revision — the in-place build lane
+    // (gunbc.live_deploy.serve_binary_build, ServeBinaryBuild) covers the lab instance root and
+    // names no srv2 root. The honest name is undeclared, and the serve-unit emitter refuses it
+    // TYPED rather than assuming the seed grammar for a binary of unrecorded provenance
+    // (DESIGN section 5). Follow-up that dissolves this refusal: add srv2 to the in-place build
+    // lane, then this row becomes SeedBuiltAtRevision like the lab row.
+    serve_binary_source: SourceUndeclared { reason: "srv2_deploy serve binary is srv2_deploy_serve_binary, an operator-declared cargo release path; the in-place build lane (ServeBinaryBuild) does not cover srv2, so no lane records what builds it" },
   }
 }
 
