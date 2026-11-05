@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.effect_demand_cannot_see_a_service_operation_call
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data effect_demand_cannot_see_a_service_operation_call: RecurringFailureMode = RecurringFailureMode {
+  identity: "effect_demand_cannot_see_a_service_operation_call" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**effect_demand cannot judge a call to a service operation, so it cannot be the check that refuses a call to an unrealizable operation** (INVALID STATE: a call, or other reference, to a service operation whose realization the lowering could not produce is accepted, because the one pass that walks demand from entries has no locus for the call and no identity for the operation). RECEIPT, 2026-11-05 (valiant-fox-335, found while placing the reader for gunbc#15894, per-operation unrealizable lowering): `v2.compiler.effect_demand` is a census over declarations. It carries no call locus, so a refusal cannot be located at the call, and no service-operation identity, so it cannot key an operation's realization standing. Its reachability walk has no committed entry point, so on a service operation it walks nothing. Read by source inspection of the module at that PR's base, not by execution; the absence of an entry point is the part to re-check first.",
+
+    "RUNG FOUND AT: not applicable to effect_demand, which does not consume the fact. #15894 places its reader in `v2.compiler.infer` (infer_service_operation_reference_diags), a fold over every node of the resolved tree, which sees every reference. That is the earliest post-resolve stage found that has both a locus and a declaring path; it is not a claim that no earlier stage does.",
+
+    "NEXT-RUNG TRIGGER, NAMED AS THE CAPABILITY: a reachability producer that walks demand from the committed entries and yields, per reached service operation, its declaring path and the locus of the referencing node, so that effect_demand can read an operation's realization standing at a call. Until then the infer reader is the only check, and the v1 seed route (eval_service_op) consults the interface, not the mirror.",
+  ],
+
+  evidence: [],
+}
