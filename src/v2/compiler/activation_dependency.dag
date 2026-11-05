@@ -79,7 +79,7 @@ import v2.std.node {
   core_edge_target_lookup,
   match_arm_node_conforms,
   node_child_slots,
-  node_subtree_nodes
+  node_subtree_nodes, branch_positional_arity_admitted
 }
 
 type ActivationNotDerivedReason
@@ -160,11 +160,15 @@ fn activation_positional_count(site: Node) -> Int {
   )
 }
 
-// A BRANCH: the condition selects the then or the else slot. Exactly three positional children and no
-// others (the table names ordinals 0, 1 and "2 and beyond"; a fourth is not an else).
+// A BRANCH: the condition selects the then slot and, when there is one, the else slot. The ARITY IS THE
+// TABLE'S QUESTION (v2.std.node branch_positional_arity_admitted: two positionals with the else slot
+// Absent, or three), not a literal here -- a second spelling of the same shape rule is a second answer to
+// one question (DESIGN 3). An else-less Branch is a SINGLE-alternative selection: the condition selects
+// the then arm and nothing else is reachable, so the row is admitted with one alternative rather than
+// refused as malformed.
 fn activation_branch(acc: ActivationDependencies, site: Node) -> ActivationDependencies {
   let positional = activation_positional_count(site: site)
-  if positional == 3 && length(xs: site.children) == 3 {
+  if branch_positional_arity_admitted(count: positional) && positional == length(xs: site.children) {
     match branch_slot_target(n: site, slot: BranchConditionSlot) {
       Present { value: condition } =>
         match branch_slot_target(n: site, slot: BranchThenSlot) {
@@ -179,7 +183,15 @@ fn activation_branch(acc: ActivationDependencies, site: Node) -> ActivationDepen
                     tail: [ActivationAlternative { selected_by: SelectedByBranchSlot { slot: BranchElseSlot }, root: else_arm }]
                   }
                 })
-              Absent => activation_refused(acc: acc, site: site, reason: BranchNotConditionThenElse { children: length(xs: site.children), positional: positional })
+              Absent =>
+                activation_demand_row(acc: acc, demand: ActivationDemand {
+                  site: site,
+                  selector: condition,
+                  alternatives: FreeSemigroup {
+                    head: ActivationAlternative { selected_by: SelectedByBranchSlot { slot: BranchThenSlot }, root: then_arm },
+                    tail: []
+                  }
+                })
             }
           Absent => activation_refused(acc: acc, site: site, reason: BranchNotConditionThenElse { children: length(xs: site.children), positional: positional })
         }
