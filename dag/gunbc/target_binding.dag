@@ -21,7 +21,7 @@ import gunbc.native_serve_probe_plan { NativeServeProbe }
 // native_claim_program_standing. An Optional or omitted budget is how a hang returns, so the field
 // is required. The next program of this shape is one more BINDING ROW naming entry and deadline,
 // never another producer arm.
-// NativeServeProgramProducer is the same shape for std.compiler_entry NativeServeDriver: it emits and
+// NativeServeProgramProducer is the same shape for std.compiler_entry NativeIngressDriver: it emits and
 // builds the named service entry, starts it, writes the requests of the row's probe reader to real
 // TCP connections and hands what came back to that reader's native_serve_probe_standing. The reader
 // module and the phases the run performs (gunbc.native_serve_probe_plan) are fields of the row, so a
