@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # lively-tern-72 slot-watchdog fixture. Usage: lt72_watchdog_fixture.sh <mode> <gunbc-bin> <checkout> [envelope=2G] [seconds=420] [memory.high=envelope; "infinity" for the drift-peak shape]
+# modes: livelockjoin = livelock + gate (no Listener), THEN a fake Listener joins and the verb runs: executes kill-job-tree/spare-Listener if the stall holds (use 8G)
 # modes: gateonly = livelock + gate, then NO verb and NO Listener (observer-effect discriminator; sampler only)
 # modes: livelockedge = livelock but fills until current is within 256 KiB of max (64 KiB steps)
 # modes: livelock  (run-4 shape: anon to the cap, then CPU-bound text refaulting)      EXPECT: verb kills job tree, exit!=0 receipt; Worker gone, Listener alive, memory.current ~ listener baseline
@@ -20,7 +21,7 @@ sync; for F in "$OUT"/bin/py-job "$OUT"/lib/*; do [ -f "$F" ] && python3 -c 'imp
 ls -l "$OUT/bin" "$OUT/lib" >"$OUT/copies.txt"
 CAPB=$(numfmt --from=iec "$ENV"); UNIT=lt72-slot-$MODE-$$
 case $MODE in
-livelock|livelockedge|gateonly) PY='
+livelock|livelockedge|gateonly|livelockjoin) PY='
 import os,json,re,ast
 cap=int(os.environ["CAP"]); EDGE=os.environ["EDGE"]=="1"
 cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
@@ -84,7 +85,7 @@ sleep 3
     sleep 5
   done ) & SAMP=$!
 # PRECONDITION (livelock only): the stall must be established before the verb starts, else a non-livelock reads as "watchdog did nothing"
-if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ] || [ "$MODE" = gateonly ]; then
+if [ "$MODE" = livelock ] || [ "$MODE" = livelockedge ] || [ "$MODE" = gateonly ] || [ "$MODE" = livelockjoin ]; then
   evsum() { awk '$1=="high"||$1=="max"{s+=$2} END{print s}' "$CG/memory.events"; }
   E0=$(evsum); U0=$(awk '/user_usec/{print $2}' "$CG/cpu.stat"); sleep 20
   E1=$(evsum); U1=$(awk '/user_usec/{print $2}' "$CG/cpu.stat")
