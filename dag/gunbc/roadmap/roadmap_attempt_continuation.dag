@@ -2,7 +2,8 @@ module gunbc.roadmap.roadmap_attempt_continuation
 
 import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
 
-import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { length }
 import gunbc.roadmap.roadmap_model { RoadmapEdge }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, RefusedRetryUnreadable, refused_retry_exhausted_reason,
@@ -124,7 +125,7 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
         reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor an ending is established: ", mismatch], ""),
       }
     SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: _ } =>
-      if list_length(items: interrupted) > 0 {
+      if length(xs: interrupted) > 0 {
         ContinuationHold {
           reason: join([
             "the prior attempt ", prior.attempt_key, " is recovery-needed but not resumable: tool calls ", join(interrupted, ", "),
