@@ -75,7 +75,7 @@ import product.p4261.e1_candidate_source { same_candidate }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
 import product.p4261.e1_photographs { e1_photographs }
-import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store }
+import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store, same_boxed_frame }
 import product.electrical.continuity { OperatorPhotograph }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 
@@ -802,46 +802,26 @@ fn frame_is_held(s: LabelSighting) -> Bool {
   }
 }
 
-// The same pixels, not merely the same frame. An overview carries dozens of components, so agreeing on
-// which bytes the reading came from does not yet say the label was read off THIS part -- the lesson this
-// PR's own second review round taught, applied to a frame claim as well. Both sides have to state a box
-// and agree on it: a sighting with no box says only that somebody looked at the whole board.
-fn read_inside_the_same_box(sighting: LabelSighting, on_the_board: PixelRegion?) -> Bool {
-  match sighting.box {
-    Present { value: p } =>
-      match on_the_board {
-        Present { value: q } =>
-          p.left == q.left && p.top == q.top && p.width == q.width && p.height == q.height
-        Absent { } => false
-      }
-    Absent { } => false
-  }
-}
+// The same pixels, not merely the same frame, is no longer decided here: it is `same_boxed_frame` in
+// product.electrical.photograph, next to the citation type it compares. What stays in this module is
+// only what is E1's own -- how a receipts sighting is expressed as a citation -- because a relation the
+// store layer owns must not have a second implementation in a test, which is the §3 duplication the
+// digest ruling refused.
 
-// The board's own reading of this designator has to point at one of the very same bytes AND inside the
-// same box, not merely at a photo taken on some day. Digest alone is the weaker join this module spent
-// a review round removing: on a frame showing dozens of parts it says the bytes exist, not that the
-// label was read here. The unstored arm is refused rather than excused -- it says the bytes were never
-// supplied, which is the gap this authority was written to close -- and a board reading with no box is
-// refused too, because the claim being checked is about pixels somebody drew.
 type BoardReadingTable =
   | DesignatorReadings { }
   | UnresolvedRows { }
 
-// One board citation against one sighting the authority names: the same bytes AND the same pixels, or it
-// is not a join. Written once so both tables answer to one rule. Digest alone was the weaker join this
-// module spent a review round removing -- on a frame showing dozens of parts it says the bytes exist, not
-// that the label was read here -- and the unstored arm is refused rather than excused, because it says
-// the bytes were never supplied, which is the very gap an authority was written to close.
+// One board citation against one sighting the authority names. The rule itself is `same_boxed_frame`'s,
+// in the store layer; this is only the projection that makes a receipts sighting comparable with a
+// citation, and it belongs here because `LabelSighting` is E1's type, declared in E1's receipts module.
+// It is written once so both reading tables answer to one rule. The projection is total on purpose: a
+// sighting always carries a digest, so it always expresses an `InStore` citation, and it is
+// `same_boxed_frame` that refuses what cannot join -- an absent box on either side, or a board citation
+// whose bytes were never supplied. A spoken "it says J3" is the shape that arm exists to refuse: a name
+// with no image behind it is exactly what an identity must not be able to lean on.
 fn cites_this_label(citation: PhotographCitation, s: LabelSighting) -> Bool {
-  match citation {
-    InStore { content: c, region: r } =>
-      string_eq(a: c.hex as String, b: s.digest.hex as String)
-        && read_inside_the_same_box(sighting: s, on_the_board: r)
-    // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it is
-    // exactly what an identity must not be able to lean on.
-    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
-  }
+  same_boxed_frame(a: citation, b: InStore { content: s.digest, region: s.box })
 }
 
 // Some board row that names this designator has to point at one of the very same bytes inside the same

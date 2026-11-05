@@ -5,7 +5,7 @@ import std.list { first_where }
 import std.measure { FiniteByteSize }
 import std.nat { Nat }
 import std.optional { Absent, Present }
-import std.types { List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import product.placement_supply { PhysicalAssetIdentity }
 
 // WHAT A PHOTOGRAPH IS IN THE MODEL. A reading of a board is read off an image, and the image is what
@@ -109,6 +109,13 @@ type PixelRegion {
   height: Nat,
 }
 
+// TWO BOXES ARE THE SAME BOX when all four edges agree, in the same frame's pixels. It sits beside the
+// type so nobody re-derives it inside a join: a check that compared two of the four would let a
+// differently-sized box pass as the same label, which is the failure this relation exists to prevent.
+fn pixel_region_eq(a: PixelRegion, b: PixelRegion) -> Bool {
+  a.left == b.left && a.top == b.top && a.width == b.width && a.height == b.height
+}
+
 // A CITATION OF A PHOTOGRAPH FROM A CLAIM. `InStore` names bytes the store holds, and the region is
 // absent when the whole frame is what was read. `BytesNotInStore` is the typed gap for a frame whose
 // bytes never reached the store: it carries the text locator the bench recorded and the obligation that
@@ -116,6 +123,37 @@ type PixelRegion {
 type PhotographCitation
   = InStore { content: Sha256Digest, region: PixelRegion? }
   | BytesNotInStore { taken_on: NonEmptyStr, locator: NonEmptyStr, obligation: NonEmptyStr }
+
+// THE STRONGEST JOIN TWO CITATIONS CAN MAKE: the same bytes AND the same pixels. Content identity alone
+// is not enough and is not pretending to be -- a frame can carry dozens of components, so agreeing on
+// which bytes a reading came from says those bytes exist, not that the marking was read off THIS part.
+// Both sides must therefore state a box and agree on it: an absent region means "the whole frame was
+// what was read", which cannot bind a reading to a part, and the unstored arm is refused rather than
+// excused, because it says the bytes were never supplied -- the very gap a citation is meant to close.
+// WHAT THIS DOES NOT DO is decide which board or which specimen a frame belongs to: a digest says which
+// bytes, not what they picture, so attribution stays where the store row is consulted (see the note
+// above `photograph_in_store`, and product.p4261.photograph_store's `store_row_judgment`). Callers that
+// need subject binding supply it as a lookup over their own board's roster, and this relation is what
+// such a lookup compares the citations with.
+fn same_boxed_frame(a: PhotographCitation, b: PhotographCitation) -> Bool {
+  match a {
+    InStore { content: ca, region: ra } =>
+      match b {
+        InStore { content: cb, region: rb } =>
+          content_hash_eq_cryptographic(left: ca, right: cb)
+            && match ra {
+                 Present { value: pa } =>
+                   match rb {
+                     Present { value: pb } => pixel_region_eq(a: pa, b: pb)
+                     Absent { } => false
+                   }
+                 Absent { } => false
+               }
+        BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+      }
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
 
 // WHAT THE STORE MAKES OF A CITATION, in words a report can use. A Bool would say only "no"; each
 // refusal here names what is missing, so the gap is a work item rather than a mystery.
