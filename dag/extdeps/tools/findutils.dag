@@ -129,16 +129,19 @@ fn find_tree_regular_files_sha256_command(root: String) -> ArgvCommand {
 }
 
 // A TREE'S ENTRY METADATA WITH THE SYMBOLIC LINK'S TARGET: one
-// `<relative path>|<type>|<mode>|<owner>|<group>|<size>|t=<link target>` line per entry, -xdev like
-// find_tree_metadata_command. The seventh field is find's own %l behind a literal `t=` prefix: an
-// unlinked entry's field reads exactly `t=` (a link's, `t=` followed by the stored target), so the
-// field is never EMPTY on the wire -- an empty trailing field would vanish from a split and silently
-// shorten the row -- and a parser that demands the prefix refuses any line that lost it. This is the
-// row a caller needs when a link must be verified AS A LINK -- the readback that refuses a source
-// symlink silently materialized as a regular file, or re-pointed, reads through this builder and
-// never through find_tree_metadata_command, whose six-field lines carry no target to compare.
-// find_symlink_targets_command is NOT this read: it enumerates only the links, so the entries it
-// cannot see drop out of the comparison silently -- the exact defect this carrier exists to close.
+// `<relative path>|<type letter>|<octal mode>|<owner>|<group>|<link target>|<decimal size>` line
+// per entry, -xdev like find_tree_metadata_command. %l is find's own stored-target field -- raw,
+// never resolved, never escaped (a target embedding the delimiter over-counts the fields and the
+// receiver refuses the line, it does not mis-parse it); an f or a d carries it EMPTY, mid-line,
+// where the split keeps it. The size is LAST because %s is never empty for any of the three kinds
+// the receipt admits (byte size for a file, stored target length for a symlink, inode size for a
+// directory) -- a trailing EMPTY field would vanish from a split and silently shorten the row.
+// This is the row a caller needs when a link must be verified AS A LINK -- the readback that
+// refuses a source symlink silently materialized as a regular file, or re-pointed, reads through
+// this builder and never through find_tree_metadata_command, whose six-field lines carry no target
+// to compare. find_symlink_targets_command is NOT this read: it enumerates only the links, so the
+// entries it cannot see drop out of the comparison silently -- the exact defect this carrier
+// exists to close.
 fn find_tree_entry_metadata_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", "%P|%y|%m|%u|%g|%l|%s\\n"])
 }

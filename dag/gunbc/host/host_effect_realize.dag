@@ -6543,14 +6543,21 @@ fn observe_tree_hashes(root: String, subs: List<String>, transport: HostEffectEl
 // A source entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) fails
 // the count guard in observe_tree_entry_metadata and the install REFUSES: this read never widens by
 // dropping what it cannot parse.
-// THE ENTRY GRAMMAR, FLAT: kind_text is exactly one of find's type letters "f", "l", "d"; target
+// THE ENTRY GRAMMAR, BY CONSTRUCTION: the kind is a declared sum -- a TreeLink CANNOT exist
+// without its stored target and a TreeRegular/TreeDirectory CANNOT carry one -- so the cross-field
+// agreement find's letters impose is checked once, in the parser (the only producer that reads the
+// wire), and is unwritable everywhere else. The type letters never live in the entry.
 // carries the link's stored target for a symlink and the empty string for anything else. The parser
 // enforces the cross-field rule (an "l" entry has a non-empty target, an "f"/"d" entry has none),
 // so no second type-level mirror of "is this a link" is needed -- one carrier, one grammar (§2).
+type TreeEntryKind =
+  | TreeRegular
+  | TreeDirectory
+  | TreeLink { link_target: NonEmptyStr }
+
 type TreeMetadataEntry {
   path: String
-  kind_text: String
-  link_target: String
+  kind: TreeEntryKind
   mode: String
   owner: String
   group: String
@@ -6659,11 +6666,11 @@ fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optio
   } else if f.rel == "" || f.owner == "" || f.group == "" {
     Absent
   } else if f.kind == "f" && f.link_target == "" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "f", link_target: "", mode: f.mode, owner: f.owner, group: f.group } }
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeRegular, mode: f.mode, owner: f.owner, group: f.group } }
   } else if f.kind == "d" && f.link_target == "" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "d", link_target: "", mode: f.mode, owner: f.owner, group: f.group } }
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeDirectory, mode: f.mode, owner: f.owner, group: f.group } }
   } else if f.kind == "l" && f.link_target != "" {
-    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind_text: "l", link_target: f.link_target, mode: f.mode, owner: f.owner, group: f.group } }
+    Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: f.mode, owner: f.owner, group: f.group } }
   } else {
     Absent
   }
@@ -6676,9 +6683,20 @@ fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMeta
 // THE CANONICAL TEXT of one entry: exactly what the installed readback compares over and what the
 // receipt's metadata digest hashes. A link's stored target lives IN the line, so a re-pointed link
 // is a different canonical text, and agreement is spelled once.
+fn tree_entry_kind_letter(kind: TreeEntryKind) -> String {
+  match kind {
+    TreeRegular => "f"
+    TreeDirectory => "d"
+    TreeLink { link_target: _t } => "l"
+  }
+}
+
 fn tree_metadata_entry_line(entry: TreeMetadataEntry) -> String {
-  let head = join([entry.path, "|", entry.kind_text, "|", entry.mode, "|", entry.owner, "|", entry.group], "")
-  if entry.kind_text == "l" { join([head, "|", entry.link_target], "") } else { head }
+  let head = join([entry.path, "|", tree_entry_kind_letter(kind: entry.kind), "|", entry.mode, "|", entry.owner, "|", entry.group], "")
+  match entry.kind {
+    TreeLink { link_target: t } => join([head, "|", t], "")
+    _ => head
+  }
 }
 
 fn sort_tree_metadata(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
@@ -6705,13 +6723,11 @@ fn tree_installed_expectation(entries: List<TreeMetadataEntry>, owner: NonEmptyS
     xs: entries,
     f: e => TreeMetadataEntry {
       path: e.path,
-      kind_text: e.kind_text,
-      link_target: e.link_target,
-      mode: match e.kind_text {
-        "f" => tree_mode_canonical(text: install_file_shared_mode as String)
-        "d" => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
-        "l" => tree_mode_canonical(text: tree_installed_symlink_mode)
-        _ => tree_mode_canonical(text: tree_installed_symlink_mode)
+      kind: e.kind,
+      mode: match e.kind {
+        TreeRegular => tree_mode_canonical(text: install_file_shared_mode as String)
+        TreeDirectory => tree_mode_canonical(text: coreutils_directory_mode_operand(mode: install_d_shared_mode))
+        TreeLink { link_target: _t } => tree_mode_canonical(text: tree_installed_symlink_mode)
       },
       owner: owner as String,
       group: owner as String,
@@ -6775,7 +6791,7 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 // the sorted spine.
 fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadataEntry>) -> List<String> {
   let from_files = flat_map(files, f => tree_path_prefixes(path: f.path))
-  let from_entries = flat_map(metadata, e => if e.kind_text == "d" { list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path) } else { tree_path_prefixes(path: e.path) })
+  let from_entries = flat_map(metadata, e => if e.kind is TreeDirectory { list_snoc_item(xs: tree_path_prefixes(path: e.path), item: e.path) } else { tree_path_prefixes(path: e.path) })
   tree_sorted_unique_paths(xs: concat(from_files, from_entries))
 }
 
@@ -6783,7 +6799,7 @@ fn tree_directory_targets(files: List<TreeFileHash>, metadata: List<TreeMetadata
 // regular files and binaries, and folded AGAIN over the same order at readback -- a stable order,
 // from one read of the source, is what makes the two passes comparable).
 fn tree_symlink_entries(entries: List<TreeMetadataEntry>) -> List<TreeMetadataEntry> {
-  fold(entries, init: [], f: (acc, e) => if e.kind_text == "l" { acc.append(e) } else { acc })
+  fold(entries, init: [], f: (acc, e) => if e.kind is TreeLink { acc.append(e) } else { acc })
 }
 
 fn approval_broker_tree_install(
