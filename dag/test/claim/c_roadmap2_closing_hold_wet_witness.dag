@@ -44,6 +44,7 @@ fn fx_instance(tag: String, dir: String) -> HostDashboardInstance {
     listen_port: 18109,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
+    actuator_host: "srv1" as NonEmptyStr,
   )
 }
 
