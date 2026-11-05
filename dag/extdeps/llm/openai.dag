@@ -826,15 +826,16 @@ fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
   }
 }
 
-// The prompt member as the endpoint gives it. Four arms, each cited to the one member's union in the
+// The prompt member as the endpoint gives it. Five arms, each cited to the one member's union in the
 // anchors at the top of this file: the docs page (member `completions-prompt`) for the meaning, and the
 // vendor's generated `CompletionCreateParams.prompt` for the shape --
 // `Union[str, Sequence[str], Iterable[int], Iterable[Iterable[int]], None]` -- which lists exactly these
-// four shapes and no others:
+// five values and no others:
 //   PromptText       -- string             one prompt, one completion
 //   PromptTexts      -- array<string>      one completion per entry
 //   PromptTokens     -- array<int>         one prompt, already tokenized by the caller
 //   PromptTokenLists -- array<array<int>>  several tokenized prompts
+//   PromptNull       -- null               the member present and holding null
 // A coproduct rather than a String field, because a String folds the four together and loses the
 // difference between one prompt containing a comma and two prompts -- which is the difference between
 // one completion and two, so it is not a detail a reader can recover. Tokens stay integers here: they
@@ -850,14 +851,18 @@ fn openai_text_completion_object(s: String) -> OpenAiTextCompletionObject? {
 // contract refuses -- for a REQUEST record, faithfulness means required members are not optional, and a
 // state that cannot legally occur is not a case this type should carry.
 //
-// The generated union also admits `None`, which is not the same thing as being absent: it is the member
-// present and holding null. That is deliberately not an arm here either. A null prompt asks for nothing to
-// complete, and the endpoint refuses it; four shapes are the four things a caller can actually ask for.
+// THE NULL VALUE IS AN ARM, NOT AN ABSENCE. The generated union admits `None` inside `Required[...]`: the
+// member must be present, and null is one of the values it may hold. The docs page gives null its meaning,
+// the endpoint's default prompt (the `<|endoftext|>` document separator, so the model completes as if from
+// the start of a new document). So null is a fifth thing a caller can ask for, distinct from omitting the
+// member, which the request contract refuses. It is a unit arm on this coproduct, which keeps the member
+// required, rather than an option on the field, which would fold "present and null" into "absent".
 type OpenAiCompletionPrompt
   = PromptText { text: String }
   | PromptTexts { texts: List<String> }
   | PromptTokens { tokens: List<Int> }
   | PromptTokenLists { token_lists: List<List<Int>> }
+  | PromptNull
 
 // The sampling members are the same carrier as the chat request's, for the same reason: std.float has no
 // ruled literal or operator home, the carrier is `extdeps.languages.json.grammar`'s `JsonNumberLexeme`
@@ -914,20 +919,17 @@ type OpenAiTextCompletion200Body {
   system_fingerprint: String?
 }
 
-// One event of a streamed answer from this endpoint. The anchor here is WEAKER than the rest of this
-// module, and the weakness is declared rather than hidden: the vendor generates NO chunk type for this
-// endpoint -- its resource types the stream as `Completion | Stream[Completion]`, reusing the non-streaming
-// record, in which both `text` and `finish_reason` are required. A reused record cannot describe an
-// intermediate event (text, no finish_reason) and a final one (a finish_reason) at once, so what is being
-// relaxed here is the vendor's own typing, not the wire. The source for the two relaxations below is the
-// endpoint's documented streaming behaviour, and that page could not be fetched programmatically at the read
-// date (platform.openai.com answers 403 to a programmatic fetch), so this is the one shape in this module
-// whose optionality is not pinned by a generated type -- the row that closes it is in
-// `structural_coverage_gap_openai_text_completion_members`. `choices` may be empty because an engine may
-// send a closing usage-only frame.
+// One event of a streamed answer from this endpoint. The vendor generates NO separate chunk type: its
+// resource types the stream as `Completion | Stream[Completion]`, so each streamed event is the same
+// `Completion` shape as the non-streaming answer, and `text` stays REQUIRED on every event, the last one
+// included. The one relaxation is `finish_reason`: the API reference states it is null while the answer is
+// unfinished (its streaming example carries `"text": "This"` beside `"finish_reason": null`), so it is
+// optional here where the non-streaming choice requires it. No generated type pins that nullability, which
+// is the row in `structural_coverage_gap_openai_text_completion_members`. `choices` may be empty because an
+// engine may send a closing usage-only frame.
 type OpenAiTextCompletionChunkChoice {
   index: Int
-  text: String?
+  text: String
   finish_reason: OpenAiFinishReason?
 }
 
@@ -974,9 +976,9 @@ data structural_coverage_gap_openai_text_completion_members: List<CoverageClosur
   {
     facts: [
       Subject { path: "OpenAiTextCompletionChunkChoice" },
-      Missing { item: "optionality_not_pinned_by_a_generated_type" }
+      Missing { item: "finish_reason_nullability_not_pinned_by_a_generated_type" }
     ],
-    trigger: "the vendor generates no chunk type for this endpoint -- its resource types the stream as Completion | Stream[Completion], reusing the non-streaming record in which text and finish_reason are both required -- and the endpoint's documented streaming behaviour could not be fetched programmatically at the read date. The change that closes this captures a real stream from a rented card and re-derives the optionality of text and finish_reason from the events that actually arrive, then either keeps the relaxations with the capture as the anchor or restores the vendor's required typing"
+    trigger: "the vendor generates no chunk type for this endpoint -- its resource types the stream as Completion | Stream[Completion], reusing the non-streaming record in which finish_reason is required -- while the API reference documents it null on unfinished events. The change that closes this captures a real stream from a rented card and confirms from the events that actually arrive that finish_reason is null until the last event and that text is present on every event"
   }
 ]
 
@@ -999,7 +1001,7 @@ data openai_text_completion_wire_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "OpenAiTextCompletionChunkBody"),
     reason: "no module reads one streamed text-completion event yet, and none refuses a payload whose `object` member is not the documented constant; openai_compat_sse frames such events but does not interpret their content",
-    dissolution: unbound_dissolution(description: "feature:s3-completions-chunk-read - the serving path's streamed read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and finishes the answer at the sentinel. It dissolves when that reader lands WITH a witness that decodes a recorded completions chunk into this record -- including the final event, which carries a finish_reason and no text"),
+    dissolution: unbound_dissolution(description: "feature:s3-completions-chunk-read - the serving path's streamed read in the approved plan gunbc.plans.fabric_serving_router's S3 decisions forwards one payload of this shape and finishes the answer at the sentinel. It dissolves when that reader lands WITH a witness that decodes a recorded completions chunk into this record -- an unfinished event, whose finish_reason is null, and the final event, which carries a finish_reason; text is present on both"),
   ),
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.llm.openai", decl_name: "structural_coverage_gap_openai_text_completion_members"),
