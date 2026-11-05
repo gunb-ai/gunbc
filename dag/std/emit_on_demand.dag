@@ -1,6 +1,7 @@
 module std.emit_on_demand
 
-import std.types { String, List, Bool, Int, list_length }
+import std.types { String, List, Bool, Int }
+import std.algebra { length }
 import std.content_hash {
   ContentHash,
   Fnv1a64Structural,
@@ -236,7 +237,7 @@ data interpreter_base_surviving_roles: List<InterpreterSurvivingRole> = [
 fn interpreter_surviving_roles_from_wet_surfaces(
   wet_surfaces: List<InterpreterWetSurface>
 ) -> List<InterpreterSurvivingRole> {
-  if list_length(items: wet_surfaces) == 0 {
+  if length(xs: wet_surfaces) == 0 {
     interpreter_base_surviving_roles
   } else {
     concat(
@@ -264,7 +265,7 @@ data interpreter_surviving_roles: List<InterpreterSurvivingRole> = interpreter_s
 data interpreter_surviving_roles_ceiling: Int = 8
 
 fn interpreter_surviving_roles_occupancy() -> Int {
-  list_length(items: interpreter_surviving_roles)
+  length(xs: interpreter_surviving_roles)
 }
 
 fn interpreter_surviving_roles_occupancy_within_ceiling() -> Bool {

@@ -1,6 +1,7 @@
 module gunbc.machine_intake.bmc_recovery_route
 
-import std.types { Bool, Int, List, NonEmptyStr, Port, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, Port, String }
+import std.algebra { length }
 import std.interval { closed_interval, interval_high, interval_low, IntervalRefused }
 // THE OPTIONAL MINTS, not the raw arms: a branch that has to produce an optional uses these, because
 // `Present { value: SomeType { ... } }` parses as a type annotation followed by a block (see the note at
@@ -217,7 +218,7 @@ fn in_band_ipmi_presence_verdict(presence: InBandIpmiPresence) -> InBandIpmiPres
   } else {
     let missing = recovery_ipmi_kernel_modules
       |> filter(m => presence.kernel_modules |> any(h => h == m) == false)
-    if list_length(items: missing) == 0 {
+    if length(xs: missing) == 0 {
       InBandIpmiPresenceComplete { presence: presence }
     } else {
       RecoveryKernelModulesMissing { missing: missing }
@@ -1510,17 +1511,17 @@ fn ledger_refusal_text(site_ref: DeclarationRef, cause: LedgerRefusalCause) -> N
         join(["no row is filed against ", declaration_ref_display_key(ref: s) as String,
               ", so the write is unclassified and nothing admits it"], "")
       SelectionNeedsEvidence { needs: needs } =>
-        join(["the selection is waiting on ", to_string(value: list_length(items: needs)),
+        join(["the selection is waiting on ", to_string(value: length(xs: needs)),
               " evidence need(s) -- the exact list travels in the refusal's carrier"], "")
       SelectionNeedsPolicy { survivors: survivors } =>
-        join(["nothing decides among ", to_string(value: list_length(items: survivors)),
+        join(["nothing decides among ", to_string(value: length(xs: survivors)),
               " surviving candidate pattern(s); a policy must say which"], "")
       SelectionRefusedByConstraints { defects: defects } =>
         join(["the effect's own characteristics are refused by the pattern constraints (",
-              to_string(value: list_length(items: defects)), " defect(s))"], "")
+              to_string(value: length(xs: defects)), " defect(s))"], "")
       NoPatternAdmissible { causes: causes, scope: _ } =>
         join(["no admissible pattern exists for this effect's decision scope (",
-              to_string(value: list_length(items: causes)), " cause(s))"], "")
+              to_string(value: length(xs: causes)), " cause(s))"], "")
       PatternIsNotOperatorApproved { selected: selected } =>
         join(["the selection chose ", pattern_identity_text(p: selected) as String,
               ", not the operator-approved capability, so a standing that could be revoked would stand behind",
@@ -2782,7 +2783,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
           "bring up the rescue OS on the board (insert the prepared rescue medium, or netboot it once a netboot provider is executed) -- nothing is reachable at the rescue address" as NonEmptyStr
         RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } =>
           join(["the rescue host is up but has no in-band IPMI: load ",
-                to_string(value: list_length(items: m)),
+                to_string(value: length(xs: m)),
                 " missing ipmi module(s); without ",
                 ipmi_device_node_canonical_text(node: recovery_ipmi_device_node) as String,
                 " there is no route to the controller from inside the chassis"], "") as NonEmptyStr
@@ -2802,7 +2803,7 @@ fn recovery_route_next_action(unavailable: RecoveryRouteUnavailable) -> NonEmpty
     // measured twice -- which is exactly what the never-measured sentence above would have sent them to do
     RecoveryCatalogAmbiguousForController { observed: _, matched: matched } =>
       join(["de-duplicate this board's password-write catalog: ",
-            to_string(value: list_length(items: matched)),
+            to_string(value: length(xs: matched)),
             " refusal rows answer one Get Device ID reading, so no single refusal can warrant a reset",
             " -- the refusal carries the rows; reconcile them against the capture"], "") as NonEmptyStr
     RecoveryCatalogIndexesDisagree { firmware: _, observed: _ } =>
@@ -3007,7 +3008,7 @@ test fn a_rescue_host_without_the_ipmi_stack_is_unreachable_and_says_which_modul
   match reached {
     RescueHostUnreachable { cause: RescueHostReachedWithoutInBandIpmi { address: a, missing_modules: m } } =>
       a == recovery_rescue_host_address()
-        && list_length(items: m) == 1
+        && length(xs: m) == 1
         // The refusal names the driver, so it can be read: LinuxKernelModuleName is branded, so the name
         // is compared as text rather than re-typed as a branded literal a second time (§3 -- a second
         // spelling of one name is a second place to be wrong about it). With the count pinned to 1 above,
@@ -3046,7 +3047,7 @@ test fn a_wrong_device_node_is_refused_as_the_node_it_is_and_names_both_nodes() 
         && match recovery_host_refusal(reachability: at_the_wrong_node) {
              Present { value: RescueHostReachedWithoutInBandIpmi { address: _, missing_modules: m } } =>
                // an empty list here is exactly the old lie: blame the drivers, name no driver
-               list_length(items: m) > 0
+               length(xs: m) > 0
              Present { value: _ } => true
              Absent => false
            }
@@ -4116,7 +4117,7 @@ test fn the_standing_refuses_to_claim_proof_without_the_readback() -> Bool {
   })
     && (match with_readback.outcome {
       RecoveryRouteProofComplete { bound: b, proven: p, writes: w } =>
-        b.in_band_device_identity == route.in_band_device_identity && list_length(items: w) == 2
+        b.in_band_device_identity == route.in_band_device_identity && length(xs: w) == 2
           // the carrier carries the identity it was minted from, and that identity is still the one
           // extdeps.bmc.redfish recognises -- checked by ITS predicate, not against a literal here
           && redfish_message_id_is_password_change_required(id: p.message_id as String)

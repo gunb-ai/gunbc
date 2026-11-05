@@ -1,8 +1,8 @@
 module test.claim.bmc.bmc_virtual_media_witness
 
 import std.logic { Bool }
-import std.types { list_length, Int }
-import std.algebra { list_append }
+import std.types { Int }
+import std.algebra { list_append, length }
 import extdeps.linux.usb_gadget {
   ConfigfsOp,
   ConfigfsMkdir,
@@ -188,7 +188,7 @@ test fn srv4_gadget_is_readonly_cdrom_on_nbd0() -> Bool {
     && configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
     && configfs_prepared_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
     && configfs_prepared_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
-    && list_length(items: ops) == 16
+    && length(xs: ops) == 16
 }
 
 test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
@@ -197,7 +197,7 @@ test fn srv4_gadget_ops_are_typed_not_scraped_from_shell() -> Bool {
     && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/cdrom") == "0"
     && configfs_write_value_for(ops: ops, path_suffix: "/lun.0/ro") == "1"
     && configfs_write_value_for(ops: ops, path_suffix: "gunbcvm/UDC") == "1e6a0000.usb-vhub:p3"
-    && list_length(items: ops) == 16
+    && length(xs: ops) == 16
 }
 
 // THE SETUP'S REALIZATION (review on a28daf4844, recommended next slice): each prepared op lowers
@@ -218,22 +218,22 @@ test fn srv4_gadget_setup_realization_lowers_prepared_ops_to_builder_commands() 
   let writes = filter(realized, cmd => is_write_cmd(cmd: cmd))
   let mkdirs = filter(argvs, c => argv_program(cmd: c) == "mkdir")
   let lns = filter(argvs, c => argv_program(cmd: c) == "ln")
-  list_length(items: realized) == 16
-    && list_length(items: writes) == 11
+  length(xs: realized) == 16
+    && length(xs: writes) == 11
     && all(writes, cmd => string_contains(s: write_path(cmd: cmd), pattern: gd))
-    && list_length(items: argvs) == 5
+    && length(xs: argvs) == 5
     && all(argvs, c =>
       argv_program(cmd: c) == "mkdir"
         || argv_program(cmd: c) == "ln"
         || argv_program(cmd: c) == "rm"
         || argv_program(cmd: c) == "rmdir")
-    && list_length(items: mkdirs) == 4
+    && length(xs: mkdirs) == 4
     && all(mkdirs, c => any(argv_arguments(cmd: c), w => w == "-p"))
     && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == gd))) == 1
     && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/strings/0x409"], "")))) == 1
     && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], "")))) == 1
     && count(filter(mkdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/strings/0x409"], "")))) == 1
-    && list_length(items: lns) == 1
+    && length(xs: lns) == 1
     && all(lns, c =>
       any(argv_arguments(cmd: c), w => w == (coreutils_ln_symbolic_force_into_directory_flags as String))
         && any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], ""))
@@ -258,19 +258,19 @@ test fn srv4_gadget_teardown_realization_detaches_first_then_unlinks_and_rmdirs(
   let writes = filter(realized, cmd => is_write_cmd(cmd: cmd))
   let rms = filter(argvs, c => argv_program(cmd: c) == "rm")
   let rmdirs = filter(argvs, c => argv_program(cmd: c) == "rmdir")
-  list_length(items: realized) == 7
+  length(xs: realized) == 7
     && index_of_first_write(cmds: realized) == 0
-    && list_length(items: writes) == 1
+    && length(xs: writes) == 1
     && any(writes, cmd =>
       string_contains(s: write_path(cmd: cmd), pattern: "gunbcvm/UDC") && write_value(cmd: cmd) == "")
     && all(realized, cmd => realized_names_gadget(cmd: cmd, gd: gd))
-    && list_length(items: rms) == 1
+    && length(xs: rms) == 1
     && all(rms, c =>
-      list_length(items: argv_arguments(cmd: c)) == 2
+      length(xs: argv_arguments(cmd: c)) == 2
         && any(argv_arguments(cmd: c), w => w == (coreutils_rm_force_flag as String))
         && any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/mass_storage.0"], "")))
-    && list_length(items: rmdirs) == 5
-    && all(rmdirs, c => list_length(items: argv_arguments(cmd: c)) == 1)
+    && length(xs: rmdirs) == 5
+    && all(rmdirs, c => length(xs: argv_arguments(cmd: c)) == 1)
     && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == gd))) == 1
     && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/functions/mass_storage.0"], "")))) == 1
     && count(filter(rmdirs, c => any(argv_arguments(cmd: c), w => w == join([gd, "/configs/c.1/strings/0x409"], "")))) == 1
