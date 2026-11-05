@@ -389,8 +389,21 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
     PatternResolved { node: variant_node } =>
       match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
         Present { value: field_child } =>
+          let probe = if field_name == "refusals" {
+            match field_child.inferred {
+              Present { value: Resolved { node: _ } } => ""
+              Present { value: CompilerError { message: pm, span: _ } } => concat("PROBE refusals field_child.inferred=CompilerError(", pm, ")")
+              Present { value: TypeVariable { id: pv } } => concat("PROBE refusals field_child.inferred=TypeVariable(", pv, ")")
+              Present { value: Divergent } => "PROBE refusals field_child.inferred=Divergent"
+              Absent => "PROBE refusals field_child.inferred=Absent"
+            }
+          } else { "" }
+          if probe != "" {
+            node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: probe, span: variant_node.span }, module_name: module_name)])
+          } else {
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
+          }
         Absent => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
