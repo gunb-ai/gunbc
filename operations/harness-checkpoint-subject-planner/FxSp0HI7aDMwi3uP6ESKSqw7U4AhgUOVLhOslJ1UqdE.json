@@ -1,0 +1,1 @@
+{"id": "dd097bd95a1f6226", "event": {"schema": "roadmap-event/v3", "node": "harness-checkpoint-subject-planner", "author": "principal:host-account/srv1/gunbc-lab-agent", "parent": "", "kind": "claimed", "recorded_at": "2026-11-05T16:11:07Z", "assignee": "principal:gunbc/workflows/fabric", "return_to": "principal:host-account/srv1/gunbc-lab-agent"}}
