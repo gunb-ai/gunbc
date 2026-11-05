@@ -1256,6 +1256,15 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
     Present { value: s } => {
       let census_first = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
       let carry_first = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
+      // TWO READS OF ONE FACT, AT TWO POINTS: does the live store hold unit_a() at the generation the FIRST
+      // carry reported? This one is written after the first carry's let and before every later pass let, and
+      // it is demanded by the conjunct after the first pass's outcome assertions -- before any conjunct
+      // touches carry_second, since touching carry_second is what RUNS the second pass. So the read lands
+      // between the two passes whether the runtime runs a let where it is written or where it is first
+      // demanded (review 91388 could not confirm which; this position does not care). If the second pass
+      // re-publishes, the generation moves and only after_second_pass can see it; if the first carry
+      // misreports what it wrote, only this one can.
+      let after_first_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
       let outcome_first = belt_attempt_slots_cutover_record_write(
         stores: s,
         record: attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_first, carry: carry_first),
@@ -1269,13 +1278,10 @@ test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_st
       // that can answer "did the second pass write anything".
       let census_after_two = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
       let path = attempt_slots_cutover_record_path(stores: s, instance_id: "session-wet" as NonEmptyStr)
-      // TWO READS OF ONE FACT, TAKEN AT TWO POINTS. Both ask the same question -- does the live store hold
-      // unit_a() at the generation the FIRST carry reported? -- and both are read lazily, so what each one
-      // sees is decided by where it is demanded below: after_first_pass is demanded BEFORE the first
-      // conjunct that touches carry_second (touching it is what RUNS the second pass), after_second_pass is
-      // demanded after that pass has run. If the second pass re-publishes, the generation moves and only
-      // the second one can see it; if the first carry misreports, only the first can see it.
-      let after_first_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
+      // THE LATER OF THE TWO READS. Placed here -- after every pass let in this block -- so that it observes
+      // the store after both passes under EITHER evaluation order: if a let runs where it is written, the
+      // passes above it have already run; if it runs where it is first demanded, the conjunct that demands
+      // it is below them too.
       let after_second_pass = store_holds_reported_generation(store: s.slots, c: carry_first, reference: unit_a())
       let read_back = Filesystem.Read(path: path as FilePath)
       seeded
