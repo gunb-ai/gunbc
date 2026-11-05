@@ -1,0 +1,67 @@
+module extdeps.electronic_component.microchip_zl40294
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.microchip_technology { microchip_technology }
+import std.measure { millivolt }
+import extdeps.electronic_component.types { ClockFanoutSpec, ClockFanoutSpecification, ElectronicComponentRow, MillivoltRange }
+
+// Microchip's ZL40294, "20-Output PCIe Gen 6 Clock Fanout Buffer (DB2000QL)", Document DS20006768B
+// (2023), read 2026-11-05 from the Internet Archive snapshot of 2025-11-16 of Microchip's own URL (the live
+// unversioned link now serves a later revision, so the archive is the stable copy of revision B); the PDF's SHA-256 is
+// 138f7b1edfd6ea77bc319cb13c42c7c4f259911fe910e89451898ce04e4f9278. Cited pages: the ordering table
+// (page 43) names ZL40294LDG6 (tray) and ZL40294LDF6 (reel) as the same device in an 80-lead 6x6 mm WGQFN;
+// the marking section (page 37) publishes the top mark as the Microchip logo, then "ZL40294", then a
+// "X X e3" line, then the traceability line YYWWNNN (year, week, tracking number), truncatable when the
+// package is too small. Feature list (page 1): 20 push-pull HCSL outputs, 3.3 V supply; Note 1 of the
+// electrical tables gives VDD = 3.3 V +/-5%; CK_IN/CK_IN# is the single differential reference input.
+//
+// DECLARED FRONTIER CONSUMER: the post-marking-PR identification join in product.electrical.identification,
+// which will compare a board MarkingReading with `top_marking` below and upgrade a MarkingUnresolved
+// position. Nothing reads this row today; no lookup function is declared here because ElectronicComponentRow
+// .top_marking is already the single home of the mark.
+//
+// DISCREPANCY TO REPORT, NOT FORCED: the datasheet's marking figure carries "e3" (matte-tin finish
+// designator); the board reading recorded for U451 is "ZL40294 / Z Z (e4) / 22118RS". The prefix, part
+// number and traceability shape agree; the finish designator does not. The ordering table gives no e4
+// variant, so whether the board part is an ordering variant this document does not publish is open.
+// The pin table (page 9 onward) is not transcribed: no pin-level consumer exists.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "web.archive.org/web/20251116130216id_/https://ww1.microchip.com/downloads/aemDocuments/documents/TCG/ProductDocuments/DataSheets/ZL40294-20-Output-DB2000QL-Buffer-with-Ultra-Low-Additive-Jitter-DS20006768.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.microchip_zl40294",
+      decl_name: "zl40294ldg6",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data zl40294ldg6: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: microchip_technology,
+  ordering_code: "ZL40294LDG6",
+  package: "80-lead 6 mm x 6 mm WGQFN (tray; ZL40294LDF6 is the tape-and-reel form of the same device)",
+  top_marking: Present { value: "ZL40294 / X X e3 / YYWWNNN" },
+  specification: ClockFanoutSpec { clock: ClockFanoutSpecification {
+    inputs: 1,
+    outputs: 20,
+    supplies: [
+      MillivoltRange { minimum: millivolt(count: 3135), maximum: millivolt(count: 3465) },
+    ],
+    pins: Absent,
+  } },
+  vendor_application_statements: [
+    "Fully Compliant with Intel DB2000QL Specification",
+    "20 Low-Power Push-Pull HCSL PCIe Outputs",
+    "Supports Latest PCIe Gen 5.0 and Gen 6.0 Spec",
+  ],
+}
