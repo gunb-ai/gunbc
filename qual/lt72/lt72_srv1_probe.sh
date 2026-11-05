@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # lively-tern-72 srv1 probe. Usage: lt72_srv1_probe.sh <mode> [envelope=2G] [seconds=150]
+# modes: anonfullcopy (anonfull, but execs a PRIVATE COPY of the interpreter so its text is this unit's own file pages)
 # modes: anonfull (REPRO of drift-peak: anon to within ~1 MiB of max, swap 0, then CPU-bound loop executing interpreter text; discriminator pgmajfault)
 #        cpusteady (anon ~60% of max, 100% user CPU, never hits max)
 #        burst     (alloc to ~95% of max for 8 s, free, then CPU work; max events should be ~0)
@@ -10,7 +11,7 @@ MODE=${1:?mode}; ENV=${2:-2G}; SECS=${3:-150}
 OUT=/var/tmp/lt72-probe-$MODE-$(date -u +%Y%m%dT%H%M%SZ); mkdir -p "$OUT"
 UNIT=lt72-$MODE-$$
 case $MODE in
-anonfull) PY='
+anonfull|anonfullcopy) PY='
 import os
 cap=int(os.environ["CAP"])
 cg="/sys/fs/cgroup"+open("/proc/self/cgroup").read().split("::")[1].strip()
@@ -36,8 +37,19 @@ while True:
     x=(x*1103515245+12345)&0xffffffff';;
 *) echo bad mode; exit 2;; esac
 CAPB=$(numfmt --from=iec "$ENV")
+PYEXE=python3; LDENV=""
+if [ "$MODE" = anonfullcopy ]; then
+  # make the interpreter text THIS unit's own file pages: new inodes, evicted from the page cache first
+  mkdir -p "$OUT/bin" "$OUT/lib"
+  REAL=$(readlink -f "$(command -v python3)"); cp --reflink=never "$REAL" "$OUT/bin/python3"
+  ldd "$REAL" | awk '/libpython/{print $3}' | while read -r L; do [ -n "$L" ] && cp --reflink=never "$(readlink -f "$L")" "$OUT/lib/$(basename "$L")"; done
+  sync
+  for F in "$OUT"/bin/* "$OUT"/lib/*; do [ -f "$F" ] && python3 -c 'import os,sys; fd=os.open(sys.argv[1],os.O_RDONLY); os.posix_fadvise(fd,0,0,os.POSIX_FADV_DONTNEED)' "$F"; done
+  ls -l "$OUT/bin" "$OUT/lib" >"$OUT/copies.txt"
+  PYEXE="$OUT/bin/python3"; LDENV="LD_LIBRARY_PATH=$OUT/lib"
+fi
 systemd-run --user --unit="$UNIT" --collect -p MemoryMax="$ENV" -p MemorySwapMax=0 -p MemoryHigh=infinity \
-  -E CAP="$CAPB" python3 -c "$PY" >"$OUT/launch.txt" 2>&1
+  -E CAP="$CAPB" ${LDENV:+-E "$LDENV"} "$PYEXE" -c "$PY" >"$OUT/launch.txt" 2>&1
 CG=/sys/fs/cgroup$(systemctl --user show "$UNIT" -p ControlGroup --value)
 echo "cgroup $CG" | tee "$OUT/cgroup.txt"; cat "$CG/memory.max" "$CG/memory.high" "$CG/memory.swap.max" >>"$OUT/cgroup.txt"
 printf 't\tactive\tcurrent\tanon\tfile\tpgmajfault\tev_high\tev_max\tev_oom\tev_oom_kill\tuser_usec\n' >"$OUT/samples.tsv"
