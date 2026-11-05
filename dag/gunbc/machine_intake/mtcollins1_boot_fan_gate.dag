@@ -52,7 +52,10 @@ data fan_gate_observation_path: NonEmptyStr = "artifacts/mtcollins1-boot-fan-gat
 data github_step_summary_variable: NonEmptyStr = "GITHUB_STEP_SUMMARY"
 
 // EVERY READBACK of one PowerDown, bounded; the last is the settled state, none is dropped.
-fn boot_fan_gate_power_off_poll(username: NonEmptyStr, password_file: NonEmptyStr, remaining: Int) -> List<ChassisPowerObservation>
+// The poll is effectful (it sleeps and reads the chassis), so its recursion must be tail-located:
+// the accumulator carries the samples seen so far and the recursive call is the whole else-branch,
+// which the Rust realization lowers to a loop. Order is preserved front-to-back as in the original.
+fn boot_fan_gate_power_off_poll(username: NonEmptyStr, password_file: NonEmptyStr, remaining: Int, collected: List<ChassisPowerObservation>) -> List<ChassisPowerObservation>
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "boot_fan_gate_power_down"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "boot_fan_gate_power_off_poll"),
@@ -60,7 +63,8 @@ fn boot_fan_gate_power_off_poll(username: NonEmptyStr, password_file: NonEmptySt
 {
   let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_stale_power_off_interval)
   let sample = megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: username, password_file: password_file)
-  if chassis_power_off_poll_settled(sample: sample, remaining: remaining) { [sample] } else { append([sample], boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: remaining - 1)) }
+  let step = append(collected, items: [sample])
+  if chassis_power_off_poll_settled(sample: sample, remaining: remaining) { step } else { boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: remaining - 1, collected: step) }
 }
 
 fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -> FanGatePowerDownAttempt
@@ -82,7 +86,7 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
     command_stdout: down.stdout,
     command_exit_code: down.exit_code,
     command_stderr: down.transport_stderr,
-    readbacks: boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: megarac_stale_power_off_samples),
+    readbacks: boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: megarac_stale_power_off_samples, collected: []),
   }
 }
 
