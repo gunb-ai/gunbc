@@ -79,8 +79,8 @@ data verify_entry_compile_samples: List<EntryCompileSample> = [
 
 // POLICY BUDGETS, each with its reason (DESIGN 5 explicit policy budget). The headroom is a falsifiable
 // operator figure: a verify unit killed at its bound for a within-ceiling node means it is wrong.
-data verify_entries_ceiling: Nat = 8
-// Reason: srv1's compute pool holds two seats; a node past eight entries is not one attempt's verification
+data verify_entries_ceiling: Nat = 2
+// Reason (operator decision 2026-11-05, escalation default at timeout): srv1's compute pool holds two seats and one entry compiles in ~4143 s on one core, so the derived outer limit at 2 is 13,329 s; a node past two entries is not one attempt's verification
 // and is refused before any run starts, so the outer bound is never the way a predictable overrun ends.
 data verify_run_headroom_percent: Nat = 50
 // Reason: compile time on a shared host varies with neighbours; 50% over the recorded figure.
@@ -178,14 +178,20 @@ fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
 }
 
 // The attempt unit's outer safety net: the ceiling's worth of the slowest recorded entry, derived from the
-// same rows, so changing a sample or the ceiling moves it (no second copy).
-fn verify_unit_outer_run_bound() -> Second {
-  let slowest = match verify_slowest_sample(samples: verify_entry_compile_samples) {
+// same rows, so changing a sample or the ceiling moves it (no second copy). With no samples the slowest figure is
+// 0 and the net is the slack alone; that is not a live state, because with no samples every node with an entry
+// refuses typed (VerifyRunUnsampled) before any run starts, so nothing runs under the small net.
+fn verify_outer_run_bound_for(samples: List<EntryCompileSample>, ceiling: Nat, headroom_percent: Nat, slack: Second) -> Second {
+  let slowest = match verify_slowest_sample(samples: samples) {
     Present { value: v } => second_count(s: v.seconds)
     Absent => 0
   }
-  let total = slowest * verify_entries_ceiling
-  second(count: total + total * verify_run_headroom_percent / 100 + second_count(s: verify_run_slack))
+  let total = slowest * ceiling
+  second(count: total + total * headroom_percent / 100 + second_count(s: slack))
+}
+
+fn verify_unit_outer_run_bound() -> Second {
+  verify_outer_run_bound_for(samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack)
 }
 
 fn belt_attempt_obligation_unit_run_bound() -> Second {

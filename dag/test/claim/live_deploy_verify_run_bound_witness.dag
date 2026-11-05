@@ -8,7 +8,7 @@ import extdeps.external_authority { TranscribedUncited }
 import gunbc.live_deploy.belt_cadence {
   EntryCompileSample, VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_note,
   verify_run_bound_for, verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
-  verify_unit_outer_run_bound, verify_slowest_sample,
+  verify_unit_outer_run_bound, verify_slowest_sample, verify_outer_run_bound_for,
 }
 
 data fixture_samples: List<EntryCompileSample> = [
@@ -70,4 +70,14 @@ test fn verify_outer_bound_clears_the_ceiling_of_the_slowest_sample() -> Bool {
   slowest > 0 && second_count(s: verify_unit_outer_run_bound()) > slowest * verify_entries_ceiling
     && verify_run_headroom_percent > 0 && second_count(s: verify_run_slack) > 0
     && length(verify_entry_compile_samples) > 0
+}
+
+// With no samples the outer net is the slack alone, and no node with an entry can start a run under it: every
+// such node refuses typed first, so the small net is never the limit of a live run.
+test fn an_empty_sample_list_gives_the_slack_net_and_refuses_every_node_with_an_entry() -> Bool {
+  second_count(s: verify_outer_run_bound_for(samples: [], ceiling: 8, headroom_percent: 50, slack: second(count: 60))) == 60
+    && (match verify_run_bound_for(entries: ["a.dag"], samples: [], ceiling: 8, headroom_percent: 50, slack: second(count: 60)) {
+      VerifyRunUnsampled { entry } => entry == "a.dag"
+      _ => false
+    })
 }

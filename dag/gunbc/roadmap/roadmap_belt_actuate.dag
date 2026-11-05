@@ -9513,23 +9513,36 @@ fn belt_run_bounded_validation_units(
 // returned a seat (SeatEnsureReleased). The pass releases only seats whose unit termination it re-proves
 // (compute_seat_discharge_all): no age, no doubt, no expiry frees anything. A pass that returned nothing, was
 // refused, or any other refusal leaves the first result standing, so the refusal stays typed and located.
+// The two decisions of the converge step, pure so each is exercised in both directions: a first result whose
+// refusal is a full pool, and a discharge pass that actually returned a seat.
+fn belt_provide_pool_full(first: ProvideResult) -> Bool {
+  match first {
+    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: HostComputeCapacityFull { wire: _ } }, document: _, host_record: _ } => true
+    _ => false
+  }
+}
+
+fn belt_discharge_pass_released_a_seat(pass: SeatDischargePass) -> Bool {
+  match pass {
+    SeatDischargeRan { outcomes } =>
+      any(outcomes, o => match o {
+        SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => true
+        _ => false
+      })
+    _ => false
+  }
+}
+
 fn belt_provide_converging(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   let first = compute_provide(instance: instance, owner: owner, commit: commit, op: op)
-  match first {
-    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: HostComputeCapacityFull { wire: _ } }, document: _, host_record: _ } =>
-      match belt_compute_seat_discharge_pass(instance: instance) {
-        SeatDischargeRan { outcomes } =>
-          if any(outcomes, o => match o {
-            SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => true
-            _ => false
-          }) {
-            compute_provide(instance: instance, owner: owner, commit: commit, op: op)
-          } else {
-            first
-          }
-        _ => first
-      }
-    _ => first
+  if belt_provide_pool_full(first: first) {
+    if belt_discharge_pass_released_a_seat(pass: belt_compute_seat_discharge_pass(instance: instance)) {
+      compute_provide(instance: instance, owner: owner, commit: commit, op: op)
+    } else {
+      first
+    }
+  } else {
+    first
   }
 }
 
