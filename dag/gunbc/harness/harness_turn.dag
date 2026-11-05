@@ -2042,7 +2042,7 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
       SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: round } =>
         if made >= session_resume_bound {
           TurnResumeRefused { cause: join(["the session has already been resumed ", to_string(value: made), " times, the bound; causes: ", join(causes, " | ")], "") }
-        } else if list_length(items: interrupted) > 0 {
+        } else if length(xs: interrupted) > 0 {
           TurnResumeRefused { cause: join(["the session stopped with tool calls that have no recorded result (", join(interrupted, ", "), "); their effects are not established, so it is not resumable"], "") }
         } else {
           let request = Filesystem.Read(path: harness_wire_log_path(config: config, round: round, kind: ".request.json"))

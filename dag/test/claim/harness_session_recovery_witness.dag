@@ -1,6 +1,7 @@
 module test.claim.harness_session_recovery_witness
 
-import std.types { Bool, String, List, Int, NonEmptyStr, list_length }
+import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.algebra { length }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.http.header_dump { HeaderDumpRead }
@@ -72,7 +73,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
         && (match validation_of(request: validated_request()) { SessionValidated => true SessionInterrupted { unrecorded_call_ids: _ } => false _ => false })
         && (match session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38)) {
           SessionRecoveryPending { causes, resumes_made, interrupted_calls, resume_round } =>
-            resumes_made == 0 && resume_round == 38 && list_length(items: interrupted_calls) == 0
+            resumes_made == 0 && resume_round == 38 && length(xs: interrupted_calls) == 0
               && any(causes, c => c.contains("req_2ae5021ab9c56e6eb7fe1707af067e27"))
           SessionRecoveryNone => false
           SessionRecoveryMalformed { mismatch: _ } => false
@@ -84,7 +85,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
 // resumes the SAME attempt's session; it neither mints a new attempt nor ends the lineage.
 test fn s3_claim_2_a_recovery_needed_prior_resumes_the_same_session() -> Bool {
   match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38))) }) {
-    ContinuationResume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && list_length(items: causes) == 1
+    ContinuationResume { reason: _, attempt_key, ordinal, causes } => attempt_key == "a1" && ordinal == 1 && length(xs: causes) == 1
     _ => false
   }
 }

@@ -1,7 +1,7 @@
 module gunbc.harness.harness_session_recovery
 
-import std.types { String, Bool, Int, List, HttpStatus, NonEmptyStr, list_length }
-import std.algebra { trim }
+import std.types { String, Bool, Int, List, HttpStatus, NonEmptyStr }
+import std.algebra { trim, length }
 import std.optional { Present, Absent }
 import std.content_hash { content_hash_atom }
 import extdeps.http.header_dump { HttpHeaderDump, HeaderDumpRead, HeaderDumpUnread, http_header_dump_status, http_header_dump_field }
@@ -223,9 +223,9 @@ fn session_result_ids(m: JsonValue) -> SessionIds {
 
 fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
   let indexed = enumerate(messages)
-  if list_length(items: messages) == 0 {
+  if length(xs: messages) == 0 {
     SessionUnresumable { cause: "the request carries no messages" }
-  } else if list_length(items: messages |> filter(m => !session_role_readable(m: m))) > 0 {
+  } else if length(xs: messages |> filter(m => !session_role_readable(m: m))) > 0 {
     SessionUnresumable { cause: "a message carries no readable string role, so the conversation's state is not established" }
   } else {
     match indexed |> filter(p => session_message_role(m: p.second) == "assistant") |> last() {
@@ -238,10 +238,10 @@ fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
             match session_ids_combine(parts: after |> map(m => session_result_ids(m: m))) {
               SessionIdsMalformed { mismatch: x } => SessionUnresumable { cause: join(["a recorded result is unreadable: ", x], "") }
               SessionIdsRead { ids: recorded } => {
-                let unrecorded = called |> filter(id => list_length(items: filter(recorded, r => r == id)) == 0)
-                if list_length(items: unrecorded) > 0 {
+                let unrecorded = called |> filter(id => length(xs: filter(recorded, r => r == id)) == 0)
+                if length(xs: unrecorded) > 0 {
                   SessionInterrupted { unrecorded_call_ids: unrecorded }
-                } else if list_length(items: after) == 0 {
+                } else if length(xs: after) == 0 {
                   SessionUnresumable { cause: "the conversation ends on an assistant message, which the engine is not asked to answer" }
                 } else {
                   SessionValidated
@@ -281,7 +281,7 @@ fn session_conversation_from_request(request_body: String, leading_system: Bool)
         SessionElementsAbsent => none
         SessionElementsMalformed { mismatch: _ } => none
         SessionElementsFound { elements: all } =>
-      if list_length(items: all) == 0 {
+      if length(xs: all) == 0 {
         none
       } else if leading_system {
         match all.get(0) {
@@ -464,8 +464,8 @@ fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> Sessio
     RecoveryEventOther => [] as List<SessionRecoveryEvent>
     RecoveryEventMalformed { mismatch: _ } => [] as List<SessionRecoveryEvent>
   })
-  let resumed = list_length(items: events |> filter(e => match e { RecoveryEventResumed => true RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => false RecoveryEventOther => false RecoveryEventMalformed { mismatch: _ } => false }))
-  if list_length(items: needed) <= resumed {
+  let resumed = length(xs: events |> filter(e => match e { RecoveryEventResumed => true RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } => false RecoveryEventOther => false RecoveryEventMalformed { mismatch: _ } => false }))
+  if length(xs: needed) <= resumed {
     SessionRecoveryNone
   } else {
     match needed.last() {
