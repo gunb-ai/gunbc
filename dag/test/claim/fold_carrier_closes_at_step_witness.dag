@@ -102,3 +102,27 @@ fn w_empty_init_carrier_closed() -> Bool {
 
 test fn empty_init_carrier_closed() -> Bool { w_empty_init_carrier_closed() }
 
+// THE SHAPE HEAL REFUSED AT #15149's HEAD (run 40427864248, E0282 at gunbc_crate_partition.rs `acc.iter().cloned()`): the
+// accumulator is READ (`any`) before it is pushed; dag/gunbc/crate_partition.dag assignment_has_scc_split.
+fn w_any_then_push_emits() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.anypush\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => if any(acc, seen => seen == x) { acc } else { list_push(acc, x) }) }\n",
+    "src/foldcarrier_anypush_emits.rs",
+    ["fn gather", "Vec<i64>"],
+    []
+  )
+}
+
+test fn any_then_push_emits() -> Bool { w_any_then_push_emits() }
+
+fn w_any_then_push_carrier_closed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.anypush\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => if any(acc, seen => seen == x) { acc } else { list_push(acc, x) }) }\n",
+    "src/foldcarrier_anypush_carrier_closed.rs",
+    ["fn gather"],
+    ["acc: _"]
+  )
+}
+
+test fn any_then_push_carrier_closed() -> Bool { w_any_then_push_carrier_closed() }
+
