@@ -3,6 +3,7 @@ module v2.compiler.self_host.direct_rust_door_written_compile
 import extdeps.rust.rustc
 import std.types { Bool, Int }
 import v2.compiler.self_host.candidate_generation {
+  RustWorkspaceWriteReceipt,
   WrittenProvenancedRustArtifact,
   generate_written_rust_candidate_from_ingest,
   written_provenanced_rust_artifact_ok
@@ -40,6 +41,7 @@ type WrittenRustCompileObservation
       compile_stderr: String
     }
   | WrittenRouteRefused { diagnostics: NonEmptyDiagnostics }
+  | WrittenFileNotWritten { write: RustWorkspaceWriteReceipt }
 
 fn observe_written_rust_compile(
   workspace_dir: String,
@@ -54,12 +56,18 @@ fn observe_written_rust_compile(
   ) {
     Rejected { diagnostics: d } => WrittenRouteRefused { diagnostics: d }
     Accepted { value: written, diagnostics: _ } =>
+      if !(written.write.workspace_dir_ok && written.write.manifest_write_ok && written.write.main_write_ok) {
+        // A failed write is its own refusal: rustc is never run on a path that was not materialized,
+        // so ENOENT can never be read back as the candidate being rejected.
+        WrittenFileNotWritten { write: written.write }
+      } else {
       let result = rustc.Check.CheckSourceFile(path: written.write.main_rs_path, edition: "2021")
       WrittenSourceCompiled {
         written: written,
         compile_accepted: result.success,
         compile_exit_code: result.exit_code,
         compile_stderr: result.stderr
+      }
       }
   }
 }
@@ -69,6 +77,23 @@ fn direct_rust_door_written_production() -> WrittenRustCompileObservation {
     workspace_dir: "target/direct-rust-door-written/production",
     target: direct_rust_door_target_model()
   )
+}
+
+// RED for the write guard: an unwritable workspace (/proc admits no directory) on the production
+// target. The route must answer WrittenFileNotWritten, never a rustc verdict.
+fn direct_rust_door_written_unwritable() -> WrittenRustCompileObservation {
+  observe_written_rust_compile(
+    workspace_dir: "/proc/gunbc-direct-rust-door-unwritable/ws",
+    target: direct_rust_door_target_model()
+  )
+}
+
+fn written_file_not_written(observation: WrittenRustCompileObservation) -> Bool {
+  match observation {
+    WrittenFileNotWritten { write: w } => !w.main_write_ok && !w.manifest_write_ok
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
+    WrittenRouteRefused { diagnostics: _ } => false
+  }
 }
 
 fn direct_rust_door_written_missing_rule() -> WrittenRustCompileObservation {
@@ -86,6 +111,7 @@ fn written_compile_holds(observation: WrittenRustCompileObservation) -> Bool {
     WrittenSourceCompiled { written: written, compile_accepted: accepted, compile_exit_code: _, compile_stderr: _ } =>
       accepted && written_provenanced_rust_artifact_ok(written: written)
     WrittenRouteRefused { diagnostics: _ } => false
+    WrittenFileNotWritten { write: _ } => false
   }
 }
 
@@ -106,5 +132,6 @@ fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
     WrittenRouteRefused { diagnostics: d } =>
       diagnostics_fatal_reason(d: d) == ^produced_decl_target_unwired
     WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
+    WrittenFileNotWritten { write: _ } => false
   }
 }

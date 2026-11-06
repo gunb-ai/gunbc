@@ -5,6 +5,8 @@ import std.types { Bool }
 import v2.compiler.self_host.direct_rust_door_written_compile {
   direct_rust_door_written_missing_rule,
   direct_rust_door_written_production,
+  direct_rust_door_written_unwritable,
+  written_file_not_written,
   written_compile_holds,
   written_route_refused
 }
@@ -23,4 +25,10 @@ test fn written_production_source_is_accepted_by_rustc_on_the_written_file() -> 
 
 test fn missing_rule_refuses_on_the_written_route() -> Bool {
   written_route_refused(observation: direct_rust_door_written_missing_rule())
+}
+
+// RED for the write guard: a workspace that cannot be created yields WrittenFileNotWritten, never a
+// rustc verdict (the 3927f5b1 srv1 run read ENOENT as a bare FAIL because nothing checked the write).
+test fn unwritable_workspace_refuses_before_rustc() -> Bool {
+  written_file_not_written(observation: direct_rust_door_written_unwritable())
 }
