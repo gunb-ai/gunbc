@@ -4426,41 +4426,44 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
   plan.declarations |> flat_map(d => equality_structure_helpers(structure: d.structure))
 }
 
-// THE ONE DOOR for synthesized helper calls. A qualified call in a derived declaration resolves
-// where the DECLARING module carries the helper's name — in its specific import list, or through a
-// whole-module import of the helper's module — the same reading that typechecking the derived body
-// already applies, and the reason `derived:v2.std.symbol_index` reports map_values_eq not found in
-// scope at main (symbol_index imports std.algebra without that name). Synthesis skips the derived
-// when a helper is invisible (the fuel-out disposition, verbatim in kind: fail-closed, and each
-// holder then refuses at its authored comparison, located) instead of joining a body that cannot
-// resolve. Admission and synthesis share this module's import list, so the same answer admits or
-// skips both doors; nothing widens.
-// INTERIM, named: this makes the holder's import set the authority over whether its type has a
-// derived ==, which is an accident of imports, not of equality (the symbol_index/node asymmetry is
-// that accident). The compiler's own construction should bind these helpers by declaring identity,
-// like the derived equality itself binds `==`. Recorded as integration concern
+// THE ONE PREDICATE (silent-bee-845 ruling): "is a derived equality body emitted for this
+// declaration in its declaring module?" - consumed by BOTH doors: the definition emitter
+// (equality_synthesized_for, which synthesizes the body exactly when it holds) and the by-target
+// `==` judgment (equality_derived_target, which calls the body exactly when it holds and refuses
+// at use otherwise). A second agreeing check at either door is forbidden: definition and call meet
+// only in the emitted build, and two rules answering one question there is the fork that produced
+// the E0425 in v2-emitted-policy-unit-2 (derived:v2.std.diagnostic NonEmptyDiagnostics skipped its
+// body while the by-target judgment still emitted the call).
+// The answer reads the declaring module's named imports (the symbol index's own reading, so symbol
+// resolution and this share one authority): every helper the declaration's OWN structure names must
+// arrive from the helper's module. A foreign declaration's helpers belong to ITS declaring module,
+// gated there where its body is emitted; the whole plan is never checked, so no unrelated holder's
+// import set decides whether this declaration has a derived ==. A module that lacks a helper its
+// own structure names fails CLOSED at use with the typed refusal below - never a dangling call,
+// never a fabricated admission. A whole-module import of a helper module is not recorded by the
+// index today (no such import exists in the corpus; if one appears this predicate fails closed for
+// it, the same answer at both doors).
+// INTERIM, named: making the declaring module's import set the authority over whether its type has
+// a derived == is an accident of imports, not of equality (the symbol_index/node asymmetry is that
+// accident). The compiler's own construction should bind these helpers by declaring identity, like
+// the derived equality itself binds `==`. Recorded as integration concern
 // equality_synthesis_helper_binding_is_import_authority; trigger: "synthesized equality binds
-// helpers by declaring identity" — when that lands, delete this gate and exercise it through
+// helpers by declaring identity" - when that lands, delete this predicate and exercise it through
 // self_host_equality_admission_witness.
-fn equality_helper_visible(imp: Node, source_indices: Map<String, NewlineIndex>, helper: EqualitySynthHelper) -> Bool {
-  import_module_path_at(imp: imp, source_indices: source_indices) == helper.module_path &&
-    (import_is_all(n: imp) || ((import_specific_names_at(n: imp, source_indices: source_indices) |> filter(nm => nm == helper.fn_name)) |> count) > 0)
-}
-
-// NARROWED (silent-bee-845 ruling): the skip covers exactly the bodies whose OWN structure names a
-// helper the declaring module does not import — the shape main was red on (derived:v2.std.symbol_index
-// emits map_values_eq; std.algebra there lacks that name; the node/symbol_index asymmetry). A plan
-// spans every declaration the equality walk reaches, but a foreign declaration's helpers belong to
-// ITS declaring module's imports and are gated there, where that body is synthesized; checking the
-// whole plan here would let an unrelated holder's import set decide whether THIS declaration has a
-// derived ==. One body, its own helpers, one door.
-fn equality_body_helpers_visible(structure: EqualityStructure, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn equality_derived_body_emitted(structure: EqualityStructure, declaring_module: String, index: SymbolIndex) -> Bool {
+  let named = match map_get(index.module_named_imports, declaring_module) {
+    Absent => empty_map()
+    Present { value: m } => m
+  }
   let missing = equality_structure_helpers(structure: structure) |> filter(h =>
-    imports |> filter(imp => equality_helper_visible(imp: imp, source_indices: source_indices, helper: h)) |> count == 0)
+    match map_get(named, h.fn_name) {
+      Present { value: origin } => origin != h.module_path
+      Absent => true
+    })
   (missing |> count) == 0
 }
 
-fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
+fn equality_derived_target(plan: EqualityPlan, index: SymbolIndex) -> EqualityDerivedTarget {
   match plan.root {
     EqualityRouted { function: f } => EqualityCallsDeclared { function: f }
     EqualityThroughPlan { declaration: key } =>
@@ -4470,7 +4473,12 @@ fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
             EqualityRootRefused { member: concat("a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it: ", join(plan.declarations |> filter(x => x.generic || !equality_reading_is_read(reading: x.reading)) |> map(x => concat(x.declaration, if x.generic { " generic" } else { " unreadable" })), ", ")) }
           } else {
             match d.reading {
-              DeclarationRead { reference: r } => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+              DeclarationRead { reference: r } =>
+                if !equality_derived_body_emitted(structure: d.structure, declaring_module: r.module_path as String, index: index) {
+                  EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " is not emitted in ", r.module_path as String, ": its own structure names a helper its declaring module does not import (family-2 interim, fail-closed at use)") }
+                } else {
+                  EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+                }
               DeclarationUnreadable { declaration_name: unread } => EqualityRootRefused { member: concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ", unread) }
             }
           }
@@ -4635,7 +4643,7 @@ fn equality_admission(op: BinOp, left_typed: Node, right_typed: Node, scope: Inf
                 match plan {
                   Absent => EqualityAdmission { diags: [], derived: none }
                   Present { value: p } =>
-                    match equality_derived_target(plan: p) {
+                    match equality_derived_target(plan: p, index: scope.type_env.symbol_index) {
                       EqualityCallsDeclared { function: f } => EqualityAdmission { diags: [], derived: Present { value: f } }
                       EqualityRootRefused { member: m } =>
                         equality_admission_refused(diags: [make_error_node(diagnostic: EqualityMemberUnjudgeable { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: lt)), member: concat(m, " [compared in ", equality_census_declaration(scope: scope), "]"), span: span }, module_name: scope.module_name)])
@@ -20514,7 +20522,7 @@ fn equality_synthesized_for(item: Node, scope: InferScope, imports: List<Node>) 
             match plan.declarations |> filter(d => d.declaration == identity) |> first {
               Absent => []
               Present { value: dp } =>
-                if !equality_body_helpers_visible(structure: dp.structure, imports: imports, source_indices: si) { [] } else {
+                if !equality_derived_body_emitted(structure: dp.structure, declaring_module: scope.module_name, index: scope.type_env.symbol_index) { [] } else {
                   [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
                 }
             }
