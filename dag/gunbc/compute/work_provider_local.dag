@@ -380,11 +380,14 @@ fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectM
 }
 
 // THE DIRTY-WORKTREE ADAPTER: a worker's worktree path, hashed where it stands. Provenance records the
-// path and is never part of the key.
+// path and is never part of the key. CONSUMER: PR 3's attempt controller (bold-dove-340) resolves a
+// validate_worktree request's identity through this; PR 2 admits no caller because routing a worktree
+// into the provider is controller code. Its executing route today is the shared capture
+// (compute_manifest_of_files -> snapshot_manifest_identity) that work_source_identity_witness drives.
 fn compute_resolve_worktree_subject(instance: HostDashboardInstance, worktree: String) -> SubjectResolution {
   match compute_directory_manifest(instance: instance, directory: worktree) {
     SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
-    SubjectManifestRead { manifest, files: _, toolchain_file } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: WorktreeProvenance { path: worktree } } }
+    SubjectManifestRead { manifest, files: _, toolchain_file } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: WorktreeProvenance { path: worktree } }, toolchain_file: toolchain_file }
   }
 }
 
