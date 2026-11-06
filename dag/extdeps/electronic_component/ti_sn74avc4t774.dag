@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import std.measure { millivolt }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs,
   ElectronicComponentRow, LevelTranslatorSpec, LevelTranslatorSpecification, MillivoltRange, TranslatorPin,
   PortA, PortB, DirectionControl, OutputEnable, TranslatorGround, SupplyA, SupplyB,
 }
@@ -40,7 +40,7 @@ data sn74avc4t774_rsv: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "SN74AVC4T774RSVR",
   package: "UQFN-16 (RSV), 2.6 mm x 1.8 mm",
-  top_marking: Present { value: "ZVK" },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "ZVK" }] }], coverage: ListedOnly } },
   specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
     channels: 4,
     supply_a: MillivoltRange { minimum: millivolt(count: 1100), maximum: millivolt(count: 3600) },
