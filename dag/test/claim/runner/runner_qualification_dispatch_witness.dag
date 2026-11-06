@@ -34,10 +34,8 @@ import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_ci_declared }
 import gunbc.runner.runner_group_restriction_observation { MicrovmRunnerGroupStanding, observe_runner_group_restriction }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
-import gunbc.runner.runner_qualification_ref_pin {
-  qualification_selected_workflow, qualification_workflow_path, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
-  qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused,
-}
+import gunbc.runner.runner_qualification_ref_pin { qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, qualification_ref_pin_of, QualificationRefPinned, QualificationRefPinRefused }
+import gunbc.runner.runner_qualification_group { qualification_workflow_path, qualification_selected_workflow }
 import gunbc.runner.runner_qualification_floor_job {
   qualification_attempt_dispatch_input, qualification_floor_revision_guard_step, qualification_guard_script, qualification_guard_mismatch_marker,
 }

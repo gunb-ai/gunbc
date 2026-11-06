@@ -1,0 +1,32 @@
+module gunbc.runner.runner_qualification_group
+
+import std.types { NonEmptyStr, String }
+import gunbc.repository { gunbc_repository }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+
+// The qualification group, workflow spelling and branch prefix, split from runner_qualification_ref_pin so
+// a reader of the group NAME (runner_group_restriction_ensure, hence repository_ci_profile) does not resolve
+// the REST effect and git-database world the pin write needs.
+
+data qualification_branch_prefix: NonEmptyStr = "qualification/"
+
+// THE QUALIFICATION WORKFLOW IS THE GENERATED FLEET-CONVERGE WORKFLOW, and the group selects it at
+// the pin branch. These live here, beside the group write that consumes them; the dispatch module
+// (gunbc.runner.runner_qualification_dispatch) imports them.
+fn qualification_workflow_path() -> NonEmptyStr {
+  artifact_path(a: FleetConvergeYamlArtifact) as NonEmptyStr
+}
+
+// The selected-workflow spelling a restricted runner group carries (owner/repo/path@ref), the same
+// form gunbc.runner.runner_group_restriction_observation microvm_shakedown_selected_workflow derives.
+fn qualification_selected_workflow(branch: NonEmptyStr) -> NonEmptyStr {
+  join([gunbc_repository.full_name, "/", qualification_workflow_path() as String, "@refs/heads/", branch as String], "") as NonEmptyStr
+}
+
+// THE GROUP'S RESTRICTION CLASS: the qualification workflow at refs/heads/qualification/ and at most one
+// branch below it. Created as the bare prefix, which no branch can match, so the group admits nothing until
+// an attempt pins it (gunbc.runner.runner_group_restriction_ensure qualification_runner_group_subject).
+fn qualification_selected_workflow_prefix() -> NonEmptyStr {
+  qualification_selected_workflow(branch: qualification_branch_prefix)
+}
+data qualification_runner_group_name: NonEmptyStr = "runner-qualification"

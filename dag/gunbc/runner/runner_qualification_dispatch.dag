@@ -66,9 +66,8 @@ import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.runner.runner_qualification_floor_job {
   qualification_attempt_dispatch_input, qualification_floor_revision_guard_step,
 }
-import gunbc.runner.runner_qualification_ref_pin {
-  QualificationRefPin, QualificationBranchName, qualification_workflow_path, qualification_selected_workflow,
-}
+import gunbc.runner.runner_qualification_ref_pin { QualificationRefPin, QualificationBranchName }
+import gunbc.runner.runner_qualification_group { qualification_workflow_path, qualification_selected_workflow }
 
 // THE DISPATCH LEG OF THE QUALIFICATION ROUTE, AND THE COLLECT STAGE THAT READS ITS RUN BACK.
 //

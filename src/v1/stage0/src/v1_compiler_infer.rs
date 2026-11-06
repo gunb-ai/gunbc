@@ -306,11 +306,13 @@ use crate::v1_compiler_infer_service::EffectIncompleteness::{
     ResolvedCalleeRegistryRowAbsent, UnresolvedCalleeEdge,
 };
 use crate::v1_compiler_infer_service::ServiceEffectAnalysis::{EffectsComplete, EffectsIncomplete};
+use crate::v1_compiler_infer_service::ServiceEndpointSupply::EndpointOperationParameter;
 pub use crate::v1_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_typed_service_calls,
     expand_transitive_services, extract_typed_service_name, is_typed_service_call_receiver,
-    service_op_entry, service_operation_is_rest, EffectIncompleteness, OpEntry,
-    ServiceEffectAnalysis, ServiceMethodResult, UniqueAccum,
+    service_data_values, service_endpoint_answer, service_endpoint_supply, service_op_entry,
+    service_operation_is_rest, service_operation_items, EffectIncompleteness, OpEntry,
+    ServiceEffectAnalysis, ServiceEndpointSupply, ServiceMethodResult, UniqueAccum,
 };
 use crate::v1_compiler_infer_sigs::CallTargetOutcome::{
     BuiltinCallableResolved, CallableAmbiguous, CallableUnresolved,
@@ -453,16 +455,17 @@ pub use crate::v1_std_core::{
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
-    return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, symbol_type, type_name_compatible, type_reference_provenance,
-    type_variable_binder_name, unaryop_operand, undeclared_transport_node, unit_type,
-    variant_node_fields, with_optional_cardinality, with_required_cardinality, AdmitCallersEntry,
-    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
-    DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode,
-    ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
-    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
-    Node, ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart,
-    UnaryOpKind, VarBindingKind,
+    return_value, service_config_field_for_property_name, service_config_field_property_name,
+    slice_base, slice_end, slice_start, string_type, symbol_type, type_name_compatible,
+    type_reference_provenance, type_variable_binder_name, unaryop_operand,
+    undeclared_transport_node, unit_type, variant_node_fields, with_optional_cardinality,
+    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
+    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
+    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
+    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
+    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -2298,7 +2301,7 @@ pub fn explicit_return_conformance_diags(
 pub fn explicit_return_conformance_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
+            "An EARLY return is a second exit from the same declaration and must meet the same declared type as the last expression. The conformance wall first checked only the body's final inferred type, so `fn f(cond: Bool) -> Int { if cond { return \"wrong\" } 1 }` compiled clean — the block's value is the trailing 1, which conforms, and the wrong-typed exit was never compared against anything (codex review 45472, confirmed by execution: exit 0 before, a located TypeMismatch after). The check reuses declared_type_conformance_diags rather than minting a second relation, so the early exit is judged by exactly the ground-kernel-scalar and ground-element-collection discipline the trailing expression is judged by, and it widens with that gate rather than beside it. THE WALK STOPS AT A LAMBDA BOUNDARY, and it did not at first. A `return` inside a nested lambda belongs to the LAMBDA's callable return type, not the enclosing declaration's, so recursing through ExprLambda checked it against the wrong declaration and refused correct code — a fabricated refusal, which §5 forbids exactly as it forbids a fabricated success, and the mirror image of the hole this fn was added to close (codex review 45481, confirmed by execution: a lambda returning String inside a fn declared -> Int refused with expected Primitive(Int) got Primitive(String)). Every callable boundary is a new declaration and its returns are judged against it, not against whatever encloses it. THE WALKER'S OWN DISPOSITION, distinct from the lambda-coverage trigger below and asked for separately (codex review 45580): it is the seed's, not this function's. Self-recursive `children |> flat_map` collection is the v1 seed's only traversal idiom (collect_type_names_from_node, named_type_vars_in_node, collect_value_ref_names and siblings). THE POPULATION IS NAMED BY ITS INSTRUMENT AND NOT TRANSCRIBED: grep the literal idiom under src/v1 to re-derive it, and note the grep is LEXICAL while `self-recursive` and `only traversal idiom` are SEMANTIC properties — so it bounds the literal-occurrence population, and the recursion claim is read off the sites rather than off the count. This clause previously carried a site count and a module list, and both were wrong. NO SUPERSEDED FIGURE IS RESTATED HERE, not even as history: a wrong number quoted inside the sentence announcing its removal is still a number in a live authority, it decays exactly as the original did, and it gets cited as though this row had measured it. The before-and-after belongs in the PR that made the correction. Nothing edited this note; the tree moved underneath it, which is the decay mode §3 gives for a positional citation and the reason the 2026-08-24 ruling forbids transcribing an instrument's output. The argument never needed the number: what makes this the seed's idiom rather than a new shape is that EVERY collector recurses itself, and that is true at whatever the instrument measures next — a clause whose force depends on a figure it cannot keep current was overstating its own evidence. And there is no shared v1 walker to route through, because each collector recurses itself. Nor is there a canonical fold to reach for: fold_node and node_query are v2 substrate, no v1 seed module imports v2, and v1 COMPILES v2, so routing seed inference through v2's fold inverts the bootstrap. DESIGN's fold_node line is scoped to the 7 v2 stages. So this is one more instance of an idiom the seed uses everywhere rather than a new shape beside it, and its trigger is the one every sibling carries: the v1 seed shrinks to zero at v2 self-host and they dissolve together. Generalizing a shared collector for this one call site alone would ADD a shape rather than remove one; the dissolution that is real is the seed's. That reasoning was recorded on where_refinement_receiver_peel_note for the same class and NOT here, which is why it had to be found twice — a disposition stated on one carrier and omitted from its sibling is not stated. Lambda returns are consequently NOT yet judged here — the lambda's own declared return is not threaded to this post-pass — which is a narrowing, stated rather than implied, and it dissolves when the walk carries each callable's declared return rather than only infer_item's.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -5222,13 +5225,6 @@ pub struct EqualityArmWalk {
     pub plans: Rc<Vec<Rc<DeclarationEqualityPlan>>>,
 }
 
-pub fn equality_member_type_node(ch: Rc<Node>) -> Rc<Node> {
-    match ch.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: _, .. }) => ch.clone(),
-        _ => crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-    }
-}
-
 pub fn equality_field_walk(
     owner_name: String,
     ch: Rc<Node>,
@@ -5237,7 +5233,7 @@ pub fn equality_field_walk(
     depth: i64,
 ) -> Rc<EqualityWalk> {
     {
-        let ft = equality_member_type_node(ch.clone());
+        let ft = crate::v1_compiler_infer_types::child_type_node(ch.clone());
         if (ft.connective.clone() == Connective::Arrow) {
             equality_walk_refused(equality_refused(
                 owner_name,
@@ -5560,7 +5556,7 @@ pub fn equality_container_walk(
                 Some(_) => acc.clone(),
                 std::option::Option::None => {
                     let w = equality_operand_walk(
-                        equality_member_type_node(ch.clone()),
+                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
                         scope.clone(),
                         visited.clone(),
                         v1_rt::int_add(depth.clone(), 1),
@@ -28291,9 +28287,67 @@ pub fn service_config_property_referenced_name(p: Rc<Node>, scope: Rc<InferScope
     )
 }
 
+pub fn with_judged_property_value(p: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        ident: std::option::Option::None,
+        occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+        name: p.name.clone(),
+        span: p.span.clone(),
+        ident_span: p.ident_span.clone(),
+        children: Rc::new(vec![value.clone()]),
+        connective: p.connective.clone(),
+        params: p.params.clone(),
+        inferred: p.inferred.clone(),
+        return_cardinality: p.return_cardinality.clone(),
+        uses: p.uses.clone(),
+        body: p.body.clone(),
+        transport: p.transport.clone(),
+        properties: p.properties.clone(),
+        type_annotation: p.type_annotation.clone(),
+        is_self_recursive: p.is_self_recursive.clone(),
+        has_non_tail_self_call: p.has_non_tail_self_call.clone(),
+        match_pattern: p.match_pattern.clone(),
+        module_item_kind: p.module_item_kind.clone(),
+        declaration_marker: p.declaration_marker.clone(),
+        declaration: p.declaration.clone(),
+        expr_data: p.expr_data.clone(),
+    })
+}
+
+pub fn with_resolved_type_node(value: Rc<Node>, declared: Rc<Node>) -> Rc<Node> {
+    Rc::new(Node {
+        ident: value.ident.clone(),
+        occurrence_identity: value.occurrence_identity.clone(),
+        name: value.name.clone(),
+        span: value.span.clone(),
+        ident_span: value.ident_span.clone(),
+        children: value.children.clone(),
+        connective: value.connective.clone(),
+        params: value.params.clone(),
+        inferred: Some(Rc::new(InferredNode::Resolved {
+            node: declared.clone(),
+        })),
+        return_cardinality: value.return_cardinality.clone(),
+        uses: value.uses.clone(),
+        body: value.body.clone(),
+        transport: value.transport.clone(),
+        properties: value.properties.clone(),
+        type_annotation: value.type_annotation.clone(),
+        is_self_recursive: value.is_self_recursive.clone(),
+        has_non_tail_self_call: value.has_non_tail_self_call.clone(),
+        match_pattern: value.match_pattern.clone(),
+        module_item_kind: value.module_item_kind.clone(),
+        declaration_marker: value.declaration_marker.clone(),
+        declaration: value.declaration.clone(),
+        expr_data: value.expr_data.clone(),
+    })
+}
+
 pub fn infer_service_config_properties(
     props: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
+    service: Rc<Node>,
+    data_values: Rc<Vec<Rc<Node>>>,
 ) -> Rc<InferPropertiesResult> {
     {
         let results = Rc::new({
@@ -28304,34 +28358,31 @@ pub fn infer_service_config_properties(
 match (*service_config_field_judgment(field.clone())).clone() {
     ServiceConfigFieldJudgment::FieldJudged => {
                 let val = crate::v1_std_core::field_init_node_value(p.clone());
-let val_result = infer_expr(val.clone(), scope.clone(), std::option::Option::None);
-Rc::new(PropertyInferenceResult {
-    prop: Rc::new(Node {
-    ident: std::option::Option::None,
-    occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-    name: p.name.clone(),
-    span: p.span.clone(),
-    ident_span: p.ident_span.clone(),
-    children: Rc::new(vec![val_result.typed.clone()]),
-    connective: p.connective.clone(),
-    params: p.params.clone(),
-    inferred: p.inferred.clone(),
-    return_cardinality: p.return_cardinality.clone(),
-    uses: p.uses.clone(),
-    body: p.body.clone(),
-    transport: p.transport.clone(),
-    properties: p.properties.clone(),
-    type_annotation: p.type_annotation.clone(),
-    is_self_recursive: p.is_self_recursive.clone(),
-    has_non_tail_self_call: p.has_non_tail_self_call.clone(),
-    match_pattern: p.match_pattern.clone(),
-    module_item_kind: p.module_item_kind.clone(),
-    declaration_marker: p.declaration_marker.clone(),
-    declaration: p.declaration.clone(),
-    expr_data: p.expr_data.clone(),
+let bound_input_type = if (field.clone() == crate::v1_std_core::service_config_field_property_name(ServiceConfigField::SvcEndpoint)) {
+                    match (*crate::v1_compiler_infer_service::service_endpoint_answer(service.clone(), crate::v1_compiler_infer_service::service_operation_items(service.clone()), data_values.clone(), Rc::new(vec![]), scope.type_env.source_indices.clone())).clone() {
+    ServiceEndpointSupply::EndpointOperationParameter { name: input_name, declared_type: declared, .. } => if (crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), val.clone()) == input_name.clone()) {
+                        Some(declared.clone())
+                    } else {
+                        std::option::Option::None
+                    },
+    _ => std::option::Option::None,
+}
+                } else {
+                    std::option::Option::None
+                };
+match bound_input_type.clone() {
+    Some(declared) => Rc::new(PropertyInferenceResult {
+    prop: with_judged_property_value(p.clone(), with_resolved_type_node(val.clone(), declared.clone())),
+    emissions: infer_emissions_empty(),
 }),
+    std::option::Option::None => {
+                    let val_result = infer_expr(val.clone(), scope.clone(), std::option::Option::None);
+Rc::new(PropertyInferenceResult {
+    prop: with_judged_property_value(p.clone(), val_result.typed.clone()),
     emissions: val_result.emissions.clone(),
 })
+},
+}
 },
     ServiceConfigFieldJudgment::FieldDeferred { trigger: t, .. } => Rc::new(PropertyInferenceResult {
     prop: p.clone(),
@@ -28495,7 +28546,11 @@ pub fn parameter_default_emissions(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<
     }))
 }
 
-pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> {
+pub fn infer_item(
+    item: Rc<Node>,
+    scope: Rc<InferScope>,
+    data_values: Rc<Vec<Rc<Node>>>,
+) -> Rc<TypedItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let typed_anno = item.type_annotation.clone();
         let transport_scope = if ((item.params.clone().len() as i64) > 0) {
@@ -28506,7 +28561,12 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         let transport_result = infer_transport_node(item.transport.clone(), transport_scope);
         let typed_transport = transport_result.transport.clone();
         let transport_emissions = transport_result.emissions.clone();
-        let props_result = infer_service_config_properties(item.properties.clone(), scope.clone());
+        let props_result = infer_service_config_properties(
+            item.properties.clone(),
+            scope.clone(),
+            item.clone(),
+            data_values.clone(),
+        );
         let typed_properties = props_result.props.clone();
         let props_emissions = props_result.emissions.clone();
         if ((item.connective.clone() != Connective::NoConnective)
@@ -28522,7 +28582,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     children: Rc::new({
                         let mut __result = Vec::new();
                         for c in item.children.clone().iter().cloned() {
-                            __result.push(infer_item(c.clone(), scope.clone()).item.clone());
+                            __result.push(
+                                infer_item(c.clone(), scope.clone(), data_values.clone())
+                                    .item
+                                    .clone(),
+                            );
                         }
                         __result
                     }),
@@ -28662,8 +28726,11 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             children: Rc::new({
                                 let mut __result = Vec::new();
                                 for c in item.children.clone().iter().cloned() {
-                                    __result
-                                        .push(infer_item(c.clone(), scope.clone()).item.clone());
+                                    __result.push(
+                                        infer_item(c.clone(), scope.clone(), data_values.clone())
+                                            .item
+                                            .clone(),
+                                    );
                                 }
                                 __result
                             }),
@@ -28790,7 +28857,13 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     let mut __result = Vec::new();
                                     for c in item.children.clone().iter().cloned() {
                                         __result.push(
-                                            infer_item(c.clone(), scope.clone()).item.clone(),
+                                            infer_item(
+                                                c.clone(),
+                                                scope.clone(),
+                                                data_values.clone(),
+                                            )
+                                            .item
+                                            .clone(),
                                         );
                                     }
                                     __result
@@ -28834,7 +28907,13 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                                     let mut __result = Vec::new();
                                     for c in item.children.clone().iter().cloned() {
                                         __result.push(
-                                            infer_item(c.clone(), scope.clone()).item.clone(),
+                                            infer_item(
+                                                c.clone(),
+                                                scope.clone(),
+                                                data_values.clone(),
+                                            )
+                                            .item
+                                            .clone(),
                                         );
                                     }
                                     __result
@@ -28876,31 +28955,34 @@ pub fn infer_items(
     items: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for item in items.iter().cloned() {
-            __result.push({
-                let r = infer_item(item.clone(), scope.clone());
-                Rc::new(TypedItemResult {
-                    item: r.item.clone(),
-                    emissions: infer_emissions_concat(
-                        r.emissions.clone(),
-                        infer_emissions_concat(
-                            infer_emissions_of_diagnostics(equality_item_collection_key_rows(
-                                item.clone(),
-                                scope.clone(),
-                            )),
-                            infer_emissions_of_diagnostics(equality_item_body_key_rows(
-                                r.item.clone(),
-                                scope.clone(),
-                            )),
+    {
+        let data_values = crate::v1_compiler_infer_service::service_data_values(items.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.push({
+                    let r = infer_item(item.clone(), scope.clone(), data_values.clone());
+                    Rc::new(TypedItemResult {
+                        item: r.item.clone(),
+                        emissions: infer_emissions_concat(
+                            r.emissions.clone(),
+                            infer_emissions_concat(
+                                infer_emissions_of_diagnostics(equality_item_collection_key_rows(
+                                    item.clone(),
+                                    scope.clone(),
+                                )),
+                                infer_emissions_of_diagnostics(equality_item_body_key_rows(
+                                    r.item.clone(),
+                                    scope.clone(),
+                                )),
+                            ),
                         ),
-                    ),
-                })
-            });
-        }
-        __result
-    })
+                    })
+                });
+            }
+            __result
+        })
+    }
 }
 
 pub fn is_type_variable_name(name: String) -> bool {
@@ -29592,29 +29674,6 @@ pub fn substitute_generics(
     }
 }
 
-pub fn substitute_generics_resolved_type(
-    n: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: rt, .. }) => {
-            let new_rt = substitute_generics_apply(rt.clone(), subst, source_indices);
-            if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                n.clone()
-            } else {
-                crate::v1_compiler_infer_env::node_with_inferred(
-                    n.clone(),
-                    Some(Rc::new(InferredNode::Resolved {
-                        node: new_rt.clone(),
-                    })),
-                )
-            }
-        }
-        _ => n.clone(),
-    }
-}
-
 pub fn substitute_generics_apply(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
@@ -29648,11 +29707,7 @@ pub fn substitute_generics_apply(
                             n.clone(),
                             c.clone(),
                         ),
-                        std::option::Option::None => substitute_generics_resolved_type(
-                            n.clone(),
-                            subst.clone(),
-                            source_indices.clone(),
-                        ),
+                        std::option::Option::None => n.clone(),
                     }
                 } else {
                     {
@@ -31522,131 +31577,39 @@ pub fn exposure_view_for_node(
             }
             __result
         });
-        match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv, .. }) => {
-                Rc::new(TypeHeadExposure::OpaqueTypeHead {
-                    type_identity: v1_rt::concat(
-                        v1_rt::concat("<type-parameter:".to_string(), tv.clone()),
-                        ">".to_string(),
-                    ),
-                })
-            }
-            _ => exposure_view_for_declared_node(
-                n.clone(),
-                identity,
-                head_erasing_properties,
-                source_indices.clone(),
-            ),
-        }
-    }
-}
-
-pub fn stuck_head_cause(n: Rc<Node>) -> String {
-    {
-        let connective = match n.connective.clone() {
-            Connective::Arrow => "Arrow".to_string(),
-            Connective::Disj => "Disj".to_string(),
-            Connective::Conj => "Conj".to_string(),
-            Connective::NoConnective => "NoConnective".to_string(),
-        };
-        let inferred_head = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv, .. }) => v1_rt::concat(
-                v1_rt::concat("TypeVariable(".to_string(), tv.clone()),
-                ")".to_string(),
-            ),
-            Some(InferredNode::Resolved { node: r, .. }) => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("Resolved(name=".to_string(), r.name.clone()),
-                        ", span_file=".to_string(),
-                    ),
-                    r.span.file.clone(),
-                ),
-                ")".to_string(),
-            ),
-            Some(InferredNode::CompilerError { message: m, .. }) => v1_rt::concat(
-                v1_rt::concat("CompilerError(".to_string(), m.clone()),
-                ")".to_string(),
-            ),
-            Some(_) => "other-inferred".to_string(),
-            std::option::Option::None => "no-inferred".to_string(),
-        };
-        let occurrence = match (*n.occurrence_identity.clone()).clone() {
-            NodeOccurrenceIdentity::OccurrenceSynthetic => "synthetic".to_string(),
-            _ => "minted-or-projected".to_string(),
-        };
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                "declaration identity unavailable [node name='"
-                                                    .to_string(),
-                                                n.name.clone(),
-                                            ),
-                                            "' span_file='".to_string(),
-                                        ),
-                                        n.span.file.clone(),
-                                    ),
-                                    "' connective=".to_string(),
-                                ),
-                                connective.clone(),
-                            ),
-                            " inferred=".to_string(),
-                        ),
-                        inferred_head.clone(),
-                    ),
-                    " occurrence=".to_string(),
-                ),
-                occurrence.clone(),
-            ),
-            "]".to_string(),
-        )
-    }
-}
-
-pub fn exposure_view_for_declared_node(
-    n: Rc<Node>,
-    identity: String,
-    head_erasing_properties: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TypeHeadExposure> {
-    match (identity.clone() == "::".to_string()) {
-        true => Rc::new(TypeHeadExposure::StuckTypeHead {
-            cause: stuck_head_cause(n.clone()),
-        }),
-        false => match ((n.type_annotation.clone() != std::option::Option::None)
-            || ((head_erasing_properties.clone().len() as i64) > 0))
-        {
-            true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
-                type_identity: identity.clone(),
+        match (identity.clone() == "::".to_string()) {
+            true => Rc::new(TypeHeadExposure::StuckTypeHead {
+                cause: "declaration identity unavailable".to_string(),
             }),
-            false => match n.connective.clone() {
-                Connective::Arrow => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                    view: Rc::new(TypeHeadView::CallableHead {
-                        type_identity: identity.clone(),
-                    }),
+            false => match ((n.type_annotation.clone() != std::option::Option::None)
+                || ((head_erasing_properties.clone().len() as i64) > 0))
+            {
+                true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
+                    type_identity: identity.clone(),
                 }),
-                Connective::Disj => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                    view: Rc::new(TypeHeadView::CoproductHead {
-                        type_identity: identity.clone(),
+                false => match n.connective.clone() {
+                    Connective::Arrow => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                        view: Rc::new(TypeHeadView::CallableHead {
+                            type_identity: identity.clone(),
+                        }),
                     }),
-                }),
-                Connective::Conj => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                    view: Rc::new(TypeHeadView::ProductHead {
-                        type_identity: identity.clone(),
+                    Connective::Disj => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                        view: Rc::new(TypeHeadView::CoproductHead {
+                            type_identity: identity.clone(),
+                        }),
                     }),
-                }),
-                Connective::NoConnective => match ((n.children.clone().len() as i64) > 0) {
-                    true => {
-                        let constructor_name =
-                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-                        match (constructor_name.clone() == "".to_string()) {
+                    Connective::Conj => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                        view: Rc::new(TypeHeadView::ProductHead {
+                            type_identity: identity.clone(),
+                        }),
+                    }),
+                    Connective::NoConnective => match ((n.children.clone().len() as i64) > 0) {
+                        true => {
+                            let constructor_name = crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                n.clone(),
+                            );
+                            match (constructor_name.clone() == "".to_string()) {
     true => Rc::new(TypeHeadExposure::MalformedApplicationHead {
     cause: "application has no constructor identity".to_string(),
 }),
@@ -31657,24 +31620,27 @@ pub fn exposure_view_for_declared_node(
 }),
 }),
 }
-                    }
-                    false => {
-                        let name =
-                            crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-                        match crate::std_types::is_kernel_type(name) {
-                            true => Rc::new(TypeHeadExposure::ExposedTypeHead {
-                                view: Rc::new(TypeHeadView::KernelScalarHead {
+                        }
+                        false => {
+                            let name = crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                n.clone(),
+                            );
+                            match crate::std_types::is_kernel_type(name) {
+                                true => Rc::new(TypeHeadExposure::ExposedTypeHead {
+                                    view: Rc::new(TypeHeadView::KernelScalarHead {
+                                        type_identity: identity.clone(),
+                                    }),
+                                }),
+                                false => Rc::new(TypeHeadExposure::OpaqueTypeHead {
                                     type_identity: identity.clone(),
                                 }),
-                            }),
-                            false => Rc::new(TypeHeadExposure::OpaqueTypeHead {
-                                type_identity: identity.clone(),
-                            }),
+                            }
                         }
-                    }
+                    },
                 },
             },
-        },
+        }
     }
 }
 

@@ -205,11 +205,13 @@ test fn boot_mode_eligibility_follows_the_credential_selection_by_ref() -> Bool 
 // THE FLEET-IDENTITY ROWS ARE GRANTED ONLY OFF MAIN (main signs in through the main-only pool), each to
 // its own account; plan reuses the standing fleet account, apply gets its own.
 test fn fleet_identity_modes_are_granted_off_main_only() -> Bool {
-  all(["plan", "apply"], mode =>
+  all(["plan", "apply", "runner_host_file_observe", "runner_host_file_converge"], mode =>
     match run_scoped_mode_eligible(mode: mode, branch: "main") { Present { value: _ } => false  Absent => true }
       && match run_scoped_mode_eligible(mode: mode, branch: "work/x") { Present { value: _ } => true  Absent => false })
     && match run_scoped_mode_named(mode: "plan") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-cloud-convergence"  Absent => false }
     && match run_scoped_mode_named(mode: "apply") { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-apply-run"  Absent => false }
+    // The runner-host modes sign in as the standing fleet account off main too (it alone holds both keys the converge reads).
+    && all(["runner_host_file_observe", "runner_host_file_converge"], mode => match run_scoped_mode_named(mode: mode) { Present { value: m } => (run_scoped_account_id(m: m) as String) == "fleet-cloud-convergence"  Absent => false })
     // dashboard_deploy is deliberately not a row (its job holds no credential, so a grant would gate nothing IAM enforces).
     && match run_scoped_mode_named(mode: "dashboard_deploy") { Present { value: _ } => false  Absent => true }
     && match run_scoped_mode_eligible(mode: "dashboard_deploy", branch: "work/x") { Present { value: _ } => false  Absent => true }
