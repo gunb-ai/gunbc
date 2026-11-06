@@ -574,8 +574,12 @@ fn capture_source_snapshot(
 // producers of a work's source -- a clean Git tree and a dirty worker worktree -- therefore call THIS
 // function over what they read, and equal bytes under an equal composition mint one ref whichever
 // adapter listed them. Entries are put in path order, the same order capture_source_snapshot stores
-// them in, so the ref a capture publishes and the ref derived here are one value (the inhabitance
-// claim in test.claim.fabric_source_snapshot_witness exercises both).
+// them in, and both build the manifest body with the one snapshot_manifest_object, so the ref a capture
+// publishes and the ref derived here are meant to be one value. NO EXECUTING CLAIM COMPARES THEM YET:
+// capture needs a store, so the equality is only checkable by a wet run (an inclusion of
+// gunbc.instruments.source_snapshot_handoff comparing its stored manifest with this function over the
+// same files is the owed inhabitance claim; trigger: the first consumer that publishes a capture and
+// keys work on a derived ref, PR 5's executor).
 //
 // A NEW UNTRACKED FILE IS IN THE IDENTITY BY THE SAME ROUTE as a tracked one: the inclusion list is
 // the requester's, and this function has no notion of tracked. An absent file is therefore a
