@@ -112,6 +112,8 @@ import product.electrical.continuity {
 }
 import product.electrical.measured_netlist { netlist_text }
 import product.electrical.identification {
+  observation_relied_on,
+  marking_text,
   FootprintUnpopulated,
   identification_established,
   identification_text,
@@ -1036,7 +1038,7 @@ fn is_trace_target(r: SensorPinRole) -> Bool {
 fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking: MarkingReading) -> List<String> {
   match row.specification {
     TemperatureSensorSpec { sensor } => [join([
-      component_text(c: c.component), " ('", marking.text as String, "') is ", row.ordering_code as String,
+      component_text(c: c.component), " ('", marking_text(marking), "') is ", row.ordering_code as String,
       "; trace pins ", join(map(filter(sensor.pins, p => is_trace_target(r: p.role)), p => join([to_string(p.number), " ", p.name as String, " (", sensor_role_text(r: p.role), ")"], "")), ", "),
     ], "")]
     TvsDiodeSpec { tvs: _ } => []
@@ -1061,7 +1063,7 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
 // A part identified as a temperature sensor renders its bus pins as trace targets, from its typed roles.
 fn sensor_trace_text(c: InstalledComponent) -> List<String> {
   match c.identification {
-    IdentifiedByMarking { row, marking } => sensor_pins_text(c: c, row: row, marking: marking)
+    IdentifiedByMarking { row, observation } => sensor_pins_text(c: c, row: row, marking: observation_relied_on(o: observation))
     MarkingSharedByMakers { rows: _, marking: _ } => []
     MarkingCandidate { row: _, marking: _, discriminator: _ } => []
     RatingPrintedOnBody { rating: _, marking: _ } => []
@@ -1211,6 +1213,8 @@ fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
       " (", obligation as String, ")",
       match family_candidate {
         Absent => ""
+        // fc.marking is a CensusPartial text (carrier.dag:250), not a MarkingReading: this candidate carries
+        // what was written, not a reading with content, so it renders as it stands.
         Present { value: fc } => join(["; family candidate ", fc.row.ordering_code as String, family_spec_text(row: fc.row), ", marking '", fc.marking as String, "' read on ", read_on_text(r: fc.read_on)], "")
       },
     ], "")
