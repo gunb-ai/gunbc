@@ -16,14 +16,14 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 data stub_loop_value_claims_lose_value_path_at_admission: RungDrop = RungDrop {
   identity: "stub_loop_value_claims_lose_value_path_at_admission" as NonEmptyStr,
 
-  subject: "the value (and wrong-value RED) discrimination of stub-driven Loop claims in loop_eval_by_execution, emit_host_loop_equals_eval, loop_demand_driven_eval and add_arrow_eval_by_execution",
+  subject: "the value (and wrong-value RED) discrimination of stub-driven Loop claims in loop_eval_by_execution, emit_host_loop_equals_eval, loop_demand_driven_eval and add_arrow_eval_by_execution, and the Loop leg of the family witness module emit_on_demand_match_loop_fold_family_witness",
 
   declared: "2026-11-06",
 
   standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
-    reason: LostAsPassenger { carrier: "admission now refuses every Loop that lacks a realized edge, so the stub's value path is gone; the stubs' hand-supplied termination facts are not read by admission (v2.compiler.eval eval_loop_admission)" },
+    reason: LostAsPassenger { carrier: "admission now refuses every Loop that lacks a realized edge, so the stub's value path is gone; the stubs' hand-supplied termination facts are not read by admission (v2.compiler.eval eval_loop_admission). REMOVED, NOT WAIVED: the claim emit_host_loop_wrong_fixture_refuses_holds (emit_host_loop_equals_eval) is deleted from the population because its predicate evaluated the one fixed emit_loop_eval_subgraph_node and never the wrong-value tree, so it never observed a wrong fixture. Its obligation (the emit-vs-eval route tells a wrong Loop fixture from the right one) is UNMET; no behaviour is implied implemented, no rung is promoted, nothing is waived. OPEN DEFERRAL, family witness Loop leg. GRAIN: the member names the COMPOSITE claim emit_on_demand_match_loop_fold_family_one_build_holds, and only its Loop-leg obligation is deferred; its match and fold legs are NOT waived. No subclaim identity is invented and the test is not split. CAUSE, emit_loop_eval_subject evaluates the fixed fixture Loop, which v2.compiler.eval eval_loop_admission refuses with v2_eval_loop_bound_not_executable, so the eval side of the emit-vs-eval comparison is a refusal and not a Loop value. NON-DISCRIMINATING ASSERTIONS, both in that claim: the emit_loop_eval_verdict_is_pass conjunct in mlf_family_primary_agreements, and emit_loop_eval_verdict_is_fail in mlf_family_alt_loop_mismatch. OBLIGATION: the emitted loop member host output equals the eval of a realized Loop, and the alt (wrong-value) Loop is told apart from it, each by an executed comparison of values. The restored emit_loop_eval_* exports repair the dependency break and do NOT establish Loop execution coverage. No acceptance, no LAND waiver. ROUTE NOTE (moved out of the population member string for emit_host_loop_equals_eval emit_host_loop_equals_eval_holds, text unchanged in substance): that claim's emit-vs-eval ROUTE, v2.compiler.emit_host run_test_claim_emit_vs_eval, is no longer called by the emit_host_loop claim, so the emitted-host run of a Loop fixture is unexercised here." },
     population: Enumerated { members: FreeSemigroup { head: "v2.test.claim.execution.long.loop_eval_by_execution loop_source_driven_executes_holds", tail: [
       "v2.test.claim.execution.long.loop_eval_by_execution loop_source_driven_wrong_value_red_holds",
       "v2.test.claim.execution.long.loop_eval_by_execution loop_direct_runtime_holds",
@@ -32,11 +32,11 @@ data stub_loop_value_claims_lose_value_path_at_admission: RungDrop = RungDrop {
       "v2.test.claim.execution.long.loop_eval_by_execution loop_fixture_wrong_value_red_holds",
       "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_executes_holds",
       "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_wrong_value_red_holds",
-      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds (also its emit-vs-eval ROUTE: v2.compiler.emit_host run_test_claim_emit_vs_eval is no longer called by either emit_host_loop claim, so the emitted-host run of a Loop fixture is unexercised here)",
-      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_wrong_fixture_refuses_holds",
+      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds",
+      "v2.test.claim.execution.emit_on_demand_match_loop_fold_family_witness emit_on_demand_match_loop_fold_family_one_build_holds",
       "v2.test.claim.manual.loop_demand_driven_eval loop_demand_driven_eval_keystone_holds",
       "v2.test.claim.execution.long.add_arrow_eval_by_execution add_arrow_eval_lazy_arm_loop_suppression_holds"
     ] } },
-    restoration_trigger: "the emit-vs-eval route over a fold-realized Loop is re-entered by the two emit_host_loop claims, and the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and emit_host_loop_wrong_fixture_refuses_holds claims) regains its wrong-value RED when that capability is executed, not when the driver is merely enrolled."
+    restoration_trigger: "the emit-vs-eval route over a fold-realized Loop is re-entered by the two emit_host_loop claims, and the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and the removed emit_host_loop_wrong_fixture_refuses_holds claim, whose wrong-fixture obligation is regained by a new claim that observes the wrong tree, not by restoring the old one) regains its wrong-value RED when that capability is executed; the family witness Loop leg regains discrimination when a fold-realized Loop fixture that admission accepts is evaluated by the iterating driver (PR-2 proper), emit_loop_eval_subject yields a value, and both listed assertions are re-pointed at it and executed, not when the driver is merely enrolled."
   } }
 }

@@ -356,6 +356,10 @@ fn mlf_family_primary_agreements(
     )
 }
 
+// OPEN DEFERRAL: this family's Loop leg has NIL discriminating coverage (admission refuses the fixed Loop with
+// v2_eval_loop_bound_not_executable; the emit_loop_eval_verdict_is_pass conjunct in mlf_family_primary_agreements
+// and the fail assertion below do not discriminate). The typed record, obligation and trigger live in
+// gunbc.rung_drop stub_loop_value_claims_lose_value_path_at_admission. No acceptance, no LAND waiver.
 fn mlf_family_alt_loop_mismatch(
   workspace: String,
   source: Medium<String>,
