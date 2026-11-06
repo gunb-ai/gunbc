@@ -12352,16 +12352,15 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>, source_indices: 
 // second compiler decide. The invalid state, the harm, the distinguishing facts and the runs that
 // recorded them live in exactly one place: `gunbc.recurring_failure_mode`
 // `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`. This comment is rationale and
-// pointer only. It states no occurrence of its own on purpose: an earlier revision of it named a module
-// and a site count that the row does not carry, which was a second account of one fact (DESIGN section
-// 3, "minimization holds only if each fact lives in exactly one place").
+// pointer only, and states no occurrence of its own: an annotation that repeats a fact the row
+// carries is a second account of one fact (DESIGN section 3, "minimization holds only if each fact
+// lives in exactly one place").
 //
-// THE REPAIR IS AT THE CALL, NOT AT THE BORROW. A previous revision wrapped the argument in a block --
-// `{ let x: &T = &call(..); x }` -- and the borrow checker refused that shape outright: the temporary
-// the borrow points at dies at the block's closing brace, before the call that uses the reference, so
-// every site the rule fired at traded a possible E0308 for a certain E0716. What the site lacked was
-// never a binding; it was the callee's TYPE ARGUMENTS, which is precisely what the call's own
-// application plan carries. So the borrow stays plain and the call renders its own clause:
+// THE REPAIR IS AT THE CALL, NOT AT THE BORROW. Binding the borrow first is not a repair: the
+// temporary dies at its binding scope's end, before the consumer call, trading a possible E0308 for
+// a certain E0716 -- the shapes tried and the runs that recorded them are the row's. What the site
+// lacked was never a binding; it was the callee's TYPE ARGUMENTS, which is precisely what the call's
+// own application plan carries. So the borrow stays plain and the call renders its own clause:
 //   * the witnesses come from `rust_call_type_argument_witnesses`, ONE function that takes the plan, so
 //     a later widening to every declared call calls it instead of forking it -- that widening is the
 //     next rung the row names, not this change's work;
@@ -12369,11 +12368,10 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>, source_indices: 
 //     `bind_local_func_conformance` read it when it stamped the binder ids these witnesses match,
 //     because a turbofish is positional for rustc and an order taken from discovery order would be a
 //     different program;
-//   * a parameter the plan does not pin, or a witness that is not fully resolved, emits a located
-//     `compile_error!` through the same `emit_rust_compile_error_expr` this file already uses to refuse
-//     an unestablished resource binding. `::<_>` is NEVER emitted: a hole hands rustc the very guess
-//     this rule exists to remove, which would make the repair a silent widen of the defect (DESIGN
-//     section 5, done means executed);
+//   * an unpinned parameter or a not-fully-resolved witness refuses through
+//     `emit_rust_compile_error_expr`, the located-refusal vehicle this file already uses; the refusal
+//     states and their wording are the row's, and `::<_>` is never emitted -- a hole would hand rustc
+//     the very guess this rule exists to remove;
 //   * a callee that declares no type parameters keeps the plain `&<expr>`. That is the whole corpus
 //     today -- the population, with the command that measured it, is stated in the row -- so this arm
 //     is byte-identical over every committed mirror and is exercised by the fixture in the PR body
@@ -12575,22 +12573,20 @@ fn rust_type_argument_spelling(witnesses: List<CallTypeArgumentWitness>, name: S
   }
 }
 
-// WHY THE RESOLUTION QUESTION IS ASKED OF THE SEED AND NOT OF A LOCAL WALK. An earlier revision of this
-// rule carried its own recursive read of `inferred` and `children`. review 90858 found it for what it
-// was: a second check for a fact the seed already owns (DESIGN section 3, "Minimization holds only if
-// each fact lives in exactly one place") -- and reading `v1.compiler.infer_types`
-// `type_resolution_verdict` showed the local walk was also WEAKER: it read an `Arrow` as resolved
-// without asking its parameter types, and took a container at its spelling without its arity or
-// `authored_container_spelling_verdict`, so it could have handed this rule a witness with a hole in it,
-// which is the defect the refusal exists to stop. Asking the verdict instead means whatever the emitter
-// refuses is exactly what inference refused. ONE LIMITATION, STATED: `v1.compiler.infer`
+// WHY THE RESOLUTION QUESTION IS ASKED OF THE SEED AND NOT OF A LOCAL WALK OR OF RENDERED TEXT. The
+// seed already owns the answer -- `v1.compiler.infer_types` `type_resolution_verdict` -- so a second
+// walk beside it would be a second check for one fact (DESIGN section 3, "Minimization holds only if
+// each fact lives in exactly one place"), and a weaker one: a walk reads an `Arrow` as resolved without
+// asking its parameter types, and takes a container at its spelling without its arity or
+// `authored_container_spelling_verdict`, so it could hand this rule a witness with a hole in it -- the
+// defect the refusal exists to stop. Asking the verdict instead means whatever the emitter refuses is
+// exactly what inference refused. Rendered text is not a substitute either: a text test misses
+// placeholders inside tuples, function arrows and nested containers, and tracks whatever spacing the
+// renderer happens to use. ONE LIMITATION, STATED: `v1.compiler.infer`
 // `fold_accumulator_is_unapplied_generic` exists precisely because an unapplied generic accumulator
 // expansion -- a `Disj` or `Conj` still carrying its declared params -- reads as fully resolved to this
 // check; a callee type argument spelled as such an expansion would pass here, and if rustc ever refuses
-// one the repair belongs at `is_fully_resolved`, not in a second walk beside it. Whether rendered text may be trusted instead was settled by run
-// 41299024017, where the emitted annotation was `im::HashMap<_, _>` against an initializer of
-// `Rc<im::HashMap<_, bool>>`: a text test misses `(_, i64)`, `Fn(_) -> i64` and `Vec<(i64, _)>`, and
-// tracks whatever spacing the renderer happens to use. The richer source is the checker's verdict.
+// one the repair belongs at `is_fully_resolved`, not in a second walk beside it.
 
 fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
