@@ -13497,7 +13497,13 @@ fn user_call_lambda_emit_info(arg: Node, emit_info: EmitGraphInfo, si: Map<Strin
   match arg.expr_data {
     ExprLambda =>
       let ps = lambda_param_names_at(texpr: arg, source_indices: si)
-      let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si)
+      // move_positions: true HERE AND ONLY HERE — this is the lambda-parameter proof, the ONE
+      // supported pattern admitted for by-value move recording at an admitted bridge row (an
+      // owned parameter of a literal lambda passed to a declared callee). Function-level proofs
+      // (analyze_ownership: build_moved_argument_index below, v1.compiler.compile) pass false,
+      // so the fn-level index sees exactly the edges it sees on main (keen-otter msg_b08055f2:
+      // freeze the first pattern; parameters and owned locals of functions are NOT in scope).
+      let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si, move_positions: true)
       let moved = build_moved_argument_occurrences(proof: proof, param_names: ps |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)), locals_admitted: false)
       with(emit_info, { moved_argument_occurrences: set_union(emit_info.moved_argument_occurrences, moved) })
     _ => emit_info

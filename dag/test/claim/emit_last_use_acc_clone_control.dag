@@ -1,0 +1,281 @@
+// dag/test/claim/emit_last_use_acc_clone_control.dag — THE LAST-USE-BY-VALUE-ARGUMENT MOVE,
+// GREEN OR RED BY EXECUTION.
+//
+// WHAT THIS POOLS. For a literal lambda, `v1.compiler.ownership` `build_moved_argument_occurrences`
+// (invoked once, AT THE CALL, by `user_call_lambda_emit_info` in v1.compiler.emit_rust) grants that a
+// parameter whose ONLY use is a by-value call argument is MOVED at that occurrence. The repair at
+// this head is at the EDGE RECORD, not the grantor: a call the front end rewrote into a method call
+// (04_infer.dag's ExprCall arm rewrites `concat(acc, field)` into a method call because `concat` is
+// bridge-signable) is now recorded by `v1.compiler.ownership`'s ExprMethodCall arm with the SAME
+// `walk_call_argument` the ExprCall arm uses — PassedByValue with the authored occurrence id — but
+// ONLY when ALL THREE conjuncts hold: (1) the walk is the lambda's own PARAMETER PROOF — the flag
+// `move_positions` is passed true by exactly one caller, `user_call_lambda_emit_info` (the gate at
+// `emit_typed_call`); every function-level proof passes false, so function parameters and owned
+// locals keep exactly main's edges and are NOT moved anywhere (frozen first pattern: the owned
+// by-value parameter of a literal lambda passed to a declared callee); (2) the name resolves to an
+// rt_function_registry row INSIDE `rt_by_value_functions()` (`extdeps.languages.rust.emit`: the
+// passes_by_ref == false projection of the SAME registry the emitter renders bridge calls from) —
+// keyed on POSITIVE membership in the resolved row's parameter-passing fact, never a name list,
+// never 'absent from the ref map' (which would also admit plain template dot-calls and user
+// methods, that are not registry rows at all); and (3) the name is inside `rt_by_value_admitted()`
+// — the explicit FIRST-ADMISSION list carrying `concat` alone; every further row needs its own
+// scope plus controls. A by-ref row, an unadmitted by-value row, or a non-registry name keeps the
+// Read record and can never grant a move. `emit_rust_expr_var` consumes the grant and `emit_var_ref` omits the
+// clone template for that one emission. The corpus state
+// that opened this slice: `std_algebra` `string_concat_join` still emits
+// `|acc, field| v1_rt::concat(acc.clone(), field.clone())` although each parameter is used exactly
+// once, by value — the proof exists, the move does not. Reading the .dag rule is not evidence
+// (§5: a grep over the seed is not a consumer), so every cell here COMPILES a fixture through the
+// host builtin `compile_dag_rust_emit_check` and asserts on the EMITTED TEXT, in BOTH directions:
+// the expected spelling present, the wrong spelling forbidden, at the named site.
+//
+// WHY EACH BEHAVIOUR CELL TRAVELS WITH ITS OWN MARKER-ONLY CELL (§5, no silent collapse). The
+// builtin answers Bool, and `includes` is a CONJUNCTION: one list holding both the marker and the
+// expected text collapses emission failure (refused, file-not-found) into the same false as
+// emitted-but-different. So each fixture module has a PAIR: an `emits_..._reaches_the_assertions`
+// cell whose `includes` is ONLY the fixture's own `fn <name>(` signature line — it must be TRUE —
+// and the behaviour cell beside it. A red behaviour cell whose marker cell is TRUE reads as
+// emitted-but-different, the one red this probe claims; any other red is a refusal read and is
+// reported as such, not as evidence about the move.
+//
+// MIRROR CAVEAT, stated so no receipt claims more than it reads (§4b): the builtin runs the emitter
+// COMPILED INTO THE BINARY IN USE — the generated stage0 mirror. At a head whose mirror has not yet
+// been regenerated for a seed emitter edit, these cells read the PREVIOUS emitter. They are
+// therefore evidence at the head where the mirror matches the seed, which is the head that lands
+// because the candidate mirror bytes ride in the PR.
+//
+// FROZEN EXPECTATIONS (pre-registered at this repair head BEFORE any run; the v5 receipt is the
+// last executed record of the PRE-repair emitter). ALL 18 CELLS BY NAME, one verdict each — a
+// future packet is buildable from this list without counting. 9 MARKER cells (includes = the
+// fixture's own signature line only) all PASS:
+//   the_move_module_emits_holds: Pass
+//   the_second_use_module_emits_holds: Pass
+//   the_vec_module_emits_holds: Pass
+//   the_capture_module_emits_holds: Pass
+//   the_branch_module_emits_holds: Pass
+//   the_shadow_module_emits_holds: Pass
+//   the_ref_check_module_emits_holds: Pass
+//   the_call_local_lambda_module_emits_holds: Pass
+//   the_retain_non_registry_method_module_emits_holds: Pass
+// 9 BEHAVIOUR cells — 8 PASS, 1 EXPECTED-FAIL (the let-bound residual, below):
+//   the_last_use_by_value_parameter_emits_bare_holds: Pass (the repair's RED/GREEN pair — v5
+//     receipt: FAIL, both clones stayed at the pre-repair emitter; bare here after the arm repair)
+//   the_last_use_vec_accumulator_emits_bare_holds: Pass — REGRESSION FLOOR (v5 receipt: PASS,
+//     `rc_list_push(acc, x)` already bare under the caller-side gate; the repair must keep it bare)
+//   the_by_ref_primitive_takes_the_borrow_form_holds: Pass (no pre-repair receipt; '&acc' present,
+//     'acc.clone(' absent; a red reads against its marker and is reported, never folded)
+//   the_second_use_keeps_its_clone_holds: Pass (v5 receipt: PASS)
+//   the_captured_parameter_keeps_its_clone_holds: Pass (v5 receipt: PASS)
+//   the_both_arms_parameter_keeps_its_clone_holds: Pass — PRE-REGISTERED PREDICTION under THIS
+//     design (its v5 PASS ran under the retired lambda-attach design and is NOT a carried receipt):
+//     this design's widened method arm now records BOTH branch arms' concat positions as by-value
+//     uses, so the keep depends on `merge_branch_usages` / `max_usage_by_fan_out` counting the two
+//     arm uses as >1 and starving the grant. A Fail here means fan-out merging lost the second use.
+//   the_shadowed_parameter_keeps_its_clone_holds: Pass — PRE-REGISTERED PREDICTION under THIS
+//     design (its v5 PASS ran under the retired lambda-attach design and is NOT a carried receipt):
+//     the keep depends on name sharing — the shadowing rebind and the outer use must both land as
+//     uses of the proof's parameter before the grant starves. A Fail here means the walker let the
+//     shadowed occurrence be granted.
+//   the_retain_non_registry_method_keeps_its_clone_holds: Pass — NON-REGISTRY GUARD (a bare
+//     `acc.first()` here is over-application of the widened arm to a template dot-call and BLOCKS
+//     the land; no pre-repair receipt needed — the shape does not involve the by-value rows)
+//   the_call_local_lambda_emits_bare_holds: EXPECTED-FAIL — the DECLARED LIMITATION, a residual
+//     WITH A TRIGGER, not a claim of completeness: at the landed shape a lambda bound by `let` and
+//     passed BY NAME still clones, because the caller-side grantor meets an ExprVar `joiner`, not a
+//     lambda node, and does not attach. THE CELL IS NEW AND UNEXECUTED: until a packet runs it it
+//     SHOWS NOTHING (keen-otter msg_72114642 (3)) — it is the PENDING DISCRIMINATOR for the attach
+//     decision, not a demonstration. Run and read red with its marker green, it would demonstrate
+//     that the dropped lambda-level attach was needed for nothing this PR claims; run and read
+//     green, it reopens the attach question and is reported, not folded. The trigger that would
+//     re-admit the attach is a real corpus site needing the let-bound move, WITH A WITNESS.
+// A cell red outside this list is reported with its exact reading; a marker red is a refusal
+// reading, never evidence about the move.
+module test.claim.emit_last_use_acc_clone_control
+
+// THE READ PATH, DERIVED NOT BY PATTERN. Every fixture module declares `module probe.lastuse`
+// (the shared preamble all nine data strings extend), and the emitter names a module's file by
+// `v1.compiler.emit_rust` `rust_module_emit_path` (src/v1/05_emit_rust.dag:4049), which concatenates
+// `rust_source_root()` with `gunbc.rust_emitted_edge` `rust_module_emit_filename`
+// (dag/gunbc/rust_emitted_edge.dag:59-62) — `module_to_filename` (:55-57),
+// `name |> split(delimiter: ".") |> join(separator: "_")`, the `"main" -> "main_mod"` exception not
+// reached — plus `rust_source_ext()`. `probe.lastuse` therefore emits exactly
+// `src/probe_lastuse.rs`; that is the single read path for all eighteen cells below. The v4 attempt's
+// ten refusals were this line's absence: a made-up `src/test_claim_lastuse_*.rs` names no module of
+// the compiled closure (the refusal arm in `compile_dag_rust_emit_check_uncached`,
+// src/v1/stage0/src/cli_run/emit_host.rs).
+//
+// THE V4 DEDUCTION, STATED EXACTLY. In `compile_dag_rust_emit_check_uncached` the hard-diagnostics
+// check precedes the read-path lookup, so a bare FAIL with a wrong read path can only be the
+// HardDiagnostics arm; the diagnostic text is unknown; `.length` was an UNCONFIRMED candidate.
+
+import std.types { String }
+import test.claim.emit_last_use_acc_clone_fixtures {
+  move_case_source,
+  retain_second_use_source,
+  move_vec_accumulator_source,
+  retain_capture_source,
+  retain_branch_arms_source,
+  retain_shadowed_source,
+  by_ref_case_source,
+  via_preamble_case_source,
+  retain_non_registry_method_source
+}
+
+// THE MARKER PAIRS (amendment 5, paired one-to-one below). Each asserts ONLY that the fixture's
+// own signature line came out of the emitter: TRUE means the module compiled and emitted, so a red
+// on the behaviour cell beside it can only mean the TEXT differs. A false here is the collapsed
+// refusal reading — reported as a refusal, never as evidence about the move.
+test fn the_move_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(move_case_source, "src/probe_lastuse.rs", ["fn join_pair("], [])
+}
+
+test fn the_second_use_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_second_use_source, "src/probe_lastuse.rs", ["fn join_twice("], [])
+}
+
+test fn the_vec_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(move_vec_accumulator_source, "src/probe_lastuse.rs", ["fn collect_one("], [])
+}
+
+test fn the_capture_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_capture_source, "src/probe_lastuse.rs", ["fn join_captured("], [])
+}
+
+test fn the_branch_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_branch_arms_source, "src/probe_lastuse.rs", ["fn join_branch("], [])
+}
+
+test fn the_shadow_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_shadowed_source, "src/probe_lastuse.rs", ["fn join_shadowed("], [])
+}
+
+// THE ONE-USE PARAMETER MOVES. `join_pair`'s lambda passes `acc` exactly once, by value, to the
+// GENERIC declared callee `apply_combine` — the `string_concat_join`/`join_separated` statement
+// reproduced. Red before the repair: the emitted closure carried `acc.clone()` (and `x.clone()`),
+// the redundant copy this slice removes.
+test fn the_last_use_by_value_parameter_emits_bare_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    move_case_source,
+    "src/probe_lastuse.rs",
+    ["fn join_pair(", "v1_rt::concat(acc, x)"],
+    ["acc.clone()", "x.clone()"]
+  )
+}
+
+// A NON-LAST USE KEEPS ITS CLONE. `acc` is read twice in `join_twice`; a repair that moved it would
+// be blanket elision. The cell asserts the clone is THERE — the retain half of the control pair, so
+// a green on the move cell alone proves nothing.
+test fn the_second_use_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_second_use_source,
+    "src/probe_lastuse.rs",
+    ["fn join_twice(", "acc.clone()"],
+    []
+  )
+}
+
+// REGRESSION FLOOR, RECLASSIFIED AT THIS HEAD (the v5 receipt): the non-Copy owned accumulator
+// (`List<String>`, emitted as an `Rc<Vec<_>>`) used exactly once by value was ALREADY bare —
+// `rc_list_push(acc, x)` — under the pre-repair emitter. It moves to a floor: the existing route's
+// answer for this shape must survive the repair byte-for-byte. A red here while `join_pair` moves
+// would show the repair keyed on the type instead of on the use.
+test fn the_last_use_vec_accumulator_emits_bare_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    move_vec_accumulator_source,
+    "src/probe_lastuse.rs",
+    ["fn collect_one(", "rc_list_push(acc, x)"],
+    ["acc.clone()"]
+  )
+}
+
+// A CAPTURED PARAMETER KEEPS ITS CLONE. The single by-value read of `acc` sits inside an inner
+// lambda, so `acc` is captured, not consumed: the proof surfaces it as a capture read and the clone
+// must survive. Green before and after — it pins that the repair does not widen past capture.
+test fn the_captured_parameter_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_capture_source,
+    "src/probe_lastuse.rs",
+    ["fn join_captured(", "acc.clone()"],
+    []
+  )
+}
+
+// A PARAMETER USED ON BOTH BRANCH ARMS KEEPS ITS CLONE. Once per path is not once: the proof sees
+// two edges, and the fold-only branch-end admission (`fold_body_branch_ends_move_acc`) is NOT
+// re-derived for plain lambda arguments. Green before and after — it pins the per-path boundary.
+test fn the_both_arms_parameter_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_branch_arms_source,
+    "src/probe_lastuse.rs",
+    ["fn join_branch(", "acc.clone()"],
+    []
+  )
+}
+
+// A SHADOWED PARAMETER KEEPS ITS CLONE. The parameter `acc` is shadowed by an inner `let` before
+// its use; the only by-value edge under the spelling is the shadow's own, and the move would be
+// granted to the parameter name on the shadow's occurrence. The frozen pattern refuses a move on a
+// shadowed parameter, so the emitted closure must still carry the clone.
+test fn the_shadowed_parameter_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_shadowed_source,
+    "src/probe_lastuse.rs",
+    ["fn join_shadowed(", "acc.clone()"],
+    []
+  )
+}
+
+// THE BY-REF PAIR (frozen expectation table above). Marker first: the fixture must emit.
+test fn the_ref_check_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(by_ref_case_source, "src/probe_lastuse.rs", ["fn ref_check("], [])
+}
+
+// THE BORROW FORM SURVIVES THE MOVE. `ref_check`'s lambda passes `acc` exactly once, by value, to
+// `string_contains` — a runtime primitive whose registry row passes the first parameter by
+// reference. The grant may drop the clone; the `&` is prefixed after the argument render
+// (rust_by_ref_bridge_argument), so the emission must read `v1_rt::string_contains(&acc,`: a bare
+// `v1_rt::string_contains(acc,` would mean the arm lost the borrow, and `&acc.clone()` would mean
+// the grant did not reach the occurrence. Both forbidden spellings are asserted absent.
+test fn the_by_ref_primitive_takes_the_borrow_form_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_case_source,
+    "src/probe_lastuse.rs",
+    ["fn ref_check(", "v1_rt::string_contains(&acc,"],
+    ["v1_rt::string_contains(acc,", "&acc.clone()"]
+  )
+}
+
+// THE LET-BOUND PAIR (attach-need discriminator; expectations pre-registered in the header). The
+// marker pins the fixture emitted; the behaviour cell reads the same closure text the move cell
+// reads, at the let-bound call. Expected RED (clone kept) at the landed shape — see header.
+test fn the_call_local_lambda_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(via_preamble_case_source, "src/probe_lastuse.rs", ["fn join_via_local("], [])
+}
+
+test fn the_call_local_lambda_emits_bare_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    via_preamble_case_source,
+    "src/probe_lastuse.rs",
+    ["fn join_via_local(", "v1_rt::concat(acc, x)"],
+    ["acc.clone()", "x.clone()"]
+  )
+}
+
+// THE NON-REGISTRY DOT-CALL PAIR (predicate guard; managers msg_10f0fc04 + msg_123de759 (2)):
+// a LITERAL LAMBDA to a DECLARED callee (apply_one) whose parameter's single use is the receiver of
+// `first` — a template dot-call in NEITHER registry projection. The caller-side grantor attaches and
+// the lambda-body proof reaches the widened arm; the arm must NOT admit this receiver, so the clone
+// is KEPT. Pre-registered: BOTH PASS. A FAIL (bare `acc.first()`) is over-application of the widened
+// arm to a non-registry name and BLOCKS the land.
+test fn the_retain_non_registry_method_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_non_registry_method_source, "src/probe_lastuse.rs", ["fn first_via("], [])
+}
+
+test fn the_retain_non_registry_method_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_non_registry_method_source,
+    "src/probe_lastuse.rs",
+    ["fn first_via(", "acc.clone().first()"],
+    ["acc.first()"]
+  )
+}

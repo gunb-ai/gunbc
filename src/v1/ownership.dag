@@ -23,6 +23,11 @@ import v1.std.core {
 
 import v1.compiler.emit_core_support { to_string }
 import std.occurrence_identity { OccurrenceId, authored_occurrence_of }
+// THE positive by-value authority: rt_function_registry rows with passes_by_ref == false, derived
+// from the same registry the Rust emitter renders bridge calls from. Membership here — never
+// "absent from the ref map" — is what makes a method-call position a MOVE CANDIDATE; a name in
+// neither map (a plain template dot-call, a user method) or a by-ref row is not, and keeps its clone.
+import extdeps.languages.rust.emit { rt_by_value_functions, rt_by_value_admitted }
 
 
 // Read is the ELSE OF in_tail, not a finding that the use borrows. walk_expr's ExprVar arm
@@ -229,7 +234,7 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
   }
 }
 
-fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
+fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>, move_positions: Bool) -> UsageAccum {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
@@ -249,7 +254,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
           let vn = expr_var_name_at(texpr: base_node, source_indices: si)
           let f = field_access_field_at(texpr: texpr, source_indices: si)
           record_var_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start, occurrence: none)
-        _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
+        _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si, move_positions: move_positions)
       }
 
     ExprCall =>
@@ -266,17 +271,18 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
                 record_var_use(accum: called, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, occurrence: none)
-              _ => walk_expr(accum: called, texpr: ia_val, in_tail: false, si: si)
+              _ => walk_expr(accum: called, texpr: ia_val, in_tail: false, si: si, move_positions: move_positions)
             }
           Absent => called
         }
+        // fold keeps its Read walk for the non-init args, as in the method-form arm above.
         let non_init = texpr.children |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si, move_positions: move_positions)
         )
       } else {
         texpr.children |> fold(init: called, f: (acc, a) =>
-          walk_call_argument(accum: acc, arg: arg_value(n: a), si: si)
+          walk_call_argument(accum: acc, arg: arg_value(n: a), si: si, move_positions: move_positions)
         )
       }
 
@@ -285,7 +291,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let mc_args = method_arg_nodes(texpr: texpr)
       let mname = expr_method_name_at(texpr: texpr, source_indices: si)
       if mname == "fold" {
-        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
+        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si, move_positions: move_positions)
         let init_arg = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) == "init") |> first
         let threaded_accum = match init_arg {
           Present { value: ia } =>
@@ -294,49 +300,79 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
                 record_var_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, occurrence: none)
-              _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
+              _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si, move_positions: move_positions)
             }
           Absent => recv_accum
         }
+        // fold KEEPS its Read walk for the non-init args: `fold` is not an rt_function_registry row,
+        // its step/cons args are function VALUES (a move there would not render as a dropped clone,
+        // and the fold's own last-use authority is the cons-lambda proof, unchanged here).
         let non_init = mc_args |> filter(a => authored_name_at(source_indices: si, node: a) != "init")
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si, move_positions: move_positions)
         )
         UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr), touched: walked.touched }
+      } else if move_positions == true && map_contains_key(rt_by_value_functions(), mname) == true && map_contains_key(rt_by_value_admitted(), mname) == true {
+        // LAST-USE MOVE SITE AT A BY-VALUE BRIDGE ROW, LAMBDA-PARAMETER PROOF ONLY. Three
+        // conjuncts, all required: (1) move_positions == true — this walk is the lambda's own
+        // parameter proof (v1.compiler.emit_rust user_call_lambda_emit_info); function-level
+        // proofs pass false and see exactly the edges main sees, so function parameters and
+        // owned locals are NOT moved anywhere (keen-otter msg_b08055f2 frozen pattern);
+        // (2) POSITIVE membership in `rt_by_value_functions()` — the by-value rows of the
+        // registry, keyed on the resolved row's parameter-passing fact (never "absent from the
+        // ref map", which would also admit template dot-calls and user methods);
+        // (3) POSITIVE membership in `rt_by_value_admitted()` — the explicit FIRST-ADMISSION
+        // list, `concat` today (keen-otter msg_72114642: every further row needs its own scope
+        // plus controls, never analogy). A method call meeting all three lowers to the bridge's
+        // free call taking every position BY VALUE (the concat row lowers to
+        // v1_rt::concat(a, b): runtime_rust.dag `pub fn concat<T: V2Concat>(a: T, b: T)`), so an
+        // occurrence at its receiver or any argument position is a by-value use exactly like an
+        // ExprCall argument, and the ONE use-counting authority (walk_call_argument) records it
+        // with its authored occurrence id. Any other shape — by-ref row, template dot-call, user
+        // method, unadmitted by-value row, or a function-level walk — takes the else branch
+        // below unchanged, so it can never be granted a move.
+        let recv_passed = walk_call_argument(accum: accum, arg: recv, si: si, move_positions: move_positions)
+        mc_args |> fold(init: recv_passed, f: (acc, a) =>
+          walk_call_argument(accum: acc, arg: arg_value(n: a), si: si, move_positions: move_positions)
+        )
       } else {
-        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
+        // A walk that is not the lambda-parameter proof (move_positions == false — every
+        // function-level proof), a by-ref row (member of rt_ref_map_functions), a plain template
+        // dot-call, or any name the bridge registry does not carry: recorded as Read (no
+        // occurrence id), which only ever KEEPS a clone.
+        let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si, move_positions: move_positions)
         mc_args |> fold(init: recv_accum, f: (acc, a) =>
-          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
+          walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si, move_positions: move_positions)
         )
       }
 
     ExprMatch =>
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
-      let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si)
+      let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si, move_positions: move_positions)
       let seed = branch_seed(from: s_accum)
       let branch_accums = arm_nodes |> map(arm_node =>
-        walk_expr(accum: seed, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
+        walk_expr(accum: seed, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si, move_positions: move_positions)
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
     ExprIf =>
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
-      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
+      let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si, move_positions: move_positions)
       let seed = branch_seed(from: c_accum)
-      let t_accum = walk_expr(accum: seed, texpr: t, in_tail: in_tail, si: si)
+      let t_accum = walk_expr(accum: seed, texpr: t, in_tail: in_tail, si: si, move_positions: move_positions)
       let e_accum = match if_else_branch(texpr: texpr) {
-        Present { value: eb } => walk_expr(accum: seed, texpr: eb, in_tail: in_tail, si: si)
+        Present { value: eb } => walk_expr(accum: seed, texpr: eb, in_tail: in_tail, si: si, move_positions: move_positions)
         Absent => seed
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
     ExprLet =>
       let v = let_value(texpr: texpr)
-      let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false, si: si)
+      let v_accum = walk_expr(accum: accum, texpr: v, in_tail: false, si: si, move_positions: move_positions)
       match let_body(texpr: texpr) {
-        Present { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail, si: si)
+        Present { value: b } => walk_expr(accum: v_accum, texpr: b, in_tail: in_tail, si: si, move_positions: move_positions)
         Absent => v_accum
       }
 
@@ -348,23 +384,23 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         let init_accum = ss |> enumerate
           |> filter(p => p.first < ss_count - 1)
           |> fold(init: accum, f: (acc, p) =>
-            walk_expr(accum: acc, texpr: p.second, in_tail: false, si: si)
+            walk_expr(accum: acc, texpr: p.second, in_tail: false, si: si, move_positions: move_positions)
           )
         match ss |> last {
           Present { value: last_expr } =>
-            walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail, si: si)
+            walk_expr(accum: init_accum, texpr: last_expr, in_tail: in_tail, si: si, move_positions: move_positions)
           Absent => init_accum
         }
       }
 
     ExprReturn =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
-        walk_expr(accum: acc, texpr: child, in_tail: true, si: si)
+        walk_expr(accum: acc, texpr: child, in_tail: true, si: si, move_positions: move_positions)
       )
 
     ExprLambda =>
       let body = lambda_body(texpr: texpr)
-      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si, move_positions: move_positions)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
         record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
       )
@@ -372,9 +408,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
 
     ExprForEach =>
       let coll = foreach_collection(texpr: texpr)
-      let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false, si: si)
+      let coll_accum = walk_expr(accum: accum, texpr: coll, in_tail: false, si: si, move_positions: move_positions)
       let body = foreach_body(texpr: texpr)
-      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
+      let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si, move_positions: move_positions)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
         record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
       )
@@ -382,7 +418,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
 
     _ =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
-        walk_expr(accum: acc, texpr: child, in_tail: false, si: si)
+        walk_expr(accum: acc, texpr: child, in_tail: false, si: si, move_positions: move_positions)
       )
   }
 }
@@ -390,11 +426,11 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
 // A bare binding in argument position is handed over by value; any other argument expression is
 // walked as before, so a binding inside it (a field, a nested call's own argument) is classified by
 // its own position.
-fn walk_call_argument(accum: UsageAccum, arg: Node, si: Map<String, NewlineIndex>) -> UsageAccum {
+fn walk_call_argument(accum: UsageAccum, arg: Node, si: Map<String, NewlineIndex>, move_positions: Bool) -> UsageAccum {
   match arg.expr_data {
     ExprVar { binding_kind: bk } =>
       record_var_use(accum: accum, name: expr_var_name_at(texpr: arg, source_indices: si), kind: PassedByValue, site: "argument", binding_kind: bk, span_start: arg.span.start, occurrence: authored_occurrence_of(identity: arg.occurrence_identity))
-    _ => walk_expr(accum: accum, texpr: arg, in_tail: false, si: si)
+    _ => walk_expr(accum: accum, texpr: arg, in_tail: false, si: si, move_positions: move_positions)
   }
 }
 
@@ -805,12 +841,12 @@ fn analyze_dying_base_sites(params: List<Node>, body: Node, si: Map<String, Newl
 }
 
 fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
-  analyze_ownership_of_names(func_name: func_name, param_names: params |> map(p => authored_name_at(source_indices: si, node: p)), body: body, si: si)
+  analyze_ownership_of_names(func_name: func_name, param_names: params |> map(p => authored_name_at(source_indices: si, node: p)), body: body, si: si, move_positions: false)
 }
 
 // The same proof keyed by parameter NAME, for a lambda, whose parameters are names rather than
 // declaration nodes (v1.compiler.emit_rust user_call_lambda_emit_info).
-fn analyze_ownership_of_names(func_name: String, param_names: List<String>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
+fn analyze_ownership_of_names(func_name: String, param_names: List<String>, body: Node, si: Map<String, NewlineIndex>, move_positions: Bool) -> OwnershipProof {
   let initial = param_names |> fold(init: empty_usage_accum(), f: (acc, p_name) =>
     UsageAccum {
       bindings: map_insert(acc.bindings, p_name, BindingUsage { name: p_name, binding_kind: none, consumers: [] }),
@@ -818,7 +854,7 @@ fn analyze_ownership_of_names(func_name: String, param_names: List<String>, body
       touched: acc.touched
     }
   )
-  let result = walk_expr(accum: initial, texpr: body, in_tail: true, si: si)
+  let result = walk_expr(accum: initial, texpr: body, in_tail: true, si: si, move_positions: move_positions)
 
   let binding_list = result.bindings |> map_values
   let decisions = binding_list |> map(usage => make_decision(usage: usage))

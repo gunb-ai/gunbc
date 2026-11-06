@@ -1,0 +1,172 @@
+// dag/test/claim/emit_last_use_acc_clone_fixtures.dag — THE FIXTURE SOURCE TEXT for the
+// last-use-by-value-argument control (test.claim.emit_last_use_acc_clone_control), in ONE module so
+// the cells cannot drift from the text they compile.
+//
+// THE POPULATION THESE FIXTURES PIN. `v1.compiler.ownership` builds, for a literal lambda passed to
+// a DECLARED callee, the one proof (`user_call_lambda_emit_info` in v1.compiler.emit_rust) that a
+// parameter whose ONLY use is as a by-value call argument moves AT that occurrence; the emitter
+// consumes it in `emit_rust_expr_var`, which grants movability for that one emission so
+// `emit_var_ref` does not wrap the read in the language's clone template. The corpus state that
+// started this slice is `std_algebra` `string_concat_join` still emitting
+// `|acc, field| v1_rt::concat(acc.clone(), field.clone())` although each parameter is used exactly
+// once, by value — the proof exists and the move does not. These fixtures reproduce that shape
+// under a NAMED shape and then vary ONE clause at a time: the callee is GENERIC over T with a
+// `fn(T, T) -> T` parameter instantiated at a concrete type, exactly as `join_separated` is, so a
+// green that survives here cannot be an artifact of a simpler callee.
+//
+// ONE TEXT PER CASE. Each data string is a whole module: `compile_dag_rust_emit_check` compiles and
+// emits it, and the cells read the emitted Rust back. Keeping them apart is what makes a cell
+// assert one clause: only the lambda body differs between the move case and its retain shadows.
+// Nothing here imports the compiler; the fixture modules themselves import only `std.algebra`.
+module test.claim.emit_last_use_acc_clone_fixtures
+
+import std.types { String }
+
+fn fixture_lines(lines: List<String>) -> String { lines |> join(separator: "\n") }
+
+// THE SHARED PREAMBLE: the generic higher-order callee (the `join_separated` shape: a by-value
+// `fn(T, T) -> T` parameter), its Bool-returning sibling for the by-ref consumer case, the
+// non-uniform collector for the non-text accumulator case, and the `concat`/`list_push`/
+// `string_contains` the bodies call. Every case below appends exactly one tested function.
+fn preamble() -> String {
+  fixture_lines(lines: [
+    "module probe.lastuse",
+    "import std.algebra { list_push }",
+    "import std.algebra { string_contains }",
+    "import std.types { Bool }",
+    "fn apply_combine<T>(seed: T, sep: T, combine: fn(T, T) -> T) -> T {",
+    "  combine(combine(seed, sep), sep)",
+    "}",
+    "fn apply_ref_check<T>(seed: T, probe: T, combine: fn(T, T) -> Bool) -> Bool {",
+    "  combine(seed, probe)",
+    "}",
+    "fn collect_with<T>(xs: List<T>, item: T, append: fn(List<T>, T) -> List<T>) -> List<T> {",
+    "  append(xs, item)",
+    "}",
+    "fn apply_one<T, R>(seed: T, f: fn(T) -> R) -> R {",
+    "  f(seed)",
+    "}"
+  ])
+}
+
+// THE NON-REGISTRY DOT-CALL CASE — the PREDICATE GUARD (manager msg_123de759 (2): built in the
+// SAME shape the widened arm governs — a LITERAL LAMBDA passed to a DECLARED callee, whose parameter's
+// single use is the RECEIVER of a non-registry dot-call, so the caller-side grantor really attaches
+// and the lambda-body proof really reaches the widened arm). `first` is a plain template dot-call
+// (extdeps.languages.rust.emit rust_simple_method_specs template "{recv}.first().cloned()"), NOT an
+// rt_function_registry row: it is in NEITHER projection map. The arm keys on POSITIVE membership in
+// rt_by_value_functions, so this receiver stays a Read and the clone is KEPT. A FAIL (bare `acc`)
+// therefore means exactly: the arm over-applied to a non-registry name — BLOCKS THE LAND. Corpus
+// receiver clone precedent for this template: extdeps_uri_path.rs:172
+// `before_and_rest.clone().first().cloned()`.
+
+// THE LET-BOUND LAMBDA CASE — the ATTACH-NEED DISCRIMINATOR. `join_via_local` binds the tested
+// lambda to a local and passes the LOCAL at its only use, so the caller-side grantor in
+// `emit_typed_call` meets a `Var` argument, not a lambda node. By SOURCE READING the landed shape
+// (caller-side gate restored, no lambda-level attach) keeps the clone here; the cell is NEW and
+// UNEXECUTED and shows nothing until run — the PENDING DISCRIMINATOR for the attach decision
+// (keen-otter msg_72114642 (3)), expectation registered in the control header.
+
+// THE MOVE CASE — the motivating shape. `join_pair` passes a literal lambda whose `acc` is used
+// exactly once, as a by-value argument, to the GENERIC declared callee `apply_combine`: the same
+// statement `string_concat_join` makes of `join_separated`. The proof's own rule says `acc` moves
+// at that argument; the corpus says it clones. The cell pins which.
+data move_case_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_pair(prefix: String, suffix: String) -> String {",
+  "  apply_combine(seed: prefix, sep: suffix, combine: fn(acc, x) { concat(acc, x) })",
+  "}"
+]))
+
+// CONTROL, NON-LAST USE: the same lambda uses `acc` TWICE. A clone here is correct and must stay;
+// a repair that dropped it would be blanket elision, which is refused.
+data retain_second_use_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_twice(prefix: String, suffix: String) -> String {",
+  "  apply_combine(seed: prefix, sep: suffix, combine: fn(acc, x) { concat(concat(acc, x), acc) })",
+  "}"
+]))
+
+// CONTROL, NON-TEXT ACCUMULATOR: the accumulator is `List<String>` (a non-Copy owned value), used
+// exactly once by value. The same rule must answer the same way it does for String, and the
+// already-moved corpus case `rc_list_push(xs, item)` says this shape can move.
+data move_vec_accumulator_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn collect_one(item: String) -> List<String> {",
+  "  collect_with(xs: [], item: item, append: fn(acc, x) { list_push(acc, x) })",
+  "}"
+]))
+
+// CONTROL, CAPTURE: the single by-value use of `acc` sits inside an INNER lambda, so `acc` is
+// captured, not consumed — the proof surfaces it as a capture read, and the clone must stay.
+data retain_capture_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_captured(prefix: String, suffix: String) -> String {",
+  "  apply_combine(seed: prefix, sep: suffix, combine: fn(acc, x) {",
+  "    let wrap = fn(y) { concat(acc, y) }",
+  "    wrap(x)",
+  "  })",
+  "}"
+]))
+
+// CONTROL, BRANCH ARMS: `acc` is used once per path but on BOTH arms, so the proof sees two edges
+// and the frozen rule (its sole use, on one path, is the move site) does not admit a move. The
+// branch-end admission that folds have (`fold_body_branch_ends_move_acc`) is not re-derived here;
+// this text pins that a two-arm lambda keeps its clone.
+// The String-length spelling is the in-tree precedent, not a guess: `std.types` `string_non_empty`
+// (dag/std/types.dag:329-331) tests `value.length() > 0` on a String — parenthesized `.length()` —
+// and `extdeps.container.oci.reference` `oci_path_component_syntax` (dag/extdeps/container/oci/
+// reference.dag:113-115) spells it the same way. v4's bare FAILs on this fixture's two cells
+// coincided with the earlier, unparenthesized spelling, which was an UNCONFIRMED candidate; the
+// header of the control module records the deduction and its limits.
+data retain_branch_arms_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_branch(prefix: String, suffix: String) -> String {",
+  "  apply_combine(seed: prefix, sep: suffix, combine: fn(acc, x) {",
+  "    if x.length() > 0 { concat(acc, x) } else { acc }",
+  "  })",
+  "}"
+]))
+
+// CONTROL, SHADOWING: the parameter `acc` is shadowed by an inner `let` of the same spelling before
+// its use, and the shadow's own single by-value use is what the proof would see — one edge under the
+// spelling `acc`, granted to a name that is also a parameter. The move would land on the shadow's
+// occurrence, not the parameter's; per the frozen pattern a shadowed parameter keeps its clone.
+data retain_shadowed_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_shadowed(prefix: String, suffix: String) -> String {",
+  "  apply_combine(seed: prefix, sep: suffix, combine: fn(acc, x) {",
+  "    let acc = concat(\"s\", x)",
+  "    concat(acc, x)",
+  "  })",
+  "}"
+]))
+
+// CONTROL, BY-REF CONSUMER: the last-use parameter is consumed by a runtime primitive whose
+// registry row passes its first parameter by reference (rt_function_registry passes_by_ref rows,
+// realized through rt_ref_map_functions; the specimen is `string_contains`, whose corpus emission
+// is `v1_rt::string_contains(&head, ...)` — e.g. v1_tests_claim_carrier_realization_census.rs:871).
+// The grant may drop the clone at that occurrence; it must NOT change the borrow form: the `&` is
+// prefixed after the argument render (rust_by_ref_bridge_argument), so the expected emission is
+// `&acc` — never a bare `acc` behind the bridge and never `&acc.clone()`.
+data by_ref_case_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn ref_check(prefix: String, suffix: String) -> Bool {",
+  "  apply_ref_check(seed: prefix, probe: suffix, combine: fn(acc: String, needle: String) -> Bool { string_contains(acc, needle) })",
+  "}"
+]))
+
+data via_preamble_case_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_via_local(prefix: String, suffix: String) -> String {",
+  "  let joiner = fn(acc, x) { concat(acc, x) }",
+  "  apply_combine(seed: prefix, sep: suffix, combine: joiner)",
+  "}"
+]))
+
+data retain_non_registry_method_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn first_via(xs: List<String>) -> String? {",
+  "  apply_one(seed: xs, f: fn(acc) { acc.first() })",
+  "}"
+]))

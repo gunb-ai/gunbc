@@ -395,6 +395,31 @@ fn rt_ref_map_functions() -> Map<String, Bool> {
     |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
 }
 
+// THE POSITIVE BY-VALUE AUTHORITY. One registry, three projections, no hand-spelled name list:
+// these are exactly the rows the bridge CALLS BY VALUE (passes_by_ref == false), the complement of
+// rt_ref_map_functions. A grant or move decision must key on POSITIVE membership HERE — "absent
+// from the ref map" is NOT enough: it would also admit plain template dot-calls and user methods,
+// which are not registry rows at all. Sole consumer today: the last-use move record in
+// v1.compiler.ownership's method-call arm (DESIGN §3).
+fn rt_by_value_functions() -> Map<String, Bool> {
+  rt_function_registry
+    |> filter(f => f.passes_by_ref == false)
+    |> fold(init: empty_map(), f: (acc, entry) => map_insert(acc, entry.name, true))
+}
+
+// THE FIRST ADMISSION, EXPLICIT PER ROW (keen-otter msg_72114642 (1)). Membership in
+// rt_by_value_functions is NECESSARY BUT NOT SUFFICIENT: a by-value row moves a use only when it
+// is also admitted here, one named row at a time — `concat` is the FIRST and ONLY admitted row.
+// The projection above stays the by-value authority; this admission NARROWS it, never replaces it.
+// WIDENING TRIGGER: a new row (e.g. code_point) enters this list ONLY with its own explicit scope
+// decision plus its own controls (a cell pair per row in the control blob) — never by analogy.
+data rt_by_value_admitted_rows: List<String> = ["concat"]
+
+fn rt_by_value_admitted() -> Map<String, Bool> {
+  rt_by_value_admitted_rows
+    |> fold(init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+}
+
 fn rt_wraps_result() -> Map<String, Bool> {
   rt_function_registry
     |> filter(f => f.wraps_result)

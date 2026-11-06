@@ -27084,6 +27084,19 @@ pub fn emit_typed_expr(
                     )
                 }
             }
+            ExprData::ExprLambda => emit_typed_expr_shared(
+                texpr.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                lambda_body_grant_emit_info(
+                    texpr.clone(),
+                    emit_info.clone(),
+                    scope.type_env.source_indices.clone(),
+                ),
+                fuel.clone(),
+            ),
             _ => emit_typed_expr_shared(
                 texpr.clone(),
                 registry.clone(),
@@ -27947,7 +27960,7 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
     }
 }
 
-pub fn user_call_lambda_emit_info(
+pub fn lambda_body_grant_emit_info(
     arg: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -28776,16 +28789,7 @@ pub fn emit_typed_call(
                         }
                         std::option::Option::None => emit_info.clone(),
                     };
-                    let arg_emit_info =
-                        if ((callee.clone() != std::option::Option::None) && !is_rt.clone()) {
-                            user_call_lambda_emit_info(
-                                crate::v1_std_core::arg_value(a.clone()),
-                                typed_emit_info.clone(),
-                                scope.type_env.source_indices.clone(),
-                            )
-                        } else {
-                            typed_emit_info.clone()
-                        };
+                    let arg_emit_info = typed_emit_info.clone();
                     let arg_scope = lambda_argument_scope(
                         crate::v1_std_core::arg_value(a.clone()),
                         scope.clone(),

@@ -1,0 +1,47 @@
+module gunbc.recurring_failure_mode.a_method_call_on_a_by_value_bridge_row_recorded_read_starves_the_one_use_counting_authority
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// FILED BY PR #15988 (crisp-bee-97, sleek-owl-397 msg_0c1a922f) for the class its trace located.
+// The repair lands in the same commit set; the standing records the climb as authored, and the
+// trigger below is what would make the class recur.
+data a_method_call_on_a_by_value_bridge_row_recorded_read_starves_the_one_use_counting_authority: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_method_call_on_a_by_value_bridge_row_recorded_read_starves_the_one_use_counting_authority" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the capability of telling, from ONE source at the moment an edge is recorded, whether a consumer position takes its value by reference or by move -- a single by-value/by-ref authority read by BOTH the emitter's borrow rendering and the ownership proof's use recording. The class recurs the moment either side re-derives parameter passing by hand (a second ref/by-value table, a name list, or an is-rt predicate spelled at the call site) and the two readings drift."
+    }
+  },
+
+  receipts: [
+    "**a by-value consumer recorded as a read starves the one use-counting authority** (INVALID STATE: v1.compiler.ownership records EVERY non-fold ExprMethodCall receiver and argument as kind Read with occurrence identity Absent, while the only authority that grants a last-use move -- moved_at_its_only_argument -- admits an occurrence only through a PassedByValue edge that carries its authored OccurrenceId. A name whose calls LOWER to by-value bridge calls (the rt_function_registry rows with passes_by_ref == false, e.g. `concat` -> `v1_rt::concat(a, b)` taking both parameters by value) therefore has NO admissible move site in method form, and the grant set a consumer render looks up is provably empty there.)",
+    "HARM. Silent and structural: every fold over such an accumulator pays a needless O(|acc|) clone per step -- the corpus motivating site is std.algebra string_concat_join's emitted `|acc, field| v1_rt::concat(acc.clone(), field.clone())`, where the clone of the owned by-value parameter at its last use is pure copy cost. Nothing refuses, nothing diagnoses: the emitted program is correct, the probe that should have caught it reads PASS-or-FAIL per cell and both readings are contract-legal, and the grantor -- asked at the right moment -- computes the EMPTY SET rather than refusing, because 'no edge qualified' and 'no use existed' are the same answer.",
+    "DISTINGUISHING FACTS (causal status, keen-otter msg_72114642 (2): the Read-versus-PassedByValue mechanism below is LOCATED BY SOURCE and CONSISTENT WITH THE v5 RECEIPT — a plausible mechanism. It is NOT an executed causal discriminator and NOT proof it is the only cause; the executed discriminator is the v6 packet at the mirror-carrying head). The consumer call is not what it was written as: the front end REWRITES a bare `concat(acc, field)` into an ExprMethodCall during inference (v1.compiler.infer infer_expr_body's ExprCall arm, when the free name has no declared function and resolves through the bridge table), so the proof walks the method arm, not the call arm. The declared-call twin is the discriminator: `list_push` is a DECLARED std.algebra function, stays an ExprCall, is walked by walk_call_argument with the authored occurrence, and DOES move (v5 receipt: `rc_list_push(acc, x)` emits bare while `v1_rt::concat(acc.clone(), field.clone())` keeps both clones -- same position, same shape, opposite outcome). Recognition rule: when a use-counting authority keys on a use KIND, ask which arms record that kind and whether every consumer shape can reach one; a consumer that is rewritten into an arm recording only Reads is invisible to it. The fix keys the widened record on POSITIVE membership in the single by-value authority (extdeps.languages.rust.emit rt_by_value_functions, derived from the same registry rows the emitter renders from) -- never 'absent from the ref map', which would also admit plain template dot-calls and user methods and turn a silent-clone defect into a silent-move one.",
+    "RECEIPT (2026-11-06, crisp-bee-97, PR #15988, found by the v5 executed packet plus a source trace commissioned by clever-crane-830/sleek-owl-397). FOUND AT: below the ladder -- no rung adjudicated this: the required heal job evaluates no witness, and the claim-control route's PASS/FAIL per cell is contract-legal under either emission. Two earlier theories were authored and falsified before the trace located the boundary: a render-side clone policy and a caller-side gate-as-boundary (both retracted in the PR thread). REPAIRED at the source-located boundary (unexecuted until the v6 packet): the non-fold method arm records receiver and argument positions with walk_call_argument -- the SAME recording the call arm uses -- when and only when ALL THREE conjuncts hold: (1) the walk is the lambda's own parameter proof (v1.compiler.emit_rust user_call_lambda_emit_info passes move_positions == true explicitly; function-level proofs pass false, so function parameters and owned locals keep exactly main's edges and are NOT moved anywhere -- keen-otter msg_b08055f2 frozen pattern); (2) POSITIVE membership in rt_by_value_functions; and (3) membership in rt_by_value_admitted, the explicit concat-only admission list (further rows need their own scope and controls). By-ref rows, unadmitted by-value rows and non-registry names keep the Read record, which only ever keeps a clone. Controls: the String move cell turns bare, the four retain cells and the by-ref cell hold, a non-registry template dot-call cell (`first`) keeps its clone, and the whole-corpus pre-registration (PR body) names exactly ONE moved mirror site: std.algebra string_concat_join, `v1_rt::concat(acc.clone(), field.clone())` -> `v1_rt::concat(acc, field)`.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.ownership", decl_name: "walk_expr", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.ownership", decl_name: "walk_call_argument", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.ownership", decl_name: "moved_at_its_only_argument", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.ownership", decl_name: "build_moved_argument_occurrences", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer", decl_name: "infer_expr_body", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_rust_expr_var", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_method_call", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.languages.rust.emit", decl_name: "rt_by_value_functions", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.languages.rust.emit", decl_name: "rt_by_value_admitted", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "user_call_lambda_emit_info", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.languages.rust.emit", decl_name: "rt_ref_map_functions", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.algebra", decl_name: "string_concat_join", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emit_last_use_acc_clone_control", decl_name: "the_last_use_by_value_parameter_emits_bare_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emit_last_use_acc_clone_control", decl_name: "the_call_local_lambda_emits_bare_holds", field: WholeDeclaration },
+  ],
+}
