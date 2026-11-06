@@ -1,6 +1,7 @@
 module gunbc.machine_intake.receipt
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length, brand }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, brand }
+import std.algebra { length }
 import std.content_hash {
   content_hash_equal,
   ContentHash,
@@ -550,7 +551,7 @@ fn adjudicate_observed_population(
   observed: ObservedAgentCallbackPopulation,
   supporting: List<SupportingBootObservation>,
 ) -> DiagnosticBootAttestation {
-  let received = list_length(items: observed.callbacks)
+  let received = length(xs: observed.callbacks)
   if received > 1 {
     DiagnosticBootNotAttested {
       cause: DuplicateAgentCallback { received: received },

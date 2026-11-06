@@ -8,13 +8,21 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsCarry, AttemptSlotsCarryReported, AttemptSlotsCarryReport, AttemptSlotsCarryRowRefused,
   AttemptSlotsCarryNoDeclaredRow, AttemptSlotsRowNamesAnotherInstance,
   AttemptSlotsCarryOutcome, AttemptSlotsCarried, AttemptSlotsCarryAlreadyCarried, AttemptSlotsCarryRefused,
-  AttemptSlotsCensus, AttemptSlotsCensusOf, AttemptSlotsCensusRefused, AttemptSlotsCensusNoDeclaredRow,
+  AttemptSlotsCarrySourceProvenAbsent, AttemptSlotsCarrySourceUnreadable, AttemptSlotsCarryKeysRefused,
+  AttemptSlotsCensus, AttemptSlotsCensusOf, AttemptSlotsCensusNoDeclaredRow,
+  AttemptSlotsCensusSourceProvenAbsent, AttemptSlotsCensusSourceUnreadable, AttemptSlotsCensusKeysRefused,
   AttemptSlotsCensusEntry, AttemptSlotsCensusCounts, attempt_slots_census_buckets_sum_to_total,
   AttemptSlotsSlotReading, SlotRead, SlotAbsent, SlotUnreadable,
   AttemptSlotsPayloadRelation, PayloadsIdentical, PayloadsDifferent, PayloadRelationUndecided,
-  attempt_slots_cutover_frontier_expiry, attempt_slots_cutover_seam_ref, attempt_slots_cutover_run_ref,
+  attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_schema,
+  attempt_slots_cutover_record_mint,
+  AttemptSlotsCutoverPassRecord, attempt_slots_census_record_kind, attempt_slots_carry_record_kind,
+  AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverRecordUnwritten,
+  AttemptSlotsCensusRowRefused,
 }
-import std.roster_frontier { FrontierExpiryReport }
+// The executing route's record write, so the row that witnesses the record exercises the SAME function the
+// belt tick calls -- a witness that wrote the file itself would witness a different act.
+import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write, belt_slots_cutover_pass_outcome, BeltPassRecorded }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir, attempt_exit_refused_dir }
@@ -37,6 +45,7 @@ import gunbc.compute.host_capacity { compute_capacity_directories, ComputeCapaci
 import gunbc.compute.host_capacity {
   ComputeCapacitySubject, host_capacity_subject_in, AgentSessionPool, compute_reserve_against, compute_capacity_store, compute_release_on,
   compute_seat_acquisition_at, SeatAcquisitionRead, SeatAcquisitionNotHeld, SeatAcquisitionRefused,
+  compute_seat_charge_returned, ComputeSeatCharge, SeatChargeReturned, SeatChargeStillHeld, SeatChargeNeverAcquired, SeatChargeUnproven, ReturnedByRelease,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused,
 }
@@ -45,13 +54,15 @@ import gunbc.compute.work_provider_local { compute_layout, compute_unit_properti
 import gunbc.compute.attempt_lifecycle {
   AttemptRecord, AttemptReserved, AttemptLaunching, AttemptTerminal,
   AttemptSlotReading, AttemptSlotAbsent, AttemptSlotHeld, AttemptSlotUnreadable, attempt_slot_read,
-  attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+    attempt_open, attempt_begin_launch, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+    attempt_slot_keys, AttemptSlotKeysListed, attempt_terminate, AttemptRecovered,
   UnitLifecycle, UnitTerminatedSuccess, UnitTerminatedCauseUnknown, UnitStillRunning, UnitLifecycleUnknown,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, AttemptUnitAbsent }
 import gunbc.owned_directory { owned_directory_path }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused }
+import gunbc.roadmap.operator_session_lease_release { operator_release_succeeded }
+import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, session_operator_settle_one, session_operator_settle_decide, session_settle_execute, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SettleRetireUncharged, SessionSettlementRetiredUncharged, session_settle_release }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -119,7 +130,7 @@ fn instance_at(dir: String) -> HostDashboardInstance {
     listen_port: 18099,
     source_anchor_ref: "refs/heads/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -337,6 +348,7 @@ fn released_unit(s: SessionSettlement) -> String {
     SessionSettlementKept { unit: _, why: _ } => ""
     SessionSettlementDone { unit: _, why: _ } => ""
     SessionSettlementRefused { unit: _, detail: _ } => ""
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => ""
   }
 }
 
@@ -346,6 +358,7 @@ fn kept(s: SessionSettlement) -> Bool {
     SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
     SessionSettlementDone { unit: _, why: _ } => false
     SessionSettlementRefused { unit: _, detail: _ } => false
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => false
   }
 }
 
@@ -355,6 +368,22 @@ fn done_settlement(s: SessionSettlement) -> Bool {
     SessionSettlementKept { unit: _, why: _ } => false
     SessionSettlementReleaseAttempted { unit: _, freed: _, detail: _ } => false
     SessionSettlementRefused { unit: _, detail: _ } => false
+    SessionSettlementRetiredUncharged { unit: _, attempt: _, detail: _ } => false
+  }
+}
+
+// THE SLOT'S OWN ACCOUNT OF WHY IT CLOSED. The retirement writes its statement into the slot record, and
+// that record is what a later reader trusts; the settlement outcome is only the echo. A row that asserted
+// only the echo would let the record's claim drift.
+fn slot_terminal_detail(dir: String) -> String {
+  match slot_store_at(dir: dir) {
+    Absent => ""
+    Present { value: slots } =>
+      match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+        AttemptSlotHeld { record, generation: _ } => match record.state { AttemptTerminal { verdict: _, detail: d } => d  _ => "" }
+        AttemptSlotAbsent => ""
+        AttemptSlotUnreadable { detail: _ } => ""
+      }
   }
 }
 
@@ -1213,6 +1242,109 @@ test fn a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_re
   && !ledger_still_holds(dir: dir)
 }
 
+// THE SECOND TICK IS THE ONE PRODUCTION RUNS MOST. The pass is bound unconditionally in the belt tick --
+// roadmap_belt_actuate binds belt_attempt_slots_cutover_pass before the match on
+// belt_tick_wholesale_of(standing) that decides TickPassesWithheld versus TickPassesRun, and the outcome is
+// carried into the receipt in both arms -- so from the first deploy onward EVERY tick censuses and carries.
+// The first tick moves the slot; every tick after it must be a no-op that still leaves the tick Recorded.
+// This row drives the belt's own record-write function twice over the same declared row and asks for the
+// five facts that claim needs: the first pass carries, the second reports already-carried and carries
+// nothing, the census still buckets the two copies as identical (so the second pass wrote no slot), the
+// standing the receipt reads -- through belt_slots_cutover_pass_outcome, the mapper the tick itself uses --
+// is Recorded on both passes, never Deferred and never Refused, and the GENERATION the first carry reported
+// is still the generation the store holds after the second, which is the only one of the five that can see
+// a write at all.
+test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_stays_recorded() -> Bool {
+  let dir = fresh_dir(tag: "cutover-twice")
+  let seeded = orphan_launched(dir: dir)
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: s } => {
+      let census_first = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
+      let carry_first = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
+      let outcome_first = belt_attempt_slots_cutover_record_write(
+        stores: s,
+        record: attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_first, carry: carry_first),
+      )
+      let census_second = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
+      let carry_second = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
+      let record_second = attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_second, carry: carry_second)
+      let outcome_second = belt_attempt_slots_cutover_record_write(stores: s, record: record_second)
+      // The census the NEXT tick will see, taken after the second pass. The two censuses above are the
+      // inputs each pass read; this one is the state the second pass left behind, and it is the only one
+      // that can answer "did the second pass write anything".
+      let census_after_two = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
+      let path = attempt_slots_cutover_record_path(stores: s, instance_id: "session-wet" as NonEmptyStr)
+      let read_back = Filesystem.Read(path: path as FilePath)
+      seeded
+      // First tick: the abandoned slot moves into the store the settle pass enumerates.
+      && carried(c: carry_first, reference: unit_a())
+      && !already_carried(c: carry_first, reference: unit_a())
+      && slot_is_launching(dir: dir)
+      && (match outcome_first {
+           AttemptSlotsCutoverRecorded { path: p, record: r } => (p == path) && (r.carry == carry_first)
+           _ => false
+         })
+      && (match belt_slots_cutover_pass_outcome(outcome: outcome_first) { BeltPassRecorded => true  _ => false })
+      // Second tick: the same reference answers already-carried, and nothing is carried.
+      && already_carried(c: carry_second, reference: unit_a())
+      && !carried(c: carry_second, reference: unit_a())
+      // LABELS CANNOT SEE A WRITE. The two lines above are what the carry SAYS; this is what the store
+      // KNOWS. The generation the FIRST carry reported it wrote must still be the generation the live
+      // store holds after the SECOND pass, and the second report must claim no move at all. Without this,
+      // an already-carried arm that re-published the payload "to record that the re-run happened" would
+      // report identical labels and every assertion below would stay green.
+      // THE MUTATION THIS EXISTS TO CATCH: in attempt_slots_carry_one, let the same-identity arm commit the
+      // payload again under ExpectSlotGeneration at the generation it just read, then answer AlreadyCarried
+      // exactly as it does now. Labels unchanged, generation up, only this row red -- and
+      // a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads stays green beside it.
+      // The number is read out of the first carry's own outcome and back out of the store through the
+      // census, never typed in by the fixture.
+      // PLACEMENT IS THE WHOLE POINT, AND IT WAS LEARNED THE HARD WAY: a first version asked the PRE-carry
+      // census whether it held that generation. It never can -- the target side does not exist until a
+      // carry writes it -- so the clause was UNSATISFIABLE and this row went red at 31b3fa305bbb on a
+      // fixture error rather than on the pass's behaviour. A clause that can never be true witnesses no
+      // more than one that is always true; both are the same defect seen from opposite ends.
+      && (carry_carried_arms(c: carry_second) == 0)
+      && census_only_old_holds(c: census_first, reference: unit_a())
+      && (match carry_report_of(c: carry_first) {
+           Absent => false
+           Present { value: report } => any(report.outcomes, o => match o {
+             AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } =>
+               ((r as String) == unit_a())
+               // the copy the first carry CLAIMS it wrote is in the store, at the generation it named
+               && census_target_held_at(c: census_second, reference: unit_a(), generation: g)
+               // and it is STILL at that generation after the second pass: no new generation was written
+               && census_target_held_at(c: census_after_two, reference: unit_a(), generation: g)
+             _ => false
+           })
+         })
+      // No slot was written by the second pass: read the state IT left behind, and both sides still bucket
+      // as identical bytes, with nothing unreadable and nothing newly only-in-the-old-root.
+      && (match census_counts(c: census_after_two) {
+           Present { value: k } => (k.total == 1) && (k.only_in_old == 0) && (k.in_both_identical == 1) && (k.in_both_different == 0) && (k.either_side_unreadable == 0)
+           Absent => false
+         })
+      && census_buckets_add_up(c: census_after_two)
+      // The tick's standing on the second pass is Recorded, not Deferred or Refused; the record now on disk
+      // is the SECOND pass's reading, and it renders as listed plus reported.
+      && (match belt_slots_cutover_pass_outcome(outcome: outcome_second) { BeltPassRecorded => true  _ => false })
+      && (match outcome_second {
+           AttemptSlotsCutoverRecorded { path: p2, record: r2 } =>
+             (p2 == path)
+             && (r2.carry == carry_second)
+             && (r2.census == census_second)
+             && (attempt_slots_carry_record_kind(carry: r2.carry) == "reported")
+             && (attempt_slots_census_record_kind(census: r2.census) == "listed")
+           _ => false
+         })
+      && read_back.success
+      && string_contains(s: read_back.content, pattern: attempt_slots_cutover_record_schema)
+      && string_contains(s: read_back.content, pattern: "already-carried")
+    }
+  }
+}
+
 // THE CENSUS IS WHAT THE OPERATOR READS BEFORE A CARRY. A slot it cannot read must appear as a slot it
 // cannot read -- not as generation 0, not as "absent", and not as "the two payloads differ". The counts
 // are typed data the census computed, so the operator's question ("how much is only in the old root?")
@@ -1387,14 +1519,575 @@ test fn an_instance_with_no_declared_row_is_refused_by_name_and_reads_nothing() 
 test fn the_declared_row_names_the_instance_the_pass_reads_and_the_root_it_left_behind() -> Bool {
   let lookup = replaced_attempt_slots_root_for(instance_id: srv1_lab_dashboard_instance().instance_id)
   let live_root = session_attempt_slots_path(instance: srv1_lab_dashboard_instance()) as String
-  let pending = attempt_slots_cutover_frontier_expiry(present_decls: [attempt_slots_cutover_seam_ref()])
-  let fired = attempt_slots_cutover_frontier_expiry(present_decls: [attempt_slots_cutover_seam_ref(), attempt_slots_cutover_run_ref()])
   match lookup {
     ReplacedAttemptSlotsRootFound { row: row } =>
       (row.instance_id == srv1_lab_dashboard_instance().instance_id)
       && ((row.old_slots_root as String) != live_root)
-      && match pending { FrontierExpiryReport { unbound_count: u1, pending_count: p, fired_still_present_count: f } => (u1 == 0) && (p == 1) && (f == 0) }
-      && match fired { FrontierExpiryReport { unbound_count: u2, pending_count: p, fired_still_present_count: f } => (u2 == 0) && (p == 0) && (f == 1) }
     _ => false
   }
+}
+
+// THE PASS RUNS AGAINST A STORE FOR A DIFFERENT INSTANCE, AND SAYS SO IN ITS RECORD. The executing route
+// looks the replaced root up by instance, so a row declared for one instance can never census another
+// instance's slots into this store; the pass is total and returns the record that names BOTH refusals, and
+// the record it writes is the same values it read (the renderers carry the arm, they do not re-encode a
+// kind), so a record cannot disagree with the census it came from. The write is the belt's own function --
+// what a tick calls -- over the fixture's records directory, and the file read back is the evidence.
+test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_names_both_refusals() -> Bool {
+  let dir = fresh_dir(tag: "cutover-cross")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: s } => {
+      let record = attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: s.slots)
+      let outcome = belt_attempt_slots_cutover_record_write(stores: s, record: record)
+      let path = attempt_slots_cutover_record_path(stores: s, instance_id: srv1_dashboard_lab_id)
+      let read_back = Filesystem.Read(path: path as FilePath)
+      (match record.census {
+        AttemptSlotsCensusRowRefused { refusal: r } =>
+          match r {
+            AttemptSlotsRowNamesAnotherInstance { row_instance: ri, store_instance: si } => (ri == srv1_dashboard_lab_id) && (si != srv1_dashboard_lab_id)
+            _ => false
+          }
+        _ => false
+      })
+        && (match record.carry { AttemptSlotsCarryRowRefused { refusal: _ } => true  _ => false })
+        && (record.schema == attempt_slots_cutover_record_schema)
+        && (record.instance_id == srv1_dashboard_lab_id)
+        && (attempt_slots_census_record_kind(census: record.census) == "row-refused")
+        && (attempt_slots_carry_record_kind(carry: record.carry) == "row-refused")
+        && (match outcome { AttemptSlotsCutoverRecorded { path: p, record: back } => (p == path) && (back.census == record.census)  _ => false })
+        && read_back.success
+        && string_contains(s: read_back.content, pattern: attempt_slots_cutover_record_schema)
+        && string_contains(s: read_back.content, pattern: "row-refused")
+        && !slot_is_launching(dir: dir)
+        && !slot_is_terminal(dir: dir)
+    }
+  }
+}
+
+// THE STATE A COMPLETED CUTOVER ENDS IN, TOLD APART FROM A BROKEN ONE. The replaced root of this fixture
+// was NEVER CREATED -- no row called old_store here, so the directory does not exist -- and the census and
+// the carry answer it as proven absent, not as "could not be listed". That distinction is what the reading
+// arm (SlotStoreAbsent, CasSlotKeysAbsent) exists to carry, and the collapse mutant is what keeps it honest:
+// fold a missing listing back into a refusal and this row goes red. Nothing is carried, nothing is written,
+// and the store the pass reads still holds no slot for that reference.
+test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_carry_and_carries_nothing() -> Bool {
+  let dir = fresh_dir(tag: "cutover-absent")
+  let stores = stores_at(dir: dir)
+  let row = moved_row(dir: dir)
+  let census = match stores {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
+    Present { value: s } => attempt_slots_census(target: s.slots, moved: row)
+  }
+  let carry = match stores {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
+    Present { value: s } => attempt_slots_carry(target: s.slots, moved: row)
+  }
+  let old_root = old_slots_dir(dir: dir)
+  (old_root != "")
+    && (match census { AttemptSlotsCensusSourceProvenAbsent { old_root: r } => (r as String) == old_root  _ => false })
+    && (match carry { AttemptSlotsCarrySourceProvenAbsent { old_root: r } => (r as String) == old_root  _ => false })
+    && !slot_is_launching(dir: dir)
+    && !slot_is_terminal(dir: dir)
+    && (match stores {
+      Absent => false
+      Present { value: s } => match attempt_slot_keys(store: s.slots.slots) {
+        AttemptSlotKeysListed { keys: ks } => length(ks) == 0
+        _ => false
+      }
+    })
+}
+
+// THE CHARGE WAS RETURNED BEFORE ANY PASS COULD REACH THE SLOT, SO THE SLOT IS RETIRED AS BOOKKEEPING.
+// This is the state a real lease reached on 2026-11-04: the ledger's own release ran while the slot sat
+// under a root no pass enumerates, which removed the acquisition instant the holder-death evidence reads
+// (session_holder_evidence refuses when compute_seat_acquisition_at finds no term), so the ordinary close
+// can never fire for it. The settle pass answers that state with SettleRetireUncharged: the slot is taken
+// terminal at the generation READ FROM THE SLOT, no compute_release_on call is made (there is nothing left
+// to return, and a second release would be a claim about a charge the ledger already closed), and the
+// detail makes no holder-death claim. Three rows, so a red one names which half broke: the reading, the
+// retirement, and the pass afterwards.
+fn retire_fixture_charge(stores: SessionPlacementStores) -> ComputeSeatCharge {
+  compute_seat_charge_returned(store: stores.store, partition: stores.partition, reference: unit_a())
+}
+
+// The partition's generation as a plain count, so a row can ask whether the pass WROTE anything: a release
+// or a settle appends an event, and an event moves the generation. 0 means the reading itself failed, which
+// is a reason to fail the row, not to pass it.
+fn retire_fixture_generation(stores: SessionPlacementStores) -> Int {
+  match retire_fixture_charge(stores: stores) {
+    SeatChargeReturned { generation: g, reference: _, acquired_at: _, returned_at: _, by: _ } => cas_generation_count(g: g)
+    _ => 0
+  }
+}
+
+test fn a_charge_returned_before_any_pass_reached_the_slot_is_read_from_the_partitions_own_history() -> Bool {
+  let dir = fresh_dir(tag: "charge-returned-read")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let released = match stores {
+    Absent => false
+    Present { value: s } =>
+      // THE LEDGER DOOR, NOT THE SETTLE ROUTE. What ran on srv1 on 2026-11-04 was a release of the
+      // reference in the capacity partition; it wrote no placement record for the slot. Reaching the same
+      // ledger state through session_settle_release would ALSO write a settled-release placement record,
+      // which is a different state and would send the next pass down the "closed and released" arm instead
+      // of the one under test. So the release goes straight to gunbc.compute.host_capacity.compute_release_on.
+      ledger_returned(Present { value: compute_release_on(store: s.store, partition: s.partition, appropriation: fixture_appropriation, reference: unit_a() as NonEmptyStr, reason: "witness: the ledger release that ran while the slot was unreachable" as NonEmptyStr) })
+  }
+  let charge = match stores {
+    Absent => SeatChargeUnproven { detail: "no fixture stores" }
+    Present { value: s } => retire_fixture_charge(stores: s)
+  }
+  charged && opened && released
+    // the ledger release did NOT touch the slot: it is still the launching record no pass could reach
+    && slot_is_launching(dir: dir)
+    && (match charge {
+      SeatChargeReturned { reference: r, acquired_at: a, returned_at: b, by: ReturnedByRelease { reason: why_returned }, generation: g } =>
+        // The return is at or after the acquisition: the fixture's release lands in the same clock second as
+        // its acquire, and a row that demanded a strictly later second would be asserting the fixture's
+        // scheduling, not anything the product promised. WHAT makes this positive evidence is that the
+        // history carries an acquisition AND a release naming this reference, with that release's own reason.
+        (r == unit_a()) && (b >= a) && (cas_generation_count(g: g) > 0)
+          && string_contains(s: why_returned, pattern: "witness: the ledger release")
+      _ => false
+    })
+}
+
+test fn an_orphan_whose_charge_the_ledger_already_returned_is_retired_as_bookkeeping_and_not_released_again() -> Bool {
+  let dir = fresh_dir(tag: "retire-uncharged")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let released = match stores {
+    Absent => false
+    Present { value: s } =>
+      // THE LEDGER DOOR, NOT THE SETTLE ROUTE. What ran on srv1 on 2026-11-04 was a release of the
+      // reference in the capacity partition; it wrote no placement record for the slot. Reaching the same
+      // ledger state through session_settle_release would ALSO write a settled-release placement record,
+      // which is a different state and would send the next pass down the "closed and released" arm instead
+      // of the one under test. So the release goes straight to gunbc.compute.host_capacity.compute_release_on.
+      ledger_returned(Present { value: compute_release_on(store: s.store, partition: s.partition, appropriation: fixture_appropriation, reference: unit_a() as NonEmptyStr, reason: "witness: the ledger release that ran while the slot was unreachable" as NonEmptyStr) })
+  }
+  let before = match stores {
+    Absent => 0
+    Present { value: s } => retire_fixture_generation(stores: s)
+  }
+  // Bound BEFORE `first`: the row's claim is about the state the pass FOUND. Bind it after and the claim is
+  // about the state the pass LEFT, which is the wrong assertion (and the pass leaves the slot terminal).
+  let launching_when_found = slot_is_launching(dir: dir)
+  let first = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let after = match stores {
+    Absent => 0
+    Present { value: s } => retire_fixture_generation(stores: s)
+  }
+  charged && opened && released && launching_when_found && (before > 0)
+    && (match first {
+      SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: d } =>
+        (u == unit_a()) && string_contains(s: d, pattern: "no release was issued") && string_contains(s: d, pattern: "charge was already returned")
+      _ => false
+    })
+    && slot_is_terminal(dir: dir)
+    // WHAT THE SLOT RECORD SAYS ABOUT ITSELF: the record, not the outcome echo, is what the next reader
+    // trusts. It must name the return it relied on and must not claim the holder died.
+    && string_contains(s: slot_terminal_detail(dir: dir), pattern: "retired as bookkeeping")
+    && string_contains(s: slot_terminal_detail(dir: dir), pattern: "no holder-death claim")
+    // NOTHING WAS WRITTEN TO THE LEDGER: the retirement closed the slot and stopped. Had it released again,
+    // the partition would carry another event and this generation would have moved.
+    && (after == before)
+}
+
+// THE PASS AFTER THE RETIREMENT OWES NOTHING. The retired slot is terminal and NO settled-release record
+// was ever written for it, which is exactly the state the pre-existing terminal arm read as "we still owe a
+// release" -- it would have called compute_release_on for a charge the ledger closed, and for this reference
+// the acquisition instant is gone, so that call could not even be fenced on it. The terminal arm now reads
+// the same charge reading: returned means Done, with the missing release record named as the residue.
+test fn a_slot_already_retired_as_bookkeeping_reports_done_and_owes_no_second_release() -> Bool {
+  let dir = fresh_dir(tag: "retire-then-done")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let released = match stores {
+    Absent => false
+    Present { value: s } =>
+      // THE LEDGER DOOR, NOT THE SETTLE ROUTE. What ran on srv1 on 2026-11-04 was a release of the
+      // reference in the capacity partition; it wrote no placement record for the slot. Reaching the same
+      // ledger state through session_settle_release would ALSO write a settled-release placement record,
+      // which is a different state and would send the next pass down the "closed and released" arm instead
+      // of the one under test. So the release goes straight to gunbc.compute.host_capacity.compute_release_on.
+      ledger_returned(Present { value: compute_release_on(store: s.store, partition: s.partition, appropriation: fixture_appropriation, reference: unit_a() as NonEmptyStr, reason: "witness: the ledger release that ran while the slot was unreachable" as NonEmptyStr) })
+  }
+  let first = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let before = match stores {
+    Absent => 0
+    Present { value: s } => retire_fixture_generation(stores: s)
+  }
+  let again = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  let after = match stores {
+    Absent => 0
+    Present { value: s } => retire_fixture_generation(stores: s)
+  }
+  charged && opened && released
+    && (match first { SessionSettlementRetiredUncharged { unit: u, attempt: _, detail: _ } => (u == unit_a())  _ => false })
+    && slot_is_terminal(dir: dir)
+    && (match again {
+      SessionSettlementDone { unit: u, why: w } => (u == unit_a()) && string_contains(s: w, pattern: "no second release is issued")
+      _ => false
+    })
+    && (before > 0) && (after == before)
+}
+
+// THE CONTROL THAT KEEPS THE RETIREMENT FROM BEING A CLEANUP SWEEP. A slot whose acquisition the ledger has
+// never recorded is NOT retired: the condition is a POSITIVE acquisition-then-return in the partition's own
+// history (compute_seat_charge_returned walks the event chain in append order and closes the still-open
+// acquisition), never the mere absence of a hold -- a slot planted before its acquire is recorded is a
+// launch/acquire ordering, not an orphan. It is kept, and the keep reason names what was not shown.
+test fn a_slot_whose_charge_was_never_acquired_is_kept_and_not_retired() -> Bool {
+  let dir = fresh_dir(tag: "charge-never-acquired")
+  let stores = stores_at(dir: dir)
+  let seeded = launched_without_a_ledger_seat(dir: dir)
+  let charge = match stores {
+    Absent => SeatChargeUnproven { detail: "no fixture stores" }
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, reference: unit_a())
+  }
+  let settled = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  seeded
+    && (match charge { SeatChargeNeverAcquired { reference: r } => (r == unit_a())  _ => false })
+    && (match settled {
+      SessionSettlementKept { unit: u, why: w } => (u == unit_a()) && string_contains(s: w, pattern: "does not positively show this charge as returned")
+      _ => false
+    })
+    && slot_is_launching(dir: dir)
+    && !slot_is_terminal(dir: dir)
+}
+
+// A CHARGE CAN BE BACK WHILE THE HOLDER IS STILL OBSERVABLY ALIVE, and that is a DIFFERENT defect from the
+// 2026-10-28 lease. The settlement must not treat the two alike: closing the slot of a holder the manager
+// reports alive would burn the only handle on that seat and leave a ledger line as the only trace of it. So
+// the charge reading is consulted only where the holder cannot be dated at all (UnitLifecycleUnknown); a
+// live holder is kept, with the keep naming what is actually wrong -- a release issued while the holder
+// lived. This row is the guard on that boundary: it is the one shape where a returned charge must NOT
+// retire anything.
+test fn a_launching_slot_whose_holder_is_observed_alive_is_kept_even_though_the_ledger_already_returned_its_charge() -> Bool {
+  let dir = fresh_dir(tag: "alive-holder-charge-returned")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 1000))
+  let released = match stores {
+    Absent => false
+    Present { value: v } => ledger_returned(r: compute_release_on(
+      store: v.store,
+      partition: v.partition,
+      appropriation: fixture_appropriation,
+      reference: unit_a() as NonEmptyStr,
+      reason: "returned by hand while the holder was still up",
+    ))
+  }
+  let charge_back = match stores {
+    Absent => false
+    Present { value: v } => match compute_seat_charge_returned(store: v.store, partition: v.partition, reference: unit_a()) {
+      SeatChargeReturned { reference: _, acquired_at: _, returned_at: _, by: _, generation: _ } => true
+      _ => false
+    }
+  }
+  let s = match stores {
+    Absent => SessionSettlementRefused { unit: "", detail: "the fixture store never came up" }
+    Present { value: v } => settlement_of(p: session_placement_settle_pass_at(stores: v, host: host, lifecycle_of: lifecycle_running, now: 99999))
+  }
+  let keep_text = match s { SessionSettlementKept { why: w } => w  _ => "" }
+  charged && opened && released && charge_back
+    && slot_is_launching(dir: dir)
+    && kept(s: s)
+    // The phrase is the model's own, capitals and all: the arm writes "the holder is OBSERVED ALIVE" because
+    // that is the reading it is refusing to overrule, and string_contains is case-sensitive.
+    && string_contains(s: keep_text, pattern: "holder is OBSERVED ALIVE")
+    && !slot_is_terminal(dir: dir)
+}
+
+// THE ORDINARY CLOSE STILL OWNS THE ORDINARY CASE. A slot whose charge is STILL HELD is closed by
+// terminate-and-release on the holder's death, never by the retirement: the charge reading says held, the
+// settlement is ReleaseAttempted, the ledger shows the charge returned by that release, and the slot is
+// terminal. If the retirement arm ever fired here it would be releasing nothing for a lease that was still
+// held, which is the leak this whole change exists to close.
+test fn a_slot_whose_charge_is_still_held_is_closed_by_the_ordinary_terminate_and_release() -> Bool {
+  let dir = fresh_dir(tag: "charge-still-held")
+  let stores = stores_at(dir: dir)
+  let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+  let opened = launched_ok(dir: dir, rec: slot_a(opened: 99999999999))
+  let charge = match stores {
+    Absent => SeatChargeUnproven { detail: "no fixture stores" }
+    Present { value: s } => compute_seat_charge_returned(store: s.store, partition: s.partition, reference: unit_a())
+  }
+  let settled = match stores {
+    Absent => SessionSettlementRefused { unit: unit_a(), detail: "no fixture stores" }
+    Present { value: s } => settle_with_unit_absent(dir: dir, stores: s, evidence: holder_observed_dead(stores: s))
+  }
+  charged && opened
+    && (match charge { SeatChargeStillHeld { reference: r, acquired_at: a } => (r == unit_a()) && (a > 0)  _ => false })
+    && (match settled {
+      SessionSettlementReleaseAttempted { unit: u, freed: freed, detail: _ } => (u == unit_a()) && ledger_returned(Present { value: freed })
+      _ => false
+    })
+    && slot_is_terminal(dir: dir)
+}
+
+
+// ── THE OPERATOR-DIRECTED SETTLE (gunbc.roadmap.operator_session_lease_release, PR #15813) ──────────
+//
+// The operator route runs the pass's own admission and execution (session_operator_settle_one) over PLANTED
+// stores: a real file slot store and a real file ledger in the witness's directory. Every verdict below is read
+// from the typed SessionSettlement, the slot's generation and the ledger, never from a rendered line.
+
+fn slot_generation_count(dir: String) -> Int {
+  match slot_store_at(dir: dir) {
+    Absent => 0 - 1
+    Present { value: slots } =>
+      match attempt_slot_read(store: slots, reference: unit_a() as NonEmptyStr) {
+        AttemptSlotHeld { record: _, generation: g } => cas_generation_count(g: g)
+        AttemptSlotAbsent => 0 - 1
+        AttemptSlotUnreadable { detail: _ } => 0 - 1
+      }
+  }
+}
+
+fn operator_settle(dir: String) -> SessionSettlement {
+  match stores_at(dir: dir) {
+    Absent => SessionSettlementRefused { unit: "", detail: "no stores" }
+    Present { value: stores } => session_operator_settle_one(stores: stores, host: host, key: unit_a() as NonEmptyStr, reason: "operator read the unit absent and the process gone" as NonEmptyStr)
+  }
+}
+
+// POSITIVE: an admitted launching slot is terminated at the generation read and its seat released.
+test fn an_operator_settle_terminates_an_admitted_launching_slot_and_returns_its_seat() -> Bool {
+  let dir = fresh_dir(tag: "op1")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: _ } => {
+      let before = slot_generation_count(dir: dir)
+      let s = operator_settle(dir: dir)
+      (released_unit(s: s) == unit_a()) && operator_release_succeeded(s: s) && slot_is_terminal(dir: dir)
+        && (slot_generation_count(dir: dir) == before + 1) && !ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// A SLOT KEYED UNDER ONE NAME THAT RECORDS ANOTHER ATTEMPT is the shape the pass refuses to touch. The operator
+// route performs NEITHER transition NOR release: generation unchanged, still launching, seat still in the
+// ledger, no release record.
+test fn an_operator_settle_of_an_inconsistently_bound_slot_transitions_and_releases_nothing() -> Bool {
+  let dir = fresh_dir(tag: "op2")
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: _ } =>
+      if !launched_ok(dir: dir, rec: colliding_slot(opened: 1000)) { false } else {
+        let before = slot_generation_count(dir: dir)
+        let s = operator_settle(dir: dir)
+        kept(s: s) && !operator_release_succeeded(s: s) && slot_is_launching(dir: dir)
+          && (slot_generation_count(dir: dir) == before) && (release_text(dir: dir) == "") && ledger_still_holds(dir: dir)
+      }
+  }
+}
+
+// ABSENT FROM THE CURRENT STORE REFUSES, with no ledger call: the seat the ledger holds stays held and no
+// release record is written.
+test fn an_operator_settle_of_a_slot_absent_from_the_current_store_refuses_without_touching_the_ledger() -> Bool {
+  let dir = fresh_dir(tag: "op3")
+  match reserve_real(dir: dir) {
+    Absent => false
+    Present { value: _ } => {
+      let s = operator_settle(dir: dir)
+      kept(s: s) && !operator_release_succeeded(s: s) && (release_text(dir: dir) == "") && ledger_still_holds(dir: dir)
+    }
+  }
+}
+
+// A LOST CAS RACE: the decision reads the slot at generation g; the slot then moves; executing the decision
+// refuses and releases nothing.
+test fn an_operator_settle_whose_slot_moved_between_read_and_terminate_releases_nothing() -> Bool {
+  let dir = fresh_dir(tag: "op4")
+  match launched_with_real_seat(dir: dir) {
+    Absent => false
+    Present { value: _ } =>
+      match stores_at(dir: dir) {
+        Absent => false
+        Present { value: stores } => {
+          let key = unit_a() as NonEmptyStr
+          let slot = attempt_slot_read(store: stores.slots.slots, reference: key)
+          let decision = session_operator_settle_decide(key: key, slot: slot, reason: "operator evidence" as NonEmptyStr, release_settled: false)
+          let moved = match slot {
+            AttemptSlotHeld { record: _, generation: g } => match attempt_terminate(store: stores.slots.slots, reference: key, expected: g, verdict: AttemptRecovered, detail: "another closer won") {
+              AttemptAdvanced { state: _, generation: _ } => true
+              AttemptLostRace { expected: _, observed: _ } => false
+              AttemptTransitionRefused { detail: _ } => false
+            }
+            AttemptSlotAbsent => false
+            AttemptSlotUnreadable { detail: _ } => false
+          }
+          let s = session_settle_execute(stores: stores, host: host, key: key, decision: decision, closing: r => r)
+          moved && (match s { SessionSettlementRefused { unit: _, detail: _ } => true  _ => false }) && !operator_release_succeeded(s: s)
+            && (release_text(dir: dir) == "") && ledger_still_holds(dir: dir)
+        }
+      }
+  }
+}
+
+// A REFUSED LEDGER RELEASE IS A NONZERO COMMAND OUTCOME, whatever line is rendered: the exit is decided from
+// the type, and a refused release after a closed slot is exactly the case the rendered-prefix test missed.
+// Nothing-to-release (the ledger holds no seat) is success because the desired state holds.
+test fn the_command_outcome_is_decided_from_the_settlement_type() -> Bool {
+  let refused = SessionSettlementReleaseAttempted { unit: "u", freed: ComputeReleaseRefused { detail: "ledger refused" }, detail: "slot terminated" }
+  let nothing = SessionSettlementReleaseAttempted { unit: "u", freed: ComputeNothingToRelease { detail: "no seat" }, detail: "slot terminated" }
+  !operator_release_succeeded(s: refused) && operator_release_succeeded(s: nothing)
+    && !operator_release_succeeded(s: SessionSettlementKept { unit: "u", why: "x" })
+    && !operator_release_succeeded(s: SessionSettlementRefused { unit: "u", detail: "x" })
+    && operator_release_succeeded(s: SessionSettlementDone { unit: "u", why: "closed and released" })
+}
+
+// REAL ROUTE FOR NOTHING-TO-RELEASE: an admitted slot whose reservation never landed is closed and the ledger
+// answers NothingToRelease; the command succeeds.
+test fn an_operator_settle_of_a_slot_with_no_ledger_seat_closes_the_slot_and_succeeds() -> Bool {
+  let dir = fresh_dir(tag: "op5")
+  if !launched_without_a_ledger_seat(dir: dir) { false } else {
+    let s = operator_settle(dir: dir)
+    operator_release_succeeded(s: s) && slot_is_terminal(dir: dir) && (released_unit(s: s) == "")
+  }
+}
+
+// ============================================================================================
+// TWO THINGS THE ROWS ABOVE CANNOT SEE, both from the operator's requirement that a carry over a
+// replaced root be safe to run at all on a host with more than one slot in it:
+//   (a) what a carry does when some references in the abandoned root cannot be read -- does it stop,
+//       skip them in silence, or carry the rest and NAME each one it refused;
+//   (b) whether a re-run WROTE anything, as opposed to reporting the labels it would report whether or
+//       not it wrote. Labels cannot see a write; a generation number can.
+// (b) is folded into a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_stays_recorded
+// below, which is the row the belt tick actually executes: keeping two re-run rows over the same root
+// would put one fact in two places. The generation anchor and the two-orphan shape are sharp-otter-429's
+// design from gunbc#15739, carried here; #15739 closes as superseded.
+// ============================================================================================
+
+data node_c: String = "g5-node-c"
+data key_c: String = "000000000000000c"
+data node_d: String = "g5-node-d"
+data key_d: String = "000000000000000d"
+
+fn unit_c() -> String {
+  match session_unit_wire(node_id: node_c, attempt_key: key_c) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn unit_d() -> String {
+  match session_unit_wire(node_id: node_d, attempt_key: key_d) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn slot_b(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_b, attempt_key: key_b, unit: unit_b() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+// THE SECOND ORPHAN, under its own reference and its own attempt, in the root the re-root abandoned.
+// Seeded the way the host has it: the attempt's own transitions write the bytes, generation 1 opened,
+// generation 2 Launching -- the only writer whose bytes the reader accepts.
+fn orphan_launched_b(dir: String) -> Bool {
+  match old_store(dir: dir) {
+    Absent => false
+    Present { value: old } =>
+      match attempt_open(store: old, record: slot_b(opened: 99999999998)) {
+        AttemptAdvanced { state: _, generation: g } =>
+          match attempt_begin_launch(store: old, reference: unit_b() as NonEmptyStr, expected: g) {
+            AttemptAdvanced { state: _, generation: _ } => true
+            AttemptLostRace { expected: _, observed: _ } => false
+            AttemptTransitionRefused { detail: _ } => false
+          }
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+  }
+}
+
+// HOW MANY REFERENCES THE CARRY CLAIMS IT MOVED. A re-run that moves nothing reports none -- whatever
+// its per-reference labels say. The count is over the arms, not over names.
+fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
+  match carry_report_of(c: c) {
+    Absent => 0
+    Present { value: report } => count(filter(report.outcomes, o => match o { AttemptSlotsCarried { reference: _, source_generation: _, target_generation: _ } => true  _ => false }))
+  }
+}
+
+// THE LIVE STORE HOLDS THIS REFERENCE AT EXACTLY THIS GENERATION, and at no other. The number is the
+// store's own, read back through the census the cutover computed -- never one the fixture typed in.
+fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: Int) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => g == generation  _ => false })) == 1
+}
+
+// THE OLD ROOT HOLDS IT (readable or not) AND THE LIVE STORE DOES NOT: the refused reference is left
+// exactly where it was. This is the difference between a carry that stopped at a problem, which is a
+// fact an operator can act on, and a carry that deleted the problem, which is data loss.
+fn census_only_old_holds(c: AttemptSlotsCensus, reference: String) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference)
+    && match e.source { SlotAbsent => false  SlotRead { generation: _, state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
+    && match e.target { SlotAbsent => true  SlotRead { generation: _, state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
+}
+
+// BOTH SIDES HOLD THE SAME BYTES: the carry copied the slot and rewrote nothing.
+fn census_relation_is_identical(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => (e.reference as String) == reference && match e.payload_relation { PayloadsIdentical => true  PayloadsDifferent => false  PayloadRelationUndecided => false })
+}
+
+test fn a_carry_that_refuses_one_reference_still_carries_the_others_and_names_the_refusal() -> Bool {
+  let dir = fresh_dir(tag: "cutoverpartial")
+  let seeded_a = orphan_launched(dir: dir)
+  let seeded_b = orphan_launched_b(dir: dir)
+  let planted_c = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_c())
+  let planted_d = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_d())
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let census = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded_a
+  && seeded_b
+  && planted_c
+  && planted_d
+  // One outcome per reference the old root listed: four, not three, not two, not one.
+  && match carry_report_of(c: carry) { Present { value: report } => count(report.outcomes) == 4  Absent => false }
+  && carried(c: carry, reference: unit_a())
+  && carried(c: carry, reference: unit_b())
+  && carry_refused_at(c: carry, reference: unit_c())
+  && carry_refused_at(c: carry, reference: unit_d())
+  && !carried(c: carry, reference: unit_c())
+  && !carried(c: carry, reference: unit_d())
+  // The two readable references now sit in BOTH stores with the same bytes. Each unreadable one sits in
+  // the old root only -- unreadable, not absent: the carry neither deleted it nor carried a guess.
+  && census_relation_is_identical(c: census, reference: unit_a())
+  && census_relation_is_identical(c: census, reference: unit_b())
+  && census_source_is_unreadable(c: census, reference: unit_c())
+  && census_source_is_unreadable(c: census, reference: unit_d())
+  && census_only_old_holds(c: census, reference: unit_c())
+  && census_only_old_holds(c: census, reference: unit_d())
+  && census_buckets_add_up(c: census)
+  && match census_counts(c: census) {
+      Present { value: k } => (k.total == 4) && (k.in_both_identical == 2) && (k.in_both_different == 0) && (k.either_side_unreadable == 2)
+      Absent => false
+    }
 }

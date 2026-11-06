@@ -523,7 +523,7 @@ test fn the_transport_route_cites_the_executed_selectors() -> Bool {
 // rows for what this diff does NOT yet do in production: nothing routes a live transport through
 // anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
 // (no sshd in this slice). They must be well-formed -- a gap in
-// a comment dissolves; a row's trigger is checked.
+// a comment dissolves; a row is at least checked for well-formedness (no fold checks its trigger).
 
 test fn the_open_gaps_are_well_formed_frontier_rows() -> Bool {
   count(anchored_host_transport_frontier_rows) == 4

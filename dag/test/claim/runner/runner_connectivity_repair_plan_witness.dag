@@ -1,6 +1,7 @@
 module test.claim.runner.runner_connectivity_repair_plan_witness
 
-import std.types { String, Bool, List, Timestamp, list_length }
+import std.types { String, Bool, List, Timestamp }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
@@ -97,7 +98,7 @@ test fn replace_action_projects_five_step_repair_sequence() -> Bool {
     && repair_execute_step_count(plan: plan) == 5
     && match plan {
          RepairExecute { slot: _, steps: steps } =>
-           list_length(items: steps) == 5
+           length(xs: steps) == 5
              && match steps.first() {
                   ObserveRunnerLocalState { slot: _ } => true
                   _ => false

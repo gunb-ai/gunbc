@@ -11,6 +11,7 @@ import gunbc.managed_directory {
   ManagedDirectory,
   DeclaredDirectoryMode,
   declared_directory_mode,
+  declared_directory_mode_inheriting_setgid,
   managed_directory_permissions,
   managed_directory_admit,
   ManagedDirectoryAdmitted,
@@ -121,6 +122,36 @@ fn owned_directory_owner(t: OwnedDirectoryTarget) -> PosixOwnerNames {
     OwnedDirectoryDeclared { member: _, path: _, owner, mode: _, group_adoption: _ } => owner
     OwnedDirectoryManaged { directory } =>
       PosixOwnerNames { user: directory.owner.name, group: directory.group_principal.name }
+  }
+}
+
+// A CHILD OF A SETGID PARENT EXPECTS THE PARENT'S GROUP AND THE SETGID BIT, derived, never re-declared.
+// The kernel gives a directory made inside a setgid directory the parent's group and the setgid bit, so
+// the observed truth of every such child is (owner user, parent's group, declared mode + setgid). One
+// rule covers every child of a setgid root (DESIGN section 6b, root generalization): a child declares
+// only its own user and mode, and this derives the rest from the parent it is declared under. A
+// non-setgid parent changes nothing (the child keeps the owner's declared group). Ownership is still
+// never adopted: ForeignOwnershipRefuses stays and no live directory is regrouped; a child whose live
+// group differs from the derived one is refused exactly as before. A managed child is returned as is.
+fn owned_directory_inheriting_from_parent(parent: OwnedDirectoryTarget, child: OwnedDirectoryTarget) -> OwnedDirectoryTarget {
+  match owned_directory_mode(t: parent) {
+    OwnedDirectoryModeRefused { reason: _ } => child
+    OwnedDirectoryModeResolved { mode } =>
+      match mode.setgid {
+        false => child
+        true =>
+          match child {
+            OwnedDirectoryDeclared { member, path, owner, mode: child_mode, group_adoption } =>
+              OwnedDirectoryDeclared {
+                member: member,
+                path: path,
+                owner: PosixOwnerNames { user: owner.user, group: owned_directory_owner(t: parent).group },
+                mode: declared_directory_mode_inheriting_setgid(m: child_mode),
+                group_adoption: group_adoption,
+              }
+            OwnedDirectoryManaged { directory: _ } => child
+          }
+      }
   }
 }
 
@@ -500,13 +531,43 @@ type OwnedDirectoryEnsureOutcome
 fn owned_directory_ensure(
   policy: EnsurePolicy,
   target: OwnedDirectoryTarget,
+  plan_reading: Optional<EnsureObservation<OwnedDirectoryReading>>,
   observe: fn(FilePath) -> EnsureObservation<OwnedDirectoryReading>,
   run: fn(OwnedDirectoryInstallPlan) -> Bool,
 ) -> OwnedDirectoryEnsureOutcome {
-  let before = observe(owned_directory_path(t: target))
+  // The HANDOVER baseline is the reading the PLAN was built from when a caller carries it in
+  // (release_member_plan carries its observation; callers without one pass Absent and get the
+  // fresh-read rung established by owned_directory_ensure_observed). Feeding the plan's own
+  // reading as input removes no execution: decide, the act re-read, the install and the
+  // after-readback all still run on the real route (DESIGN §3b's last-execution rule).
+  let before = match plan_reading {
+    Present { value: reading } => reading
+    Absent => observe(owned_directory_path(t: target))
+  }
   let decision = owned_directory_decide(policy: policy, target: target, observation: before)
+  // ACT-TIME OWNERSHIP EFFECT (roadmap node "Realize live_deploy's install-owned leaves as typed fs
+  // writes with an ownership effect"). Plan-time observation and the install are separated in time: a
+  // directory that CHANGED HANDS between the decide and the act must not be silently re-owned -- the
+  // post-apply readback would report convergence over a directory someone else came to own. The effect
+  // re-reads the path at act time and refuses BEFORE any install runs when the act-time reading
+  // differs from the baseline reading. RUNG HONESTY (review 90635, §4b): the covered window runs from
+  // WHENEVER THE BASELINE WAS TAKEN to the act re-read. With plan_reading supplied by the caller that
+  // is the full plan-to-act window; with Absent (every caller today) the baseline is the read taken
+  // here, so the established rung is the decide-to-act window inside this call -- the plan-to-apply
+  // window closes when the release_member_plan's own observation is threaded through the apply legs
+  // (next rung, tracked by the node's trigger; NOT claimed closed here). It compares OBSERVATION AGAINST OBSERVATION -- never against the declared owner: closing a
+  // gap toward the declaration is exactly what Apply exists to do (the SameUserRegroupToDeclaredGroup
+  // posture relies on that; review 90625), and the foreign-vs-declared rule has its single home in
+  // owned_directory_present_owner_is_foreign at decide time. It lives in the ONE provider so every
+  // route (dashboard apply, live_deploy legs, board-function converge) carries it, and it is typed:
+  // the refusal is an outcome, never a line of emitted shell.
+  let at_act = observe(owned_directory_path(t: target))
+  let handover = owned_directory_act_time_handover(before: before, at_act: at_act)
   let application = match decision {
-    Apply { plan } => if run(plan) { Applied } else { NotApplied }
+    Apply { plan } => match handover {
+      Absent => if run(plan) { Applied } else { NotApplied }
+      Present { value: _ } => NotApplied
+    }
     Noop => NotApplied
     Refuse { reason: _ } => NotApplied
   }
@@ -519,7 +580,87 @@ fn owned_directory_ensure(
     after: after,
   )) {
     EffectConverged { converged } => OwnedDirectoryEnsured { target: target, converged: converged }
-    EffectNotConverged { reason, attempt: _ } => OwnedDirectoryEnsureRefused { target: target, reason: reason }
+    EffectNotConverged { reason, attempt: _ } => OwnedDirectoryEnsureRefused {
+      target: target,
+      reason: match decision {
+        Apply { plan: _ } => match handover {
+          Present { value: change } => match change {
+            HandoverOwnerChanged { plan_time, act_time } => join([
+              "ownership changed hands between the plan-time observation and the act: was ",
+              plan_time.user as String, ":", plan_time.group as String,
+              " at plan time, ", act_time.user as String, ":", act_time.group as String,
+              " at act time; the install was refused before running (fail closed, no silent re-own)",
+            ], "")
+            HandoverAppeared { act_time } => join([
+              "the path did not exist at plan time but is owned by ",
+              act_time.user as String, ":", act_time.group as String,
+              " at act time; the install was refused before running (fail closed -- install -d",
+              " never re-chowns an existing directory, and the readback would have blessed it)",
+            ], "")
+          }
+          Absent => reason
+        }
+        Noop => reason
+        Refuse { reason: refused } => refused
+      },
+    }
+  }
+}
+
+// The one admitted entry point for callers with no carried plan reading: the handover baseline is a
+// fresh observation of the path, so the rung established is the decide-to-act window inside this call
+// (see the rung-honesty note in owned_directory_ensure; the plan-to-apply rung needs the plan's own
+// observation threaded through, tracked as the node's next rung).
+fn owned_directory_ensure_observed(
+  policy: EnsurePolicy,
+  target: OwnedDirectoryTarget,
+  observe: fn(FilePath) -> EnsureObservation<OwnedDirectoryReading>,
+  run: fn(OwnedDirectoryInstallPlan) -> Bool,
+) -> OwnedDirectoryEnsureOutcome {
+  owned_directory_ensure(
+    policy: policy,
+    target: target,
+    plan_reading: Absent,
+    observe: observe,
+    run: run,
+  )
+}
+
+// The act-time ownership check as a PURE decision over the TWO OBSERVATIONS: what changed hands
+// between plan time and act time is a difference between the readings themselves -- owner identity
+// or file-ness shifting, or a path appearing where none was. It never consults the DECLARED owner:
+// an unchanged-but-foreign directory is the legitimate object of Apply (SameUserRegroupToDeclaredGroup
+// exists for exactly that; review 90625), and the declared-vs-observed rule lives only in
+// owned_directory_present_owner_is_foreign at decide time (§3, one authority). An unreadable reading
+// on either side is NOT a handover: the reconcile over the after-observation still refuses a failed
+// apply on its own evidence, and inventing a handover from an absent reading would be a fabricated
+// observation (§5). A path that vanished between the readings is likewise not a handover here -- the
+// install recreates it and the after-readback holds the verdict.
+type OwnedDirectoryHandover
+  = HandoverOwnerChanged { plan_time: PosixOwnerNames, act_time: PosixOwnerNames }
+  | HandoverAppeared { act_time: PosixOwnerNames }
+
+fn owned_directory_act_time_handover(
+  before: EnsureObservation<OwnedDirectoryReading>,
+  at_act: EnsureObservation<OwnedDirectoryReading>,
+) -> Optional<OwnedDirectoryHandover> {
+  match before {
+    EnsureObserved { evidence: plan_reading } => match at_act {
+      EnsureObserved { evidence: act_reading } =>
+        if act_reading.owner.user == plan_reading.owner.user && act_reading.owner.group == plan_reading.owner.group && act_reading.is_directory == plan_reading.is_directory {
+          Absent
+        } else {
+          Present { value: HandoverOwnerChanged { plan_time: plan_reading.owner, act_time: act_reading.owner } }
+        }
+      EnsureAbsent { reason: _ } => Absent
+      EnsureInaccessible { reason: _ } => Absent
+    }
+    EnsureAbsent { reason: _ } => match at_act {
+      EnsureObserved { evidence: act_reading } => Present { value: HandoverAppeared { act_time: act_reading.owner } }
+      EnsureAbsent { reason: _ } => Absent
+      EnsureInaccessible { reason: _ } => Absent
+    }
+    EnsureInaccessible { reason: _ } => Absent
   }
 }
 

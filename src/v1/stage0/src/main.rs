@@ -77,50 +77,6 @@ enum RetainedCommands {
         #[arg(long = "arg")]
         args: Vec<String>,
     },
-
-    /// Long-running HTTP server: compile once, then answer each request by
-    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
-    /// The seam is parse/write only — routing and handlers live in .dag.
-    Serve {
-        /// Source root directories (searched recursively for .dag files)
-        #[arg(long = "source-root")]
-        source_roots: Vec<String>,
-        /// Entry `.dag` file: load only this module and its transitive imports
-        #[arg(long)]
-        entry: String,
-        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
-        #[arg(long)]
-        function: String,
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        #[arg(long, default_value = "8080")]
-        port: u16,
-        /// Listen on this unix socket INSTEAD of --host/--port. Each request's kernel-attested
-        /// peer (SO_PEERCRED) is handed to the handler as peer_user.
-        #[arg(long = "unix-socket")]
-        unix_socket: Option<String>,
-        /// Release revision this process serves, bound ONCE at startup and immutable for the
-        /// process lifetime. Required and validated before the listener binds: `gunbc serve`
-        /// compiles its graph once, so the launch argument is the only fact describing what
-        /// this PROCESS serves; re-reading a file, an env var, or git HEAD per request would
-        /// report mutable disk state wearing a process-shaped interface. Published through
-        /// /healthz beside the served-surface identity (gunbc.running_release_identity).
-        #[arg(long = "release-revision")]
-        release_revision: String,
-        /// Per-request THREAD-CPU evaluation budget in milliseconds. Omitted means this process
-        /// declares no CPU bound -- today's behavior, stated. Deliberately no default: no
-        /// measurement of normal `roadmap_serve_handle` evaluation cost exists, and the one
-        /// adjacent figure (~70s cold graph compile) gives no reason to believe a sub-second
-        /// ceiling is safe, so an invented value would risk refusing legitimate requests.
-        #[arg(long = "eval-budget-cpu-ms")]
-        eval_budget_cpu_ms: Option<u64>,
-        /// Per-request MONOTONIC-WALL evaluation budget in milliseconds. Separate from the CPU
-        /// bound because they catch different failures: CPU catches a spin, wall catches a stall
-        /// that holds the listener while consuming almost no CPU. Neither contains an evaluation
-        /// blocked inside a single native primitive -- that needs worker isolation.
-        #[arg(long = "eval-budget-wall-ms")]
-        eval_budget_wall_ms: Option<u64>,
-    },
 }
 
 /// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization output, not
@@ -448,44 +404,6 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
                 entry,
                 claim_run,
                 args,
-            },
-            self.dry_run,
-        )
-    }
-
-    fn measure_root_demand(
-        &self,
-        source_roots: Vec<String>,
-        repository: String,
-        receipt: String,
-        measurement_child: bool,
-    ) -> ! {
-        cli_run::measure_root_demand(source_roots, repository, receipt, measurement_child)
-    }
-
-    fn handle_serve(
-        &self,
-        source_roots: Vec<String>,
-        entry: String,
-        function: String,
-        host: String,
-        port: u16,
-        unix_socket: Option<String>,
-        release_revision: String,
-        eval_budget_cpu_ms: Option<u64>,
-        eval_budget_wall_ms: Option<u64>,
-    ) -> ! {
-        retained_dispatch(
-            RetainedCommands::Serve {
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                eval_budget_cpu_ms,
-                eval_budget_wall_ms,
             },
             self.dry_run,
         )
@@ -845,60 +763,9 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
                 message: Some(outcome.message),
             }
             .apply()
-        }
-
-        // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
-        // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
-        // the same route `build` takes, so no arm here can answer for it.
-
-        // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
-        // #8286 deleted this seam together with converge's, but converge has a successor that
-        // EXISTS (the spine above) while serve's declared successor -- gunbc.roadmap.roadmap_serve
-        // roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure
-        // -- was never built, so the deletion removed a live outward-facing production route
-        // with no minimal Y to hold the boundary. DESIGN section 3 names that carve-out: where
-        // no Y can hold a gap-intolerant boundary, X stays FROZEN. This restores X and freezes
-        // it.
-        //
-        // FROZEN MEANS: no new options, verbs, routes into the interpreter, or completion work.
-        // The deleted refusal's claim is NOT retracted -- serve is a desired service occurrence
-        // that convergence should observe and reconcile, and gunbc.host.host_effect has no
-        // service-occurrence member to express that. This seam runs until it does.
-        //
-        // The engine objection is recorded, not argued away: this makes the interpreter
-        // load-bearing for a capability two lanes are deleting. Not a NEW dependency (it existed
-        // until #8286), but if this route attracts completion work the freeze has been repealed
-        // by drift.
-        RetainedCommands::Serve {
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            unix_socket,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => {
-            cli_run::handle_serve(
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                unix_socket,
-                release_revision,
-                cli_run::ServeEvaluationBudget {
-                    cpu_limit_ms: eval_budget_cpu_ms,
-                    wall_limit_ms: eval_budget_wall_ms,
-                },
-            );
-            Verdict {
-                status: 0,
-                message: None,
-            }
-            .apply()
-        }
+        } // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
+          // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
+          // the same route `build` takes, so no arm here can answer for it.
     };
     std::process::exit(0)
 }
@@ -1509,6 +1376,36 @@ fn run_one_function(
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
         Ok(value) => {
+            // AN INGRESS BINDING IS A DEPLOYMENT FACT THE RUN REALIZES (gunbc.http_ingress,
+            // gunbc.plans.converged_ingress). Serving is not a verb: an entry that answers a bound
+            // HttpIngressAdmission is served by this process -- bind, accept, one independent
+            // handler evaluation per request -- and a refused one exits before any listener
+            // exists. Read from the answer's type, never from the entry's name. A claim run is
+            // verification, so it never serves.
+            match cli_run::http_ingress_host::ingress_answer(&value, ctx) {
+                cli_run::http_ingress_host::IngressAnswer::NotABinding => {}
+                _ if claim_run => {
+                    return Verdict {
+                        status: 2,
+                        message: Some(format!(
+                            "error: `{function}` answered an ingress binding under --claim-run; a claim run never serves"
+                        )),
+                    }
+                }
+                cli_run::http_ingress_host::IngressAnswer::Refused(reason) => {
+                    return Verdict {
+                        status: 2,
+                        message: Some(format!("REFUSED: ingress binding `{function}`: {reason}")),
+                    }
+                }
+                cli_run::http_ingress_host::IngressAnswer::Bound(binding) => {
+                    let (status, message) = cli_run::http_ingress_host::realize(ctx, binding);
+                    return Verdict {
+                        status,
+                        message: Some(message),
+                    };
+                }
+            }
             // A `CliWireResponse` is an ANSWER PLUS A VERDICT, and it is the only return shape
             // that carries bytes for the operator. Binding it HERE rather than under a new
             // `scm` subcommand keeps dispatch peripheral (§3): one binding serves every

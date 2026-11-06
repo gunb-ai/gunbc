@@ -15,13 +15,12 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadSucceeded,
   filesystem_listing_names_entry,
   filesystem_read_outcome,
-  FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied,
-  FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemCreateNew,
 }
 import gunbc.durable_handoff_host {
-  HostSpoolNameAbsent, HostSpoolNamePresent, HostSpoolNameUnreadable,
+  HostSpoolEnqueue,
   HostSpoolEntryCreated, HostSpoolEntryAlreadyPresent, HostSpoolEnqueueRefused,
-  host_spool_enqueue_assess,
+  host_spool_enqueue, host_spool_enqueue_from_create,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -354,34 +353,18 @@ type PublicationRequestEnqueue
   | RequestAlreadyPresent { path: String }
   | RequestNotEnqueued { detail: String }
 
-fn publication_request_from_create(created: FilesystemCreateNew) -> PublicationRequestEnqueue {
-  match created {
-    FilesystemCreated { path: p } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameAbsent) {
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
-      }
-    FilesystemCreateTargetOccupied { path: p } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNamePresent) {
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued { detail: join([n, ": ", d], "") }
-      }
-    FilesystemCreateRefused { path: p, kind: _, error: e } =>
-      match host_spool_enqueue_assess(name: p, observed: HostSpoolNameUnreadable { detail: e }) {
-        HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued {
-          detail: join([
-            "the publication request could not be written, so nothing was asked of the publication helper: ",
-            n, " (", d, ")",
-          ], ""),
-        }
-        HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
-        HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
-      }
-    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
-      RequestNotEnqueued { detail: join([p, ": ", o, ": ", e], "") }
+fn publication_request_from_enqueue(enqueued: HostSpoolEnqueue) -> PublicationRequestEnqueue {
+  match enqueued {
+    HostSpoolEntryCreated { name: n } => RequestEnqueued { path: n }
+    HostSpoolEntryAlreadyPresent { name: n } => RequestAlreadyPresent { path: n }
+    HostSpoolEnqueueRefused { name: n, detail: d } => RequestNotEnqueued {
+      detail: join(["the publication request could not be written, so nothing was asked of the publication helper: ", n, " (", d, ")"], ""),
+    }
   }
+}
+
+fn publication_request_from_create(created: FilesystemCreateNew) -> PublicationRequestEnqueue {
+  publication_request_from_enqueue(enqueued: host_spool_enqueue_from_create(created: created))
 }
 
 fn publication_request_enqueue(
@@ -390,14 +373,10 @@ fn publication_request_enqueue(
   subject: RoadmapPublicationSubject,
   worktree: String,
 ) -> PublicationRequestEnqueue {
-  let path = publication_request_path_for(instance_root: instance_root, key: key)
-  let write = Filesystem.WriteCreateNew(
-    path: path,
+  publication_request_from_enqueue(enqueued: host_spool_enqueue(
+    path: publication_request_path_for(instance_root: instance_root, key: key),
     content: publication_request_json(subject: subject, worktree: worktree),
-  )
-  publication_request_from_create(
-    created: filesystem_create_new(path: write.path, success: write.success, error: write.error, error_kind: write.error_kind),
-  )
+  ))
 }
 
 // THREE STATES, BECAUSE THREE REMEDIES. An answer that is ready, a request that is now waiting, and

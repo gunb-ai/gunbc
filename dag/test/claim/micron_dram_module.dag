@@ -1,6 +1,7 @@
 module test.claim.micron_dram_module
 
-import std.types { Bool, NonEmptyStr, list_length }
+import std.types { Bool, NonEmptyStr }
+import std.algebra { length }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -157,7 +158,7 @@ test fn w_expecting_the_asf_sibling_and_observing_the_ads_part_refuses() -> Bool
       ],
     },
   ) {
-    DimmPopulationRefused { host: _, discrepancies: d, count: _ } => list_length(items: d) == 1
+    DimmPopulationRefused { host: _, discrepancies: d, count: _ } => length(xs: d) == 1
     DimmPopulationConfirmed { host: _, stick_count: _ } => false
     DimmObservationHostMismatch { expectation_host: _, observation_host: _ } => false
     DimmPopulationUnconfirmed { host: _, cause: _ } => false
@@ -181,6 +182,6 @@ test fn w_citations_bind_each_row_to_micron_hosted_authorities() -> Bool {
     )
     && mta36asf2g72pz_2g1a2_catalog_citation.authority == micron_part_catalog_mta36asf2g72pz_2g1a2
     && extdeps_model_scope.first_citation == micron_part_catalog_mta36ads2g72pz_2g1a1
-    && list_length(items: extdeps_model_scope.further_citations) == 2
+    && length(xs: extdeps_model_scope.further_citations) == 2
     && extdeps_model_scope.first_citation.uri.locator != micron_ddr4_rdimm_core_rev_b_2021_12.uri.locator
 }
