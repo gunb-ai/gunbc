@@ -1652,8 +1652,21 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
 // for the cutover, so what a tick does to the slot roots is decided here, and a witness can call the same
 // binding over a fixture instance (test.claim.roadmap.session_placement_wet_witness
 // the_lab_tick_binds_the_slots_cutover_as_not_run_and_writes_no_record).
+//
+// LAB-ONLY TEMPORARY DEVIATION -- srv1 lab candidate ld449-lab-r2. NEVER to main, NEVER to an integration branch.
+// Scope: this one function body; belt_tick_for_instance is its only caller. With it, a belt tick runs NO
+// attempt-slots census, NO carry and NO cutover record write; the tick receipt reports the pass as not run.
+// Why: the cutover is NOT AUTHORIZED on the srv1 lab (escalation msg_28f99a1f was decided by default only;
+// keen-otter msg_2031e786), and the approved restoration proposal requires it OFF (operator, 2026-11-06T11:14:46Z).
+// Lifetime: only the srv1 lab builds cut from this candidate's line; it ends at the first of the triggers below.
+// Removal trigger: an explicit operator ruling that admits the cutover for instance srv1-lab-codex-feedback-v0,
+// OR the belt's retirement. Removal: revert this commit (restoring the body `belt_attempt_slots_cutover_pass(instance: instance)`).
+// The witness the_lab_tick_binds_the_slots_cutover_as_not_run_and_writes_no_record then goes RED by design
+// and is deleted in the same change.
+// NOT covered here: M4 (belt_session_settlement_pass), which this tick still runs, is UNRESOLVED and held separately.
 fn belt_tick_slots_cutover(instance: HostDashboardInstance) -> AttemptSlotsCutoverPassOutcome {
-  belt_attempt_slots_cutover_pass(instance: instance)
+  let _not_run_for = instance.instance_id
+  AttemptSlotsCutoverNotRun { reason: "the attempt-slots cutover is not authorized on this lab build (ld449-lab-r2, a lab-only deviation); the pass is not run" }
 }
 
 fn belt_attempt_slots_cutover_pass(instance: HostDashboardInstance) -> AttemptSlotsCutoverPassOutcome {
