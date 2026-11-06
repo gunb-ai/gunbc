@@ -494,7 +494,6 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "required_emit_compile_entries", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "CargoVerdict", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_compiled", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_of_emit", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_summary", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_probe_line", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "cargo_verdict_probe_diagnostic", field: WholeDeclaration },

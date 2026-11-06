@@ -13,7 +13,10 @@ import gunbc.native_serve_probe_plan {
 // announced a bound address and answered the one request with 200, the spin's value and the clock reading the startup
 // took, which a launch that bounded its startup by the request deadline could not (it would have exited before the bind,
 // so there would be no announcement and no response), nor a main that left the startup's effect unbound (it would not
-// build), nor one that ran the homonym twin's startup or handler by bare name (the twin refuses, or answers 418).
+// build), nor one that ran the homonym twin's startup or handler by bare name (the twin refuses, or answers 418). The
+// answer also names the request's path and its X-Probe header: the handler's request parameters are (path,
+// request_headers) before the startup value, so the startup composes with a fact plan that is not the legacy set
+// (gunbc.plans.converged_ingress M2b).
 
 fn native_serve_probe_phases() -> List<NativeServePhase> {
   []
@@ -32,10 +35,10 @@ fn native_serve_probe_launch_argv() -> List<String> {
 }
 
 fn native_serve_probe_requests(peer_port: Int) -> List<String> {
-  ["GET /slow HTTP/1.1\r\nHost: probe\r\n\r\n"]
+  ["GET /slow HTTP/1.1\r\nHost: probe\r\nX-Probe: composed\r\n\r\n"]
 }
 
-fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>) -> ProcessExit {
+fn native_serve_probe_standing(announcement: String, peer_announcement: String, peer_port: Int, responses: List<String>, refused_statuses: List<Int>, refused_stderrs: List<String>, deadline_announcements: List<String>, deadline_responses: List<String>, deadline_exit_statuses: List<Int>, unix_peer_account: String, unix_contended_statuses: List<Int>, unix_contended_stderrs: List<String>, unix_contended_kept: List<Bool>) -> ProcessExit {
   if !starts_with(s: announcement, prefix: "native-serve listening on ") {
     ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: the service did not bind and announce; a startup slower than the request deadline was refused [", concat(announcement, "]")) }
   } else if (responses |> count) != 1 {
@@ -44,7 +47,7 @@ fn native_serve_probe_standing(announcement: String, peer_announcement: String, 
     match native_serve_wire_parse(response: first_or_empty(items: responses)) {
       Absent => ExitFailure { code: native_serve_probe_not_held_code, reason: "not held: the response is not an HTTP/1.1 status line and body" }
       Present { value: w } =>
-        if w.status == 200 && (split(s: w.body, delimiter: "served after a startup that spun ") |> count) == 2 && (split(s: w.body, delimiter: " at 20") |> count) == 2 { ExitSuccess }
+        if w.status == 200 && starts_with(s: w.body, prefix: "served /slow with x-probe=composed after a startup that spun ") && (split(s: w.body, delimiter: " at 20") |> count) == 2 { ExitSuccess }
         else { ExitFailure { code: native_serve_probe_not_held_code, reason: concat("not held: status ", concat(to_string(value: w.status), concat(" [", concat(w.body, "]")))) } }
     }
   }

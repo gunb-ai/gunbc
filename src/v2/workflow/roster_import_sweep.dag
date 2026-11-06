@@ -46,6 +46,8 @@ import std.occurrence_identity {
   ValuePosition
 }
 import std.types { List, Bool, GitRef, Map, NonEmptyStr, Int }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, durable_hold_owner_equal,
@@ -209,9 +211,22 @@ type RosterStageLocated {
   extent: Extent
 }
 
+// WHY A STAGE REFUSAL HAS NO BYTES, typed through to the rendered line (never an empty or zero span). The locus kind is the
+// reason: a node, an invariant port or a declaration path names no file and extent. A DeclarationLocus (the duplicate-variant
+// refusal of v2.std.compilers.sugar, path <type> <name>) is unqualified and its repeated name has two occurrences, and no
+// existing authority maps it to an authored span at the sweep's arm (std.decl_index DeclFact is pool-keyed by qualified name).
+type RosterStageUnlocated
+  = UnlocatedNode
+  | UnlocatedInvariantPort
+  | UnlocatedDeclaration
+
+type RosterStagePlace
+  = StageLocated { located: RosterStageLocated }
+  | StageUnlocated { why: RosterStageUnlocated }
+
 type RosterStageDiagnostic {
   cause: String
-  at: Optional<RosterStageLocated>
+  at: RosterStagePlace
 }
 
 type RosterRefusalReason
@@ -289,25 +304,32 @@ type RosterRefusalReason
   | RefusalEditsCoincide { at: Int }
 
 // THE ONE RULE for every stage arm: the FATAL diagnostic (diagnostics_fatal is the sole place the fatal pick is defined),
-// its reason, and its file and extent when its locus carries them. A locus with no file (a node, an invariant port, a
-// declaration) is Absent: never an empty file name and never a third span kind.
+// its reason, and its file and extent when its locus carries them; otherwise the typed reason it has none.
 fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
   let fatal = diagnostics_fatal(d: d)
   let cause = symbol_lexeme(sym: fatal.reason)
   match fatal.at {
-    Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: Present { value: RosterStageLocated { file: f, extent: x } } }
-    SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: Present { value: RosterStageLocated { file: f, extent: x } } }
-    NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
-    InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
-    DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
+    Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: StageLocated { located: RosterStageLocated { file: f, extent: x } } }
+    SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: StageLocated { located: RosterStageLocated { file: f, extent: x } } }
+    NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedNode } }
+    InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedInvariantPort } }
+    DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, at: StageUnlocated { why: UnlocatedDeclaration } }
   }
 }
 
-// Only this renderer chooses how an absent location is printed.
+fn roster_stage_unlocated_text(why: RosterStageUnlocated) -> String {
+  match why {
+    UnlocatedNode => "node"
+    UnlocatedInvariantPort => "invariant-port"
+    UnlocatedDeclaration => "declaration"
+  }
+}
+
+// Only this renderer chooses how an unlocated refusal is printed: it names why, and never prints a span.
 fn roster_stage_diagnostic_text(d: RosterStageDiagnostic) -> String {
   match d.at {
-    Absent => "reason=" + d.cause + " file=none bytes=unlocated"
-    Present { value: l } =>
+    StageUnlocated { why: w } => "reason=" + d.cause + " file=none bytes=unlocated why=" + roster_stage_unlocated_text(why: w)
+    StageLocated { located: l } =>
       "reason=" + d.cause + " file=" + symbol_lexeme(sym: l.file) + " " + (match l.extent {
         ByteRange { start: st, end: en } => "bytes=" + int_to_decimal_string(value: st) + ".." + int_to_decimal_string(value: en)
         WholeFile => "bytes=whole-file"
@@ -3224,7 +3246,9 @@ fn roster_rename_control_names() -> List<String> {
     "renamed-labels-unlabelled-extra-slot-refuses-arity",
     "renamed-labels-unmapped-label-refuses",
     "renamed-labels-duplicate-from-refuses",
-    "stage-refusal-carries-its-byte-span"
+    "stage-refusal-carries-its-byte-span",
+    "unlocated-normalize-refusal-names-why",
+    "unlocated-refusal-names-why"
   ]
 }
 
@@ -3391,7 +3415,9 @@ fn roster_occ_controls(prepared: PreparedGrammar, lex: PreparedLexRules) -> List
     roster_control_verdict(name: "occurrences-keyed-negated-pipe-site-rewrites", fail: roster_occ_expect_text(name: "occurrences-keyed-negated-pipe-site-rewrites", before: not_src, keys: ["control/rename.dag:6:10"], after: not_after, prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-chained-pipe-refuses-not-skips", fail: roster_occ_expect_refused(name: "occurrences-keyed-chained-pipe-refuses-not-skips", text: chain_src, keys: ["control/rename.dag:6:8", "control/rename.dag:6:22"], prepared: prepared, lex: lex)),
     roster_control_verdict(name: "occurrences-keyed-non-head-reference-refuses-arity", fail: roster_occ_expect_reason(name: "occurrences-keyed-non-head-reference-refuses-arity", want: "rename-call-arity call=map_get", text: by_name, keys: ["control/rename.dag:6:11"], prepared: prepared, lex: lex)),
-    roster_control_verdict(name: "stage-refusal-carries-its-byte-span", fail: roster_stage_span_control(companions: [], prepared: prepared, lex: lex))
+    roster_control_verdict(name: "stage-refusal-carries-its-byte-span", fail: roster_stage_span_control(companions: [], prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "unlocated-normalize-refusal-names-why", fail: roster_normalize_span_control(prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "unlocated-refusal-names-why", fail: roster_unlocated_render_control())
   ]
 }
 
@@ -3401,6 +3427,23 @@ fn roster_occ_scope_of(key: String) -> RosterHomeScope {
 
 // RED: a file that fails a front-end stage yields a REFUSE cause WITH its reason, file and byte span (DESIGN section 5), not the
 // bare stage name. The unclosed parameter list is refused by tokenize or parse; either arm must carry a byte span.
+// A NORMALIZE refusal with no extent says WHY: the duplicate variant (v2.std.compilers.sugar, a DeclarationLocus at <type>
+// <name>) renders why=declaration. On main it rendered a bare "file=none bytes=unlocated" with no reason.
+fn roster_normalize_span_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_rename_outcome(companions: [], text: "module c.rename\n\ntype T = A | A\n", prepared: prepared, lex: lex) {
+    RosterRefused { reason: r } =>
+      let t = roster_refusal_text(reason: r)
+      if t == "normalize-refused reason=sugar_reason_duplicate_variant_name file=none bytes=unlocated why=declaration" { "" } else { "CONTROL-FAIL unlocated-normalize-refusal-names-why: refused as " + t + "\n" }
+    other => "CONTROL-FAIL unlocated-normalize-refusal-names-why: not refused, got " + roster_render_outcome(path: "control/rename.dag", outcome: other)
+  }
+}
+
+// An unlocated refusal stays typed to the text: it names WHY, and prints no span (never an empty or zero range).
+fn roster_unlocated_render_control() -> String {
+  let t = roster_stage_diagnostic_text(d: RosterStageDiagnostic { cause: "r", at: StageUnlocated { why: UnlocatedNode } })
+  if t == "reason=r file=none bytes=unlocated why=node" { "" } else { "CONTROL-FAIL unlocated-refusal-names-why: rendered " + t + "\n" }
+}
+
 fn roster_stage_span_control(companions: List<RosterCompanion>, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   match roster_rename_outcome(companions: companions, text: "module c.rename\n\nfn f( {\n", prepared: prepared, lex: lex) {
     RosterRefused { reason: r } =>
@@ -5165,12 +5208,41 @@ fn roster_rename_controls_report() -> String {
 // SINGLE-FUNCTION ENTRIES for the stage-refusal RED and its positive control (`gunbc run --function <name>`), so they run
 // without the whole controls label. Each returns "<name> HELD" or "<name> FAIL <why>". Companions are empty: the RED's text
 // is refused at tokenize or parse, before any companion is consulted, and the positive's text has no renamed call.
+// WHO CONSUMES THESE ENTRIES, AND BY WHAT ROUTE (DESIGN section 3c): a declared frontier, not dangling.
+// The six single-function entries -- roster_stage_red_only, roster_normalize_red_only and
+// roster_stage_positive_only here, and rehome_stage_red_only, rehome_normalize_red_only and
+// rehome_stage_positive_only in v2.workflow.roster_rehome -- have no in-tree caller. Their consumer is the
+// srv1 receipt machinery: each is a `gunbc run --function` probe of a granted srv1 row. Receipt G2 (job
+// wise-moth-707-r15909, script aed334d0, receipt sha256 2ebac682) executed five of them at exactly
+// 65f77cee6e0a and came back AS_EXPECTED; rehome_stage_positive_only was not in that row. That is the
+// only route that executes these controls: the claim modules that also run them
+// (roster_occ_controls, rehome_controls_report) are executed by no required job.
+// OWNER: the V2 namespace and reference migration lane. CONSUMER: srv1 receipt rows, until a `gunbc test` row in
+// gunbc.instrument_targets names these entries. RESTORATION: when the required job judges this
+// population again, i.e. when gunbc.rung_drop v1_required_lanes_withdrawn retires; that is the trigger
+// below, and the change that retires it either binds these entries to such a row or deletes them.
+data roster_red_only_entries_consumption_frontier: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn",
+    decl_name: "v1_required_lanes_withdrawn",
+  )
+)
+
 fn roster_stage_red_only() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "stage-red FAIL grammar-unprepared"
     Accepted { value: prepared, diagnostics: _ } =>
       let f = roster_stage_span_control(companions: [], prepared: prepared, lex: dag_prepared_lex())
       if f == "" { "stage-red HELD" } else { "stage-red FAIL " + f }
+  }
+}
+
+fn roster_normalize_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "normalize-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = roster_normalize_span_control(prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "normalize-red HELD" } else { "normalize-red FAIL " + f }
   }
 }
 
