@@ -46,6 +46,8 @@ import std.occurrence_identity {
   ValuePosition
 }
 import std.types { List, Bool, GitRef, Map, NonEmptyStr, Int }
+import std.dissolution { DissolutionCondition, retires_dissolution }
+import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, cas_generation_first }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport, durable_hold_owner_equal,
@@ -5206,6 +5208,26 @@ fn roster_rename_controls_report() -> String {
 // SINGLE-FUNCTION ENTRIES for the stage-refusal RED and its positive control (`gunbc run --function <name>`), so they run
 // without the whole controls label. Each returns "<name> HELD" or "<name> FAIL <why>". Companions are empty: the RED's text
 // is refused at tokenize or parse, before any companion is consulted, and the positive's text has no renamed call.
+// WHO CONSUMES THESE ENTRIES, AND BY WHAT ROUTE (DESIGN section 3c): a declared frontier, not dangling.
+// The six single-function entries -- roster_stage_red_only, roster_normalize_red_only and
+// roster_stage_positive_only here, and rehome_stage_red_only, rehome_normalize_red_only and
+// rehome_stage_positive_only in v2.workflow.roster_rehome -- have no in-tree caller. Their consumer is the
+// srv1 receipt machinery: each is a `gunbc run --function` probe of a granted srv1 row. Receipt G2 (job
+// wise-moth-707-r15909, script aed334d0, receipt sha256 2ebac682) executed five of them at exactly
+// 65f77cee6e0a and came back AS_EXPECTED; rehome_stage_positive_only was not in that row. That is the
+// only route that executes these controls: the claim modules that also run them
+// (roster_occ_controls, rehome_controls_report) are executed by no required job.
+// OWNER: the V2 namespace and reference migration lane. CONSUMER: srv1 receipt rows, until a `gunbc test` row in
+// gunbc.instrument_targets names these entries. RESTORATION: when the required job judges this
+// population again, i.e. when gunbc.rung_drop v1_required_lanes_withdrawn retires; that is the trigger
+// below, and the change that retires it either binds these entries to such a row or deletes them.
+data roster_red_only_entries_consumption_frontier: DissolutionCondition = retires_dissolution(
+  ref: decl_ref(
+    module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn",
+    decl_name: "v1_required_lanes_withdrawn",
+  )
+)
+
 fn roster_stage_red_only() -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => "stage-red FAIL grammar-unprepared"
@@ -5234,4 +5256,3 @@ fn roster_stage_positive_only() -> String {
       }
   }
 }
-
