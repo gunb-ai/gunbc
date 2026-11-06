@@ -333,22 +333,42 @@ fn find_subtree_ungranted_entry_refusal_command(target: String, pruned: List<Str
     arguments: concat(
       find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
       concat(
-        ["(", "-not", "-perm", "-g+w", "-o", "-not", "-group", group, ")", "-fprint", "/dev/stderr"],
+        // ONE SHAPE, AS THE READBACK FOLD READS IT: out of shape is not in `group`, a DIRECTORY lacking g+w, or a
+        // FILE writable by someone yet not by the group. A file with NO write bit is git's own read-only loose
+        // object (0444, measured git 2.47.3 under core.sharedRepository=group) and is in shape.
+        [
+          "(", "-not", "-group", group,
+          "-o", "(", "-type", "d", "-not", "-perm", "-g+w", ")",
+          "-o", "(", "-type", "f", "-perm", "/222", "-not", "-perm", "-g+w", ")",
+          ")", "-fprint", "/dev/stderr",
+        ],
         find_subtree_exec_action(words: ["false"]),
       ),
     ),
   )
 }
 
-// Re-group a subtree to one group. No user field: this cannot re-own anything.
-fn find_subtree_regroup_command(target: String, group: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
+// Re-group a subtree to one group. IDEMPOTENT BY SELECTION: only an entry `owner` OWNS and that is not already in
+// `group` reaches chgrp -- chgrp by a non-owner is EPERM, and an entry a worker wrote (worker-owned, already in the
+// attempt group) is neither ours to change nor out of shape. An entry the owner cannot re-group is left for the
+// readback, which refuses it by name.
+fn find_subtree_regroup_command(target: String, group: String, owner: String, pruned: List<String>, depth: Nat) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
-      find_subtree_exec_action(words: chgrp_words(group: group)),
+      concat(
+        find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+        find_subtree_owner_selector_words(owner: owner),
+      ),
+      concat(["-not", "-group", group], find_subtree_exec_action(words: chgrp_words(group: group))),
     ),
   )
+}
+
+// SELECT THE ENTRIES THE PRINCIPAL OWNS: chmod and chgrp on anyone else's entry are EPERM, which aborted the
+// whole migration once attempts had written into the subtree.
+fn find_subtree_owner_selector_words(owner: String) -> List<String> {
+  ["-user", owner]
 }
 
 // ONE BATCHED ACTION OVER WHAT THE WALK FOUND: `-exec <program words> {} +`. The `{}` placeholder and
@@ -413,12 +433,13 @@ fn find_subtree_group_writable_command(
   pruned: List<String>,
   sticky: Bool,
   files_group_writable: Bool,
+  owner: String,
   depth: Nat,
 ) -> ArgvCommand {
   argv_command(
     program: find_program(),
     arguments: concat(
-      find_subtree_walk_words(target: target, pruned: pruned, depth: depth),
+      concat(find_subtree_walk_words(target: target, pruned: pruned, depth: depth), find_subtree_owner_selector_words(owner: owner)),
       concat(
         // ONE ACTION PER LINE, THEN FLATTENED: each action is its own List<String> (that is what the
         // two helpers above return, and what makes them testable one action at a time), so the list
