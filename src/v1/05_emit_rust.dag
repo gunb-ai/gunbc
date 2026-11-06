@@ -12340,6 +12340,20 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
 }
 
+// ONE BORROW, BOTH SPELLINGS. A by-ref bridge takes its carrier by reference in two spellings --
+// `map_keys(m: x)` as the bridge's first argument, and `x.map_keys()` as a method receiver -- and the
+// borrow is one fact, so it is spelled by one function rather than a `concat` repeated per position:
+// neither spelling can drift from the other, and the roster they apply to stays derived from the
+// declarations (`rt_ref_map_functions`, `rust_runtime_bridge_passes_receiver_by_ref`) rather than a
+// name list written here. The other half of the rule this borrow once needed -- a generic callee
+// rendering its own `::<..>` clause, because at a borrow the callee's type arguments are otherwise
+// rustc's to invent -- ships with the change that brings its first eligible call site; the class, the
+// receipts and the named trigger live in `gunbc.recurring_failure_mode`
+// `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`.
+fn rust_by_ref_bridge_argument(base: String) -> String {
+  concat("&", base)
+}
+
 // The Absent arm returns function_name UNCHANGED, and that is the identity case,
 // not a fallback for an unknown name. rt_bridge_function_names is derived by
 // filter(f => f.name != f.bridge_name) over rt_function_registry, so it holds
@@ -13824,7 +13838,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
-      concat("&", base)
+      rust_by_ref_bridge_argument(base: base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
       let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func, source_indices: scope.type_env.source_indices)
@@ -14720,7 +14734,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
     apply_type_template1(template: spec.error_type_template, arg0: concat("method ", function_name, " is neither a resolved callable receiver field nor a registered v1_rt bridge function"))
   } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
-    concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    rust_by_ref_bridge_argument(base: emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
   } else {
     emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
