@@ -1,0 +1,46 @@
+module test.claim.curl_trace_transfer_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.measure { microsecond }
+import extdeps.tools.curl {
+  CurlTraceEvent, CurlTraceSendData, CurlTraceRecvHeader,
+  curl_trace_transfer_sending,
+}
+
+fn carrier(transfer: NonEmptyStr) -> CurlTraceEvent {
+  CurlTraceEvent { at: microsecond(count: 0), transfer: transfer,
+    kind: CurlTraceSendData, body: ["payload"] }
+}
+
+test fn no_carrier_has_no_transfer() -> Bool {
+  match curl_trace_transfer_sending(events: [], text: "payload") {
+    Absent => true Present { value: _ } => false
+  }
+}
+
+test fn one_carrier_names_its_transfer() -> Bool {
+  match curl_trace_transfer_sending(events: [carrier(transfer: "a")], text: "payload") {
+    Present { value: id } => id == "a" Absent => false
+  }
+}
+
+test fn two_carriers_of_one_transfer_still_name_it() -> Bool {
+  match curl_trace_transfer_sending(events: [carrier(transfer: "a"), carrier(transfer: "a")], text: "payload") {
+    Present { value: id } => id == "a" Absent => false
+  }
+}
+
+test fn two_distinct_transfers_are_ambiguous() -> Bool {
+  match curl_trace_transfer_sending(events: [carrier(transfer: "a"), carrier(transfer: "b")], text: "payload") {
+    Absent => true Present { value: _ } => false
+  }
+}
+
+test fn a_receive_header_is_not_a_payload_carrier() -> Bool {
+  match curl_trace_transfer_sending(events: [CurlTraceEvent {
+    at: microsecond(count: 0), transfer: "b", kind: CurlTraceRecvHeader, body: ["payload"],
+  }, carrier(transfer: "a")], text: "payload") {
+    Present { value: id } => id == "a" Absent => false
+  }
+}

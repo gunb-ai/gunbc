@@ -2,8 +2,6 @@ module gunbc.fleet.mtcollins_firmware_converge
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import std.realization_reconcile { Applied, classify_reconciled, EffectConverged, EffectNotConverged }
 import std.decision { SelectionReceipt }
@@ -23,6 +21,7 @@ import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_mb_cpld_v06_hpm,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.ipmi { IpmiCipherSuite, ipmi_cipher_suite_argv }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
@@ -30,6 +29,7 @@ import extdeps.bmc.ipmitool_hpm_check {
   HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, HpmVersionHeld, HpmVersionAbsent,
   HpmComponentSelected, HpmComponentNotListed, HpmComponentListedTwice, hpm_component_named,
 }
+import gunbc.host.boot_attempt { HostPowerState, PowerOn, PowerOff, PowerUnread }
 import gunbc.machine_intake.subject { MachineIntakeSubject }
 import gunbc.machine_intake.receipt { same_intake_subject }
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_socket_count }
@@ -53,18 +53,19 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
   HostEnding, RestartedRepeatedly, ReachedCensus, StoppedWithStatedFailure, StoppedWithoutRestart, HostEndingNotEstablished,
 }
 import gunbc.machine_intake.ampere_checkpoint_console_observation { AmpereCheckpointRelation }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
-  SelSnapshotReading, SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken,
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  SelSnapshotReading, SelSnapshotNotTaken, SelSnapshotRead, SelSnapshotUnread,
 }
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, EngineeringSample, ProductionPart,
 }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure { Second, second_count, byte_size_count }
 import gunbc.machine_intake.ampere_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
 import gunbc.fleet.mtcollins_firmware_baseline {
   FirmwareBaseline, BaselineAdmissionRefusal, baseline_release_for, baseline_admission_refusal,
 }
+import std.algebra { length }
 
 // ── MT. COLLINS FIRMWARE UPDATE AS A CONVERGENCE ─────────────────────────────────────────────────
 //
@@ -97,10 +98,11 @@ import gunbc.fleet.mtcollins_firmware_baseline {
 // operator needs on a machine whose next failure may be a brick.
 
 // ── What is observed ───────────────────────────────────────────────────────────────────────────
-type HostPowerReading
-  = HostPoweredOff
-  | HostPoweredOn
-  | HostPowerUnreadable { reason: NonEmptyStr }
+// THE ON/OFF/UNREADABLE STATE IS NOT MINTED HERE. It is gunbc.host.boot_attempt.HostPowerState —
+// the protocol-neutral power vocabulary the boot-attempt core owns (review 81732: this module held a
+// second three-arm copy under the name HostPowerReading, and one name must not carry two meanings
+// when the boot side needed a carrier for "was the read even attempted"). A reflash that cannot
+// observe the host answers with PowerUnread { reason }, which is what the refusal paths below read.
 
 type BmcAnswer
   = BmcAnswering
@@ -375,16 +377,6 @@ fn hpm_component_projection(name: NonEmptyStr, rendering: NonEmptyStr) -> HpmVer
   }
 }
 
-// THE PRODUCTION hpm check READ FOR CONVERGENCE IS NOT BUILT: the converge renders hpm check as a dry
-// argv, and nothing executes it and hands the table to this readback. The consumer is declared here.
-data hpm_check_converge_reader_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "hpm_check_version_readback"),
-    reason: "hpm_check_version_readback reads a target's version from a parsed hpm check table through readback_route_of and hpm_component_named, and is executed only by test.claim.fleet.mtcollins_firmware_readback_route_witness over retained captures. No production effect runs `ipmitool hpm check` after a flash step and passes its table here: the converge's hpm check is a rendered dry argv (dry_step_commands), and its readbacks are supplied.",
-    dissolution: unbound_dissolution(description: "NAMED CONSUMER: the wet realization of gunbc.fleet.mtcollins_firmware_converge's post-step readback. TRIGGER, every part required: (a) an extdeps.bmc.ipmi HpmCheck execution bound to the managed host's admitted controller endpoint and account, authenticated, and bounded by a deadline; (b) a process standing that admits the read only on a successful exit; (c) the exact raw stdout retained as evidence with a SHA-256 identity; (d) ordered after the step it verifies -- after the flash for steps that need no AC cycle, after the AC cycle for those that do; (e) hpm_check_table_of applied to exactly those retained bytes; and (f) hpm_check_version_readback for the step's selected target producing the step's VersionReadback. A nonzero exit, a timeout, unreadable output, or a read whose controller or target does not match the step must yield an inaccessible or refused readback, never a version. SUFFICIENT FOR deleting this row. NOT satisfied by a fixture or retained capture, by a supplied table or supplied readback, by a witness, or by the power-on account's pre-power hpm check read (slice B2, a different consumer of the same table)"),
-  ),
-]
-
 fn hpm_check_version_readback(table: HpmCheckTable, component: NonEmptyStr, observed_at: EpochMs) -> VersionReadback {
   match hpm_check_version_projection(table: table, component: component) {
     HpmVersionProjected { version: v, standing: st } => VersionReadback { reading: EnsureObserved { evidence: v }, decode: st, observed_at: observed_at }
@@ -482,7 +474,7 @@ type MtCollinsFirmwareWorld {
   endpoint: BmcControllerEndpoint
   managed: ManagedCredentialReference
   opened_at: EpochMs
-  host_power: HostPowerReading
+  host_power: HostPowerState
   bmc: BmcAnswer
   installed: List<InstalledVersionReading>
   cpus: List<MtCollins1SocketCpu>
@@ -514,7 +506,7 @@ type PreFlashSel
   | SelCaptured { capture: SelCapture }
 
 type PreFlashReceipt {
-  host_power: HostPowerReading
+  host_power: HostPowerState
   power_observed_at: EpochMs
   sel: PreFlashSel
 }
@@ -675,7 +667,7 @@ fn reading_satisfies(reading: EnsureObservation<FirmwareSemanticVersion>, desire
 }
 
 fn version_text(v: FirmwareSemanticVersion) -> String {
-  join([v.major as String, ".", v.minor as String, ".", v.patch as String], "")
+  join([nat_to_decimal_string(value: v.major), ".", nat_to_decimal_string(value: v.minor), ".", nat_to_decimal_string(value: v.patch)], "")
 }
 
 fn mismatch_reason(t: FirmwareTarget, desired: FirmwareSemanticVersion) -> String {
@@ -692,7 +684,7 @@ fn step_for(p: MtCollinsHpmStepProcedure) -> FirmwareFlashStep {
 // which every required right reads granted exactly once.
 fn right_refusal(t: FirmwareTarget, receipt: ManagedRightsReceipt, right: ManagedAccountRight) -> FirmwareConvergenceRefusal? {
   let readings = filter(receipt.rights, x => (x.right == right))
-  match list_length(readings) {
+  match length(readings) {
     0 => Present { value: ManagedRightMissingFromReceipt { target: t, right: right } }
     1 =>
       match readings.first() {
@@ -799,9 +791,9 @@ fn execution_refusal(t: FirmwareTarget, world: MtCollinsFirmwareWorld, rec: Flas
     Present { value: PreFlashPowerReadingOutsideAttempt { target: t, observed_at: rec.pre_flash.power_observed_at } }
   } else {
     match rec.pre_flash.host_power {
-      HostPoweredOn => Present { value: HostNotPoweredOffWhenFlashed { target: t } }
-      HostPowerUnreadable { reason: why } => Present { value: HostPowerUnobservable { reason: why } }
-      HostPoweredOff =>
+      PowerOn => Present { value: HostNotPoweredOffWhenFlashed { target: t } }
+      PowerUnread { reason: why } => Present { value: HostPowerUnobservable { reason: why } }
+      PowerOff =>
         match predecessor_refusal(t: t, rec: rec, predecessor: predecessor) {
           Present { value: c } => Present { value: c }
           Absent => executed_sel_refusal(t: t, world: world, rec: rec)
@@ -1000,9 +992,9 @@ fn pending_step_verdict(
             Present { value: later } => Present { value: refused(cause: StepOutOfOrder { attempted: later.target, unconverged_predecessor: t }) }
             Absent =>
               match world.host_power {
-                HostPoweredOn => Present { value: refused(cause: HostNotPoweredOff) }
-                HostPowerUnreadable { reason: why } => Present { value: refused(cause: HostPowerUnobservable { reason: why }) }
-                HostPoweredOff =>
+                PowerOn => Present { value: refused(cause: HostNotPoweredOff) }
+                PowerUnread { reason: why } => Present { value: refused(cause: HostPowerUnobservable { reason: why }) }
+                PowerOff =>
                   match world.bmc {
                     BmcNotAnswering { reason: why } => Present { value: refused(cause: BmcNotAnsweringBeforeStep { target: t, reason: why }) }
                     BmcAnswering => sel_gate(t: t, world: world, step: step)
@@ -1024,15 +1016,15 @@ fn pending_step_verdict(
 // already recorded. Gating either check on "no record yet" let a history of four records converge over
 // an empty CPU inventory and no retained image.
 fn count_installed(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.installed, i => (i.target == t)))
+  length(filter(world.installed, i => (i.target == t)))
 }
 
 fn count_rollback(world: MtCollinsFirmwareWorld, t: FirmwareTarget) -> Int {
-  list_length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
+  length(filter(world.rollback_images, r => (rollback_target(r: r) == t)))
 }
 
 fn count_records(records: List<FlashStepRecord>, t: FirmwareTarget) -> Int {
-  list_length(filter(records, r => (r.target == t)))
+  length(filter(records, r => (r.target == t)))
 }
 
 // THE INVENTORY IS ONE ROW PER SOCKET, NOT A ROW COUNT (review on 76e6f8c). Sockets are 0 up to the
@@ -1044,12 +1036,12 @@ fn cpu_inventory_refusal(world: MtCollinsFirmwareWorld) -> FirmwareConvergenceRe
   match (filter(world.cpus, c => (c.socket as Int) >= expected)).first() {
     Present { value: c } => Present { value: CpuSocketOutOfRange { socket: c.socket, socket_count: expected } }
     Absent =>
-      match (filter(world.cpus, c => list_length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
+      match (filter(world.cpus, c => length(filter(world.cpus, x => (x.socket as Int) == (c.socket as Int))) > 1)).first() {
         Present { value: c } => Present { value: CpuSocketReadTwice { socket: c.socket } }
         Absent =>
-          match list_length(world.cpus) == expected {
+          match length(world.cpus) == expected {
             true => Absent
-            false => Present { value: CpuInventoryIncomplete { observed: list_length(world.cpus), expected: expected } }
+            false => Present { value: CpuInventoryIncomplete { observed: length(world.cpus), expected: expected } }
           }
       }
   }
@@ -1266,8 +1258,10 @@ fn converge_firmware(
 // extdeps.bmc.ipmi Tool service and running them from fleet-converge is the wet realization; it is NOT
 // built here, because a new fleet-converge mode or job needs the operator's sign-off (DESIGN, Building &
 // checks: the job roster is closed to growth), and this lane flashes no hardware.
-fn ipmitool_prefix(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr) -> List<String> {
-  ["ipmitool", "-I", "lanplus", "-H", bmc_host as String, "-U", username as String, "-f", password_file as String]
+// The route's lanplus cipher suite goes through extdeps.bmc.ipmi ipmi_cipher_suite_argv, the one lanplus rendering:
+// Absent renders the prefix exactly as before.
+fn ipmitool_prefix(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> List<String> {
+  concat(["ipmitool", "-I", "lanplus"], concat(ipmi_cipher_suite_argv(suite: cipher_suite), ["-H", bmc_host as String, "-U", username as String, "-f", password_file as String]))
 }
 
 // The readback is rendered only on the route that can see the target; the SMpro route is realized by
@@ -1278,11 +1272,12 @@ fn dry_step_commands(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
 ) -> List<List<String>> {
-  let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file)
+  let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
   let flash = [
     concat(prefix, ["chassis", "status"]),
-    concat(prefix, ["-z", byte_size_count(b: step.procedure.upload_block) as String, "hpm", "upgrade", image_path as String, "force"]),
+    concat(prefix, ["-z", nat_to_decimal_string(value: byte_size_count(b: step.procedure.upload_block)), "hpm", "upgrade", image_path as String, "force"]),
   ]
   match readback_route_of(t: step.procedure.firmware_release.target) {
     HpmCheckComponent { component: _ } => concat(flash, [concat(prefix, ["hpm", "check"])])
@@ -1300,11 +1295,12 @@ fn dry_realize(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
 ) -> List<List<String>> {
   match converge_firmware(baseline: baseline, world: world, records: records, boot: Absent) {
     FirmwareStepDue { target: _, decision: d } =>
       match d {
-        Apply { plan: step } => dry_step_commands(step: step, image_path: image_path, bmc_host: bmc_host, username: username, password_file: password_file)
+        Apply { plan: step } => dry_step_commands(step: step, image_path: image_path, bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
         Noop => []
         Refuse { reason: _ } => []
       }

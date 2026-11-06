@@ -14,7 +14,9 @@ import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_await_capture_
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_boot_medium }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.host.smpro_platform_capability {
+  SmproNotTaken
+}
 import gunbc.machine_intake.megarac_kvm_still { KvmObserverNotStarted }
 import gunbc.machine_intake.mtcollins1_boot_run { SolCollectorUnrecorded }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }

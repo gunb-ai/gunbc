@@ -74,7 +74,7 @@ fn task_updates_decode(value: JsonValue) -> List<TicketUpdate>? {
         }
       }
     })
-    other => none
+    _ => none
   }
 }
 
@@ -185,7 +185,7 @@ fn task_parent_decode(value: JsonValue) -> NodeParent? {
           }
         }
       }
-      other => none
+      _ => none
     }
   }
 }
@@ -211,9 +211,9 @@ fn roadmap_task_json(node: RoadmapNode) -> JsonValue? {
           ]) } }
         }
       }
-      other => none
+      _ => none
     }
-    other => none
+    _ => none
   }
 }
 
@@ -223,7 +223,7 @@ fn task_carriers_decode(value: JsonValue) -> List<Pointer>? {
       Absent => none
       Present { value: prior } => match task_pointer_decode(value: row) { Absent => none Present { value: p } => Present { value: concat(prior, [p]) } }
     })
-    other => none
+    _ => none
   }
 }
 
@@ -258,7 +258,7 @@ fn roadmap_task_from_json(value: JsonValue) -> RoadmapNode? {
         }
       } } } } } } } } } } } }
     }
-    other => none
+    _ => none
   }
 }
 

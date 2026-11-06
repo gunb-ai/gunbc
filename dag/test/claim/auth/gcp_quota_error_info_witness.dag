@@ -1,0 +1,65 @@
+module test.claim.auth.gcp_quota_error_info_witness
+
+import std.types { Bool, EpochSecs, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains }
+import std.measure { second_count }
+import extdeps.cloud.gcp.error_info {
+  GcpQuotaErrorInfo, QuotaErrorInfoObserved, QuotaErrorInfoRefused, QuotaWaitBefore, QuotaWaitNow, QuotaWaitRefused,
+  decode_429_error_info, quota_retry_wait_for,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data body_with_error_info: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_limit_value\":\"10\",\"quota_unit\":\"1/min\",\"window_start_time\":\"T0\"}}]}}"
+data body_without_error_info: String = "{\"error\":{\"code\":429,\"message\":\"slow down\",\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.Help\"}]}}"
+data body_without_window_start: String = "{\"error\":{\"code\":429,\"details\":[{\"@type\":\"type.googleapis.com/google.rpc.ErrorInfo\",\"reason\":\"RATE_LIMIT_EXCEEDED\",\"domain\":\"googleapis.com\",\"metadata\":{\"quota_unit\":\"1/min\"}}]}}"
+
+// Supplied reduction of the instant (the clock's fact at the real route): "T0" is epoch 1000.
+fn fake_epoch(s: String) -> EpochSecs? { if s == "T0" { Present { value: 1000 } } else { none } }
+
+test fn a_429_body_with_error_info_decodes_its_quota_facts() -> Bool {
+  match decode_429_error_info(body: body_with_error_info) {
+    QuotaErrorInfoObserved { info: i } => i.reason == "RATE_LIMIT_EXCEEDED" && i.domain == "googleapis.com"
+      && (match i.quota_unit { Present { value: u } => u == "1/min"  Absent => false })
+      && (match i.window_start_time { Present { value: w } => w == "T0"  Absent => false })
+    _ => false
+  }
+}
+
+// RED: no ErrorInfo in the details refuses with a typed cause.
+test fn a_429_body_without_error_info_refuses_and_guesses_nothing() -> Bool {
+  (match decode_429_error_info(body: body_without_error_info) { QuotaErrorInfoRefused { missing: m } => string_contains(s: m, pattern: "google.rpc.ErrorInfo")  _ => false })
+    && (match decode_429_error_info(body: "not json") { QuotaErrorInfoRefused { missing: _ } => true  _ => false })
+}
+
+test fn the_wait_is_window_start_plus_window_minus_now() -> Bool {
+  match decode_429_error_info(body: body_with_error_info) {
+    QuotaErrorInfoObserved { info: i } =>
+      (match quota_retry_wait_for(info: i, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitBefore { wait: w } => second_count(s: w) == 50  _ => false })
+        && (match quota_retry_wait_for(info: i, now_secs: 1060, to_epoch_secs: fake_epoch) { QuotaWaitNow => true  _ => false })
+        && (match quota_retry_wait_for(info: i, now_secs: 1059, to_epoch_secs: fake_epoch) { QuotaWaitBefore { wait: w } => second_count(s: w) == 1  _ => false })
+    _ => false
+  }
+}
+
+// RED: ErrorInfo without window_start_time refuses naming that fact.
+test fn an_error_info_without_window_start_time_refuses_the_wait() -> Bool {
+  match decode_429_error_info(body: body_without_window_start) {
+    QuotaErrorInfoObserved { info: i } =>
+      match quota_retry_wait_for(info: i, now_secs: 5, to_epoch_secs: fake_epoch) { QuotaWaitRefused { missing: m } => string_contains(s: m, pattern: "window_start_time")  _ => false }
+    _ => false
+  }
+}
+
+// RED: no quota_unit, or a period that is not one of Google's, refuses; a resource segment containing
+// "min" (admin) is not the minute period.
+test fn an_absent_or_unrecognized_quota_unit_refuses_the_wait_instead_of_defaulting_a_window() -> Bool {
+  let none_unit = GcpQuotaErrorInfo { reason: "R", domain: "d", quota_limit_value: none, quota_unit: none, window_start_time: Present { value: "T0" } }
+  let odd_unit = GcpQuotaErrorInfo { reason: "R", domain: "d", quota_limit_value: none, quota_unit: Present { value: "1/fortnight/admin" }, window_start_time: Present { value: "T0" } }
+  let admin_unit = GcpQuotaErrorInfo { reason: "R", domain: "d", quota_limit_value: none, quota_unit: Present { value: "1/d/admin" }, window_start_time: Present { value: "T0" } }
+  (match quota_retry_wait_for(info: none_unit, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitRefused { missing: m } => string_contains(s: m, pattern: "quota_unit")  _ => false })
+    && (match quota_retry_wait_for(info: odd_unit, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitRefused { missing: _ } => true  _ => false })
+    && (match quota_retry_wait_for(info: admin_unit, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitBefore { wait: w } => second_count(s: w) == 86390  _ => false })
+}

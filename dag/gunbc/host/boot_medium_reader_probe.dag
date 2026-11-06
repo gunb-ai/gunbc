@@ -1,0 +1,683 @@
+module gunbc.host.boot_medium_reader_probe
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.exec.command { argv_words }
+import extdeps.posix.test_utility { test_readable_command }
+import extdeps.posix.getent { getent_shadow_command }
+import extdeps.ssh.openssh_server_commands { sshd_effective_config_argv, sshd_effective_config_value }
+import extdeps.tools.id { id_user_name_argv }
+import extdeps.sudo.elevation { sudo_elevate, sudo_elevate_as }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.access_token_source { WorkloadIdentityToken, ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  fleet_known_hosts_rows, fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
+  FleetSshExecutionContext, SshTarget,
+}
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh }
+import gunbc.host.boot_medium_reader_key {
+  boot_medium_reader_ssh_key, boot_medium_reader_ssh_key_fingerprint, boot_medium_reader_ssh_privkey_secret,
+  boot_medium_served_link_path,
+}
+import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of, sha256sum_digest, boot_medium_served_argv }
+
+// ── THE LIVE READER PROBE (B2c of the approval-free branch boot plan) ─────────────────────────────
+//
+// WHAT THIS READS, AND WHY ANYTHING HAS TO. The boot medium reader key (gunbc.host
+// boot_medium_reader_key) is restricted and forced: one authorized_keys line, installed by B2b
+// (gunbc.host.export_host_reader_converge), admitting exactly one command -- sha256sum of the served
+// image -- from one source address. The lane's RED is one sentence: any command OTHER than the forced
+// one, presented under the reader key, must be answered with ONLY the forced sha256sum line. That
+// sentence is the entire reason PR-C may run a branch boot without an approval: the branch cell keeps
+// this key and loses the fleet key, so the account's last privilege must be one digest -- and a last
+// privilege is only known by being read. A ForceCommand sshd ignores, a key file the account can
+// rewrite, an authorized_keys the account can append to: every one of them says the right thing on disk,
+// and none of them is visible to a plan that only reads the files B2b wrote.
+//
+// WHY A PROBE AND NOT A PROOF. `sshd -T` renders the effective configuration, and B2b already reads it
+// for AuthorizedKeysFile. It does not render what a forced command DOES, because that is not a
+// configuration value; it is behavior. Behavior is knowable only by authenticating and asking.
+//
+// THE TWO OPEN FACTS, READ RATHER THAN INFERRED (B2b's body names both as B2c's own):
+//   1. THE LOCKED `--system` ACCOUNT AND UsePAM. The reader account is created by
+//      executor_privileged_operation EnsureSystemAccount, which runs `useradd --system`, so its password
+//      field is locked. Whether sshd admits that account's publickey login anyway turns on UsePAM: with
+//      `UsePAM yes` (Ubuntu's default) OpenSSH skips the locked-account refusal. That is a reading of
+//      OpenSSH's behaviour, not a fact about this host, and the reader's login is the ground PR-C stands
+//      on -- so all three parts are read here: the shadow field (is it actually locked), the EFFECTIVE
+//      `usepam` value (`sshd -T`, not a config file: the drop-in and the base config both contribute, and
+//      only sshd's own rendering says what the running daemon will do), and the login itself. Three
+//      readings that agree is a fact; one of them inferred is not.
+//   2. CAN IT READ /srv/bmc. `boot_image_export_ownership` declares no other-read on the export, so on
+//      the face of the model the reader cannot traverse it. Whether the served link is readable by that
+//      account is read two ways, because the two mechanisms can disagree and a disagreement is itself a
+//      finding: from the ADMINISTRATOR leg as that account (`sudo -u <reader> test -r <link>`), and from
+//      the forced command's own exit code -- a forced command that authenticated and then failed to read
+//      its file is that same fact seen from inside the account. It is never asked of the reader key as a
+//      question, because under a forced command the reader's answer to ANY question is the digest line.
+//
+// WHAT REDS, each stage named so a run says which fact failed:
+//   key        the public row is not pinned, or carries no fingerprint: the mint has not landed, so there
+//              is no reader key and nothing else here can mean anything;
+//   agent      the run's agent does not hold the PINNED reader key. This is the observable consequence of
+//              the accessor grant being live: the private half can only be read out of Secret Manager by
+//              a principal the read is granted to (gunbc.auth.fleet_secret_accessor_roster
+//              boot_medium_reader_key_accessor_row), and only a read puts its fingerprint in the agent. So
+//              an agent without this fingerprint means the read did not happen -- and it refuses rather
+//              than proceeding, because every reader leg would otherwise authenticate with the FLEET key
+//              and report the fleet account's privileges as the reader's: the one result that could let
+//              PR-C through falsely;
+//   target     srv2 could not be resolved or anchored;
+//   transport  the reader leg never reached a daemon that answered (port down, endpoint wrong, our own
+//              known_hosts row stale). Named separately from `reader` on purpose: exit 255 looks identical
+//              for both, only ONE of them is an authentication finding, and the fix for a transport failure
+//              is never a PAM change;
+//   reader     the account refused the pinned key -- open fact 1 reading NO, the one finding PR-C cannot
+//              be built over;
+//   red        the second command under the reader key was answered with anything other than the forced
+//              line, compared on exit code, stdout AND stderr -- the lane's own RED;
+//   facts      a fact could not be read at all, or the three readings of fact 1 contradict. A missing
+//              reading is a refusal, never a default: a run that could not read something does not get to
+//              report it.
+//
+// WHAT IS RECORDED, NOT ASSERTED. Open fact 2's POLARITY: B2b deliberately declared no other-read, so
+// "unreadable" is that ruling working and "readable" means something unnamed is granting access. Both
+// answers are admissible and the receipt says which, because PR-C's BMC-only cell is built on top of the
+// answer. Likewise the digest: agreeing with the medium row is the boot's own readback's business
+// (boot_medium_served_readback_over_reader), not this probe's.
+//
+// WHY THE ACCESSOR IS NOT PROBED WITH testIamPermissions. extdeps.cloud.gcp.secret_manager models
+// TestSecretIamPermissions as DIAGNOSTIC ONLY and deliberately has no "absent" constructor: it returns the
+// empty set for a resource that does not exist, answers only about the permissions handed to it, and is
+// documented as potentially permissive. Treating "the permission was not in the list" as a refused grant
+// would be concluding absence from the one instrument this repository has ruled out for that question. So
+// the grant is checked where it is unmissable -- an agent cannot hold a fingerprint whose key nobody could
+// have read -- and the policy is REPORTED, with its own limits stated, not judged.
+//
+// NO KEY MATERIAL IN THE RUNTIME, LET ALONE THE RECEIPT. No value in this module can hold a private half:
+// there is no secret read here at all. That is B1's rule (gunbc.host.boot_medium_reader_key_mint) honored
+// structurally rather than by redaction discipline -- a type that cannot carry a key needs no redaction to
+// keep it out of a log. Both commands asked under the reader key are read-only and print nothing secret
+// even in the case where the server ran one, which is the case the RED exists to catch. The quoted answers
+// are forced-command output by construction, and the wording still says so, because a diagnostic path whose
+// safety depends on reasoning about what a far side could echo is the path that leaks.
+
+data probe_attempt_raw: String = "boot-medium-reader-probe"
+
+// SPOKEN OF THE KEY WHEN THERE IS NO KEY. The fold refuses at StageKey before it reads this, so it never
+// reaches a receipt as a fingerprint would; the string says so in its own text rather than looking like the
+// SHA256:<43 base64> shape a real one has.
+data probe_no_fingerprint: NonEmptyStr = "no-key: the reader keypair is not pinned"
+
+data boot_medium_reader_probe_receipt_path: String = "target/boot-medium-reader-probe.txt"
+
+// THE SHADOW FIELD THAT MEANS LOCKED: `!`, `*`, or `*LK*` in field two of `getent shadow <login>`
+// (shadow(5): a leading `!` marks a password that cannot be used for authentication). An empty or hashed
+// field is NOT locked, so the reader's admission is reported against what the field actually holds rather
+// than against what `useradd --system` was expected to do.
+fn reader_shadow_field_is_locked(shadow_line: String, login: NonEmptyStr) -> Bool {
+  let fields = split(s: shadow_line, delimiter: ":")
+  match fields.first() {
+    Present { value: name } =>
+      if name != (login as String) {
+        false
+      } else {
+        match get(xs: fields, index: 1) {
+          // THE LOCK MARKERS ONLY. `passwd -l`/`usermod -L` prefix the hash with `!`, and some tools write
+          // `*LK*`; those are the lock. A bare `*` is NOT a lock -- it is "no UNIX password", the state a
+          // --system account is created with -- and `""` is "no password at all"; reporting either as locked
+          // would make the open fact read "locked" on every host and the probe would stop being a witness.
+          // The distinction is load-bearing exactly where the three readings meet: under UsePAM=no, a `!`
+          // field that still authenticated is a contradiction, while a `*` field that authenticated is
+          // ordinary PAM behavior.
+          Present { value: f } => starts_with(s: f, prefix: "!") || starts_with(s: f, prefix: "*LK*")
+          Absent => false
+        }
+      }
+    Absent => false
+  }
+}
+
+// THE TWO REFUSALS THAT LOOK IDENTICAL AND ARE NOT. Exit 255 is what ssh(1) returns for "the account would
+// not have me" AND for "I never reached a daemon that would answer": one is open fact 1's answer and the
+// other is a fact about the network or about our own trust anchor. Collapsing them would let a stale
+// known_hosts row or a down port be reported as "the locked account cannot log in" -- which is the single
+// most expensive wrong conclusion available to this lane, because the tempting fix for a PAM finding
+// (unlock the account, or flip UsePAM) does nothing for a transport failure and actively harms the posture
+// the account exists to have. So the phrases are split, and only the authentication set may reach the
+// PAM-shaped stage.
+//
+// THE ssh PHRASE IS MATCHED FULLY QUALIFIED, as `Permission denied (publickey`, and NOT as the bare
+// "Permission denied" -- because the failure this probe is built to observe is a forced `sha256sum` that
+// cannot open the served image, and coreutils prints exactly `sha256sum: <path>: Permission denied` for
+// that. A looser match would read open fact 2's own evidence as open fact 1's answer and report "the locked
+// account cannot log in" on a host where the account logged in perfectly and could not read the file.
+type ReaderProbeRefusal
+  = ProbeNotRefused
+  | ProbeAuthenticationRefused
+  | ProbeTransportRefused
+
+fn reader_probe_refusal_class(a: RemoteAnswer) -> ReaderProbeRefusal {
+  let e = trim(s: a.stderr)
+  if a.exit_code == 0 {
+    ProbeNotRefused
+  } else if e.contains("Host key verification failed") || e.contains("Connection refused") || e.contains("Connection timed out") || e.contains("No route to host") || e.contains("Name or service not known") {
+    ProbeTransportRefused
+  } else if e.contains("Permission denied (publickey") || e.contains("no supported authentication methods") || e.contains("Too many authentication failures") {
+    ProbeAuthenticationRefused
+  } else {
+    ProbeNotRefused
+  }
+}
+
+fn reader_probe_answer_text(a: RemoteAnswer) -> String {
+  join(["exit=", to_string(a.exit_code), " stdout=[", trim(s: a.stdout), "] stderr=[", trim(s: a.stderr), "]"], "")
+}
+
+// ── THE FORCED ANSWER AND THE RED ─────────────────────────────────────────────────────────────────
+// The line's shape is the one the served readback already admits (boot_medium_served_reader_join):
+// `<64 hex>  <link>`, exit 0, nothing else. Two readers of one forced command must not be able to
+// disagree about what it means, so the shape is judged by that same classifier and the same spelling of
+// the line, not a second one invented here.
+type ReaderProbeForcedAnswer
+  = ForcedAnswerHeld { digest: NonEmptyStr }
+  | ForcedAnswerImageUnreadable { evidence: NonEmptyStr }
+  | ForcedAnswerMalformed { evidence: NonEmptyStr }
+  | ForcedAnswerLoginRefused { evidence: NonEmptyStr }
+  | ForcedAnswerTransportBlocked { evidence: NonEmptyStr }
+  | ForcedAnswerUnexplained { evidence: NonEmptyStr }
+
+// CLASSIFY THE FORCED LEG; the order IS the meaning, and the LAST arm is the one that makes this honest.
+//   transport -- nothing reached an authentication decision, so NO fact is being answered here and the run
+//     must not be allowed to imply one. It is refused under its own stage, not the reader-login one;
+//   authentication -- open fact 1 reading NO, the only finding PR-C cannot be built over;
+//   non-zero WITH a stderr -- a command that authenticated, ran, and reported why it failed: open fact 2
+//     from the only side that can see it from inside the account. Requiring non-empty stderr matters: a
+//     silent non-zero is not a command reporting a read failure, it is an absence of information, and
+//     reading silence as "the image is unreadable" would be exactly the invented fact this probe exists to
+//     prevent;
+//   zero exit, line not the digest -- the forced command not holding, which is the RED's business and not
+//     this classifier's;
+//   anything else -- named, and refused. The fold has no default arm anywhere, so a new shape of answer can
+//     only ever arrive as one of these names.
+fn reader_probe_forced_answer(a: RemoteAnswer, link: NonEmptyStr) -> ReaderProbeForcedAnswer {
+  let line = trim(s: a.stdout)
+  match reader_probe_refusal_class(a: a) {
+    ProbeTransportRefused => ForcedAnswerTransportBlocked { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+    ProbeAuthenticationRefused => ForcedAnswerLoginRefused { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+    ProbeNotRefused =>
+      if a.exit_code != 0 && trim(s: a.stderr) != "" {
+        ForcedAnswerImageUnreadable { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+      } else if a.exit_code != 0 {
+        ForcedAnswerUnexplained { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+      } else {
+        match sha256sum_digest(line: line) {
+          Absent => ForcedAnswerMalformed { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+          Present { value: d } =>
+            if line != join([d, "  ", link as String], "") {
+              ForcedAnswerMalformed { evidence: reader_probe_answer_text(a: a) as NonEmptyStr }
+            } else {
+              ForcedAnswerHeld { digest: d as NonEmptyStr }
+            }
+        }
+      }
+  }
+}
+
+// THE RED ITSELF, pure over the two answers. Equality on ALL THREE fields, not stdout alone: a server that
+// ran the second command and printed its own output while also printing the digest would be a server whose
+// forced command is not holding, and a comparison that looked only at stdout would pass it.
+fn reader_probe_forced_command_masks(forced: RemoteAnswer, other: RemoteAnswer) -> Bool {
+  other.exit_code == forced.exit_code && other.stdout == forced.stdout && other.stderr == forced.stderr
+}
+
+fn reader_probe_red_cause(forced: RemoteAnswer, other: RemoteAnswer) -> String {
+  join([
+    "the reader key's forced command did not hold: a second command was answered differently from the forced one. ",
+    "forced: ", reader_probe_answer_text(a: forced), " | second: ", reader_probe_answer_text(a: other), ". ",
+    "Under the reader key the account must be able to run nothing but the served image's digest.",
+  ], "")
+}
+
+// ── THE TWO OPEN FACTS, AS DATA ───────────────────────────────────────────────────────────────────
+type ReaderProbeLockedAccountFact
+  = LockedAccountRead { shadow_locked: Bool, use_pam: NonEmptyStr, login_admitted: Bool }
+  | LockedAccountUnreadable { cause: NonEmptyStr }
+
+// THE FACT IS READ, NOT ASSUMED, and the combination that cannot be true is named rather than smoothed
+// over: a login admitted while the shadow field is locked AND sshd reports usepam=no is a reading that
+// cannot be believed -- either the daemon answering is not the one that rendered this config, or something
+// other than sshd admitted the key. The lane stops on that instead of building PR-C on it.
+fn reader_probe_locked_account_fact(shadow: RemoteAnswer, use_pam: RemoteAnswer, login_admitted: Bool, login: NonEmptyStr) -> ReaderProbeLockedAccountFact {
+  if shadow.exit_code != 0 {
+    LockedAccountUnreadable { cause: join(["the shadow entry could not be read: ", reader_probe_answer_text(a: shadow)], "") as NonEmptyStr }
+  } else if use_pam.exit_code != 0 {
+    LockedAccountUnreadable { cause: join(["sshd -T refused: ", reader_probe_answer_text(a: use_pam)], "") as NonEmptyStr }
+  } else {
+    match sshd_effective_config_value(text: use_pam.stdout, keyword: "usepam") {
+      Absent => LockedAccountUnreadable { cause: "sshd -T rendered no usepam keyword" as NonEmptyStr }
+      Present { value: v } => {
+        let pam = trim(s: v)
+        let locked = reader_shadow_field_is_locked(shadow_line: trim(s: shadow.stdout), login: login)
+        if login_admitted && locked && (pam == "no" || pam == "0") {
+          LockedAccountUnreadable {
+            cause: join([
+              "the three readings contradict each other and none can be trusted: the shadow field is locked, sshd -T reports ",
+              "usepam=", pam, ", and yet the reader account authenticated. Either the daemon answering is not the one that ",
+              "rendered this config, or something other than sshd admitted the key. Fix the reading before building on it.",
+            ], "") as NonEmptyStr,
+          }
+        } else {
+          LockedAccountRead { shadow_locked: locked, use_pam: pam as NonEmptyStr, login_admitted: login_admitted }
+        }
+      }
+    }
+  }
+}
+
+// OPEN FACT 2, as a record rather than a Tuple: this language has no product type, and the two witnesses
+// are kept as two named fields because a receipt that collapsed them into one bool would hide the case
+// where they disagree -- which is the interesting one.
+type ReaderProbeExportReading = ReaderProbeExportReading {
+  readable: Bool,
+  admin_evidence: NonEmptyStr,
+  forced_evidence: NonEmptyStr,
+}
+
+// THE ADMIN-WITNESS OF FACT 2. The polarity is evidence and never an assertion; see the header for why
+// B2b's own ownership ruling makes both answers admissible.
+fn reader_probe_export_reading(admin: RemoteAnswer, forced: ReaderProbeForcedAnswer) -> ReaderProbeExportReading {
+  let forced_says = match forced {
+    ForcedAnswerHeld { digest: _ } => "the forced command read the served image (its digest line was admitted)"
+    ForcedAnswerImageUnreadable { evidence: e } => join(["the forced command authenticated but could not read the served image: ", e as String], "")
+    ForcedAnswerMalformed { evidence: e } => join(["the forced command answered with a malformed line: ", e as String], "")
+    ForcedAnswerLoginRefused { evidence: e } => join(["the reader never authenticated, so nothing was read: ", e as String], "")
+    ForcedAnswerTransportBlocked { evidence: e } => join(["the reader never reached the daemon, so nothing was read: ", e as String], "")
+    ForcedAnswerUnexplained { evidence: e } => join(["the forced command failed without explaining itself: ", e as String], "")
+  }
+  ReaderProbeExportReading {
+    readable: admin.exit_code == 0,
+    admin_evidence: join(["admin leg asked as the reader account: ", reader_probe_answer_text(a: admin)], "") as NonEmptyStr,
+    forced_evidence: forced_says as NonEmptyStr,
+  }
+}
+
+// ── THE ACCESSOR, REPORTED WITHIN ITS INSTRUMENT'S LIMITS ─────────────────────────────────────────
+// The permission the accessor cell alone confers, and a RECORDING of what the service says the run holds.
+// Recording rather than judging is the design of this section: see the header for why absence cannot be
+// concluded from this instrument, and the agent stage for the check that does not need to.
+data accessor_permission: String = "secretmanager.googleapis.com/versions.access"
+
+type ReaderProbeAccessorReport
+  = AccessorReportUnreadable { reason: NonEmptyStr }
+  | AccessorReport { permission_listed: Bool, resource: NonEmptyStr }
+
+fn reader_probe_accessor_report() -> ReaderProbeAccessorReport {
+  match ensure_access_token(source: WorkloadIdentityToken) {
+    AccessTokenReady { token } =>
+      match gcp.SecretManager.TestSecretIamPermissions(
+        access_token: token,
+        project_id: fleet_secrets_project_id,
+        secret: boot_medium_reader_ssh_privkey_secret.secret,
+        permissions: [accessor_permission],
+      ) {
+        RestAnswered { answer: r } =>
+          AccessorReport {
+            permission_listed: any(match r.permissions { Present { value: ps } => ps Absent => [] }, p => p == accessor_permission),
+            resource: boot_medium_reader_ssh_privkey_secret.secret,
+          }
+        RestRefused { refusal: _ } => AccessorReportUnreadable { reason: "testIamPermissions refused" as NonEmptyStr }
+      }
+    AccessTokenUpsertRequired { plan: _ } => AccessorReportUnreadable { reason: "no Secret Manager access token: access upsert required" as NonEmptyStr }
+    AccessTokenEnsureRefused { reason } => AccessorReportUnreadable { reason: reason as NonEmptyStr }
+  }
+}
+
+// ── THE RECORD ────────────────────────────────────────────────────────────────────────────────────
+type ReaderProbeStage
+  = StageKey
+  | StageAgent
+  | StageTarget
+  | StageTransport
+  | StageReaderLogin
+  | StageRed
+  | StageUnexplained
+  | StageFacts
+
+// The forced command's own reading, kept as a record so "the image is not readable" is a REPORTED state
+// rather than a silently-absent digest: it is open fact 2 from inside the account, and PR-C must be built
+// knowing which of the two it is.
+type ForcedLineRecord
+  = ForcedLineHeld { digest: NonEmptyStr }
+  | ForcedLineImageUnreadable { evidence: NonEmptyStr }
+
+type ReaderProbeReceipt
+  = ReaderProbeObserved {
+      fingerprint: NonEmptyStr,
+      forced: ForcedLineRecord,
+      second_command_masked: Bool,
+      locked_account: ReaderProbeLockedAccountFact,
+      export: ReaderProbeExportReading,
+      accessor: ReaderProbeAccessorReport,
+    }
+  | ReaderProbeRefused { stage: ReaderProbeStage, cause: NonEmptyStr }
+
+fn reader_probe_stage_text(stage: ReaderProbeStage) -> String {
+  match stage {
+    StageKey => "key"
+    StageAgent => "agent"
+    StageTarget => "target"
+    StageTransport => "transport"
+    StageReaderLogin => "reader"
+    StageRed => "red"
+    StageUnexplained => "unexplained"
+    StageFacts => "facts"
+  }
+}
+
+// THE PROBE AS ONE FOLD, so every leg's answer can be supplied by a witness and the gate is testable
+// without a host. The order is the gate, and it is not rearrangeable: no leg is issued until the agent is
+// proven to hold the pinned key and srv2 is anchored, and the RED is only meaningful once the forced
+// command has answered -- a second command returning the same error as the first proves nothing about a
+// forced command that never ran.
+fn boot_medium_reader_probe_fold(
+  pinned: Bool,
+  agent_holds_pinned_key: Bool,
+  fingerprint: NonEmptyStr,
+  target_reached: Bool,
+  target_cause: String,
+  forced: RemoteAnswer,
+  second: RemoteAnswer,
+  shadow: RemoteAnswer,
+  use_pam: RemoteAnswer,
+  admin_readable: RemoteAnswer,
+  login: NonEmptyStr,
+  accessor: ReaderProbeAccessorReport,
+) -> ReaderProbeReceipt {
+  let link = boot_medium_served_link_path()
+  if pinned == false {
+    ReaderProbeRefused { stage: StageKey, cause: "the reader keypair is not pinned (boot_medium_reader_ssh_key is none, or carries no fingerprint): there is no reader key to probe. Run the mint (gunbc.host.boot_medium_reader_key_mint) under the operator's approval first." as NonEmptyStr }
+  } else if agent_holds_pinned_key == false {
+    ReaderProbeRefused {
+      stage: StageAgent,
+      cause: join([
+        "the run's agent does not hold the pinned reader key ", fingerprint as String, ". The private half is read out of Secret Manager by ",
+        "the modeled load step, and that read is granted by exactly one row -- boot_medium_reader_key_accessor_row ",
+        "(gunbc.auth.fleet_secret_accessor_roster). The mint's adder row cannot make this fingerprint appear, because it can write ",
+        "a version and cannot read one back. Proceeding would authenticate every reader leg with the FLEET key and report the ",
+        "fleet account's privileges as the reader's, which is the one result that could let PR-C through falsely.",
+      ], "") as NonEmptyStr,
+    }
+  } else if target_reached == false {
+    ReaderProbeRefused { stage: StageTarget, cause: target_cause }
+  } else {
+    match reader_probe_forced_answer(a: forced, link: link) {
+      ForcedAnswerLoginRefused { evidence: e } =>
+        // Open fact 1, read as NO: the finding PR-C cannot be built over, so refuse by name and say what to
+        // look at -- including the thing NOT to do, because unlocking the account would turn a red run green
+        // by destroying the property the account exists to have.
+        ReaderProbeRefused {
+          stage: StageReaderLogin,
+          cause: join([
+            "the reader account refused the pinned key: ", e as String,
+            ". This is open fact 1 answering NO -- a locked `--system` account's publickey login depends on UsePAM, and PR-C's ",
+            "BMC-only branch cell depends on this login. Read the usepam and shadow readings before assuming a cause, and do NOT ",
+            "work around it by unlocking the account: a usable password on a key-only service account is a worse posture than the ",
+            "boot this probe exists to approve.",
+          ], "") as NonEmptyStr,
+        }
+      ForcedAnswerTransportBlocked { evidence: e } =>
+        // NOT a fact about the host, and deliberately not reported as one. Nothing reached an authentication
+        // decision, so neither open fact was answered and this run must not imply that they were. The advice
+        // names the reading to fix (reachability and our own trust anchor) and says plainly that PAM is not
+        // implicated, because the expensive mistake at this stage is "the locked account cannot log in, let me
+        // unlock it" -- a change that would do nothing here and would remove the property the account has.
+        ReaderProbeRefused { stage: StageTransport, cause: join(["srv2 did not answer the reader leg: ", e as String, ". This is a reachability or trust-anchor reading failure, NOT an authentication finding: neither open fact was answered, and UsePAM is not implicated. Check the endpoint, the port, and the known_hosts row before anything else."], "") as NonEmptyStr }
+      ForcedAnswerUnexplained { evidence: e } =>
+        // A non-zero exit with nothing on stderr is not a command reporting a read failure; it is an absence
+        // of information, and inventing "the image is unreadable" from silence would put a manufactured fact
+        // into the receipt PR-C is built on. So the shape is named and refused until it can be explained.
+        ReaderProbeRefused { stage: StageUnexplained, cause: join(["the forced command failed without explaining itself: ", e as String, ". A non-zero exit with no stderr is not evidence that the served image is unreadable -- it is the absence of the reading that would decide open fact 2."], "") as NonEmptyStr }
+      ForcedAnswerMalformed { evidence: e } =>
+        ReaderProbeRefused { stage: StageRed, cause: join(["the forced command did not answer with its own line: ", e as String], "") as NonEmptyStr }
+      ForcedAnswerHeld { digest: d } =>
+        reader_probe_after_masking(fingerprint: fingerprint, forced_record: ForcedLineHeld { digest: d }, forced: forced, second: second, shadow: shadow, use_pam: use_pam, admin_readable: admin_readable, login: login, accessor: accessor)
+      ForcedAnswerImageUnreadable { evidence: e } =>
+        // The forced command DID authenticate and answer, so the masking test is still meaningful: the second
+        // command must be answered with this same line. Only the digest is missing, and that is open fact 2.
+        reader_probe_after_masking(fingerprint: fingerprint, forced_record: ForcedLineImageUnreadable { evidence: e }, forced: forced, second: second, shadow: shadow, use_pam: use_pam, admin_readable: admin_readable, login: login, accessor: accessor)
+    }
+  }
+}
+
+// THE RED, THEN THE FACTS -- one function, because the order is itself a claim: the masking test is judged
+// first, so a run that failed the RED cannot also present its fact readings as if they were the finding.
+fn reader_probe_after_masking(
+  fingerprint: NonEmptyStr,
+  forced_record: ForcedLineRecord,
+  forced: RemoteAnswer,
+  second: RemoteAnswer,
+  shadow: RemoteAnswer,
+  use_pam: RemoteAnswer,
+  admin_readable: RemoteAnswer,
+  login: NonEmptyStr,
+  accessor: ReaderProbeAccessorReport,
+) -> ReaderProbeReceipt {
+  if reader_probe_forced_command_masks(forced: forced, other: second) == false {
+    ReaderProbeRefused { stage: StageRed, cause: reader_probe_red_cause(forced: forced, other: second) as NonEmptyStr }
+  } else {
+    // The login is admitted on the evidence that a command RAN under this key: an authentication refusal was
+    // already classified out of the forced leg, so reaching here means the server accepted the key and ran
+    // the forced command. It is deliberately not inferred from a zero exit code, which is also what a forced
+    // command that failed to read its file returns -- that would report a fact 1 of NO as a fact 1 of YES.
+    let fact = reader_probe_locked_account_fact(shadow: shadow, use_pam: use_pam, login_admitted: true, login: login)
+    match fact {
+      LockedAccountUnreadable { cause: c } => ReaderProbeRefused { stage: StageFacts, cause: c }
+      LockedAccountRead { shadow_locked: _, use_pam: _, login_admitted: _ } =>
+        ReaderProbeObserved {
+          fingerprint: fingerprint,
+          forced: forced_record,
+          second_command_masked: true,
+          locked_account: fact,
+          export: reader_probe_export_reading(admin: admin_readable, forced: reader_probe_forced_answer(a: forced, link: boot_medium_served_link_path())),
+          accessor: accessor,
+        }
+    }
+  }
+}
+
+// THE RECEIPT. Keys are excluded by construction rather than redacted: no type here holds a private half,
+// so no arm can render one, and the fingerprint is the only thing ever said about the key.
+fn render_reader_probe_receipt(r: ReaderProbeReceipt) -> String {
+  match r {
+    ReaderProbeObserved { fingerprint: f, forced: fl, second_command_masked: masked, locked_account: la, export: ex, accessor: acc } =>
+      join([
+        "reader_probe=observed\n",
+        "fingerprint=", f as String, "\n",
+        "second_command_masked=", if masked { "true" } else { "false" }, "\n",
+        render_forced_line(fl: fl),
+        reader_probe_locked_account_text(fact: la),
+        "image_readable_by_reader=", if ex.readable { "true" } else { "false" }, "\n",
+        "image_read_admin_evidence=", ex.admin_evidence as String, "\n",
+        "image_read_forced_evidence=", ex.forced_evidence as String, "\n",
+        render_accessor_report(acc: acc),
+      ], "")
+    ReaderProbeRefused { stage: s, cause: c } => join(["reader_probe=refused\nstage=", reader_probe_stage_text(stage: s), "\nreason=", c as String, "\n"], "")
+  }
+}
+
+fn render_forced_line(fl: ForcedLineRecord) -> String {
+  match fl {
+    ForcedLineHeld { digest: d } => join(["forced_digest=", d as String, "\n"], "")
+    ForcedLineImageUnreadable { evidence: e } => join(["forced_digest=unreadable\nforced_evidence=", e as String, "\n"], "")
+  }
+}
+
+fn reader_probe_locked_account_text(fact: ReaderProbeLockedAccountFact) -> String {
+  match fact {
+    LockedAccountRead { shadow_locked: l, use_pam: u, login_admitted: a } =>
+      join([
+        "shadow_password_field_locked=", if l { "true" } else { "false" }, "\n",
+        "sshd_effective_usepam=", u as String, "\n",
+        "locked_system_account_login_admitted=", if a { "true" } else { "false" }, "\n",
+      ], "")
+    LockedAccountUnreadable { cause: c } => join(["locked_account_fact=unreadable reason=", c as String, "\n"], "")
+  }
+}
+
+// The accessor line states what the instrument answered AND what it cannot answer, so a reader of the log
+// cannot mistake `permission_listed=false` for a refusal of the grant.
+fn render_accessor_report(acc: ReaderProbeAccessorReport) -> String {
+  match acc {
+    AccessorReportUnreadable { reason } => join(["accessor_probe=unreadable reason=", reason as String, "\n"], "")
+    AccessorReport { permission_listed: p, resource: res } =>
+      join([
+        "accessor_probe=reported resource=", res as String, " versions_access_listed=", if p { "true" } else { "false" },
+        " (testIamPermissions is diagnostic only: an unlisted permission here is not a refusal of the grant, and the grant is ",
+        "enforced by the agent stage above)\n",
+      ], "")
+  }
+}
+
+// THE GATE THE STEP CHECKS. An observation whose forced command could not read the image is still an
+// observation -- that is open fact 2's answer, recorded -- so the hold does not require a digest.
+fn reader_probe_holds(r: ReaderProbeReceipt) -> Bool {
+  match r {
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: masked, locked_account: _, export: _, accessor: _ } => masked
+    ReaderProbeRefused { stage: _, cause: _ } => false
+  }
+}
+
+// ── THE WET ENTRY ─────────────────────────────────────────────────────────────────────────────────
+// `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/host/boot_medium_reader_probe.dag --function boot_medium_reader_probe_wet`
+// CONSUMPTION (DESIGN section 3c): invoked by the fleet-converge mode BootMediumReaderProbe
+// (gunbc.fleet.fleet_converge_workflow), on the self-hosted runner under the fleet identity at main, after
+// the modeled agent-load step has put the reader key in the run's agent. srv2 is named here and is never a
+// dispatch input; the receipt is written whatever the outcome, so a refusal is evidence rather than a red
+// step with no text.
+fn boot_medium_reader_probe_wet() -> ProcessExit {
+  let accessor = reader_probe_accessor_report()
+  match boot_medium_reader_ssh_key {
+    Absent => boot_medium_reader_probe_write(boot_medium_reader_probe_fold(
+      pinned: false, agent_holds_pinned_key: false, fingerprint: probe_no_fingerprint,
+      target_reached: false, target_cause: "",
+      forced: unreadable_answer(), second: unreadable_answer(), shadow: unreadable_answer(), use_pam: unreadable_answer(), admin_readable: unreadable_answer(),
+      login: boot_medium_reader_login, accessor: accessor,
+    ))
+    Present { value: key } =>
+      match boot_medium_reader_ssh_key_fingerprint {
+        Absent => boot_medium_reader_probe_write(ReaderProbeRefused { stage: StageKey, cause: "the reader key carries no recorded fingerprint (gunbc.host.boot_medium_reader_key boot_medium_reader_ssh_key_fingerprint), so the agent can never be proven to hold THIS key rather than some other" as NonEmptyStr })
+        Present { value: fingerprint } =>
+          // The agent's contents are verified before any leg, by the same preparation every other route
+          // uses: it materializes this key's PUBLIC selector and requires the agent to hold this key and no
+          // other reading of it. That is the whole agent stage, and it is what makes the load step
+          // non-vacuous. Because the transport that preparation produces passes -o IdentitiesOnly=yes with
+          // this selector as its only IdentityFile, the administrator legs below cannot be answered by the
+          // reader key and vice versa: one run can hold two keys and still mean two different things by them.
+          match prepare_ssh_agent_context(attempt_raw: probe_attempt_raw, key: key, fingerprint: fingerprint, rows: fleet_known_hosts_rows()) {
+            FleetSshContextRefused { cause: _ } => boot_medium_reader_probe_write(boot_medium_reader_probe_fold(
+              pinned: true, agent_holds_pinned_key: false, fingerprint: fingerprint,
+              target_reached: false, target_cause: "",
+              forced: unreadable_answer(), second: unreadable_answer(), shadow: unreadable_answer(), use_pam: unreadable_answer(), admin_readable: unreadable_answer(),
+              login: boot_medium_reader_login, accessor: accessor,
+            ))
+            FleetSshContextReady { context: reader_context, receipt: _ } =>
+              match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String), principal: boot_medium_reader_login) {
+                SshTargetRefused { endpoint: e, refusal: _ } => boot_medium_reader_probe_write(ReaderProbeRefused { stage: StageTarget, cause: join(["srv2 could not be resolved as a target for the reader account from endpoint ", e], "") as NonEmptyStr })
+                SshTargetResolved { target: reader_target } =>
+                  match prepare_fleet_ssh_agent_context(attempt_raw: probe_attempt_raw) {
+                    FleetSshContextRefused { cause: c } => boot_medium_reader_probe_write(ReaderProbeRefused { stage: StageAgent, cause: join(["the fleet administrator context could not be prepared, so neither open fact can be read: ", c], "") as NonEmptyStr })
+                    FleetSshContextReady { context: admin_context, receipt: _ } =>
+                      match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: operator_host_srv2 as String), principal: executor_bootstrap_principal.login) {
+                        SshTargetRefused { endpoint: e, refusal: _ } => boot_medium_reader_probe_write(ReaderProbeRefused { stage: StageTarget, cause: join(["srv2 could not be resolved as an administrator target from endpoint ", e], "") as NonEmptyStr })
+                        SshTargetResolved { target: admin_target } => {
+                          // The facts the reader key cannot be asked about are read from the route that is not
+                          // masked; the two reader legs are asked of the key itself. Same host, same port,
+                          // same principal name in the audit trail -- different credential, which is the whole
+                          // experiment.
+                          let forced = reader_leg(target: reader_target, context: reader_context, argv: reader_probe_forced_argv())
+                          let second = reader_leg(target: reader_target, context: reader_context, argv: reader_probe_second_command())
+                          let shadow = elevated_leg(context: admin_context, target: admin_target, command: argv_words(command: getent_shadow_command(key: boot_medium_reader_login)))
+                          let use_pam = elevated_leg(context: admin_context, target: admin_target, command: sshd_effective_config_argv())
+                          let admin_readable = as_reader_leg(context: admin_context, target: admin_target)
+                          boot_medium_reader_probe_write(boot_medium_reader_probe_fold(
+                            pinned: true, agent_holds_pinned_key: true, fingerprint: fingerprint,
+                            target_reached: true, target_cause: "",
+                            forced: forced, second: second, shadow: shadow, use_pam: use_pam, admin_readable: admin_readable,
+                            login: boot_medium_reader_login, accessor: accessor,
+                          ))
+                        }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn boot_medium_reader_probe_write(r: ReaderProbeReceipt) -> ProcessExit {
+  let rendered = render_reader_probe_receipt(r: r)
+  let written = Filesystem.Write(path: boot_medium_reader_probe_receipt_path, content: rendered)
+  if written.success == false {
+    exit_failure(reason: concat("boot medium reader probe: the receipt could not be written: ", rendered))
+  } else if reader_probe_holds(r: r) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot medium reader probe did not hold:\n", rendered))
+  }
+}
+
+// A leg that was never dispatched, rendered as an answer so the fold judges one type. NOT presented as a
+// refusal of the thing it stands for: the fold reaches it only on a path whose cause the stopping stage
+// has already named.
+fn unreadable_answer() -> RemoteAnswer {
+  RemoteAnswer { exit_code: 255, stdout: "", stderr: "leg not dispatched: an earlier stage refused" }
+}
+
+// ONE LEG UNDER THE READER KEY, over the reader's own prepared context. The forced command makes argv
+// advisory -- the server runs the forced command whatever is sent -- which is precisely the property under
+// test, and precisely why the second command must travel this route and never the administrator one.
+fn reader_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> RemoteAnswer {
+  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv))
+}
+
+// ONE LEG AS ROOT, the same elevation B2b's own legs use (gunbc.runner.runner_host_file_converge
+// LegElevated is sudo_elevate over the same transport), so the two runs of the same read agree on how
+// privilege is obtained and differ only in which read they ask for.
+fn elevated_leg(context: FleetSshExecutionContext, target: SshTarget, command: List<String>) -> RemoteAnswer {
+  let inv = sudo_elevate(command: command)
+  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
+}
+
+// OPEN FACT 2'S LEG: the readability question asked AS the reader, from the privileged route, because under
+// the reader key every question is answered by the forced line. `test -r` on the served link is the
+// question, and `sudo -u` is how it is asked without the key.
+fn as_reader_leg(context: FleetSshExecutionContext, target: SshTarget) -> RemoteAnswer {
+  let inv = sudo_elevate_as(user: boot_medium_reader_login, command: argv_words(command: test_readable_command(path: boot_medium_served_link_path() as String)))
+  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
+}
+
+// THE FORCED COMMAND'S OWN ARGV, taken from the one place the fleet spells that command
+// (boot_medium_served_argv, the same builder the readback and the key's forced text both derive from), so
+// the probe cannot ask for a digest whose spelling drifted from the one B2b installed. The server's
+// authorized_keys ForceCommand is authoritative over anything sent here -- sending it is what lets a
+// non-holding server be caught, not what makes it hold.
+fn reader_probe_forced_argv() -> List<String> {
+  boot_medium_served_argv(path: boot_medium_served_link_path())
+}
+
+// THE SECOND COMMAND. Read-only; prints `uid=<n> (<name>)`, which no sha256sum line can be confused with;
+// and prints nothing secret even if the server ever ran it -- which is the case this exists to catch.
+fn reader_probe_second_command() -> List<String> {
+  id_user_name_argv()
+}

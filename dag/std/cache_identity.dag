@@ -41,6 +41,8 @@ data native_test_verdict_artifact_kind: ArtifactKindId = "native_test_verdict"
 
 data compute_work_artifact_kind: ArtifactKindId = "compute_work"
 
+data fabric_blob_artifact_kind: ArtifactKindId = "fabric_blob"
+
 data native_module_resolve_artifact_kind: ArtifactKindId = "native_module_resolve"
 
 data native_module_infer_artifact_kind: ArtifactKindId = "native_module_infer"

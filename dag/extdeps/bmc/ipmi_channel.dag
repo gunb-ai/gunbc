@@ -1,7 +1,9 @@
 module extdeps.bmc.ipmi_channel
 
-import std.types { Int, List, range }
+import std.measure { Second, second }
+import std.types { Bool, Int, List, NonEmptyStr, range }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
@@ -151,3 +153,162 @@ fn ipmi_controller_channel_census(
 ) -> IpmiControllerChannelCensus {
   IpmiControllerChannelCensus { members: members, user_access: user_access }
 }
+
+// ── THE SERVED BAD-PASSWORD THRESHOLD ON A LAN CHANNEL ──────────────────────────────────────────────
+//
+// The IPMI sibling of the Redfish AccountService lockout properties: how many bad passwords a
+// controller takes before it disables the user, how long the count of bad attempts survives, and how
+// long the user stays disabled. Like the Redfish properties it is SERVED BY THE CONTROLLER and read
+// per controller -- never a per-board row here. What is declared here is the upstream shape only.
+//
+// UPSTREAM. The parameter is read and written by the two LAN-configuration commands this module
+// already names (Get LAN Configuration Parameters / Set LAN Configuration Parameters). Its per-field
+// meaning, its units and its "not available" state were read today out of the source of the tool that
+// produced our own captures -- ipmitool, pinned at commit be11d948f89b10be094e28d8a0a5e8fb532c7b60:
+//   include/ipmitool/ipmi_lanp.h
+//     enum IPMI_LANP_BAD_PASS_THRESH                    -- the LAN configuration parameter selector
+//     #define IPMI_LAN_SET_CONFIG 0x01                  -- Set LAN Configuration Parameters (NetFn Transport 0x0C)
+//     #define IPMI_LAN_GET_CONFIG 0x02                  -- Get LAN Configuration Parameters (NetFn Transport 0x0C)
+//   lib/ipmi_lanp.c
+//     { IPMI_LANP_BAD_PASS_THRESH, 6, "Bad Password Threshold", NULL, 0 }   -- the parameter is SIX bytes
+//     the print of that parameter (the four lines "ipmitool lan print" shows):
+//       data[0] & 1          -> "Invalid password disable"   yes | no
+//       data[1]              -> "Bad Password Threshold"     the count itself
+//       data[2] | data[3]<<8 -> "Attempt Count Reset Int."   printed as value * 10
+//       data[4] | data[5]<<8 -> "User Lockout Interval"      printed as value * 10
+//     and when the controller answers with anything but six bytes it prints "Not Available" instead of
+//     any of the four lines -- that is the upstream not-readable state, and it is an arm below, not a zero.
+// THE TWO INTERVALS ARE TENS OF SECONDS ON THE WIRE and seconds on the print; the fields below keep the
+// PRINTED seconds, and the scaling is stated here and asserted by a witness against our own capture.
+//
+// WHAT WAS NOT READ, AND IS SAID: the Intel IPMI Specification Second Generation v2.0 (DSP0266)
+// section that defines this parameter's layout could not be retrieved today, so the field layout above
+// is cited to the tool that reads it, not to the specification section. A row that needs the
+// specification's own words carries `TranscribedUncited` with the read obligation naming DSP0266's
+// Get/Set LAN Configuration Parameters chapter. The layout is not in doubt for our fleet -- it is the
+// layout our own H11SSL capture came back under, and it is transcribed there verbatim:
+// artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/lan-print-1.txt
+//   Bad Password Threshold  : 3
+//   Invalid password disable: yes
+//   Attempt Count Reset Int.: 300
+//   User Lockout Interval   : 300
+// -- three bad passwords, then the user is disabled; the bad-attempt count survives 300 s from the last
+// bad attempt; the disabled state lasts 300 s. That is the number a BmcSecure plan against an H11SSL
+// ADMIN must fit inside, and it is why the plan-time budget exists.
+//
+// CONSUMER: gunbc.machine_intake.bmc_secure's account-state observation reads this verdict into a
+// BmcLockoutSurfaceReading for the IPMI LAN surface of a channel, and the failed-login budget spends
+// plans against it.
+
+data ipmi_lan_bad_password_threshold_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ipmitool/ipmitool/blob/be11d948f89b10be094e28d8a0a5e8fb532c7b60/lib/ipmi_lanp.c"
+  }
+}
+
+// The four served figures, in the printed units. The threshold is a byte-sized count on the wire; the
+// two intervals are the printed seconds (wire tens-of-seconds times ten), each bounded by the largest
+// value a two-byte little-endian tens-of-seconds field can print.
+// THE UPSTREAM BOUNDS, NAMED. A union arm cannot carry a where-clause of its own
+// (the checker expects the closing brace after a plain type), and these are the
+// bounds ipmitool's lib/ipmi_lanp.c states for the 6-byte Bad Password Threshold
+// block: the count is one byte (0..255) and each of the two intervals is a
+// 16-bit count of TEN-SECOND units, so 0..655350 seconds. Naming them once also
+// keeps a caller from passing an interval where a count belongs.
+type IpmiLanBadPasswordCount = Int where range(min: 0, max: 255)
+type IpmiLanLockoutSeconds = Int where range(min: 0, max: 655350)
+
+type IpmiLanBadPasswordThreshold sole_constructor {
+  // "Invalid password disable": whether a bad password disables the user at all. False means the
+  // controller is not locking users out on this channel, and the budget says so rather than assuming.
+  invalid_password_disable: Bool
+  // "Bad Password Threshold": the number of bad passwords after which the user is disabled.
+  bad_password_threshold: IpmiLanBadPasswordCount
+  // "Attempt Count Reset Int.", in seconds: how long the count of bad attempts survives from the last
+  // bad attempt.
+  attempt_count_reset_secs: IpmiLanLockoutSeconds
+  // "User Lockout Interval", in seconds: how long the user stays disabled once the threshold is met.
+  user_lockout_interval_secs: IpmiLanLockoutSeconds
+}
+
+// THE THREE ARMS. Read: the controller answered with the six bytes. NotAvailable: it answered, but not
+// with the six bytes the parameter is -- what "ipmitool lan print" itself says, in words, when this
+// happens. ReadFailed: the command did not answer at all. An unavailable parameter is never read as a
+// threshold of zero, and never read as a threshold at all.
+type IpmiLanBadPasswordThresholdVerdict
+  = IpmiLanBadPasswordThresholdRead { channel: IpmiChannelNumber, served: IpmiLanBadPasswordThreshold }
+  | IpmiLanBadPasswordThresholdNotAvailable { channel: IpmiChannelNumber }
+  | IpmiLanBadPasswordThresholdReadFailed { channel: IpmiChannelNumber, detail: NonEmptyStr }
+
+// Whether this parameter locks users at all: "Invalid password disable" is the switch, and a threshold
+// of 0 is the other way the controller says the same thing. Stated once, as a sum, so a budget never
+// compares these two cases differently at two use sites.
+type IpmiLanLockoutThresholdReading
+  = IpmiLanUsersAreNotLockedOut { reason: NonEmptyStr }
+  | IpmiLanLocksAfter { failed_attempts: IpmiLanBadPasswordCount }
+
+// THE ONLY WAY TO HOLD ONE OF THESE OUTSIDE THIS MODULE: the values come from a
+// Get LAN Configuration Parameters response for the Bad Password Threshold block,
+// and the record is sole_constructor so nothing outside can fabricate one field by
+// field. No default is filled in: a controller that answers this parameter "Not
+// Available" yields IpmiLanBadPasswordThresholdNotAvailable, not this builder, and a
+// caller that did not run the command has nothing to pass here.
+// CONSUMER: the account-state reader of gunbc.machine_intake.bmc_secure and its
+// fixture test.fixture.machine_intake.bmc_lockout.
+fn ipmi_lan_bad_password_threshold_served(
+  invalid_password_disable: Bool,
+  bad_password_threshold: IpmiLanBadPasswordCount,
+  attempt_count_reset_secs: IpmiLanLockoutSeconds,
+  user_lockout_interval_secs: IpmiLanLockoutSeconds,
+) -> IpmiLanBadPasswordThreshold {
+  IpmiLanBadPasswordThreshold {
+    invalid_password_disable: invalid_password_disable,
+    bad_password_threshold: bad_password_threshold,
+    attempt_count_reset_secs: attempt_count_reset_secs,
+    user_lockout_interval_secs: user_lockout_interval_secs,
+  }
+}
+
+// THE ATTEMPT-COUNT RESET WINDOW, IN THE REPO'S TIME UNIT. The block's
+// attempt-count-reset field is a 16-bit count of TEN-SECOND units (ipmitool
+// lib/ipmi_lanp.c, the cited transport), which is why IpmiLanLockoutSeconds is
+// bounded at 655350 rather than 65535: the scaling is applied HERE, against the
+// cited source, and what leaves this module is a std.measure Second. A product layer
+// multiplying a raw int by 10 or 1000 to compare with a timestamp would be a second
+// unit system beside std.measure (DESIGN.md section 2).
+// CONSUMER: bmc_failed_attempt_window in gunbc.machine_intake.bmc_secure.
+fn ipmi_lan_attempt_count_reset_window(served: IpmiLanBadPasswordThreshold) -> Second {
+  second(count: served.attempt_count_reset_secs)
+}
+
+// IS THE FAILED-ATTEMPT COUNTER IN FORCE ON THIS CHANNEL AT ALL? The LAN section's
+// Invalid password disable parameter is the switch: ipmitool's LAN Print Section
+// prints it as `Invalid password disable : yes|no`, and with it not set the BMC does
+// not disable the user on bad passwords, so the Bad Password Threshold byte is not
+// what locks an account out — the counter still increments, but nothing acts on it.
+// Declared here rather than read field-wise by the product layer, so the vendor's
+// shape stays in this module (ipmi_lan_bad_password_threshold_locks_after states the
+// same rule for the THRESHOLD; this one states it for the counter's effect).
+// CONSUMER: gunbc.machine_intake.bmc_secure.bmc_failed_attempt_window.
+fn ipmi_lan_failed_attempts_drive_lockout(served: IpmiLanBadPasswordThreshold) -> Bool {
+  served.invalid_password_disable
+}
+
+fn ipmi_lan_bad_password_threshold_locks_after(
+  channel: IpmiChannelNumber,
+  served: IpmiLanBadPasswordThreshold,
+) -> IpmiLanLockoutThresholdReading {
+  if !served.invalid_password_disable {
+    IpmiLanUsersAreNotLockedOut { reason: "the controller serves Invalid password disable: no on this channel" as NonEmptyStr }
+  } else if served.bad_password_threshold == 0 {
+    IpmiLanUsersAreNotLockedOut { reason: "the controller serves Bad Password Threshold 0 on this channel" as NonEmptyStr }
+  } else {
+    IpmiLanLocksAfter { failed_attempts: served.bad_password_threshold }
+  }
+}
+
+// THE FRONTIER: no live read mints this verdict yet. Not dissolved by the dry world supplying a record.
+data ipmi_lan_bad_password_threshold_live_read_frontier: DissolutionCondition = unbound_dissolution(
+  description: "dissolves when a live Get LAN Configuration Parameters read of the Bad Password Threshold parameter mints IpmiLanBadPasswordThresholdVerdict for a channel this fleet operates, with the command and its response committed as content-addressed evidence under artifacts/bmc/*/; NOT satisfied by the dry world supplying the record, by 'ipmitool lan print' output transcribed from another controller or channel, or by a read whose six bytes were not kept" as NonEmptyStr,
+)

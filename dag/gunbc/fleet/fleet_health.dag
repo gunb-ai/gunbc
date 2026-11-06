@@ -28,6 +28,7 @@ import gunbc.fleet.fleet_fan_tach_expectation {
   host_fan_tach_expectation_admission,
 }
 import product.fan_tach_health { FanTachDeviation, fan_tach_goal }
+import extdeps.cited_field { NeedsReading }
 import product.host_health {
   FleetHealthDeviation,
   FleetHealthReceipt,
@@ -39,7 +40,6 @@ import product.host_health {
   KeyedHostObservation,
   NoPriorBaseline,
   TemperatureExpectation,
-  TemperatureLimitUnestablished,
   TemperatureRosterDeclared,
   assess_fleet_health,
   host_health_goal,
@@ -120,7 +120,7 @@ fn host_goal(host: ComputeHost) -> ObservationAttempt<HostHealthGoal, NonEmptySt
     HostFanTachExpectationEstablished { expectation } => ObservationEstablished { observed: host_health_goal(
       host: host.identity,
       fans: fan_tach_goal(expectation: expectation, minimum_rotating: fleet_health_minimum_rotating),
-      temperatures: TemperatureRosterDeclared { sensors: map(altrad8ud_temperature_sensors, s => TemperatureExpectation { sensor: s, limit: TemperatureLimitUnestablished }) },
+      temperatures: TemperatureRosterDeclared { sensors: map(altrad8ud_temperature_sensors, s => TemperatureExpectation { sensor: s, limit: NeedsReading { read_obligation: "Read the component grade's datasheet limit for this board sensor (see extdeps.boards.asrock_rack and extdeps.memory for the DIMM and regulator rows) and cite it." } }) },
       baseline: NoPriorBaseline,
     ) }
     HostFanTachExpectationAbsent => ObservationRefused { cause: concat("host ", host.identity as String, " has no fan expectation row") as NonEmptyStr }

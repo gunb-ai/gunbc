@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (resolve_arrow_node_in) and mints each reference it answers as parameter_reference_node over
 // <fn path>.<label>, verified against the symbol index (resolve_frame_bound_reference). A `let`,
 // match-arm or lambda frame is Lexical: a reference it answers is minted as lexical_reference_node and
-// the binder that answered it is recorded in ResolvedTree.occurrence_bindings (rows L1-L5). ROUTE: rows (1)-(3) are
+// the binder that answered it is recorded in ResolvedTree.occurrence_resolutions (rows L1-L5). ROUTE: rows (1)-(3) are
 // source text through assemble_program_from_ingest, lowering and resolve for real, and they assert
 // the ROUTE -- which carrier each reference arrives as -- not only acceptance. Rows (4)-(6) supply the
 // carrier at one interface each (resolve's frame arm, eval, reference_closure); (1) is their

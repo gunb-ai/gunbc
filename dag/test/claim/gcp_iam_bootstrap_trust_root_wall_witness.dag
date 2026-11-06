@@ -10,7 +10,7 @@ import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, iam_converge_serv
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_trust_root_tag_condition, iam_bootstrap_trust_root_tagged_accounts, iam_bootstrap_delta_principal,
-  iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id, iam_bootstrap_trust_root_tag_parents,
+  iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id,
   iam_bootstrap_deny_rules_match, iam_bootstrap_trust_root_wall_rule,
   TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
   iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions, iam_bootstrap_tag_value_detach_permissions,
@@ -88,7 +88,6 @@ test fn the_tagged_population_is_exactly_the_three_own_trust_accounts() -> Bool 
   let tagged_names = map(iam_bootstrap_trust_root_tagged_accounts(), a => a as String)
   count(tagged_names) == 3 && all(trust_roots, a => any(tagged_names, x => x == (a as String)))
     && !any(gcp_iam_converge_targets, t => any(tagged_names, x => x == (t.service_account as String)))
-    && count(iam_bootstrap_trust_root_tag_parents()) == 3
 }
 
 test fn the_wall_is_its_own_deny_policy_with_the_rendered_tag_condition() -> Bool {
@@ -159,21 +158,21 @@ fn binding_row(parent: String, value: String) -> GcpTagBindingWire {
 }
 
 test fn a_row_with_the_value_on_another_parent_establishes_nothing() -> Bool {
-  match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: wanted_value as String)] }, next_page_token: none) {
+  match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: wanted_value as String)] }, next_page_token: none) {
     TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false
   }
 }
 
 test fn the_exact_row_establishes_the_binding() -> Bool {
-  match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: "tagValues/9"), binding_row(parent: parent_a, value: wanted_value as String)] }, next_page_token: Present { value: "more" }) {
+  match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: "tagValues/9"), binding_row(parent: parent_a, value: wanted_value as String)] }, next_page_token: Present { value: "more" }) {
     TagBindingEstablished => true  TagBindingAbsent => false  TagBindingIncomplete => false
   }
 }
 
 test fn an_unmatched_page_with_another_page_is_incomplete_never_absent() -> Bool {
-  (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_a, value: "tagValues/9")] }, next_page_token: Present { value: "more" }) {
+  (match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_a, value: "tagValues/9")] }, next_page_token: Present { value: "more" }) {
     TagBindingEstablished => false  TagBindingAbsent => false  TagBindingIncomplete => true })
-    && (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Absent, next_page_token: Present { value: "" }) {
+    && (match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Absent, next_page_token: Present { value: "" }) {
     TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false })
 }
 
@@ -233,4 +232,27 @@ test fn only_a_tag_values_id_name_is_admitted() -> Bool {
     && !value_admitted(name: "tagValues/", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
     && !value_admitted(name: "tagKeys/281479000000002", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
     && !value_admitted(name: "tagValues/2/extra", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
+}
+
+// The binding listing answers rows under the project-number spelling of the account parent that was
+// requested by project id (receipt iam-ceremony-20261028T140050Z); both spellings name one resource.
+test fn a_binding_row_under_the_project_number_spelling_is_established() -> Bool {
+  let wanted = "tagValues/281480188215009" as NonEmptyStr
+  let by_id = "//iam.googleapis.com/projects/gunbai-secrets/serviceAccounts/114094559386085842174"
+  let by_number = "//iam.googleapis.com/projects/582015116396/serviceAccounts/114094559386085842174"
+  match trust_root_tag_binding_reading(parents: [by_id, by_number], value_name: wanted, bindings: Present { value: [binding_row(parent: by_number, value: wanted as String)] }, next_page_token: none) {
+    TagBindingEstablished => true
+    _ => false
+  }
+}
+
+// The wall as GCP answered it on 2026-10-28 (gcloud iam policies get, after receipt
+// iam-ceremony-20261028T142632Z refused "created deny policy differs").
+test fn the_wall_as_gcp_answered_it_matches_the_declared_rule() -> Bool {
+  let observed = GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule {
+    denied_principals: ["principal://iam.googleapis.com/projects/-/serviceAccounts/iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com"],
+    denied_permissions: ["iam.googleapis.com/serviceAccounts.setIamPolicy", "iam.googleapis.com/serviceAccounts.update", "iam.googleapis.com/serviceAccounts.delete", "iam.googleapis.com/serviceAccounts.disable", "iam.googleapis.com/serviceAccounts.enable", "iam.googleapis.com/serviceAccounts.undelete"],
+    exception_principals: none, exception_permissions: none,
+    denial_condition: Present { value: IamCondition { title: "gunbc trust-root wall", expression: "resource.matchTag('gunbai-secrets/gunbc-trust-root', 'root')", description: Present { value: "iam-bootstrap may not rewrite, alter or remove a gunbc trust-root account" } } } } } }
+  iam_bootstrap_deny_rules_match(observed: Present { value: [observed] }, declared: [iam_bootstrap_trust_root_wall_rule()])
 }

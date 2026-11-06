@@ -14,6 +14,14 @@ import gunbc.repo.repo_self_warning_policy { repo_self_warning_denial_rustflags 
 // installs, resolved from RUSTC or PATH exactly as the probe does; it is not a literal.
 data repo_self_emitted_cargo_build_flags: String = "build --release --offline --message-format json --color never"
 
+// THE DENIAL APPENDS TO THE AMBIENT RUSTFLAGS INSTEAD OF REPLACING IT. An assignment of the form
+// RUSTFLAGS="-D warnings" on a command line REPLACES the exported value for that command, and the
+// seed-build preamble (gunbc.repo.repo_self_build repo_self_build_env_preamble) is exported, not
+// inline -- so the plain form silently dropped the four --remap-path-prefix pairs for exactly the
+// build whose product the fleet pack ships, leaving per-runner registry and sysroot paths baked into
+// the emitted bin while the cargo-built sibling was reproducible. Appending keeps both properties:
+// the denial still applies when nothing is exported (the fleet key's own cargo run, a bare local
+// build), and it still leads its own value so a future flag parse sees the floor first.
 fn repo_self_emitted_crate_build_command(cargo: String) -> String {
-  join(["RUSTFLAGS=\"", repo_self_warning_denial_rustflags(), "\" ", cargo, " ", repo_self_emitted_cargo_build_flags], "")
+  join(["RUSTFLAGS=\"$RUSTFLAGS ", repo_self_warning_denial_rustflags(), "\" ", cargo, " ", repo_self_emitted_cargo_build_flags], "")
 }

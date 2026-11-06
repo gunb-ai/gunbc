@@ -12,8 +12,8 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
-import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_unit_receipt_path }
-import gunbc.runner.runner_microvm_slot_controller { slot_controller_receipt_prefix }
+import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_instance_name, microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, MicrovmReceiptWriter, ControllerReceipts, MicrovmReceiptStoreReady, MicrovmReceiptStoreUnready, microvm_receipt_store, MicrovmReceiptRead, MicrovmReceiptUnreadable, microvm_receipt_read }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.runner.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.executor_privileged_operation { SystemdStartUnit }
 import gunbc.executor_privileged_apply { executor_privileged_operation_command }
@@ -50,14 +50,14 @@ fn microvm_slot_start_unit() -> NonEmptyStr {
 // cannot drift apart on the guard that makes one start one incarnation.
 type MicrovmUnitStartSubject {
   unit: NonEmptyStr
-  receipt_prefix: String
+  writer: MicrovmReceiptWriter
   bound: Second
 }
 
 fn microvm_slot_start_subject() -> MicrovmUnitStartSubject {
   MicrovmUnitStartSubject {
     unit: microvm_slot_start_unit(),
-    receipt_prefix: slot_controller_receipt_prefix(instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()) as String),
+    writer: ControllerReceipts { instance: runner_slot_instance_name(slot: srv1_microvm_shakedown_slot()) as String },
     bound: microvm_slot_unit_timeout_stop(),
   }
 }
@@ -156,12 +156,13 @@ fn microvm_unit_start_polls(bound: Second) -> Int {
 }
 
 fn read_controller_receipt(subject: MicrovmUnitStartSubject, invocation_id: NonEmptyStr) -> MicrovmControllerReceiptReading {
-  let path = microvm_unit_receipt_path(prefix: subject.receipt_prefix, invocation_id: invocation_id)
-  let r = Filesystem.Read(path: path)
-  if !r.success {
-    ControllerReceiptUnreadable { path: path, detail: r.error }
-  } else {
-    ControllerReceiptRead { path: path, text: trim(s: r.content) }
+  match microvm_receipt_store(tree: host_state_tree()) {
+    MicrovmReceiptStoreUnready { detail } => ControllerReceiptUnreadable { path: "microvm receipt store", detail: detail }
+    MicrovmReceiptStoreReady { store } =>
+      match microvm_receipt_read(store: store, writer: subject.writer, invocation_id: invocation_id) {
+        MicrovmReceiptUnreadable { path, detail } => ControllerReceiptUnreadable { path: path, detail: detail }
+        MicrovmReceiptRead { path, text } => ControllerReceiptRead { path: path, text: trim(s: text) }
+      }
   }
 }
 

@@ -2,6 +2,8 @@ module test.claim.machine_intake.pre_os_capture_replay_witness
 
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 
+import extdeps.network.mac { mac_address }
+
 import test.claim.fleet_observation_capture_witness { t_pos, t_stream, t_other_stream }
 
 import gunbc.machine_intake.pre_os_refusal { PreOsSourceRefusal }
@@ -109,7 +111,7 @@ fn firmware_selection_regression() -> Bool {
       let selection = pre_os_firmware_boot_selection(text: payload, host_mac: mtcollins1_host_nic_mac)
       let without_selection = join(filter(split(s: payload, delimiter: "\n"), line => !starts_with(s: line, prefix: ">>Start PXE over IPv")), "\n")
       match selection { ObservationEstablished { observed: _ } => true _ => false }
-        && match pre_os_firmware_boot_selection(text: payload, host_mac: "02:00:00:00:00:01") { ObservationRefused { cause: _ } => true _ => false }
+        && match pre_os_firmware_boot_selection(text: payload, host_mac: mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 1)) { ObservationRefused { cause: _ } => true _ => false }
         && match pre_os_firmware_boot_selection(text: without_selection, host_mac: mtcollins1_host_nic_mac) { ObservationRefused { cause: _ } => true _ => false }
         && match pre_os_host_userspace_boot(text: payload, host_mac: mtcollins1_host_nic_mac) { ObservationEstablished { observed: BootOutcomeUnobserved } => true _ => false }
         && contains(payload, "HMA82GR7AFR8N-VK") && contains(payload, "HMA82GR7CJR8N-VK") && contains(payload, "HMA82GR7AFR4N-VK")

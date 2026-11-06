@@ -1,7 +1,15 @@
 module gunbc.machine_intake.bmc_firmware_family_discriminator
 
 import std.types { Bool, List, NonEmptyStr, String }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import std.optional { Present, Absent }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string,
+}
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
+import extdeps.bmc.supermicro { supermicro_redfish_oem_key, supermicro_redfish_oem_key_standing }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
@@ -43,6 +51,18 @@ data openbmc_oem_key: NonEmptyStr = "OpenBmc"
 
 data megarac_oem_key: NonEmptyStr = "Ami"
 
+// THE DISCRIMINATOR IS A ROW PER FAMILY, NOT A BRANCH PER FAMILY (DESIGN section 6b). The fold used to
+// test the OpenBMC and AMI keys pairwise; a third family would have meant a third branch and a new
+// pairwise ambiguity case. Each row binds one Oem key, with its standing, to one family, and the fold
+// counts the rows a Manager matches.
+type FamilyOemKeyRow { key: NonEmptyStr, family: BmcFirmwareFamily, standing: CitedFigureStanding }
+
+data family_oem_key_rows: List<FamilyOemKeyRow> = [
+  FamilyOemKeyRow { key: openbmc_oem_key, family: OpenBmc, standing: openbmc_oem_key_standing },
+  FamilyOemKeyRow { key: megarac_oem_key, family: AmiMegaRac, standing: megarac_oem_key_standing },
+  FamilyOemKeyRow { key: supermicro_redfish_oem_key, family: SupermicroAten, standing: supermicro_redfish_oem_key_standing },
+]
+
 type FamilyDiscrimination
   = FamilyDiscriminated { family: BmcFirmwareFamily, basis: NonEmptyStr }
   | FamilyIndeterminate { basis: NonEmptyStr }
@@ -52,33 +72,24 @@ fn observation_names_oem(observation: ManagerIdentityObservation, key: NonEmptyS
   any(observation.oem_keys, k => k == (key as String))
 }
 
-// AMBIGUITY IS ITS OWN ARM AND DOES NOT COLLAPSE TO EITHER FAMILY. A Manager advertising both Oem
-// keys is a state this fold cannot resolve, and picking one would be the widening §5 refuses; an
-// operator reading FamilyAmbiguous knows to go look, whereas a wrong FamilyDiscriminated would
-// select a rotation route against the wrong stack.
+// AMBIGUITY IS ITS OWN ARM AND DOES NOT COLLAPSE TO ANY FAMILY. A Manager advertising the Oem keys of two
+// families is a state this fold cannot resolve, and picking one would be the widening section 5 refuses;
+// an operator reading FamilyAmbiguous knows to go look, whereas a wrong FamilyDiscriminated would select
+// a rotation route against the wrong stack.
 fn discriminate_family(observation: ManagerIdentityObservation) -> FamilyDiscrimination {
-  let open = observation_names_oem(observation: observation, key: openbmc_oem_key)
-  let ami = observation_names_oem(observation: observation, key: megarac_oem_key)
-  if open && ami {
+  let matched = filter(family_oem_key_rows, row => observation_names_oem(observation: observation, key: row.key))
+  if matched.length() > 1 {
     FamilyAmbiguous {
-      basis: "the Manager advertises both the OpenBMC and the AMI Oem key; this fold refuses rather than choosing",
+      basis: concat("the Manager advertises the Oem keys of more than one modeled family: ", join(map(matched, row => row.key as String), ", ")) as NonEmptyStr,
     }
   } else {
-    if open {
-      FamilyDiscriminated {
-        family: OpenBmc,
-        basis: "the Manager resource advertises the OpenBMC Oem key",
+    match first(matched) {
+      Present { value: row } => FamilyDiscriminated {
+        family: row.family,
+        basis: concat("the Manager resource advertises the Oem key ", row.key as String) as NonEmptyStr,
       }
-    } else {
-      if ami {
-        FamilyDiscriminated {
-          family: AmiMegaRac,
-          basis: "the Manager resource advertises the AMI Oem key",
-        }
-      } else {
-        FamilyIndeterminate {
-          basis: "the Manager resource advertises neither the OpenBMC nor the AMI Oem key; firmware_version and model were read but no modeled discriminator matched",
-        }
+      Absent => FamilyIndeterminate {
+        basis: "the Manager resource advertises no modeled family's Oem key; firmware_version and model were read but no modeled discriminator matched",
       }
     }
   }
@@ -92,5 +103,40 @@ fn family_standing_from_discrimination(discrimination: FamilyDiscrimination) -> 
     FamilyDiscriminated { family: f, basis: _ } => FamilyObserved { family: f }
     FamilyIndeterminate { basis: b } => FamilyUnobserved { discriminator: b }
     FamilyAmbiguous { basis: b } => FamilyUnobserved { discriminator: b }
+  }
+}
+
+// THE MANAGER RESOURCE, DECODED ONCE (DMTF Manager schema: Id, FirmwareVersion, Model, and the member
+// names of its Oem object). A body that is not a Manager document refuses rather than becoming an
+// observation with empty fields that would discriminate as Indeterminate.
+fn manager_identity_observation_of(body: String) -> ObservationAttempt<ManagerIdentityObservation, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => ObservationRefused { cause: concat("the Manager body is not a JSON document: ", json_document_gap_text(gap: g)) as NonEmptyStr }
+    JsonDocumentParsed { value: doc } => match json_field_string(obj: doc, key: "Id") {
+      FieldAbsent => ObservationRefused { cause: "the Manager body carries no Id" }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+      FieldRead { value: id } => if id == "" { ObservationRefused { cause: "the Manager body's Id is empty" } } else {
+        match json_field(obj: doc, key: "Oem") {
+          FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+          FieldAbsent => ObservationEstablished { observed: ManagerIdentityObservation { manager_id: id as NonEmptyStr, firmware_version: string_or_empty(doc: doc, key: "FirmwareVersion"), model: string_or_empty(doc: doc, key: "Model"), oem_keys: [] } }
+          FieldRead { value: oem } => match oem {
+            JsonObject { members: ms } => ObservationEstablished { observed: ManagerIdentityObservation { manager_id: id as NonEmptyStr, firmware_version: string_or_empty(doc: doc, key: "FirmwareVersion"), model: string_or_empty(doc: doc, key: "Model"), oem_keys: map(ms, m => m.key) } }
+            JsonNull => ObservationRefused { cause: "the Manager's Oem member is not an object" }
+            JsonBool { value: _ } => ObservationRefused { cause: "the Manager's Oem member is not an object" }
+            JsonNumber { lexeme: _ } => ObservationRefused { cause: "the Manager's Oem member is not an object" }
+            JsonString { value: _ } => ObservationRefused { cause: "the Manager's Oem member is not an object" }
+            JsonArray { elements: _ } => ObservationRefused { cause: "the Manager's Oem member is not an object" }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn string_or_empty(doc: JsonValue, key: String) -> String {
+  match json_field_string(obj: doc, key: key) {
+    FieldRead { value: v } => v
+    FieldAbsent => ""
+    FieldMalformed { cause: _ } => ""
   }
 }

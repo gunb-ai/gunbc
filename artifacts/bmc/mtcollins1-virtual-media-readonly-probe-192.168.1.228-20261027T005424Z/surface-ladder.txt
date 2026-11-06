@@ -1,0 +1,20 @@
+B0 unauthenticated surface ladder -- mtcollins1 (192.168.1.228) -- out-of-band, read-only GET only
+observer session: fierce-lark-507 (node adhoc-b4222c87-d37)
+started_utc: 2026-10-27T00:54:22Z
+
+PATH                                       CODE   SERVER_OR_AUTH
+/redfish                                   200    AMI MegaRAC Redfish Service
+/redfish/v1                                200    AMI MegaRAC Redfish Service
+/redfish/v1/                               200    AMI MegaRAC Redfish Service
+/redfish/v1/Systems                        401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/Managers                       401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/Managers/Self                  401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/Managers/Self/VirtualMedia     401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/Systems/1                      401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/Systems/1/VirtualMedia         401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/Chassis                        401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/SessionService                 401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/redfish/v1/AccountService                 401    AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server"
+/api/session                               404    lighttpd
+/api/settings/media/general                401    lighttpd
+/                                          200    lighttpd

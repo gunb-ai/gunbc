@@ -1,0 +1,258 @@
+module v2.test.claim.self_host.frontier_probe_admission_missing_module
+
+// THE DELETION MADE SAFE, PROVEN ON THE ROUTE THAT DEGRADED (review 87842, blocking; ruling by EXECUTION).
+//
+// `frontier_probe` used to fold the whole ingest again -- program_assembly_fold_ingest, then
+// validate_module_roots, then module_root_lookup over admission.imports -- to rediscover which import had no
+// root. That second derivation was deleted so the probe reports the name the refusal itself states (DESIGN s3:
+// each fact lives in exactly one place). The reviewer's finding: on ONE route that deletion silently weakened
+// the receipt. The admission door `v2.compiler.name_resolve.admit_imported_module_existence` re-stamps the
+// requester's refusal with the import's own authored locus, keeping `reason` and `correction` and dropping
+// whatever `at` cited -- so a probe reading the name out of `at` answers `FrontierProbeDetailAbsent` exactly
+// where the re-fold had answered `MissingModule { requested }`. DESIGN s5 requires every degradation typed,
+// located and countable, not silent, and no existing `MissingModule` claim went through admission, so nothing
+// could see it.
+//
+// WHY THIS SHAPE, AND WHY IT IS DECIDABLE AT ALL THREE REVISIONS. Every function this file calls has an
+// identical signature at main and at this PR's head, so the same claim text runs unchanged at main (where the
+// re-fold is the producer), at 6fda648a (where the deletion landed and the claim must be RED), and at the fix
+// head (GREEN). The route is the real one, not a paraphrase: the two admission doors the compiler runs, in
+// order, feeding the probe's own admission-rejected receipt builder. `fc_located_import` writes the authored
+// Textual extent 14..42, which is what makes the door re-stamp -- without an authored position the route under
+// test would not be the route the reviewer named.
+//
+// FIX CARRIES THE NAME AT ITS PRODUCER, with no second derivation returning:
+// `resolve_module_not_found_diagnostic_from_missing` puts the requested name in the diagnostic's `correction`
+// (`NoCorrectionReason::RequestedModuleMissing`), the one slot a located caller cannot overwrite. The probe
+// reads it there. Nothing re-folds the ingest.
+
+import std.algebra { Cons, Empty, FreeMonoid, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  AdmissionAccepted,
+  AdmissionRejected,
+  ResolutionSubject,
+  admit_imported_modules,
+  validate_module_roots
+}
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.self_host.frontier_probe { frontier_probe_receipt_from_admission_diagnostic_rejected }
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeDetailAbsent,
+  FrontierProbeReceipt,
+  MissingModule
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  ExternalContractUnknown,
+  bind_outcome,
+  outcome_accepted
+}
+import v2.std.namespace_alias { CapturedImportTarget }
+import v2.std.node { symbol_lexeme }
+import v2.std.qualified_name { QualifiedName }
+import v2.test.claim.name_resolve.admission_fail_closed {
+  fc_admitted,
+  fc_initial_admission_state,
+  fc_located_import,
+  fc_module_root,
+  fc_qn
+}
+
+// THE INGEST CARRIES THE TWO ROOTS THE CLAIM PASSES TO `validate_module_roots`, spelled the same way. The
+// probe's admission-rejected receipt takes an ingest, and at main the deleted re-fold folded THAT ingest to
+// rediscover the name -- so if the ingest disagreed with the roots under test, main would answer from a
+// different fixture and the comparison across revisions would prove nothing. Same roots, same names, one
+// authority for the fixture: the two `fc_module_root` calls below and these two module declarations.
+data fm_subject_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^fm_admission_probe_artifact,
+  file_path: "src/v2/pilot/frontier_probe_admission_missing_module_pilot.dag"
+}
+
+fn fm_witness(carried: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: carried, fidelity: Lossless },
+    artifact: fm_subject_artifact,
+    compilation_unit: ^fm_admission_probe_cu,
+    source_root: V2Tree
+  }
+}
+
+fn fm_ingest() -> SourceRootIngest {
+  Cons {
+    head: fm_witness(carried: "module fm_subject_seg\n"),
+    tail: Cons { head: fm_witness(carried: "module fc_found_seg\n"), tail: Empty }
+  }
+}
+
+fn fm_admission(targets: FreeMonoid<CapturedImportTarget>) -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: fc_qn(seg: ^fm_subject_seg) },
+    imports: targets
+  }
+}
+
+// subject root + one real root, so the refused name is refused for being ABSENT and not because the fixture
+// admits nothing at all.
+fn fm_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fm_subject_seg)), f: fn(subject) {
+    bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(found) {
+      outcome_accepted(value: Cons { head: subject, tail: Cons { head: found, tail: Empty } })
+    })
+  })
+}
+
+fn fm_missing_qn() -> QualifiedName {
+  fc_qn(seg: ^fm_missing_seg)
+}
+
+// THE ROUTE: validate, then admit one LOCATED import whose target is neither a root nor declared, and hand
+// the resulting rejection to the probe's own admission-rejected builder. Returns the receipt.
+fn fm_admission_rejected_receipt() -> Optional<FrontierProbeReceipt> {
+  match fm_roots() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: roots, diagnostics: _ } =>
+      match validate_module_roots(roots: roots) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: validated, diagnostics: _ } =>
+          match admit_imported_modules(
+            roots: validated,
+            modules: Cons { head: fc_located_import(target: fm_missing_qn()), tail: Empty },
+            state: fc_initial_admission_state(),
+            subject_qn: fc_qn(seg: ^fm_subject_seg),
+            index: source_root_index_empty(),
+            active_roots: Empty
+          ) {
+            AdmissionRejected { diagnostics: d } =>
+              optional_present(
+                value: frontier_probe_receipt_from_admission_diagnostic_rejected(
+                  module_path: "src/v2/pilot/frontier_probe_admission_missing_module_pilot.dag",
+                  ingest: fm_ingest(),
+                  admission: fm_admission(
+                    targets: Cons { head: fc_located_import(target: fm_missing_qn()), tail: Empty }
+                  ),
+                  d: d
+                )
+              )
+            AdmissionAccepted { bindings: _, origins: _ } => optional_absent()
+          }
+      }
+  }
+}
+
+// THE DISCRIMINATOR. A subject imports a root-less module through the admission route and the receipt must
+// name it: detail = MissingModule { requested: fm.missing }, not FrontierProbeDetailAbsent. Also asserts the
+// precondition the reviewer named -- that the door really did re-stamp -- so the claim cannot go green by
+// testing a route where nothing was overwritten.
+test fn admission_route_missing_import_receipt_names_the_missing_module() -> Bool {
+  match fm_admission_rejected_receipt() {
+    Absent => false
+    Present { value: receipt } =>
+      (receipt.located_reason == ^resolve_module_not_found)
+        && (match receipt.detail {
+          MissingModule { requested: requested } =>
+            match requested {
+              Cons { head: head, tail: tail } =>
+                (symbol_lexeme(sym: head) == symbol_lexeme(sym: ^fm_missing_seg))
+                  && (match tail { Empty => true _ => false })
+              Empty => false
+            }
+          _ => false
+        })
+  }
+}
+
+// THE precondition, asserted on the same run rather than assumed: the door re-stamped `at` with the import's
+// authored extent, so the name is NOT readable from `at` any more. If this is false the route under test is
+// not the route the reviewer named, and the claim above would be vacuous.
+fn fm_admission_rejected_diagnostics() -> Optional<NonEmptyDiagnostics> {
+  match fm_roots() {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: roots, diagnostics: _ } =>
+      match validate_module_roots(roots: roots) {
+        Rejected { diagnostics: _ } => optional_absent()
+        Accepted { value: validated, diagnostics: _ } =>
+          match admit_imported_modules(
+            roots: validated,
+            modules: Cons { head: fc_located_import(target: fm_missing_qn()), tail: Empty },
+            state: fc_initial_admission_state(),
+            subject_qn: fc_qn(seg: ^fm_subject_seg),
+            index: source_root_index_empty(),
+            active_roots: Empty
+          ) {
+            AdmissionRejected { diagnostics: d } => optional_present(value: d)
+            AdmissionAccepted { bindings: _, origins: _ } => optional_absent()
+          }
+      }
+  }
+}
+
+test fn the_door_re_stamped_at_so_a_name_in_at_would_be_lost() -> Bool {
+  match fm_admission_rejected_diagnostics() {
+    Absent => false
+    Present { value: d } =>
+      (d.head.reason == ^resolve_module_not_found)
+        && (match d.head.at {
+          Textual { file: file, extent: extent } =>
+            (symbol_lexeme(sym: file) == symbol_lexeme(sym: ^fc_import_file))
+              && (match extent {
+                ByteRange { start: start, end: end } => (start == 14) && (end == 42)
+                _ => false
+              })
+          _ => false
+        })
+  }
+}
+
+// THE DEGRADED ARM STAYS TYPED, LOCATED AND COUNTABLE (DESIGN s5). A not_found that carries no requested name
+// -- the shape every not_found had before this PR, and still the shape on any route that does not carry it --
+// must report FrontierProbeDetailAbsent rather than an invented identity. Built as a literal so it is the
+// arm, not a paraphrase, and so it is decidable at every revision.
+fn fm_not_found_without_carrier() -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: ^resolve_module_not_found,
+      at: Textual { file: ^fm_unlocated_file, extent: ByteRange { start: 1, end: 2 } },
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: []
+  }
+}
+
+test fn not_found_without_a_carried_name_reports_absent_detail() -> Bool {
+  match fm_receipt_for(d: fm_not_found_without_carrier()).detail {
+    FrontierProbeDetailAbsent => true
+    _ => false
+  }
+}
+
+// A refusal that is not about a missing module never gains a missing-module identity, whatever it carries.
+fn fm_receipt_for(d: NonEmptyDiagnostics) -> FrontierProbeReceipt {
+  frontier_probe_receipt_from_admission_diagnostic_rejected(
+    module_path: "src/v2/pilot/frontier_probe_admission_missing_module_pilot.dag",
+    ingest: fm_ingest(),
+    admission: fm_admission(targets: Empty),
+    d: d
+  )
+}
+
+test fn other_reason_never_becomes_a_missing_module_detail() -> Bool {
+  match fm_receipt_for(d: fm_not_found_without_carrier()).detail {
+    FrontierProbeDetailAbsent => true
+    _ => false
+  }
+}

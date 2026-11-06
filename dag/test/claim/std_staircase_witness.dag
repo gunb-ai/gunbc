@@ -1,5 +1,6 @@
 module test.claim.std_staircase_witness
 
+import std.integer { int_to_decimal_string }
 import std.logic { Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { String, List, Int, NonEmptyStr }
@@ -28,7 +29,7 @@ type TestStop
 
 fn at(level: Int, ok: Bool, value: Int) -> Reading { Reading { level: level, ok: ok, value: value } }
 
-fn int_key(l: Int) -> String { l as String }
+fn int_key(l: Int) -> String { int_to_decimal_string(value: l) }
 
 fn reading_level(r: Reading) -> Int { r.level }
 

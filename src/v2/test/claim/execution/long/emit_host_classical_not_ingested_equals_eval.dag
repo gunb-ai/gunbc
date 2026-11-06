@@ -147,7 +147,7 @@ fn ingested_arrow_from_source(source: String) -> Outcome<ResolvedTree> {
     f: fn(resolved) {
       match ingested_find_arrow_in_module(root: resolved.root) {
         Present { value: arrow } =>
-          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, occurrence_bindings: resolved.occurrence_bindings, duplicate_binding_records: resolved.duplicate_binding_records, module_outcomes: resolved.module_outcomes, outcome_index: resolved.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: resolved.type_declaration_modifiers, constructing_module: resolved.constructing_module })
+          outcome_accepted(value: ResolvedTree { root: arrow, symbol_index: empty_symbol_index(), resolved_declarations: resolved.resolved_declarations, occurrence_resolutions: resolved.occurrence_resolutions, duplicate_binding_records: resolved.duplicate_binding_records, module_outcomes: resolved.module_outcomes, outcome_index: resolved.outcome_index, member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: resolved.type_declaration_modifiers, constructing_module: resolved.constructing_module })
         Absent =>
           outcome_rejected(
             d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_arrow_miss, node: resolved.root)

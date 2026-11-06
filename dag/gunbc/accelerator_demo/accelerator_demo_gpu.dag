@@ -1,7 +1,7 @@
 module gunbc.accelerator_demo.accelerator_demo_gpu
 
 import std.optional { Present, Absent }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types { GpuDeviceCatalogRow, gpu_catalog_bandwidth_count }
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {
@@ -13,7 +13,7 @@ fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity
 type GpuExecutionStatus = | DormantAwaitingOperator
 
 type GpuFidelityReceipt {
-  device: GpuModelCatalogRow
+  device: GpuDeviceCatalogRow
   target_medium: NonEmptyStr
   contract: NumericalContract
   device_precision_fidelity: DecodeFidelity
@@ -21,7 +21,7 @@ type GpuFidelityReceipt {
 }
 
 fn gpu_fidelity_receipt(
-  device: GpuModelCatalogRow,
+  device: GpuDeviceCatalogRow,
   contract: NumericalContract
 ) -> GpuFidelityReceipt {
   GpuFidelityReceipt {
@@ -81,7 +81,7 @@ type GpuDemoTriptychView {
   right_receipt: String
 }
 
-fn render_device_sketch(device: GpuModelCatalogRow) -> String {
+fn render_device_sketch(device: GpuDeviceCatalogRow) -> String {
   let lanes = match device.execution_lane_count {
     Absent => "unstated"
     Present { value: t } => to_string(std.measure.hardware_thread_count_value(t: t))
@@ -105,7 +105,7 @@ fn render_device_sketch(device: GpuModelCatalogRow) -> String {
 }
 
 fn project_gpu_triptych_view(
-  device: GpuModelCatalogRow,
+  device: GpuDeviceCatalogRow,
   contract: NumericalContract
 ) -> GpuDemoTriptychView {
   GpuDemoTriptychView {

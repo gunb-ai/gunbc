@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, byte_size_count, bandwidth, gibibyte, gibibyte_to_byte_size, BasisPoint, basis_point, Permille, permille_count }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
-import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, GpuBandwidthFigure }
+import extdeps.gpu.types { GpuDeviceCatalogRow, TensorDatatype, TensorFp4, TensorBf16, GpuBandwidthFigure }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_max_q_catalog, nvidia_h200_nvl_catalog, nvidia_b200_sxm_catalog }
 import extdeps.qwen.qwen3_8_flash_next { qwen3_8_flash_next_architecture }
 import gunbc.serving.flash_next_maxq_run_receipt { flash_next_maxq_run_2026_10_21 }
@@ -57,7 +57,7 @@ data flash_next_registered_predictions: List<PredictionRow> = [
 // Weights: the Max-Q's observed 71.86 GiB; H200 and B200 the registered ~76 GiB (non-CSF scales).
 // Overhead: the registered 6-8 GiB, taken at its midpoint 7 GiB. Main-KV width comes from the image
 // observation of that arch, not from the Max-Q.
-fn flash_next_card(catalog: GpuModelCatalogRow, observed: ObservedGpuMemory, bandwidth_override: GpuBandwidthFigure?, weights_bytes: ByteSize, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
+fn flash_next_card(catalog: GpuDeviceCatalogRow, observed: ObservedGpuMemory, bandwidth_override: GpuBandwidthFigure?, weights_bytes: ByteSize, arch: ImageGpuArch, math: TensorDatatype) -> RooflineCard? {
   match image_main_kv_element_bytes(rows: flash_next_image_observations, arch: arch) {
     Present { value: w } => Present {
       value: RooflineCard {

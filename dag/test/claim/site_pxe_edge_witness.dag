@@ -21,6 +21,7 @@ import extdeps.provisioning.network_boot {
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.ubuntu_install_media {
   noble_numbat_2404_3_amd64_uefi_network_boot_chain,
+  noble_numbat_2404_3_arm64_uefi_network_boot_chain,
   ubuntu_network_boot_loader_chain,
 }
 import extdeps.formats.dnsmasq {
@@ -74,6 +75,9 @@ import gunbc.site_pxe_edge {
   first_onboarding_known_client_mac,
   site_edge_served_chain,
   site_edge_served_path_collisions,
+  site_edge_chain_for_client,
+  EveryKnownClient,
+  InstallBoundClients,
   site_edge_client_admission,
   site_edge_proxy_dhcp_config
 }
@@ -125,6 +129,7 @@ fn healthy_observed() -> SiteEdgeObservation {
 fn arm64_chain() -> SiteEdgeServedChain? {
   site_edge_served_chain(
     architecture: Aarch64,
+    audience: EveryKnownClient,
     members: FreeSemigroup {
       head: SiteEdgeServedMember {
         member: NetworkBootLoaderMember { role: FirstStageLoader, served_path: chainloader_filename, verifier: NotAuthenticated },
@@ -140,6 +145,7 @@ fn amd64_chain() -> SiteEdgeServedChain? {
   let c = ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_amd64_uefi_network_boot_chain)
   site_edge_served_chain(
     architecture: X86_64,
+    audience: EveryKnownClient,
     members: FreeSemigroup {
       head: SiteEdgeServedMember { member: c.members.head, digest: content_hash_of_value(value: "shim-fixture") },
       tail: map(c.members.tail, m => SiteEdgeServedMember { member: m, digest: content_hash_of_value(value: m.served_path) }),
@@ -155,6 +161,7 @@ fn roster_with(chains: FreeSemigroup<SiteEdgeServedChain>, macs: List<Eui48Addre
     tftp_server_name: "srv4",
     tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196),
     known_client_macs: macs,
+    install_client_macs: [],
   }
 }
 
@@ -450,6 +457,7 @@ test fn a_proxy_config_carrying_dhcp_boot_is_refused_at_readback() -> Bool {
 test fn served_path_collisions_are_located() -> Bool {
   let clashing = site_edge_served_chain(
     architecture: X86_64,
+    audience: EveryKnownClient,
     members: FreeSemigroup {
       head: SiteEdgeServedMember { member: NetworkBootLoaderMember { role: FirstStageLoader, served_path: chainloader_filename, verifier: NotAuthenticated }, digest: content_hash_of_value(value: "other") },
       tail: [],
@@ -496,3 +504,87 @@ test fn admitted_edge_tftp_route_is_the_rendered_server() -> Bool {
     SiteEdgeDiscoveryRefused { refusal: _ } => false
   })
 }
+
+// ── The arm64 install chain beside the arm64 default chain ─────────────────────────────────────
+// merry-fox-82's conditions for the arm64 Ubuntu chain: the iPXE row stays the class's default, the install
+// chain is offered only to a client an install binding names, and an unbound MAC gets no install path. The
+// fixture digests are content hashes of the served path, so the two Ubuntu chains' grub/grub.cfg carry equal
+// digests, as the converge's one fallback rendering does.
+fn arm64_install_chain(grub_cfg_digest_seed: String) -> SiteEdgeServedChain? {
+  let c = ubuntu_network_boot_loader_chain(chain: noble_numbat_2404_3_arm64_uefi_network_boot_chain)
+  site_edge_served_chain(
+    architecture: Aarch64,
+    audience: InstallBoundClients,
+    members: FreeSemigroup {
+      head: SiteEdgeServedMember { member: c.members.head, digest: content_hash_of_value(value: "shimaa64-fixture") },
+      tail: map(c.members.tail, m => SiteEdgeServedMember { member: m, digest: content_hash_of_value(value: if (m.served_path as String) == "grub/grub.cfg" { grub_cfg_digest_seed } else { m.served_path as String }) }),
+    },
+    citation: "Ubuntu 24.04.3 arm64 signed shim and network GRUB fixture",
+  )
+}
+
+data install_mac: Eui48Address = mac_address(octet1: 2, octet2: 0, octet3: 0, octet4: 0, octet5: 12, octet6: 14)
+
+fn three_chain_roster(install_macs: List<Eui48Address>, grub_cfg_digest_seed: String) -> SiteEdgeRoster? {
+  match arm64_chain() {
+    Absent => Absent
+    Present { value: a } => match arm64_install_chain(grub_cfg_digest_seed: grub_cfg_digest_seed) {
+      Absent => Absent
+      Present { value: i } => match amd64_chain() {
+        Absent => Absent
+        Present { value: x } => Present { value: SiteEdgeRoster {
+          site: "onboarding-segment-0c" as SiteIdentity,
+          served_chains: FreeSemigroup { head: a, tail: [i, x] },
+          tftp_server_name: "srv4",
+          tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196),
+          known_client_macs: [known_mac, install_mac],
+          install_client_macs: install_macs,
+        } }
+      }
+    }
+  }
+}
+
+fn offered_first_stage(roster: SiteEdgeRoster, mac: Eui48Address) -> String {
+  match site_edge_chain_for_client(roster: roster, client: UefiArm64, mac: mac) {
+    Absent => ""
+    Present { value: c } => c.members.head.member.served_path as String
+  }
+}
+
+// THE BOUND CLIENT GETS THE INSTALL CHAIN, every other known arm64 client the iPXE default; the rendering says
+// the same with exclusive tags: the default line requires the install tag UNSET, the install line requires it SET,
+// and only the bound MAC carries it. One dhcp-match for the arm64 class however many chains it has.
+test fn an_install_bound_arm64_client_alone_reaches_the_install_chain() -> Bool {
+  holds(roster: three_chain_roster(install_macs: [install_mac], grub_cfg_digest_seed: "grub/grub.cfg"), claim: r => {
+    let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: r, tftp_directory: "/srv/edge-tftp")
+    offered_first_stage(roster: r, mac: install_mac) == "bootaa64.efi"
+      && offered_first_stage(roster: r, mac: known_mac) == "snponly.efi"
+      && contains(cfg, "pxe-service=tag:efi-arm64,tag:onboarding-known,tag:!onboarding-install,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
+      && contains(cfg, "pxe-service=tag:efi-arm64,tag:onboarding-known,tag:onboarding-install,11,\"gunbc efi-arm64 install\",bootaa64.efi,192.168.1.196")
+      && contains(cfg, "pxe-service=tag:efi-x86_64,tag:onboarding-known,7,\"gunbc efi-x86_64\",bootx64.efi,192.168.1.196")
+      && contains(cfg, "dhcp-mac=set:onboarding-install,02:00:00:00:0c:0e")
+      && length(split(cfg, "dhcp-mac=")) == 2
+      && length(split(cfg, "dhcp-match=set:efi-arm64,")) == 2
+      && length(split(cfg, "pxe-service=")) == 4
+      && length(site_edge_served_path_collisions(roster: r)) == 0
+  })
+}
+
+// RED: WITH NO INSTALL BINDING, NO MAC CARRIES THE INSTALL TAG, so the install line reaches nobody and every
+// arm64 client, the would-be install client included, is offered the iPXE default.
+test fn an_unbound_mac_gets_no_install_path() -> Bool {
+  holds(roster: three_chain_roster(install_macs: [], grub_cfg_digest_seed: "grub/grub.cfg"), claim: r => {
+    let cfg = site_edge_proxy_dhcp_config(network_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0), roster: r, tftp_directory: "/srv/edge-tftp")
+    offered_first_stage(roster: r, mac: install_mac) == "snponly.efi"
+      && offered_first_stage(roster: r, mac: known_mac) == "snponly.efi"
+      && !contains(cfg, "dhcp-mac=")
+  })
+}
+
+// SHARING ONE FALLBACK FILE IS NOT A COLLISION WHEN THE BYTES ARE ONE; the same path with other bytes is.
+test fn a_shared_grub_cfg_collides_only_when_its_bytes_differ() -> Bool {
+  holds(roster: three_chain_roster(install_macs: [install_mac], grub_cfg_digest_seed: "grub/grub.cfg"), claim: r => length(site_edge_served_path_collisions(roster: r)) == 0)
+    && holds(roster: three_chain_roster(install_macs: [install_mac], grub_cfg_digest_seed: "a different rendering"), claim: r => map(site_edge_served_path_collisions(roster: r), q => q as String) == ["grub/grub.cfg"])
+}
+

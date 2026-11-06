@@ -1,6 +1,8 @@
 module gunbc.uefi_shell_over_sol
 
 import std.types { NonEmptyStr, String, Int, List }
+import extdeps.bmc.ipmi { IpmiCipherSuite }
+import std.optional { Absent }
 import extdeps.bmc.serial_console {
   SolConsoleSendIntent,
   IpmiSol,
@@ -24,12 +26,14 @@ fn uefi_shell_serial_input(commands: List<UefiShellCommand>) -> String {
 fn uefi_boot_config_sol_send_intent(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
   desired: DesiredBootSource,
 ) -> SolConsoleSendIntent {
   SolConsoleSendIntent {
     bmc_host: bmc_host,
     transport: IpmiSol,
     username: username,
+    cipher_suite: cipher_suite,
     input: uefi_shell_serial_input(commands: uefi_boot_config_commands(desired: desired)),
     settle_seconds: 3,
     read_timeout_seconds: 5,
@@ -39,17 +43,21 @@ fn uefi_boot_config_sol_send_intent(
 fn uefi_boot_config_sol_send_script(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
   desired: DesiredBootSource,
 ) -> String {
   sol_console_send_script(intent: uefi_boot_config_sol_send_intent(
     bmc_host: bmc_host,
     username: username,
+    cipher_suite: cipher_suite,
     desired: desired,
   ))
 }
 
+// srv4's SOL route passes no -C, as it did before the suite existed.
 data srv4_uefi_boot_config_sol_send_intent: SolConsoleSendIntent = uefi_boot_config_sol_send_intent(
   bmc_host: "192.168.1.195",
   username: "root",
+  cipher_suite: Absent,
   desired: srv4_uefi_install_boot,
 )

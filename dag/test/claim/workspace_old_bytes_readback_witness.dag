@@ -1,0 +1,194 @@
+module test.claim.workspace_old_bytes_readback_witness
+
+// FOUR RECORDS WRITTEN BY THE PRE-SEAL CODE, READ BACK THROUGH THE SEALED STORES.
+//
+// The bytes below were produced by the tree at 1b98acddc75^ (before #15396 sealed these stores; byte-identical
+// to main's wires) by running that tree's own writers -- workspace_establish_actor_protocol,
+// workspace_record_first_ready, workspace_release_prepare, workspace_publish_gateway_evidence -- over the
+// launch fixture, into a file-backed fabric store. Each claim plants one head+object verbatim at the head name
+// the CURRENT store's key derivation gives (asserted equal to the old name), then reads it through the current
+// reader. Moved slot names, changed framing or a changed decoder would read absent/unreadable.
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Absent, Present }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
+import std.durable_compare_and_set { cas_generation_first }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd }
+import product.fabric.budget { reserve_money, MoneyReservationRequest, AccountAdvanced }
+import gunbc.fabric.fabric_control_plane { fabric_money_reservation_ref }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
+import gunbc.fabric.fabric_storage_file_store { FabricStorageOperations, fabric_storage_slots, fabric_storage_object_create, fabric_storage_object_path }
+import gunbc.fabric.durable_cas_fabric_storage { cas_slot_head }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
+import std.fabric_storage { fabric_object_ref_of_wire }
+import gunbc.workspace_allocation { WorkspaceReservation }
+import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_from_json }
+import gunbc.workspace_allocation { workspace_reservation_json }
+import extdeps.languages.json.emit { json_object, json_kv, json_string }
+import gunbc.workspace_acquisition_invocation { workspace_acquisition_store, workspace_acquisition_protocol_key, workspace_actor_protocol_observed }
+import gunbc.workspace_allocation_milestones { workspace_milestone_store, workspace_first_ready_key, workspace_first_ready_at }
+import gunbc.workspace_allocation_release { workspace_release_store, workspace_release_key, workspace_release_read, WorkspaceReleasePrepared, WorkspaceReleaseRefused }
+import gunbc.workspace_gateway_store { workspace_gateway_store, workspace_gateway_state_key, workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import test.claim.workspace_launch_directive_witness { launch_fixture_allocation }
+import test.claim.fabric.fabric_storage_fixture {
+  FabricWetStoreReady, FabricWetStoreUnready, FabricWetScenarioReady, FabricWetScenarioUnready, fabric_wet_scenario, fabric_wet_store,
+}
+
+data old_acq_head: NonEmptyStr = "cas-slot-workspace-acquisition-protocol-482447e9af52d189"
+data old_acq_wire: NonEmptyStr = "3f5758bc51d70ce6"
+data old_acq_bytes: String = "fabric_storage.object;B76:{\"value\": \"actor-journal/1\", \"content\": \"98f4383c21ee3a5c\", \"generation\": 1}"
+data old_mile_head: NonEmptyStr = "cas-slot-workspace-first-ready-7c535decdc030a37"
+data old_mile_wire: NonEmptyStr = "ea23e2c565070a28"
+data old_mile_bytes: String = "fabric_storage.object;B81:{\"value\": \"2026-09-28T00:00:00Z\", \"content\": \"b3f7a3f63ba4b3f4\", \"generation\": 1}"
+data old_rel_head: NonEmptyStr = "cas-slot-workspace-release-bee3ca94603e1595"
+data old_rel_wire: NonEmptyStr = "faaa2a2786753bca"
+data old_rel_bytes: String = "fabric_storage.object;B1576:{\"value\": \"{\\\"reservation\\\": {\\\"money_account\\\": {\\\"account\\\": \\\"fixture-account\\\", \\\"currency\\\": \\\"USD\\\", \\\"ceiling\\\": 100, \\\"entries\\\": [{\\\"reference\\\": \\\"fixture-demand|fixture-offer\\\", \\\"state\\\": \\\"held\\\", \\\"amount\\\": 40}], \\\"leases\\\": [{\\\"reference\\\": \\\"fixture-demand|fixture-offer\\\", \\\"generation\\\": 0}]}, \\\"money_generation\\\": 0, \\\"demand_principal\\\": \\\"principal:google-oidc/accounts/owner-a\\\", \\\"demand_key\\\": \\\"fixture-demand\\\", \\\"offer_principal\\\": \\\"fixture-provider\\\", \\\"offer_key\\\": \\\"fixture-offer\\\", \\\"request\\\": {\\\"owner\\\": \\\"principal:google-oidc/accounts/owner-a\\\", \\\"key\\\": \\\"launch-fixture\\\", \\\"profile\\\": \\\"2cpu-4gib\\\", \\\"image\\\": \\\"sha256:workspace-test-image\\\", \\\"public_key_ref\\\": \\\"workspace-test-key\\\", \\\"expires_at\\\": \\\"2026-09-27T13:00:00Z\\\", \\\"policy_module\\\": \\\"gunbc.workspace_allocation\\\", \\\"policy_name\\\": \\\"workspace_memory_policy\\\"}, \\\"host\\\": \\\"srv1\\\", \\\"slot\\\": 7, \\\"generation\\\": 1, \\\"work_principal\\\": \\\"principal:google-oidc/accounts/owner-a\\\", \\\"work_key\\\": \\\"9f11b8cc15b4372b\\\", \\\"attempt_principal\\\": \\\"principal:google-oidc/accounts/owner-a\\\", \\\"attempt_key\\\": \\\"fixture-attempt\\\"}, \\\"released_at\\\": \\\"2026-09-28T00:00:00Z\\\", \\\"released_account\\\": {\\\"account\\\": \\\"fixture-account\\\", \\\"currency\\\": \\\"USD\\\", \\\"ceiling\\\": 100, \\\"entries\\\": [{\\\"reference\\\": \\\"fixture-demand|fixture-offer\\\", \\\"state\\\": \\\"released\\\", \\\"reason\\\": \\\"workspace sanitation observed\\\", \\\"at\\\": \\\"2026-09-28T00:00:00Z\\\"}], \\\"leases\\\": [{\\\"reference\\\": \\\"fixture-demand|fixture-offer\\\", \\\"generation\\\": 0}]}}\", \"content\": \"974115564d96ef6b\", \"generation\": 1}"
+data old_gw_head: NonEmptyStr = "cas-slot-workspace-gateway-srv1-13"
+data old_gw_wire: NonEmptyStr = "50284e11ae10e4cf"
+data old_gw_bytes: String = "fabric_storage.object;B682:{\"value\": \"{\\\"known_host\\\": \\\"srv1.tailecbe08.ts.net ssh-ed25519 AAAAFIXTURE\\\", \\\"subject\\\": \\\"ForwardingAdmissionSubject { direction: LocalForward, principal: SshLoginPrincipal { login: briansrls }, relay: HostByName { name: HostName { name: DomainName { labels: [srv1, tailecbe08, ts, net] }, qualification: PartiallyQualified } }, target: SocketAddress { host: HostByAddress { address: IpV4 { v4: Ipv4Address { octet1: 172, octet2: 30, octet3: 13, octet4: 2 } } }, port: 22 } }\\\", \\\"stdout\\\": \\\"SSH-2.0-fixture\\\", \\\"stderr\\\": \\\"\\\", \\\"exit_code\\\": 124, \\\"observed_at\\\": \\\"2026-09-28T00:00:00Z\\\", \\\"receipt\\\": \\\"517f3cfaae5a07de\\\"}\", \"content\": \"a257535326482315\", \"generation\": 1}"
+
+fn old_plant(ops: FabricStorageOperations, head: NonEmptyStr, wire: NonEmptyStr, bytes: String) -> Bool {
+  match fabric_object_ref_of_wire(wire: wire) {
+    Absent => false
+    Present { value: reference } =>
+      let planted_object = fabric_storage_object_create(root: ops, path: fabric_storage_object_path(root: ops, object: reference), content: bytes)
+      let planted_head = Filesystem.WriteCreateNew(
+        path: cas_file_slot_path(root: ops.heads, key: head, generation: cas_generation_first()), content: wire as String)
+      (match planted_object {
+        FilesystemCreated { path: _ } => true
+        FilesystemCreateTargetOccupied { path: _ } => false
+        FilesystemCreateRefused { path: _, kind: _, error: _ } => false
+        FilesystemCreateKindUnrecognized { path: _, observed: _, error: _ } => false
+      }) && planted_head.success
+  }
+}
+
+// The plan the old tree planted over: the launch fixture's reservation under the root the plant used.
+fn old_plan() -> WorkspaceReservationPlan? {
+  match launch_fixture_allocation() {
+    Absent => none
+    Present { value: fixture } => match fixture.plan {
+      Absent => none
+      Present { value: prepared } => workspace_reservation_plan_from_json(value: json_object(members: [
+        json_kv(key: "root", value: json_string(s: "/tmp/gunbc_readback_pre15396")),
+        json_kv(key: "reservation", value: workspace_reservation_json(reservation: prepared.reservation)),
+      ]))
+    }
+  }
+}
+
+fn plain_fixture_reservation() -> WorkspaceReservation? {
+  match launch_fixture_allocation() {
+    Absent => none
+    Present { value: allocation } => match allocation.plan {
+      Absent => none
+      Present { value: prepared } => Present { value: prepared.reservation }
+    }
+  }
+}
+
+fn held_fixture_reservation() -> WorkspaceReservation? {
+  match launch_fixture_allocation() {
+    Absent => none
+    Present { value: allocation } => match allocation.plan {
+      Absent => none
+      Present { value: prepared } =>
+        let original = prepared.reservation
+        match reserve_money(a: original.money_account, request: MoneyReservationRequest {
+          reference: fabric_money_reservation_ref(demand: original.demand, offer: original.offer),
+          generation: original.money_generation, maximum_liability: money_amount_micro(count: 40), currency: Usd,
+        }) {
+          AccountAdvanced { account: committed } => Present { value: WorkspaceReservation {
+            request: original.request, slot: original.slot, generation: original.generation, grant: original.grant,
+            work: original.work, demand: original.demand, offer: original.offer, money_account: committed, money_generation: original.money_generation,
+          } }
+          other => none
+        }
+    }
+  }
+}
+
+fn old_bytes_scenario(template: NonEmptyStr, body: fn(FabricStorageOperations) -> Bool) -> Bool {
+  match fabric_wet_scenario(template: template) {
+    FabricWetScenarioUnready { detail: _ } => false
+    FabricWetScenarioReady { instance: instance, root: _ } =>
+      match fabric_wet_store(members: fabric_storage_slots, instance: instance) {
+        FabricWetStoreUnready { area: _, detail: _ } => false
+        FabricWetStoreReady { store: ops } => body(ops)
+      }
+  }
+}
+
+test fn the_pre_seal_acquisition_protocol_record_reads_through_the_sealed_store() -> Bool {
+  match old_plan() {
+    Absent => false
+    Present { value: plan } => old_bytes_scenario(template: "/tmp/gunbc_old_acq.XXXXXX" as NonEmptyStr, body: ops =>
+      let store = workspace_acquisition_store(binding: FabricStorageLocalFiles { operations: ops })
+      let head = cas_slot_head(key: workspace_acquisition_protocol_key(store: store, plan: plan))
+      head == old_acq_head && old_plant(ops: ops, head: head, wire: old_acq_wire, bytes: old_acq_bytes)
+        && workspace_actor_protocol_observed(store: store, plan: plan))
+  }
+}
+
+test fn the_pre_seal_first_ready_record_reads_through_the_sealed_store() -> Bool {
+  match plain_fixture_reservation() {
+    Absent => false
+    Present { value: reservation } => old_bytes_scenario(template: "/tmp/gunbc_old_mile.XXXXXX" as NonEmptyStr, body: ops =>
+      let store = workspace_milestone_store(binding: FabricStorageLocalFiles { operations: ops })
+      let head = cas_slot_head(key: workspace_first_ready_key(store: store, reservation: reservation))
+      head == old_mile_head && old_plant(ops: ops, head: head, wire: old_mile_wire, bytes: old_mile_bytes)
+        && workspace_first_ready_at(store: store, reservation: reservation) == "2026-09-28T00:00:00Z")
+  }
+}
+
+test fn the_pre_seal_release_intent_reads_through_the_sealed_store() -> Bool {
+  match held_fixture_reservation() {
+    Absent => false
+    Present { value: reservation } => old_bytes_scenario(template: "/tmp/gunbc_old_rel.XXXXXX" as NonEmptyStr, body: ops =>
+      let store = workspace_release_store(binding: FabricStorageLocalFiles { operations: ops })
+      let head = cas_slot_head(key: workspace_release_key(store: store, reservation: reservation))
+      head == old_rel_head && old_plant(ops: ops, head: head, wire: old_rel_wire, bytes: old_rel_bytes)
+        && match workspace_release_read(store: store, reservation: reservation) {
+          WorkspaceReleasePrepared { plan: plan } => plan.released_at == "2026-09-28T00:00:00Z"
+          WorkspaceReleaseRefused { reason: _ } => false
+        })
+  }
+}
+
+test fn the_pre_seal_gateway_evidence_reads_through_the_sealed_store() -> Bool {
+  let slot = srv1_microvm_shakedown_slot()
+  old_bytes_scenario(template: "/tmp/gunbc_old_gw.XXXXXX" as NonEmptyStr, body: ops =>
+    let store = workspace_gateway_store(binding: FabricStorageLocalFiles { operations: ops })
+    let head = cas_slot_head(key: workspace_gateway_state_key(store: store, slot: slot))
+    head == old_gw_head && old_plant(ops: ops, head: head, wire: old_gw_wire, bytes: old_gw_bytes)
+      && match workspace_current_gateway_connection(store: store, slot: slot, now: "2026-09-28T00:00:30Z") {
+        WorkspaceGatewayReady { known_host: host } => host == "srv1.tailecbe08.ts.net ssh-ed25519 AAAAFIXTURE"
+        WorkspaceGatewayUnavailable { reason: _ } => false
+      })
+}
+
+// THE PAIRED RED: a head naming the milestone object whose bytes are another record's must not read back as the recorded time.
+test fn a_milestone_head_over_another_records_bytes_does_not_read_back_as_the_recorded_time() -> Bool {
+  match plain_fixture_reservation() {
+    Absent => false
+    Present { value: reservation } => old_bytes_scenario(template: "/tmp/gunbc_old_tamper.XXXXXX" as NonEmptyStr, body: ops =>
+      let store = workspace_milestone_store(binding: FabricStorageLocalFiles { operations: ops })
+      let head = cas_slot_head(key: workspace_first_ready_key(store: store, reservation: reservation))
+      let planted = old_plant(ops: ops, head: head, wire: old_mile_wire, bytes: old_acq_bytes)
+      workspace_first_ready_at(store: store, reservation: reservation) != "2026-09-28T00:00:00Z")
+  }
+}
+// A read inside the stored observation's freshness window succeeds above; the same bytes read after the window
+// must be Unavailable, so the claim above is the decoder accepting the old record and not a store that answers anything.
+test fn the_pre_seal_gateway_evidence_is_unavailable_past_its_freshness_window() -> Bool {
+  let slot = srv1_microvm_shakedown_slot()
+  old_bytes_scenario(template: "/tmp/gunbc_old_gwstale.XXXXXX" as NonEmptyStr, body: ops =>
+    old_plant(ops: ops, head: old_gw_head, wire: old_gw_wire, bytes: old_gw_bytes)
+      && match workspace_current_gateway_connection(store: workspace_gateway_store(binding: FabricStorageLocalFiles { operations: ops }), slot: slot, now: "2026-09-28T00:05:00Z") {
+        WorkspaceGatewayReady { known_host: _ } => false
+        WorkspaceGatewayUnavailable { reason: _ } => true
+      })
+}

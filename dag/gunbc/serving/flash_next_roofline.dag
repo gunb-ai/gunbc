@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, byte_size_count, bandwidth_count, Microsecond, microsecond, microsecond_count, Second, second_count, token_count_value, BasisPoint, basis_point_count, Permille, permille, permille_count, giga_tensor_operations_per_second_count }
 import extdeps.external_authority { CitedFigureStanding }
-import extdeps.gpu.types { GpuModelCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, GpuBandwidthFigure, gpu_catalog_bandwidth }
+import extdeps.gpu.types { GpuDeviceCatalogRow, TensorDatatype, TensorFp4, TensorBf16, DenseTensorThroughput, gpu_dense_tensor_throughput, GpuBandwidthFigure, gpu_catalog_bandwidth }
 import extdeps.qwen.qwen3_8_flash_next { FlashNextArchitecture, flash_next_qsa_kv_bytes_per_token, flash_next_params_per_routed_expert }
 import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 
@@ -33,7 +33,7 @@ import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt }
 // count never stands for a unit. gpu_memory_utilization rides std.measure's BasisPoint (review
 // 84973: a dimensionless ratio still has a print scale, and std.measure's ratio family covers it).
 type RooflineCard {
-  catalog: GpuModelCatalogRow
+  catalog: GpuDeviceCatalogRow
   bandwidth_override: GpuBandwidthFigure?
   memory_bytes: ByteSize
   weights_bytes: ByteSize

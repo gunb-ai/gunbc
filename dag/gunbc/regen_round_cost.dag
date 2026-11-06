@@ -45,6 +45,10 @@ import gunbc.stage0_partition_rebuild_scope {
 
 type RegenRoundPhase
   = SeedBuild
+  // THE ROUND-1 BASE-MIRROR READ, its own priced phase: the time the heal round spends resolving
+  // the base ref and seeding the generated mirror from it must never be booked to the seed build
+  // it precedes (DESIGN §5, RFM #14963).
+  | BaseMirrorBootstrap
   | CorpusLoad
   | Frontend
   | Normalize
@@ -120,11 +124,77 @@ type RegenRoundCostReceipt {
   rebuild_packages: List<String>
   executable_digest: String
   second_generation_candidate_digest: String
+  base_mirror_authority: RoundOneMirrorAuthority
+}
+
+// WHICH MIRROR ROUND 1 BUILT FROM (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM #14963). The heal
+// round's first seed build compiles the BASE ref's committed stage0 mirror, because the head's
+// mirror is the thing the PR's `.dag` edits exist to repair -- a head mirror that already carries
+// the refusal the `.dag` fixes stops the round before the regenerated seed can replace it (PR
+// #13936, run 40064940799, job 120786085841, step 7: `stage seed build refused`, five rows of
+// `shared layer refused for 'Nat': TypeDeclNotDeclared` in the committed mirror.
+//
+// The commit id is what this names, not the ref: a ref is a moving name and a receipt is a record
+// of what a past run did, so the only honest thing to record is the commit it resolved to. A
+// round that was not asked to bootstrap from base (an instrument, a probe) renders NO line --
+// absence is the ordinary shape of every non-heal round, and the witness fixture pins that
+// absence, so a heal line can never be assumed into a non-heal receipt.
+type RoundOneMirrorAuthority
+  = FromBaseMirror {
+      commit: NonEmptyStr,
+      crate_paths: Nat,
+      head_added_paths_kept: Nat,
+      head_deleted_paths: Nat
+    }
+  | SeedBuiltFromHead
+
+fn regen_round_base_mirror_line(authority: RoundOneMirrorAuthority) -> String {
+  match authority {
+    FromBaseMirror {
+      commit: c,
+      crate_paths: n,
+      head_added_paths_kept: k,
+      head_deleted_paths: d
+    } =>
+      concat(
+        concat(
+          concat(
+            concat(concat("regen-round-cost: base_mirror_commit=", c), concat(" crate=", crate_under_authority())),
+            concat(" crate_paths=", to_string(n))
+          ),
+          concat(
+            concat(" head_added_paths_kept=", to_string(k)),
+            concat(" head_deleted_paths=", to_string(d))
+          )
+        ),
+        "\n"
+      )
+    SeedBuiltFromHead => ""
+  }
+}
+
+// THE SCOPE IS PART OF THE CLAIM. Round 1 restores the whole seed crate from the base commit --
+// mirrors at any depth, hand-maintained files, Cargo.toml, build.rs -- because what cargo compiles
+// is the crate. Naming only a commit and a file count let a reader believe the generated top level
+// was the whole subject, which is the reading that hid the base/head chimera (RFM
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`). The count of head-added
+// paths is recorded too, because a path base never had stays at the head, and that is exactly
+// where a new hand-written call to a new generated method lives. And `head_deleted_paths` counts the
+// paths BASE tracks that the HEAD does not -- the paths the change DELETED. Round 1 restores them so
+// the crate it compiles is base's crate rather than a base/head chimera, and the journal's
+// `AbsentBeforeInstall` entries remove them again before anything is published. Before this count
+// existed the receipt could not show that delta at all: PR #15418's receipt printed `paths=300` while
+// base tracked 303 crate paths, and the hidden paths are the ones rustc then reported as
+// `error[E0583]: file not found for module`.
+fn crate_under_authority() -> String {
+  "src/v1/stage0"
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
   match phase {
     SeedBuild => "seed_build"
+    BaseMirrorBootstrap => "base_mirror_bootstrap"
     CorpusLoad => "corpus_load"
     Frontend => "compile.frontend"
     Normalize => "compile.normalize"
@@ -151,6 +221,7 @@ fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
 fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
   match phase {
     SeedBuild => "round.seed_build"
+    BaseMirrorBootstrap => "round.base_mirror_bootstrap"
     CorpusLoad => "regen.corpus_load"
     Frontend => "compile.frontend"
     Normalize => "compile.normalize"
@@ -170,7 +241,7 @@ fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
 }
 
 fn regen_round_phases() -> List<RegenRoundPhase> {
-  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, BuiltSeedRegen, Diff]
+  [SeedBuild, BaseMirrorBootstrap, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, BuiltSeedRegen, Diff]
 }
 
 fn regen_round_phase_of_label(label: String) -> RegenRoundPhaseAttribution {
@@ -299,8 +370,13 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
   let mark_lines = fold(receipt.marks, init: "", f: fn(acc, mark) {
     concat(concat(acc, regen_round_mark_line(mark: mark)), "\n")
   })
+  // The base-mirror line carries its own newline and is EMPTY for a round that was not asked to
+  // bootstrap from base, so a non-heal receipt renders byte-for-byte what it rendered before.
   concat(
-    concat(concat(regen_round_header_line(receipt: receipt), "\n"), mark_lines),
+    concat(
+      concat(regen_round_header_line(receipt: receipt), "\n"),
+      concat(regen_round_base_mirror_line(authority: receipt.base_mirror_authority), mark_lines)
+    ),
     concat(
       concat(regen_round_total_line(receipt: receipt), "\n"),
       concat(

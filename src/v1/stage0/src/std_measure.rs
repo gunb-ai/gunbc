@@ -42,7 +42,7 @@ pub use crate::std_decimal::{checked_decimal_pow10, ExactDecimal};
 pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_dissolution::DissolutionCondition::*;
 pub use crate::std_dissolution::{unbound_dissolution, DissolutionCondition};
-pub use crate::std_nat::Nat;
+pub use crate::std_nat::{nat_ceil_div, Nat};
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
@@ -66,6 +66,7 @@ pub enum Quantity {
     Frequency,
     Count,
     HardwareThreadTime,
+    CalendarTime,
     Currency,
     Power,
     ApparentPower,
@@ -106,6 +107,7 @@ pub enum Scale {
     Nano,
     Micro,
     Milli,
+    Centi,
     One,
     Sixty,
     ThirtySixHundred,
@@ -134,6 +136,7 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::Nano => Some(v1_rt::int_neg(9)),
         Scale::Micro => Some(v1_rt::int_neg(6)),
         Scale::Milli => Some(v1_rt::int_neg(3)),
+        Scale::Centi => Some(v1_rt::int_neg(2)),
         Scale::One => Some(0),
         Scale::ArcsecondAngle => std::option::Option::None,
         Scale::DegreeAngle => std::option::Option::None,
@@ -224,6 +227,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
         Scale::Nano => std::option::Option::None,
         Scale::Micro => std::option::Option::None,
         Scale::Milli => std::option::Option::None,
+        Scale::Centi => std::option::Option::None,
         Scale::Kilo => std::option::Option::None,
         Scale::Mega => std::option::Option::None,
         Scale::Giga => std::option::Option::None,
@@ -250,6 +254,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Nano => std::option::Option::None,
         Scale::Micro => std::option::Option::None,
         Scale::Milli => std::option::Option::None,
+        Scale::Centi => std::option::Option::None,
         Scale::ArcsecondAngle => std::option::Option::None,
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
@@ -310,20 +315,16 @@ pub fn measure_scale_fraction_ceil<Q, S>(
     num: Nat,
     den: Nat,
 ) -> Rc<Measure<Q, S, i64>> {
-    Rc::new(Measure {
-        count: if (den.clone() == 0) {
-            v1_rt::int_mul(m.count.clone(), num.clone())
-        } else {
-            v1_rt::int_div(
-                v1_rt::int_add(
-                    v1_rt::int_mul(m.count.clone(), num.clone()),
-                    v1_rt::int_sub(den.clone(), 1),
-                ),
-                den.clone(),
-            )
-        },
-        _phantom: std::marker::PhantomData,
-    })
+    {
+        let scaled = v1_rt::int_mul(m.count.clone(), num.clone());
+        Rc::new(Measure {
+            count: match crate::std_nat::nat_ceil_div(scaled.clone(), den) {
+                Some(q) => q.clone(),
+                std::option::Option::None => scaled.clone(),
+            },
+            _phantom: std::marker::PhantomData,
+        })
+    }
 }
 
 pub fn measure_add<Q, S>(
@@ -525,8 +526,6 @@ pub type PowerCordCount = Rc<Measure<Count, One, Nat>>;
 
 pub type MemoryControllerCount = Rc<Measure<Count, One, Nat>>;
 
-pub type SdrUndecodedLineCount = Rc<Measure<Count, One, Nat>>;
-
 pub type ObservationRoundCount = Rc<Measure<Count, One, Nat>>;
 
 pub type FanCount = Rc<Measure<Count, One, Nat>>;
@@ -546,6 +545,8 @@ pub type Volt = Rc<Measure<ElectricPotentialDifference, One, Nat>>;
 pub type Millivolt = Rc<Measure<ElectricPotentialDifference, Milli, Nat>>;
 
 pub type Ampere = Rc<Measure<ElectricCurrent, One, Nat>>;
+
+pub type Ohm = Rc<Measure<Resistance, One, Nat>>;
 
 pub type Nanometer = Rc<Measure<Length, Nano, Nat>>;
 
@@ -924,6 +925,17 @@ pub fn volt(count: Nat) -> Volt {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
+}
+
+pub fn ohm(count: Nat) -> Ohm {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn ohm_count(r: Ohm) -> Nat {
+    measure_count(r)
 }
 
 pub fn volt_count(v: Volt) -> Nat {
@@ -1646,17 +1658,6 @@ pub fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
     measure_count(c)
 }
 
-pub fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
-    measure_count(c)
-}
-
 pub fn observation_round_count(count: Nat) -> ObservationRoundCount {
     Rc::new(Measure {
         count: count.clone(),
@@ -1948,6 +1949,19 @@ pub fn second_displacement_count(d: SecondDisplacement) -> i64 {
     measure_count(d)
 }
 
+pub type CalendarDayDisplacement = Rc<Measure<CalendarTime, One, i64>>;
+
+pub fn calendar_day_displacement(count: i64) -> CalendarDayDisplacement {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn calendar_day_displacement_count(d: CalendarDayDisplacement) -> i64 {
+    measure_count(d)
+}
+
 pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
     joule(v1_rt::int_mul(watt_count(power), second_count(time)))
 }
@@ -2018,7 +2032,7 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p)
 }
 
-pub type ConcurrentRequestHundredths = Rc<Measure<Dimensionless, One, Nat>>;
+pub type ConcurrentRequestHundredths = Rc<Measure<Count, Centi, Nat>>;
 
 pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
     Rc::new(Measure {
@@ -2098,7 +2112,7 @@ pub fn permille_count(p: Permille) -> Nat {
     measure_count(p)
 }
 
-pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
+pub type ConcurrentRequestThousandths = Rc<Measure<Count, Milli, Nat>>;
 
 pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
     Rc::new(Measure {
@@ -2548,6 +2562,8 @@ pub struct Count;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HardwareThreadTime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CalendarTime;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Power;
@@ -2613,6 +2629,8 @@ pub struct Nano;
 pub struct Micro;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Milli;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Centi;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

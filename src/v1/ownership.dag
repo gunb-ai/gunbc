@@ -56,8 +56,8 @@ import std.occurrence_identity { OccurrenceId, authored_occurrence_of }
 // on the emitted list_map (fold_list + list_push), 16000 of 16000 pushes saw a shared Rc and the walk
 // ran 9.1x host; with the last-use clones moved, 0 of 16000 and 1.43x
 // (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
-// It is NOT Consumed: semantic_consumer_count keys SharedError, which v1.compiler.compile reports
-// as an OwnershipViolation, and `f(x)` beside `g(x)` is two ordinary reads, not a violation. A method
+// It is NOT Consumed: Consumed keys SoleOwner, the proof that a tail binding moves, and `f(x)` beside
+// `g(x)` is two ordinary reads. A method
 // RECEIVER stays Read: receiver lowerings go through templates that are not audited for splicing the
 // receiver once, so a moved receiver could be used twice in the emitted text; that is the frontier.
 //
@@ -94,7 +94,6 @@ fn binding_fan_out(usage: BindingUsage) -> Int {
 
 type OwnershipDecision
   = SoleOwner { binding: String, site: String }
-  | SharedError { binding: String, consumer_count: Int, sites: List<String> }
   | Unclassified { binding: String, reason: String }
 
 type FoldAccUnwrapProof {
@@ -150,6 +149,29 @@ fn record_use_at(accum: UsageAccum, name: String, kind: EdgeKind, site: String, 
     bindings: map_insert(accum.bindings, name, updated),
     fold_call_nodes: accum.fold_call_nodes,
     touched: list_push(accum.touched, name)
+  }
+}
+
+// A name that resolves to a function, a variant constructor or a service value is not a binding: it
+// has no owner, nothing is moved out of it and nothing can be consumed twice, so a use of it records
+// no edge. Recording one made `return Unreadable` beside a tail `Unreadable` count two consumers of a
+// nullary variant. An unresolved kind (none) keeps recording, as a parameter's seed entry carries none.
+fn names_a_binding(kind: VarBindingKind?) -> Bool {
+  match kind {
+    Present { value: FunctionValueBinding } => false
+    Present { value: VariantValueBinding { parent_enum: _, parent_identity: _ } } => false
+    Present { value: ServiceValueBinding } => false
+    _ => true
+  }
+}
+
+// The one recording point for an ExprVar use, so every position (tail, read, projection base, fold
+// seed, by-value argument) applies names_a_binding and none of them can record a non-binding.
+fn record_var_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int, occurrence: OccurrenceId?) -> UsageAccum {
+  if names_a_binding(kind: binding_kind) {
+    record_use_at(accum: accum, name: name, kind: kind, site: site, binding_kind: binding_kind, span_start: span_start, occurrence: occurrence)
+  } else {
+    accum
   }
 }
 
@@ -212,9 +234,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
       if in_tail {
-        record_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start)
+        record_var_use(accum: accum, name: n, kind: Consumed, site: "return", binding_kind: bk, span_start: texpr.span.start, occurrence: none)
       } else {
-        record_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start)
+        record_var_use(accum: accum, name: n, kind: Read, site: "read", binding_kind: bk, span_start: texpr.span.start, occurrence: none)
       }
 
     ExprLiteral { value: _ } => accum
@@ -226,7 +248,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         ExprVar { binding_kind: bk } =>
           let vn = expr_var_name_at(texpr: base_node, source_indices: si)
           let f = field_access_field_at(texpr: texpr, source_indices: si)
-          record_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start)
+          record_var_use(accum: accum, name: vn, kind: Projected, site: concat(".", f), binding_kind: bk, span_start: texpr.span.start, occurrence: none)
         _ => walk_expr(accum: accum, texpr: base_node, in_tail: false, si: si)
       }
 
@@ -243,7 +265,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
-                record_use(accum: called, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
+                record_var_use(accum: called, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, occurrence: none)
               _ => walk_expr(accum: called, texpr: ia_val, in_tail: false, si: si)
             }
           Absent => called
@@ -271,7 +293,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
             match ia_val.expr_data {
               ExprVar { binding_kind: bk } =>
                 let vn = expr_var_name_at(texpr: ia_val, source_indices: si)
-                record_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start)
+                record_var_use(accum: recv_accum, name: vn, kind: Threaded, site: "fold_init", binding_kind: bk, span_start: ia_val.span.start, occurrence: none)
               _ => walk_expr(accum: recv_accum, texpr: ia_val, in_tail: false, si: si)
             }
           Absent => recv_accum
@@ -371,7 +393,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
 fn walk_call_argument(accum: UsageAccum, arg: Node, si: Map<String, NewlineIndex>) -> UsageAccum {
   match arg.expr_data {
     ExprVar { binding_kind: bk } =>
-      record_use_at(accum: accum, name: expr_var_name_at(texpr: arg, source_indices: si), kind: PassedByValue, site: "argument", binding_kind: bk, span_start: arg.span.start, occurrence: authored_occurrence_of(identity: arg.occurrence_identity))
+      record_var_use(accum: accum, name: expr_var_name_at(texpr: arg, source_indices: si), kind: PassedByValue, site: "argument", binding_kind: bk, span_start: arg.span.start, occurrence: authored_occurrence_of(identity: arg.occurrence_identity))
     _ => walk_expr(accum: accum, texpr: arg, in_tail: false, si: si)
   }
 }
@@ -387,11 +409,11 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
     }
     SoleOwner { binding: usage.name, site: site }
   } else {
+    // Consumed is recorded only at an exit of the body (tail or `return`), and exits are mutually
+    // exclusive, so more than one is several paths each moving the value once, never a double consume.
+    // Such a binding is not the sole owner at one exit, so it is not movable; it is not an error.
     if sc > 1 {
-      let sites = usage.consumers
-        |> filter(c => match c.kind { Consumed => true, _ => false })
-        |> map(c => c.site)
-      SharedError { binding: usage.name, consumer_count: sc, sites: sites }
+      Unclassified { binding: usage.name, reason: "consumed at more than one exit" }
     } else {
       Unclassified { binding: usage.name, reason: "no consumers found" }
     }

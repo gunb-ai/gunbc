@@ -35,30 +35,22 @@ import gunbc.fleet.fleet_bmc_firmware_evidence {
   srv3_bmc_firmware_evidence,
   srv4_bmc_firmware_evidence,
 }
-import gunbc.os_install_mechanism {
-  InstallAccessContextUnbound,
-  InstallTargetContextMismatch,
-  InstallAccessProfileNotLookedUp,
-  InstallDeliveryOutsideLegacyMechanism,
-  InstallFirmwareEvidenceAbsent,
-  InstallFirmwareVersionAmbiguous,
-  InstallFirmwareVersionUncatalogued,
-  InstallBootControlUnestablished,
-  InstallNoBootSourceOverride,
-  InstallNoEligibleTransport,
-  OsInstallMechanismRefused,
-  OsInstallMechanismSelected,
-  OsInstallMechanismSolution,
-  solve_install_mechanism_from_evidence,
-  srv1_install_mechanism_solution,
-  srv2_install_mechanism_solution,
-  srv3_firmware_catalog,
-  srv3_install_mechanism_solution,
-  srv4_install_mechanism_solution,
+import gunbc.boot_artifact_delivery {
+  BootDeliveryRefused,
+  BootDeliverySolution,
+  DeliveryAccessUnbound,
 }
+import gunbc.fleet.fleet_boot_delivery_solution {
+  srv1_boot_delivery_solution,
+  srv2_boot_delivery_solution,
+  srv3_boot_delivery_solution,
+  srv4_boot_delivery_solution,
+}
+import gunbc.machine_intake.access { AccessContextProfileLookupNotRun }
 import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
-import std.types { Bool, List, list_length }
+import std.types { Bool, List }
 import extdeps.firmware.types { firmware_semantic_version }
+import gunbc.fleet.fleet_bmc_firmware_evidence { fleet_bmc_firmware_catalog }
 
 data unknown_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.254", protocol: Redfish }
 
@@ -67,22 +59,10 @@ data uncatalogued_firmware: BmcFirmwareVersion = BmcFirmwareVersion {
   version: firmware_semantic_version(major: 2, minor: 7, patch: 1),
 }
 
-fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSolution) -> Bool {
+fn solution_refuses_at_profile_lookup_not_run(solution: BootDeliverySolution) -> Bool {
   match solution {
-    OsInstallMechanismRefused { cause: c } =>
-      match c {
-        InstallAccessProfileNotLookedUp { endpoint: _ } => true
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallAccessContextUnbound { standing: _ } => false
-        InstallTargetContextMismatch { requested: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallBootControlUnestablished { cause: _ } => false
-        InstallNoEligibleTransport { firmware: _, considered: _ } => false
-        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
-      }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: AccessContextProfileLookupNotRun { endpoint: _ } } } => true
+    _ => false
   }
 }
 
@@ -97,26 +77,21 @@ fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSoluti
 // the honest per-host answer until a bound BootDeliverySolution reaches these
 // consumers.
 test fn every_catalogued_host_refuses_at_profile_lookup_not_run() -> Bool {
-  solution_refuses_at_profile_lookup_not_run(solution: srv1_install_mechanism_solution)
-    && solution_refuses_at_profile_lookup_not_run(solution: srv2_install_mechanism_solution)
-    && solution_refuses_at_profile_lookup_not_run(solution: srv3_install_mechanism_solution)
-    && solution_refuses_at_profile_lookup_not_run(solution: srv4_install_mechanism_solution)
+  solution_refuses_at_profile_lookup_not_run(solution: srv1_boot_delivery_solution)
+    && solution_refuses_at_profile_lookup_not_run(solution: srv2_boot_delivery_solution)
+    && solution_refuses_at_profile_lookup_not_run(solution: srv3_boot_delivery_solution)
+    && solution_refuses_at_profile_lookup_not_run(solution: srv4_boot_delivery_solution)
 }
 
 // The refusal names the host's OWN evidence endpoint, not a default one.
 test fn profile_lookup_refusal_names_the_evidence_endpoint() -> Bool {
-  match srv4_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: c } =>
-      match c {
-        InstallAccessProfileNotLookedUp { endpoint: e } =>
-          match srv4_bmc_firmware_evidence {
-            BmcFirmwareEvidenceObserved { observation: o } => e.host == o.endpoint.host
-            BmcFirmwareEvidenceAttested { attestation: _ } => false
-            BmcFirmwareEvidenceUnobserved { endpoint: _ } => false
-          }
+  match srv4_boot_delivery_solution {
+    BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: AccessContextProfileLookupNotRun { endpoint: e } } } =>
+      match srv4_bmc_firmware_evidence {
+        BmcFirmwareEvidenceObserved { observation: o } => e.host == o.endpoint.host
         _ => false
       }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    _ => false
   }
 }
 
@@ -149,24 +124,14 @@ test fn srv1_srv2_are_attested_and_srv3_srv4_are_observed() -> Bool {
 // NOT reach the access step (whose refusal would name a lookup that could not
 // even have been keyed) and NOT substitute the board's shipped roster.
 test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step() -> Bool {
-  match solve_install_mechanism_from_evidence(
+  match bmc_firmware_capability_standing(
     evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
-    catalog: srv3_firmware_catalog,
+    catalog: fleet_bmc_firmware_catalog,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
-      match c {
-        InstallFirmwareEvidenceAbsent { endpoint: e } => e == unknown_endpoint
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallAccessProfileNotLookedUp { endpoint: _ } => false
-        InstallAccessContextUnbound { standing: _ } => false
-        InstallTargetContextMismatch { requested: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallBootControlUnestablished { cause: _ } => false
-        InstallNoEligibleTransport { firmware: _, considered: _ } => false
-        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
-      }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
+    BmcFirmwareCapabilityResolved { row: _ } => false
+    BmcFirmwareCapabilityVersionUncatalogued { firmware: _ } => false
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: _ } => false
   }
 }
 
@@ -174,7 +139,7 @@ test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step(
 // nearest row. 2.07.00 is the only version carrying CapabilityNbdProxyVirtualMedia; answering
 // for 2.07.01 from that row would grant a capability nobody observed.
 test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
-  match solve_install_mechanism_from_evidence(
+  match bmc_firmware_capability_standing(
     evidence: BmcFirmwareEvidenceAttested {
       attestation: BmcFirmwareAttestation {
         endpoint: unknown_endpoint,
@@ -183,23 +148,12 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
         attested_at: 1786320000000,
       },
     },
-    catalog: srv3_firmware_catalog,
+    catalog: fleet_bmc_firmware_catalog,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
-      match c {
-        InstallFirmwareVersionUncatalogued { firmware: f } =>
-          bmc_firmware_version_eq(a: f, b: uncatalogued_firmware)
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionAmbiguous { firmware: _, count: _ } => false
-        InstallAccessProfileNotLookedUp { endpoint: _ } => false
-        InstallAccessContextUnbound { standing: _ } => false
-        InstallTargetContextMismatch { requested: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallBootControlUnestablished { cause: _ } => false
-        InstallNoEligibleTransport { firmware: _, considered: _ } => false
-        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
-      }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    BmcFirmwareCapabilityVersionUncatalogued { firmware: f } => bmc_firmware_version_eq(a: f, b: uncatalogued_firmware)
+    BmcFirmwareCapabilityEvidenceAbsent { endpoint: _ } => false
+    BmcFirmwareCapabilityResolved { row: _ } => false
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: _ } => false
   }
 }
 
@@ -209,7 +163,7 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
 test fn catalogued_version_resolves_to_its_own_row() -> Bool {
   match bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
-    catalog: srv3_firmware_catalog,
+    catalog: fleet_bmc_firmware_catalog,
   ) {
     BmcFirmwareCapabilityKnown { row: r } =>
       firmware_has_capability(row: r, cap: CapabilityNbdProxyVirtualMedia)
@@ -222,7 +176,7 @@ test fn catalogued_version_resolves_to_its_own_row() -> Bool {
 test fn catalogued_3_22_00_row_carries_no_virtual_media_of_either_kind() -> Bool {
   match bmc_firmware_capability_row_for(
     firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
-    catalog: srv3_firmware_catalog,
+    catalog: fleet_bmc_firmware_catalog,
   ) {
     BmcFirmwareCapabilityKnown { row: r } =>
       firmware_has_capability(row: r, cap: CapabilityVirtualMedia) == false
@@ -244,7 +198,7 @@ test fn unobserved_evidence_establishes_no_version() -> Bool {
 test fn capability_standing_refuses_on_absent_evidence() -> Bool {
   match bmc_firmware_capability_standing(
     evidence: BmcFirmwareEvidenceUnobserved { endpoint: unknown_endpoint },
-    catalog: srv3_firmware_catalog,
+    catalog: fleet_bmc_firmware_catalog,
   ) {
     BmcFirmwareCapabilityEvidenceAbsent { endpoint: e } => e == unknown_endpoint
     BmcFirmwareCapabilityResolved { row: _ } => false
@@ -280,24 +234,14 @@ test fn duplicate_catalog_rows_for_one_version_refuse_as_ambiguous() -> Bool {
   }
 }
 
-test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
-  match solve_install_mechanism_from_evidence(
+test fn ambiguous_catalog_propagates_to_the_capability_standing() -> Bool {
+  match bmc_firmware_capability_standing(
     evidence: attested_2_07_00_evidence,
     catalog: duplicated_version_catalog,
   ) {
-    OsInstallMechanismRefused { cause: c } =>
-      match c {
-        InstallFirmwareVersionAmbiguous { firmware: _, count: n } => n == 2
-        InstallFirmwareEvidenceAbsent { endpoint: _ } => false
-        InstallFirmwareVersionUncatalogued { firmware: _ } => false
-        InstallAccessProfileNotLookedUp { endpoint: _ } => false
-        InstallAccessContextUnbound { standing: _ } => false
-        InstallTargetContextMismatch { requested: _ } => false
-        InstallNoBootSourceOverride { firmware: _ } => false
-        InstallBootControlUnestablished { cause: _ } => false
-        InstallNoEligibleTransport { firmware: _, considered: _ } => false
-        InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
-      }
-    OsInstallMechanismSelected { mechanism: _ } => false
+    BmcFirmwareCapabilityVersionAmbiguous { firmware: _, count: n } => n == 2
+    BmcFirmwareCapabilityEvidenceAbsent { endpoint: _ } => false
+    BmcFirmwareCapabilityResolved { row: _ } => false
+    BmcFirmwareCapabilityVersionUncatalogued { firmware: _ } => false
   }
 }

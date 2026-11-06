@@ -1,11 +1,17 @@
 module gunbc.auth.approval_assertion_counter
 
-import std.types { NonEmptyStr, String, Int, HttpStatus }
+import std.types { NonEmptyStr, String, Int, HttpStatus, FilePath }
 import std.logic { Bool }
 import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
-  file_compare_and_set, observe_cas_slot_state,
+  SlotStore, file_slot_store, slot_observe, slot_commit,
 }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused }
+import gunbc.host_state_root { HostStateTree, host_state_tree, host_state_tree_path }
+import gunbc.managed_directory { ManagedDirectory, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 import std.durable_compare_and_set {
   cas_unreadable_slot_detail, CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
@@ -40,7 +46,58 @@ import std.durable_compare_and_set {
 // Storage still grows one small file per admitted assertion; that is disk, not a refusal.
 // test.claim.approval_assertion_counter_wet_witness admits past the old bound to keep it so.
 
-data approval_assertion_counter_root: NonEmptyStr = "/var/lib/gunbc/approval-assertion-counters"
+// THE ONE DECLARATION OF THE COUNTER STORE: its member under the host-state tree (gunbc.host_state_root). The
+// store is a host singleton -- one broker deployment, one counter per enrolment -- so its mint takes the tree
+// and nothing else. The directory row (approval_assertion_counter_directory) derives from it too.
+type AssertionCounterSlotsDeclaration { member: NonEmptyStr }
+
+data assertion_counter_slots: AssertionCounterSlotsDeclaration = AssertionCounterSlotsDeclaration {
+  member: "approval-assertion-counters" as NonEmptyStr,
+}
+
+fn assertion_counter_slots_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", assertion_counter_slots.member as String], "") as NonEmptyStr
+}
+
+// THE COUNTER STORE, A SEALED VALUE MINTED FROM ITS DECLARATION, as gunbc.roadmap.roadmap_attempt_worktree_claim_root
+// WorktreeClaimStore is: sole_constructor, non-generic, never a variant arm, built only by
+// assertion_counter_store, which lists the derived directory and answers Ready only for a listed one. The
+// routes take this type, so a counter slot store built over any other root is not a counter store.
+type AssertionCounterStore sole_constructor {
+  slots: SlotStore
+}
+
+type AssertionCounterStoreReading
+  = AssertionCounterStoreReady { store: AssertionCounterStore }
+  | AssertionCounterStoreUnready { detail: String }
+
+// THE DIRECTORY THIS STORE DEMANDS, at the path derived from assertion_counter_slots over the production tree,
+// shaped as the device store's row is (gunbc.auth.approval_device_redemption approval_device_store_directory):
+// the device routes that read and write it run as the operator's account, and the counters must survive a
+// retract, so ownership is Ensured. The broker install converges it: the row is a member of the broker
+// state-root census (gunbc.auth.approval_broker_state_directories approval_broker_state_directories), which
+// gunbc.host.host_effect_realize dark_state_directories_install folds.
+fn approval_assertion_counter_directory() -> ManagedDirectory {
+  ManagedDirectory {
+    member: "approval-assertion-counter-store" as NonEmptyStr,
+    path: assertion_counter_slots_path(tree: host_state_tree()) as String as FilePath,
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: fleet_posix_operator_user, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+}
+
+fn assertion_counter_store(tree: HostStateTree) -> AssertionCounterStoreReading {
+  let root = assertion_counter_slots_path(tree: tree)
+  let listed = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => AssertionCounterStoreUnready { detail: join(["the assertion counter store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => AssertionCounterStoreUnready { detail: join(["the assertion counter store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => AssertionCounterStoreReady { store: AssertionCounterStore { slots: file_slot_store(root: root) } }
+  }
+}
 
 type AssertionCounterStanding {
   enrollment_id: NonEmptyStr
@@ -59,8 +116,8 @@ type AssertionCounterAdmission
   | AssertionCounterRaced
   | AssertionCounterStoreRefused { detail: NonEmptyStr }
 
-fn observe_assertion_counter(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> AssertionCounterObservation {
-  match observe_cas_slot_state(root: root, key: enrollment_id) {
+fn observe_assertion_counter(counters: AssertionCounterStore, enrollment_id: NonEmptyStr) -> AssertionCounterObservation {
+  match slot_observe(store: counters.slots, key: enrollment_id) {
     CasObservedUnreadable { cause: c } => AssertionCounterUnreadable { detail: concat("assertion counter slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => AssertionCounterNeverAdmitted
@@ -73,11 +130,11 @@ fn observe_assertion_counter(root: NonEmptyStr, enrollment_id: NonEmptyStr) -> A
   }
 }
 
-fn assertion_counter_commit(root: NonEmptyStr, enrollment_id: NonEmptyStr, expected: CasExpectation, observed: Int) -> AssertionCounterAdmission {
+fn assertion_counter_commit(counters: AssertionCounterStore, enrollment_id: NonEmptyStr, expected: CasExpectation, observed: Int) -> AssertionCounterAdmission {
   match admit_cas_attempt_for_derived_payload(key: enrollment_id, expected: expected, proposed: to_string(observed) as NonEmptyStr) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => AssertionCounterStoreRefused { detail: "enrolment id is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
+      match slot_commit(store: counters.slots, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => AssertionCounterAdmitted { enrollment_id: enrollment_id, counter: observed }
         CasPreconditionFailed { expected: _, observed: _ } => AssertionCounterRaced
         CasStoreRefused { cause: _ } => AssertionCounterStoreRefused { detail: "assertion counter store refused the publication" }
@@ -87,13 +144,13 @@ fn assertion_counter_commit(root: NonEmptyStr, enrollment_id: NonEmptyStr, expec
 
 // THE ADMISSION: the observed counter strictly exceeds the standing, and the commit of it is the
 // admission. Equal is a replay (the same assertion again), lower is a replay of an older one.
-fn admit_assertion_counter(root: NonEmptyStr, enrollment_id: NonEmptyStr, observed: Int) -> AssertionCounterAdmission {
-  match observe_assertion_counter(root: root, enrollment_id: enrollment_id) {
+fn admit_assertion_counter(counters: AssertionCounterStore, enrollment_id: NonEmptyStr, observed: Int) -> AssertionCounterAdmission {
+  match observe_assertion_counter(counters: counters, enrollment_id: enrollment_id) {
     AssertionCounterUnreadable { detail: d } => AssertionCounterStoreRefused { detail: d }
-    AssertionCounterNeverAdmitted => assertion_counter_commit(root: root, enrollment_id: enrollment_id, expected: ExpectSlotAbsent, observed: observed)
+    AssertionCounterNeverAdmitted => assertion_counter_commit(counters: counters, enrollment_id: enrollment_id, expected: ExpectSlotAbsent, observed: observed)
     AssertionCounterStood { standing: s } =>
       if observed <= s.last_admitted_counter { AssertionCounterReplayed { observed: observed, last_admitted: s.last_admitted_counter } }
-      else { assertion_counter_commit(root: root, enrollment_id: enrollment_id, expected: ExpectSlotGeneration { generation: s.generation }, observed: observed) }
+      else { assertion_counter_commit(counters: counters, enrollment_id: enrollment_id, expected: ExpectSlotGeneration { generation: s.generation }, observed: observed) }
   }
 }
 

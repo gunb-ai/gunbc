@@ -6,6 +6,7 @@ import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, contains, fold_lis
 import v2.std.witness { map_get_checked }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node_query { arrow_constant_member_codomain }
 import v2.std.node { node_same_occurrence, Arrow, Atom, ComputationNode, Conj, Disj, Instantiation, Node, Symbol, TypeNode }
 import v2.std.type_binder { AliasRenaming, GenericTypeDecl, NotARenaming, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, PureRenamingOf, TypeAlias, binder_conj_names, refinement_declaration_of_node, type_alias_renaming, type_decl_view }
 import std.occurrence_identity { CallableOccurrence, ConstructorOccurrence, LexicalValueOccurrence, NamespaceSegmentOccurrence, OccurrenceCategory, TypeOccurrence }
@@ -767,7 +768,26 @@ fn type_decl_member_shape(index: SymbolIndex, path: QualifiedName, node: Node) -
     GenericTypeDecl { binders: _, member: _ } => TypeDeclShapeBinderWrapper
     TypeAlias { binders: _, aliased: _ } => TypeDeclShapeBinderWrapper
     OpaqueTypeDecl { binders: _ } => TypeDeclShapeBinderWrapper
-    NotATypeDecl => TypeDeclShapeValue
+    // A DECLARATION THAT IS NOT A TYPE IS A VALUE OR A CALLABLE BY ITS OWN NODE. Body lowering realizes a
+    // `data` row as the nullary Arrow that returns it, marked ConstantMemberEdge; an `fn` is an unmarked
+    // Arrow. So the marker, read through its one reader (v2.std.node_query arrow_constant_member_codomain,
+    // the same reader infer types a constant reference by and eval applies it by), says VALUE; any other
+    // Arrow is a CALLABLE; a non-Arrow node is a value. It answered Value for all three, so the index
+    // could not tell a module function from a constant, while v2.compiler.occurrence_role already declares
+    // an `fn` name CallableOccurrence: one fact, two answers. Value references are unchanged
+    // (std.occurrence_binding_resolve occurrence_category_binding_verdict admits Callable for a value
+    // reference); what it makes decidable is a pattern atom naming a module-level constant
+    // (v2.compiler.resolve resolve_pattern_atom_names_module_value).
+    NotATypeDecl =>
+      match arrow_constant_member_codomain(arrow: node) {
+        Present { value: _ } => TypeDeclShapeValue
+        Absent =>
+          match node.kind {
+            TypeNode { connective: Arrow } => TypeDeclShapeCallable
+            TypeNode { connective: _ } => TypeDeclShapeValue
+            ComputationNode { behavior: _ } => TypeDeclShapeValue
+          }
+      }
     PlainTypeDecl { member: member } =>
       match member.kind {
         TypeNode { connective: Conj } =>

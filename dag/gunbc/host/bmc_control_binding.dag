@@ -21,10 +21,11 @@
 module gunbc.host.bmc_control_binding
 
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObservationStanding, BmcAccessObserved, BmcAccessUnobserved, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.bmc_secure { BmcSecureStanding, BmcSecured, BmcSecureRefused, BmcSecureRefusalCause }
 import gunbc.machine_intake.subject { UnitKey }
-import std.types { NonEmptyStr }
+import std.types { Int, NonEmptyStr }
+import extdeps.bmc.ipmi { IpmiCipherSuite }
 
 // THE SECURED ROUTE. sole_constructor: it is minted only on the bound arm of the join below, from the
 // endpoint the access observation read and the secured standing that proved the credential reaches it.
@@ -163,4 +164,9 @@ fn bmc_control_route_account(route: BmcControlBoundRoute) -> NonEmptyStr? {
 // THE READING THE JOIN CHECKED THE ENDPOINT AGAINST.
 fn bmc_control_route_observation(route: BmcControlBoundRoute) -> BmcAccessObservation {
   route.observation
+}
+
+// THE LANPLUS CIPHER SUITE A BOUND ROUTE'S IPMI CALLS USE, read through the observation the join checked.
+fn bmc_control_route_ipmi_cipher_suite(route: BmcControlBoundRoute) -> IpmiCipherSuite? {
+  bmc_observation_ipmi_cipher_suite(observation: route.observation)
 }

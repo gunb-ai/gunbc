@@ -1,0 +1,137 @@
+module gunbc.fleet.fleet_naming_policy
+
+// THE FLEET NAMING-POLICY REGISTRY: THE ONE ROW THAT DECIDES WHAT A MEMBER IS CALLED.
+//
+// WHY A REGISTRY RATHER THAN AN INLINE RULE. gunbc.plans.fleet_naming_reach_access P2 requires that
+// "every hostname construction passes through a policy that names the allocation". What a member is
+// called is a FACT ABOUT THE FLEET -- it is what makes a name legal -- and such a fact belongs in the
+// ledger beside the roster it governs, not inside the function that reads it. Two consumers that each
+// spell the rule inline can disagree silently; one row cannot. This is the same reason the roster itself
+// is a `data` row in gunbc.hostname_allocation rather than a convention every caller remembers.
+//
+// WHY THESE COLUMNS ARE THE ATOMS. The DFS for this concept (the plan's section 3.2) is: a member's name
+// is decided by (a) WHICH SPELLING of a drawn name is canonical, (b) WHAT a selector may spell in
+// addition to the canonical name, (c) HOW the canonical name is qualified when it goes to a provider,
+// and (d) WHETHER legacy rows may keep their stored spelling. Those four are the complete set: remove
+// one and a consumer must invent it, add one and it is a decision nobody currently makes. The zone is NOT
+// a fifth concept -- it is an input to (c), and it is the DNS zone type that already exists
+// (extdeps.dns.domain_name DomainName), so this module borrows it rather than re-declaring a zone of its
+// own.
+//
+// WHAT THIS ROW IS NOT: it is not a second roster and holds no per-host fact. Per-host truth stays in
+// gunbc.hostname_allocation's roster, where allocation identity lives. A policy row that named a single
+// host would be a second source for that host's name, which is the defect DESIGN 3 forbids.
+
+import std.types { Bool, Int, NonEmptyStr, String, brand }
+import std.optional { Absent, Optional, Present }
+import extdeps.dns.domain_name { DomainName }
+
+// THE REGISTRY'S IDENTITY, so a second regime (a lab fleet with its own naming rules) is a new ROW here
+// rather than a second mechanism, and so a consumer can cite WHICH regime a name was resolved under.
+type FleetNamingPolicyId = NonEmptyStr where brand("FleetNamingPolicyId")
+
+// WHICH SPELLING OF A DRAWN NAME IS CANONICAL. These three are the only spellings a
+// gunbc.hostname_allocation HumanName has at all -- they are the variant's own parts -- so a policy cannot
+// ask for a form that does not exist and the enacting module never has to invent one. The naming is
+// Canonical-prefixed because the column decides which spelling is the canonical one; the alternatives are
+// the spellings themselves, not competing notions of canonicity.
+type MemberLabelSource
+  = CanonicalFirstOnly
+  | CanonicalFirstLast
+  | CanonicalFirstMiddleLast
+
+// WHAT A SELECTOR MAY SPELL, beyond the canonical label. A policy column rather than an always-on
+// convenience because the ambiguity rule it enables -- a short form resolves only when it picks out
+// exactly one host -- is what keeps the convenience from becoming a collision: shortened forms are
+// offered precisely so that one can be refused when it stops being unique. CanonicalOnly is the regime
+// where the fleet accepts no abbreviations at all.
+type SelectorFormPermission
+  = CanonicalOnly
+  | ShortenedFormsPermitted
+
+// HOW THE CANONICAL LABEL IS QUALIFIED ON THE WAY TO A PROVIDER. The distinction the fleet actually makes
+// is between a name that is complete in itself and one that needs the fleet's DNS zone appended. WHO
+// resolves the qualification -- the fleet's DNS, the provider's nameserver -- is a provider fact and is
+// deliberately not modeled here; that is the plan's point about a host living in two namespaces at once.
+type MemberLabelQualification
+  = BareLabel
+  | QualifiedByFleetZone
+
+// THE POLICY ROW. sole_constructor, for the same reason the identity types in gunbc.fleet.fleet_naming
+// are: the shape is public so the row reads as data, but nothing outside this module may mint a policy.
+// Every decision column is a sum of named alternatives, so a policy cannot be spelled as a string an `if`
+// compares against, and a new regime has to say which of the named alternatives it picks.
+//
+// `legacy_labels_stay` is not bookkeeping; it is the migration decision, and the plan fixes it (existing
+// LegacyHostname rows stay, the operator migrates them later). A consumer needs it because the fleet
+// CONTAINS such rows today. Stated as a column, "this consumer must handle legacy rows" follows from the
+// row rather than from each author's memory, and flipping the column later retires those code paths
+// instead of re-opening them one call site at a time.
+//
+// `qualification_zone` is Optional for the same reason the qualification column exists: a fleet that
+// speaks bare names has no zone to carry, and one that does must carry the REAL zone. An empty or
+// placeholder zone would be worse than an absent one -- it would render as an address that looks valid.
+type FleetNamingPolicy sole_constructor {
+  id: FleetNamingPolicyId
+  member_label_source: MemberLabelSource
+  selector_forms: SelectorFormPermission
+  member_label_qualification: MemberLabelQualification
+  qualification_zone: Optional<DomainName>
+  legacy_labels_stay: Bool
+}
+
+// THE ROW THE FLEET RUNS UNDER. Recorded, not derived: it states the regime the fleet actually uses, and
+// the roster it governs is the evidence -- the two must agree, which is what
+// dag/test/claim/fleet_naming_witness.dag checks instead of trusting this comment.
+//
+// CanonicalFirstOnly because it is what the roster's drawn rows actually are: the allocator's lottery
+// yields the first untaken form of a ticket, and for every drawn member that form has been the given name
+// alone (damien, gus, and the five P2 rows). A policy that selected a surname spelling would refuse every
+// one of those rows, which is exactly what dag/test/claim/fleet_naming_witness.dag checks -- the row is
+// recorded against the roster rather than asserted. The collision worry that argues for a surname is
+// answered where it belongs: at the draw, which advances past a taken form rather than minting a duplicate.
+// ShortenedFormsPermitted because the operator has always typed short names at a keyboard, and the
+// roster's selector cardinality rule is what makes that safe. BareLabel because every host this fleet
+// addresses today is addressed inside one network, so a suffix would be a second spelling of a host that
+// already has one -- and with no zone declared, the qualification column and the zone field agree rather
+// than one of them pretending.
+//
+// legacy_labels_stay is true because the fleet still contains legacy rows and the plan forbids
+// withdrawing them to make a roster look tidier; it is the column P3 acts on, not a comment.
+data gunbc_fleet_naming_policy: FleetNamingPolicy = FleetNamingPolicy {
+  id: "gunbc.fleet.fleet_naming_policy.p2" as FleetNamingPolicyId,
+  member_label_source: CanonicalFirstOnly,
+  selector_forms: ShortenedFormsPermitted,
+  member_label_qualification: BareLabel,
+  qualification_zone: Absent,
+  legacy_labels_stay: true,
+}
+
+// THE ONLY WAY THE POLICY IS READ: a function, so the row has one accessor, a consumer cannot hold a
+// stale copy, and the module that enacts the policy has a single name to cite. This is what
+// gunbc.fleet.fleet_naming calls.
+fn select_fleet_naming_policy() -> FleetNamingPolicy {
+  gunbc_fleet_naming_policy
+}
+
+// THE AMBIGUITY RULE, held beside the column that permits the shortcut. A selector form is accepted when
+// the policy permits shortened forms AT ALL and the form picks out exactly one host: a count of zero is
+// no such host and a count above one is ambiguous, and the plan's sentence is that both are refusals with
+// no implicit winner. The caller supplies the count because only the roster knows how many hosts a form
+// matches -- what lives here is the rule, not an index.
+fn selector_form_is_accepted(permission: SelectorFormPermission, matches: Int) -> Bool {
+  permission == ShortenedFormsPermitted && matches == 1
+}
+
+// Whether a legacy row may keep its stored spelling under this policy. Named as a question so the call
+// site in gunbc.fleet.fleet_naming reads as the policy decision it is rather than a boolean field read.
+fn legacy_labels_may_stay(policy: FleetNamingPolicy) -> Bool {
+  policy.legacy_labels_stay
+}
+
+// The zone a qualified address is built with, if the policy carries one. Absent is a legitimate answer
+// (a bare-name fleet) and the enacting module turns it into a refusal when the qualification column
+// demands a zone -- this function does not substitute a zone it was not given.
+fn policy_qualification_zone(policy: FleetNamingPolicy) -> Optional<DomainName> {
+  policy.qualification_zone
+}

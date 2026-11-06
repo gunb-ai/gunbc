@@ -76,7 +76,26 @@ fn observer_clock_read() -> ObserverClockRead {
 fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_bmc_account_instant"),
+    // The served-lockout fixture of test.fixture.machine_intake.bmc_lockout forges a
+    // dry pass's lockout READING for the witnesses of the failed-login budget in
+    // gunbc.machine_intake.bmc_secure; its instants are that fixture's schedule, and
+    // it names itself in every realization string so a modeled lockout read can never
+    // be mistaken for a measured one.
+    decl_ref(module_path: "test.fixture.machine_intake.bmc_lockout", decl_name: "lockout_fixture_instant"),
+    // The served-lockout witness's own dry passes: each test below mints the instants its
+    // plan is made at, so a budget refusal is timed like the plan it refuses.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "threshold_three_refuses_three_failing_logins_and_admits_two"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "an_unread_threshold_refuses_the_failing_logins_a_served_one_admits"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "declared_retries_are_charged_as_logins"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "the_surface_the_plan_will_authenticate_on_is_the_one_that_judges_it"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "the_forced_change_path_costs_no_failed_login_on_the_surface_it_is_grounded_for"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_served_lockout_witness", decl_name: "a_served_never_locked_threshold_licenses_what_an_unread_one_refuses"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_prior_life_instant"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_is_one_write_and_a_second_published_write_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
+    // The supplied-boundary witness for the Redfish arm of apply_planned_account_write mints the stored/fetched
+    // generation its PlannedAccountWrite carries, exactly as the shared-store dry-apply witnesses do.
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_dispatcher_routes_a_redfish_write_to_the_patch_and_redacts_the_secret"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "reflash_restored_factory_access_takes_the_same_apply_and_readback_path"),
@@ -92,7 +111,10 @@ fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> Observer
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_apply_whose_post_read_fails_the_goal_generation_mints_no_receipt"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "one_approval_admits_exactly_the_convergence_it_names"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_secured_apply_projects_to_a_secured_standing_carrying_the_writes"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_credential_policy_witness", decl_name: "controller_reading"),
   ]
 {
   ObserverClockInstant { millis: millis, source: ObserverClockModeled { realization: realization } }
@@ -102,6 +124,52 @@ fn observer_instant_millis(instant: ObserverClockInstant) -> EpochMs {
   instant.millis
 }
 
+// The bare-millis comparison, kept ONLY for consumers that build both sides from one realization by
+// construction (gunbc.machine_intake.bmc_secure's plan / apply sequence). It is NOT how to order two instants
+// that may come from different observer sources: order_observer_instants below refuses that case instead of
+// answering it. This signature is deliberately not widened -- doing so rewrites that other module, which this
+// change does not own -- and the reason is stated here and in the PR rather than left implicit (§6b: a
+// pattern kept local owes its reason; no answer is a reject).
 fn observer_instant_precedes(earlier: ObserverClockInstant, later: ObserverClockInstant) -> Bool {
   earlier.millis < later.millis
+}
+
+// WHICH CLOCK AN INSTANT CAME FROM, as one canonical key. Two instants can be put in order only when their
+// keys are equal: the millis of one dry realization's schedule and the millis of another realization's, or of
+// a measured run read, are numbers on one scale but not facts on one clock, and ordering across them is not a
+// wrong answer, it is no answer. The key lives HERE because ObserverInstantSource is declared here (§3: each
+// fact lives in exactly one place); a consumer that patched agreement locally would leave this module free to
+// order two clocks for the next consumer that mixes them (§6b: patching c when the fault is upstream).
+//
+// Consumers: order_observer_instants below.
+fn observer_instant_source_key(source: ObserverInstantSource) -> String {
+  match source {
+    ObserverClockReadAtRun => "observer-clock-read-at-run"
+    ObserverClockModeled { realization: r } => "observer-clock-modeled:" + (r as String)
+  }
+}
+
+// ORDERING TWO OBSERVER INSTANTS, as a typed outcome. Two instants from different observer sources have no
+// order at all -- their millis are numbers on one scale but facts on two clocks -- so the refusal lives INSIDE
+// the ordering operation, where the clock is known, and not in a guard every consumer must remember to ask
+// first (§5: stronger than catching a wrong state is making it unwritable; §6b: patching a call site leaves
+// the upstream fault in place for the next consumer of the same fact). Consumers:
+// gunbc.machine_intake.prior_life_boundary forced_first_rotation_write_transition (the write landing inside
+// its admitted leg) and forced_write_pre_capture_ordering (this run's two archive reads around that write).
+type ObserverInstantOrder
+  = InstantBefore
+  | InstantAfter
+  | InstantEqual
+  | InstantClocksDiffer { left: ObserverInstantSource, right: ObserverInstantSource }
+
+fn order_observer_instants(left: ObserverClockInstant, right: ObserverClockInstant) -> ObserverInstantOrder {
+  if observer_instant_source_key(source: left.source) != observer_instant_source_key(source: right.source) {
+    InstantClocksDiffer { left: left.source, right: right.source }
+  } else if left.millis < right.millis {
+    InstantBefore
+  } else if right.millis < left.millis {
+    InstantAfter
+  } else {
+    InstantEqual
+  }
 }

@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count, token_count_value }
-import std.checked_arithmetic { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
+import std.prefixed_line { prefixed_line_last_space_nat, PrefixedLineMiss, PrefixedLineNatUnreadable, PrefixedLineNat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
 import extdeps.gpu_bench.request_v2 { extdeps_external_authority_anchor }

@@ -1,6 +1,7 @@
 module gunbc.representation_boundary
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
@@ -516,8 +517,7 @@ data cross_tree_import_boundary: RepresentationBoundary = RepresentationBoundary
   next_trigger: climbs_when(capability: "none identified by this inventory for the DECISION itself, which conforms. Whether its arbiter is reached on a required route is answered by boundary_interpreted_standing rather than asserted here.")
 }
 
-// ORDER IS SOURCE ORDER AND IS LOAD-BEARING, for the reason gunbc.guarantee_stall.roster gives:
-// a consumer renders rows in roster order, so sorting this list reorders every projection derived
+// ORDER IS SOURCE ORDER AND IS LOAD-BEARING: a consumer renders rows in roster order, so sorting this list reorders every projection derived
 // from it. Append at the end.
 data representation_boundary_roster: List<RepresentationBoundary> = [
   calls_boundary,
@@ -537,7 +537,7 @@ data representation_boundary_roster: List<RepresentationBoundary> = [
 // and therefore TRUE on an empty roster; counting is what makes emptiness refusable rather than a
 // silent pass.
 fn boundary_roster_size() -> Int {
-  list_length(items: representation_boundary_roster)
+  length(xs: representation_boundary_roster)
 }
 
 fn boundary_is_interpreted_only(b: RepresentationBoundary) -> Bool {
@@ -553,7 +553,7 @@ fn boundary_is_interpreted_only(b: RepresentationBoundary) -> Bool {
 // THE MEASUREMENT THE ROSTER'S HEADER CITES, DERIVED RATHER THAN TRANSCRIBED. DESIGN section 6: name
 // the instrument, never transcribe its output. If a row's arm changes this number moves on its own.
 fn interpreted_only_count() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_is_interpreted_only(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_is_interpreted_only(b: b)))
 }
 
 // THE WORK LIST, DERIVED. A row is on it when it has NAMED a cheap local claim nobody has built.
@@ -571,7 +571,7 @@ fn boundary_has_unbuilt_local_evidence(b: RepresentationBoundary) -> Bool {
 }
 
 fn unbuilt_but_testable_now_count() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_has_unbuilt_local_evidence(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_has_unbuilt_local_evidence(b: b)))
 }
 
 fn boundary_has_no_evidence(b: RepresentationBoundary) -> Bool {
@@ -585,7 +585,7 @@ fn boundary_has_no_evidence(b: RepresentationBoundary) -> Bool {
 }
 
 fn no_evidence_count() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_has_no_evidence(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_has_no_evidence(b: b)))
 }
 
 // TWO COUNTS, NEVER ONE, AND NEVER SUMMED. This repository has repeatedly paid for a count of
@@ -619,11 +619,11 @@ fn boundary_is_candidate_fork(b: RepresentationBoundary) -> Bool {
 }
 
 fn established_fork_count() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_is_established_fork(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_is_established_fork(b: b)))
 }
 
 fn candidate_fork_count() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_is_candidate_fork(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_is_candidate_fork(b: b)))
 }
 
 // THE THIRD COUNT, KEPT APART FROM THE OTHER TWO FOR THE SAME REASON THEY ARE KEPT APART FROM EACH
@@ -645,7 +645,7 @@ fn boundary_is_declared_divergence(b: RepresentationBoundary) -> Bool {
 }
 
 fn declared_divergence_count() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_is_declared_divergence(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_is_declared_divergence(b: b)))
 }
 
 fn boundary_has_no_authority(b: RepresentationBoundary) -> Bool {
@@ -657,7 +657,7 @@ fn boundary_has_no_authority(b: RepresentationBoundary) -> Bool {
 }
 
 fn boundaries_without_an_authority() -> Int {
-  list_length(items: filter(representation_boundary_roster, b => boundary_has_no_authority(b: b)))
+  length(xs: filter(representation_boundary_roster, b => boundary_has_no_authority(b: b)))
 }
 
 // TWO CHECKS THAT BELONG HERE BY INSTINCT ARE DELIBERATELY ABSENT, AND THE ABSENCE IS THE POINT.

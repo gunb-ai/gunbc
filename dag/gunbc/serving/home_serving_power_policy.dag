@@ -8,8 +8,8 @@ import extdeps.external_authority { CitedFigureStanding }
 // WHAT THIS MODULE DECIDES, AND WHY IT EXISTS.
 //
 // `main` carries TWO watt figures for one card and they mean different things.
-// `GpuModelCatalogRow.tdp_watts` (extdeps.gpu.types) is the vendor's thermal design
-// ceiling, cited to a datasheet. `ServingAcceleratorRealization.applied_power_limit`
+// `GpuBoardCatalogFacts.board_power` (extdeps.gpu.types; a board's, not a GPU's, and read as its
+// ceiling by gpu_board_power_ceiling) is the vendor's thermal design ceiling, cited to a datasheet. `ServingAcceleratorRealization.applied_power_limit`
 // (gunbc.spark.serving_performance_subject) is the ceiling an operator SET, and it
 // carries no standing at all. Before this module no rule connected the two (instrument for
 // re-checking: `git grep -i tdp` over `dag/gunbc/spark` and `dag/gunbc/serving`), so a card could print "600 W" and a

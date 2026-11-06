@@ -84,7 +84,7 @@ test fn aoe_well_formed_refuses_a_named_domain_without_order() -> Bool {
 
 // PATH: infer, entered directly with a ResolvedTree.
 fn aoe_infer_reason(arrow: Node) -> Symbol {
-  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), occurrence_bindings: empty_map(), duplicate_binding_records: [], module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }) {
+  match infer(tree: ResolvedTree { root: aoe_module_root(arrow: arrow), symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), occurrence_resolutions: empty_map(), duplicate_binding_records: [], module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }) {
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
     Accepted { value: _, diagnostics: _ } => ^aoe_accepted
   }

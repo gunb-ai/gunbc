@@ -14,7 +14,9 @@ import extdeps.provisioning.network_boot {
 }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
-  AutoinstallIdentity,
+  CloudInitUserEntry,
+  UserDataOnly,
+  BashLoginShell,
   NoCloudNet,
   NoCloudLocal,
   AutoinstallStoragePolicy,
@@ -24,7 +26,7 @@ import extdeps.os.ubuntu_autoinstall {
 }
 import std.optional { Present }
 import gunbc.fleet.fleet_intent_network { operator_lan_segment }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import product.host_identity { HostIdentity }
 import product.network_topology { NetworkSegment }
@@ -35,18 +37,27 @@ import extdeps.bmc.types {
   RedfishResetType,
   ResetForceRestart,
 }
-import gunbc.os_install_mechanism {
-  OsInstallMechanismRefusalCause,
-  OsInstallMechanismRefused,
-  OsInstallMechanismSelected,
-  OsInstallMechanismSolution,
-  srv3_install_mechanism_solution,
-  install_boot_target_for,
-  OsInstallMechanism,
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  VirtualMediaInstall,
+import gunbc.boot_artifact_delivery {
+  BootDeliveryPlanAdmitted,
+  BootDeliveryPlanIncoherence,
+  BootDeliveryPlanIncoherent,
+  BootDeliveryPlanned,
+  BootDeliveryRefusalCause,
+  BootDeliveryRefused,
+  BootDeliverySolution,
+  BootFromNetworkPxe,
+  admit_boot_delivery_plan,
+  redfish_boot_target_of_control,
 }
+import gunbc.os_install_arm {
+  OsInstallArm,
+  OsInstallArmNetworkBoot,
+  OsInstallArmRefusal,
+  OsInstallArmNotRealizable,
+  OsInstallArmVirtualMediaIso,
+  os_install_arm_of,
+}
+import gunbc.fleet.fleet_boot_delivery_solution { srv3_boot_delivery_solution }
 
 type NetworkBootDelivery {
   chain: NetworkBootChain
@@ -57,16 +68,30 @@ type OsInstallDelivery
   = NetworkBoot { delivery: NetworkBootDelivery }
   | VirtualMediaIso { autoinstall: UbuntuAutoinstallPayload }
 
-fn os_install_delivery_for(mechanism: OsInstallMechanism, pxe_chain: NetworkBootChain, autoinstall: UbuntuAutoinstallPayload) -> OsInstallDelivery {
-  match mechanism {
-    NbdProxyVirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
-    VirtualMediaInstall => VirtualMediaIso { autoinstall: autoinstall }
-    PxeHttpInstall => NetworkBoot {
-      delivery: NetworkBootDelivery {
-        chain: pxe_chain,
-        autoinstall: autoinstall,
-      },
-    }
+// A planned arm this module cannot stage is refused locally and typed (gunbc.os_install_arm), not
+// folded into a delivery it never realized.
+type OsInstallDeliveryStanding
+  = OsInstallDeliveryRealizable { delivery: OsInstallDelivery }
+  | OsInstallDeliveryArmNotRealizable { refusal: OsInstallArmRefusal }
+
+fn os_install_delivery_for(
+  arm: OsInstallArm,
+  pxe_chain: NetworkBootChain,
+  autoinstall: UbuntuAutoinstallPayload,
+) -> OsInstallDeliveryStanding {
+  match arm {
+    OsInstallArmVirtualMediaIso =>
+      OsInstallDeliveryRealizable { delivery: VirtualMediaIso { autoinstall: autoinstall } }
+    OsInstallArmNetworkBoot =>
+      OsInstallDeliveryRealizable {
+        delivery: NetworkBoot {
+          delivery: NetworkBootDelivery {
+            chain: pxe_chain,
+            autoinstall: autoinstall,
+          },
+        },
+      }
+    OsInstallArmNotRealizable { refusal: x } => OsInstallDeliveryArmNotRealizable { refusal: x }
   }
 }
 
@@ -105,39 +130,48 @@ fn srv3_os_install_plan_autoinstall(plan: Srv3OsInstallPlan) -> UbuntuAutoinstal
 // justify any mechanism still produced a fully-formed, plausible install plan. Carrying the
 // refusal instead of erasing it is what makes that state unrepresentable rather than merely
 // detectable after the fact (DESIGN §5, construction over validation).
+type OsInstallPlanRefusal
+  = OsInstallPlanBootDeliveryRefused { cause: BootDeliveryRefusalCause }
+  | OsInstallPlanBootDeliveryPlanIncoherent { cause: BootDeliveryPlanIncoherence }
+  | OsInstallPlanArmNotRealizable { refusal: OsInstallArmRefusal }
+
 type Srv3OsInstallPlanStanding
   = OsInstallPlanReady { plan: Srv3OsInstallPlan }
-  | OsInstallPlanRefused { cause: OsInstallMechanismRefusalCause }
-
-fn srv3_os_install_plan_for(
-  mechanism: OsInstallMechanism,
-  autoinstall: UbuntuAutoinstallPayload,
-) -> Srv3OsInstallPlan {
-  Srv3OsInstallPlan {
-    os_target: UbuntuOs { distro: NobleNumbat2404Lts },
-    host_architecture: Aarch64,
-    lan_survey: srv3_lan_install_survey,
-    delivery: os_install_delivery_for(
-      mechanism: mechanism,
-      pxe_chain: srv3_pxe_network_boot_chain,
-      autoinstall: autoinstall
-    ),
-    bmc_boot_target: install_boot_target_for(mechanism: mechanism),
-    bmc_boot_enabled: BootOverrideOnce,
-    post_stage_reset: ResetForceRestart,
-  }
-}
+  | OsInstallPlanRefused { cause: OsInstallPlanRefusal }
 
 fn srv3_os_install_plan_standing_for(
-  solution: OsInstallMechanismSolution,
+  solution: BootDeliverySolution,
   autoinstall: UbuntuAutoinstallPayload,
 ) -> Srv3OsInstallPlanStanding {
   match solution {
-    OsInstallMechanismSelected { mechanism: m } =>
-      OsInstallPlanReady {
-        plan: srv3_os_install_plan_for(mechanism: m, autoinstall: autoinstall),
+    BootDeliveryPlanned { plan: unadmitted } =>
+      match admit_boot_delivery_plan(plan: unadmitted) {
+        BootDeliveryPlanIncoherent { cause: x } =>
+          OsInstallPlanRefused { cause: OsInstallPlanBootDeliveryPlanIncoherent { cause: x } }
+        BootDeliveryPlanAdmitted { plan: p } =>
+          match os_install_delivery_for(
+            arm: os_install_arm_of(delivery: p.delivery),
+            pxe_chain: srv3_pxe_network_boot_chain,
+            autoinstall: autoinstall,
+          ) {
+            OsInstallDeliveryRealizable { delivery: d } =>
+              OsInstallPlanReady {
+                plan: Srv3OsInstallPlan {
+                  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+                  host_architecture: Aarch64,
+                  lan_survey: srv3_lan_install_survey,
+                  delivery: d,
+                  bmc_boot_target: redfish_boot_target_of_control(control: p.boot_control),
+                  bmc_boot_enabled: BootOverrideOnce,
+                  post_stage_reset: ResetForceRestart,
+                },
+              }
+            OsInstallDeliveryArmNotRealizable { refusal: x } =>
+              OsInstallPlanRefused { cause: OsInstallPlanArmNotRealizable { refusal: x } }
+          }
       }
-    OsInstallMechanismRefused { cause: c } => OsInstallPlanRefused { cause: c }
+    BootDeliveryRefused { cause: c } =>
+      OsInstallPlanRefused { cause: OsInstallPlanBootDeliveryRefused { cause: c } }
   }
 }
 
@@ -156,14 +190,51 @@ data srv3_pxe_network_boot_chain: NetworkBootChain = NetworkBootChain {
 }
 
 
-data srv3_autoinstall_bootstrap_password_hash: NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
+// NO PASSWORD HASH LIVES HERE, AND NONE MAY. These three payloads are the fleet's live install
+// documents, and every one of them is rendered to bytes that leave this repository over a network:
+// srv4's onto the BMC netboot volume at srv4's edge, srv3's onto the seeded ISO and the NoCloudNet
+// seed URL. A committed credential hash in that path is a credential published to whoever can reach
+// the port — the finding that closed the old srv4 row (dashboard node adhoc-dfa3a187, confirmed by
+// side chat). So all three take the KEY-ONLY posture: no identity section, one cloud-init account
+// with a locked password and the fleet's authorized keys, and the ssh section with password
+// authentication off. THE RUNG IS STATED BY ROUTE, NOT CLAIMED UNIFORMLY (DESIGN.md §4b — a rung is
+// the minimum across in-scope paths, and inflation is worse than sitting low):
+//   * srv4's BMC netboot route is CONTRACT-GATED: gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission
+//     runs the same admit_public_nocloud_seed a site PXE edge binding passes, over this document tree,
+//     keyed on the plan's subject host's boot NIC. An identity section (password or not), an allow-pw
+//     that is not false, or a non-canonical key refuses there BY NAME and stages nothing. That is the
+//     route the finding closed.
+//   * srv3's two routes are NOT contract-gated yet — they are KEY-ONLY BY DATA and pinned by witness
+//     bytes, which exposes a regression but does not block one: the seeded ISO renders straight from
+//     autoinstall_user_data(srv3_ubuntu_autoinstall_on_iso) (gunbc.srv3.srv3_seeded_install_media_artifact)
+//     with no admission step, and the NoCloudNet payload renders the same way through the emit path.
+//     The blocker is honest and named: srv3 has no measured boot-NIC row, so there is no client MAC to
+//     key an instance-id on — see gunbc.provisioning.public_nocloud_seed's srv3 frontier row and
+//     gunbc.host.host_network_diagnosis.boot_nic_inventory. Until that row exists AND those renderings
+//     pass the admission, srv3's credential-free status rests on these rows being UserDataOnly plus the
+//     witness greps, not on a contract. Anyone restoring a WithIdentity posture on an srv3 payload
+//     reddens srv3_os_install_emit / srv3_seeded_install_media_witness / os_install_deduction, and owes
+//     it to the reader to land srv3's boot-NIC row and route it through the admission instead.
+// The two crypt(3) hashes this file used to carry are
+// deleted, not moved: both were in git history, both are treated as exposed, and rotation is the
+// operator's call (raised with merry-fox-82). Nothing in a console/SOL recovery route read them —
+// BMC serial console goes through the Redfish SOL profile and the BMC's own credentials
+// (extdeps.bmc.serial_console), and fleet shell access is key-based — so no AdminPasswordHandle
+// was needed for either host: key-only for srv3 and srv4 alike.
 
-data srv3_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
-  hostname: operator_host_srv3,
-  username: "ubuntu",
-  realname: "gunbc fleet node srv3",
-  hashed_password: srv3_autoinstall_bootstrap_password_hash,
-}
+// THE KEY-ONLY ACCOUNT, ONE ROW FOR THE srv3/srv4 DOCUMENTS AND srv14's site PXE edge install. Named "ubuntu" the way the deleted
+// identities named their account, with the password locked (there is no password to unlock), the
+// fleet's authorized keys, and bash as the login shell. The sudo rule is the emitter's own constant
+// (gunbc.os_install_emit cloudinit_nopasswd_sudo_rule): the account has no password, so a sudo rule
+// that asked for one would lock the operator out of the machine they just installed.
+data srv_fleet_key_only_install_account: List<CloudInitUserEntry> = [
+  CloudInitUserEntry {
+    name: "ubuntu" as NonEmptyStr,
+    ssh_authorized_keys: fleet_authorized_keys,
+    lock_passwd: true,
+    shell: BashLoginShell,
+  },
+]
 
 data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
   autoinstall_version: 1,
@@ -175,7 +246,7 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   },
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
-  identity: srv3_autoinstall_identity,
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
@@ -187,20 +258,11 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
-  identity: srv3_autoinstall_identity,
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
   storage_policy: StoragePolicyDirectLayout,
-}
-
-data srv4_console_password_hash: NonEmptyStr = "$6$gYMJusSKbtQHFdti$ouwvFuAeH0gdZkTSVJgEWwotvA7TzhxKch/pjg/2RyuR3cc4rEnnCsUnB.gH3cGz9vlszdSdiTZznCVmVrxv60"
-
-data srv4_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
-  hostname: operator_host_srv4,
-  username: "ubuntu",
-  realname: "gunbc fleet node srv4",
-  hashed_password: srv4_console_password_hash,
 }
 
 data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -208,7 +270,7 @@ data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
-  identity: srv4_autoinstall_identity,
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
@@ -216,12 +278,12 @@ data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
 }
 
 data srv3_os_install_plan_standing: Srv3OsInstallPlanStanding = srv3_os_install_plan_standing_for(
-  solution: srv3_install_mechanism_solution,
+  solution: srv3_boot_delivery_solution,
   autoinstall: srv3_ubuntu_autoinstall
 )
 
 data srv3_seeded_os_install_plan_standing: Srv3OsInstallPlanStanding = srv3_os_install_plan_standing_for(
-  solution: srv3_install_mechanism_solution,
+  solution: srv3_boot_delivery_solution,
   autoinstall: srv3_ubuntu_autoinstall_on_iso
 )
 
@@ -229,12 +291,13 @@ data srv3_pxe_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
   os_target: UbuntuOs { distro: NobleNumbat2404Lts },
   host_architecture: Aarch64,
   lan_survey: srv3_lan_install_survey,
-  delivery: os_install_delivery_for(
-    mechanism: PxeHttpInstall,
-    pxe_chain: srv3_pxe_network_boot_chain,
-    autoinstall: srv3_ubuntu_autoinstall
-  ),
-  bmc_boot_target: install_boot_target_for(mechanism: PxeHttpInstall),
+  delivery: NetworkBoot {
+    delivery: NetworkBootDelivery {
+      chain: srv3_pxe_network_boot_chain,
+      autoinstall: srv3_ubuntu_autoinstall,
+    },
+  },
+  bmc_boot_target: redfish_boot_target_of_control(control: BootFromNetworkPxe),
   bmc_boot_enabled: BootOverrideOnce,
   post_stage_reset: ResetForceRestart,
 }

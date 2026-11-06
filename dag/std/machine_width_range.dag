@@ -12,8 +12,10 @@ import std.measure { BitWidth, bit_width_count }
 // WHICH INTEGERS A MACHINE WIDTH ADMITS, AS THE WIDTH'S OWN MEANING AND NOT A CONSUMER'S TABLE.
 // `unsigned` bits N is [0, 2^N - 1]; signed bits N is [-2^(N-1), 2^(N-1) - 1]. A literal at a
 // position typed Compose<A, MachineWidth<N>> is admitted only when this holds (v2.compiler.infer
-// infer_int_literal_value_at); it is the CHECKED reading of the operator ruling -- a width is a
-// refinement on Int, never a silent truncation or widening -- applied at the literal boundary.
+// infer_int_literal_value_at); it is the checked reading of the width rule -- a width is a
+// refinement on Int, narrowing into it is a checked, named route, and same-signedness widening is
+// the implicit-safe coercion of gunbc.design_ruling coercion_is_the_implicit_safe_subset, so nothing
+// is silently truncated -- applied at the literal boundary.
 //
 // THE HOST BOUND: a source literal is a host Int (signed 64), so every host value fits width >= 64
 // when signed, and every non-negative one fits width >= 64 when unsigned; the table-driven range

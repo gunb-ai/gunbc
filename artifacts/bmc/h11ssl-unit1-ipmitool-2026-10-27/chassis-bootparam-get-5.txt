@@ -1,0 +1,11 @@
+Boot parameter version: 1
+Boot parameter 5 is valid/unlocked
+Boot parameter data: 2018000000
+ Boot Flags :
+   - Boot Flag Invalid
+   - Options apply to only next boot
+   - BIOS EFI boot 
+   - Boot Device Selector : Force Boot into BIOS Setup
+   - BIOS verbosity : System Default
+   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)
+   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST

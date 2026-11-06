@@ -903,6 +903,16 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+/// A record field the checker declares `T?` (CardOptional) holds the declared Optional<T>:
+/// Null (the host's "no value") becomes Absent and a bare value Present, through the one
+/// constructors. An already-built Optional variant is kept. A non-optional field is untouched.
+fn declared_optional_field(child: &Rc<Node>, value: Value, ctx: &InterpContext) -> Value {
+    if child.return_cardinality != Cardinality::CardOptional {
+        return value;
+    }
+    declared_optional_field_value(value, ctx)
+}
+
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
 /// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
 /// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
@@ -922,9 +932,10 @@ fn map_lookup_as_optional(raw: RawMapLookup, ctx: &InterpContext) -> Value {
 }
 
 impl RawMapLookup {
-    /// Bare-value callers (field access, `[]` indexing, the raw `lookup`/`get`
-    /// builtins) don't observe the `Optional` contract at all — they want
-    /// exactly what was found, miss-as-`Null` included.
+    /// Exactly two callers, both where the checker's declared type is the map's
+    /// value type and NOT `Optional<V>`: `extract_field` on a `Value::Map`
+    /// (field access) and the `[]` index arm. Every `.get`/`lookup` arm the
+    /// checker types `Optional<V>` goes through `map_lookup_as_optional`.
     fn into_raw(self) -> Value {
         match self {
             RawMapLookup::AlreadyOptional(v) | RawMapLookup::NeedsWrap(v) => v,
@@ -1247,6 +1258,45 @@ fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<Portabl
     }
 }
 
+/// UNIQUELY OWNED CARRIERS ARE DRAINED EVEN WHEN A `Weak` HANDLE IS OUTSTANDING.
+///
+/// `Rc::get_mut` is the obvious test for "nobody else can observe this carrier", and it is too strict
+/// for THIS interpreter: it returns `None` whenever any `Weak` exists, even with the strong count at
+/// one, and this interpreter deliberately keeps `Weak` handles on live carriers (`CompositeWeak` in the
+/// recompute memo, taken by `Rc::downgrade` in the `EvalRecomputeFrameKind` finalizers). So a carrier
+/// can be uniquely owned and still refuse `get_mut`; its members were then never moved to the worklist,
+/// and `Value::drop`'s own return released them through drop glue -- one host frame per value level,
+/// which is the abort this function exists to prevent.
+///
+/// THE INSTRUMENT FOR THAT CLAIM is this module's `a_weak_held_list_chain_drops` and
+/// `a_weak_held_variant_chain_drops`: a 262,144-level chain whose every carrier is uniquely owned but
+/// has a `Weak` outstanding. Take the three fallback arms out and they abort the test process with a
+/// host stack overflow; with them they pass, and they pass in one module run beside the pre-existing
+/// `a_deep_variant_chain_drops` / `a_deep_list_drops` guards, which already passed with and without
+/// this change -- that pair is what says the escape was specific to `Weak`-held carriers rather than
+/// to deep values in general.
+///
+/// `Rc::try_unwrap` is the route that works, and that is pinned rather than assumed:
+/// `an_outstanding_weak_blocks_get_mut_but_not_try_unwrap` asserts that a `Weak` blocks `get_mut` and
+/// does NOT block `try_unwrap`, and says so if a future std changes either way. It is also the honest
+/// route, because it re-checks ownership itself instead of trusting the guard above it: it returns
+/// `Err` unless the strong count is one, so a genuinely SHARED carrier is left in place for its other
+/// owners -- the invariant the `VALUE_DROP_INLINE_DEPTH` note above states, pinned on the shared side
+/// by this module's `a_shared_deep_chain_drops_once_per_owner`, by `slice_cost_tests`'
+/// `dropping_a_slice_of_a_shared_list_moves_no_member` /
+/// `the_detaching_drop_moves_the_slice_members` pair, and on this fallback's own side by
+/// `a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner`. The `strong_count` test
+/// above is what keeps the common shared case off the `try_unwrap` path entirely; the `Err` branch only
+/// reverts to the previous behaviour, and restores the carrier.
+///
+/// A `Weak` OBSERVER OF A DRAINED CARRIER SEES WHAT IT WOULD SEE AFTER AN ORDINARY DROP:
+/// `strong_count` 0. Draining the members does not resurrect the carrier or keep the chain alive, so
+/// the recompute memo's liveness check — `CompositeWeak::alive`, which consults `strong_count` and
+/// never the contents — reads the same answer it read before this change.
+///
+/// This is NARROW by construction: it adds a fallback where the drain previously did nothing. It does
+/// not touch `value_depth_guarded` or any `stacker::maybe_grow` site, so the separate unfired-guard
+/// item (an interpreted recursion whose frames keep allocating) is NOT retired here.
 fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
     match value {
         Value::List(items) if detach_carriers => {
@@ -1254,6 +1304,18 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
+            } else if Rc::strong_count(items) == 1 {
+                // Uniquely owned but `Weak`-held: take the carrier out and put it back if the unwrap
+                // refuses, so no path can leave this value looking at an emptied carrier.
+                let carrier = std::mem::replace(items, Rc::new(RrbVector::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(mut owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(std::mem::take(&mut owned));
+                    }
+                    Err(restored) => *items = restored,
+                }
             }
         }
         Value::Map(entries) if detach_carriers => {
@@ -1261,14 +1323,56 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
                 #[cfg(test)]
                 DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
+            } else if Rc::strong_count(entries) == 1 {
+                let carrier = std::mem::replace(entries, Rc::new(HamtMap::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => {
+                        #[cfg(test)]
+                        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + owned.len() as u64));
+                        pending.extend(owned.into_iter().map(|(_, v)| v));
+                    }
+                    Err(restored) => *entries = restored,
+                }
             }
         }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             if let Some(fields) = Rc::get_mut(fields) {
                 pending.extend(fields.drain(..).map(|(_, v)| v));
+            } else if Rc::strong_count(fields) == 1 {
+                let carrier = std::mem::replace(fields, Rc::new(Vec::new()));
+                match Rc::try_unwrap(carrier) {
+                    Ok(owned) => pending.extend(owned.into_iter().map(|(_, v)| v)),
+                    Err(restored) => *fields = restored,
+                }
             }
         }
         _ => {}
+    }
+}
+
+// A PLANNED `==` IS ONE CALL of the declared function the checker named for it (the ExprBinOp's
+// `derived`): the operand type's synthesized derived equality, or the routed function itself
+// (v1.compiler.infer equality_derived_target). Every per-member decision lives in that declaration's
+// ordinary body, which this interpreter runs like any other function.
+fn derived_equality_call(
+    ctx: &InterpContext,
+    function: &crate::std_decl_ref::DeclarationRef,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    let qualified = format!("{}.{}", function.module_path, function.decl_name);
+    let fn_node = ctx
+        .lookup_fn(&qualified)
+        .cloned()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' is not declared in this frame"),
+        })?;
+    let env = Env::empty();
+    match call_function(ctx, &fn_node, &[(None, a.clone()), (None, b.clone())], &env)? {
+        Value::Bool(v) => Ok(v),
+        other => Err(InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' returned a non-Bool ({other:?})"),
+        }),
     }
 }
 
@@ -1327,6 +1431,54 @@ impl PartialEq for Value {
 pub struct Env {
     bindings: HashMap<Symbol, Value>,
     parent: Option<Rc<Env>>,
+}
+
+/// An Env chain is as deep as the data that built it (each frame's parent, and every closure a
+/// binding holds, owns another Env), so the derived drop recursed one host frame per level and
+/// aborted the process on a deep chain. The outermost Env drop drains iteratively: contents of any
+/// Env released while it runs are queued on `ENV_DROP_QUEUE` rather than dropped in place.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+type EnvContents = (HashMap<Symbol, Value>, Option<Rc<Env>>);
+
+thread_local! {
+    static ENV_DROP_DRAINING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static ENV_DROP_QUEUE: std::cell::RefCell<Vec<EnvContents>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl Drop for Env {
+    fn drop(&mut self) {
+        if self.bindings.is_empty() && self.parent.is_none() {
+            return;
+        }
+        let contents: EnvContents = (std::mem::take(&mut self.bindings), self.parent.take());
+        if ENV_DROP_DRAINING.try_with(Cell::get).unwrap_or(true) {
+            if ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().push(contents))
+                .is_err()
+            {
+                // thread teardown: no queue to defer to
+            }
+            return;
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(true));
+        let mut next = Some(contents);
+        while let Some((bindings, parent)) = next.take() {
+            if let Some(parent) = parent {
+                if let Ok(mut owned) = Rc::try_unwrap(parent) {
+                    let inner: EnvContents =
+                        (std::mem::take(&mut owned.bindings), owned.parent.take());
+                    let _ = ENV_DROP_QUEUE.try_with(|q| q.borrow_mut().push(inner));
+                }
+            }
+            drop(bindings);
+            next = ENV_DROP_QUEUE
+                .try_with(|q| q.borrow_mut().pop())
+                .ok()
+                .flatten();
+        }
+        let _ = ENV_DROP_DRAINING.try_with(|d| d.set(false));
+    }
 }
 
 impl Env {
@@ -1396,6 +1548,14 @@ pub enum InterpError {
     },
     TypeError {
         msg: String,
+    },
+    /// The interpreted call chain reached `CALL_DEPTH_LIMIT`. Its own variant, not a `TypeError`
+    /// string: the count is the refusal's whole content, and a sentence cannot be told apart from
+    /// any other type error by a caller or a witness classifier. `at` names the fn, or the closure
+    /// application, whose frame crossed the limit.
+    CallDepthExceeded {
+        limit: u32,
+        at: String,
     },
     CrossRepresentationEquality {
         detail: String,
@@ -1718,6 +1878,11 @@ impl fmt::Display for InterpError {
                     elapsed_ms, budget_ms
                 )
             }
+            InterpError::CallDepthExceeded { limit, at } => write!(
+                f,
+                "call depth exceeded {} at {} -- the interpreted call chain did not terminate within the limit (a divergent chain, or a host seam whose realization this binary lacks); refused, never a host stack overflow",
+                limit, at
+            ),
             InterpError::CrossRepresentationEquality { detail } => {
                 write!(f, "cross-representation equality: {}", detail)
             }
@@ -4317,6 +4482,51 @@ mod cross_claim_memo_tests {
             super::run_in_context(&ctx, name, false).expect(name)
         };
         assert_eq!(eval("left_none"), eval("right_none"));
+    }
+
+    // INTERPRETER-LAYER fail-closed control for the claim-run route defect (DESIGN §5). A claim run is
+    // executed in Hermetic mode — the mode is chosen by the ONE shared authority
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
+    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
+    // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
+    // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
+    // This fixture declares a shell effect
+    // with NO `mock_response` (no mock bound on the entry route). Under Hermetic it must refuse typed
+    // (`no mock_response ... refusing`) via `eval_mock_response`, and NEVER reach `dispatch_shell` --
+    // so nothing is spawned against the host. Before the fix, `gunbc run --claim-run` ran this entry
+    // in WET mode and dispatched the real effect (the mocked journalctl ran live against srv1's
+    // journal). Host-free by construction: the refusal short-circuits before any transport.
+    #[test]
+    fn hermetic_claim_route_refuses_an_unbound_mocked_effect_without_dispatching() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/claim_run_route.dag".to_string(),
+                content: "module fixture.claim_run_route\n\nservice fixture.ClaimRoute {\n  operation UnboundEffect {\n    output { success: Bool from \"exit_success\" }\n    transport shell { argv: [\"true\"] }\n  }\n}\n\nfn witness() -> Bool {\n  let r = fixture.ClaimRoute.UnboundEffect()\n  r.success\n}\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        match super::run_in_context(&ctx, "witness", false) {
+            Err(e) => {
+                let msg = format!("{e}");
+                assert!(
+                    msg.contains("no mock_response"),
+                    "claim route must refuse the unbound mocked effect with the typed NoMockResponse \
+                     refusal; got instead: {msg}"
+                );
+            }
+            Ok(v) => panic!(
+                "the hermetic claim route must REFUSE an unbound mocked effect, never dispatch it; \
+                 it returned: {v:?}"
+            ),
+        }
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -7309,6 +7519,17 @@ impl InterpContext {
         self.indexes.fn_nodes.get(name)
     }
 
+    /// The (declaring module, coproduct) pairs that declare a variant arm of this spelling in this
+    /// run's closure. A runtime variant value carries only its spellings, so this is how a host
+    /// boundary establishes WHICH declaration a spelling can denote before acting on it.
+    pub(crate) fn variant_arm_declarers(&self, arm: &str) -> Vec<(String, String)> {
+        self.indexes
+            .variant_arm_owners
+            .get(arm)
+            .map(|owners| owners.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// Is this bare spelling claimed by more than one module in this scope?
     pub(crate) fn bare_name_is_ambiguous(&self, name: &str) -> bool {
         self.indexes.ambiguous_bare_function_names.contains(name)
@@ -7710,13 +7931,9 @@ fn call_function_guarded(
     depth: u32,
 ) -> InterpResult<Value> {
     if depth > CALL_DEPTH_LIMIT {
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
-                 resolution cycle, or a genuinely divergent chain); refused, never a \
-                 host stack overflow",
-                CALL_DEPTH_LIMIT, fn_node.name
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: format!("fn '{}'", fn_node.name),
         });
     }
     // Grow the host stack in slices so DEEP-but-bounded chains below the limit
@@ -8461,7 +8678,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
-        ExprData::ExprLiteral { value } => eval_literal(&value),
+        ExprData::ExprLiteral { value } => eval_literal(&value, ctx),
 
         // An elaborated literal (std.literal_elaboration) carries its image under the declared
         // homomorphism as its one child. A Peano unfolding's destination is STRUCTURAL on every
@@ -8480,7 +8697,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     crate::std_literal_elaboration::LiteralUnfolding::PeanoUnfold { .. },
                     Some(image),
                 ) => eval_expr(image, env, ctx),
-                _ => eval_literal(&value),
+                _ => eval_literal(&value, ctx),
             }
         }
 
@@ -8507,7 +8724,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         // `match a { False => False  True => b }`, so the right operand is demanded only under one
         // left value, and the interpreter was the arm disagreeing with the corpus's own logic
         // authority.
-        ExprData::ExprBinOp { op, .. } => {
+        ExprData::ExprBinOp { op, derived, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             match &*crate::std_operator_realization::operand_demand(op.clone()) {
                 crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
@@ -8517,14 +8734,21 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                     // value's truth and the right operand is never asked for.
                     Ok(Value::Bool(left.is_truthy()))
                 }
-                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent
-                    if !matches!(left, Value::Null) =>
-                {
-                    Ok(left)
+                crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIsAbsent => {
+                    match coalesce_present(&left, ctx)? {
+                        Some(present) => Ok(present),
+                        None => eval_expr(&binop_right(node.clone()), env, ctx),
+                    }
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-                    eval_binop(&op, left, right, ctx)
+                    match (op, derived.as_deref()) {
+                        (BinOp::Eq | BinOp::Ne, Some(function)) => {
+                            let equal = derived_equality_call(ctx, function, &left, &right)?;
+                            Ok(Value::Bool(if matches!(op, BinOp::Eq) { equal } else { !equal }))
+                        }
+                        _ => eval_binop(&op, left, right, ctx),
+                    }
                 }
             }
         }
@@ -8614,7 +8838,9 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     }
 }
 
-fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
+// `none` and `null` lower to one LitNull (extdeps.languages.dag syntax table); the value it
+// denotes is the optional's Absent, built by the one constructor, not a host Null.
+fn eval_literal(lit: &LiteralValue, ctx: &InterpContext) -> InterpResult<Value> {
     match lit {
         LiteralValue::LitBool { value } => Ok(Value::Bool(*value)),
         LiteralValue::LitInt { value } => Ok(Value::Int(*value)),
@@ -8626,7 +8852,7 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
         }
         LiteralValue::LitStr { value } => Ok(str_value(value.clone())),
         LiteralValue::LitSymbol { value } => Ok(str_value(value.clone())),
-        LiteralValue::LitNull => Ok(Value::Null),
+        LiteralValue::LitNull => Ok(optional_absent(ctx)),
     }
 }
 
@@ -8686,12 +8912,13 @@ fn eval_var(
         });
     }
 
-    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
-    // coproduct arm named `None` was handled above and retains its declaration identity
-    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
-    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    // The untyped `none` shorthand denotes the optional's Absent, built by the one constructor
+    // (`optional_absent`), not a host Null second representation. A resolved coproduct arm named
+    // `None` was handled above and retains its declaration identity (`parent_enum`, terminal
+    // arm), so `Diagnostics.None`, an imported `None`, and a re-export construct the same value
+    // while an unrelated coproduct's `None` remains distinct.
     if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
+        return Ok(optional_absent(ctx));
     }
 
     if let Some(val) = env.lookup(sym) {
@@ -8802,11 +9029,7 @@ fn eval_var(
 
 fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> InterpResult<Value> {
     if matches!(op, BinOp::NullCoalesce) {
-        return Ok(if matches!(left, Value::Null) {
-            right
-        } else {
-            left
-        });
+        return Ok(coalesce_present(&left, ctx)?.unwrap_or(right));
     }
 
     if matches!(op, BinOp::Add) {
@@ -9449,9 +9672,8 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     // `v1.compiler.infer` `optional_match_arm_sees_present_value` (a bare binding after an
     // unguarded Absent arm; a non-null literal arm), and every Rust match rendering reads the same
     // predicate. The interpreter reads it too and decides nothing of its own. What is interpreter
-    // specific is only HOW the payload is reached: an optional's value has two runtime
-    // representations -- a bare value (host builtins) or an `Optional.Present` variant (an authored
-    // `Present { value }`) -- and `optional_present_payload` peels either.
+    // specific is only HOW the payload is reached: an optional's value has ONE runtime
+    // representation, the `Optional` variant, and `optional_present_payload` peels it.
     // An untyped scrutinee cannot be asked the predicate. That is harmless while its value is a
     // bare value (every arm then sees the same value either way) and a silent wrong answer when it
     // is an `Optional.Present` variant (the literal arm would miss, the binding would hold the
@@ -9551,16 +9773,23 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     })
 }
 
+/// `left ?? right`: the present payload of an `Optional` left, `None` (take the right operand) when
+/// it is `Absent`. One rule for the lazy arm and `eval_binop`; a left that is not an `Optional`
+/// refuses rather than passing through.
+fn coalesce_present(left: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
+    optional_present_payload(left, ctx)
+}
+
 fn is_optional_variant(value: &Value, ctx: &InterpContext) -> bool {
     matches!(value, Value::Variant { type_name, .. } if *type_name == ctx.sym("Optional"))
 }
 
-/// The present payload of an optional value in either runtime representation, `None` when it
-/// is absent (`Null` or `Optional.Absent`). An `Optional.Present` without its `value` field is
-/// malformed and refuses rather than reading as absent.
+/// The present payload of an optional value, `None` when it is `Optional.Absent`. A value that is
+/// not an `Optional` variant (host null or a bare element) refuses: there is one representation.
+/// An `Optional.Present` without its `value` field is malformed and refuses rather than reading
+/// as absent.
 fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<Option<Value>> {
     match value {
-        Value::Null => Ok(None),
         Value::Variant {
             variant_name,
             fields,
@@ -9576,7 +9805,9 @@ fn optional_present_payload(value: &Value, ctx: &InterpContext) -> InterpResult<
                 }),
             }
         }
-        other => Ok(Some(other.clone())),
+        other => Err(InterpError::TypeError {
+            msg: format!("matched an Optional but the value is not an Optional variant: {other}"),
+        }),
     }
 }
 
@@ -10663,7 +10894,7 @@ fn match_pattern(
             }
 
             MatchPattern::LitPattern { value: lit } => {
-                let lit_val = eval_literal(lit).ok()?;
+                let lit_val = eval_literal(lit, ctx).ok()?;
                 if *value == lit_val {
                     Some(HashMap::new())
                 } else {
@@ -13223,6 +13454,66 @@ fn eval_field_access(
 
     let access_style = summary.map(|s| &s.access_style);
 
+    // The checker DECLARES the read: `04_lookup` `field_summary_for_type` styles `.value` on an
+    // optional `OptionalUnwrap` (typed required: peel Present, refuse Absent with a typed error)
+    // and every other field read off an optional with value shape `OptionalValue` (typed
+    // OPTIONAL: peel Present and re-wrap the field, propagate Absent). The interpreter never
+    // reads a field off the variant itself, and never refuses what the checker types as optional.
+    // `OptionalValue` carries two meanings in the checker's summary: the BASE is optional
+    // (`field_summary_for_type`), or the FIELD's own value is optional (a struct field declared
+    // `T?`, `field_value_shape_from_type_node`). Only the first peels; a record base is never an
+    // Optional variant, so a field declared `T?` on a record is returned as the stored Optional.
+    let unwrap_style = matches!(access_style, Some(FieldAccessStyle::OptionalUnwrap));
+    let optional_base_read = !unwrap_style
+        && matches!(
+            summary.map(|s| &s.value_shape),
+            Some(FieldValueShape::OptionalValue)
+        )
+        && is_optional_variant(&base_val, ctx);
+    let base_val = if unwrap_style || optional_base_read {
+        match optional_present_payload(&base_val, ctx)? {
+            Some(payload) => payload,
+            None if optional_base_read => return Ok(optional_absent(ctx)),
+            None => {
+                return Err(locate_field_access_error(
+                    InterpError::TypeError {
+                        msg: format!("field '{}' read off an Absent optional", field_name),
+                    },
+                    node,
+                ))
+            }
+        }
+    } else {
+        base_val
+    };
+    if optional_base_read {
+        let read = eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)?;
+        return Ok(declared_optional_field_value(read, ctx));
+    }
+
+    eval_field_access_on(&base_val, access_style, &field_name, node, env, ctx)
+}
+
+// A field read off an optional is typed optional (one layer): an already-Optional field value is
+// returned as is, a bare one is Present, Null is Absent.
+fn declared_optional_field_value(value: Value, ctx: &InterpContext) -> Value {
+    match value {
+        Value::Null => optional_absent(ctx),
+        Value::Variant { ref type_name, .. } if ctx.sym_eq(*type_name, "Optional") => value,
+        other => optional_present(other, ctx),
+    }
+}
+
+fn eval_field_access_on(
+    base_val: &Value,
+    access_style: Option<&FieldAccessStyle>,
+    field_name: &str,
+    node: &Rc<Node>,
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    let base_val = base_val.clone();
+    let field_name = field_name.to_string();
     match access_style {
         Some(FieldAccessStyle::TupleFirst) => match expect_list(&base_val, "tuple.first") {
             Ok(items) => Ok(items.front().cloned().unwrap_or(Value::Null)),
@@ -13232,10 +13523,7 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
-        Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
-            Value::Null => Ok(Value::Null),
-            _ => Ok(base_val),
-        },
+        Some(FieldAccessStyle::OptionalUnwrap) => Ok(base_val), // already peeled above
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx)
             .map_err(|e| locate_field_access_error(e, node)),
         _ => extract_field(&base_val, &field_name, env, ctx)
@@ -14046,7 +14334,7 @@ macro_rules! v1_algebra_method_arms {
                 let key = $args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "lookup requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
             },
 
             arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
@@ -14273,12 +14561,12 @@ macro_rules! v1_algebra_method_arms {
 
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.front().cloned(), &$ctx))
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(list_element_as_optional(items.last().cloned(), &$ctx))
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -14370,15 +14658,15 @@ macro_rules! v1_algebra_method_arms {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 } else if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(list_get_at_optional(&items, idx, &$ctx))
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    raw_map_lookup(&$receiver, key, $env, $ctx).map(|raw| map_lookup_as_optional(raw, &$ctx))
                 }
             },
 
@@ -15163,8 +15451,8 @@ fn dispatch_env_get_native(
         }
     };
     let value = match wet_env_var(&name) {
-        Some(s) => str_value(s),
-        None => Value::Null,
+        Some(s) => optional_present(str_value(s), ctx),
+        None => optional_absent(ctx),
     };
     Ok(Value::Record {
         type_name: ctx.sym(&authored_name_at(ctx.si(), op_node.clone())),
@@ -16855,162 +17143,6 @@ fn resolved_call_edge_census_value(
     }
 }
 
-fn primitive_callee_identity_value(
-    callee: crate::cli_run::PrimitiveCalleeIdentity,
-    ctx: &InterpContext,
-) -> Value {
-    use crate::cli_run::PrimitiveCalleeIdentity;
-    let variant = |name: &str, fields: Vec<(Symbol, Value)>| Value::Variant {
-        type_name: ctx.sym("PrimitiveCalleeIdentity"),
-        variant_name: ctx.sym(name),
-        fields: Rc::new(sorted_fields(fields)),
-    };
-    match callee {
-        PrimitiveCalleeIdentity::RuntimePrimitive {
-            primitive_name,
-            projected_from_module,
-            projected_from_decl,
-        } => variant(
-            "RuntimePrimitiveCallee",
-            vec![
-                (ctx.sym("primitive_name"), str_value(primitive_name)),
-                (
-                    ctx.sym("projected_from_module"),
-                    match projected_from_module {
-                        Some(m) => optional_present(str_value(m), ctx),
-                        None => optional_absent(ctx),
-                    },
-                ),
-                (
-                    ctx.sym("projected_from_decl"),
-                    match projected_from_decl {
-                        Some(d) => optional_present(str_value(d), ctx),
-                        None => optional_absent(ctx),
-                    },
-                ),
-            ],
-        ),
-        PrimitiveCalleeIdentity::AlgebraMethod { template_name } => variant(
-            "AlgebraMethodCallee",
-            vec![(ctx.sym("template_name"), str_value(template_name))],
-        ),
-        PrimitiveCalleeIdentity::ServiceOperation {
-            service_name,
-            operation,
-        } => variant(
-            "ServiceOperationCallee",
-            vec![
-                (ctx.sym("service_name"), str_value(service_name)),
-                (ctx.sym("operation"), str_value(operation)),
-            ],
-        ),
-        PrimitiveCalleeIdentity::PlainMethod { spelling } => variant(
-            "PlainMethodCallee",
-            vec![(ctx.sym("spelling"), str_value(spelling))],
-        ),
-        PrimitiveCalleeIdentity::UndeterminedFreeCall { spelling } => variant(
-            "UndeterminedFreeCallee",
-            vec![(ctx.sym("spelling"), str_value(spelling))],
-        ),
-    }
-}
-
-/// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
-/// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
-/// population could not be established -- never an empty list standing for a refusal.
-fn module_identity_population_value(
-    population: crate::cli_run::ModuleIdentityPopulation,
-    ctx: &InterpContext,
-) -> Value {
-    match population {
-        crate::cli_run::ModuleIdentityPopulation::Refused { cause } => Value::Variant {
-            type_name: ctx.sym("ModuleIdentityPopulation"),
-            variant_name: ctx.sym("ModuleIdentityPopulationRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-        },
-        crate::cli_run::ModuleIdentityPopulation::Observed { modules } => Value::Variant {
-            type_name: ctx.sym("ModuleIdentityPopulation"),
-            variant_name: ctx.sym("ModuleIdentityPopulationObserved"),
-            fields: Rc::new(sorted_fields(vec![(
-                ctx.sym("modules"),
-                list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
-            )])),
-        },
-    }
-}
-
-fn primitive_call_edge_census_value(
-    census: crate::cli_run::PrimitiveCallEdgeCensus,
-    ctx: &InterpContext,
-) -> Value {
-    match census {
-        crate::cli_run::PrimitiveCallEdgeCensus::Refused { cause } => Value::Variant {
-            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
-            variant_name: ctx.sym("PrimitiveCallEdgeCensusRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-        },
-        crate::cli_run::PrimitiveCallEdgeCensus::Observed {
-            entries_resolved,
-            entries_refused,
-            edges,
-        } => Value::Variant {
-            type_name: ctx.sym("PrimitiveCallEdgeCensus"),
-            variant_name: ctx.sym("PrimitiveCallEdgeCensusObserved"),
-            fields: Rc::new(sorted_fields(vec![
-                (
-                    ctx.sym("entries_resolved"),
-                    list_value(
-                        entries_resolved
-                            .into_iter()
-                            .map(str_value)
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("entries_refused"),
-                    list_value(
-                        entries_refused
-                            .into_iter()
-                            .map(|r| Value::Record {
-                                type_name: ctx.sym("PrimitiveCallEntryRefusal"),
-                                fields: Rc::new(sorted_fields(vec![
-                                    (ctx.sym("entry"), str_value(r.entry)),
-                                    (ctx.sym("cause"), str_value(r.cause)),
-                                ])),
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-                (
-                    ctx.sym("edges"),
-                    list_value(
-                        edges
-                            .into_iter()
-                            .map(|edge| Value::Record {
-                                type_name: ctx.sym("PrimitiveCallEdge"),
-                                fields: Rc::new(sorted_fields(vec![
-                                    (ctx.sym("caller_module"), str_value(edge.caller_module)),
-                                    (ctx.sym("caller_decl"), str_value(edge.caller_decl)),
-                                    (
-                                        ctx.sym("authored_spelling"),
-                                        str_value(edge.authored_spelling),
-                                    ),
-                                    (
-                                        ctx.sym("callee"),
-                                        primitive_callee_identity_value(edge.callee, ctx),
-                                    ),
-                                    (ctx.sym("span_file"), str_value(edge.span_file)),
-                                    (ctx.sym("span_start"), Value::Int(edge.span_start)),
-                                ])),
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                ),
-            ])),
-        },
-    }
-}
-
 fn evaluation_store_address_production_coverage_value(
     coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
     ctx: &InterpContext,
@@ -18371,7 +18503,10 @@ fn map_detached_outputs(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult
         if short == "spawn" {
             continue;
         }
-        fields.push((ctx.sym(&field_name), Value::Null));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, Value::Null, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
     Ok(Value::Record {
@@ -18751,7 +18886,10 @@ fn map_shell_outputs(
             && result.exit_code != 0
             && matches!(from_key.as_deref(), Some("stdout" | "stderr"))
         {
-            fields.push((ctx.sym(&field_name), Value::Null));
+            fields.push((
+                ctx.sym(&field_name),
+                declared_optional_field(child, Value::Null, ctx),
+            ));
             continue;
         }
         let value = match from_key.as_deref() {
@@ -18780,11 +18918,14 @@ fn map_shell_outputs(
                 "exists" => Some(Value::Bool(result.exit_code == 0)),
                 _ => None,
             } {
-                fields.push((ctx.sym(&field_name), v));
+                fields.push((ctx.sym(&field_name), declared_optional_field(child, v, ctx)));
                 continue;
             }
         }
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20032,7 +20173,10 @@ fn map_file_outputs(
             "content" | "entries" => str_value(result.content.clone()),
             _ => Value::Null,
         };
-        fields.push((ctx.sym(&field_name), value));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, value, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -20654,7 +20798,7 @@ fn attach_transport_outcome(
                     .map(|field| {
                         (
                             ctx.sym(&authored_name_at(ctx.si(), field.clone())),
-                            Value::Null,
+                            declared_optional_field(field, Value::Null, ctx),
                         )
                     })
                     .collect()
@@ -21241,11 +21385,11 @@ fn map_response_to_value_json(
 ) -> Result<Value, RestResponseDecodeRefusal> {
     let return_type = match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => node.clone(),
-        _ => return Ok(json_to_value(json)),
+        _ => return Ok(json_to_value(json, ctx)),
     };
     let children = &return_type.children;
     if children.is_empty() {
-        return Ok(json_to_value(json));
+        return Ok(json_to_value(json, ctx));
     }
 
     let payload_count = children.len();
@@ -21269,7 +21413,10 @@ fn map_response_to_value_json(
                 None => Value::Null,
             },
         };
-        fields.push((ctx.sym(&field_name), val));
+        fields.push((
+            ctx.sym(&field_name),
+            declared_optional_field(child, val, ctx),
+        ));
     }
     fields.sort_unstable_by_key(|(k, _)| k.0);
 
@@ -21574,7 +21721,7 @@ fn decode_json_by_declared_field_at(
         Some(InferredNode::Resolved { node }) => {
             decode_json_by_declared_type(json, node, path, ctx)
         }
-        _ => Ok(json_to_value(json)),
+        _ => Ok(json_to_value(json, ctx)),
     }
 }
 
@@ -21598,7 +21745,7 @@ fn decode_json_by_declared_type(
                 }
                 Ok(list_value(out))
             }
-            _ => Ok(json_to_value(json)),
+            _ => Ok(json_to_value(json, ctx)),
         };
     }
     // A field declared `std.decimal` `ExactDecimal { units, fraction_digits }` is carried on the wire
@@ -21649,12 +21796,12 @@ fn decode_json_by_declared_type(
             !ty.children.is_empty() && ty.children.iter().all(|arm| arm.children.is_empty());
         if !nullary {
             // A payload-carrying coproduct is not a JSON string and is outside this decode.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         if json.is_boolean() && name.rsplit('.').next() == Some("Bool") {
             // `Bool = True | False` is carried natively (`Value::Bool`), and a JSON boolean is
             // its wire form; every other nullary coproduct is spelled as a string.
-            return Ok(json_to_value(json));
+            return Ok(json_to_value(json, ctx));
         }
         return decode_nullary_coproduct(json, ty, &name, path, ctx);
     }
@@ -21712,7 +21859,7 @@ fn decode_json_by_declared_type(
                             ctx,
                         )?,
                     ),
-                    None => (key.clone(), json_to_value(value)),
+                    None => (key.clone(), json_to_value(value, ctx)),
                 };
                 if let Some(ck) = CanonKey::new(str_value(stored)) {
                     fields.insert(ck, decoded);
@@ -21721,7 +21868,7 @@ fn decode_json_by_declared_type(
             return Ok(map_value(fields));
         }
     }
-    Ok(json_to_value(json))
+    Ok(json_to_value(json, ctx))
 }
 
 fn decode_nullary_coproduct(
@@ -21950,9 +22097,10 @@ fn exact_decimal_from_json_number_text(text: &str) -> Option<(i64, i64)> {
     ))
 }
 
-fn json_to_value(json: &serde_json::Value) -> Value {
+/// JSON null is absence: it builds the one `Optional.Absent` constructor, like `none`.
+fn json_to_value(json: &serde_json::Value, ctx: &InterpContext) -> Value {
     value_depth_guarded(|| match json {
-        serde_json::Value::Null => Value::Null,
+        serde_json::Value::Null => optional_absent(ctx),
         serde_json::Value::Bool(b) => Value::Bool(*b),
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -21962,14 +22110,16 @@ fn json_to_value(json: &serde_json::Value) -> Value {
             }
         }
         serde_json::Value::String(s) => str_value(s.clone()),
-        serde_json::Value::Array(arr) => {
-            list_value(arr.iter().map(json_to_value).collect::<Vec<_>>())
-        }
+        serde_json::Value::Array(arr) => list_value(
+            arr.iter()
+                .map(|v| json_to_value(v, ctx))
+                .collect::<Vec<_>>(),
+        ),
         serde_json::Value::Object(obj) => {
             let fields: HamtMap<CanonKey, Value> = obj
                 .iter()
                 .filter_map(|(k, v)| {
-                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v)))
+                    CanonKey::new(str_value(k.clone())).map(|ck| (ck, json_to_value(v, ctx)))
                 })
                 .collect();
             map_value(fields)
@@ -23687,12 +23837,12 @@ macro_rules! v1_builtin_arms {
             arm "free_call.get" { "get" } => match $positional.as_slice() {
                 [Value::List(items), idx_val] => {
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(items, idx)))
+                    Ok(Some(list_get_at_optional(items, idx, &$ctx)))
                 }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(list_get_at_optional(&items, idx, &$ctx)))
                 }
                 _ => Ok(None),
             },
@@ -23700,8 +23850,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.parse_int" { "parse_int" } => {
                 let s = expect_str($positional.first().copied(), "parse_int")?;
                 match s.parse::<i64>() {
-                    Ok(n) => Ok(Some(Value::Int(n))),
-                    Err(_) => Ok(Some(Value::Null)),
+                    Ok(n) => Ok(Some(optional_present(Value::Int(n), $ctx))),
+                    Err(_) => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -23855,8 +24005,8 @@ macro_rules! v1_builtin_arms {
                     expect_value_str($positional.first().copied(), "hmac_sha256_hex key")?.as_str(),
                     expect_value_str($positional.get(1).copied(), "hmac_sha256_hex message")?.as_str(),
                 ) {
-                    Some(tag) => str_value(tag),
-                    None => Value::Null,
+                    Some(tag) => optional_present(str_value(tag), $ctx),
+                    None => optional_absent($ctx),
                 }))
             },
 
@@ -23881,8 +24031,8 @@ macro_rules! v1_builtin_arms {
             arm "free_call.json_unescape_checked" { "json_unescape_checked" } => {
                 let s = expect_str($positional.first().copied(), "json_unescape_checked")?;
                 match v1_rt::json_unescape_checked(&s) {
-                    Some(out) => Ok(Some(str_value(out))),
-                    None => Ok(Some(Value::Null)),
+                    Some(out) => Ok(Some(optional_present(str_value(out), $ctx))),
+                    None => Ok(Some(optional_absent($ctx))),
                 }
             },
 
@@ -25045,15 +25195,6 @@ macro_rules! v1_builtin_arms {
                 )))
             },
 
-            arm "free_call.builtin_function_registry_keys" { "builtin_function_registry_keys" } => {
-                Ok(Some(list_value(
-                    crate::cli_run::builtin_function_registry_keys()
-                        .into_iter()
-                        .map(str_value)
-                        .collect::<Vec<_>>(),
-                )))
-            },
-
             arm "free_call.compile_dag_operation_requires" { "compile_dag_operation_requires" } => {
                 let source = expect_str($positional.first().copied(), $name)?;
                 let service = expect_str($positional.get(1).copied(), $name)?;
@@ -25064,41 +25205,6 @@ macro_rules! v1_builtin_arms {
                     ))),
                     Err(msg) => Err(InterpError::TypeError { msg }),
                 }
-            },
-
-            arm "free_call.compile_dag_primitive_call_edges" { "compile_dag_primitive_call_edges" } => {
-                let exclude_substrings = expect_str_list($positional.first().copied(), $name)?;
-                let pool_roots = expect_str_list($positional.get(1).copied(), $name)?;
-                let entry_prefixes = expect_str_list($positional.get(2).copied(), $name)?;
-                Ok(Some(primitive_call_edge_census_value(
-                    crate::cli_run::compile_dag_primitive_call_edges(&exclude_substrings, &pool_roots, &entry_prefixes),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::source_root_ingest_module_identities(&source_roots),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.required_floor_nominal_subject_module_identities" { "required_floor_nominal_subject_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::required_floor_nominal_subject_module_identities(&source_roots),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.entry_closure_module_identities" { "entry_closure_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::entry_closure_module_identities(&source_roots, &entry_path),
-                    $ctx,
-                )))
             },
 
             arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {
@@ -25440,13 +25546,9 @@ fn apply_closure(
     });
     if depth > CALL_DEPTH_LIMIT {
         CALL_DEPTH.with(|d| d.set(d.get() - 1));
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} in closure application — unbounded recursion \
-                 (a bare-name resolution cycle, or a genuinely divergent chain); \
-                 refused, never a host stack overflow",
-                CALL_DEPTH_LIMIT
-            ),
+        return Err(InterpError::CallDepthExceeded {
+            limit: CALL_DEPTH_LIMIT,
+            at: "closure application".to_string(),
         });
     }
     let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
@@ -26672,8 +26774,20 @@ mod slice_cost_tests {
     }
 }
 
-fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
-    items.get(idx as usize).cloned().unwrap_or(Value::Null)
+/// A list element read is the declared `Optional<T>` (v2 `list_at_optional` is the referent):
+/// `Present { value }` in range, `Absent` otherwise, never a bare element or host null.
+fn list_element_as_optional(element: Option<Value>, ctx: &InterpContext) -> Value {
+    match element {
+        Some(value) => optional_present(value, ctx),
+        None => optional_absent(ctx),
+    }
+}
+
+fn list_get_at_optional(items: &RrbVector<Value>, idx: i64, ctx: &InterpContext) -> Value {
+    let element = usize::try_from(idx)
+        .ok()
+        .and_then(|i| items.get(i).cloned());
+    list_element_as_optional(element, ctx)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
@@ -30030,9 +30144,9 @@ mod value_depth_walker_tests {
 
     use super::{
         account_value, cross_representation_numeric_straddle,
-        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value,
-        portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
-        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash,
+        free_monoid_symbol_value_to_dotted_string, json_to_value, list_value, map_value,
+        optional_absent, portable_value_digest, portable_value_eq, portable_value_from_ctx_at,
+        portable_value_size_bytes, value_fast_eq, value_from_portable_ctx, value_hash, CanonKey,
         ExecutionMode, InterpContext, MemoryAccounting, Value,
     };
 
@@ -30081,6 +30195,138 @@ mod value_depth_walker_tests {
         value
     }
 
+    // THE RED: A UNIQUELY OWNED CARRIER HELD BY A `Weak` STILL REACHES THE WORKLIST.
+    //
+    // `Rc::get_mut` refuses any carrier with an outstanding `Weak`, even at strong count one, and this
+    // interpreter keeps such handles on live carriers on purpose (`CompositeWeak` in the recompute
+    // memo). Before the fallback in detach_owned_children, no level's members were moved, so
+    // `Value::drop`'s return released them through drop glue and the 262,144-deep chain aborted the
+    // process on the default 2 MiB test-thread stack -- the same host abort the wet lane shows after a
+    // reported refusal. Remove the fallback and THIS test aborts; that is its discriminating input.
+    #[test]
+    fn a_weak_held_list_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // Same through the fields carrier, which detach_owned_children drains at EVERY depth rather than
+    // only past VALUE_DROP_INLINE_DEPTH, so it is the arm the wet-lane Variant/Record values take.
+    #[test]
+    fn a_weak_held_variant_chain_drops() {
+        let ctx = fresh_ctx();
+        let (chain, link, end, next) = (
+            ctx.sym("Chain"),
+            ctx.sym("Link"),
+            ctx.sym("End"),
+            ctx.sym("next"),
+        );
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = Value::Variant {
+            type_name: chain,
+            variant_name: end,
+            fields: Rc::new(vec![]),
+        };
+        for _ in 0..DEPTH {
+            let fields = Rc::new(vec![(next, value)]);
+            weaks.push(Rc::downgrade(&fields));
+            value = Value::Variant {
+                type_name: chain,
+                variant_name: link,
+                fields,
+            };
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE THIRD CARRIER TYPE, TESTED THE SAME WAY. detach_owned_children has three fallback arms
+    // (List, Map, fields), and the two above cover List and fields; without this one the Map arm could
+    // be deleted and the suite would stay green. Same shape: uniquely owned at every level, one `Weak`
+    // outstanding at every level, deep enough that detach_carriers is on.
+    #[test]
+    fn a_weak_held_map_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = map_value(HashMap::new());
+        for level in 0..DEPTH {
+            let mut entries = HashMap::new();
+            entries.insert(
+                CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
+                value,
+            );
+            let carrier = Rc::new(entries);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::Map(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
+    // THE POSITIVE CONTROL: A SHARED CARRIER IS STILL NOT STOLEN. The fallback must drain only what the
+    // dropping value exclusively owns. Here every level's carrier has a SECOND STRONG OWNER held
+    // elsewhere, so the strong_count guard must keep it off the try_unwrap path entirely: after the
+    // chain is dropped, each retained carrier still holds its one member. Widen the fallback to ignore
+    // the strong count and this fails instead of passing.
+    #[test]
+    fn a_weak_held_but_shared_carrier_keeps_its_members_for_its_other_owner() {
+        const SHARED_DEPTH: usize = 1_024;
+        let mut retained: Vec<Rc<im::Vector<Value>>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(SHARED_DEPTH);
+        let mut value = list_value(Vec::<Value>::new());
+        for _ in 0..SHARED_DEPTH {
+            let carrier = Rc::new(im_vec![value]);
+            retained.push(Rc::clone(&carrier));
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::List(carrier);
+        }
+        drop(value);
+        assert_eq!(
+            retained.iter().map(|carrier| carrier.len()).sum::<usize>(),
+            SHARED_DEPTH,
+            "a shared carrier was drained from under its other owner"
+        );
+        drop(retained);
+        drop(weaks);
+    }
+
+    // WHY try_unwrap AND NOT A STRONGER get_mut TEST: the fallback rests on `Weak` not blocking
+    // `Rc::try_unwrap` while it does block `Rc::get_mut`. That is std behaviour this file now depends
+    // on, so it is pinned here rather than trusted: if a future std made `Weak` block try_unwrap, the
+    // two deep tests above would abort again and THIS one would say why.
+    #[test]
+    fn an_outstanding_weak_blocks_get_mut_but_not_try_unwrap() {
+        let mut carrier: Rc<Vec<(crate::v1_interpreter::Symbol, Value)>> = Rc::new(vec![]);
+        let weak = Rc::downgrade(&carrier);
+        let extra = Rc::clone(&carrier);
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "two strong owners must not grant get_mut"
+        );
+        drop(extra);
+        assert_eq!(
+            Rc::strong_count(&carrier),
+            1,
+            "the extra owner was not released"
+        );
+        assert_eq!(Rc::weak_count(&carrier), 1, "the Weak handle vanished");
+        assert!(
+            Rc::get_mut(&mut carrier).is_none(),
+            "Weak stopped blocking get_mut: the fallback arm this pins is then dead weight"
+        );
+        assert!(
+            Rc::try_unwrap(carrier).is_ok(),
+            "std started letting Weak block try_unwrap: uniquely owned carriers stop draining \
+             and the deep drops abort again"
+        );
+        assert_eq!(weak.strong_count(), 0, "the carrier survived its unwrap");
+    }
+
     #[test]
     fn a_deep_variant_chain_drops() {
         let ctx = fresh_ctx();
@@ -30123,7 +30369,9 @@ mod value_depth_walker_tests {
         assert_eq!(super::json_container_depth(&wire), limit);
         let text = serde_json::to_string(&wire).expect("serializes");
         assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
-        assert!(json_to_value(&wire) == value);
+        assert!(json_to_value(&wire, &ctx) == value);
+        // JSON null is absence: the one `Optional.Absent` constructor, not host Null.
+        assert!(json_to_value(&serde_json::Value::Null, &ctx) == optional_absent(&ctx));
         // The fixture encoding spends two containers per List level (its tag object and its items
         // array), the empty leaf included, so limit / 2 Lists -- limit / 2 - 1 wrapping levels --
         // fit inside the limit.
@@ -30474,5 +30722,186 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod t9_host_recursion_probes {
+    //! Regression controls for the host-stack drop of closure/Env chains deeper than the stack: `Env`
+    //! drops iteratively (`impl Drop for Env`), one discipline with `impl Drop for Value` and
+    //! `impl Drop for PortableValue` -- the outermost drop drains a worklist (a local Vec for Value,
+    //! a thread-local queue for Env). Each test drops a 262,144-deep chain on the default test
+    //! thread; the two `_1m` tests run the Env.parent-only shapes at 1,000,000 (the depth where
+    //! they discriminate; peak ~2.4 GB, so they are `--ignored` and run on a sized host).
+    //! Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{no_span, Cardinality, Connective, ExprData, Node};
+
+    use super::{list_value, map_value, Env, ExecutionMode, InterpContext, Value};
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    fn body_node() -> Rc<Node> {
+        Rc::new(Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: "body".to_string(),
+            span: no_span(),
+            ident_span: None,
+            children: Rc::new(im_vec![]),
+            connective: Connective::NoConnective,
+            params: Rc::new(im_vec![]),
+            inferred: None,
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(im_vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(im_vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            module_item_kind: crate::v1_std_core::ParsedModuleItemKind::NotAModuleItem,
+            declaration_marker: crate::v1_std_core::DeclarationMarker::Unmarked,
+            declaration: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+
+    /// 262,144 discriminates the closure-capture shapes; the two Env.parent-only shapes hold at that
+    /// depth and abort only at 1,000,000 (srv1, pre-fix), so they default to the deeper figure.
+    fn depth_or(default: usize) -> usize {
+        std::env::var("T9_DEPTH")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    }
+
+    fn depth() -> usize {
+        depth_or(262_144)
+    }
+
+    fn parent_depth() -> usize {
+        depth_or(1_000_000)
+    }
+
+    fn env_parent_chain(depth: usize) {
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            env = Env::extend(&env, HashMap::new());
+        }
+        drop(env);
+    }
+
+    fn closure_via_env_parent_chain(depth: usize) {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut env = Env::empty();
+        for _ in 0..depth {
+            let c = closure(&body, env.clone());
+            env = Env::with_binding(&env, f, c);
+        }
+        drop(env);
+    }
+
+    fn closure(body: &Rc<Node>, env: Rc<Env>) -> Value {
+        Value::Closure {
+            params: vec![],
+            body: body.clone(),
+            env,
+        }
+    }
+
+    /// Env.parent-only chain: no Value anywhere, so only an iterative Env Drop holds it.
+    #[test]
+    fn probe_env_parent_chain_drops() {
+        env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_env_parent_chain_drops_1m() {
+        env_parent_chain(parent_depth());
+    }
+
+    /// Each closure captures an env binding the previous closure.
+    #[test]
+    fn probe_closure_capture_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
+    }
+
+    /// Closure chain threaded through Env.parent: each env's parent binds the previous closure.
+    #[test]
+    fn probe_closure_via_env_parent_chain_drops() {
+        closure_via_env_parent_chain(depth());
+    }
+
+    #[test]
+    #[ignore = "1M deep, ~2.4 GB peak: run on a sized host"]
+    fn probe_closure_via_env_parent_chain_drops_1m() {
+        closure_via_env_parent_chain(parent_depth());
+    }
+
+    /// Closure env binds a List holding the previous closure.
+    #[test]
+    fn probe_closure_env_list_of_closures_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let env = Env::with_binding(&Env::empty(), f, list_value(vec![value]));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Closure env binds a Map whose value is the previous closure.
+    #[test]
+    fn probe_closure_env_map_value_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..depth() {
+            let mut entries = super::HamtMap::new();
+            entries.insert(
+                super::CanonKey::new(super::str_value("k")).expect("canonical key"),
+                value,
+            );
+            let env = Env::with_binding(&Env::empty(), f, map_value(entries));
+            value = closure(&body, env);
+        }
+        drop(value);
+    }
+
+    /// Positive control: shallow chain drops fine (proves the probe builds what it claims).
+    #[test]
+    fn control_shallow_closure_chain_drops() {
+        let ctx = fresh_ctx();
+        let (f, body) = (ctx.sym("f"), body_node());
+        let mut value = closure(&body, Env::empty());
+        for _ in 0..1_000 {
+            value = closure(&body, Env::with_binding(&Env::empty(), f, value));
+        }
+        drop(value);
     }
 }

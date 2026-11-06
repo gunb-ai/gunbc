@@ -1,5 +1,6 @@
 module gunbc.v1.v1_consumer_census
 
+import std.integer { int_to_decimal_string }
 import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names }
 import std.types { List, String, NonEmptyStr, CommitSha, Bool, Int }
 import std.content_hash { Sha1Digest }
@@ -751,7 +752,7 @@ fn v1_shim_uncitable_row(item_key: String, detail: String, authority: V1Referenc
 }
 
 fn v1_unattributed_key(u: RustReferenceUnattributed) -> String {
-  concat(concat(u.repo_path, ":"), u.line as String)
+  concat(concat(u.repo_path, ":"), int_to_decimal_string(value: u.line))
 }
 
 // CITABILITY IS THE PROJECTION'S ANSWER, CARRIED ON EACH PRODUCED ROW. One fold, two accumulators;
@@ -839,7 +840,7 @@ fn v1_shim_population_of(observation: RustReferenceObservation) -> V1ShimPopulat
       V1ShimPopulationRefused { reason: concat("the Rust reference population could not be observed: ", d) }
     RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rows, unattributed: u, unscannable: unscannable } =>
       if count(unscannable) > 0 {
-        V1ShimPopulationRefused { reason: concat(count(unscannable) as String, " token-carrying Rust file(s) could not be scanned, so the reference population is not closed") }
+        V1ShimPopulationRefused { reason: concat(int_to_decimal_string(value: count(unscannable)), " token-carrying Rust file(s) could not be scanned, so the reference population is not closed") }
       } else {
         V1ShimPopulationObserved { partition: v1_shim_partition_over(observed_at: v1cc_seen_tree, rows: rows, unattributed: u) }
       }
@@ -1501,7 +1502,7 @@ fn v1_minted_manifest_join_over(observation: RustReferenceObservation) -> Minted
     RustReferenceHostRefused { detail: d } => MintedManifestJoinUnobserved { reason: d }
     RustReferencesObserved { observed_at: v1cc_seen_tree, rows: rows, unattributed: u, unscannable: un } =>
       if count(un) > 0 {
-        MintedManifestJoinUnobserved { reason: concat(count(un) as String, " token-carrying Rust file(s) could not be scanned") }
+        MintedManifestJoinUnobserved { reason: concat(int_to_decimal_string(value: count(un)), " token-carrying Rust file(s) could not be scanned") }
       } else {
         let produced = rows |> flat_map(r => match r.projection {
           ItemDeclarationRefProjected { ref: x } => [x]
@@ -1526,7 +1527,7 @@ fn v1_minted_manifest_join_over(observation: RustReferenceObservation) -> Minted
         let stale_uncitable = v1_uncitable_seed_link_sites
           |> filter(site => !(uncitable_keys |> any(u => u.item_key == site.item_key)))
           |> map(site => site.item_key)
-        let unattributed = u |> map(x => concat(concat(concat(x.repo_path, ":"), x.line as String), concat(" ", x.detail)))
+        let unattributed = u |> map(x => concat(concat(concat(x.repo_path, ":"), int_to_decimal_string(value: x.line)), concat(" ", x.detail)))
         MintedManifestJoined {
           observed_at: v1cc_seen_tree,
           produced: produced,
@@ -1595,8 +1596,8 @@ fn minted_manifest_join_rendered(j: MintedManifestJoin) -> String {
   match j {
     MintedManifestJoinUnobserved { reason: r } => concat("unobserved: ", r)
     MintedManifestJoined { observed_at: _, produced: p, undisposed_sites: a, undisposed_uncitable: b, uncitable: uc, stale_rows: c, stale_uncitable: d, unattributed_lines: e } =>
-      concat("produced=", concat(count(p) as String,
-      concat(" uncitable=", concat(count(uc) as String,
+      concat("produced=", concat(int_to_decimal_string(value: count(p)),
+      concat(" uncitable=", concat(int_to_decimal_string(value: count(uc)),
       concat(" undisposed=[", concat(join_keys(xs: a |> map(r => declaration_ref_display_key(ref: r))),
       concat("] undisposed_uncitable=[", concat(join_keys(xs: b),
       concat("] stale=[", concat(join_keys(xs: c |> map(r => declaration_ref_display_key(ref: r))),
@@ -2022,7 +2023,7 @@ fn v1_blocking_consumer_count_report() -> ProcessExit {
 
 fn v1_blocking_count_rendered(c: V1BlockingCount) -> String {
   match c {
-    V1BlockingCounted { blocking: b, members: m } => concat(concat("blocking=", b as String), concat(" members=", m as String))
+    V1BlockingCounted { blocking: b, members: m } => concat(concat("blocking=", int_to_decimal_string(value: b)), concat(" members=", int_to_decimal_string(value: m)))
     V1BlockingUnmeasured { reason: r } => concat("unmeasured: ", r)
   }
 }

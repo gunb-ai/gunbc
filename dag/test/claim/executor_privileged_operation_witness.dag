@@ -24,7 +24,7 @@ import gunbc.fabric.fabric_cell_effect { fabric_cell_slice_desired_directives }
 import extdeps.systemd.unit_file { slice_cpu_quota, slice_cpu_quota_unbounded, systemd_slice_directive_line }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { admitted_deploy_for, RunnerHostDeploy }
-import gunbc.executor_privileged_operation { sudoers_argument_word }
+import gunbc.executor_privileged_operation { sudoers_argument_word, executor_managed_directory_mode }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -286,7 +286,7 @@ test fn witness_shell_command_differs_from_hand_spelled_prefix() -> Bool {
 test fn witness_executed_command_is_the_granted_command() -> Bool {
   let slot = "/opt/actions-runner/srv3-09" as NonEmptyStr
   let job = "ghrunner" as NonEmptyStr
-  let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job)
+  let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job, mode: executor_managed_directory_mode)
   let op = RemoveDirectoryTree { path: slot }
   let argv = executor_privileged_operation_argv(op: op)
   executed.remove_command

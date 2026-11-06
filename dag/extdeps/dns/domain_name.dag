@@ -6,7 +6,7 @@ import std.error_primitives { Result, Ok, Err }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.algebra { collection_concat_shape, list_push }
+import std.algebra { collection_concat_shape, list_push, zip_eq }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -220,9 +220,60 @@ fn qualify(host: DnsLabel, zone: DomainName) -> HostName {
   }
 }
 
+// A HOST'S LABEL JOINED TO A ZONE, with the qualification the composition actually has. `qualify` above
+// asserts `FullyQualified`, which is the trailing-dot claim — "ask exactly this" — and a name assembled from
+// a host and a zone was never written with a trailing dot, so claiming it would make the composed name a
+// DIFFERENT name from the one `parse_host_name` returns for the same labels (`host_name_eq` checks
+// qualification). This is the arm that agrees with the parser: same labels, same qualification, one answer.
+//
+// WHY THIS EXISTS RATHER THAN A CALLER SPELLING THE WIRE: a host row whose zone is a parameter must derive
+// its name FROM that zone, or the two can drift the moment the zone is re-configured (review 87319, finding
+// 2 — the zone was a parameter and the name was still the literal "srv2.mynetworksettings.com", so the
+// parameter only moved the suffix test and not the name the resolver is asked about).
+fn host_name_joined_with_zone(host: DnsLabel, zone: DomainName) -> HostName {
+  HostName {
+    name: DomainName { labels: [host] |> concat(zone.labels) },
+    qualification: PartiallyQualified,
+  }
+}
+
+// ONE LABEL, COMPARED. The widening cast is the corpus's idiom for comparing a branded string (precedent:
+// gunbc.serving.caller_backlog logical_work_eq compares branded LogicalWorkIds the same way, and
+// gunbc.design.reference_instrument citation_is_contained widens branded module paths), and it belongs HERE,
+// beside the brand, rather than in each consumer that needs it. `DnsLabel` is `NonEmptyStr where
+// brand("DnsLabel")` at the top of this file, so this is the module that owns what two labels being equal
+// means.
+fn dns_label_eq(a: DnsLabel, b: DnsLabel) -> Bool {
+  (a as String) == (b as String)
+}
+
+// TWO DOMAIN NAMES, THE SAME LABELS? Labels, in order, same length — compared as the structure the parser
+// produced, never by rendering both sides and comparing the strings. Rendering makes the boundary between
+// "srv2.example" and "srv2example" a character rule nobody wrote down, and it re-derives what
+// `parse_dns_label_list` already settled.
+//
+// THIS IS THE LABEL-WISE EQUALITY, and it deliberately says nothing about qualification: it answers "same
+// labels", which is what a suffix test and a share row's agreement with its own filed name both need. The
+// question that ALSO cares about qualification is `host_name_eq` below, which asks this and then asks the
+// separate, named question. One rule, one place; the qualification conjunct is not folded into it, so a
+// caller cannot get the two mixed up by accident.
+fn domain_name_eq(a: DomainName, b: DomainName) -> Bool {
+  zip_eq(a: a.labels, b: b.labels, eq: dns_label_eq)
+}
+
+// THE QUALIFICATION QUESTION, asked on its own so `host_name_eq` can be a conjunction of two named facts
+// rather than one blur. Whether a name was written with a trailing dot is a fact about the SPELLING, not
+// about the labels — which is why `zone_admit` drops it and why a suffix test must not check it.
+fn name_qualification_eq(a: NameQualification, b: NameQualification) -> Bool {
+  a == b
+}
+
+// THE FULL CONTRACT: same labels AND the same qualification. It used to compare `domain_name_wire` of each
+// side, which is the rendering the label comparison exists to avoid — the repair belongs here rather than in
+// a parallel equality beside it, because two equalities that answer one question differently is the defect
+// (§3: one name, two materially different meanings).
 fn host_name_eq(a: HostName, b: HostName) -> Bool {
-  (a.qualification == b.qualification)
-    && (domain_name_wire(name: a.name) == domain_name_wire(name: b.name))
+  name_qualification_eq(a: a.qualification, b: b.qualification) && domain_name_eq(a: a.name, b: b.name)
 }
 
 fn host_name_label_count(host: HostName) -> Int {

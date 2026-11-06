@@ -1,0 +1,153 @@
+module extdeps.tools.ls
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import extdeps.access.posix { FileMode, FileOwnership, PermissionBits }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+
+// ls(1) AS POSIX SPECIFIES IT (The Open Group Base Specifications Issue 8, ls, STDOUT): with -l each
+// entry is printed as "%s %u %s %s %u %s %s\n", <file mode>, <number of links>, <owner name>,
+// <group name>, <size>, <date and time>, <pathname>; -n is -l with the owner and group printed as
+// their numeric user and group IDs; -d lists a directory operand itself rather than its contents.
+// <file mode> is the entry type character followed by the three owner, group and other triples,
+// each `r`/`-`, `w`/`-`, and an execute position that also carries the set-user-ID, set-group-ID and
+// sticky bits (`s`/`S`, `t`/`T`), optionally followed by an implementation's alternate-access
+// character.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9799919799/utilities/ls.html"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tools.ls",
+      decl_name: "ls_program",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+fn ls_program() -> ProgramIdentity = uncataloged_program(invocation: "ls")
+
+// ONE ENTRY'S METADATA WITH NO FORMAT WORD. stat -c needs a `%` conversion the fleet SSH edge refuses
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed); the long listing carries
+// the type, the mode and the numeric owner and group in a layout the standard fixes.
+fn ls_long_numeric_entries_command(paths: List<String>) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: concat(["-l", "-n", "-d", "--"], paths))
+}
+
+// A DIRECTORY'S ENTRIES, every one: -a includes the names beginning with a period, which is where the
+// listener keeps its registration. A name absent from a listing that succeeded is absent from the
+// directory; the listing's first line is its block total, which carries no mode and is not an entry.
+fn ls_long_numeric_listing_command(directory: String) -> ArgvCommand {
+  argv_command(program: ls_program(), arguments: ["-l", "-n", "-a", "--", directory])
+}
+
+// What one long-format entry says about a path's access. An alternate access method (an ACL on
+// Linux, printed as `+` after the mode) can grant what the mode bits do not show, so an entry
+// carrying one is not a reading of the path's access and refuses rather than reading as its bits.
+type LsLongEntry
+  = LsLongEntryRead { name: String, directory: Bool, ownership: FileOwnership, mode: FileMode }
+  | LsLongEntryRefused { name: String, reason: String }
+
+fn ls_execute_position(c: String) -> Bool? {
+  if c == "x" || c == "s" || c == "t" { Present { value: true } }
+  else if c == "-" || c == "S" || c == "T" { Present { value: false } }
+  else { none }
+}
+
+fn ls_permission_triple(text: String, start: Int) -> PermissionBits? {
+  let r = substring(s: text, start: start, end: start + 1)
+  let w = substring(s: text, start: start + 1, end: start + 2)
+  if (r != "r" && r != "-") || (w != "w" && w != "-") {
+    none
+  } else {
+    match ls_execute_position(c: substring(s: text, start: start + 2, end: start + 3)) {
+      Absent => none
+      Present { value: x } => Present { value: PermissionBits { read: r == "r", write: w == "w", execute: x } }
+    }
+  }
+}
+
+fn ls_special_bit(text: String, at: Int, set: String, unset_executable: String) -> Bool {
+  let c = substring(s: text, start: at, end: at + 1)
+  c == set || c == unset_executable
+}
+
+fn ls_file_mode_of(mode_text: String) -> FileMode? {
+  match ls_permission_triple(text: mode_text, start: 1) {
+    Absent => none
+    Present { value: owner } =>
+      match ls_permission_triple(text: mode_text, start: 4) {
+        Absent => none
+        Present { value: group } =>
+          match ls_permission_triple(text: mode_text, start: 7) {
+            Absent => none
+            Present { value: other } =>
+              Present { value: FileMode {
+                owner: owner,
+                group: group,
+                other: other,
+                setuid: ls_special_bit(text: mode_text, at: 3, set: "s", unset_executable: "S"),
+                setgid: ls_special_bit(text: mode_text, at: 6, set: "s", unset_executable: "S"),
+                sticky: ls_special_bit(text: mode_text, at: 9, set: "t", unset_executable: "T"),
+              } }
+          }
+      }
+  }
+}
+
+fn ls_long_entry_field(fields: List<String>, index: Int) -> String {
+  match get(xs: fields, index: index) {
+    Absent => ""
+    Present { value: f } => f
+  }
+}
+
+// One line of a long listing. The mode is the first field, the owner and group ids the third and
+// fourth, the pathname the last; fields are separated by one or more blanks, so a pathname carrying a
+// blank is not read by this parser and the consumer's paths carry none.
+fn ls_long_entry_of_line(line: String) -> LsLongEntry {
+  let fields = filter(split(s: trim(s: line), delimiter: " "), f => f != "")
+  let name = ls_long_entry_field(fields: fields, index: count(fields) - 1)
+  let mode_text = ls_long_entry_field(fields: fields, index: 0)
+  let kind = substring(s: mode_text, start: 0, end: 1)
+  let alternate = substring(s: mode_text, start: 10, end: string_length(s: mode_text))
+  if string_length(s: mode_text) < 10 {
+    LsLongEntryRefused { name: name, reason: join(["ls printed no file mode: '", trim(s: line), "'"], "") }
+  } else if alternate == "+" {
+    LsLongEntryRefused { name: name, reason: "the entry carries an alternate access method (+), which can grant access its mode bits do not show" }
+  } else if alternate != "" && alternate != "." {
+    LsLongEntryRefused { name: name, reason: join(["unrecognized alternate-access character '", alternate, "'"], "") }
+  } else {
+    match ls_file_mode_of(mode_text: mode_text) {
+      Absent => LsLongEntryRefused { name: name, reason: join(["unparseable file mode '", mode_text, "'"], "") }
+      Present { value: mode } =>
+        match parse_int(s: ls_long_entry_field(fields: fields, index: 2)) {
+          Absent => LsLongEntryRefused { name: name, reason: "ls printed no numeric owner id" }
+          Present { value: uid } =>
+            match parse_int(s: ls_long_entry_field(fields: fields, index: 3)) {
+              Absent => LsLongEntryRefused { name: name, reason: "ls printed no numeric group id" }
+              Present { value: gid } =>
+                LsLongEntryRead {
+                  name: name,
+                  directory: kind == "d",
+                  ownership: FileOwnership { uid: uid, gid: gid },
+                  mode: mode,
+                }
+            }
+        }
+    }
+  }
+}

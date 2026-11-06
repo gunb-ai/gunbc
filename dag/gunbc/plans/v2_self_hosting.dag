@@ -2,69 +2,19 @@ module gunbc.plans.v2_self_hosting
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock, ThematicBreak }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { p }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
 fn v2_self_hosting_body() -> List<MarkdownBlock> {
   [
-    p(text: "**Status:** planning tracker for the **Weak Self Host -> Strong Self Host** program (operator-signed 2026-07-11, manager: sharp-bee-290) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §1 *Get off v1*. **THE 27-ROW ROSTER CARRIER IS DELETED** (`src/v2/compiler/self_host/frontier.dag`, cut 2026-08-17): it was a hand-authored denominator that no consumer derived, and DESIGN §3's delete-first ruling says a superseded authority comes out at the root rather than being maintained while it dies. This doc is the wave sequencer only; **it no longer has a roster carrier to point at**, and the per-module dispositions it used to defer to must be re-derived from the emitter rather than re-authored. Surviving self-host authorities: `v2.compiler.self_host.emitter_producer_provenance` (which producer emitted a module), `v2.compiler.self_host.stage0_crate_layout` (crate partition), `v2.compiler.self_host.v2_emitter_direct_rust_door_contract` (the emit door). Related: [namespace-resolution-design.md](namespace-resolution-design.md) · [general-body-producer-design.md](general-body-producer-design.md) · [decl-emission-defork-design.md](decl-emission-defork-design.md) · [dag-v2-defork-audit.md](dag-v2-defork-audit.md) · [seed-shrink-census.md](seed-shrink-census.md) · [typescript-gap-census.md](typescript-gap-census.md) · [emitted-crate-partition-design.md](emitted-crate-partition-design.md) · [c-linkage-unit-realization-design.md](c-linkage-unit-realization-design.md) (the C realization of the same target-agnostic `CompilationUnit` shape self-host emission is built on — the 2nd realization, staffed to stress-test that the shape doesn't cement Rust's acyclic-linkage assumption)."),
-    quote(blocks: [
-      p(text: "**END GOAL (decided 2026-06-21 — anchored in ROADMAP §1, do not re-litigate).** `.dag` is the authority/truth; **v2 emits BOTH Rust AND TypeScript as first-class realizations** (not one-or-the-other). Rust is the active seed language today; TypeScript joins the fixed point **after Rust self-host lands** (ROADMAP `5-ts-first-class` — deferred, not dropped). Each realization is proven **by execution**: self-emitted modules compile cargo-green and are **behaviorally equivalent** to the v1 seed on a discriminating corpus (green-by-execution + a discriminating RED, DESIGN §5). **Byte-identity with the seed is explicitly NOT the goal** (operator, 2026-07-08). The seed shrinks across a **typed self-host frontier** (DESIGN §7): each of the 27 compiler modules is *self-emitted* or *seed-retained* with a reason + migration trigger — countable, prioritizable, never a silent escape hatch. **Terminal (Wave 4):** hand-written compiler logic -> 0; a pinned, content-addressed, v2-emitted bootstrap kernel survives (~8-15k LOC)."),
-    ]),
-    p(text: "Historical receipts through 2026-06-23 (Track A/B/T/Z, session-era drift findings) live in git history; superseded by the four-wave structure below."),
-    ThematicBreak,
-    h2(text: "0. State of play"),
-    ul(items: [
-      li(text: "**No compiler module is self-emitted with a green behavioral-equivalence receipt today.** That statement survives the roster cut; the way it used to be *counted* does not. `compiler_frontier_self_emitted_baseline = 0` on a hand-authored 27-row roster (#6445) is deleted along with the carrier — the denominator was authored, not discovered, so `0/27` measured the roster's opinion of how many modules exist rather than the corpus. Do not restore a numerator/denominator here: the honest replacement is a derived one, and until it exists this row is a qualitative claim, stated as such."),
-      li(text: "**Emit surface is the dominant blocker — FIRM (qualitative).** The long pole is Rust emit-surface completeness (body producer, value-expression wiring, decl emit), not front-end parse/resolve. Per-module class breakdown is **not** transcribed here — see §2."),
-      li(text: "**Wave 1 — IN FLIGHT.** Emit-surface + naming foundation; highest risk; no v1 deleted in this wave."),
-      li(text: "**Front-end + emit infrastructure — background facts (not active tracks).** `src/v2/` is 100% `.dag`; full pipeline present. Route-A cargo-green landed (#5777/#5873); CI `dag_compile_clean` + `regen --verify` (#5873). Multi-target emitter: one `fold_node` catamorphism, 14+ targets."),
-    ]),
-    h2(text: "1. The four-wave program"),
-    p(text: "Operator-signed 2026-07-11. Each wave is a **dependency-gated exit** (green-by-execution receipt); parallel width is **within** a wave, not across waves. ~**4 waves total** to delete `src/v1`; ~**3 remaining** from now. **`src/v1` deletion happens only at the END of Wave 4.**"),
-    h3(text: "Wave 1 — emit-surface + naming foundation (IN FLIGHT)"),
-    p(text: "The old 2-wave plan collapsed here: \"Wave 2 = the sweep\" hid the emit-surface keystone. Exit gate — **all** must be green-by-execution before Wave 2 opens:"),
-    ol(items: [
-      li(text: "**General body producer emits REAL ingested fn bodies** — RECEIPT LANDED (#6558 body producer + #6526/#6523 fast+long witnesses). Residual explicitly NOT proven by those witnesses: Stage D MVP subsumption, FLAG D binding-key re-grounding, FLAG E body_lowering_fold dissolution. (A fourth residual, `frontier probe per-module receipts`, is retired rather than outstanding: the probe survey is deleted with the roster cut.)"),
-      li(text: "**Namespace SymbolIndex / tree-resolution lands** — RECEIPT LANDED (#6523 gate-2 witnesses + #6538 scaling receipt). Residual: 03_name_resolve/03_resolve end-to-end ingest wire. (The `frontier probe blocker_class rows` half is retired with the roster cut, not outstanding.)"),
-      li(text: "**FLAG D binder identity grounded** — RECEIPT LANDED (#6575). EnvironmentBindingKey re-grounding on identity; `bind_eval_occurrence_identity_defect` witnesses green; conform-now protocol closed ([general-body-producer-design.md](general-body-producer-design.md) §9)."),
-      li(text: "**Weak self-host behavioral receipt green** — RECEIPT LANDED (#6578). `dag/gunbc/instruments/self_host_logic_behavioral_transport.dag` emit→compile→run→equals-seed chain green-by-execution for `dag/std/logic.dag` (plain + `--inject-fault` RED control)."),
-    ]),
-    p(text: "**NO v1 deleted in Wave 1.**"),
-    h3(text: "Wave 2 — first real flips"),
-    p(text: "The two big emit-surface tracks (~11 modules) **self-emit + behaviorally verify + REPLACE their v1 counterparts** -> **first v1 deletions**."),
-    h3(text: "Wave 3 — remaining module drain"),
-    p(text: "Every remaining compiler module flips to self-emitted **or** is declared a **pinned-kernel** row with an honest reason + migration trigger. The exit is judged by the derived frontier, never a hand-counted fraction: `gunbc test //gunbc/instruments:self-host-frontier` folds `v2.compiler.self_host.seed_retention_frontier` `self_host_frontier` over the stage0 crate's observed `.rs` files, and its `[self-host-frontier]` line reports self_emitted, emitted_unexecuted, seed_retained and unclassified, plus the counted debt (reason_not_yet_declared, unbound_dissolution). Wave 3 is exited when `emitted_unexecuted`, `reason_not_yet_declared` and `unbound_dissolution` reach 0 with `unclassified` and `stale_rows` held at 0; only an Unclassified file or a stale row is a refusal, and the debt counts are reported below standard, never refused."),
-    h3(text: "Wave 4 — collapse to kernel + delete v1"),
-    ol(items: [
-      li(text: "Pipeline runs on **emitted Rust** (not v1 seed mirror)."),
-      li(text: "`src/v1` collapses to **~8-15k LOC pinned bootstrap kernel** ([seed-shrink-census.md](seed-shrink-census.md))."),
-      li(text: "**Import grammar deleted** (import-deletion ladder B4 — see §3)."),
-      li(text: "TypeScript fixed-point work **opens** post-Rust (END GOAL unchanged; [typescript-gap-census.md](typescript-gap-census.md))."),
-    ]),
-    h2(text: "2. Census honesty — what is firm vs carrier-held"),
-    ul(items: [
-      li(text: "**FIRM (qualitative):** emit surface is the dominant blocker class. This is the one census claim that survived the cut, because it never depended on the roster's row count."),
-      li(text: "**WAS carrier-held, now unheld.** Per-module gap classification lived on the deleted `frontier.dag` as 27 `SeedRetained { reason, migration_trigger }` rows plus `compiler_frontier_census_attribution: ExecutionMeasured`. The pointing-at-a-carrier discipline (DESIGN §2/§6: no parallel-ledger doc) is unchanged and is *why* nothing was transcribed back into this doc when the carrier went — a plan that answers a question its authority no longer answers is the parallel ledger that rule forbids. The gap is declared, not filled."),
-      li(text: "**RETIRED mechanism (was #6464):** the structural census, its fail-closed classifier, and the `frontier_probe_emit_from_ingest` / `frontier_probe_survey` host-transport receipts are deleted with the roster. The survey never produced a receipt on any host, including a dedicated runner, so what is lost is machinery rather than evidence — read emitter refusals by driving emission directly."),
-    ]),
-    h2(text: "3. Import-deletion ladder (parallel track — NOT a wave gate)"),
-    p(text: "Namespace resolution and import deletion are **separate timelines**. Tree-resolution can work while imports still exist."),
-    ol(items: [
-      li(text: "**B1 merged + B2 (#6462)** — reference-deps + equivalence = Wave 1-era **resolution** (naming authority without deleting `import`)."),
-      li(text: "**B3** — ~1854-file migration; **parallel to Waves 2-3**."),
-      li(text: "**B4** — delete `import` grammar = **Wave 4** terminal step."),
-    ]),
-    h2(text: "4. Retired framing"),
-    p(text: "The June 2026 **Track A/B/T/Z** structure, Purity/Forced-precondition-order as active sequencing, and byte-digest Stage C as the milestone oracle are **retired**. Absorbed facts: Route-A cargo-green DONE (background); byte-oracle superseded by behavioral-equivalence (2026-07-08); Track Z terminal -> **Wave 4**; Track T -> END GOAL **sequenced post-Rust**, not shelved. `regen --verify` (#5873) and #5639 drift receipts remain cautionary background for Wave 4 cutover."),
-    h2(text: "5. Prerequisites (unchanged gates)"),
-    ol(items: [
-      li(text: "**De-fork / single std authority** — [dag-v2-defork-audit.md](dag-v2-defork-audit.md); cross-tree import wired (#5473)."),
-      li(text: "**Seed-only parallel representations.**"),
-      li(text: "**HAND kernel D (interpreter pure-eval)** — [interpreter-kernel-d.md](interpreter-kernel-d.md)."),
-      li(text: "**Emit-on-demand execution** — parallel track (ROADMAP §1); not a Wave 1 blocker."),
-    ]),
+    p(text: "Goal: .dag remains authority while emitted Rust replaces the bootstrap seed; first-class TypeScript follows the Rust fixed point (5-ts-first-class), deferred rather than dropped. This is the four-wave sequencer signed 2026-07-11, not a live status ledger. Current DESIGN/compiler architecture govern correctness; historical seed-equivalence receipts do not license preserving seed defects. Byte identity with seed was explicitly rejected 2026-07-08."),
+    p(text: "The authored 27-module frontier and its classifier/probe were deleted 2026-08-17. Do not recreate its denominator or dispositions. Surviving authorities are emitter_producer_provenance, stage0_crate_layout, v2_emitter_direct_rust_door_contract and the later seed_retention_frontier. Drive real emission for refusals; deleted frontier_probe survey never produced execution evidence. Historical emit-surface dominance/current-module counts are not maintained standings."),
+    p(text: "Wave1 foundation: #6558 body producer/#6526/#6523 witnesses proved real ingested bodies, not StageD MVP subsumption or FLAG E body_lowering_fold dissolution; #6523/#6538 naming/scaling did not prove final 03_name_resolve/03_resolve ingest wiring. #6575 closed FLAG D EnvironmentBindingKey identity with bind_eval_occurrence_identity_defect controls. #6578 self_host_logic_behavioral_transport proved emit→compile→run comparison for std.logic with inject-fault red. No v1 deletion in this wave; parallel work is within a dependency-gated wave, not across unpassed exits."),
+    p(text: "Wave2: first real self-emitted, execution-qualified compiler modules replace corresponding v1 logic. Wave3: derive the remaining disposition through gunbc test //gunbc/instruments:self-host-frontier over observed stage0 .rs files. Exit requires emitted_unexecuted, reason_not_yet_declared and unbound_dissolution zero, with unclassified/stale_rows zero. Only unclassified/stale rows are instrument refusals; debt counts are reported below standard. Retained kernel rows need honest reasons/triggers, not a hand-counted fraction."),
+    p(text: "Wave4: pipeline on emitted Rust, v1 compiler logic removed into the admitted pinned/content-addressed emitted bootstrap boundary, import grammar deleted and CI compile cone retired. No LOC target authorizes retained logic. TypeScript work opens afterwards, validated by actual target execution. Current replacement-cut sequencing outranks historical wave prose; src/v1 wholesale deletion is the terminal qualified cut."),
+    p(text: "Import ladder is a separate timeline: B1/B2 #6462 reference-deps/equivalence enabled naming before syntax deletion; B3 migration ran alongside Waves2–3; B4 grammar deletion was terminal. Read current namespace_cut landing-order/stage authorities instead of treating this dated ladder as live instructions."),
+    p(text: "Prerequisites retained: one std authority/de-fork (cross-tree wiring #5473), seed-only parallel representations and interpreter-kernel-D pure-eval/host boundary. Emit-on-demand is parallel, not a Wave1 blocker. Route-A cargo-green #5777/#5873, regen/drift #5873/#5639 are historical receipts, not current execution. Track A/B/T/Z, byte-oracle StageC and old active purity/precondition sequencing are retired; C linkage remains a second CompilationUnit realization that must not inherit Rust-only assumptions."),
   ]
 }
 

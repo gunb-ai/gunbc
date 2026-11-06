@@ -1,5 +1,6 @@
 module gunbc.runner.runner_revision_job_toolchain
 
+import std.integer { int_to_decimal_string }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim }
@@ -259,7 +260,7 @@ fn prove_toolchain_rows(store: String, dir: String, keyring: String) -> Toolchai
       let relevant = filter(stanzas, st => count(filter(pinned_names, n => field_or_empty(stanza: st, name: "Package") == n)) > 0)
       let row_reasons = flat_map(toolchain_pinned_debs, r => {
         let mine = filter(relevant, st => field_or_empty(stanza: st, name: "Package") == r.deb.package as String)
-        if count(mine) != 1 { [join([r.deb.package as String, ": ", count(mine) as String, " stanzas in the index, expected exactly one"], "")] }
+        if count(mine) != 1 { [join([r.deb.package as String, ": ", int_to_decimal_string(value: count(mine)), " stanzas in the index, expected exactly one"], "")] }
         else { match mine.first() { Present { value: st } => index_disagreements(r: r, stanza: st)  Absent => [] } }
       })
       let closure_reasons = match toolchain_closure_completeness(rows: toolchain_pinned_debs, roots: toolchain_closure_roots) {

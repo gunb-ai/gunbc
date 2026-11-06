@@ -10,7 +10,7 @@ import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   render_span_location,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
-  diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span, Connective,
+  diagnostic_to_span, make_error_node, InternalError, no_span, Connective,
   NoConnective, Arrow, Cardinality, resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
   field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value,
@@ -67,7 +67,7 @@ import v1.compiler.infer_types { algebra_field_kind_name }
 import v1.compiler.emit_core_support { EmitResult, escape_json_string }
 import gunbc.rust_emitted_crate { EmittedRustCrate }
 import gunbc.rust_emitted_edge { EmittedEdge }
-import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics }
+import v1.compiler.emit { unmodeled_file_transport_diagnostics, unmodeled_shell_transport_diagnostics, unmodeled_rest_transport_diagnostics, cast_realization_diagnostics }
 
 import v1.compiler.emit_rust { emit_rust_selected }
 
@@ -86,7 +86,7 @@ import std.termination {
   ProportionalDivisor, DivideByTwo, StrictlyLarger
 }
 
-import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
+import v1.compiler.ownership { OwnershipProof, OwnershipDecision, analyze_ownership }
 
 import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan, selected_artifact_plan, RustModuleRenderSelection, RenderEveryModule }
 
@@ -206,18 +206,6 @@ fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
   typed.modules
     |> filter(m => m.items |> any(item => item.body != Absent))
     |> flat_map(m => module_ownership_proofs(m: m))
-}
-
-fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
-  proofs |> flat_map(proof =>
-    proof.decisions |> flat_map(decision =>
-      match decision {
-        SharedError { binding: binding, consumer_count: count, sites: sites } =>
-          [make_error_node(diagnostic: OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
-        _ => []
-      }
-    )
-  )
 }
 
 type CompilePipelineOptions {
@@ -482,13 +470,17 @@ fn compile_bundle_error(message: String) -> ErrorNode {
   make_error_node(diagnostic: InternalError { message: message, span: no_span() }, module_name: "")
 }
 
+// A REFUSAL KNOWN BEFORE EMISSION STOPS THE ARTIFACT: an unmodeled transport, or a cast the target
+// cannot realize, returns its located diagnostics and no files, so no emitted program carries a
+// runtime abort standing in for a refusal the compiler already had.
 fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
-  let unmodeled_transports = concat(
+  let emission_refusals = concat(
     unmodeled_file_transport_diagnostics(typed: typed, target: artifact.target),
     unmodeled_shell_transport_diagnostics(typed: typed, target: artifact.target),
-    unmodeled_rest_transport_diagnostics(typed: typed, target: artifact.target))
-  if unmodeled_transports |> count > 0 {
-    return EmitResult { files: [], diagnostics: unmodeled_transports, emitted_edges: [], rust_crates: [] }
+    unmodeled_rest_transport_diagnostics(typed: typed, target: artifact.target),
+    cast_realization_diagnostics(typed: typed, target: artifact.target))
+  if emission_refusals |> count > 0 {
+    return EmitResult { files: [], diagnostics: emission_refusals, emitted_edges: [], rust_crates: [] }
   }
   match artifact.target {
     Rust => emit_rust_selected(typed: typed, selection: artifact.module_selection)
@@ -1649,12 +1641,11 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       }
       let all_diags = concat(typed_diags, complexity_diags)
       let ownership = extract_ownership_proofs(typed: typed)
-      let ownership_diags = ownership_diagnostics(proofs: ownership)
       let test_reference_diags = test_reference_diagnostics(typed: typed, source_indices: source_indices)
       let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
-        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags, test_reference_diags),
+        diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, test_reference_diags),
         provider_demands: pass.provider_demands,
         source_indices: source_indices,
         complexity: complexity,

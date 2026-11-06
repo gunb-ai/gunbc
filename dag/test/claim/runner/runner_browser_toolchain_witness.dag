@@ -1,18 +1,20 @@
 module test.claim.runner.runner_browser_toolchain_witness
 
 import std.logic { Bool }
-import std.types { String, NonEmptyStr, List, list_length }
+import std.types { String, NonEmptyStr, List }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import extdeps.github.actions { SelfHosted }
+import gunbc.runner.runner_registration_labels { gunbc_user_session_label }
 import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
-import gunbc.runner.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
+import gunbc.runner.runner_registration_labels { runner_declared_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, fleet_runner_host_deploys }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_browser_toolchain {
   RunnerBrowserToolchainLocation, runner_browser_toolchain_location,
   BrowserToolchainPool, BrowserToolchainPoolDerived, BrowserToolchainPoolUndefined,
-  runner_browser_toolchain_pool, runner_browser_toolchain_pool_of,
+  runner_browser_toolchain_pool, runner_browser_toolchain_pool_of, runner_browser_toolchain_pool_for_spec,
   BrowserToolchainHostAdmitted, BrowserToolchainHostRefused, runner_browser_toolchain_host_admission_in,
   HostLibraryReadback, HostLibrariesResolved, HostLibrariesMissing, HostLibrariesUnreadable,
   host_library_readback_of, library_readback_text,
@@ -56,16 +58,16 @@ test fn the_pool_is_exactly_the_rostered_hosts_that_register_the_floor_labels() 
   match runner_browser_toolchain_pool() {
     BrowserToolchainPoolUndefined { cause: _ } => false
     BrowserToolchainPoolDerived { hosts: pool } =>
-      list_length(floor_labels()) > 0
+      length(floor_labels()) > 0
         && fold(fleet_runner_host_deploys, init: true, f: (acc, d) => {
-          let covering = match runner_registration_labels(host: (d.host_label as String) as HostIdentity) {
+          let covering = match runner_declared_registration_labels(host: (d.host_label as String) as HostIdentity) {
             RegistrationLabelsResolved { labels: ls } => covers(have: ls, want: floor_labels())
             RegistrationLabelsRefused { host: _, cause: _ } => false
           }
           let member = fold(pool, init: false, f: (m, p) => m || (p.host_label as String) == (d.host_label as String))
           acc && (covering == member)
         })
-        && list_length(pool) > 0
+        && length(pool) > 0
   }
 }
 
@@ -174,7 +176,7 @@ test fn a_missing_host_library_refuses_naming_the_binary_the_soname_and_its_pack
     HostLibrariesMissing { binary: b, missing: ms } => {
       let text = library_readback_text(l: HostLibrariesMissing { binary: b, missing: ms })
       (b as String) == (witness_binary as String)
-        && list_length(ms) == 3
+        && length(ms) == 3
         && string_contains(s: text, pattern: witness_binary as String)
         && string_contains(s: text, pattern: "libglib-2.0.so.0 (package libglib2.0-0t64)")
         && string_contains(s: text, pattern: "libnss3.so (package libnss3)")
@@ -352,5 +354,23 @@ test fn the_probe_page_is_emitted_by_the_html_serializer() -> Bool {
 // FIVE ARCHIVES: node, both Playwright packages, both browser builds -- the set `playwright install
 // chromium` places, plus the runtime its engines floor requires.
 test fn the_toolchain_places_five_pinned_archives() -> Bool {
-  list_length(runner_browser_toolchain_archives) == 5
+  length(runner_browser_toolchain_archives) == 5
+}
+
+// NO RUNS-ON MAY SELECT THE EVIDENCE-GRANTED LABEL WHILE THE POOL READS DECLARED LABELS (DESIGN 4c: the claim is
+// checked here, not left to a comment on runner_declared_registration_labels). A floor spec whose labels name
+// gunbc-user-session has no declared pool and refuses with a typed cause; the same spec without it derives a pool,
+// so the refusal is the label's and not a side effect of the fixture. The spec is supplied at the boundary
+// (the pool fold takes it as a parameter); the real selected spec still reaches the fold through
+// runner_browser_toolchain_pool_of, which the first control in this witness executes.
+// RED control: remove the guard in runner_browser_toolchain_pool_for_spec and the first arm goes red.
+test fn a_runs_on_naming_the_user_session_label_has_no_declared_pool() -> Bool {
+  match runner_browser_toolchain_pool_for_spec(deploys: fleet_runner_host_deploys, spec: SelfHosted { labels: concat(floor_labels(), [gunbc_user_session_label]) }) {
+    BrowserToolchainPoolUndefined { cause: c } => string_contains(s: c, pattern: "names the user-session label")
+    BrowserToolchainPoolDerived { hosts: _ } => false
+  }
+    && match runner_browser_toolchain_pool_for_spec(deploys: fleet_runner_host_deploys, spec: SelfHosted { labels: floor_labels() }) {
+      BrowserToolchainPoolDerived { hosts: hs } => length(hs) > 0
+      BrowserToolchainPoolUndefined { cause: _ } => false
+    }
 }

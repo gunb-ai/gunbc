@@ -1,0 +1,27 @@
+probe: mtcollins1-virtual-media-readonly-probe
+subject: mtcollins1 (Ampere Mt. Collins / Foxconn, MegaRAC BMC, firmware 0.45)
+address: 192.168.1.228:443 (static reservation bmc-mtcollins1)
+mac: 28:c1:3c:8a:d6:4c
+observer_session: fierce-lark-507 (dashboard node adhoc-b4222c87-d37)
+lane: gunbc.plans.boot_origin_bmc_media phase B0 (also discharges work item adhoc-9e4ea90a-fd0)
+method: out-of-band HTTPS GET only; anonymous; no writes; no in-band ipmitool
+started_utc: 2026-10-27T00:54:24Z
+duration_seconds: 2
+tls: self-signed BMC certificate; -k (insecure TLS) is required against BMCs and is the modeled
+     shape in extdeps.bmc.http (insecure-TLS axis)
+transient_infrastructure_note: the observer's network path served one unrelated HTTP 502 at
+     /redfish/v1/ on the first ladder pass; the retry ladder recorded in surface-ladder.txt reads
+     200 there, and the retry was to TRANSIENT INFRASTRUCTURE (an HTTP proxy, not the controller),
+     so no BMC state was involved. This line exists because gunbc.code_to_infrastructure_failure
+     rules retry on transient infrastructure legal and only retry into BMC state a violation.
+live_state_caution: this capture is a SNAPSHOT. mtcollins1 is the standing boot target of
+     gunbc.fleet.mtcollins_firmware_converge, and a boot run may have a media session mounted while
+     this ladder is taken. It is therefore NOT evidence of a settled media state -- it is evidence
+     of the surface, read once. (gunbc.recurring_failure_mode
+     .publish_over_a_path_a_reader_is_serving is the record of what reading a mid-state has cost.)
+credential_confound_ruled_out: a firmware reflash restores factory accounts and erases the remote
+     media config, which can turn a readable endpoint into a 401 that says nothing about the
+     surface (gunbc.recurring_failure_mode
+     .firmware_reflash_resets_the_bmc_credential_it_needs). Checked the same hour: no mtcollins
+     firmware-converge run was in flight (latest fleet-converge runs at 2026-10-26T14:12Z, 21:05Z,
+     22:32Z -- all completed before this probe).

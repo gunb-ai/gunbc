@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.intel { intel }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkDescribedNotStructured,
   ElectronicComponentRow, ProgrammableLogicSpec, ProgrammableLogicSpecification, VolatileConfiguration,
   ActiveSerial, AvalonStreaming, JtagDownload, ConfigurationSignal, ConfigurationRequest, ConfigurationStatus,
   ConfigurationDone, InitializationDone, ModeSelect, PullUpByStrap,
@@ -51,7 +51,7 @@ data cyclone_10_gx_10cx085yf672e6g: ElectronicComponentRow = ElectronicComponent
   vendor: intel,
   ordering_code: "10CX085YF672E6G",
   package: "FBGA-672 (F672)",
-  top_marking: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P <lot line> / TAIWAN, with a two-line trace code and a circled e1 below",
+  top_marking: Present { value: MarkDescribedNotStructured { text: "intel (logo) / Cyclone 10 / 10CX085YF672E6G / P <lot line> / TAIWAN, with a two-line trace code and a circled e1 below", why: "the document describes the mark and prints no glyph run" } },
   specification: ProgrammableLogicSpec { logic: ProgrammableLogicSpecification {
     logic_elements: 85000,
     memory: VolatileConfiguration,

@@ -7,7 +7,7 @@ import v2.std.text { string_all_chars_in, string_any_char_in }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.effect_plan { Call, Do, EffectPlan, EffectPlanStep, For, If, Let, Retry, While }
 import v2.std.node { Node }
-import std.operation_argv { ArgvMaterialization, ArgvMaterializationRefused, ArgvMaterialized, ArgvRefusalCause, BoundOperationInvocation, OperationInputBinding, operation_argv_bind_text, OperationRef, bind_operation_invocation, operation_argv_cause_label, operation_argv_ref_label }
+import std.operation_argv { ArgvMaterialization, ArgvMaterializationRefused, ArgvMaterialized, ArgvRefusalCause, BoundOperationInvocation, OperationInputBinding, operation_argv_bind_text, OperationRef, bind_operation_invocation, operation_argv_cause_label, operation_argv_ref_label, shell_materialize_operation_argv }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.orchestration { And, Continue, ExitZero, Expr, ExprCmdSubst, ExprLit, ExprVarRef, FailFast, FailurePolicy, IntNe, LogMatches, Not, Or, Predicate, StrEmpty, StrEq, StrNonempty }
 import v2.std.effect_plan_observed_sha256 { DigestShapeInvalid, ObservationFailed, ObservedSha256FailureCause, ObservedSha256EnvWrite, observed_sha256_failure_exit_status }

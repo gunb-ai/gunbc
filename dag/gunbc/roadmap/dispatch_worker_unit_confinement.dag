@@ -15,13 +15,13 @@ import std.measure { Kibibyte, millicore }
 import std.filesystem { path_parent_directory }
 import extdeps.git { git_non_bare_git_dir_name, SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment }
 import extdeps.systemd {
-  ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
+  CollectModeProperty, ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
   ReadOnlyPathsProperty, ReadWritePathsProperty, RestrictSUIDSGIDProperty, StandardErrorProperty, StandardOutputProperty,
   UMaskProperty,
 }
 import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.fleet.fleet_posix_accounts { fleet_posix_home_directory }
-import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file, operator_route_certificate_file }
 import extdeps.systemd.systemd_run { EmptyCapabilityBoundingSet, NamedUnitSetting, SystemdRunProperty }
 import gunbc.compute.unit_bounds { UnitProcessBounds, compute_grant_unit_properties }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -60,6 +60,7 @@ type DispatchCliProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
   | GunbcHarnessProvider
+  | ReplayDispatchProvider
 
 // THE GITFILE AND WORKTREE POINTER FILES REDIRECT THE CONTROLLER'S GIT. They sit inside the
 // writable carve-outs (the worktree and .git/worktrees/<n>/), and ReadOnlyPaths= on those exact
@@ -103,20 +104,6 @@ fn dispatch_attempt_private_git_dir(instance: HostDashboardInstance, attempt_wor
   join([instance.repo_root as String, "/.git/worktrees/", dispatch_worktree_entry_name(attempt_worktree: attempt_worktree)], "")
 }
 
-fn dispatch_attempt_state_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
-    "/",
-    node_id as String,
-    "-a",
-    attempt_key,
-  ], "")
-}
-
 // WHICH DIRECTORY THE ATTEMPT PANE STANDS IN, and it is a PROVIDER fact rather than an attempt
 // fact. A vendor CLI is handed the attempt as its WORKING DIRECTORY -- that is how claude and codex
 // are told which tree to edit, so for them the pane cwd IS the subject and must stay the worktree.
@@ -136,9 +123,11 @@ fn dispatch_attempt_state_path_for_instance(
 // which is why every receipt looked right while nothing ran.
 // THE ATTEMPT'S UNIT NAME. Per attempt, not per node: the attempt key is a content hash, so two
 // attempts on one node get distinct units and the collision the tmux path reports as
-// `duplicate session` has no spelling here. A unit that has exited stays loaded in `failed` or
-// `inactive` carrying its Result, which is the evidence the next step reads; clearing it is an
-// explicit act rather than a side effect of starting the next attempt.
+// `duplicate session` has no spelling here. A unit that has exited is collected (CollectMode below), so
+// its exit record, written by ExecStopPost before the unit unloads, is the evidence the next step reads.
+// THE NAME IS PER ATTEMPT, NOT PER DELIVERY: re-delivery restarts the SAME attempt (same node, same key),
+// so the name recurs, and a failed unit under the default CollectMode keeps it loaded and refuses the
+// re-run. dispatch_worker_unit_stream_properties therefore sets CollectMode=inactive-or-failed.
 fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
   join(["gunbc-attempt-", node_id, "-", attempt_key], "")
 }
@@ -156,25 +145,10 @@ fn dispatch_attempt_unit_stem(node_id: String, attempt_key: String) -> String {
 // stdout keeps its own sibling file, and provider-events.jsonl is written only by something that
 // speaks the schema.
 // THE WORKER-OWNED CHILD OF THE ATTEMPT DIRECTORY. Owner-side records (request-binding.json,
-// launch-identity.json, attempt-key, admission) stay in dispatch_attempt_state_path_for_instance
+// launch-identity.json, attempt-key, admission) stay in roadmap_attempt_state_store AttemptDirectoryRoot
 // itself, which is read-only to the unit. The log path is the single producer of that child:
 // ReadWritePaths scratch is path_parent_directory of stdout, and events/request scratch follow
 // this same parent. Do not add a parallel worker-dir function.
-fn dispatch_attempt_worker_log_path_for_instance(
-  instance: HostDashboardInstance,
-  node_id: RoadmapNodeId,
-  attempt_key: String,
-) -> String {
-  join([
-    dispatch_attempt_state_path_for_instance(
-      instance: instance,
-      node_id: node_id,
-      attempt_key: attempt_key,
-    ),
-    "/worker/worker-stdout.log",
-  ], "")
-}
-
 // THE PRIVILEGE CONFINEMENT EVERY UNIT RUNNING MODEL-DRIVEN CODE CARRIES, spelled once: no setuid or
 // setgid escalation, no setuid/setgid file creation, and an empty capability bounding set. Worker,
 // reviewer, auditor and supervisor units share it (WORKER-ROOT-EQUIVALENT-2, item 4). The review roles
@@ -231,6 +205,7 @@ fn dispatch_pane_working_directory(
 ) -> String {
   match provider {
     GunbcHarnessProvider => instance.repo_root as String
+    ReplayDispatchProvider => instance.repo_root as String
     ClaudeCodeProvider => worktree_path
     CodexDispatchProvider => worktree_path
     CursorDispatchProvider => worktree_path
@@ -344,6 +319,7 @@ fn dispatch_worker_unit_stream_properties(
         NamedUnitSetting { property: ReadWritePathsProperty, value: dispatch_worker_set_read_write_wire(set: set) as NonEmptyStr },
         NamedUnitSetting { property: ReadOnlyPathsProperty, value: dispatch_worker_set_read_only_wire(set: set) as NonEmptyStr },
         NamedUnitSetting { property: ExecStopPostProperty, value: exit_hook },
+        NamedUnitSetting { property: CollectModeProperty, value: "inactive-or-failed" as NonEmptyStr },
       ],
       dispatch_worker_set_credential_settings(set: set),
     ),
@@ -429,7 +405,7 @@ fn dispatch_worker_credential(instance: HostDashboardInstance, file: OperatorCre
 fn dispatch_worker_credentials(instance: HostDashboardInstance) -> List<DispatchWorkerCredential> {
   match instance.worker {
     WorkerIsServiceUser => []
-    WorkerDedicatedAccount => [dispatch_worker_credential(instance: instance, file: operator_route_credential_file)]
+    WorkerDedicatedAccount => [dispatch_worker_credential(instance: instance, file: operator_route_credential_file), dispatch_worker_credential(instance: instance, file: operator_route_certificate_file)]
   }
 }
 

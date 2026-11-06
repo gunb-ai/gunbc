@@ -2,6 +2,7 @@ module test.claim.cpu_socket_termination_witness
 
 import std.logic { Bool }
 import std.types { List, String, NonEmptyStr }
+import extdeps.cpu.types { cpu_tdp_unread_standing }
 import extdeps.cpu.types {
   socket_termination_as_package_termination,
   SocketedPinGrid,
@@ -146,6 +147,7 @@ test fn w_red_a_row_without_citations_fails_the_census() -> Bool {
     nominal_sustained_per_thread_hz: ryzen_9_7950x3d_catalog.nominal_sustained_per_thread_hz,
     socket: ryzen_9_7950x3d_catalog.socket,
     tdp_watts: ryzen_9_7950x3d_catalog.tdp_watts,
+    tdp_standing: cpu_tdp_unread_standing,
     l1_cache: ryzen_9_7950x3d_catalog.l1_cache,
     l1_cache_citations: ryzen_9_7950x3d_catalog.l1_cache_citations,
     l2_cache: ryzen_9_7950x3d_catalog.l2_cache,

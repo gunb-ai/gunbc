@@ -7,6 +7,6 @@ import extdeps.bmc.ipmi
 // POSITIVE CONTROL: a three-segment service operation must resolve and be callable.
 fn call_three_segment(host: String) -> ProcessExit
 {
-  r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr)
+  r = diagnostic.ipmi.Tool.SensorList(bmc_host: host as NonEmptyStr, cipher_suite_argv: [])
   return if r.success { ExitSuccess } else { exit_failure(reason: "sensor list failed") }
 }

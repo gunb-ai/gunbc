@@ -1,6 +1,11 @@
 module test.claim.operation_realization_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { list_append }
+import std.optional { Absent, Present }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { sha256_digest_wire_form }
+import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
   Read, Write, ServiceOpTree, NamespacePosition,
@@ -10,7 +15,7 @@ import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
   OperationObserved, OperationWorkerKilled, ShellObserved,
-  DispatchObserved, DispatchUnbound, DispatchWorkerKilled, DispatchCallbackFailed,
+  DispatchObserved, DispatchUnbound, DispatchHarnessFault, DispatchWorkerKilled, DispatchCallbackFailed,
   HandlerFailed, AdvanceFailed,
   virtual_clock_origin, modeled_realization_admitted_in,
 }
@@ -29,12 +34,26 @@ import extdeps.bmc.ipmi_chassis_control {
   chassis_observation, ipmitool_chassis_status_power_line,
 }
 import gunbc.machine_intake.oob_boot_handoff { read_chassis_power }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
   bmc_world, bmc_with_pending, bmc_with_power,
+  BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override,
+  BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces,
 }
+import extdeps.bmc.ipmi_sdr { SdrTypeLine }
+import gunbc.machine_intake.bmc_fan_observation { observe_fan_round, FanObservationRound, SdrVerboseNotRequired, SdrVerboseCaptured }
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
+  bmc_lift, bmc_chassis_status_reply, bmc_bootparam_get_reply,
+  bmc_boot_options_clear_reply, BmcReplied, BmcReplyFault,
+}
+import extdeps.bmc.ipmi_boot_selection {
+  ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
+  ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear, ipmi_boot_flags_clear_data_states_invalid,
+}
+import extdeps.bmc.ipmitool_observed_output {
+  bootdev_cdrom_echo_capture, ipmitool_bootdev_cdrom_reply_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,7 +95,7 @@ fn world(power_on: Bool) -> BmcWorld {
 }
 
 fn read_power() -> ChassisPowerObservation {
-  read_chassis_power(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr)
+  read_chassis_power(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr, cipher_suite: Absent)
 }
 
 fn power_control(action: NonEmptyStr) -> Bool {
@@ -87,6 +106,7 @@ fn power_control(action: NonEmptyStr) -> Bool {
     action: action,
     deadline: "5s" as NonEmptyStr,
     kill_after: "1s" as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   ).success
 }
 
@@ -234,7 +254,7 @@ test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
     subject: fn(_scope) {
       let first = read_power()
-      let sensors = diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr)
+      let sensors = diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr, cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent))
       sensors.success
     }
   )
@@ -243,6 +263,96 @@ test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
       refused_with(reason_part: "OperationNotBound", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
         && route_operations(route: route) == ["ChassisStatus", "SensorList"]
         && match route.skip(n: 1).first() { Present { value: r } => match r.outcome { DispatchUnbound { cause: _ } => true _ => false } Absent => false }
+    _ => false
+  }
+}
+
+// THE FRU FIXTURE IS THE COMMITTED CAPTURE, BYTE FOR BYTE. extdeps.bmc.ipmitool_observed_output
+// ipmitool_fru_print_0_mt_collins is the literal the realization answers `fru print 0` with; its cited
+// source is artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt.
+// The claim re-reads that committed artifact through the checkout-input carve-out and demands the
+// literal equals it exactly -- 894 bytes, 22 newlines, and the ABSENCE of a final newline (the last
+// byte is the last `X` of the final `Product Extra` line). A hand-typed drift, a stripped
+// trailing blank, or a normalized line ending reds here rather than silently diverging the boot's
+// retained inventory from the controller's answer. The digest projection is pinned too, so the comment's
+// cited sha cannot rot away from the bytes.
+fn fru_capture_text() -> String {
+  Filesystem.Read(path: "artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt").content
+}
+
+test fn the_fru_fixture_is_the_committed_capture_byte_for_byte() -> Bool {
+  ipmitool_fru_print_0_mt_collins == fru_capture_text()
+}
+
+test fn the_fru_fixture_digest_is_the_cited_sha() -> Bool {
+  sha256_digest_wire_form(digest: sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: ipmitool_fru_print_0_mt_collins))))
+    == "sha256:e3db166444d26c8a1a6ec44a398adc229f3b88b50e21c016aa8f5daf80dc3031" as NonEmptyStr
+}
+
+// THE BOOT'S `fru print 0` IS ANSWERED FROM THE CAPTURE, NOT REFUSED. The boot route dispatched
+// diagnostic.ipmi.Tool.FruPrint in its pre-power retention and REFUSED at the unbound operation before
+// ever reaching the fan gate or the identity writes (the four executed-frame claims of
+// test.claim.host.managed_host_boot_witness were the red this binding repairs). Bound beside McInfo and
+// HpmCheck in gunbc.bmc_dry_realization bmc_ipmi_bindings, the same call now returns the capture bytes,
+// the route records one FruPrint dispatched and observed against THIS realization.
+fn fru_print_0() -> String {
+  let r = diagnostic.ipmi.Tool.FruPrint(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    fru_id: "0",
+    deadline: "30",
+    kill_after: "5",
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  if r.success { r.stdout } else { "" }
+}
+
+test fn a_bound_fru_print_zero_answers_the_committed_capture() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fru_print_0() }
+  ) {
+    WitnessReturned { value, route } =>
+      value == ipmitool_fru_print_0_mt_collins
+        && route_operations(route: route) == ["FruPrint"]
+        && match route.first() {
+          Present { value: r } => match r.outcome { DispatchObserved { observation: _ } => r.realization == (realization_identity as String) _ => false }
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+// A PRINT OF ANY OTHER FRU ID FAULTS RATHER THAN BORROWING THE BOARD'S BYTES. The capture is of FRU 0,
+// the board FRU the identity rows are read from. Answering `fru print 1` with FRU 0's stdout would be a
+// fabricated reading -- an invented observation of a device the capture never asked. The handler checks
+// the input and faults; the route shows the dispatch recorded as a harness fault, not an observation.
+fn fru_print_1() -> Bool {
+  let r = diagnostic.ipmi.Tool.FruPrint(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    fru_id: "1",
+    deadline: "30",
+    kill_after: "5",
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  r.success
+}
+
+test fn a_fru_print_of_another_id_faults_rather_than_borrowing_the_board_capture() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fru_print_1() }
+  ) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "harness fault", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["FruPrint"]
+        && match route.first() {
+          Present { value: r } => match r.outcome { DispatchHarnessFault { reason: _ } => true _ => false }
+          Absent => false
+        }
     _ => false
   }
 }
@@ -464,7 +574,7 @@ test fn a_nested_frame_cannot_open_inside_a_modeled_realization() -> Bool {
       let before = read_power()
       let bare = evaluate_in_witness_frame(
         frame: WitnessEvaluationFrame { envelope: modeled_frame(realization: other).envelope, rest_fixtures: [], realization: none },
-        subject: fn(_s) { diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr).success }
+        subject: fn(_s) { diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr, cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent)).success }
       )
       let foreign = evaluate_in_witness_frame(
         frame: modeled_frame(realization: other),
@@ -587,4 +697,309 @@ test fn only_a_hermetic_run_admits_a_modeled_realization() -> Bool {
   modeled_realization_admitted_in(mode: Hermetic)
     && !modeled_realization_admitted_in(mode: Wet)
     && !modeled_realization_admitted_in(mode: Record)
+}
+
+// ─── THE CLEAR OF PARAMETER 5: BOUND AT LAST, AND JUDGED BY ITS READBACK ──────────────────────────
+// `Tool.ChassisBootOptionsClear` -- Set System Boot Options, parameter 5, the valid bit written clear --
+// had ZERO production callers and NO binding until boot 7, and the clear it replaced, `chassis bootdev none`,
+// left the valid bit SET (run 41573858366 read 'Boot parameter data: 8000000000' beside 'Boot Device
+// Selector : No override' -- extdeps.bmc.ipmitool_observed_output
+// ipmitool_bootparam5_valid_after_bootdev_none), so the override a previous attempt left stayed pending
+// across the exit (the
+// boot-5/6 lockout: runs 40258937016, 40264233543). The four claims below hold the repair to four separate
+// things that can each break: the binding must MOVE THE WORLD; the READBACK must be what the verdict comes
+// from; the bytes dispatched must be the specification's own, with any other write refused; and the reply
+// must print NOTHING, because a raw Set echoes no confirmation and a printed verdict would be evidence of
+// nothing.
+
+// THE CLEAR, AS THE LANE DISPATCHES IT -- Set System Boot Options, parameter 5, data 1 with the valid bit
+// clear. `boot_options_clear` sends the model's own five data bytes; `boot_options_clear_with` lets a claim
+// steer data 1 to something else, which is how the world's refusal is exercised rather than described.
+fn boot_options_clear_with(boot_flag_data_1: String) -> Bool {
+  diagnostic.ipmi.Tool.ChassisBootOptionsClear(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    boot_flag_data_1: boot_flag_data_1,
+    boot_flag_data_2: ipmi_boot_flag_data_2_clear as String,
+    boot_flag_data_3: ipmi_boot_flag_data_3_clear as String,
+    boot_flag_data_4: ipmi_boot_flag_data_4_clear as String,
+    boot_flag_data_5: ipmi_boot_flag_data_5_clear as String,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  ).success
+}
+
+fn boot_options_clear() -> Bool {
+  boot_options_clear_with(boot_flag_data_1: ipmi_boot_flag_data_1_clear as String)
+}
+
+fn bootparam5_read() -> String {
+  let r = diagnostic.ipmi.Tool.ChassisBootParamGet(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    parameter: "5",
+    deadline: "5s" as NonEmptyStr,
+    kill_after: "1s" as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  if r.success { r.stdout } else { "" }
+}
+
+fn override_is_cleared(w: BmcWorld?) -> Bool {
+  match w {
+    Present { value: world } => match world.boot_override {
+      BootOverrideNone => true
+      BootOverrideCdromEfiNextBoot => false
+    }
+    Absent => false
+  }
+}
+
+// THE CLEAR MOVES THE WORLD, AND THE READ AFTER IT SAYS SO. One dispatch of the plain operation, between
+// two parameter-5 reads: the read before names the override, the world afterwards holds none, and the read
+// after it answers from the COMMITTED cleared capture -- 'Boot parameter data: 0000000000' and 'Boot Device
+// Selector : No override', both verbatim in extdeps.bmc.ipmitool_observed_output
+// ipmitool_bootparam5_no_override. A binding that printed the echo without moving the world -- which is
+// what the fixture's own standing warns about -- reds on the world AND on the second read, because the
+// read is answered from the world.
+test fn clearing_the_override_moves_the_world_and_the_read_after_it_says_so() -> Bool {
+  let seeded = bmc_with_override(world: world(power_on: true), over: BootOverrideCdromEfiNextBoot)
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: seeded, epoch: virtual_clock_origin())),
+    subject: fn(_scope) {
+      let before = bootparam5_read()
+      let cleared = boot_options_clear()
+      let after = bootparam5_read()
+      cleared
+        && string_contains(s: before, pattern: "Boot parameter data: a014000000")
+        && string_contains(s: before, pattern: "Boot Device Selector : Force Boot from CD/DVD")
+        && string_contains(s: after, pattern: "Boot parameter data: 0000000000")
+        && string_contains(s: after, pattern: "Boot Device Selector : No override")
+    }
+  ) {
+    WitnessReturned { value, route, state } =>
+      value
+        && route_operations(route: route) == ["ChassisBootParamGet", "ChassisBootOptionsClear", "ChassisBootParamGet"]
+        && every_record_observed(route: route)
+        && override_is_cleared(w: state)
+    _ => false
+  }
+}
+
+// A CLEAR THAT DID NOT LAND IS READ AS STILL PENDING, NOT AS CLEARED BY ITS OWN WORDS. The same route, over
+// a realization whose ChassisBootOptionsClear handler answers the EMPTY stdout `ipmitool raw` gives and
+// clears NOTHING: the subject sees exactly the stdout it would have seen from the real binding, and the
+// parameter-5 read afterwards still names the override. This is the claim merry-fox-82's ruling asks for in the only form that can be checked --
+// nothing in the model may judge a clear from that stdout, because a handler that lies about the clear is
+// indistinguishable from the honest one EXCEPT through the readback.
+fn lying_clear_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> {
+  OperationRealization {
+    identity: realization_identity,
+    initial: initial,
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_chassis_status_reply) },
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_bootparam_get_reply) },
+      OperationBinding {
+        at: bmc_ipmi_operation(operation: "ChassisBootOptionsClear"),
+        handler: fn(world, call) {
+          OperationObserved {
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "", stderr: "" } },
+            state: world,
+            elapsed: second(count: 1),
+          }
+        }
+      },
+    ],
+    advance: bmc_advance,
+  }
+}
+
+test fn a_clear_that_did_not_land_is_still_read_as_pending() -> Bool {
+  let seeded = bmc_with_override(world: world(power_on: true), over: BootOverrideCdromEfiNextBoot)
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: lying_clear_realization(initial: seeded)),
+    subject: fn(_scope) {
+      let cleared = boot_options_clear()
+      let after = bootparam5_read()
+      cleared && string_contains(s: after, pattern: "Boot parameter data: a014000000")
+    }
+  ) {
+    WitnessReturned { value, route, state } =>
+      value
+        && route_operations(route: route) == ["ChassisBootOptionsClear", "ChassisBootParamGet"]
+        && !override_is_cleared(w: state)
+    _ => false
+  }
+}
+
+// THE CLEAR IS THE SPECIFICATION'S OWN WRITE, AND THE WORLD SENDS NOTHING ELSE. The five data bytes the
+// lane dispatches are the model's, and the model's fold reads the meaning back out of them -- bit 7 clear,
+// bit 6 clear, bit 5 clear, selector 0 (extdeps.bmc.ipmi_boot_selection
+// ipmi_boot_flags_clear_data_states_invalid, cited to IPMI v2.0 rev 1.1 boot option parameter 5). A lane
+// that steers data 1 to a byte with the VALID bit set is refused by the dry world before any write reaches a
+// controller: that is the write this repository is licensed to make, and the one it is not stays a refusal
+// with a typed cause. The cdrom echo of the same command family is still a capture, cited to the file it was
+// read out of.
+test fn the_clear_is_the_specifications_write_and_no_other_bytes_are_sent() -> Bool {
+  ipmi_boot_flags_clear_data_states_invalid()
+    && match evaluate_in_witness_frame(
+      frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: bmc_with_override(world: world(power_on: true), over: BootOverrideCdromEfiNextBoot), epoch: virtual_clock_origin())),
+      subject: fn(_scope) { boot_options_clear_with(boot_flag_data_1: "0x80") }
+    ) {
+      WitnessRefused { diagnostic, route } =>
+        refused_with(reason_part: "boot-flag data other than the invalid flag bytes", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+          && route_operations(route: route) == ["ChassisBootOptionsClear"]
+          && match route.first() {
+            Present { value: r } => match r.outcome { DispatchHarnessFault { reason: _ } => true _ => false }
+            Absent => false
+          }
+      _ => false
+    }
+    && (ipmitool_bootdev_cdrom_reply_standing.capture == bootdev_cdrom_echo_capture)
+}
+
+// THE CLEAR PRINTS NOTHING, AND LEAVES THE VERDICT TO THE READBACK (extdeps.bmc.ipmi
+// ChassisBootOptionsClear). `ipmitool raw` echoes no confirmation, so the one place that answers this
+// operation prints an empty stdout -- and this realization delegates to the PRODUCTION reply function
+// (gunbc.bmc_dry_realization bmc_boot_options_clear_reply) and faults the route if it ever prints anything,
+// so no hand-written verdict line can appear at the site that answers the write. The world change and the
+// parameter-5 readback afterwards are the real ones: a clear is believed by the read, never by its own words.
+fn clear_prints_no_bytes_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> {
+  OperationRealization {
+    identity: realization_identity,
+    initial: initial,
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_chassis_status_reply) },
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_bootparam_get_reply) },
+      OperationBinding {
+        at: bmc_ipmi_operation(operation: "ChassisBootOptionsClear"),
+        handler: fn(world, call) {
+          match bmc_boot_options_clear_reply(world: world, call: call) {
+            BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+            BmcReplied { stdout: out, world: w } => if out == "" {
+              OperationObserved {
+                observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
+                state: w,
+                elapsed: second(count: 1),
+              }
+            } else {
+              OperationHarnessFault { reason: "the dry clear printed bytes; a raw Set System Boot Options echoes nothing, and the verdict of a clear is the parameter-5 readback" as NonEmptyStr }
+            }
+          }
+        }
+      },
+    ],
+    advance: bmc_advance,
+  }
+}
+
+test fn the_clear_prints_no_bytes_and_the_readback_says_whether_it_landed() -> Bool {
+  let seeded = bmc_with_override(world: world(power_on: true), over: BootOverrideCdromEfiNextBoot)
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: clear_prints_no_bytes_realization(initial: seeded)),
+    subject: fn(_scope) {
+      let cleared = boot_options_clear()
+      let after = bootparam5_read()
+      cleared && string_contains(s: after, pattern: "Boot parameter data: 0000000000")
+    }
+  ) {
+    WitnessReturned { value, route, state } =>
+      value
+        && route_operations(route: route) == ["ChassisBootOptionsClear", "ChassisBootParamGet"]
+        && override_is_cleared(w: state)
+    _ => false
+  }
+}
+
+// SdrElistVerbose (the conditional verbose SDR capture feeding the thermal admission rule): the
+// dry world deliberately does NOT answer it. Verbose record bytes are vendor output, and until a
+// real capture is committed any dry reply would be synthetic evidence - the very thing the
+// admission rule must be grounded on, not fabricated (manager msg_4049c507). So a dispatched
+// verbose read surfaces as a harness fault carrying the grounding reason, and the route records
+// the dispatch; the wet lane answers it for real.
+fn sdr_elist_verbose_call() -> Bool {
+  let r = diagnostic.ipmi.Tool.SdrElistVerbose(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    deadline: "30",
+    kill_after: "5",
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  r.success
+}
+
+test fn a_dispatched_verbose_sdr_read_faults_with_the_grounding_reason() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { sdr_elist_verbose_call() }
+  ) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "no committed verbose SDR capture", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["SdrElistVerbose"]
+        && match route.first() {
+          Present { value: r } => match r.outcome { DispatchHarnessFault { reason: _ } => true _ => false }
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+// THE CONDITIONAL VERBOSE CAPTURE, END TO END IN THE MODEL. The fan round reads the world's own SDR
+// surface through the dry realization, so the CONDITION on the verbose read is measured, not asserted:
+// a round whose thermal rows all decode never dispatches SdrElistVerbose, and a round left with a row
+// without a reading - the boot-5 refusal shape - dispatches it in the very same round, right after the
+// reads that failed to answer it. The dry world then refuses to ANSWER that read: verbose record bytes
+// come only from a committed capture, never from the model (the row above proves the refusal itself).
+// The records below are unit shape - written to exercise the condition - not vendor captures.
+fn unit_sdr_record(sensor_type: String, name: String, number: String, status: String, entity: String, reading: String) -> BmcSdrRecord {
+  BmcSdrRecord {
+    sensor_type: sensor_type as NonEmptyStr,
+    line: SdrTypeLine { name: name as NonEmptyStr, sensor_number: number as NonEmptyStr, status: status as NonEmptyStr, entity_id: entity as NonEmptyStr, reading_text: reading as NonEmptyStr },
+  }
+}
+
+fn fan_round_surface(temps: List<BmcSdrRecord>, fans: List<BmcSdrRecord>) -> BmcWorld {
+  bmc_with_record_surfaces(world: bmc_world(power: BmcPowerOn), surfaces: BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
+    manager_date_time: none,
+    log_services: none,
+    account_events: none,
+    virtual_media: none,
+    sensors: none,
+    ipmi_sdr: Present { value: concat(temps, fans) },
+  })
+}
+
+fn fan_round_subject() -> FanObservationRound {
+  observe_fan_round(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr, round_index: 0, cipher_suite: Absent, observed_at: "2026-10-31T00:00:00Z" as NonEmptyStr)
+}
+
+test fn a_round_whose_thermal_rows_all_decode_never_asks_for_the_verbose_read() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "CPU0_Temp", "01h", "ok", "3.1", "45 degrees C")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")]), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fan_round_subject() }
+  ) {
+    WitnessReturned { value, route } =>
+      route_operations(route: route) == ["ChassisStatus", "SdrTypeList", "SdrTypeList"]
+        && match value.verbose {
+          SdrVerboseNotRequired => true
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn a_round_left_with_an_unread_thermal_row_asks_for_the_verbose_read_in_the_same_round() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: fan_round_surface([unit_sdr_record("Temperature", "PSU2_Status", "EBh", "ok", "0.0", " ")], [unit_sdr_record("Fan", "FAN4_0_Speed", "00h", "ok", "29.1", "5700 RPM")]), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fan_round_subject() }
+  ) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "no committed verbose SDR capture", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["ChassisStatus", "SdrTypeList", "SdrTypeList", "SdrElistVerbose"]
+    _ => false
+  }
 }

@@ -1,0 +1,258 @@
+module extdeps.vllm.lil_serve
+
+import std.types { List, NonEmptyStr, String, Port }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.algebra { list_append, list_flat_map }
+import std.measure { TokenCount, token_count_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.engine_args {
+  VllmMemoryRequest, VllmPrefixCachingRequest, ChunkedPrefillRequest, VllmKvCacheDtypeRequest,
+  ChunkedPrefillRequested,
+  vllm_memory_request_argv, vllm_prefix_caching_argv, vllm_kv_cache_dtype_wire,
+}
+
+// THE LAB SERVE LAUNCH, as the lab's own tool surface. `lil-serve` is the launcher the
+// local-inference-lab image ships (`/usr/local/bin/lil-serve` = `exec /opt/venv/bin/python -m
+// runtime.launcher "$@"`, read read-only inside the container on srv1, 2026-10-25). The flags before
+// the `--` separator belong to THAT tool: `--profile`, `--hardware`, `--env KEY=VALUE` are the
+// launcher's face, and `--` is its convention for handing the remainder to vLLM. What vLLM itself
+// spells belongs with vLLM (extdeps.vllm.engine_args), and the renderers reused below are that
+// module's — one grammar, asked the same way.
+//
+// WHY THIS MODULE IS EXTDEPS AND NOT gunbc.serving: the invocation shape is the lab's contract, the
+// same way the ninfer serve argv lives in extdeps.ninfer.ninfer_serve. What is OURS — which profile
+// srv1 picks, which env values it sets, which engine flags it pins, which secret file it reads — is
+// the first-party row in gunbc.serving.srv1_serving_launch, which cites this module.
+//
+// STANDING (DESIGN 4d): these spellings are transcribed from the wrapper line and from the running
+// container's Cmd, both read 2026-10-25; no published contract covers them, and this repository has
+// read none of the launcher's source beyond the three-line wrapper. Every row here carries
+// TranscribedUncited with that obligation, and an image upgrade re-reads it.
+
+data lil_serve_read_obligation: NonEmptyStr =
+  "Read the lab image's /opt/lil/runtime/launcher.py (the launcher behind /usr/local/bin/lil-serve) and its --help for the --profile / --hardware / --env contract and the `--` passthrough rule; this repository has read only the wrapper's exec line and the running container's argv, on srv1, 2026-10-25." as NonEmptyStr
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "huggingface.co/local-inference-lab",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.lil_serve",
+      decl_name: "lil_serve_read_obligation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+// ── the launcher's own flag face ─────────────────────────────────────────────────────────────
+
+type LilServeProfile = LilServeProfileName { name: NonEmptyStr }
+
+data lil_serve_profile_qwen38_flash_next: LilServeProfile = LilServeProfileName {
+  name: "qwen38-flash-next" as NonEmptyStr,
+}
+
+type LilServeHardware = LilServeHardwareName { name: NonEmptyStr }
+
+data lil_serve_hardware_rtx_pro_6000_pcie: LilServeHardware = LilServeHardwareName {
+  name: "rtx-pro-6000-pcie" as NonEmptyStr,
+}
+
+// The launcher's environment contract, spelled as the KEY=VALUE pairs the wrapper passes through
+// `--env`. The spellings come from the wrapper itself — the closest read available, see
+// lil_serve_read_obligation for what is NOT yet read.
+type LilServeEnvironmentEntry {
+  key: NonEmptyStr
+  value: NonEmptyStr
+}
+
+fn lil_serve_environment_entry(key: NonEmptyStr, value: NonEmptyStr) -> LilServeEnvironmentEntry {
+  LilServeEnvironmentEntry { key: key, value: value }
+}
+
+fn lil_serve_environment_wire(e: LilServeEnvironmentEntry) -> String {
+  join([e.key as String, e.value as String], "=")
+}
+
+// One environment row as the TWO argv tokens the wrapper's command carries for it: the flag and the
+// KEY=VALUE wire. A named fn rather than an inline annotated lambda: inline lambda-parameter
+// annotations are unwritable in this dialect (the parser builds lambda parameters as bare name
+// leaves — std/emission_provenance.dag, gunbc.guarantee_stall.generic_lambda_parameter_receiver_evidence_stall).
+fn lil_serve_environment_argv(e: LilServeEnvironmentEntry) -> List<String> {
+  ["--env" as String, lil_serve_environment_wire(e: e)]
+}
+
+// WHERE THE API KEY COMES FROM — an INTERFACE shape, deliberately carrying NO shell spelling. This
+// module owns the launcher's interface; the bash `-lc` substitution srv1's wrapper uses is one
+// REALIZATION of it, spelled where that medium is a fact of the deployment: inside the retained host
+// wrapper (gunbc.serving.srv1_serving_launch srv1_serving_wrapper, home gunbc.retained_shell_script),
+// which is the container's actual `bash -lc` command string. No module function builds shell syntax
+// out of string literals (review 86807, ctrl HAND-SHELL: medium-as-string). The interface refuses to bake
+// a transport: DESIGN 3, "transport has fused when an operation is forked per transport" — the key
+// value, the substitution wire, and the direct-exec file-read are the SAME operation across transports,
+// so the interface states only the source and each realization spells its own token.
+// FromFile is the only arm today: a literal key in the model would put a secret in the substrate, and
+// an env-var arm has no observed user — naming it now would be inventing argv (DESIGN 4d).
+type LilServeApiKeySource
+  = LilServeApiKeyFromFile { path: NonEmptyStr }
+
+// ── the pass-through engine flags a serving row may pin ──────────────────────────────────────
+// Deliberately NOT a copy of extdeps.vllm.engine_args.VllmEngineArgs: that record is the argument
+// set the pair/canary routes carry. A serving deployment row states WHICH of these it pins, and
+// `Absent` here means "this deployment says nothing" — the same omission-is-a-state rule that
+// module established, kept by reusing its request types rather than inventing shadows.
+
+type LilServeEngineFlags {
+  served_model_name: NonEmptyStr?
+  kv_cache_dtype: VllmKvCacheDtypeRequest?
+  memory: VllmMemoryRequest?
+  max_model_len: TokenCount?
+  max_num_seqs: Nat?
+  max_num_batched_tokens: TokenCount?
+  chunked_prefill: ChunkedPrefillRequest?
+  prefix_caching: VllmPrefixCachingRequest?
+  // Pass-through the model has not spelled yet, kept VERBATIM rather than dropped: the argv this
+  // module emits stays the argv the host runs, and every unmodeled flag names itself here instead
+  // of going invisible. srv1 keeps its LMCache/gdn-era flags here until an extdeps.lmcache module
+  // exists — a frontier row in gunbc.serving.srv1_serving_launch carries that need.
+  unmodeled_tail: List<String>
+}
+
+fn lil_serve_engine_flags(
+  served_model_name: NonEmptyStr?,
+  kv_cache_dtype: VllmKvCacheDtypeRequest?,
+  memory: VllmMemoryRequest?,
+  max_model_len: TokenCount?,
+  max_num_seqs: Nat?,
+  max_num_batched_tokens: TokenCount?,
+  chunked_prefill: ChunkedPrefillRequest?,
+  prefix_caching: VllmPrefixCachingRequest?,
+  unmodeled_tail: List<String>,
+) -> LilServeEngineFlags {
+  LilServeEngineFlags {
+    served_model_name: served_model_name,
+    kv_cache_dtype: kv_cache_dtype,
+    memory: memory,
+    max_model_len: max_model_len,
+    max_num_seqs: max_num_seqs,
+    max_num_batched_tokens: max_num_batched_tokens,
+    chunked_prefill: chunked_prefill,
+    prefix_caching: prefix_caching,
+    unmodeled_tail: unmodeled_tail,
+  }
+}
+
+// ── the launch, and the argv the launcher runs ───────────────────────────────────────────────
+//
+// THE SECRET NEVER ENTERS THIS RECORD. The wrapper ends its passthrough with the API key read from a
+// file at exec time (`--api-key "$(cat /root/.pool_key)"` on srv1, read from a host file mounted in;
+// its value was never printed). The row models that as a PATH — the same shape flex_vast_shadow uses
+// for the Vast key, which is a secret reference and never a literal — so the argv is complete without
+// the secret, and the value cannot leak through a dump of the model.
+type LilServeLaunch {
+  profile: LilServeProfile
+  hardware: LilServeHardware
+  environment: List<LilServeEnvironmentEntry>
+  engine: LilServeEngineFlags
+  // TLS: the wrapper mints a self-signed certificate under its state directory when absent and
+  // passes --ssl-keyfile/--ssl-certfile; the paths are the contract, the certificate's identity is
+  // a deployment fact (srv1's CN is read by the router as its TLS name).
+  ssl_keyfile: NonEmptyStr
+  ssl_certfile: NonEmptyStr
+  // The key's SOURCE, not its value and not any transport's spelling of reading it (see
+  // LilServeApiKeySource). srv1's is a file the wrapper mounts read-only and reads at exec time.
+  api_key: LilServeApiKeySource
+  listen_port: Port
+  standing: CitedFigureStanding
+}
+
+// Render the launcher's argument tokens. `api_key_wire` is the token a REALIZATION passes for the key
+// VALUE at the transport this launch is started through: for srv1's container (a `bash -lc` command
+// string) it is the substitution token the retained wrapper carries, supplied by the CALLER
+// (gunbc.serving.srv1_serving_launch srv1_serving_launch_argv takes it as a parameter — this module
+// never constructs it); a direct-exec realization would pass the file's contents read at start. The interface does not choose between them (DESIGN 3: no fused transport); the witness
+// test.claim.serving.srv1_serving_launch_witness pins the srv1 realization's full token sequence to
+// what `docker inspect` showed, so a medium cannot silently change under a caller.
+fn lil_serve_launch_argv(launch: LilServeLaunch, api_key_wire: String) -> List<String> {
+  let head = [
+    "lil-serve" as String,
+    "--profile" as String,
+    match launch.profile { LilServeProfileName { name: n } => n as String },
+    "--hardware" as String,
+    match launch.hardware { LilServeHardwareName { name: h } => h as String },
+  ]
+  let env_spelled = list_flat_map(
+    xs: launch.environment,
+    f: e => lil_serve_environment_argv(e: e),
+  )
+  let passthrough_head = [
+    "--" as String,
+    "--port" as String,
+    to_string(launch.listen_port),
+    "--ssl-keyfile" as String,
+    launch.ssl_keyfile as String,
+    "--ssl-certfile" as String,
+    launch.ssl_certfile as String,
+    "--api-key" as String,
+    api_key_wire,
+  ]
+  let served = match launch.engine.served_model_name {
+    Absent => []
+    Present { value: s } => ["--served-model-name" as String, s as String]
+  }
+  let kv = match launch.engine.kv_cache_dtype {
+    Absent => []
+    Present { value: k } => ["--kv-cache-dtype" as String, vllm_kv_cache_dtype_wire(request: k) as String]
+  }
+  let mem = match launch.engine.memory {
+    Absent => []
+    Present { value: m } => vllm_memory_request_argv(r: m)
+  }
+  let model_len = match launch.engine.max_model_len {
+    Absent => []
+    Present { value: n } => ["--max-model-len" as String, to_string(token_count_value(t: n))]
+  }
+  let seqs = match launch.engine.max_num_seqs {
+    Absent => []
+    Present { value: n } => ["--max-num-seqs" as String, to_string(n)]
+  }
+  let batched = match launch.engine.max_num_batched_tokens {
+    Absent => []
+    Present { value: n } => ["--max-num-batched-tokens" as String, to_string(token_count_value(t: n))]
+  }
+  let pre = match launch.engine.chunked_prefill {
+    Absent => []
+    Present { value: ChunkedPrefillRequested } => ["--enable-chunked-prefill" as String]
+    Present { value: _ } => []
+  }
+  let prec = match launch.engine.prefix_caching {
+    Absent => []
+    Present { value: p } => vllm_prefix_caching_argv(r: p)
+  }
+  list_append(
+    left: list_append(left: head, right: env_spelled),
+    right: list_append(
+      left: passthrough_head,
+      right: list_append(
+        left: list_append(left: served, right: kv),
+        right: list_append(
+          left: list_append(left: mem, right: model_len),
+          right: list_append(
+            left: list_append(left: seqs, right: batched),
+            right: list_append(left: pre, right: list_append(left: prec, right: launch.engine.unmodeled_tail)),
+          ),
+        ),
+      ),
+    ),
+  )
+}

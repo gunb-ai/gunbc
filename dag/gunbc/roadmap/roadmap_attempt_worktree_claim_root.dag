@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_worktree_claim_root
 
 import std.types { String, NonEmptyStr, FilePath }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreRefused }
+import gunbc.durable_cas_file_store { SlotStore, file_slot_store, listed_slot_store, SlotStoreAdmission, SlotStoreListed, SlotStoreAbsent, SlotStoreRefused, slot_store_absent_detail }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
@@ -49,6 +49,7 @@ type WorktreeClaimStoreReading
 
 fn worktree_claim_store(instance: HostDashboardInstance) -> WorktreeClaimStoreReading {
   match listed_slot_store(member: worktree_claim_slots.member as String, root: worktree_claim_slots_path(instance: instance)) {
+    SlotStoreAbsent { member: m, root: r } => WorktreeClaimStoreUnready { detail: slot_store_absent_detail(member: m, root: r) }
     SlotStoreRefused { detail: d } => WorktreeClaimStoreUnready { detail: d }
     SlotStoreListed { root: r } => WorktreeClaimStoreReady { store: WorktreeClaimStore { instance: instance.instance_id, slots: file_slot_store(root: r) } }
   }

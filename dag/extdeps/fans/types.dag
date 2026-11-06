@@ -6,7 +6,7 @@ import extdeps.units.iec_61672 { AWeightedSoundPressureLevel, dba_tenths }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -129,6 +129,16 @@ type FanMaximumSpeed
   = FanMaximumSpeedKnown { speed: RevolutionsPerMinute }
   | FanMaximumSpeedUnpublished
 
+// THE FREE-AIR FLOW A VENDOR PUBLISHES: the flow at zero back-pressure, which is the most a fan delivers
+// and never what it delivers through a duct and a fin stack. A row that has not read it says what to read,
+// rather than carrying no field and letting a consumer assume one. Free air is the figure every vendor
+// prints; an installed flow needs the fan's pressure curve against the system's impedance, and the
+// consumer that has neither states the fraction it assumes (product.printed_chassis.exhaust_thermal
+// free_air_fraction) instead of reading this figure as delivered.
+type FanFreeAirFlow
+  = FreeAirFlowPublished { flow: MillilitrePerSecond, standing: CitedFigureStanding }
+  | FreeAirFlowUnread { read_obligation: NonEmptyStr }
+
 type FanCatalogRow {
   model: NonEmptyStr
   manufacturer: Vendor<Hardware>
@@ -138,6 +148,7 @@ type FanCatalogRow {
   published_points: List<FanPublishedOperatingPoint>
   published_speed_range: FanPublishedSpeedRange
   published_stop_behavior: FanPublishedStopBehavior
+  free_air_flow: FanFreeAirFlow
 }
 
 fn fan_point_has_level(point: FanPublishedOperatingPoint) -> Bool {
@@ -329,8 +340,12 @@ fn fan_mounting_pattern_is_verified(p: FanMountingPattern) -> Bool {
   }
 }
 
-// A RADIAL (CENTRIFUGAL) BLOWER'S HOUSING, as a part designed around it needs it: the box, its
-// thickness tolerance, and the mounting holes' count and size. The housing lies with its broad face in
+// A RADIAL (CENTRIFUGAL) BLOWER'S HOUSING, as a part designed around it needs it: the housing's
+// BOUNDING RECTANGLE, its thickness tolerance, and the mounting holes' count and size. The housing itself
+// is not a box: it is a scroll (volute) that curls around the impeller to the outlet, with rounded sides.
+// `housing_length` and `housing_depth` are its overall extents as a vendor drawing dimensions them, so a
+// conclusion drawn from them is a conclusion about the bounding rectangle; the scroll curve is not carried
+// here, and a vendor drawing that does not dimension it gives no figure for it. The housing lies with its broad face in
 // a plane and its thickness across it; air enters through the broad face and leaves through an outlet
 // on one edge, so a part may enclose an edge but must leave that face open. The figures' standing is a
 // sibling row in the product's own module.
@@ -345,11 +360,28 @@ type RadialBlowerEnvelope {
   mounting_hole_diameter: Micrometer
 }
 
-// THE OUTLET IS A SEPARATE ROW BECAUSE ITS STANDING IS SEPARATE: a drawing can print the housing in
-// text while its outlet dimensions stay unattributed to any feature. The printed figures are kept as
-// they appear, with no feature assigned, until a reading attributes them.
-type RadialBlowerOutletCandidates {
-  printed_figures: List<Micrometer>
+// THE OUTLET IS A SEPARATE ROW BECAUSE ITS STANDING IS SEPARATE: a sheet can print the housing in its
+// text while the outlet is dimensioned only on the drawing. The outlet lies on ONE housing edge -- the
+// length edge (housing_length long) or the depth edge (housing_depth long) -- and runs from the corner
+// that edge shares with the other edge. Its opening is measured along that edge and across the
+// thickness; the frame around it along the edge is the outer extent a socket has to take.
+type RadialBlowerHousingEdge = BlowerLengthEdge | BlowerDepthEdge
+
+type RadialBlowerOutlet {
+  edge: RadialBlowerHousingEdge
+  opening_along_edge: Micrometer
+  opening_across_thickness: Micrometer
+  frame_along_edge: Micrometer
+  frame_along_edge_tolerance: Micrometer
+}
+
+// A MOUNTING HOLE, located from the outlet: its centre's distance from the outlet edge (into the housing) and
+// from the corner the outlet runs from, measured along the outlet edge. A drawing that dimensions a hole from
+// the impeller centre is carried here after adding the centre's own offsets.
+type RadialBlowerMountingHole {
+  from_outlet_edge: Micrometer
+  from_outlet_corner: Micrometer
+  position_tolerance: Micrometer
 }
 
 // THE PUBLISHED RATING, each figure on its std.measure carrier. Flow and pressure are carried at the

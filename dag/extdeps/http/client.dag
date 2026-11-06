@@ -2,6 +2,7 @@ module extdeps.http.client
 import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
+import std.nat { Nat }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -81,6 +82,42 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
   ]
 }
 
+// curl(1) --retry / --retry-delay words, rendered here from std.measure carriers. Together with the
+// caller's per-request --max-time they bound how long a polling wait can last; a caller must not
+// spell them as string literals (DESIGN.md §3: an argv carries a literal it should receive as a
+// parameter).
+fn http_client_retry_flag(attempts: Nat) -> NonEmptyStr {
+  to_string(attempts) as NonEmptyStr
+}
+
+fn http_client_retry_delay_flag(delay: Second) -> NonEmptyStr {
+  to_string(second_count(s: delay)) as NonEmptyStr
+}
+
+// A readiness poll for a caller that runs curl AS A CONTAINER ENTRYPOINT (curlimages/curl): the curl
+// ARGUMENTS only, no program word — the image is the program. The body is discarded (-o /dev/null),
+// every transport error is retried (--retry-all-errors: a connection refused while the server boots
+// is curl 7, which plain --retry would not retry), and the status code is the whole of stdout
+// (-w '%{http_code}'), so the caller compares it exactly. attempts x delay + max_time is the bound
+// on the wait; all three arrive as carriers from the caller's policy.
+fn http_client_probe_status_arguments(url: NonEmptyStr, attempts: Nat, delay: Second, max_time: Second) -> List<String> {
+  [
+    "-sS",
+    "-o",
+    "/dev/null",
+    "-w",
+    "%\{http_code\}",
+    "--retry",
+    http_client_retry_flag(attempts: attempts) as String,
+    "--retry-delay",
+    http_client_retry_delay_flag(delay: delay) as String,
+    "--retry-all-errors",
+    "--max-time",
+    http_client_max_time_flag(max_time: max_time) as String,
+    url as String,
+  ]
+}
+
 // THE DEADLINE IS AN INPUT, NOT A LITERAL IN THIS ARGV, and the distinction is the one DESIGN
 // section 3 draws between an interface fact and a policy fact. How long a caller is willing to wait
 // for ITS backend is the caller's business; curl's ability to bound a request is ours. A number
@@ -120,6 +157,12 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
 // error status's body, which is where a hosted API's typed refusal lives. The response headers are dumped
 // to a caller-owned file (curl -D) because a refusal's retry hints (Retry-After, X-RateLimit-*) are headers
 // and --fail-with-body returns only the body.
+// PostJsonFromFileWithHeaderFilePinned AND GetBoundedWithHeaderFilePinned ARE THE SAME TWO REQUESTS TO AN
+// ENDPOINT WHOSE CERTIFICATE IS PINNED. Trust is the one certificate in ca_file (--cacert) AND the public key in
+// pinned_pubkey_file (--pinnedpubkey, which curl checks in addition to the chain, so a certificate some other
+// authority signed still fails); verification is never turned off. A mismatch is curl exit 60 or 90
+// (extdeps.tools.curl CurlPeerFailedVerification, CurlPinnedPubkeyMismatch) and happens in the handshake, before any request byte is sent. The
+// exit code is an output because the caller must tell a refused certificate from an unreachable server.
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
@@ -459,6 +502,62 @@ service http.Client {
     }
     mock_response {
       0 => { body: "", success: false } "hermetic: no live endpoint; a transport that never connects, so the caller answers unreachable rather than fabricating a completion"
+    }
+  }
+
+  operation PostJsonFromFileWithHeaderFilePinned {
+    requires Network
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, header_file: NonEmptyStr, response_headers_file: NonEmptyStr, ca_file: NonEmptyStr, pinned_pubkey_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "--cacert", "{ca_file}",
+        "--pinnedpubkey", "{pinned_pubkey_file}",
+        "-D", "{response_headers_file}",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/json",
+        "-H", "@{header_file}",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { body: "", success: false, exit_code: 7 } "hermetic: no live endpoint; a transport that never connects, so the caller answers unreachable rather than fabricating a completion"
+    }
+  }
+
+  operation GetBoundedWithHeaderFilePinned {
+    requires Network
+    input { url: NonEmptyStr, header_file: NonEmptyStr, response_headers_file: NonEmptyStr, ca_file: NonEmptyStr, pinned_pubkey_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success", exit_code: Int from "exit_code" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "--fail-with-body",
+        "-sS",
+        "--max-time", "{max_seconds}",
+        "--cacert", "{ca_file}",
+        "--pinnedpubkey", "{pinned_pubkey_file}",
+        "-D", "{response_headers_file}",
+        "-H", "@{header_file}",
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => Unit
+    }
+    mock_response {
+      0 => { body: "", success: false, exit_code: 7 } "hermetic: no live front; the observation refuses rather than fabricate a model list"
     }
   }
 

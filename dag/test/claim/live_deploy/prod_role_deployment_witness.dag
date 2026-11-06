@@ -39,6 +39,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner.runner_host_deploy { admitted_deploy_for }
 import gunbc.runner.runner_host_grants { dashboard_directory_observation_operations_for }
 import std.optional { Present, Absent }
+import std.algebra { list_append }
 import gunbc.live_deploy.apply {
   live_deploy_prod_role_apply_selection_under,
   DesiredApplySelected,

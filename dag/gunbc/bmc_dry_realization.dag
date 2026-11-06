@@ -14,6 +14,10 @@ import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_action_of_verb, ipmitool_chassis_status_power_line, ipmitool_chassis_power_control_reply,
 }
 import extdeps.bmc.ipmi_sdr { sdr_type_line_text }
+import extdeps.bmc.ipmi_boot_selection {
+  ipmi_boot_flag_data_1_clear, ipmi_boot_flag_data_2_clear, ipmi_boot_flag_data_3_clear,
+  ipmi_boot_flag_data_4_clear, ipmi_boot_flag_data_5_clear, ipmi_boot_flags_clear_data_states_invalid,
+}
 import gunbc.bmc_model {
   BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
   BootOverrideNone, BootOverrideCdromEfiNextBoot,
@@ -28,9 +32,10 @@ import extdeps.bmc.megarac_observed_output {
 }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
-  ipmitool_mc_info_mt_collins,
+  ipmitool_fru_print_0_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
   ipmitool_sel_elist_line,
 }
@@ -62,6 +67,19 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
 // ONE BMC COMMAND'S RESULT BEFORE IT IS PLACED IN A SCENARIO: the stdout the client would print and the
 // world after it, or a harness fault. Handlers are written over the BMC world alone; bmc_bindings lifts
 // them through a lens into whatever scenario state embeds the world.
+//
+// `stdout` carries NO provenance, and that is deliberate (review 87856, DESIGN §4d). A real ipmitool's
+// stdout is untagged bytes too, so this is the shape consumers have to work with; the alternative was a
+// standing field on the reply, which bmc_lift then shed on the way into ShellProcessExited -- a label that
+// dies at the first boundary is worse than none, because it advertises a guarantee nothing enforces. The
+// standing therefore lives on the ROW that supplies the bytes (extdeps.bmc.ipmitool_observed_output
+// BootdevEchoStanding), where it is consumed: it is what decides whether the model may answer that command
+// on this firmware release at all. From the reply outwards the bytes are untagged, and the rule that keeps
+// them honest is behavioral, not typographic: NO VERDICT IS JUDGED FROM A BOOTDEV ECHO. The verdict of a
+// clear is the parameter-5 readback (`bmc_bootparam_get_reply` above, answering from captured bytes), and
+// mtcollins1_boot_acceptance_matrix `a_lying_bootdev_echo_moves_no_verdict` runs the real route with the
+// clear's echo replaced by a hostile one -- a raw Set System Boot Options prints nothing at all, so every
+// byte that row prints is an invention -- and shows no outcome, receipt, or verdict moves.
 type BmcReply
   = BmcReplied { stdout: String, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }
@@ -105,9 +123,45 @@ fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // device or option set is a request the model does not carry, and it refuses rather than guessing.
 fn bmc_bootdev_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "device", expected: "cdrom") && input_is(call: call, name: "options", expected: "efiboot") {
+    // CAPTURED: the cdrom echo is a retained row of the 32-DIMM capture, cited at its source
+    // (ipmitool_bootdev_cdrom_reply_standing); the bytes themselves travel untagged, as any stdout does.
     BmcReplied { stdout: ipmitool_bootdev_cdrom_reply, world: bmc_with_override(world: world, over: BootOverrideCdromEfiNextBoot) }
   } else {
     BmcReplyFault { reason: "the model carries the cdrom boot override with options=efiboot only" as NonEmptyStr }
+  }
+}
+
+// THE CLEAR OF THE OVERRIDE -- the one WRITE this lane makes, and the world believes it only as the clear.
+// The five boot-flag data bytes are inputs the caller steers, so they are compared, word by word, against
+// what the model says the clear is (extdeps.bmc.ipmi_boot_selection, cited to the IPMI v2.0 rev 1.1 boot
+// option parameter 5 table); anything else is refused rather than modelled, because a Set that SETS an
+// override belongs to ChassisBootDevWithOptions and printing the clear's outcome over such a write would
+// leave the world and the log disagreeing. `ipmitool raw` echoes no confirmation, so the reply carries NO
+// stdout for anyone to mistake for a verdict: the verdict of a clear is the parameter-5 readback. The world
+// moves to BootOverrideNone, which is what a controller answers when the valid bit is clear --
+// bmc_bootparam_get_reply then prints 'Boot parameter data: 0000000000', 'Boot Flag Invalid' and 'Boot
+// Device Selector : No override' from ipmitool_bootparam5_no_override, bytes that are a capture.
+fn bmc_boot_options_clear_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if !bmc_boot_options_clear_call_is_the_clear(call: call) {
+    BmcReplyFault { reason: "ChassisBootOptionsClear was dispatched with boot-flag data other than the invalid flag bytes (data 1 with the valid bit clear, data 2 selector 0, data 3-5 reserved): setting an override is ChassisBootDevWithOptions's operation" as NonEmptyStr }
+  } else {
+    BmcReplied { stdout: "", world: bmc_with_override(world: world, over: BootOverrideNone) }
+  }
+}
+
+// THE CALL IS THE CLEAR, OR IT IS NOT A CALL THIS OPERATION MAKES. The netfn, command, parameter selector and
+// revision are the operation's own argv literals and cannot be steered; the five data bytes can, so each is
+// compared against the model's byte for that position -- and the model's own bytes have to pass their own
+// decode first, so a drifted literal here reds the witness rather than quietly widening the world.
+fn bmc_boot_options_clear_call_is_the_clear(call: OperationCall) -> Bool {
+  if !ipmi_boot_flags_clear_data_states_invalid() {
+    false
+  } else {
+    input_is(call: call, name: "boot_flag_data_1", expected: ipmi_boot_flag_data_1_clear as String)
+      && input_is(call: call, name: "boot_flag_data_2", expected: ipmi_boot_flag_data_2_clear as String)
+      && input_is(call: call, name: "boot_flag_data_3", expected: ipmi_boot_flag_data_3_clear as String)
+      && input_is(call: call, name: "boot_flag_data_4", expected: ipmi_boot_flag_data_4_clear as String)
+      && input_is(call: call, name: "boot_flag_data_5", expected: ipmi_boot_flag_data_5_clear as String)
   }
 }
 
@@ -115,9 +169,18 @@ fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world }
 }
 
-// `mc info` answers whenever the management controller does, whatever the host's power or SOL state.
+// `mc info` answers whenever the management controller does, whatever the host's power or SOL state — and it
+// answers from WHAT THE WORLD MODELS OF THIS CONTROLLER, rendered by extdeps.bmc.ipmitool_mc_info's own
+// renderer. This used to hand every dry controller in the repository a stored transcript of ONE real machine's
+// reply (a Mt. Collins `mc info`, two fields deep): a BMC that was never that machine was given another
+// machine's identity, and anything downstream that parsed it learned something true of nobody. A controller the
+// world does not model gets no reply and says so — ipmitool then has nothing to parse, which is the honest
+// outcome, and the first-contact battery records the read as owed rather than answered.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_mc_info_mt_collins, world: world }
+  match world.record_surfaces.mc_info {
+    Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
+    Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
+  }
 }
 
 // `sdr type <sensor_type>`: the controller's IPMI sensor records of that type, one line each, in the
@@ -139,6 +202,21 @@ fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
 }
 
+
+
+// THE BOARD INVENTORY AS THE CONTROLLER PRINTED IT: the one retained capture, of boot run
+// 40264233543 (extdeps.bmc.ipmitool_observed_output ipmitool_fru_print_0_mt_collins), not a modeled
+// inventory. The FRU id is checked, not ignored: the capture is of FRU 0, the board FRU the boot's
+// identity rows are read from, and a print of any other id is a request the model does not carry --
+// answering it with FRU 0's bytes would be an invented reading.
+fn bmc_fru_print_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if input_is(call: call, name: "fru_id", expected: "0") {
+    BmcReplied { stdout: ipmitool_fru_print_0_mt_collins, world: world }
+  } else {
+    BmcReplyFault { reason: "the model carries the board FRU capture for fru print 0 only" as NonEmptyStr }
+  }
+}
+
 // One IPMI round trip takes one virtual second.
 fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> fn(S, OperationCall) -> OperationStep<S> {
   fn(state, call) {
@@ -153,17 +231,28 @@ fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcW
   }
 }
 
+// `sdr elist -v` (SdrElistVerbose, admission-rule capture): NOT REALIZED. A dry reply here would be
+// bytes nobody received - the verbose record shape is vendor output that must come from a committed
+// read, and the thermal-row admission rule is grounded on exactly such a capture (manager
+// msg_4049c507). Fail-closed by construction until then; the wet lane answers the operation.
+fn bmc_sdr_elist_verbose_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  BmcReplyFault { reason: "SdrElistVerbose has no dry realization: no committed verbose SDR capture exists to ground a reply, and synthesizing vendor record bytes would fabricate the very evidence the admission rule must be grounded on" as NonEmptyStr }
+}
+
 fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<OperationBinding<S>> {
   [
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_status_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_power_control_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: get, put: put, reply: bmc_bootparam_get_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootDevWithOptions"), handler: bmc_lift(get: get, put: put, reply: bmc_bootdev_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootOptionsClear"), handler: bmc_lift(get: get, put: put, reply: bmc_boot_options_clear_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "FruPrint"), handler: bmc_lift(get: get, put: put, reply: bmc_fru_print_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SdrTypeList"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_type_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "SdrElistVerbose"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_elist_verbose_reply) },
   ]
 }
 

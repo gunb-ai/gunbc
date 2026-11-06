@@ -240,6 +240,15 @@ fn iam_bootstrap_delta_bindings() -> List<IamBootstrapBinding> {
   iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
 }
 
+// ONE CELL, SPOKEN THE SAME WAY ON BOTH SIDES OF THE CEREMONY/DELTA SPLIT (DESIGN section 2: one
+// concept has one name, so one fact has one wording). The ceremony's post-run proof and the delta's
+// ROOT CEREMONY CELLS MISSING refusal both name a cell with this phrase, so an operator who meets the
+// refusal and an engineer who reads the ceremony's refusal are looking at the same string and cannot
+// reconcile two dialects by hand.
+fn ceremony_cell_phrase(b: IamBootstrapBinding) -> String {
+  join([iam_bootstrap_resource_key(resource: b.resource), " ", b.cell.role, " to ", b.cell.member], "")
+}
+
 // THE ROOT CELLS THE BOOTSTRAP CEREMONY OWES ON SECRETS (iam-observe's read of the submission MAC key),
 // beside the other ceremonies' (gunbc.auth.gcp_iam_trust_roots ceremony_trust_root_cells): together the
 // cell-grain relation the binder join reads.
@@ -353,7 +362,11 @@ fn deny_condition_matches(observed: IamCondition?, declared: IamCondition?) -> B
     Absent => match observed { Absent => true  Present { value: _ } => false }
     Present { value: want } => match observed {
       Absent => false
-      Present { value: got } => got.expression == want.expression && got.title == want.title && got.description == want.description
+      Present { value: got } => got.expression == want.expression && got.title == want.title
+        && match want.description {
+          Absent => match got.description { Absent => true  Present { value: _ } => false }
+          Present { value: w } => match got.description { Absent => false  Present { value: g } => g == w }
+        }
     }
   }
 }
@@ -366,6 +379,27 @@ fn iam_bootstrap_deny_rules_match(observed: List<GcpDenyPolicyRule>?, declared: 
       Absent => false
       Present { value: want } => any(rows, row => match row.deny_rule { Absent => false  Present { value: got } => deny_rule_matches(observed: got, declared: want) })
     })
+  }
+}
+
+// A refused deny comparison names what was read, so a mismatch is located rather than asserted
+// (2026-10-28: the wall read back "differs" twice while a hand-built copy of the answered policy
+// matched; the decoded value is the missing fact).
+fn deny_rules_text(rules: List<GcpDenyPolicyRule>?) -> String {
+  match rules {
+    Absent => "no rules field"
+    Present { value: rows } => join(map(rows, r => match r.deny_rule {
+      Absent => "rule without denyRule"
+      Present { value: d } => join([
+        "principals=[", join(d.denied_principals, ","), "] permissions=[", join(d.denied_permissions, ","),
+        "] exceptions=", match d.exception_principals { Absent => "absent"  Present { value: xs } => join(xs, ",") },
+        "/", match d.exception_permissions { Absent => "absent"  Present { value: xs } => join(xs, ",") },
+        " condition=", match d.denial_condition {
+          Absent => "absent"
+          Present { value: c } => join(["(title=", c.title, " expression=", c.expression, " description=", match c.description { Absent => "absent"  Present { value: t } => t }, ")"], "")
+        }
+      ], "")
+    }), " | ")
   }
 }
 
@@ -503,8 +537,14 @@ fn trust_root_tag_admission(what: String, collection: String, name: String, pare
   else { TrustRootTagAdmitted { name: name as NonEmptyStr } }
 }
 
+// The create request names the parent by project id; Resource Manager v3 answers TagKey.parent as
+// projects/<project number> (2026-10-28, receipt iam-ceremony-20261028T125901Z refused the id form).
+fn iam_bootstrap_trust_root_tag_key_parent_read() -> String {
+  concat("projects/", fleet_secrets_project_number)
+}
+
 fn trust_root_tag_key_admission(name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
-  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent() as String,
+  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent_read(),
     short_name: short_name, want_short: iam_bootstrap_trust_root_tag_key_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_key_namespaced() as String)
 }
 
@@ -523,9 +563,6 @@ fn iam_bootstrap_trust_root_tagged_accounts() -> List<ServiceAccountEmail> {
   map(own_trust_federations(), f => f.service_account)
 }
 
-fn iam_bootstrap_trust_root_tag_parents() -> List<String> {
-  map(iam_bootstrap_trust_root_tagged_accounts(), a => gcp_service_account_full_resource_name(project_id: fleet_secrets_project_id, account: a))
-}
 
 data iam_bootstrap_trust_root_walled_permissions: List<String> = [
   "iam.googleapis.com/serviceAccounts.setIamPolicy",
@@ -542,9 +579,13 @@ data iam_bootstrap_trust_root_walled_permissions: List<String> = [
 // another page and no exact row is incomplete, never absence. An empty next-page token is no page.
 type TagBindingReading = TagBindingEstablished | TagBindingAbsent | TagBindingIncomplete
 
-fn trust_root_tag_binding_reading(parent: String, value_name: NonEmptyStr, bindings: List<GcpTagBindingWire>?, next_page_token: String?) -> TagBindingReading {
+// `parents` is every spelling the upstream may answer for the one resource asked about: the listing
+// is requested by the project-id form and answers rows under the project-number form (2026-10-28,
+// receipt iam-ceremony-20261028T140050Z: the binding existed, the row did not match, and the create
+// answered 409 ALREADY_EXISTS).
+fn trust_root_tag_binding_reading(parents: List<String>, value_name: NonEmptyStr, bindings: List<GcpTagBindingWire>?, next_page_token: String?) -> TagBindingReading {
   let rows = match bindings { Absent => []  Present { value: bs } => bs }
-  if any(rows, b => b.parent == parent && match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) { TagBindingEstablished }
+  if any(rows, b => any(parents, p => b.parent == p) && match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) { TagBindingEstablished }
   else { match next_page_token { Present { value: t } => if t != "" { TagBindingIncomplete } else { TagBindingAbsent }  Absent => TagBindingAbsent } }
 }
 

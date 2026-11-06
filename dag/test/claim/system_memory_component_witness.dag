@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.measure { bandwidth, gibibyte, gibibyte_to_byte_size }
 import extdeps.memory.types { MemoryFacts, Hbm }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
 import extdeps.systems.types {
   CoherentSuperchipCatalogRow, CoherentMemoryTier, SystemMemoryComponent,
   GpuAndCpuShareOnePool, GpuAddressesDirectly, GpuAddressesAcrossCoherentLink,
@@ -44,26 +44,23 @@ fn both_present_and(a: SystemMemoryComponent?, b: SystemMemoryComponent?, same_e
   }
 }
 
-data larger_hbm_gpu: GpuModelCatalogRow = GpuModelCatalogRow {
+data larger_hbm_gpu: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   vendor: nvidia_gh200_480gb_catalog.gpu.vendor,
   model: nvidia_gh200_480gb_catalog.gpu.model,
   microarchitecture: nvidia_gh200_480gb_catalog.gpu.microarchitecture,
-  package: nvidia_gh200_480gb_catalog.gpu.package,
   execution_lane_count: nvidia_gh200_480gb_catalog.gpu.execution_lane_count,
   memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)), memory_kind: Hbm },
   memory_bandwidth: nvidia_gh200_480gb_catalog.gpu.memory_bandwidth,
   boost_clock: nvidia_gh200_480gb_catalog.gpu.boost_clock,
-  tdp_watts: nvidia_gh200_480gb_catalog.gpu.tdp_watts,
   compute_capability: nvidia_gh200_480gb_catalog.gpu.compute_capability,
   supported_runtimes: nvidia_gh200_480gb_catalog.gpu.supported_runtimes,
-  interconnect: nvidia_gh200_480gb_catalog.gpu.interconnect,
   sm_cache: nvidia_gh200_480gb_catalog.gpu.sm_cache,
   sm_cache_citations: nvidia_gh200_480gb_catalog.gpu.sm_cache_citations,
   figure_citations: [],
   dense_tensor_throughput: [],
 }
 
-fn edited_row(gpu: GpuModelCatalogRow, link_rate_bytes_per_second: Nat) -> CoherentSuperchipCatalogRow {
+fn edited_row(gpu: GpuDeviceCatalogRow, link_rate_bytes_per_second: Nat) -> CoherentSuperchipCatalogRow {
   CoherentSuperchipCatalogRow {
     vendor: nvidia_gh200_480gb_catalog.vendor,
     model: nvidia_gh200_480gb_catalog.model,

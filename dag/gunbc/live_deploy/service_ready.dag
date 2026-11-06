@@ -5,9 +5,9 @@ import std.measure { Second, second, second_count, measure_fit_count_floor }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import v2.std.dependency { ready_set }
 import v2.std.node { Node }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_health_path }
 
 data live_deploy_service_ready_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -105,6 +105,23 @@ data live_deploy_roadmap_unit_expected_startup: Second = second(count: 240)
 data approval_broker_expected_startup: Second = second(count: 200)
 
 data live_deploy_service_ready_poll_bound_margin_factor: Int = 3
+
+// THE BROKER'S OWN READBACK POLL BOUND, DERIVED ONCE HERE. The roadmap has its own bound
+// (live_deploy_service_ready_poll_bound above); the broker's is THIS one, declared beside its own
+// expected_startup so the two cannot be confused. It is the broker's measured-to-listen expected
+// startup scaled by the shared poll margin factor -- the window the dark-install readback polls
+// /livez for the broker to bind after its unit restart. It is the single authority for that window:
+// the readback's attempt count (gunbc.live_deploy.apply approval_broker_readback_poll_attempts) and
+// the CI step budget that runs the install
+// (gunbc.fleet.fleet_workflow_steps gunbc_ci_approval_broker_dark_install_step_timeout) are
+// BOTH consumers of this figure, not separate products of expected_startup and the margin -- one
+// derivation per DESIGN section 6b. Giving the broker startup its own declared bound rather than
+// inheriting the live-deploy step tier is the point: run 40630763823 restarted the broker at
+// 04:56:17 and killed the step at the inherited 30-minute cap at 04:58:17, ~160 s into a 200 s
+// startup, so the broker died mid-boot and never bound 8085.
+data approval_broker_readback_poll_bound: Second = second(
+  count: second_count(s: approval_broker_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+)
 
 data live_deploy_service_ready_poll_bound_reason: String = "Cold-start bound for gunbc-roadmap.service after systemctl restart, and the SECOND correction of this rationale -- the previous one was measured against the wrong phase and is the reason the srv1 deploy refused on every run for a day. Recorded plainly, because the failure mode is more instructive than the number.
 

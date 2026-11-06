@@ -7,35 +7,33 @@ import gunbc.roadmap.roadmap_view_preference_store { issue_view_store_key, issue
 import gunbc.auth.request_authentication { ServeActionSaveOwnView }
 import extdeps.http.server { ServeResponseHeaderNoStore, ServeResponseHeaderCacheImmutable, text_css_utf8 }
 import gunbc.site.web_fonts { web_font_stylesheet, web_font_stylesheet_path, web_font_stylesheet_max_age_seconds }
-import extdeps.languages.json.emit { JsonNull }
+import extdeps.languages.json.emit { JsonNull, json_bool }
 
-import gunbc.site.document { site_document }
+import gunbc.site.document { site_document, SiteStyles }
 import gunbc.site.specimen { specimen_route_path, specimen_page }
-import gunbc.site.markup { el, txt }
+import gunbc.site.markup { el, txt, page_render_refusal_body }
 import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
 import gunbc.site.controls { site_client_path, site_client_source }
-import gunbc.roadmap.roadmap_style { roadmap_styles }
-import gunbc.site.document { SiteStyles }
+import gunbc.roadmap.roadmap_style { roadmap_styles, roadmap_css }
 
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
 import gunbc.roadmap.roadmap_dispatch_actuator { ExecutorDefault, decode_dispatch_executor_request, DispatchExecutorRequestDecoded, DispatchExecutorRequestUnknown }
-import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
+import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow, roadmap_issue_state, roadmap_standing_is_retired }
 
-import gunbc.roadmap.roadmap_event_log { roadmap_issue_state }
-import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, IssueFormContext, issue_command_apply, issue_operation_nonce }
+import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AssignIssue, CreateComment, RetireNode, IssueFormContext, issue_command_apply, issue_operation_nonce }
 import gunbc.roadmap.roadmap_event_carrier { roadmap_operation_identity_valid }
 
 import extdeps.http.form_urlencoded { form_decode, form_field, FormDecoded, FormRefused }
 
 import gunbc.roadmap.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_route, allocation_release_route }
 import gunbc.roadmap.workspace_allocation_routes { workspace_route_create, workspace_route_list, workspace_route_get, workspace_route_release }
+import gunbc.auth.profile_store_root { profile_store }
 import gunbc.auth.profile_projection {
-  profile_store_layout_for_instance, profile_store_upsert_from_session, profile_store_read_all, ProfileStoreReadAll,
+  profile_store_roster, ProfileStoreReadAll,
   ProfileStoreUpserted, ProfileStoreUpsertRefused, ProfileStoreRead, ProfileStoreUnread, PrincipalProfile,
 }
 import gunbc.roadmap.roadmap_auth_route_paths { auth_login_route_path, auth_logout_route_path }
 import gunbc.roadmap.roadmap_allocation_page { allocation_page_with_stylesheet, allocation_client_path, AllocationViewerSignedIn, AllocationViewerSignedOut }
-import gunbc.roadmap.roadmap_style { roadmap_css }
 import gunbc.roadmap.roadmap_allocation_client { allocation_client_source }
 
 
@@ -67,10 +65,15 @@ import gunbc.auth.request_authentication {
   authenticated_viewer_label,
   human_write_admission,
   tracker_write_authorization_policy,
+  write_authorization_policy_for,
+  ServeWriteAuthorizationPolicy,
+  host_account_evidence_of_ingress,
+  HostAccountPeerEvidence,
+  srv1_host_account_enrolments,
   roadmap_deployment_access_policy,
   ServeActionAssignIssue,
   ServeActionCreateIssue,
-  ServeActionCommentIssue,
+  ServeActionCommentIssue, ServeActionCloseNode, ServeActionRetireNode,
   ServeActionDispatchNode,
   ServeActionStopNode,
   ServeActionPublishNode,
@@ -79,7 +82,6 @@ import gunbc.auth.request_authentication {
 }
 import gunbc.auth.session { SessionCookieAbsent, session_cookie_standing_reason }
 import extdeps.uri { Uri, uri_wire }
-import extdeps.languages.json.emit { json_bool }
 import gunbc.principal_projection {
   PrincipalRef, principal_ref_label, principal_ref_parse_label, principal_ref_eq, fabric_workflow_principal,
 }
@@ -92,13 +94,13 @@ import gunbc.roadmap.roadmap_task_record { roadmap_task_encode }
 import gunbc.roadmap.roadmap_task_store { RuntimeTaskWrite, roadmap_task_create, RuntimeTaskCommitted, RuntimeTaskReplayed, RuntimeTaskConflict, RuntimeTaskStale, RuntimeTaskChainFull, RuntimeTaskRefused, roadmap_task_capacity, CapacityWithin, CapacityCompactionDue, CapacityFull }
 import std.algebra { trim }
 import std.types { String, Int, Bool, List, NonEmptyStr, Email, CommitSha, HttpStatus, Timestamp }
-import extdeps.uri_path { PathParamBinding, path_param_value }
+import extdeps.uri_path { PathParamBinding, path_param_value, uri_query_param }
 import std.markup { Fragment }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.auth.approval_broker_serve {
   ApprovalBrokerHandler, approval_broker_route_specs, approval_broker_invoke,
-  ApprovalConfirmPageHandler, ApprovalDecideHandler, ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
+  ApprovalSubmitHandler, ApprovalStatusHandler, ApprovalStoreReceiptHandler,
 }
 import gunbc.auth.approval_broker_cutover { roadmap_still_mounts_approval_routes }
 import gunbc.auth.approval_writer_authority { ApprovalServingProcess, RoadmapProcess }
@@ -146,7 +148,23 @@ import gunbc.roadmap.roadmap_page { issue_detail_not_found_page, issue_create_pa
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
   RoadmapAuthorityProjectionRefused,
+  RoadmapAuthorityProjected,
 }
+import gunbc.roadmap.roadmap_operator_acceptance {
+  OperatorPrRow, OperatorPrReadback, PrRoster, PrReadbackUnavailable,
+  OperatorCloseInputs, OperatorCloseWrite, OperatorCloseRefusal,
+  CloseWritten, CloseAlreadyRecorded, CloseRefused,
+  roadmap_operator_close, roadmap_operator_close_history, roadmap_operator_node_closed,
+  roadmap_operator_date_from_epoch_secs,
+  AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable,
+}
+import gunbc.roadmap.roadmap_acceptance_history_carrier { roadmap_acceptance_event_history_carrier_repo_path }
+import gunbc.roadmap.roadmap_status { TicketFields, line_ticket }
+import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
+import gunbc.roadmap.roadmap_model { RoadmapNode }
+import extdeps.github.pulls
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text, json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonObject, JsonArray, JsonNumber, JsonBool }
 import gunbc.roadmap.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
 }
@@ -154,7 +172,6 @@ import gunbc.roadmap.roadmap_static_site {
   roadmap_site_dispatch_json_body_over,
   roadmap_site_healthz_body_for_release,
 }
-import gunbc.site.markup { page_render_refusal_body }
 import gunbc.roadmap.roadmap_site_surface_render {
   roadmap_site_health_path,
   roadmap_site_dispatch_url_path,
@@ -223,6 +240,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv2_deploy_dashboard_instance,
   dashboard_actuation_posture_label,
   dashboard_provision_transport_label,
+  dashboard_provision_transport,
   dashboard_instance_provision_plan_rows,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
@@ -288,10 +306,13 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
 // OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be
 // modeled that way today because gunbc.host.host_effect carries only the LiveDeployApply /
 // LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic
-// service-occurrence member exists. That absence is why BOTH bring-up paths must name a command:
-// the systemd unit through gunbc.live_deploy.emit, and the tmux path through
-// gunbc.roadmap.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
-// separate work and is the thing that stops this recurring.
+// service-occurrence member exists. That absence is why the ONE bring-up path must name a command:
+// the systemd unit through gunbc.live_deploy.emit. The tmux path's argv builder,
+// dashboard_instance_serve_argv, had no consumer in any lane and was deleted under DESIGN §3c; if a
+// tmux bring-up returns it returns through the live-deploy emit, not through a second argv spelling.
+// Registering that member is separate work and is the thing that stops this recurring. Since the
+// serve verb's deletion (gunbc.plans.converged_ingress M1) the command is `gunbc run` on
+// gunbc.roadmap.roadmap_ingress, the deployment binding of these handlers.
 //
 // THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
 // load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
@@ -333,6 +354,9 @@ type RoadmapServeHandler
   | IssueViewPreferencesReadHandler
   | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
+  // The operator's daily close and retire (operator ruling 2026-11-04).
+  | IssueCloseHandler
+  | IssueRetireHandler
   | IssueCreateHandler
   | IssueCreatePageHandler
   | AuthSessionHandler
@@ -409,6 +433,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: "/issue/\{node_id\}/assignment", handler: IssueAssignmentContextHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/close", handler: IssueCloseHandler },
+    ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/retire", handler: IssueRetireHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
     ServedRouteSpec { method: POST, raw: "/issues/query", handler: IssueQueryHandler },
     ServedRouteSpec { method: POST, raw: "/issues", handler: IssueCreateHandler },
@@ -661,6 +687,7 @@ fn serve_publish_with_follow_ups(instance: HostDashboardInstance, outcome: BeltP
 // run the attempt somewhere the operator did not ask.
 fn serve_after_human_write(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  authorization_policy: ServeWriteAuthorizationPolicy,
   route_path: NonEmptyStr,
   action: ServeRouteAction,
   proceed: fn() -> ServeHttpResponse,
@@ -670,7 +697,7 @@ fn serve_after_human_write(
     route_path: route_path,
     action: action,
     security: request.security,
-    authorization_policy: tracker_write_authorization_policy,
+    authorization_policy: authorization_policy,
     deployment_policy: roadmap_deployment_access_policy,
     csrf_presented: issue_form_field(body: request.body, name: "csrf"),
     observed_at: observed_at,
@@ -691,7 +718,7 @@ fn serve_dispatch_handler_response_over(
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
   observed_at: fn() -> Timestamp,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, observed_at: observed_at, proceed: fn() {
+  serve_after_human_write(request: request, authorization_policy: write_authorization_policy_for(deployment: instance.deployment), route_path: "/dispatch" as NonEmptyStr, action: ServeActionDispatchNode, observed_at: observed_at, proceed: fn() {
     let node_id = path_param_value(params: params, name: "node_id")
     if node_id == "" {
       serve_text_response(
@@ -733,7 +760,7 @@ fn serve_publish_handler_response_for_instance(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
+  serve_after_human_write(request: request, authorization_policy: write_authorization_policy_for(deployment: instance.deployment), route_path: "/publish" as NonEmptyStr, action: ServeActionPublishNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
   let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
@@ -811,8 +838,6 @@ fn serve_publish_handler_response_for_instance(
 fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
   match h {
     ApprovalSiteFaviconHandler => false
-    ApprovalConfirmPageHandler => true
-    ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
     ApprovalStatusHandler => true
     ApprovalStoreReceiptHandler => false
@@ -882,6 +907,7 @@ fn serve_issue_detail_response_over(
         let context = match request.security.authentication {
           GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
           FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+          HostAccountPeerEvidence { account: _, principal: _ } => IssueFormContext { operation: "", csrf: "" }
           SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
           AuthAbsent => IssueFormContext { operation: "", csrf: "" }
         }
@@ -918,7 +944,7 @@ fn serve_issue_detail_response_over(
 // (or absence) degrades to the empty roster — the page renders every assignee surface's fallback
 // exactly as before, never a failed page on a profile read.
 fn serve_profiles_for_instance(instance: HostDashboardInstance) -> List<PrincipalProfile> {
-  match profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance)) {
+  match profile_store_roster(reading: profile_store(instance: instance)) {
     ProfileStoreRead { profiles, skipped: _ } => profiles
     ProfileStoreUnread { step: _, reason: _ } => []
   }
@@ -964,6 +990,7 @@ fn serve_issue_assignment_context_over(
     AuthAbsent => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Sign in to assign this issue.")
     SessionStandingInvalid { standing: _ } => serve_text_response(status: 401, content_type: text_plain_utf8, body: "Your session has expired or is unavailable. Sign in again.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
+    HostAccountPeerEvidence { account: _, principal: _ } => serve_text_response(status: 403, content_type: text_plain_utf8, body: "Inline assignment requires a signed-in human session.")
   }
 }
 
@@ -1001,6 +1028,7 @@ fn human_write_observed_at(security: RequestSecurityContext<RequestAccessPath, R
   match security.authentication {
     GoogleOidcSession { session: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => ""
+    HostAccountPeerEvidence { account: _, principal: _ } => match clock_now_probed_at() { Present { value: t } => t as String Absent => "" }
     SessionStandingInvalid { standing: _ } => ""
     AuthAbsent => ""
   }
@@ -1036,7 +1064,7 @@ fn serve_issue_assign_response_over(
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   match human_write_admission(route_path: concat("/issue/", concat(node_id, "/assign")) as NonEmptyStr,
-    action: ServeActionAssignIssue, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    action: ServeActionAssignIssue, security: request.security, authorization_policy: write_authorization_policy_for(deployment: instance.deployment),
     deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
     observed_at: fn() { human_write_observed_at(security: request.security) }) {
     Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
@@ -1082,6 +1110,248 @@ fn serve_issue_assign_permitted(
     }
   } }
 }
+
+// ══ THE OPERATOR CLOSE ROUTE (2026-11-04) ════════════════════════════════════════════════════
+// POST /issue/{node_id}/close. The daily reconciliation: a merged pull request, READ BACK from
+// GitHub (never a bare claim), plus the typed receipt evidence the acceptance model requires, and
+// the node closes durably — visible on the next read, surviving restart, no redeploy. The form is
+// minimal by ruling: node + repo + pull number are the required inputs; the criteria digest derives
+// from the node's own ticket, accepted_by is the authenticated principal the admission verified,
+// and the PR facts (url, mergedAt, head) are the readback's. The receipt's red-control witness
+// fields and first handback artifact are the fields the acceptance model truly requires of an
+// operator — the page PREFILLS them from the row's own criteria text so the daily act is two
+// clicks and a confirm. Every refusal is typed and visible: unknown node, already closed, PR not
+// merged, PR absent, GitHub unreadable (fail closed), replay-invalid history, key conflict.
+fn serve_issue_close_response_over(
+  instance: HostDashboardInstance,
+  plan: fn() -> RoadmapAuthorityProjection,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+  // The GitHub readback is an INPUT at the boundary: the route passes the real gh-backed reader
+  // and the witness injects its own roster, so every merge answer a witness sees is data the
+  // witness chose. Failures arrive as PrReadbackUnavailable and the gate refuses fail-closed.
+  read: fn(String, Int) -> OperatorPrReadback,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/close")) as NonEmptyStr,
+    action: ServeActionCloseNode, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => {
+      let proj = plan()
+      if !issue_detail_node_exists(proj: proj, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "close refused: unknown node\n") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => match roadmap_plan_node_ticket(proj: proj, node_id: node_id) {
+          Absent => serve_text_response(status: 404, content_type: text_plain_utf8, body: "close refused: unknown node\n")
+          Present { value: ticket } => {
+            let get = fn(name) { issue_form_field(body: request.body, name: name) }
+            let repo = get("repo")
+            match parse_int(s: get("pr")) {
+              Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "close refused: repo and an integer pull number are required\n")
+              Present { value: pr_number } => match clock_unix_millis_read() {
+                ClockUnixMillisRefused { detail: d } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: clock unread: ", d, "\n"], ""))
+                ClockUnixMillisObserved { millis: ms } => serve_close_answer(
+                  instance: instance,
+                  node_id: node_id,
+                  inputs: OperatorCloseInputs {
+                    node: node_id as NonEmptyStr as RoadmapNodeId,
+                    ticket: ticket,
+                    repo: repo as NonEmptyStr,
+                    pr_number: pr_number,
+                    accepted_by: principal_ref_label(p: author) as NonEmptyStr,
+                    accepted_on: roadmap_operator_date_from_epoch_secs(secs: epoch_secs_of_millis(millis: ms)),
+                    witness_module: get("witness_module") as NonEmptyStr,
+                    witness_fn: get("witness_fn") as NonEmptyStr,
+                    first_artifact: get("first_artifact") as NonEmptyStr,
+                    further_artifacts: filter(
+                      map(split(s: get("further_artifacts"), delimiter: ","), a => trim(a) as NonEmptyStr),
+                      a => (a as String) != ""
+                    ),
+                    operation_key: get("key") as NonEmptyStr,
+                    at: epoch_secs_of_millis(millis: ms),
+                  },
+                  readback: read(repo, pr_number)
+                )
+              }
+            }
+          }
+          }
+      } }
+    }
+  }
+}
+
+fn serve_close_answer(instance: HostDashboardInstance, node_id: String, inputs: OperatorCloseInputs, readback: OperatorPrReadback) -> ServeHttpResponse {
+  // The binding check compares the readback against the NODE'S OWN review standing on the
+  // instance event lane — read here, from the fabric, not from the form. An unavailable lane
+  // refuses (503): close never proceeds on a missing link.
+  let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+  match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
+    EventsReadRefused { node: _, step: s, reason: r } => serve_text_response(status: 503,
+      content_type: text_plain_utf8,
+      body: join(["close refused: node lane unavailable at ", s, ": ", r, "\n"], ""))
+    EventsRead { node: _, envelopes: envs } => match roadmap_operator_close(
+    path: roadmap_acceptance_event_history_carrier_repo_path,
+    store: fabric_state_storage_binding(),
+    inputs: inputs,
+    readback: readback,
+    standing: if count(envs) == 0 { none } else { Present { value: roadmap_issue_state(envs: envs).standing } }
+  ) {
+    CloseWritten { event_id: id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["closed: ", node_id, " (event ", id as String, ")\n"], "")))
+    CloseAlreadyRecorded { event_id: id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["closed: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
+    CloseRefused { reason } => serve_close_refusal_response(node_id: node_id, reason: reason)
+  }
+  }
+}
+
+// Every close refusal answers with its own status and its own words — the operator always learns
+// WHY, never a bare failure.
+fn serve_close_refusal_response(node_id: String, reason: OperatorCloseRefusal) -> ServeHttpResponse {
+  match reason {
+    CloseUnknownNode { node: n } => serve_text_response(status: 404, content_type: text_plain_utf8, body: join(["close refused: unknown node ", n, "\n"], ""))
+    CloseAlreadyClosed { node: n } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: ", n, " is already closed\n"], ""))
+    ClosePrNotForNode { pr_number: p, expected: e } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: pull ", to_string(value: p), " is not this node's review PR (the node's standing names ", e as String, ")\n"], ""))
+    CloseEvidenceMissing { field: f } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: the receipt requires ", f, "\n"], ""))
+    ClosePrUnreadable { cause: c } => serve_text_response(status: 502, content_type: text_plain_utf8, body: join(["close refused: GitHub could not be read, and a merge nobody read is not a merge: ", c, "\n"], ""))
+    ClosePrNotFound { pr_number: n } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " was not found in the roster\n"], ""))
+    ClosePrNotMerged { pr_number: n, state: st } => serve_text_response(status: 422, content_type: text_plain_utf8, body: join(["close refused: pull request #", to_string(value: n), " is not merged (state: ", st, ")\n"], ""))
+    CloseTailUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: the operator acceptance tail is unreadable: ", r, "\n"], ""))
+    CloseInvalidHistory { detail: d } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: the acceptance history refuses this event: ", d, "\n"], ""))
+    CloseKeyConflict { operation_key: k } => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["close refused: operation key ", k, " already records different content\n"], ""))
+    CloseCapacityFull { budget: b } => serve_text_response(status: 507, content_type: text_plain_utf8, body: join(["close refused: the acceptance tail is at its capacity budget (", to_string(value: b), ")\n"], ""))
+    CloseStaleHead => serve_text_response(status: 409, content_type: text_plain_utf8, body: "close refused: the acceptance chain moved under this request; retry\n")
+    CloseChainWriteRefused { step: st, reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: acceptance write refused at ", st, ": ", r, "\n"], ""))
+  }
+}
+
+// The merged-PR readback at the boundary: gh pr view's own JSON, decoded to the gate's rows.
+// Every failure — gh refuses, the document will not decode — is PrReadbackUnavailable, which the
+// close gate answers fail-closed. Nothing here ever guesses a merge from an absent reading.
+fn serve_close_pr_readback(repo: String, pr_number: Int) -> OperatorPrReadback {
+  let viewed = github.CliPulls.ViewMergedJson(repo: repo as NonEmptyStr, pull_number: pr_number)
+  if !viewed.success {
+    PrReadbackUnavailable { cause: join(["gh pr view #", to_string(value: pr_number), " refused: ", viewed.stderr], "") as NonEmptyStr }
+  } else { match parse_json_document(s: viewed.stdout) {
+    JsonDocumentUnreadable { gap: g } => PrReadbackUnavailable { cause: join(["could not decode gh pr view #", to_string(value: pr_number), ": ", json_document_gap_text(gap: g)], "") as NonEmptyStr }
+    JsonDocumentParsed { value: v } =>
+      // A duplicated identity member is NOT resolved last-wins — it is refused: the merge readback
+      // is an evidence boundary, and a document with two "state" fields has committed to neither.
+      match json_object_unique_member(v: v, key: "state") {
+        JsonMemberFound { value: st } => PrRoster { rows: [ OperatorPrRow {
+          number: pr_number,
+          state: match serve_close_member_nonempty(v: v, key: "state") {
+            Absent => none
+            Present { value: w } => Present { value: github_pull_request_view_state(word: w) }
+          },
+          merged_at: serve_close_member_nonempty(v: v, key: "mergedAt"),
+          head_sha: serve_close_member_nonempty(v: v, key: "headRefOid"),
+        } ] }
+        _ => PrReadbackUnavailable { cause: "gh pr view returned no unique state" as NonEmptyStr }
+      }
+  } }
+}
+
+// The gh JSON boundary in one place: a member is PRESENT only when it exists uniquely, decodes
+// to text, and that text is non-empty. Missing member, JSON null, and "" are the wire's three
+// spellings of "no value" and they collapse to Absent HERE, so no empty string ever travels
+// downstream as a present value (std.optional::Optional; dag_absence_is_one_meaning).
+fn serve_close_member_nonempty(v: JsonValue, key: String) -> NonEmptyStr? {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: x } =>
+      if string_length(s: serve_close_scalar_text(v: x)) > 0 {
+        Present { value: serve_close_scalar_text(v: x) as NonEmptyStr }
+      } else { none }
+    _ => none
+  }
+}
+
+fn serve_close_scalar_text(v: JsonValue) -> String {
+  match v {
+    JsonString { value: t } => t
+    JsonNumber { lexeme: l } => l
+    JsonBool { value: b } => if b { "true" } else { "false" }
+    _ => ""
+  }
+}
+
+// The node's own ticket text, from the plan the page already renders: the close derives the
+// criteria digest from it, so the operator never retypes (and cannot doctor) the acceptance terms.
+fn roadmap_plan_node_ticket(proj: RoadmapAuthorityProjection, node_id: String) -> Optional<TicketFields> {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: _ } => none
+    RoadmapAuthorityProjected { doc, accepted: _, withheld: _ } =>
+      match filter(doc_all_nodes(doc: doc), n => (n.node as String) == node_id).first() {
+        Absent => none
+        Present { value: n } => line_ticket(item: n.line)
+      }
+  }
+}
+
+// ══ THE OPERATOR RETIRE ROUTE (operator ruling 2026-11-04) ════════════════════════════════════
+// POST /issue/{node_id}/retire. The operator retires ANY work item, in ANY state — no pull request,
+// no lineage-state precondition, no acceptance. The durable fact is the event log's Retired kind
+// authored by the authenticated principal, so the record reads "retired by <principal>". Its lineage
+// becomes terminal (roadmap_belt_obligation reads the close/retirement and spawns no further
+// verify/review/re-delivery), and it satisfies NO dependency: dependents stay blocked and the daily
+// page names them blocked-by-retired. The refusals are exactly the named ones — unknown node,
+// already terminal (closed or retired), unauthenticated, stale revision — plus event-log integrity
+// (a refused history read answers 503; the route never appends blind). No lineage-state
+// precondition gates this route, in either direction: the operator's standing is NODE-level and
+// terminality is a belt-internal consequence, never an operator-facing lineage state — the whole
+// authority for this route is gunbc.design_ruling.operator_may_arbitrarily_retire_any_work_item.
+fn serve_issue_retire_response_over(
+  instance: HostDashboardInstance,
+  plan: fn() -> RoadmapAuthorityProjection,
+  request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
+  params: List<PathParamBinding>,
+) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  match human_write_admission(route_path: concat("/issue/", concat(node_id, "/retire")) as NonEmptyStr,
+    action: ServeActionRetireNode, security: request.security, authorization_policy: tracker_write_authorization_policy,
+    deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"),
+    observed_at: fn() { human_write_observed_at(security: request.security) }) {
+    Deny { refusal } => serve_text_response(status: 403, content_type: text_plain_utf8, body: access_refusal_reason(refusal: refusal))
+    Permit => {
+      let proj = plan()
+      if !issue_detail_node_exists(proj: proj, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "retire refused: unknown node\n") }
+      else { match authenticated_write_author_principal(security: request.security) {
+        Absent => serve_text_response(status: 403, content_type: text_plain_utf8, body: "authenticated principal required")
+        Present { value: author } => {
+          let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+          let node = node_id as NonEmptyStr as RoadmapNodeId
+          if !issue_command_form_valid(body: request.body) { serve_text_response(status: 400, content_type: text_plain_utf8, body: "retire refused: a valid operation key and explicit expected_revision are required\n") }
+          else { match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node)) {
+            EventsReadRefused { node: _, step: st, reason: r } =>
+              serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["retire refused: the node's history is unreadable (", st, ": ", r, ")\n"], ""))
+            EventsRead { node: _, envelopes: envs } =>
+              if roadmap_standing_is_retired(standing: roadmap_issue_state(envs: envs).standing) {
+                serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["retire refused: ", node_id, " is already retired\n"], ""))
+              } else { match roadmap_operator_node_closed(node: node, history: roadmap_operator_close_history(store: fabric_state_storage_binding())) {
+                AcceptanceFound => serve_text_response(status: 409, content_type: text_plain_utf8, body: join(["retire refused: ", node_id, " is closed — a closed node's lineage is already terminal\n"], ""))
+                ClosedStatusUnreadable { reason: r } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["retire refused: the acceptance history is unreadable: ", r, "\n"], ""))
+                AcceptanceAbsent => {
+                  let observed_at = human_write_observed_at(security: request.security)
+                  let get = fn(name) { issue_form_field(body: request.body, name: name) }
+                  let expected = get("expected_revision")
+                  let outcome = serve_append_after_snapshot_close(appended: issue_command_apply(layout: layout,
+                    command: RetireNode { subject: IssueCommandSubject { node: node,
+                      author: EventPrincipalAuthenticated { ref: author }, operation: get("key") as NonEmptyStr,
+                      expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
+                      reason: if get("reason") == "" { "retired by the operator" as NonEmptyStr } else { get("reason") as NonEmptyStr } }, recorded_at: observed_at))
+                  match outcome {
+                    EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (event ", id as String, ")\n"], "")))
+                    EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
+                    EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
+                  }
+                }
+              } }
+          } }
+        } }
+      } }
+    }
+  }
 
 // THE CREATE ROUTE. POST /issues creates a runtime task in the fabric state namespace
 // (gunbc.roadmap.roadmap_task_store). The write law is the assign route's: the tailnet deployment policy,
@@ -1147,6 +1417,7 @@ fn authenticated_write_author_principal(security: RequestSecurityContext<Request
   match security.authentication {
     GoogleOidcSession { session } => Present { value: session.principal }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => Present { value: fabric_workflow_principal }
+    HostAccountPeerEvidence { account: _, principal: who } => Present { value: who }
     SessionStandingInvalid { standing: _ } => none
     AuthAbsent => none
   }
@@ -1159,6 +1430,7 @@ fn authenticated_write_author_label(security: RequestSecurityContext<RequestAcce
   match security.authentication {
     GoogleOidcSession { session } => principal_ref_label(p: session.principal) as NonEmptyStr
     FabricServiceEvidence { kind: _, authenticated_at: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
+    HostAccountPeerEvidence { account: _, principal: who } => principal_ref_label(p: who) as NonEmptyStr
     SessionStandingInvalid { standing: _ } => "unreachable: admitted human write without a session principal" as NonEmptyStr
     AuthAbsent => "unreachable: admitted human write without a session principal" as NonEmptyStr
   }
@@ -1411,7 +1683,7 @@ fn dashboard_instance_json_members(instance: HostDashboardInstance) -> List<Json
     json_kv(
       key: "provision_transport",
       value: json_string(s: dashboard_provision_transport_label(
-        transport: instance.provision_transport,
+        transport: dashboard_provision_transport(instance: instance),
       )),
     ),
     json_kv(
@@ -1520,10 +1792,13 @@ fn roadmap_serve_invoke_over(
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueCloseHandler => serve_issue_close_response_over(instance: instance, plan: plan, request: request, params: params, read: serve_close_pr_readback)
+    IssueRetireHandler => serve_issue_retire_response_over(instance: instance, plan: plan, request: request, params: params)
     IssueCreateHandler => serve_issue_create_response_over(instance: instance, request: request)
     IssueCreatePageHandler => serve_page_response(page: issue_create_page(command_context: match request.security.authentication {
       GoogleOidcSession { session } => IssueFormContext { operation: match issue_operation_nonce() { Present { value: nonce } => nonce Absent => "" }, csrf: session.csrf.token as String }
       FabricServiceEvidence { kind: _, authenticated_at: _ } => IssueFormContext { operation: "", csrf: "" }
+      HostAccountPeerEvidence { account: _, principal: _ } => IssueFormContext { operation: "", csrf: "" }
       SessionStandingInvalid { standing: _ } => IssueFormContext { operation: "", csrf: "" }
       AuthAbsent => IssueFormContext { operation: "", csrf: "" }
     }))
@@ -1565,7 +1840,7 @@ fn serve_stop_handler_response_for_instance(
   params: List<PathParamBinding>,
   request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>,
 ) -> ServeHttpResponse {
-  serve_after_human_write(request: request, route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
+  serve_after_human_write(request: request, authorization_policy: write_authorization_policy_for(deployment: instance.deployment), route_path: "/cleanup" as NonEmptyStr, action: ServeActionStopNode, observed_at: fn() { human_write_observed_at(security: request.security) }, proceed: fn() {
     let node_id = path_param_value(params: params, name: "node_id")
     if node_id == "" {
       serve_text_response(
@@ -1734,7 +2009,10 @@ fn roadmap_serve_request_security(
 ) -> RequestSecurityContext<RequestAccessPath, RequestAuthenticationEvidence> {
   RequestSecurityContext {
     access_path: roadmap_serve_access_path(instance: instance, tailscale_identity: tailscale_identity, ingress: ingress, readback: readback, decided_at: decided_at),
-    authentication: roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header),
+    authentication: match host_account_evidence_of_ingress(ingress: ingress, enrolments: srv1_host_account_enrolments) {
+      Present { value: attested } => attested
+      Absent => roadmap_serve_authentication_evidence(instance: instance, cookie_header: cookie_header)
+    },
   }
 }
 
@@ -2001,10 +2279,10 @@ fn roadmap_serve_handle(
   )
 }
 
-// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by serve entry function. That is a
-// constraint of `gunbc serve`, not a dual: the Serve verb binds method/path/body from the socket
-// and has no `--arg` (handle_serve; Serve flags are function/host/port/release-revision only).
-// `gunbc run --arg name=value` exists for ProcessExit entries and does not apply here. Observing
+// THE OPERATOR MACBOOK'S ENTRY. Instance selection is by handler function: the binding
+// (gunbc.roadmap.roadmap_ingress) names which handler a process serves, and a handler receives only
+// request facts by its declared parameters (gunbc.http_ingress), so an instance is a handler, not an
+// argument. Observing
 // the repo root at request time would make the served identity depend on where the binary happened
 // to be launched, which is an ambient fact, and it would re-answer per request a question that is
 // fixed for a process's whole life.
@@ -2074,6 +2352,34 @@ fn roadmap_serve_handle_srv1_lab(
     body: body,
     tailscale_identity: tailscale_identity,
     ingress: IngressUnattested,
+    request_headers: request_headers,
+    release_revision: release_revision,
+  )
+}
+
+// THE AGENT DOOR: the lab's owning agent's listener (gunbc.live_deploy.spec deployment_agent_door_socket).
+// Same instance and the same routes as roadmap_serve_handle_srv1_lab; the only difference is that the
+// kernel-attested peer user is handed to the seam as the request's ingress, as the tailnet door's entry
+// does, so host_account_evidence_of_ingress can enrol gunbc-lab-agent. A peer that is not enrolled
+// (e.g. the operator's host account) carries no host-account evidence and is refused by the write admission.
+fn roadmap_serve_handle_srv1_lab_agent_door(
+  method: String,
+  path: String,
+  body: String,
+  tailscale_identity: String,
+  peer_user: String,
+  request_headers: List<ServeRequestHeader>,
+  release_revision: CommitSha,
+) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv1_lab_dashboard_instance(),
+    plan: fn() { roadmap_plan_projection() },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: method,
+    path: path,
+    body: body,
+    tailscale_identity: tailscale_identity,
+    ingress: IngressAttestedPeer { peer_user: peer_user },
     request_headers: request_headers,
     release_revision: release_revision,
   )
@@ -2173,7 +2479,7 @@ fn auth_session_response(request: ServeHttpRequest<RequestAccessPath, RequestAut
 // the session's. The roster's degradation standing (unreadable store, skipped records) is
 // reported as data -- a missing-looking avatar must not read as 'nobody published'.
 fn auth_session_response_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  let roster = profile_store_read_all(layout: profile_store_layout_for_instance(instance: instance))
+  let roster = profile_store_roster(reading: profile_store(instance: instance))
   serve_text_response(
     status: 200,
     content_type: application_json_utf8,
@@ -2242,6 +2548,11 @@ fn auth_session_body_over(roster: ProfileStoreReadAll, evidence: RequestAuthenti
       json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
     ]
+    HostAccountPeerEvidence { account: _, principal: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "a host-account peer is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
     AuthAbsent => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
@@ -2297,6 +2608,11 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
       json_kv(key: "standing", value: json_string(s: "service evidence is not a human session")),
       json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
     ]
+    HostAccountPeerEvidence { account: _, principal: _ } => [
+      json_kv(key: "authenticated", value: json_bool(b: false)),
+      json_kv(key: "standing", value: json_string(s: "a host-account peer is not a human session")),
+      json_kv(key: "viewer", value: json_string(s: authenticated_viewer_label(evidence: evidence))),
+    ]
     AuthAbsent => [
       json_kv(key: "authenticated", value: json_bool(b: false)),
       json_kv(key: "standing", value: json_string(s: session_cookie_standing_reason(standing: SessionCookieAbsent))),
@@ -2319,6 +2635,7 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
     AuthAbsent => AllocationViewerSignedOut
     SessionStandingInvalid { standing: _ } => AllocationViewerSignedOut
     FabricServiceEvidence { kind: _, authenticated_at: _ } => AllocationViewerSignedOut
+    HostAccountPeerEvidence { account: _, principal: _ } => AllocationViewerSignedOut
   }
   match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
@@ -2367,6 +2684,7 @@ fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: S
     AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
     SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
     FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+    HostAccountPeerEvidence { account: _, principal: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
   }
 }
 

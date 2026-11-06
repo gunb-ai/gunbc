@@ -1,0 +1,30 @@
+module gunbc.fleet.fleet_converge_run_name
+
+import std.types { String }
+import std.optional { Present, Absent }
+
+// THE FLEET-CONVERGE RUN TITLE, ONE HOME FOR BOTH DIRECTIONS. GitHub's run-name is the only per-dispatch
+// word the workflow-runs listing returns that says WHICH mode and WHICH host a run converged
+// (WorkflowRun.display_title), so a reader that selects a producer run by mode and host is reading the
+// title the workflow wrote. The workflow (gunbc.fleet.fleet_converge_workflow fleet_converge_workflow
+// run_name) renders it from fleet_converge_run_title and the selector in
+// gunbc.runner.runner_user_session_receipt reads the same words from fleet_converge_run_title_selector;
+// neither spells the other's half. This module is a LEAF (it imports only std.types) because the workflow
+// imports the receipt module and the receipt module must not reach the workflow.
+data fleet_converge_run_title_head: String = "fleet-converge "
+data fleet_converge_run_title_separator: String = " "
+data fleet_converge_run_title_nonce_prefix: String = "nonce="
+
+fn fleet_converge_run_title_selector(mode: String, host: String) -> String {
+  join([fleet_converge_run_title_head, mode, fleet_converge_run_title_separator, host, fleet_converge_run_title_separator, fleet_converge_run_title_nonce_prefix], "")
+}
+
+fn fleet_converge_run_title(mode: String, host: String, nonce: String) -> String {
+  concat(fleet_converge_run_title_selector(mode: mode, host: host), nonce)
+}
+
+// THE READING HALF: the mode a title names -- the second space-separated word, the shape the renderer above
+// writes (head, mode, separator, host, ...). The reading is unchanged by this module's extraction.
+fn mode_of_run_title(title: String) -> String {
+  match title.split(delimiter: " ").skip(n: 1).first() { Present { value: w } => w  Absent => "" }
+}

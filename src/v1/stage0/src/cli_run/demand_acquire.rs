@@ -44,6 +44,24 @@ pub fn resolve_entry_graph_demand_acquired(
     ),
     String,
 > {
+    resolve_entry_graph_demand_acquired_with_diagnostics(source_roots, entry_file)
+        .map(|(graph, si, _)| (graph, si))
+}
+
+/// The demand-acquired resolve with the compile-clean diagnostics the core produced. `gunbc serve`
+/// gates on them (`is_interpreter_blocking_diagnostic`); `gunbc run` gates on the graph's own. One
+/// resolve, two consumers: the closure is the layout closure for both, never the whole-tree index.
+pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<crate::v1_std_core::ErrorNode>>>,
+    ),
+    String,
+> {
     // GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
     // authored references reach, so a provider a generated reference demands is outside it. The index
     // carries the layout's answer for such a module (provider_layout); the resolve core records every
@@ -60,7 +78,9 @@ pub fn resolve_entry_graph_demand_acquired(
             layout_provider_answer(&roots, &census, module)
         }));
         match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
-            super::entry_resolve::CoreResolve::Resolved(graph, si, _) => return Ok((graph, si)),
+            super::entry_resolve::CoreResolve::Resolved(graph, si, diags) => {
+                return Ok((graph, si, diags))
+            }
             super::entry_resolve::CoreResolve::NeedsAcquisition(providers) => {
                 let fresh: Vec<_> = providers
                     .into_iter()
@@ -213,7 +233,7 @@ fn demanded_module_names(
 
 /// `dag` and `src/v2` are the layout trees. Every other `--source-root` is a custom
 /// tree whose files are not at `<root(a)>/b/c.dag` under the workspace.
-fn source_root_is_governed_layout(root: &str) -> bool {
+pub(super) fn source_root_is_governed_layout(root: &str) -> bool {
     let spelling = root.trim_end_matches('/');
     if spelling == "dag" || spelling == "src/v2" {
         return true;
@@ -235,7 +255,7 @@ fn source_root_is_governed_layout(root: &str) -> bool {
 
 /// Walk only non-governed roots. A wet `gunbc run --source-root dag --source-root src/v2`
 /// never enters this walk.
-fn custom_root_module_census(
+pub(super) fn custom_root_module_census(
     source_roots: &[String],
 ) -> Result<std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>, String> {
     let mut by_module: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
@@ -329,14 +349,32 @@ fn read_layout_module(
     {
         return Ok(None);
     }
+    let Some((_, rel, content)) =
+        read_layout_file(name, |abs| under_source_roots(source_roots, abs))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(Rc::new(v1_compiler_compile::SourceFile {
+        path: workspace_relative_repo_path(&rel),
+        content,
+    })))
+}
+
+/// THE ONE PATH-DERIVED READ of a layout module: `gunbc.source_layout` maps `name` to its file,
+/// the file is read, and its own `module` line must say `name` (a misfiled file is a refusal, never
+/// a quiet miss). `None` when the name has no layout path or no file stands there. `admit` is asked before the read (a file outside the roots is never opened). Shared by
+/// `read_layout_module` (closure acquisition) and the keyed module/declaration reads
+/// (`keyed_module_lookup`): the name-to-path mapping is applied in one place. Returns the absolute
+/// path, the workspace-relative layout path, and the content.
+pub(super) fn read_layout_file(
+    name: &str,
+    admit: impl Fn(&Path) -> bool,
+) -> Result<Option<(std::path::PathBuf, String, String)>, String> {
     let Ok(rel) = module_storage_relative(name) else {
         return Ok(None);
     };
     let abs = workspace_root().join(&rel);
-    if !abs.is_file() {
-        return Ok(None);
-    }
-    if !under_source_roots(source_roots, &abs) {
+    if !abs.is_file() || !admit(&abs) {
         return Ok(None);
     }
     let content = std::fs::read_to_string(&abs).map_err(|e| {
@@ -353,15 +391,13 @@ fn read_layout_module(
             declared.unwrap_or_else(|| "<no module line>".to_string())
         ));
     }
-    Ok(Some(Rc::new(v1_compiler_compile::SourceFile {
-        path: workspace_relative_repo_path(&rel),
-        content,
-    })))
+    Ok(Some((abs, rel, content)))
 }
 
-/// `gunbc.rung_drop.roster` and `gunbc.recurring_failure_mode.roster` have no file;
+/// The `DERIVED_ROW_ROSTERS` modules (`gunbc.rung_drop.roster`, `gunbc.recurring_failure_mode.roster`,
+/// `gunbc.guarantee_stall.roster`) have no file;
 /// the tree walk mints them in memory (`derived_row_roster::acquire_dir_files`).
-fn read_derived_roster_module(
+pub(super) fn read_derived_roster_module(
     name: &str,
 ) -> Result<Option<Rc<v1_compiler_compile::SourceFile>>, String> {
     let Some(roster) = super::derived_row_roster::DERIVED_ROW_ROSTERS
@@ -398,7 +434,7 @@ fn read_derived_roster_module(
     })))
 }
 
-fn under_source_roots(source_roots: &[String], abs: &Path) -> bool {
+pub(super) fn under_source_roots(source_roots: &[String], abs: &Path) -> bool {
     let ws = workspace_root();
     source_roots.iter().any(|root| {
         let anchored = super::anchor_source_root(root);

@@ -65,3 +65,73 @@ test fn reverse_reverses() -> Bool {
   list_eq(xs: list_reverse(xs: sample()), ys: [3, 2, 1])
     && list_eq(xs: list_reverse(xs: Empty), ys: Empty)
 }
+
+// list_init is the drop-the-last combinator, claimed on the sample the v1 fixture and the
+// emitter witness both read: [1,2,3] loses its last member, and the two boundary shapes --
+// empty and singleton -- are the arms a rewrite must keep (a fold that forgets the pending
+// member, or commits it, fails one of these).
+test fn init_drops_the_last_member_in_order() -> Bool {
+  list_eq(xs: list_init(xs: sample()), ys: [1, 2])
+    && list_eq(xs: list_init(xs: Empty), ys: Empty)
+    && list_eq(xs: list_init(xs: Cons { head: 7, tail: Empty }), ys: Empty)
+}
+
+fn zip_eq_doubling_step(seed: FreeMonoid<Int>) -> FreeMonoid<Int> {
+  list_append(left: seed, right: seed)
+}
+
+// Built by DOUBLING so the list is assembled in log2(n) concats, not one recursion per
+// member: a per-member builder would itself be the depth defect this claim is here to catch.
+// The seed carries 18 members, so 13 doublings give 147,456 -- past the 100,000 the
+// interpreter's own CALL_DEPTH_LIMIT refuses outright, and far past an 8 MB main-thread stack.
+fn zip_eq_list_doubled(seed: FreeMonoid<Int>, doublings: Int) -> FreeMonoid<Int> {
+  if doublings <= 0 {
+    seed
+  } else {
+    zip_eq_list_doubled(seed: zip_eq_doubling_step(seed), doublings: doublings - 1)
+  }
+}
+
+fn zip_eq_same_seed() -> FreeMonoid<Int> {
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+}
+
+fn zip_eq_last_member_differs_seed() -> FreeMonoid<Int> {
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19]
+}
+
+fn zip_eq_same_int(x: Int, y: Int) -> Bool {
+  x == y
+}
+
+// ELEMENTWISE EQUALITY OVER A LIST TOO LONG TO RECURSE OVER. THE RED: zip_eq used to put
+// its recursive call inside `&&` (eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)), holding the
+// frame across the element comparison AND the whole rest of the list, so call depth equalled
+// the list's length. On that replaced shape THIS claim refuses rather than answering: the
+// interpreter reaches its own call-depth ceiling inside `zip_eq` and reports it as a typed
+// runtime refusal naming that function, which is how the wet lane reports a per-member
+// recursion. It is the claim's own arms that make it refuse -- every arm calls std.algebra
+// zip_eq directly, so nothing here stands in for the function under test, and a fold that
+// never compared pairs would fail the negative arms instead.
+// The producer that re-derives the refusal (§6: name the instrument, never transcribe its
+// output) is this claim run by the claim-batch binary, src/v1/stage0/src/bin/claim_batch.rs,
+// with --entry naming this file, --functions naming this claim and --claim-run.
+// The long arms are deep by construction and each asks a different question: the first must be
+// true after walking every pair of a 147,456-member list, the other two must be false because one
+// list outran the other -- the two base cases only an end-to-end walk can decide. Nothing appends
+// to a long list, because a per-member builder would reintroduce the depth under test.
+test fn zip_eq_compares_a_list_too_long_to_recurse_over() -> Bool {
+  let seed = zip_eq_same_seed()
+  let long = zip_eq_list_doubled(seed: seed, doublings: 13)
+  let longer = zip_eq_list_doubled(seed: seed, doublings: 14)
+  zip_eq(a: long, b: long, eq: zip_eq_same_int)
+    && !zip_eq(a: long, b: longer, eq: zip_eq_same_int)
+    && !zip_eq(a: longer, b: long, eq: zip_eq_same_int)
+    && zip_eq(a: seed, b: seed, eq: zip_eq_same_int)
+    && !zip_eq(a: seed, b: zip_eq_last_member_differs_seed(), eq: zip_eq_same_int)
+    && !zip_eq(a: seed, b: list_append(left: seed, right: [19]), eq: zip_eq_same_int)
+    && !zip_eq(a: list_append(left: seed, right: [19]), b: seed, eq: zip_eq_same_int)
+    && zip_eq(a: Empty, b: Empty, eq: zip_eq_same_int)
+    && !zip_eq(a: Empty, b: [1], eq: zip_eq_same_int)
+    && !zip_eq(a: [1], b: Empty, eq: zip_eq_same_int)
+}

@@ -12,18 +12,17 @@ import gunbc.workspace_allocation_store {
   WorkspaceRunning, WorkspaceTerminationRequested, WorkspaceCleanupUncertain, WorkspaceReleased,
   WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreWriteRefused, WorkspaceStoreConflict,
   WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_read_owner, workspace_write_allocation,
-  workspace_retired, workspace_retired_at, workspace_allocation_coherent,
-}
+  workspace_retired, workspace_retired_at, workspace_allocation_coherent, workspace_allocation_store }
 import gunbc.runner.runner_microvm_lifecycle_realize { TeardownRun, TeardownSettled, TeardownSubjectRefused }
 import gunbc.runner.runner_microvm_cell_readiness_store { StorePersisted, CellReadinessStorePersist, persist_cell_readiness_write, read_cell_readiness_store, StorePersistReadbackFailed }
 import gunbc.runner.runner_microvm_cell_readiness { CellSettled, readiness_cell, cell_reservation_released_write, StoreRead, StoreRootOwned }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import product.fabric.sanitation { cell_is_ready, CellId }
-import gunbc.workspace_allocation_release { WorkspaceReleasePlan, WorkspaceReleasePrepared, WorkspaceReleaseRefused, workspace_release_prepare, workspace_release_read, workspace_release_reason }
+import gunbc.workspace_allocation_release { WorkspaceReleasePlan, WorkspaceReleasePrepared, WorkspaceReleaseRefused, workspace_release_prepare, workspace_release_read, workspace_release_reason, workspace_release_store }
 import gunbc.workspace_allocation { workspace_reservation_json }
 import gunbc.workspace_money_codec { workspace_money_json }
 import extdeps.languages.json.emit { serialize_json }
-import gunbc.durable_exclusive_hold_file_store { observe_file_hold }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_observe_hold }
 import std.durable_exclusive_hold { HoldSlotFree }
 import gunbc.fabric.fabric_control_plane { fabric_hold_release_ref, CellHoldEnd, CellHoldEnded, release_reserved_cell_money_generation, fabric_cell_allocation_key, fabric_money_reservation_ref }
 
@@ -53,12 +52,12 @@ fn workspace_admit_sanitized(reservation: WorkspaceReservation, teardown: Teardo
 
 // The caller supplies the teardown for the reservation only through the existing generation and
 // subject binding. The fabric release rereads the actual hold and performs its generation CAS.
-fn workspace_release_sanitized(root: NonEmptyStr, sanitized: WorkspaceSanitized, released_at: Timestamp) -> CellHoldEnd
+fn workspace_release_sanitized(cells: FabricAllocationStore, sanitized: WorkspaceSanitized, released_at: Timestamp) -> CellHoldEnd
   admit_callers: [decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_complete_teardown")]
  {
   let reservation = sanitized.reservation
   release_reserved_cell_money_generation(
-    root: root,
+    store: cells,
     slot_key: fabric_cell_allocation_key(slot: reservation.slot),
     acquired_generation: reservation.generation,
     reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer),
@@ -129,7 +128,7 @@ fn workspace_publish_released_record(store: FabricStorageBinding, plan: Workspac
   ]
 {
   let reservation = plan.reservation
-  match workspace_read_owner(store: store, owner: reservation.request.owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: reservation.request.owner) {
     WorkspaceStoreUnreadable { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
     WorkspaceStoreReadOk { snapshot: observed } => match filter(observed.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
       Absent => WorkspaceStoreWriteRefused { reason: "released allocation is absent from its owner ledger" }
@@ -138,7 +137,7 @@ fn workspace_publish_released_record(store: FabricStorageBinding, plan: Workspac
         Present { value: current } => if serialize_json(v: workspace_reservation_json(reservation: current)) != serialize_json(v: workspace_reservation_json(reservation: reservation)) {
           WorkspaceStoreWriteRefused { reason: "allocation reservation changed before release publication" }
         } else if allocation.phase == WorkspaceReleased { WorkspaceStoreWritten { allocation: allocation } }
-        else { workspace_write_allocation(store: store, snapshot: observed, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+        else { workspace_write_allocation(store: workspace_allocation_store(binding: store), snapshot: observed, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
           plan: allocation.plan, desired: WorkspaceRetired, request: allocation.request, reservation: allocation.reservation,
           phase: WorkspaceReleased, connection: "", observed_at: observed_at,
           reason: "Guest stopped, sanitation recorded, reservation released; disposable contents deleted",
@@ -150,10 +149,10 @@ fn workspace_publish_released_record(store: FabricStorageBinding, plan: Workspac
 
 // Recovery reads both authorities; it never fabricates a hold-ended receipt. A later generation,
 // foreign release, missing monetary intent or uncertain readiness keeps the owner outstanding.
-fn workspace_recover_release(store: FabricStorageBinding, fabric_root: NonEmptyStr, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
-  match workspace_release_read(store: store, reservation: reservation) {
+fn workspace_recover_release(store: FabricStorageBinding, cells: FabricAllocationStore, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
+  match workspace_release_read(store: workspace_release_store(binding: store), reservation: reservation) {
     WorkspaceReleaseRefused { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
-    WorkspaceReleasePrepared { plan: recorded } => match observe_file_hold(root: fabric_root, key: fabric_cell_allocation_key(slot: reservation.slot)) {
+    WorkspaceReleasePrepared { plan: recorded } => match fabric_allocation_observe_hold(store: cells, key: fabric_cell_allocation_key(slot: reservation.slot)) {
       HoldSlotFree { generation: freed, released_by: reference } => if freed != reservation.generation + 1 || reference != fabric_hold_release_ref(reason: workspace_release_reason) {
         WorkspaceStoreWriteRefused { reason: "free slot does not match this release incarnation" }
       } else { match workspace_advance_released_readiness(reservation: reservation, freed_generation: freed) {
@@ -167,17 +166,17 @@ fn workspace_recover_release(store: FabricStorageBinding, fabric_root: NonEmptyS
 
 // The convergence receipt consumer has one teardown settlement entry. Both refusal and success
 // become durable owner-visible observations; only successful sanitation reaches fabric release.
-fn workspace_complete_teardown(store: FabricStorageBinding, fabric_root: NonEmptyStr, reservation: WorkspaceReservation, teardown: TeardownRun, observed_at: Timestamp) -> WorkspaceStoreWrite
+fn workspace_complete_teardown(store: FabricStorageBinding, cells: FabricAllocationStore, reservation: WorkspaceReservation, teardown: TeardownRun, observed_at: Timestamp) -> WorkspaceStoreWrite
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "workspace_settle_teardown_result")]
  {
   match workspace_admit_sanitized(reservation: reservation, teardown: teardown) {
-    WorkspaceSanitationAdmitted { sanitized: sanitized } => match workspace_release_prepare(store: store, reservation: reservation, released_at: observed_at) {
+    WorkspaceSanitationAdmitted { sanitized: sanitized } => match workspace_release_prepare(store: workspace_release_store(binding: store), reservation: reservation, released_at: observed_at) {
       WorkspaceReleaseRefused { reason: detail } => workspace_publish_cleanup_uncertain(store: store, reservation: reservation, reason: detail, observed_at: observed_at)
       WorkspaceReleasePrepared { plan: durable } => {
-        let ended = workspace_release_sanitized(root: fabric_root, sanitized: sanitized, released_at: durable.released_at)
+        let ended = workspace_release_sanitized(cells: cells, sanitized: sanitized, released_at: durable.released_at)
         match ended {
           CellHoldEnded { slot_key: _, generation: _, account: _ } => workspace_publish_release(store: store, sanitized: sanitized, plan: durable, ended: ended, observed_at: observed_at)
-          other => workspace_recover_release(store: store, fabric_root: fabric_root, reservation: reservation, observed_at: observed_at)
+          other => workspace_recover_release(store: store, cells: cells, reservation: reservation, observed_at: observed_at)
         }
       }
     }
@@ -186,7 +185,7 @@ fn workspace_complete_teardown(store: FabricStorageBinding, fabric_root: NonEmpt
 }
 
 fn workspace_publish_cleanup_uncertain(store: FabricStorageBinding, reservation: WorkspaceReservation, reason: String, observed_at: Timestamp) -> WorkspaceStoreWrite {
-  match workspace_read_owner(store: store, owner: reservation.request.owner) {
+  match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: reservation.request.owner) {
     WorkspaceStoreUnreadable { reason: why } => WorkspaceStoreWriteRefused { reason: why }
     WorkspaceStoreReadOk { snapshot: snapshot } => match filter(snapshot.allocations, a => a.request.idempotency_key == reservation.request.idempotency_key).first() {
       Absent => WorkspaceStoreWriteRefused { reason: "uncertain cleanup has no durable owner record" }
@@ -195,7 +194,7 @@ fn workspace_publish_cleanup_uncertain(store: FabricStorageBinding, reservation:
         Present { value: current } => if current.generation != reservation.generation || current.slot.host != reservation.slot.host || current.slot.slot_index != reservation.slot.slot_index {
           WorkspaceStoreWriteRefused { reason: "uncertain cleanup concerns another reservation incarnation" }
         } else {
-          workspace_write_allocation(store: store, snapshot: snapshot, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
+          workspace_write_allocation(store: workspace_allocation_store(binding: store), snapshot: snapshot, allocation: WorkspaceAllocation { retired_at: allocation.retired_at, recorded_at: allocation.recorded_at,
             plan: allocation.plan, desired: WorkspaceRetired, request: allocation.request,
             reservation: allocation.reservation, phase: WorkspaceCleanupUncertain,
             connection: "", observed_at: observed_at, reason: reason,

@@ -1,0 +1,94 @@
+   1 | 10/06/2023 | 10:05:06 AM EDT | OS Critical Stop | OS graceful shutdown () | Asserted
+   2 | 11/18/2019 | 12:33:19 AM EST | Unknown #0xff |  | Asserted
+   3 | 12/31/2010 | 07:02:13 PM EST | Battery | Low () | Asserted
+   4 | 12/31/2010 | 07:02:36 PM EST | OEM record df | 000137 | 040000000000
+   5 | 12/31/2010 | 07:02:37 PM EST | OEM record df | 000137 | 050000000000
+   6 | 12/31/2010 | 07:02:52 PM EST | OS Boot | C: boot completed () | Asserted
+   7 | 12/31/2010 | 08:29:35 PM EST | OS Critical Stop | OS graceful shutdown () | Asserted
+   8 | 12/31/2010 | 07:00:00 PM EST | Unknown #0xff |  | Asserted
+   9 | 12/31/2010 | 07:00:41 PM EST | Battery | Low () | Asserted
+   a | 12/31/2010 | 07:01:04 PM EST | OEM record df | 000137 | 040000000000
+   b | 12/31/2010 | 07:01:05 PM EST | OEM record df | 000137 | 050000000000
+   c | 12/31/2010 | 07:01:13 PM EST | OS Boot | C: boot completed () | Asserted
+   d | 12/31/2010 | 07:00:13 PM EST | Unknown #0xff |  | Asserted
+   e | 12/31/2010 | 07:00:41 PM EST | Battery | Low () | Asserted
+   f | 12/31/2010 | 07:01:03 PM EST | OEM record df | 000137 | 040000000000
+  10 | 12/31/2010 | 07:01:04 PM EST | OEM record df | 000137 | 050000000000
+  11 | 12/31/2010 | 07:01:11 PM EST | OS Boot | C: boot completed () | Asserted
+  12 | 12/31/2010 | 07:13:16 PM EST | OS Critical Stop | OS graceful shutdown () | Asserted
+  13 | 12/31/2010 | 07:00:00 PM EST | Unknown #0xff |  | Asserted
+  14 | 12/31/2010 | 07:00:42 PM EST | Battery | Low () | Asserted
+  15 | 12/31/2010 | 07:01:04 PM EST | OEM record df | 000137 | 040000000000
+  16 | 12/31/2010 | 07:01:04 PM EST | OEM record df | 000137 | 050000000000
+  17 | 12/31/2010 | 07:01:09 PM EST | OS Boot | C: boot completed () | Asserted
+  18 | 11/18/2019 | 12:33:19 AM EST | Unknown #0xff |  | Asserted
+  19 | 11/18/2019 | 12:33:34 AM EST | OEM record df | 000137 | 040000000000
+  1a | 11/18/2019 | 12:33:35 AM EST | OEM record df | 000137 | 050000000000
+  1b | 11/18/2019 | 12:33:40 AM EST | OS Boot | C: boot completed () | Asserted
+  1c | 12/31/2010 | 07:00:00 PM EST | Unknown #0xff |  | Asserted
+  1d | 12/31/2010 | 07:00:42 PM EST | Battery | Low () | Asserted
+  1e | 10/06/2023 | 09:59:08 AM EDT | OEM record df | 000137 | 040000000000
+  1f | 10/06/2023 | 09:59:08 AM EDT | OEM record df | 000137 | 050000000000
+  20 | 10/06/2023 | 09:59:13 AM EDT | OS Boot | C: boot completed () | Asserted
+  21 | 10/06/2023 | 10:13:41 AM EDT | OS Critical Stop | OS graceful shutdown () | Asserted
+  22 | 11/18/2019 | 12:33:19 AM EST | Unknown #0xff |  | Asserted
+  23 | 12/31/2010 | 07:00:42 PM EST | Battery | Low () | Asserted
+  24 | 12/31/2010 | 07:00:57 PM EST | OEM record df | 000137 | 040000000000
+  25 | 12/31/2010 | 07:00:58 PM EST | OEM record df | 000137 | 050000000000
+  26 | 12/31/2010 | 07:01:03 PM EST | OS Boot | C: boot completed () | Asserted
+  27 | 11/18/2019 | 12:33:04 AM EST | Unknown #0xff |  | Asserted
+  28 | 11/18/2019 | 12:33:25 AM EST | OEM record df | 000137 | 040000000000
+  29 | 11/18/2019 | 12:33:26 AM EST | OEM record df | 000137 | 050000000000
+  2a | 11/18/2019 | 12:33:31 AM EST | OS Boot | C: boot completed () | Asserted
+  2b | 11/18/2019 | 12:33:05 AM EST | Unknown #0xff |  | Asserted
+  2c | 11/18/2019 | 12:33:26 AM EST | OEM record df | 000137 | 040000000000
+  2d | 11/18/2019 | 12:33:27 AM EST | OEM record df | 000137 | 050000000000
+  2e | 11/18/2019 | 12:33:32 AM EST | OS Boot | C: boot completed () | Asserted
+  2f | 11/18/2019 | 12:36:50 AM EST | OS Critical Stop | OS graceful shutdown () | Asserted
+  30 | 11/18/2019 | 12:33:21 AM EST | Unknown #0xff |  | Asserted
+  31 | 11/18/2019 | 12:35:23 AM EST | Processor #0x01 | Throttled () | Asserted
+  32 | 11/18/2019 | 12:35:40 AM EST | Processor #0x01 | Thermal Trip () | Asserted
+  33 | 11/18/2019 | 03:25:59 AM EST | Unknown #0xff |  | Asserted
+  34 | 11/18/2019 | 12:33:19 AM EST | Unknown #0xff |  | Asserted
+  35 | 11/18/2019 | 12:33:20 AM EST | Unknown #0xff |  | Asserted
+  36 | 11/18/2019 | 12:33:19 AM EST | Unknown #0xff |  | Asserted
+  37 | 11/18/2019 | 12:33:20 AM EST | Unknown #0xff |  | Asserted
+  38 | 11/18/2019 | 12:33:20 AM EST | Unknown #0xff |  | Asserted
+  39 | 11/18/2019 | 12:33:25 AM EST | Unknown #0xff |  | Asserted
+  3a | 11/18/2019 | 12:33:21 AM EST | Unknown #0xff |  | Asserted
+  3b | 04/29/2026 | 01:29:01 PM EDT | Session Audit #0xff |  | Asserted
+  3c | 05/01/2026 | 09:04:08 AM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  3d | 05/01/2026 | 09:09:04 AM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  3e | 05/01/2026 | 09:15:42 AM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  3f | 05/01/2026 | 09:16:17 AM EDT | OS Boot | C: boot completed () | Asserted
+  40 | 10/24/2026 | 02:38:50 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  41 | 10/24/2026 | 02:39:23 PM EDT | OS Boot | C: boot completed () | Asserted
+  42 | 10/24/2026 | 02:40:59 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  43 | 10/24/2026 | 02:51:37 PM EDT | OS Boot | C: boot completed () | Asserted
+  44 | 10/24/2026 | 02:52:35 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  45 | 10/24/2026 | 02:55:35 PM EDT | OS Boot | C: boot completed () | Asserted
+  46 | 10/24/2026 | 02:56:52 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  47 | 10/24/2026 | 03:02:57 PM EDT | OS Boot | C: boot completed () | Asserted
+  48 | 10/24/2026 | 03:04:40 PM EDT | OS Critical Stop | OS graceful shutdown () | Asserted
+  49 | 10/24/2026 | 03:10:59 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  4a | 10/24/2026 | 03:15:31 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  4b | 10/24/2026 | 03:27:08 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  4c | 10/24/2026 | 07:37:46 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  4d | 10/25/2026 | 07:31:33 PM EDT | Temperature #0x71 | Upper Critical going high | Asserted
+  4e | 10/25/2026 | 07:32:00 PM EDT | Temperature #0x71 | Upper Non-recoverable going high | Asserted
+  4f | 10/25/2026 | 07:32:30 PM EDT | Temperature #0x71 | Upper Non-recoverable going high | Deasserted
+  50 | 10/25/2026 | 07:32:42 PM EDT | Temperature #0x71 | Upper Critical going high | Deasserted
+  51 | 10/25/2026 | 07:34:09 PM EDT | Fan FAN4 | Lower Critical going low  | Asserted | Reading 500 < Threshold 500 RPM
+  52 | 10/25/2026 | 07:34:14 PM EDT | Fan FAN4 | Lower Critical going low  | Deasserted | Reading 900 > Threshold 500 RPM
+  53 | 10/25/2026 | 07:41:42 PM EDT | Fan FAN4 | Lower Critical going low  | Asserted | Reading 500 < Threshold 500 RPM
+  54 | 10/25/2026 | 07:41:48 PM EDT | Fan FAN4 | Lower Critical going low  | Deasserted | Reading 900 > Threshold 500 RPM
+  55 | 10/25/2026 | 07:47:56 PM EDT | Temperature #0x71 | Upper Critical going high | Asserted
+  56 | 10/25/2026 | 07:50:33 PM EDT | Temperature #0x71 | Upper Non-recoverable going high | Asserted
+  57 | 10/25/2026 | 07:52:31 PM EDT | Temperature GPU1 Temp | Upper Critical going high | Asserted | Reading 95 > Threshold 95 degrees C
+  58 | 10/25/2026 | 07:56:06 PM EDT | Temperature GPU1 Temp | Upper Non-recoverable going high | Asserted | Reading 98 > Threshold 98 degrees C
+  59 | 10/25/2026 | 07:56:34 PM EDT | Temperature #0x71 | Upper Non-recoverable going high | Deasserted
+  5a | 10/25/2026 | 07:57:29 PM EDT | Temperature #0x71 | Upper Critical going high | Deasserted
+  5b | 10/25/2026 | 07:57:37 PM EDT | Temperature GPU1 Temp | Upper Non-recoverable going high | Deasserted | Reading 95 < Threshold 98 degrees C
+  5c | 10/25/2026 | 07:58:01 PM EDT | Temperature GPU1 Temp | Upper Critical going high | Deasserted | Reading 92 < Threshold 95 degrees C
+  5d | 10/25/2026 | 08:20:16 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted
+  5e | 10/26/2026 | 11:53:04 PM EDT | Memory | Memory Device Disabled (@DIMMH1(CPU1)) | Asserted

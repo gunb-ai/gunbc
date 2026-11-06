@@ -1,0 +1,159 @@
+module gunbc.gpu_market.realization_join
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure {
+  Mebibyte, mebibyte_count, Milliwatt, milliwatt, milliwatt_count, ByteSize, byte_size_count, watt_count, bandwidth_count,
+  MilliTokensPerSecond,
+}
+import extdeps.storage.types { PcieLink, pcie_generation_per_lane_bandwidth }
+import extdeps.gpu.types {
+  GpuBoardCatalogRow, GpuBoardAdmitted, GpuBoardRefused, PcieAddInBoard, gpu_board_power_ceiling,
+}
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_580_95_05_supported_chips, nvidia_supported_chip_rows_named }
+import product.host_identity { HostIdentity }
+import gunbc.serving.serving_benchmark_run_receipt {
+  ObservedGpu, ObservedCpu, ServingCellIdentity, ServingBenchmarkRunAdmission, ServingBenchmarkRunAdmitted,
+  ServingBenchmarkRunRefused, ServingLevelResult, LevelTelemetry, WallPowerReading,
+}
+import gunbc.gpu_market.catalog_boards { gpu_catalog_board_admissions }
+
+// A BENCHMARK RECEIPT JOINED TO THE HARDWARE IT RAN ON, AT THE GRAIN IT RAN AT. A serving-benchmark run
+// receipt (gunbc.serving.serving_benchmark_run_receipt) records each GPU as its driver reports it at the
+// start of the run (name, VBIOS, driver, memory, the power cap in force, the link the slot trains to) and
+// the host it sat in (CPU, RAM), and, per active level, the throughput, each GPU's mean power and the wall
+// power. This module ties each observed GPU to the catalogue BOARD the driver names it as, and checks the
+// observation against what that board states, so that a throughput figure is never quoted for "an RTX
+// 2000 Ada" in general but for that board, in that host, at that power cap.
+//
+// THE JOIN IS BY THE DRIVER'S NAME. nvidia-smi reports the product name NVIDIA's driver lists the device
+// under (extdeps.nvidia.linux_driver_supported_chips), and every catalogue board carries the name it is
+// listed under (extdeps.gpu.types GpuBoardCatalogFacts driver_listed_name), so the join is an exact match
+// through one authority, never a fuzzy match on a marketing string. A name the driver does not list, a
+// listed name no board carries, or a name two boards carry (the M60's passive and active boards share
+// one) is refused with its cause rather than resolved by a guess.
+//
+// THE OBSERVATION MUST FIT THE BOARD: memory no larger than the device's (nvidia-smi reports slightly less
+// than the marketed capacity, never more), a power cap no higher than the board's ceiling, and a link no
+// faster than the board's endpoint where it states one. A laptop GPU's cap is the realization's TGP point
+// inside the range the vendor states; the receipt is what records which point it was.
+type RealizationJoinRefusal
+  = GpuNameNotDriverListed { name: NonEmptyStr }
+  | NoCatalogBoardForName { name: NonEmptyStr }
+  | SeveralCatalogBoardsForName { name: NonEmptyStr, boards: Nat }
+  | MemoryAboveCatalog { observed: Mebibyte, catalog: ByteSize }
+  | PowerCapAboveBoardCeiling { cap: Milliwatt, ceiling: Milliwatt }
+  | LinkAboveBoardEndpoint { observed: PcieLink, endpoint: PcieLink }
+
+type RealizationGpuJoin
+  = RealizationGpuJoined { gpu: ObservedGpu, board: GpuBoardCatalogRow }
+  | RealizationGpuRefused { gpu: ObservedGpu, refusal: RealizationJoinRefusal }
+
+fn realization_catalog_boards_named(name: NonEmptyStr) -> List<GpuBoardCatalogRow> {
+  gpu_catalog_board_admissions |> flat_map(a => match a {
+    GpuBoardAdmitted { row: r } => match r.facts.driver_listed_name {
+      Present { value: n } => if (n as String) == (name as String) { [r] } else { [] }
+      Absent => []
+    }
+    GpuBoardRefused { facts: _, refusal: _ } => []
+  })
+}
+
+fn realization_link_rank(l: PcieLink) -> Nat {
+  bandwidth_count(b: pcie_generation_per_lane_bandwidth(g: l.generation)) * l.lane_count
+}
+
+fn realization_check_board(gpu: ObservedGpu, board: GpuBoardCatalogRow) -> RealizationJoinRefusal? {
+  let f = board.facts
+  if mebibyte_count(m: gpu.memory) * 1048576 > byte_size_count(b: f.gpu.memory.capacity) {
+    Present { value: MemoryAboveCatalog { observed: gpu.memory, catalog: f.gpu.memory.capacity } }
+  } else {
+    let over_cap: RealizationJoinRefusal? = match f.board_power {
+      Present { value: spec } => if milliwatt_count(w: gpu.power_limit) > watt_count(gpu_board_power_ceiling(spec: spec)) * 1000 {
+        Present { value: PowerCapAboveBoardCeiling { cap: gpu.power_limit, ceiling: milliwatt(count: watt_count(gpu_board_power_ceiling(spec: spec)) * 1000) } }
+      } else { none }
+      Absent => none
+    }
+    match over_cap {
+      Present { value: r } => Present { value: r }
+      Absent => match f.attachment {
+        PcieAddInBoard { link: Present { value: endpoint } } =>
+          if realization_link_rank(l: gpu.link_max) > realization_link_rank(l: endpoint) { Present { value: LinkAboveBoardEndpoint { observed: gpu.link_max, endpoint: endpoint } } } else { none }
+        _ => none
+      }
+    }
+  }
+}
+
+fn realization_gpu_join(gpu: ObservedGpu) -> RealizationGpuJoin {
+  if count(nvidia_supported_chip_rows_named(appendix: nvidia_linux_driver_580_95_05_supported_chips, name: gpu.name)) == 0 {
+    RealizationGpuRefused { gpu: gpu, refusal: GpuNameNotDriverListed { name: gpu.name } }
+  } else {
+    let boards = realization_catalog_boards_named(name: gpu.name)
+    if count(boards) == 0 { RealizationGpuRefused { gpu: gpu, refusal: NoCatalogBoardForName { name: gpu.name } } }
+    else if count(boards) > 1 { RealizationGpuRefused { gpu: gpu, refusal: SeveralCatalogBoardsForName { name: gpu.name, boards: count(boards) } } }
+    else {
+      match first(boards) {
+        Present { value: b } => match realization_check_board(gpu: gpu, board: b) {
+          Present { value: r } => RealizationGpuRefused { gpu: gpu, refusal: r }
+          Absent => RealizationGpuJoined { gpu: gpu, board: b }
+        }
+        Absent => RealizationGpuRefused { gpu: gpu, refusal: NoCatalogBoardForName { name: gpu.name } }
+      }
+    }
+  }
+}
+
+// THE WHOLE REALIZATION: the host, its CPU and RAM, and every GPU joined or refused. It is complete only
+// when every GPU joined; a partly joined cell is still reported, with the refusals that keep it partial.
+type ServingRealization {
+  host: HostIdentity
+  cpu: ObservedCpu
+  host_memory: ByteSize
+  gpus: List<RealizationGpuJoin>
+}
+
+fn serving_realization(cell: ServingCellIdentity) -> ServingRealization {
+  ServingRealization { host: cell.host, cpu: cell.cpu, host_memory: cell.memory, gpus: cell.gpus |> map(g => realization_gpu_join(gpu: g)) }
+}
+
+fn serving_realization_complete(r: ServingRealization) -> Bool {
+  count(r.gpus) > 0 && r.gpus |> all(j => match j { RealizationGpuJoined { gpu: _, board: _ } => true  RealizationGpuRefused { gpu: _, refusal: _ } => false })
+}
+
+// ONE ACTIVE LEVEL OF AN ADMITTED RUN, ON ITS REALIZATION: the level's throughput beside the power the GPUs
+// drew (the sum of their means over the level) and the wall power where it was metered. Throughput per
+// watt and per installed dollar are computed from these, by a consumer that holds the price.
+type RealizationLevelReading {
+  active: Nat
+  aggregate_end_to_end: MilliTokensPerSecond
+  gpu_power_mean_total: Milliwatt
+  wall_power: WallPowerReading
+}
+
+data realization_no_power: Nat = 0
+
+type ServingReceiptRealization
+  = ReceiptRealized { realization: ServingRealization, levels: List<RealizationLevelReading> }
+  | ReceiptNotAdmitted
+
+fn realization_level(level: ServingLevelResult, telemetry: List<LevelTelemetry>) -> List<RealizationLevelReading> {
+  telemetry |> filter(t => t.active == level.active) |> map(t => RealizationLevelReading {
+    active: level.active,
+    aggregate_end_to_end: level.aggregate_end_to_end,
+    gpu_power_mean_total: milliwatt(count: fold(t.gpus, init: realization_no_power, f: (a, g) => a + milliwatt_count(w: g.power_mean))),
+    wall_power: t.wall_power,
+  })
+}
+
+// A benchmark run joined to its hardware: only an admitted run has a receipt to join.
+fn serving_receipt_realization(admission: ServingBenchmarkRunAdmission) -> ServingReceiptRealization {
+  match admission {
+    ServingBenchmarkRunAdmitted { receipt: r, levels: ls } => ReceiptRealized {
+      realization: serving_realization(cell: r.cell),
+      levels: ls |> flat_map(l => realization_level(level: l, telemetry: r.telemetry)),
+    }
+    ServingBenchmarkRunRefused { gaps: _ } => ReceiptNotAdmitted
+  }
+}

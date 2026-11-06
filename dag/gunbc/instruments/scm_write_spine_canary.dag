@@ -22,6 +22,7 @@ module gunbc.instruments.scm_write_spine_canary
 // second -- so the property is decided by the store's rule rather than by scheduling, and a green run
 // is evidence rather than luck.
 
+import std.nat { nat_to_decimal_string }
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.durable_compare_and_set { CasGeneration, cas_generation_count, CasUnreadableObservationBoundExceeded }
@@ -845,7 +846,7 @@ fn merge_base_side_wire(side: MergeBaseSide) -> String {
 
 fn ancestry_walk_wire(walk: AncestryWalk) -> String {
   match walk {
-    AncestryTraced { chain: c } => join(["traced|len=", length(c) as String], "")
+    AncestryTraced { chain: c } => join(["traced|len=", nat_to_decimal_string(value: length(c))], "")
     AncestryBrokenAt { commit: _, missing_parent: _ } => "broken-at"
     AncestryStartNotInHistory { start: _ } => "start-not-in-history"
     AncestryRevisitsACommit { detected_from: _ } => "revisits-a-commit"

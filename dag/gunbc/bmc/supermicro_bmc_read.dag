@@ -1,0 +1,280 @@
+module gunbc.bmc.supermicro_bmc_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version_text }
+import extdeps.boards.types { BaseboardCatalogRow }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_bool,
+}
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_reply_bytes }
+import extdeps.bmc.ipmitool_print_read { IpmitoolSelRow }
+import extdeps.bmc.redfish_memory_inventory { RedfishMemoryMember, RedfishResourceState, StateEnabled }
+import extdeps.bmc.redfish_boot_override { RedfishBootOverrideReading }
+import extdeps.bmc.supermicro {
+  SupermicroLicence, SupermicroLicenceRefused, SupermicroLicenceNotRefused, SupermicroLicenceUnreadable,
+  SupermicroCgiPageRead, SupermicroCgiSessionRedirect, SupermicroCgiUnreadable,
+  supermicro_redfish_licence_gate, supermicro_redfish_firmware_version_of_wire, supermicro_cgi_generic_info_of,
+  supermicro_device_identity_of_get_device_id, supermicro_ipmi_manufacturer_id, supermicro_bmc_release_is_modeled,
+  supermicro_boot_target_extension_tokens,
+}
+import gunbc.machine_intake.bmc_first_contact_standing { BmcFirmwareFamilyStanding, FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake.bmc_firmware_family_discriminator {
+  manager_identity_observation_of, discriminate_family, family_standing_from_discrimination,
+}
+
+// READ-ONLY READERS OVER A SUPERMICRO (ATEN-LINEAGE) BMC'S ANSWERS. Each takes the bodies a capture or a
+// live GET returned and folds them through the upstream decoders (extdeps.bmc.supermicro for this
+// firmware's own spellings, the DMTF and IPMI modules for the shared ones); none issues a request and none
+// writes. The receipts these run over are gunbc.machine_intake.supermicro_bmc_reading.
+//
+// CONSUMERS. The H11SSL unit readings in gunbc.machine_intake.supermicro_bmc_reading fold every reader
+// here now. Named later consumer: the x86 PXE lane's boot and power write path (work item
+// adhoc-2e6db3a5-5d8), which reads the identity's family, the boot reading and the SOL/cipher readings
+// before it writes; its trigger is that path's first PR.
+
+// ── IDENTITY: one release, read up to three ways, must agree. ──────────────────────────────────────────
+type SupermicroIdentitySource = IdentityFromRedfishManager | IdentityFromCgiGenericInfo | IdentityFromGetDeviceId
+
+type SupermicroVersionReading { source: SupermicroIdentitySource, version: FirmwareSemanticVersion }
+
+type SupermicroIdentityReading
+  = SupermicroIdentityRead {
+      family: BmcFirmwareFamilyStanding,
+      version: FirmwareSemanticVersion,
+      release_modeled: Bool,
+      sources: List<SupermicroIdentitySource>,
+    }
+  | SupermicroIdentityDisagrees { readings: List<SupermicroVersionReading> }
+  | SupermicroIdentityRefused { cause: NonEmptyStr }
+
+fn manager_version(body: String) -> ObservationAttempt<SupermicroVersionReading, NonEmptyStr> {
+  match manager_identity_observation_of(body: body) {
+    ObservationRefused { cause: c } => ObservationRefused { cause: c }
+    ObservationEstablished { observed: m } => match supermicro_redfish_firmware_version_of_wire(wire: m.firmware_version) {
+      Absent => ObservationRefused { cause: concat("Manager.FirmwareVersion is not this firmware's NN.NN.NN spelling: ", m.firmware_version) as NonEmptyStr }
+      Present { value: v } => ObservationEstablished { observed: SupermicroVersionReading { source: IdentityFromRedfishManager, version: v } }
+    }
+  }
+}
+
+fn cgi_version(body: String) -> ObservationAttempt<SupermicroVersionReading, NonEmptyStr> {
+  match supermicro_cgi_generic_info_of(body: body) {
+    SupermicroCgiPageRead { page: g } => ObservationEstablished { observed: SupermicroVersionReading { source: IdentityFromCgiGenericInfo, version: g.firmware_version } }
+    SupermicroCgiSessionRedirect => ObservationRefused { cause: "GENERIC_INFO answered the login redirect, not the page" }
+    SupermicroCgiUnreadable { cause: c } => ObservationRefused { cause: c }
+  }
+}
+
+fn device_id_version(stdout: String) -> ObservationAttempt<SupermicroVersionReading, NonEmptyStr> {
+  match ipmitool_raw_reply_bytes(stdout: stdout, expected: 15) {
+    Absent => ObservationRefused { cause: "the Get Device ID reply is not fifteen raw bytes" }
+    Present { value: bytes } => match supermicro_device_identity_of_get_device_id(bytes: bytes) {
+      Absent => ObservationRefused { cause: "the Get Device ID reply does not carry a BCD firmware revision" }
+      Present { value: d } =>
+        if d.manufacturer_id != supermicro_ipmi_manufacturer_id {
+          ObservationRefused { cause: concat("Get Device ID names manufacturer ", to_string(d.manufacturer_id)) as NonEmptyStr }
+        } else {
+          ObservationEstablished { observed: SupermicroVersionReading { source: IdentityFromGetDeviceId, version: d.firmware_version } }
+        }
+    }
+  }
+}
+
+fn manager_attempts(body: String?) -> List<ObservationAttempt<SupermicroVersionReading, NonEmptyStr>> {
+  match body {
+    Absent => []
+    Present { value: b } => [manager_version(body: b)]
+  }
+}
+
+fn cgi_attempts(body: String?) -> List<ObservationAttempt<SupermicroVersionReading, NonEmptyStr>> {
+  match body {
+    Absent => []
+    Present { value: b } => [cgi_version(body: b)]
+  }
+}
+
+fn device_id_attempts(stdout: String?) -> List<ObservationAttempt<SupermicroVersionReading, NonEmptyStr>> {
+  match stdout {
+    Absent => []
+    Present { value: b } => [device_id_version(stdout: b)]
+  }
+}
+
+type VersionFold = VersionsRead { readings: List<SupermicroVersionReading> } | VersionRefused { cause: NonEmptyStr }
+
+fn family_of_manager(manager_body: String?) -> BmcFirmwareFamilyStanding {
+  match manager_body {
+    Absent => FamilyUnobserved { discriminator: "no Manager resource was read, so no Oem key discriminated the family" }
+    Present { value: b } => match manager_identity_observation_of(body: b) {
+      ObservationRefused { cause: c } => FamilyUnobserved { discriminator: c }
+      ObservationEstablished { observed: m } => family_standing_from_discrimination(discrimination: discriminate_family(observation: m))
+    }
+  }
+}
+
+// Every source supplied must decode; a source that fails refuses the whole reading rather than being
+// dropped, because the agreement check is over the readings the caller said it had.
+fn supermicro_bmc_identity(manager_body: String?, cgi_generic_body: String?, device_id_stdout: String?) -> SupermicroIdentityReading {
+  let attempts = concat(concat(manager_attempts(body: manager_body), cgi_attempts(body: cgi_generic_body)), device_id_attempts(stdout: device_id_stdout))
+  let none_yet: List<SupermicroVersionReading> = []
+  let init: VersionFold = VersionsRead { readings: none_yet }
+  match fold(attempts, init: init, f: (acc, a) => match acc {
+    VersionRefused { cause: c } => VersionRefused { cause: c }
+    VersionsRead { readings: rs } => match a {
+      ObservationRefused { cause: c } => VersionRefused { cause: c }
+      ObservationEstablished { observed: r } => VersionsRead { readings: concat(rs, [r]) }
+    }
+  }) {
+    VersionRefused { cause: c } => SupermicroIdentityRefused { cause: c }
+    VersionsRead { readings: rs } => match first(rs) {
+      Absent => SupermicroIdentityRefused { cause: "no identity source was supplied" }
+      Present { value: r0 } =>
+        if all(rs, r => r.version == r0.version) {
+          SupermicroIdentityRead {
+            family: family_of_manager(manager_body: manager_body),
+            version: r0.version,
+            release_modeled: supermicro_bmc_release_is_modeled(version: r0.version),
+            sources: map(rs, r => r.source),
+          }
+        } else { SupermicroIdentityDisagrees { readings: rs } }
+    }
+  }
+}
+
+// The family a unit's BMC was observed to be agrees with the family its board's catalog row declares.
+// An unobserved family does not agree: absence of a reading is not agreement.
+fn supermicro_identity_agrees_with_catalog(reading: SupermicroIdentityReading, catalog: BaseboardCatalogRow) -> Bool {
+  match reading {
+    SupermicroIdentityRead { family: FamilyObserved { family: f }, version: _, release_modeled: _, sources: _ } => f == catalog.bmc_firmware
+    SupermicroIdentityRead { family: FamilyUnobserved { discriminator: _ }, version: _, release_modeled: _, sources: _ } => false
+    SupermicroIdentityDisagrees { readings: _ } => false
+    SupermicroIdentityRefused { cause: _ } => false
+  }
+}
+
+// ── LICENCE STANDING, PER RESOURCE. ────────────────────────────────────────────────────────────────────
+// 200 is served (and must not carry a licence refusal); 403 must carry one; 404 is a route this release
+// does not serve. A status the capture did not record is judged by the body alone, and only a licence
+// refusal can be read from a body alone -- anything else is unreadable, not served.
+type SupermicroResourceStanding
+  = ResourceServed
+  | ResourceLicenceRefused { message_id: NonEmptyStr, any_of: List<SupermicroLicence> }
+  | ResourceRouteAbsent
+  | ResourceUnreadable { cause: NonEmptyStr }
+
+fn licence_refused_standing(body: String, otherwise: NonEmptyStr) -> SupermicroResourceStanding {
+  match supermicro_redfish_licence_gate(body: body) {
+    SupermicroLicenceRefused { message_id: m, any_of: ls } => ResourceLicenceRefused { message_id: m, any_of: ls }
+    SupermicroLicenceNotRefused => ResourceUnreadable { cause: otherwise }
+    SupermicroLicenceUnreadable { cause: c } => ResourceUnreadable { cause: c }
+  }
+}
+
+fn supermicro_resource_standing(http_status: Int?, body: String) -> SupermicroResourceStanding {
+  match http_status {
+    Absent => licence_refused_standing(body: body, otherwise: "no HTTP status was recorded and the body is not a licence refusal")
+    Present { value: s } =>
+      if s == 200 {
+        match supermicro_redfish_licence_gate(body: body) {
+          SupermicroLicenceNotRefused => ResourceServed
+          SupermicroLicenceRefused { message_id: _, any_of: _ } => ResourceUnreadable { cause: "a 200 answer carries a licence refusal" }
+          SupermicroLicenceUnreadable { cause: c } => ResourceUnreadable { cause: c }
+        }
+      } else if s == 403 {
+        licence_refused_standing(body: body, otherwise: "403 without a licence refusal message")
+      } else if s == 404 {
+        ResourceRouteAbsent
+      } else {
+        ResourceUnreadable { cause: concat("an HTTP status this reader does not judge: ", to_string(s)) as NonEmptyStr }
+      }
+  }
+}
+
+// ── BOOT OVERRIDE TOKENS. AllowableValues tokens the DMTF enum does not carry are this firmware's own
+// extension (a row of extdeps.bmc.supermicro) or unaccounted; an unaccounted token is reported, never
+// dropped and never assumed to be vendor.
+fn supermicro_boot_vendor_tokens(reading: RedfishBootOverrideReading) -> List<String> {
+  filter(reading.allowable_unmodeled, t => any(supermicro_boot_target_extension_tokens, x => (x as String) == t))
+}
+
+fn supermicro_boot_unaccounted_tokens(reading: RedfishBootOverrideReading) -> List<String> {
+  filter(reading.allowable_unmodeled, t => !any(supermicro_boot_target_extension_tokens, x => (x as String) == t))
+}
+
+// ── TWO READINGS OF ONE DIMM THAT DISAGREE, RECORDED AND NOT RESOLVED. Redfish lists a Memory member
+// Enabled while the SEL carries a "Memory Device Disabled" event naming its slot. Which is right is not
+// this reader's to say (the Memory resource is the BMC's SMBIOS cache from the last POST; the SEL event is
+// the BIOS reporting at POST); a consumer that needs the slot's truth reads both and sees the conflict.
+type DimmReadingDisagreement { locator: NonEmptyStr, redfish_state: RedfishResourceState, sel_record_ids: List<NonEmptyStr> }
+
+fn sel_disables_slot(row: IpmitoolSelRow, locator: String) -> Bool {
+  row.sensor == "Memory" && string_contains(s: row.event, pattern: concat(concat("Memory Device Disabled (@", locator), "(")) && row.state == "Asserted"
+}
+
+fn member_disagreement(member: RedfishMemoryMember, sel: List<IpmitoolSelRow>) -> List<DimmReadingDisagreement> {
+  match member.device_locator {
+    Absent => []
+    Present { value: loc } => {
+      let ids = map(filter(sel, r => sel_disables_slot(row: r, locator: loc)), r => r.record_id_hex)
+      if ids.length() > 0 && member.status.state == StateEnabled {
+        [DimmReadingDisagreement { locator: loc as NonEmptyStr, redfish_state: member.status.state, sel_record_ids: ids }]
+      } else { [] }
+    }
+  }
+}
+
+fn supermicro_dimm_reading_disagreements(members: List<RedfishMemoryMember>, sel: List<IpmitoolSelRow>) -> List<DimmReadingDisagreement> {
+  flat_map(members, m => member_disagreement(member: m, sel: sel))
+}
+
+// ── VIRTUAL MEDIA, AS OFFERED. A VirtualMedia member is OFFERED when the service publishes the DMTF
+// InsertMedia action on it; whether an insert through it boots this host is not established by reading,
+// which is why the attach route stays a frontier (gunbc.machine_intake.h11ssl_x86_bringup_frontier).
+type SupermicroVirtualMediaOffer {
+  member_id: NonEmptyStr
+  insert_action_target: NonEmptyStr
+  inserted: Bool
+}
+
+fn insert_target(doc: JsonValue) -> String? {
+  match json_field(obj: doc, key: "Actions") {
+    FieldRead { value: actions } => match json_field(obj: actions, key: "#VirtualMedia.InsertMedia") {
+      FieldRead { value: insert } => match json_field_string(obj: insert, key: "target") {
+        FieldRead { value: t } => if t == "" { none } else { Present { value: t } }
+        FieldAbsent => none
+        FieldMalformed { cause: _ } => none
+      }
+      FieldAbsent => none
+      FieldMalformed { cause: _ } => none
+    }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn supermicro_virtual_media_offer(body: String) -> ObservationAttempt<SupermicroVirtualMediaOffer, NonEmptyStr> {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => ObservationRefused { cause: concat("the VirtualMedia body is not a JSON document: ", json_document_gap_text(gap: g)) as NonEmptyStr }
+    JsonDocumentParsed { value: doc } => match json_field_string(obj: doc, key: "Id") {
+      FieldAbsent => ObservationRefused { cause: "the VirtualMedia body carries no Id" }
+      FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+      FieldRead { value: id } => match insert_target(doc: doc) {
+        Absent => ObservationRefused { cause: "the VirtualMedia member publishes no InsertMedia action, so nothing is offered" }
+        Present { value: t } => match json_field_bool(obj: doc, key: "Inserted") {
+          FieldRead { value: inserted } => if id == "" { ObservationRefused { cause: "the VirtualMedia body's Id is empty" } } else {
+            ObservationEstablished { observed: SupermicroVirtualMediaOffer {
+              member_id: id as NonEmptyStr, insert_action_target: t as NonEmptyStr, inserted: inserted,
+            } }
+          }
+          FieldAbsent => ObservationRefused { cause: "the VirtualMedia member does not say whether media is inserted" }
+          FieldMalformed { cause: c } => ObservationRefused { cause: c as NonEmptyStr }
+        }
+      }
+    }
+  }
+}

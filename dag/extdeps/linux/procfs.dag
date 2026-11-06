@@ -60,6 +60,21 @@ fn procfs_status_effective_uid(content: String) -> Int? {
   })
 }
 
+// THE SUPPLEMENTARY GROUP IDS FROM /proc/<pid>/status (proc(5)): the `Groups:` line lists them as
+// space-separated decimals, possibly none. A missing line or a non-decimal field is no reading, never
+// an empty membership: an unreadable membership must not read as "in no group".
+fn procfs_status_supplementary_gids(content: String) -> List<Int>? {
+  fold(split(s: content, delimiter: "\n"), init: none, f: (acc, line) => match acc {
+    Present { value: _ } => acc
+    Absent => if !starts_with(s: line, prefix: "Groups:") { none } else {
+      let ids = split(s: trim(s: substring(s: line, start: 7, end: string_length(s: line))), delimiter: " ") |> filter(f => f != "")
+      if any(ids, e => !all(e |> chars, cp => cp >= 48 && cp <= 57)) { none } else {
+        Present { value: flat_map(ids, e => match parse_int(s: e) { Present { value: n } => [n], Absent => [] as List<Int> }) }
+      }
+    }
+  })
+}
+
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
     ProcMeminfo => "/proc/meminfo"

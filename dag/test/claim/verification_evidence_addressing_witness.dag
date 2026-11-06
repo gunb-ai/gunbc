@@ -94,7 +94,6 @@ import gunbc.roadmap.roadmap_verification_receipt {
   current_verification_selection_basename,
   current_verification_selection_json,
   current_verification_selection_decode_document,
-  exact_verification_address_for,
   verification_receipt_schema_v1,
   verification_receipt_v1_decode,
   LegacyExactHeadDecoded,
@@ -633,25 +632,6 @@ test fn selected_v2_receipt_is_read_exactly() -> Bool {
     BeltVerificationRefuse { reason: _ } => false
     BeltVerificationEvidenceUnreadable { reason: _ } => false
   }
-}
-
-test fn exact_verification_address_coheres_basename_and_path() -> Bool {
-  let address = exact_verification_address_for(
-    attempt_dir: "/attempt/recut-a",
-    verification_dir: "/attempt/recut-a/verification",
-    head_sha: fixture_head as String,
-    window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1),
-  )
-  let receipt_path = join(
-    ["/attempt/recut-a/verification/", address.receipt_basename],
-    "",
-  )
-  let selection_path = join(
-    ["/attempt/recut-a/verification/", address.selection_basename],
-    "",
-  )
-  address.receipt_path == receipt_path
-    && address.selection_path == selection_path
 }
 
 test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool {

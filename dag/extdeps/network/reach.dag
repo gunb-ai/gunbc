@@ -4,6 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.network.endpoint { NetworkHost }
+import std.algebra { length }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -72,7 +73,7 @@ fn reach_realizability(reach: Reach) -> ReachRealizability {
   match reach {
     DirectLan { host: _ } => ReachRealizable
     ProxyJump { jumps: js, target: _ } =>
-      if list_length(items: js) == 0 {
+      if length(xs: js) == 0 {
         ReachRefused { cause: ProxyJumpChainEmpty }
       } else {
         ReachRealizable

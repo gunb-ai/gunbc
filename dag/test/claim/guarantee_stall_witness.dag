@@ -15,9 +15,8 @@ import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count_liv
 import gunbc.lifecycle_bounded_referent { dashboard_work_item_referent }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.guarantee_stall.next_rung_trigger_enforcement_stall { next_rung_trigger_enforcement_stall }
-import gunbc.guarantee_stall.roster {
-  all_guarantee_stalls, restored_stalls, every_restored_stall_is_rostered_once,
-}
+import gunbc.guarantee_stall.roster { guarantee_stall_roster }
+import gunbc.guarantee_stall.roster_pins { restored_stalls, every_restored_stall_is_rostered_once }
 
 // Local one-liner over the builtin rather than an import: three test files already declare their
 // own `string_contains`, so a fourth would make the bare name ambiguous corpus-wide. This is a
@@ -115,7 +114,7 @@ data stall_missing_its_trigger: GuaranteeStall = GuaranteeStall {
 // equals its ceiling is not a stall -- it describes work that is finished, and any consumer
 // reading it as outstanding reads a false claim.
 test fn every_live_stall_is_below_its_ceiling() -> Bool {
-  every_stall_is_below_its_ceiling(ss: all_guarantee_stalls)
+  every_stall_is_below_its_ceiling(ss: guarantee_stall_roster)
     && !every_stall_is_below_its_ceiling(ss: [stall_at_its_ceiling])
 }
 
@@ -123,7 +122,7 @@ test fn every_live_stall_is_below_its_ceiling() -> Bool {
 // that "cannot climb further" stays separable from "unbuilt". An empty trigger is the untracked
 // stall the clause forbids, and it reds here instead of surviving review.
 test fn every_live_stall_names_a_next_rung_trigger() -> Bool {
-  every_stall_names_a_trigger(ss: all_guarantee_stalls)
+  every_stall_names_a_trigger(ss: guarantee_stall_roster)
     && !every_stall_names_a_trigger(ss: [stall_missing_its_trigger])
 }
 
@@ -135,14 +134,14 @@ test fn every_live_stall_names_a_next_rung_trigger() -> Bool {
 // quantifier's domain load-bearing; asserting a property of one named row would not, because a row
 // can be well-formed and absent from the roster at the same time.
 test fn the_stall_roster_is_not_empty() -> Bool {
-  stall_roster_size(ss: all_guarantee_stalls) > 0
+  stall_roster_size(ss: guarantee_stall_roster) > 0
     && stall_roster_size(ss: []) == 0
     && every_stall_is_below_its_ceiling(ss: [])
 }
 
 // THE FOUR RESTORED SUBJECTS STAY ROSTERED, AND THIS DOES NOT RETIRE WHEN THIS PR LANDS.
 //
-// Four stalls were declared in gunbc.guarantee_stall and left out of all_guarantee_stalls, so the
+// Four stalls were declared in gunbc.guarantee_stall and left out of guarantee_stall_roster, so the
 // three walls above ranged over 21 of the 25 rows that module declares. Nothing was red: a wall
 // whose input is short is green for the same reason a wall over a clean corpus is green. Widening
 // the roster is the repair; this arm is what stops the repair from being undone silently, since a
@@ -157,7 +156,7 @@ test fn the_stall_roster_is_not_empty() -> Bool {
 // THE NEGATIVE ARM IS THE WHOLE POINT: over an empty roster the fold must REFUSE, which is what
 // distinguishes this from the universally-quantified walls above that are vacuously true on [].
 test fn every_restored_stall_is_still_rostered() -> Bool {
-  every_restored_stall_is_rostered_once(ss: all_guarantee_stalls)
+  every_restored_stall_is_rostered_once(ss: guarantee_stall_roster)
     && !every_restored_stall_is_rostered_once(ss: [])
     && every_restored_stall_is_rostered_once(ss: restored_stalls)
 }
@@ -214,7 +213,7 @@ test fn a_trigger_resting_on_a_lifecycle_bounded_referent_refuses_by_cause() -> 
 // makes the property scale with the population instead of with how many rows an author remembered,
 // and it is the arm that would have redded on main against all four unmigrated rows.
 test fn every_live_stall_trigger_is_admitted() -> Bool {
-  every_stall_trigger_is_admitted(ss: all_guarantee_stalls)
+  every_stall_trigger_is_admitted(ss: guarantee_stall_roster)
     && !every_stall_trigger_is_admitted(ss: [stall_spelling_a_referent_into_its_capability])
     && !every_stall_trigger_is_admitted(ss: [stall_missing_its_trigger])
     && every_stall_trigger_is_admitted(ss: [stall_carrying_its_referent_beside_the_capability])
@@ -250,7 +249,7 @@ fn stall_grounding_refs(ss: List<GuaranteeStall>) -> List<DeclarationRef> {
 }
 
 test fn every_declared_grounding_of_a_rostered_stall_resolves() -> Bool {
-  let refs = stall_grounding_refs(ss: all_guarantee_stalls)
+  let refs = stall_grounding_refs(ss: guarantee_stall_roster)
   length(xs: refs) > 0 && cited_declaration_ref_refusal_count_live(refs: refs, pool_roots: witness_layer_roots) == 0
 }
 

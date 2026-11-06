@@ -19,14 +19,18 @@ struct ApproveApp: App {
                 }
                 .onChange(of: scenePhase) { _, phase in
                     // Returning to the foreground re-lists: a push may have been missed or coalesced.
-                    if phase == .active { Task { await state.refresh() } }
+                    if phase == .active {
+                        Task { await state.refresh() }
+                        Task { await state.resyncPush() }
+                    }
                 }
         }
     }
 }
 
 /// APNs token delivery and push receipt. The push carries only ApprovalPushHint.notification_id
-/// with generic alert text; nothing in it is displayed as the request — the app re-lists.
+/// with generic alert text; nothing in it is displayed as the request — the app re-lists, and a
+/// tapped alert's locator only chooses which pending request is shown first.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     weak var state: AppState?
     /// A token that arrives before the state object is attached is kept, not dropped.
@@ -67,20 +71,44 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         }
     }
 
-    // The UN* arguments are not Sendable and are not read: these callbacks are nonisolated so they
-    // never cross the main actor, and hop with no payload to refreshFromPush.
+    // The UN* arguments are not Sendable: these callbacks are nonisolated so they never cross the
+    // main actor, and hop with at most a plain String (the tapped alert's locator).
+    //
+    // UIKit requires the completion on the main thread, and promptly: the async forms of these
+    // callbacks complete wherever the nonisolated function returns -- off the main thread -- and only
+    // after the awaited re-list, and UIKit aborted the app on a tapped alert (SIGABRT in
+    // -[UIApplication _updateSnapshotAndStateRestorationWithAction:windowScene:], 2026-11-04). So each
+    // completes on the main actor before the re-list starts, and the re-list runs after.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        await refreshFromPush()
-        return [.banner, .sound]
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        let done = MainActorCompletion(completionHandler)
+        Task { @MainActor in
+            done.call([.banner, .sound])
+            _ = await self.state?.refresh()
+        }
     }
 
-    /// The operator tapped the alert: re-list, then the inbox shows what is pending.
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        await refreshFromPush()
+    /// The operator tapped the alert: the inbox opens the request the alert named, and re-lists.
+    /// The hint is read here as plain text (Sendable) and only orders the list (AppState.front).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
+        let locator = try? WireDecode.pushHint(response.notification.request.content.userInfo).notification_id
+        let done = MainActorCompletion<Void>({ _ in completionHandler() })
+        Task { @MainActor in
+            self.state?.focused = locator
+            done.call(())
+            _ = await self.state?.refresh()
+        }
     }
+}
 
-    @MainActor private func refreshFromPush() async {
-        _ = await state?.refresh()
-    }
+/// A UserNotifications completion handler, carried to the main actor and called there exactly as
+/// UIKit requires. The framework's block is not annotated Sendable; it is only ever invoked on the
+/// main actor, once, which is what makes moving it there sound.
+private struct MainActorCompletion<Value>: @unchecked Sendable {
+    private let body: (Value) -> Void
+    init(_ body: @escaping (Value) -> Void) { self.body = body }
+    @MainActor func call(_ value: Value) { body(value) }
 }

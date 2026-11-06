@@ -1,0 +1,12 @@
+module gunbc.fleet.fleet_root_equivalent_groups
+
+import std.types { List, NonEmptyStr }
+
+// THE GROUPS WHOSE MEMBERSHIP IS ROOT-EQUIVALENT ON A FLEET HOST, as a closed list: each hands its members a
+// credential that reaches root through a daemon socket (docker, lxd), a privilege grant (sudo, wheel,
+// root), raw device or log access (disk, adm) or the password database (shadow). Declared in
+// gunbc.fleet.fleet_posix_accounts until 2026-10-25 and moved to a leaf of its own so a reader of one
+// principal's groups (gunbc.fleet.fleet_job_principal, run inside native claim programs) does not take the
+// whole accounts model, and its command and process closure, with it. Consumers: the worker account's
+// declaration check (test.claim.roadmap.worker_dedicated_account_witness) and the job-principal check.
+data fleet_root_equivalent_group_names: List<NonEmptyStr> = ["docker", "lxd", "sudo", "adm", "root", "wheel", "disk", "shadow"]

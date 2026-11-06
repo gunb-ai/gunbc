@@ -2,7 +2,7 @@ module gunbc.serving.serving_benchmark
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count, Millisecond, millisecond, BasisPoint, basis_point }
+import std.measure { TokenCount, token_count, Millisecond, millisecond, Second, second, BasisPoint, basis_point }
 
 // THE SERVING BENCHMARK, ONE VERSION PER WORKLOAD AND METRIC CONTRACT (work item
 // node://adhoc-ffb4b5c7-4a5; plan gunbc.plans.serving_fleet_program row E0). It replaces the hand-run
@@ -72,6 +72,12 @@ type ServingBenchmarkVersion {
   workload: ServingBenchmarkWorkload
   quantities: List<ServingBenchmarkQuantity>
   telemetry: List<ServingTelemetryChannel>
+  // The cadences the telemetry samplers are asked to run at, pinned by the version: rows from two
+  // runs are comparable only when the same version asked for the same samples at the same rate.
+  // They are durations on the std.measure axis; the nvidia-smi extdeps model renders the `-lms` and
+  // `-d` words from the carriers, so no instrument spells a duration as a string.
+  gpu_sample_interval: Millisecond
+  pcie_sample_interval: Second
 }
 
 data serving_benchmark_v1: ServingBenchmarkVersion = ServingBenchmarkVersion {
@@ -90,6 +96,8 @@ data serving_benchmark_v1: ServingBenchmarkVersion = ServingBenchmarkVersion {
   },
   quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
   telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+  gpu_sample_interval: millisecond(count: 500),
+  pcie_sample_interval: second(count: 1),
 }
 
 // THE SHORT RUN THE OPERATOR ASKED FOR (2026-10-25): the same per-turn workload as serving-benchmark/1
@@ -114,4 +122,6 @@ data serving_benchmark_short_n4: ServingBenchmarkVersion = ServingBenchmarkVersi
   },
   quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
   telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+  gpu_sample_interval: millisecond(count: 500),
+  pcie_sample_interval: second(count: 1),
 }

@@ -1,10 +1,12 @@
 module test.claim.realization_selection_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, decl_type_parameter_ref, declaration_ref_eq, declaration_ref_display_key, declaration_ref_compare }
+import std.algebra { Ordering, Equal }
 import std.interval { degenerate_interval, closed_interval, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
   AxisGap,
+  AxisGoal,
   AxisReading,
   HigherIsBetter,
   LowerIsBetter,
@@ -15,6 +17,7 @@ import std.decision {
   HardConstraint, NonMoneyConstraint,
   PreferSurvivor,
   UniqueSurvivorRequired,
+  UniqueSurvivorElsePrefer,
   SelectionPolicy,
   SelectionReceipt,
   SelectedWithin,
@@ -27,6 +30,12 @@ import std.decision {
   UnfundedAxis,
   select_realization,
   receipts_eq,
+  policy_equality,
+  term_valuation_compare,
+  term_valuation_eq,
+  ValuedObjective,
+  TermValuation,
+  NetValue,
   DecisionVariable,
   ContextParameter,
   DecisionConstraint,
@@ -45,6 +54,8 @@ import std.decision {
   CausalModelEstablished,
   FleetObservedCoupling,
 }
+import std.measure { money_amount_micro }
+import extdeps.currency.currency { Usd }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -73,6 +84,8 @@ import extdeps.uri { Uri, Https }
 
 data id_a: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
 data id_b: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_b")
+data id_c: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_c")
+data id_policy_usesep: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_policy_usesep")
 data id_subject: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_subject")
 data id_field: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_field")
 data id_field2: DeclarationRef = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_field2")
@@ -233,6 +246,20 @@ fn entry_over_cap_missing_tput(id: DeclarationRef, label: NonEmptyStr, power: In
   }
 }
 
+// An interval reading on the throughput axis: dominance may be UNDECIDED (overlapping intervals),
+// which must never be read as a tie.
+fn entry_interval_tput(id: DeclarationRef, label: NonEmptyStr, tput_low: Int, tput_high: Int, power: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id,
+    display_label: label,
+    readings: [
+      AxisReading { axis: ax_tput, interval_micro: span(low: tput_low, high: tput_high) },
+      reading(axis: ax_power, v: power),
+    ],
+    missing_inputs: [],
+  }
+}
+
 data power_cap: HardConstraint = HardConstraint {
   identity: id_constraints,
   axis: ax_power,
@@ -280,6 +307,24 @@ fn selected_id(field: List<ParetoEntry>, axes: List<SelectionAxis>, constraints:
     RealizationSelectionRefused { defects: _ } => Absent
     NoFeasibleRealization { causes: _, scope: _ } => Absent
     CandidateFieldUnestablished { causes: _ } => Absent
+  }
+}
+
+// The receipt a selection mints, so a witness can compare receipts across a held-fixed question whose
+// only change is the policy arm or its parameters.
+fn receipt_for(field: List<ParetoEntry>, pol: SelectionPolicy) -> SelectionReceipt? {
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: field,
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: pol,
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: _, receipt: r } => Present { value: r }
+    _ => Absent
   }
 }
 
@@ -800,4 +845,327 @@ test fn two_refusals_over_different_fields_carry_distinguishable_scopes() -> Boo
             && count(s1.funded_axes) > 0
       }
   }
+}
+
+// ── UniqueSurvivorElsePrefer: one arm, one witness per branch, each with a discriminating red ────
+
+// BRANCH 1 — a single survivor wins on its own merit even when it is NOT the preferred identity.
+// Here id_a strictly dominates id_b (higher tput AND lower power), so id_a is the sole survivor; the
+// preferred identity id_b is dominated and must NOT be chosen.
+// RED: swap the policy to PreferSurvivor { preferred: id_b } — id_b is dominated, so PreferSurvivor
+// returns RealizationSelectionRefused, not SelectedWithin(id_a). This is exactly the gap the new arm
+// closes: PreferSurvivor cannot let a dominating non-preferred candidate win.
+test fn usesep_single_survivor_wins_even_when_not_preferred() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [dominator, dominated],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_a)
+    _ => false
+  }
+}
+
+// BRANCH 2 — several nondominated ALTERNATIVES (a tradeoff, not an equality) that INCLUDE the preferred
+// identity select the preferred. id_a wins tput, id_b wins power: neither dominates, so both survive;
+// the preferred id_b is selected. This records a preference among incomparable alternatives — it does
+// NOT assert id_a and id_b are equal on any axis.
+// RED: swap the policy to UniqueSurvivorRequired — two survivors is not one, so it returns
+// SelectionNeedsPolicy and never selects id_b. The "else prefer" branch is what resolves the tradeoff.
+test fn usesep_tie_including_preferred_selects_preferred() -> Bool {
+  let tput_winner = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
+  let power_winner = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [tput_winner, power_winner],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } => declaration_ref_eq(a: c.identity, b: id_b)
+    _ => false
+  }
+}
+
+// BRANCH 3 — several nondominated alternatives that EXCLUDE the preferred identity stay
+// SelectionNeedsPolicy, never a silent refusal or a fallthrough. id_a and id_b both survive; the
+// preferred id_c is not in the field.
+// RED: swap the policy to PreferSurvivor { preferred: id_c } — id_c is not a survivor, so PreferSurvivor
+// returns RealizationSelectionRefused. The new arm defers instead of refusing an unresolved field.
+test fn usesep_tie_excluding_preferred_needs_policy_not_refused() -> Bool {
+  let tput_winner = entry(id: id_a, label: "tput winner" as NonEmptyStr, tput: 80, power: 80)
+  let power_winner = entry(id: id_b, label: "power winner" as NonEmptyStr, tput: 20, power: 20)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [tput_winner, power_winner],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_c },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsPolicy { survivors: sv } =>
+      (sv |> count) == 2
+        && any(sv, s => declaration_ref_eq(a: s, b: id_a))
+        && any(sv, s => declaration_ref_eq(a: s, b: id_b))
+    _ => false
+  }
+}
+
+// BRANCH 4 — no survivors (the only candidate violates a hard constraint) is NoFeasibleRealization,
+// matching the existing arms. NOTE (corrected coverage): a hard-constraint exclusion empties the
+// remaining field at scan_feasibility, which short-circuits to NoFeasibleRealization BEFORE apply_policy
+// runs, so this end-to-end case does NOT exercise the arm's own count == 0 branch and is not a
+// discriminating red for it. It is kept as an end-to-end check that the arm agrees with the existing
+// arms on an all-infeasible field; the arm's count == 0 branch is reachable only when the Pareto fold
+// yields an empty survivor set from a non-empty feasible field, which no current input produces.
+test fn usesep_no_survivors_is_no_feasible_not_needs_policy() -> Bool {
+  let forbidden = entry(id: id_a, label: "over cap" as NonEmptyStr, tput: 10, power: 200)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [forbidden],
+    axes: axes_forward(),
+    constraints: [power_cap],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_a },
+    evidence_snapshot: id_evidence,
+  ) {
+    NoFeasibleRealization { causes: _, scope: _ } => true
+    _ => false
+  }
+}
+
+// BRANCH 5 — interval readings that leave dominance UNDECIDED stay SelectionNeedsEvidence; they are
+// never read as a tie that the policy could resolve. id_a's tput interval [50,100] and id_b's [0,60]
+// overlap, so neither dominates and neither is dominated: the standing is undecided, not two survivors.
+// RED: if undecided dominance were folded into the survivor set, both would survive and the preferred
+// id_b would be SelectedWithin — this witness asserts SelectionNeedsEvidence, so that mutation goes red.
+test fn usesep_undecided_dominance_stays_needs_evidence_never_a_tie() -> Bool {
+  let a = entry_interval_tput(id: id_a, label: "tput [50,100]" as NonEmptyStr, tput_low: 50, tput_high: 100, power: 20)
+  let b = entry_interval_tput(id: id_b, label: "tput [0,60]" as NonEmptyStr, tput_low: 0, tput_high: 60, power: 20)
+  match select_realization(
+    assessment: closed_selection_assessment(),
+    candidate_field_identity: id_field,
+    field: [a, b],
+    axes: axes_forward(),
+    constraints: [],
+    constraint_authority: id_constraints,
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectionNeedsEvidence { needs: _ } => true
+    SelectedWithin { candidate: _, receipt: _ } => false
+    SelectionNeedsPolicy { survivors: _ } => false
+    _ => false
+  }
+}
+
+// RECEIPT CONTROL — change the policy ARM, hold the question and the selected candidate fixed: the
+// receipts must differ. id_a strictly dominates id_b, so both policies select id_a; only the arm differs.
+// RED: if the receipt recorded only the authority reference (not the applied policy), the two receipts
+// would be receipts_eq and this witness would go red.
+test fn usesep_receipt_distinguishes_a_change_of_arm() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  let field = [dominator, dominated]
+  match receipt_for(field: field, pol: UniqueSurvivorRequired { identity: id_policy_usesep }) {
+    Absent => false
+    Present { value: r1 } =>
+      match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+        Absent => false
+        Present { value: r2 } =>
+          declaration_ref_eq(a: r1.selected_identity, b: id_a)
+            && declaration_ref_eq(a: r2.selected_identity, b: id_a)
+            && !receipts_eq(a: r1, b: r2)
+      }
+  }
+}
+
+// RECEIPT CONTROL — change the PREFERRED parameter, same arm, same selection: the receipts must differ.
+// id_a is the unique survivor under both, so the selection is identical; only the preferred parameter
+// differs, and it must still be visible in the receipt.
+// RED: if policy_equality ignored the preferred parameter, the two receipts would be receipts_eq -> red.
+test fn usesep_receipt_distinguishes_a_change_of_preferred_parameter() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  let field = [dominator, dominated]
+  match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+    Absent => false
+    Present { value: r1 } =>
+      match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_c }) {
+        Absent => false
+        Present { value: r2 } =>
+          declaration_ref_eq(a: r1.selected_identity, b: id_a)
+            && declaration_ref_eq(a: r2.selected_identity, b: id_a)
+            && !receipts_eq(a: r1, b: r2)
+      }
+  }
+}
+
+// RECEIPT CONTROL — repeat the IDENTICAL policy: the receipts must be equal. Guards against
+// over-discrimination (comparing the policy by reference rather than by structure).
+// RED: if policy_equality compared policies by identity/reference rather than structurally, the two
+// receipts would differ -> red.
+test fn usesep_receipt_is_stable_under_a_repeated_identical_policy() -> Bool {
+  let dominator = entry(id: id_a, label: "dominates" as NonEmptyStr, tput: 80, power: 20)
+  let dominated = entry(id: id_b, label: "dominated" as NonEmptyStr, tput: 20, power: 80)
+  let field = [dominator, dominated]
+  match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+    Absent => false
+    Present { value: r1 } =>
+      match receipt_for(field: field, pol: UniqueSurvivorElsePrefer { identity: id_policy_usesep, preferred: id_b }) {
+        Absent => false
+        Present { value: r2 } => receipts_eq(a: r1, b: r2)
+      }
+  }
+}
+
+// A fixed valuation on a given term, for the policy_equality multiset controls below. Only the term
+// identity varies between the valuations a control compares; scale and goal are held constant so the
+// comparison is about multiplicity, not about the valuation's other fields.
+fn tv(term: DeclarationRef) -> TermValuation {
+  TermValuation { term: term, scale_micro: money_amount_micro(count: 10), goal: HigherIsBetter }
+}
+
+// POLICY-EQUALITY CONTROL — the asymmetric pair. p has A twice, q has A once and B once. They have the
+// same membership and the same count, so a membership+cardinality comparator wrongly reports them equal
+// in one direction. The multiset comparator must report them unequal in BOTH directions.
+// RED: if the ValuedObjective arm compared valuations by membership plus cardinality (the pre-fix code),
+// policy_equality(p, q) would be true -> red.
+test fn policy_equality_refuses_a_duplicate_against_a_distinct_term() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_a)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — unequal multiplicities with the SAME membership in both directions.
+// [A,A,B] and [A,B,B] contain the same terms and the same total count, and every term of each matches
+// some term of the other in both directions, so a membership+cardinality comparator reports them equal.
+// The multiset comparator must report them unequal in both directions.
+// RED: if the arm compared by membership plus cardinality, both directions would be true -> red.
+test fn policy_equality_refuses_unequal_multiplicities_with_equal_membership() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b), tv(id_b)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — the positive control. Two UNIQUE valuation lists that differ only in ORDER
+// must be equal: the comparison is order-independent, and nothing is deduped.
+// RED: if the comparator were order-sensitive (elementwise by index), the reordered pair would be
+// reported unequal -> red.
+test fn policy_equality_accepts_reordered_unique_valuations() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_b), tv(id_a)], measure: NetValue, currency: Usd }
+  policy_equality(a: p, b: q) && policy_equality(a: q, b: p)
+}
+
+// A valuation with an explicit scale and goal, for the discrimination controls below.
+fn tv_with(term: DeclarationRef, scale: Int, goal: AxisGoal) -> TermValuation {
+  TermValuation { term: term, scale_micro: money_amount_micro(count: scale), goal: goal }
+}
+
+fn is_eq_ordering(o: Ordering) -> Bool {
+  match o { Equal => true _ => false }
+}
+
+// POLICY-EQUALITY CONTROL — reordered EQUAL DUPLICATES. [A,A,B] and [B,A,A] are the same multiset, so
+// they must be equal. This is the positive control for the sort-then-compare path: an order-sensitive
+// (elementwise-by-index) comparator, or one that deduped, would report them unequal.
+// RED: if the comparator compared valuations elementwise by index, the reordered duplicates would be
+// reported unequal -> red.
+test fn policy_equality_accepts_reordered_equal_duplicates() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_a), tv(id_a), tv(id_b)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(id_b), tv(id_a), tv(id_a)], measure: NetValue, currency: Usd }
+  policy_equality(a: p, b: q) && policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — same term, different scale. The scale is a behavior-affecting parameter, so
+// two valuations that share a term but differ in scale are different policies.
+// RED: if term_valuation_eq compared only the term (ignoring scale), these would be equal -> red.
+test fn policy_equality_refuses_same_term_different_scale() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 10, goal: HigherIsBetter)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 20, goal: HigherIsBetter)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — same term and scale, different goal.
+// RED: if term_valuation_eq ignored the axis goal, these would be equal -> red.
+test fn policy_equality_refuses_same_term_different_goal() -> Bool {
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 10, goal: HigherIsBetter)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv_with(term: id_a, scale: 10, goal: LowerIsBetter)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: q, b: p)
+}
+
+// POLICY-EQUALITY CONTROL — the DeclField alternatives. The same declaration named as a whole, as a
+// named field, and as a type parameter are three distinct terms; a comparator that ignored the field
+// variant would collapse them.
+// RED: if declaration_ref_compare compared only module_path and decl_name (ignoring the DeclField
+// variant), these would be equal -> red.
+test fn policy_equality_refuses_declfield_variants() -> Bool {
+  let whole = decl_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a")
+  let named = decl_field_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a", field_name: "x")
+  let param = decl_type_parameter_ref(module_path: "test.claim.realization_selection_witness", decl_name: "id_a", parameter: "x")
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(whole)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(named)], measure: NetValue, currency: Usd }
+  let r = ValuedObjective { identity: id_policy_usesep, valuations: [tv(param)], measure: NetValue, currency: Usd }
+  !policy_equality(a: p, b: q) && !policy_equality(a: p, b: r) && !policy_equality(a: q, b: r)
+}
+
+// POLICY-EQUALITY CONTROL — two DISTINCT refs that share a display key. decl_name "n::x" with
+// WholeDeclaration and decl_name "n" with NamedField "x" both render "m::n::x", yet they are structurally
+// different refs. The order must separate them (order-equality agrees with structural equality, not with
+// the display key).
+// RED: if the comparator ordered refs by declaration_ref_display_key, the collision would compare Equal
+// and the two policies would be reported equal -> red.
+test fn policy_equality_orders_by_structure_not_display_key() -> Bool {
+  let m = "test.claim.realization_selection_witness"
+  let ref1 = decl_ref(module_path: m, decl_name: "n::x")
+  let ref2 = decl_field_ref(module_path: m, decl_name: "n", field_name: "x")
+  let same_display = declaration_ref_display_key(ref: ref1) == declaration_ref_display_key(ref: ref2)
+  let structurally_distinct = !declaration_ref_eq(a: ref1, b: ref2)
+  let order_separates = !is_eq_ordering(o: declaration_ref_compare(a: ref1, b: ref2))
+  let p = ValuedObjective { identity: id_policy_usesep, valuations: [tv(ref1)], measure: NetValue, currency: Usd }
+  let q = ValuedObjective { identity: id_policy_usesep, valuations: [tv(ref2)], measure: NetValue, currency: Usd }
+  same_display && structurally_distinct && order_separates && !policy_equality(a: p, b: q)
+}
+
+// LAW + DISCRIMINATION — term_valuation_eq is defined as term_valuation_compare == Equal, so the law
+// "compare == Equal iff eq" holds by construction. What this witness actually pins is that the ORDER
+// discriminates every axis: it returns Equal only for genuinely equal valuations, and non-Equal for a
+// differing scale, a differing goal, a differing DeclField variant, and the display-key collision. The
+// derived term_valuation_eq is asserted true/false on each pair to make that concrete.
+// RED: if the order failed to discriminate an axis (e.g. ignored the goal, or compared refs by display
+// key so the collision collapsed), the corresponding term_valuation_eq assertion would flip -> red.
+test fn term_valuation_order_agrees_with_equality() -> Bool {
+  let m = "test.claim.realization_selection_witness"
+  let a_hi = tv_with(term: id_a, scale: 10, goal: HigherIsBetter)
+  let a_hi_again = tv_with(term: id_a, scale: 10, goal: HigherIsBetter)
+  let a_scale = tv_with(term: id_a, scale: 20, goal: HigherIsBetter)
+  let a_goal = tv_with(term: id_a, scale: 10, goal: LowerIsBetter)
+  let whole = tv(decl_ref(module_path: m, decl_name: "id_a"))
+  let named = tv(decl_field_ref(module_path: m, decl_name: "id_a", field_name: "x"))
+  let ref1 = tv(decl_ref(module_path: m, decl_name: "n::x"))
+  let ref2 = tv(decl_field_ref(module_path: m, decl_name: "n", field_name: "x"))
+  let law = fn(x, y) {
+    is_eq_ordering(o: term_valuation_compare(a: x, b: y)) == term_valuation_eq(a: x, b: y)
+  }
+  law(a_hi, a_hi_again) && law(a_hi, a_scale) && law(a_hi, a_goal)
+    && law(whole, named) && law(ref1, ref2)
+    && term_valuation_eq(a: a_hi, b: a_hi_again)
+    && !term_valuation_eq(a: a_hi, b: a_scale)
+    && !term_valuation_eq(a: a_hi, b: a_goal)
+    && !term_valuation_eq(a: whole, b: named)
+    && !term_valuation_eq(a: ref1, b: ref2)
 }

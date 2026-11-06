@@ -1,5 +1,6 @@
 module test.claim.runner.browser_ready_label_real_path_witness
 
+import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.shell
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
@@ -24,8 +25,8 @@ import extdeps.tools.gnu_coreutils { cat_command }
 // remove-then-proceed folds, the bytes read back from the scratch drop-in. The reload leg is the
 // typed posture skip -- daemon-reload requires root and is skipped, not fabricated. The production
 // fleet route itself stays the declared STALL (gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall):
-// no CI lane, and no bootstrap, executes the converge over FleetSsh until the shared host-effect
-// transport admits that arm.
+// the shared host-effect transport admits FleetSsh, but no CI lane and no bootstrap has executed the
+// converge over it.
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_ready_label.XXXXXX").path
 }
@@ -65,8 +66,8 @@ fn scratch_removed(scratch: String) -> Bool {
 test fn grant_executes_the_dropin_write_for_real_on_a_scratch_root() -> Bool {
   let scratch = fresh_root()
   let target = scratch_target(scratch: scratch)
-  let first = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
-  let second = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let first = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target, receipt: ReceiptAbsent)
+  let second = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target, receipt: ReceiptAbsent)
   let bytes = read_dropin_bytes(dropin: target.dropin)
   let removed = scratch_removed(scratch: scratch)
   removed
@@ -81,8 +82,8 @@ test fn grant_executes_the_dropin_write_for_real_on_a_scratch_root() -> Bool {
 test fn revoke_executes_the_dropin_removal_for_real_on_a_scratch_root() -> Bool {
   let scratch = fresh_root()
   let target = scratch_target(scratch: scratch)
-  let granted = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
-  let revoked = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: false, transport: LocalShell, target: target)
+  let granted = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target, receipt: ReceiptAbsent)
+  let revoked = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: false, transport: LocalShell, target: target, receipt: ReceiptAbsent)
   let bytes = read_dropin_bytes(dropin: target.dropin)
   let removed = scratch_removed(scratch: scratch)
   removed

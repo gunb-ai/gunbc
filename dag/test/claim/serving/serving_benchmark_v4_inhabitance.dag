@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.types { Bool, String, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.nat { Nat }
-import std.measure { token_count, millisecond, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count, millicore_count, byte_size_count, hardware_thread_count_value }
+import std.measure { token_count, millisecond, second, basis_point, milli_tokens_per_second_count, events_per_hour_count, microsecond_count, millicore_count, byte_size_count, hardware_thread_count_value }
 import extdeps.filesystem.filesystem_io
 import extdeps.gpu_bench.request_v4 { gpu_bench_parse_v4_jsonl, GpuBenchRequestV4Parsed, GpuBenchRequestV4StreamUnreadable, GpuBenchRequestV4 }
 import gunbc.serving.serving_benchmark {
@@ -61,6 +61,8 @@ data smoke_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
   },
   quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
   telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+  gpu_sample_interval: millisecond(count: 500),
+  pcie_sample_interval: second(count: 1),
 }
 
 fn observation() -> ServingBenchmarkRunObservation {

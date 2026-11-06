@@ -1,0 +1,1609 @@
+module test.claim.fleet_naming_witness
+
+// WHAT IS CLAIMED, IN ONE LINE. The five rows the P2 lottery added to the production roster are what the
+// allocator itself yields (not hand-picked), the naming policy issues exactly the labels the roster
+// records, and the naming/endpoint model refuses what it is supposed to refuse. The claim exists because
+// the alternative is a comment in gunbc/hostname_allocation.dag asserting that the recorded names are
+// drawn -- an assertion nothing checks.
+//
+// WHY THE RE-DRAW IS AGAINST THE PRODUCTION ROSTER AND NOT A FIXTURE. A fixture proves the allocator works;
+// only the production roster proves THESE rows came from it. The prior list for a row is every row the
+// roster holds besides that one, because that is the state the draw was made against -- re-drawing against
+// a different prior set would be checking a different lottery.
+//
+// THE CLAIM RUNS AS A CLAIM: `gunbc run --claim-run --entry dag/test/claim/fleet_naming_witness.dag`,
+// where every `test fn` here executes over one load of one closure.
+
+import std.types { Bool, Int, List, NonEmptyStr, Port, String }
+import std.algebra { list_append, list_map, string_contains }
+import std.measure { second }
+import std.error_primitives { Err, Ok, Result }
+import std.optional { Absent, Optional, Present }
+import gunbc.hostname_allocation {
+  DrawnHumanName,
+  FirstLast,
+  FirstMiddleLast,
+  FirstOnly,
+  HostnameAllocation,
+  HumanName,
+  HumanNameDrawExhausted,
+  HumanNameDrawRefused,
+  HumanNameDrawn,
+  LegacyHostname,
+  allocated_canonical_hostname,
+  allocation_selector_forms,
+  draw_human_name,
+  gunbc_fleet_hostname_allocations,
+}
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import gunbc.fleet.fleet_host_identity {
+  operator_hosts,
+  operator_host_mtjade1,
+  operator_host_srv1,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+  operator_host_srv13,
+  operator_host_srv9,
+}
+import gunbc.fleet.fleet_enrollment {
+  CiRunnerParticipation,
+  InferenceServingParticipation,
+  participation_list_contains,
+}
+import gunbc.fleet.fleet_overlay {
+  AttachmentSelection,
+  Named,
+  ProviderHasNotAnswered,
+  overlay_frontier_rows_do_not_dissolve_on_their_own_subject,
+  BindingForAnotherSubject,
+  BindingIncarnationHasEnded,
+  BindingIncarnationIsAnotherMachine,
+  BindingNeedsALabel,
+  FleetOverlayAttachment,
+  ManagedOverlay,
+  OverlayMemberBinding,
+  OverlayRealization,
+  OverlayEvidenceConfusion,
+  OverlayRefusal,
+  RealizationUnnamed,
+  RoleNotEnrolled,
+  SiteLan,
+  AttachmentStoodInForRoute,
+  RouteStoodInForGrant,
+  HostKeyStoodInForPrincipal,
+  managed_overlay_attachments,
+  declared_roles,
+  fleet_overlay_attachment,
+  fleet_overlay_frontier_is_well_formed,
+  fleet_overlay_provider_identity_frontier,
+  overlay_member_binding,
+  overlay_member_evidence_is_citable,
+}
+import gunbc.fleet.owned_host_incarnation {
+  Decommissioned,
+  FleetIntakeAdmitted,
+  IncarnationOrigin,
+  IncarnationOwnership,
+  IncarnationRefusal,
+  IntakeNeedsEstablishedBoundary,
+  LabelNotThisSlot,
+  Ongoing,
+  OwnedHostIncarnation,
+  OwnedHostIncarnationId,
+  PreexistingFleetMember,
+  RebuildInPlace,
+  FleetOwnedAsset,
+  owned_host_incarnation_eq,
+  owned_incarnation_boundary_agrees,
+  incarnation_boundary_arm,
+  incarnation_receipt_key,
+  incarnation_is_ongoing,
+  incarnation_realization,
+  member_label_belongs_to,
+  own_host_incarnation,
+}
+import gunbc.fleet.fleet_naming {
+  FleetNamingRefusal,
+  LabelFormUnusable,
+  LegacyRowNeedsMigration,
+  MemberSourceUnallocated,
+  ProviderEndpoint,
+  fleet_member_label,
+  fleet_member_selector_form_is_accepted,
+  fleet_member_selector_forms,
+  fleet_slot_is_allocated,
+  linux_hostname,
+  provider_endpoint,
+  provider_endpoint_text,
+}
+import gunbc.fleet.fleet_endpoint {
+  AdministerMember,
+  ApprovalBroker,
+  DeploymentRiskApi,
+  FabricStorageShare,
+  LiveDeployHealth,
+  WorkspaceGateway,
+  UrlFormAbsent,
+  fleet_endpoint_transport_frontier,
+  service_role_publishes_url,
+  transport_gap_frontier_names_the_identity_it_gates,
+  deployment_risk_seam_does_not_dissolve_on_its_own_subject,
+  fleet_endpoint_authority_frontier,
+  fleet_endpoint_deployment_risk_frontier,
+  CiConvergence,
+  DirectLane,
+  ExternalConsumer,
+  Fabric,
+  FleetDns,
+  FleetServiceRole,
+  ForSession,
+  ForWindow,
+  GrantToAnother,
+  JustificationMissing,
+  LiteralAddress,
+  NtfyNotifier,
+  ObserveStatus,
+  OutOfBand,
+  ProviderNameserver,
+  ReachTarget,
+  ServiceEndpointAuthority,
+  ServiceEndpointIdentity,
+  ServiceEndpointRefusal,
+  ServiceOnMember,
+  WindowNotPositive,
+  authority_gap_frontier_names_this_gate,
+  deployment_risk_seam_names_the_binding_table,
+  fleet_endpoint_authority_frontier_is_well_formed,
+  fleet_endpoint_frontier_is_well_formed,
+  reach_demand,
+  reach_duration_is_meaningful,
+  reach_intent_is_administrative,
+  service_endpoint_authority_is_supported,
+  service_endpoint_address,
+  service_endpoint_identity,
+  service_endpoint_identity_eq,
+}
+import gunbc.fleet.fleet_naming_policy {
+  CanonicalOnly,
+  ShortenedFormsPermitted,
+  legacy_labels_may_stay,
+  select_fleet_naming_policy,
+  selector_form_is_accepted,
+}
+import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_uri_host }
+import extdeps.dns.domain_name { host_name_eq }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { BoundDissolution, UnboundDissolution, dissolution_trigger_ref }
+import std.roster_frontier { DeclSubject, FrontierRow, PathSubject }
+import v2.std.decl_index { DeclFact, decl_facts_at }
+import v2.std.decl_ref_resolution_host {
+  declaration_ref_resolution_arm_key,
+  declaration_ref_target_qualified_name,
+  resolve_declaration_ref_live_over,
+}
+
+// THE FIVE SLOTS THE PLAN NAMES, listed here rather than filtered out of the roster so a witness that
+// silently stops covering a slot goes red instead of quietly covering less.
+data p2_drawn_slots: List<HostIdentity> = [
+  operator_host_mtjade1,
+  operator_host_srv9,
+  operator_host_srv10,
+  operator_host_srv11,
+  operator_host_srv12,
+]
+
+// THE CENTRAL CLAIM: each of the five rows is exactly what the allocator yields for its recorded ticket
+// against the rows allocated before it. A row whose name was typed by hand fails here, and so does a
+// ticket chosen after the fact to fit a name somebody wanted.
+test fn witness_every_p2_draw_reproduces_from_its_recorded_ticket() -> Bool {
+  p2_drawn_slots.all(slot => match row_for(slot: slot) {
+    Absent => false
+    Present { value: row } => match row.name {
+      LegacyHostname { label: _ } => false
+      DrawnHumanName { name: recorded, draw: d } => match draw_human_name(
+        draw: d,
+        existing: prior_rows_excluding(slot: slot),
+      ) {
+        HumanNameDrawn { name: drawn } => same_human_name(a: drawn, b: recorded)
+        HumanNameDrawExhausted { taken_forms: _ } => false
+        HumanNameDrawRefused { reason: _ } => false
+      }
+    }
+  })
+}
+
+// THE DRAWN ROWS ARE DRAWN ROWS. The re-draw above skips a legacy row, so the shape is claimed separately:
+// all five carry a draw, and none of them is a legacy row wearing a draw-shaped costume.
+test fn witness_all_five_p2_rows_carry_a_draw() -> Bool {
+  p2_drawn_slots.all(slot => match row_for(slot: slot) {
+    Absent => false
+    Present { value: row } => match row.name {
+      DrawnHumanName { name: _, draw: _ } => true
+      LegacyHostname { label: _ } => false
+    }
+  })
+}
+
+// THE FIVE CLAIMED ROWS ARE IN THE ROSTER, AND EVERY ROW IS A NAMED HOST ONCE. A row for a slot the fleet
+// never named would let a name enter the fleet outside the plan. The two predicates on
+// the RIGHT are the roster's own, asked of the roster: the allocation reader answers for the five slots
+// the plan claims and for none of the members the plan did not touch, and the selector surface reads its
+// forms from the policy row rather than authoring them -- a selector list nobody can type, or one that a
+// row the fleet never allocated also has, is caught here.
+test fn witness_roster_holds_the_five_claimed_rows_and_each_named_host_once() -> Bool {
+  p2_drawn_slots.all(slot => count_matching(rows: gunbc_fleet_hostname_allocations, slot: slot) == 1)
+    // EVERY ROW IS ONE NAMED HOST, ONCE. An identity join against gunbc.fleet.fleet_host_identity
+    // operator_hosts, the roster's independent membership, rather than a row count copied from the tree:
+    // a row for a slot the fleet never named, or a second row for one slot, reds here, and a new
+    // allocation for a named host needs no edit to this claim.
+    && gunbc_fleet_hostname_allocations.all(row =>
+      operator_hosts.any(host => host == row.fleet_slot)
+        && count_matching(rows: gunbc_fleet_hostname_allocations, slot: row.fleet_slot) == 1)
+    // AND THE REVERSE LEG: every operator host holds exactly one allocation, so a host that
+    // silently loses its row is red too -- the join is a bijection, not an inclusion.
+    && operator_hosts.all(host =>
+      count_matching(rows: gunbc_fleet_hostname_allocations, slot: host) == 1)
+    // EVERY CLAIMED SLOT IS ALLOCATED, and asked of the roster itself rather than of a count.
+    && p2_drawn_slots.all(slot => fleet_slot_is_allocated(slot: slot, roster: gunbc_fleet_hostname_allocations))
+    // THE NEGATIVE ANSWER IS SAYABLE. A census that reports unmanaged members has to be able to ask "is
+    // this slot allocated?" of a roster and hear no, rather than matching on a refusal -- so the same
+    // identity the roster answers for answers AGAINST a roster that holds nothing.
+    && (match row_for(slot: operator_host_183527) {
+      Absent => false
+      Present { value: unmanaged } =>
+        fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: gunbc_fleet_hostname_allocations)
+          && !fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: [])
+    })
+    // THE SELECTOR SURFACE IS READ FROM THE ROW, not authored here: srv9's forms begin with its own slot
+    // and are exactly the forms the allocation module issues for it -- a selector list this module invented
+    // itself, or one whose first entry is not the member's own name, fails here.
+    && (match row_for(slot: operator_host_srv9) {
+      Absent => false
+      Present { value: row } => match fleet_member_selector_forms(allocation: row).first() {
+        Absent => false
+        Present { value: first_form } =>
+          (first_form as String) == (row.fleet_slot as String)
+            && fleet_member_selector_forms(allocation: row).count()
+              == allocation_selector_forms(allocation: row).count()
+      }
+    })
+}
+
+// NO TWO MEMBERS ANSWER TO THE SAME CANONICAL NAME, and no drawn name collides with a legacy spelling. The
+// plan's defect is "one string, three meanings"; this is the cheap half of the answer -- the meanings have
+// to be distinguishable before anything can be said about them.
+test fn witness_canonical_names_are_unique_across_the_roster() -> Bool {
+  gunbc_fleet_hostname_allocations.all(a => count_by_canonical(rows: gunbc_fleet_hostname_allocations, row: a) == 1)
+}
+
+// THE NAMING POLICY ISSUES THE LABELS THE ROSTER RECORDS. A policy that selected a different spelling than
+// the roster stores would leave the fleet with two answers to "what is this machine called", so the policy
+// row and the roster are checked against EACH OTHER rather than each being trusted.
+test fn witness_policy_label_matches_recorded_canonical_name() -> Bool {
+  gunbc_fleet_hostname_allocations.all(a => match fleet_member_label(allocation: a) {
+    Err { value: r } => legacy_row_under_a_staying_policy(allocation: a, refusal: r)
+    Ok { value: l } => (l.label as String) == (allocated_canonical_hostname(allocation: a) as String)
+  })
+}
+
+// THE MACHINE NAME IS THE MEMBER LABEL, because it is an alias rather than a second mint. Claimed
+// separately so the alias cannot quietly grow into a real second brand without a red claim.
+test fn witness_machine_name_is_the_member_label() -> Bool {
+  gunbc_fleet_hostname_allocations.all(a => match fleet_member_label(allocation: a) {
+    Err { value: _ } => true
+    Ok { value: l } => match linux_hostname(allocation: a) {
+      Err { value: _ } => false
+      Ok { value: m } =>
+        (m.label as String) == (l.label as String) && m.source.fleet_slot == l.source.fleet_slot
+    }
+  })
+}
+
+// THE PROVIDER ENDPOINT RUNS THE LABEL WALL FIRST. A row the naming policy refuses yields no endpoint:
+// there is no path around the wall, which is the sentence "no consumer builds a name".
+test fn witness_no_provider_endpoint_without_a_member_label() -> Bool {
+  gunbc_fleet_hostname_allocations.all(a => match fleet_member_label(allocation: a) {
+    Err { value: _ } => match provider_endpoint(allocation: a) {
+      Ok { value: _ } => false
+      Err { value: _ } => true
+    }
+    Ok { value: _ } => match provider_endpoint(allocation: a) {
+      Err { value: _ } => false
+      Ok { value: e } => e.source.fleet_slot == a.fleet_slot
+    }
+  })
+}
+
+// A DRAWN MEMBER'S PROVIDER ADDRESS CARRIES ITS OWN RECORDS: the endpoint text is a non-empty host built
+// from the member the roster holds, so an address cannot be attributed to a slot it was not built from.
+test fn witness_provider_endpoint_carries_the_member_it_was_built_from() -> Bool {
+  p2_drawn_slots.all(slot => match member_endpoint_for(slot: slot) {
+    Ok { value: e } => (provider_endpoint_text(endpoint: e) as String) != "" && e.source.fleet_slot == slot
+    Err { value: _ } => false
+  })
+}
+
+// THE AMBIGUITY RULE: exactly one match is accepted, and zero or many are refused with no implicit winner.
+test fn witness_ambiguous_selector_forms_are_refused() -> Bool {
+  selector_form_is_accepted(permission: ShortenedFormsPermitted, matches: 1)
+    && !selector_form_is_accepted(permission: ShortenedFormsPermitted, matches: 0)
+    && !selector_form_is_accepted(permission: ShortenedFormsPermitted, matches: 2)
+    && !selector_form_is_accepted(permission: CanonicalOnly, matches: 1)
+    && fleet_member_selector_form_is_accepted(matches: 1)
+    && !fleet_member_selector_form_is_accepted(matches: 3)
+}
+
+// A LITERAL ADDRESS CANNOT BE A PUBLISHED SERVICE ENDPOINT. The authority that carries no proof is refused
+// at construction, so a raw string endpoint cannot be laundered into identity -- the gate sits where the
+// string enters.
+test fn witness_literal_address_is_not_a_service_endpoint() -> Bool {
+  !service_endpoint_authority_is_supported(authority: LiteralAddress)
+    && service_endpoint_authority_is_supported(authority: FleetDns)
+    && service_endpoint_authority_is_supported(authority: ProviderNameserver)
+    && match member_endpoint_for(slot: operator_host_srv9) {
+      Err { value: _ } => false
+      Ok { value: m } => match service_endpoint_identity(
+        authority: LiteralAddress,
+        service: NtfyNotifier,
+        member: m,
+        port: ntfy_port(),
+      ) {
+        Ok { value: _ } => false
+        Err { value: _ } => true
+      }
+    }
+}
+
+// TWO ENDPOINTS ADDRESS THE SAME SERVICE ONLY WHEN THE HOST, PORT, SERVICE AND AUTHORITY ALL AGREE. The
+// comparison replaces endpoint-string equality, which says "different" for a trailing dot and "same" for
+// two hosts that merely look alike.
+test fn witness_endpoint_equality_asks_who_answers_as_well_as_where() -> Bool {
+  match member_endpoint_for(slot: operator_host_srv9) {
+    Err { value: _ } => false
+    Ok { value: member } => match member_endpoint_for(slot: operator_host_srv10) {
+      Err { value: _ } => false
+      Ok { value: other_member } => match service_endpoint_identity(
+        authority: ProviderNameserver,
+        service: NtfyNotifier,
+        member: member,
+        port: ntfy_port(),
+      ) {
+        Err { value: _ } => false
+        Ok { value: provider } => match service_endpoint_identity(
+          authority: FleetDns,
+          service: NtfyNotifier,
+          member: member,
+          port: ntfy_port(),
+        ) {
+          Err { value: _ } => false
+          Ok { value: fleet_dns } => match service_endpoint_identity(
+            authority: ProviderNameserver,
+            service: NtfyNotifier,
+            member: member,
+            port: other_port(),
+          ) {
+            Err { value: _ } => false
+            Ok { value: other_port } => match service_endpoint_identity(
+              authority: ProviderNameserver,
+              service: NtfyNotifier,
+              member: other_member,
+              port: ntfy_port(),
+            ) {
+              Err { value: _ } => false
+              Ok { value: another_member } => match service_endpoint_identity(
+                authority: ProviderNameserver,
+                service: NtfyNotifier,
+                member: member,
+                port: ntfy_port(),
+              ) {
+                Err { value: _ } => false
+                Ok { value: again } =>
+                  // THE SAME MINT TWICE IS ONE ENDPOINT, so a reconciliation pass collapses duplicates
+                  // instead of reporting a conflict.
+                  service_endpoint_identity_eq(a: provider, b: again)
+                    // WHO ANSWERS IS PART OF THE IDENTITY. The host text and the port can be identical and
+                    // the two endpoints still be different endpoints: one asks the fleet's own DNS and the
+                    // other asks the provider's nameserver, and an incident that names the wrong one is
+                    // unrecoverable from the record.
+                    && !service_endpoint_identity_eq(a: provider, b: fleet_dns)
+                    && provider.authority != fleet_dns.authority
+                    // THE PORT IS PART OF IT: a second port is a second endpoint, not a variant.
+                    && !service_endpoint_identity_eq(a: provider, b: other_port)
+                    // AND SO IS THE MEMBER. Two services that share a role and a port on different machines
+                    // are not the same service -- the case a string comparison over host text would get
+                    // right only by accident.
+                    && !service_endpoint_identity_eq(a: provider, b: another_member)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// A REACH DEMAND REFUSES AN UNSTATED REASON AND AN EMPTY WINDOW, EACH UNDER ITS OWN NAME. Neither defaults,
+// because either default would silently create standing access (the plan's D8). The claims are discriminating
+// rather than "something failed": the blank-reason call must refuse with JustificationMissing, the zero-window
+// call must refuse with WindowNotPositive, and neither may arrive under the other's name -- one name covering
+// both causes would send a reader to the wrong field (DESIGN sections 3 and 5). The fixture reports Absent
+// when the roster cannot supply a member, and an absent fixture makes the claim false: a precondition that
+// failed is not a pass.
+test fn witness_reach_demand_refuses_an_unstated_reason_and_an_empty_window() -> Bool {
+  match reach_target_fixture() {
+    Absent => false
+    Present { value: target } =>
+      match reach_demand(
+        requester: CiConvergence,
+        target: target,
+        transport: Fabric,
+        intent: ObserveStatus,
+        duration: ForSession,
+        justification: "the converge reads a member's status" as NonEmptyStr,
+      ) {
+        Ok { value: _ } => true
+        Err { value: _ } => false
+      }
+        && match reach_demand(
+          requester: ExternalConsumer,
+          target: target,
+          transport: OutOfBand,
+          intent: ObserveStatus,
+          duration: ForWindow { window: second(count: 0) },
+          justification: "the status census reads a member" as NonEmptyStr,
+        ) {
+          Ok { value: _ } => false
+          // THE CAUSE IS NAMED, not merely "an error": an empty window is not a missing reason.
+          Err { value: WindowNotPositive { requester: r, target: t } } =>
+            r == ExternalConsumer && t == target
+          Err { value: _ } => false
+        }
+        && match reach_demand(
+          requester: CiConvergence,
+          target: target,
+          transport: Fabric,
+          intent: ObserveStatus,
+          duration: ForSession,
+          justification: "   " as NonEmptyStr,
+        ) {
+          Ok { value: _ } => false
+          // Whitespace is a legal NonEmptyStr, so this is the branch the brand cannot serve.
+          Err { value: JustificationMissing { requester: r, target: t, cause: _ } } =>
+            r == CiConvergence && t == target
+          Err { value: _ } => false
+        }
+        && reach_duration_is_meaningful(duration: ForWindow { window: second(count: 1) })
+        && reach_duration_is_meaningful(duration: ForSession)
+        && !reach_duration_is_meaningful(duration: ForWindow { window: second(count: 0) })
+  }
+}
+
+// A DEMAND WITH A REASON AND A REAL WINDOW IS ADMITTED, so the refusals above are discriminating rather
+// than a constructor that refuses everything.
+test fn witness_a_well_formed_reach_demand_is_admitted() -> Bool {
+  match reach_target_fixture() {
+    Absent => false
+    Present { value: target } => match reach_demand(
+      requester: CiConvergence,
+      target: target,
+      transport: DirectLane,
+      intent: ReachService,
+      duration: ForWindow { window: second(count: 900) },
+      justification: "the runner needs one member's status endpoint for one session" as NonEmptyStr,
+    ) {
+      Ok { value: d } =>
+        (d.justification as String) == "the runner needs one member's status endpoint for one session"
+      Err { value: _ } => false
+    }
+  }
+}
+
+// AN ADMINISTRATIVE INTENT IS DISTINGUISHABLE FROM AN OBSERVATIONAL ONE, and stays distinguishable through
+// the conferral arm -- so a policy can require more of "give someone reach" than of "look at status"
+// without naming a provider's mechanism.
+test fn witness_administrative_intents_are_distinguishable() -> Bool {
+  !reach_intent_is_administrative(intent: ObserveStatus)
+    && !reach_intent_is_administrative(intent: ReachService)
+    && reach_intent_is_administrative(intent: AdministerMember)
+    && reach_intent_is_administrative(intent: GrantToAnother { intent: AdministerMember })
+    && !reach_intent_is_administrative(intent: GrantToAnother { intent: ReachService })
+}
+
+// THE SAME DEMAND SHAPE CARRIES EITHER TRANSPORT WITHOUT A PROVIDER'S NAME APPEARING, which is what makes
+// the provider's projection ONE realization rather than the model itself.
+test fn witness_reach_demand_is_provider_neutral() -> Bool {
+  match reach_target_fixture() {
+    Absent => false
+    Present { value: target } =>
+      match reach_demand(
+        requester: CiConvergence,
+        target: target,
+        transport: DirectLane,
+        intent: ReachService,
+        duration: ForSession,
+        justification: "the converge needs the member's status endpoint" as NonEmptyStr,
+      ) {
+        Ok { value: _ } => true
+        Err { value: _ } => false
+      }
+        && match reach_demand(
+          requester: CiConvergence,
+          target: target,
+          transport: Fabric,
+          intent: ReachService,
+          duration: ForSession,
+          justification: "the converge needs the member's status endpoint" as NonEmptyStr,
+        ) {
+          Ok { value: _ } => true
+          Err { value: _ } => false
+        }
+  }
+}
+
+// THE DEPLOYMENT-RISK SEAM IS DECLARED, NOT SIMULATED. What P2 owes the seam is the truth about it: no
+// gunbc.deployment_risk row carries an endpoint today (its declarations are DeploymentId, DeploymentRiskClass,
+// ProdRoleSelection and the binding table -- no risk row names a service), so a function that "projected" an
+// endpoint into one would have been an identity function wearing a projection's name. The claim is that the
+// seam is recorded as a frontier, that the frontier's shape is checked, and that this module does not fork a
+// deployment-risk type in the meantime.
+test fn witness_deployment_risk_seam_is_a_declared_frontier() -> Bool {
+  fleet_endpoint_frontier_is_well_formed()
+    && deployment_risk_seam_names_the_binding_table()
+}
+
+// THE AUTHORITY ARGUMENT IS AN ASSERTION, AND THE CORPUS SAYS SO WHERE IT CAN BE FOUND. The gate today
+// refuses only the authority that carries no proof by construction (LiteralAddress); FleetDns and
+// ProviderNameserver are accepted on the caller's word because no resolution or zone-ownership observation
+// exists in dag/ to consult. That is a gap, so it is declared as one and checked for shape: a frontier row
+// on service_endpoint_identity, with a dissolution naming the evidence that would close it. Minting an
+// "authority proof" type now would put a wall where nothing stands (DESIGN 4b).
+test fn witness_endpoint_authority_gap_is_a_declared_frontier() -> Bool {
+  fleet_endpoint_authority_frontier_is_well_formed()
+    && authority_gap_frontier_names_this_gate()
+    // The one cause the gate CAN decide still decides: an authority with no proof is refused outright.
+    && !service_endpoint_authority_is_supported(authority: LiteralAddress)
+    && service_endpoint_authority_is_supported(authority: FleetDns)
+}
+
+// THE OVERLAY RECORDS A DESIRED LABEL RATHER THAN A ROUTE. A binding is minted only when the member has
+// an attachable overlay and a policy-issued label; it carries no route, its desired label IS the policy's
+// label, and its roles are what the fleet enrolled for -- read from the enrollment record rather than
+// asserted. The companion claims below take the refusals: another member's slot, an unenrolled role, an
+// unnamed realization, another machine's life, an ended life.
+test fn witness_overlay_binding_records_a_desired_label_not_a_route() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: row } => match fleet_member_label(allocation: row) {
+      Err { value: _ } => false
+      Ok { value: label } => match binding_for_srv1() {
+        Err { value: _ } => false
+        Ok { value: binding } =>
+          (binding.desired_label.label as String) == (label.label as String)
+            && binding.subject == row.fleet_slot
+            && binding.attachment.subject == row.fleet_slot
+            && binding.desired_roles.count() == declared_roles(subject: row.fleet_slot).count()
+            && participation_list_contains(ps: binding.desired_roles, wanted: CiRunnerParticipation)
+            && overlay_member_evidence_is_citable(binding: binding)
+      }
+    }
+  }
+}
+
+// A BINDING FOR ANOTHER MEMBER'S SLOT REFUSES. An attachment about srv1 handed srv13's allocation is the
+// plan's defect shape at the overlay layer -- one member's overlay fact recorded as evidence about another
+// -- and it refuses at its mint rather than being corrected downstream.
+test fn witness_binding_for_another_member_refuses() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
+      Absent => false
+      Present { value: other } => match attachment_of(subject: srv1.fleet_slot) {
+        Absent => false
+        Present { value: attachment } => match overlay_member_binding(
+          attachment: attachment,
+          allocation: other,
+          incarnation: Absent,
+          desired_roles: declared_roles(subject: srv1.fleet_slot),
+        ) {
+          Ok { value: _ } => false
+          Err { value: r } => match r {
+            BindingForAnotherSubject { subject: s, kind: _ } => s == srv1.fleet_slot
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// A ROLE THE MEMBER NEVER ENROLLED FOR REFUSES. A census cannot grant a part, so a binding that asks for
+// capacity nobody enrolled never becomes an enrolled fact any population can read.
+test fn witness_undeclared_role_refuses_a_binding() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
+      Absent => false
+      Present { value: attachment } => match overlay_member_binding(
+        attachment: attachment,
+        allocation: srv1,
+        incarnation: Absent,
+        desired_roles: [InferenceServingParticipation],
+      ) {
+        Ok { value: _ } => false
+        Err { value: r } => match r {
+          RoleNotEnrolled { subject: s, role: _ } => s == srv1.fleet_slot
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+// THE FRONTIER IS NOT DECORATION. Its rows are checked by the frontier module's own well-formedness
+// reader, so a row that names nothing or dissolves on nothing turns this claim red.
+test fn witness_overlay_frontier_rows_are_well_formed() -> Bool {
+  fleet_overlay_frontier_is_well_formed()
+    && fleet_overlay_provider_identity_frontier.count() == 3
+}
+
+// AN ATTACHMENT WITH NO REALIZATION IS NOTHING TO HAVE JOINED TO, so it is refused where it is minted
+// rather than discovered when a census has already trusted it.
+test fn witness_unnamed_attachment_refuses() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match fleet_overlay_attachment(
+      subject: srv1.fleet_slot,
+      // A REALIZATION THAT NAMES NOTHING. Not "": a branded NonEmptyStr cannot be minted empty, so the
+      // shape a caller can really hand in is a name made of nothing but space.
+      realization: Named { realization: ("   " as OverlayRealization) },
+      kind: ManagedOverlay,
+      selection: srv1_selection(),
+    ) {
+      Ok { value: _ } => false
+      Err { value: r } => match r {
+        RealizationUnnamed { subject: s, kind: _ } => s == srv1.fleet_slot
+        _ => false
+      }
+    }
+  }
+}
+
+// THE INCARNATION EXTENDS THE BOUNDARY RATHER THAN MINTING BESIDE IT: an incarnation is readable through
+// this module's mint, its label is the label allocated to ITS OWN slot, and its prior life is the archive
+// the boundary module minted (same digest, asked of that module). Together these are the sentence
+// "extending prior_life_boundary rather than minting beside it" made checkable: there is no second archive
+// and no second label, and no way to hold an incarnation except through the mint that asks for both.
+test fn witness_incarnation_extends_the_boundary_it_is_handed() -> Bool {
+  match incarnation_of_srv1() {
+    Err { value: _ } => false
+    Ok { value: i } => match i.boundary {
+      // A PRE-EXISTING MEMBER INHERITS A BOUNDARY IT NEVER ESTABLISHED, so it carries none -- and it is
+      // still an incarnation, which is the asymmetry the boundary module deliberately leaves open.
+      Present { value: _ } => false
+      Absent =>
+        i.slot == (operator_host_srv1 as HostIdentity)
+          // THE LIFE THIS BINDING MAY CITE IS A LIFE THAT HAS NOT ENDED.
+          && incarnation_is_ongoing(incarnation: i)
+          // THE REALIZATION IS CARRIED IN FROM THE BOUNDARY, as text, and this module does not compare it
+          // to a provider's name -- the most a provider-neutral model may say.
+          && (incarnation_realization(incarnation: i) as String) == "fleet-record"
+          && (match row_for(slot: operator_host_srv1) {
+            Absent => false
+            Present { value: row } =>
+              // THE NAME IS THE POLICY'S, not the caller's: asked of the naming module directly, so a
+              // second spelling of the same member cannot slip in through the incarnation.
+              match fleet_member_label(allocation: row) {
+                Err { value: _ } => false
+                Ok { value: issued } =>
+                  (i.label.label as String) == (issued.label as String)
+                    && member_label_belongs_to(allocation: row, label: i.label)
+                    // THE ALLOCATION IT STORES IS THE ALLOCATION IT WAS GIVEN -- same row, by identity.
+                    && row.fleet_slot == i.allocation.fleet_slot
+              }
+          })
+    }
+  }
+}
+
+// INTAKE WITHOUT ITS RECEIPT REFUSES, with the reason that says why. This is the plan's rule that the
+// fleet refuses rather than proceeding "with a warning": a warning is how a machine whose prior life was
+// never archived joins the fleet and is later treated as continuous with itself.
+test fn witness_intake_without_a_boundary_refuses() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: row } => match fleet_member_label(allocation: row) {
+      Err { value: _ } => false
+      Ok { value: label } => match own_host_incarnation(
+        id: "p2-witness-intake-no-receipt" as OwnedHostIncarnationId,
+        slot: operator_host_srv1,
+        ownership: fleet_owned_asset(),
+        origin: FleetIntakeAdmitted { receipt: absent_receipt() },
+        allocation: row,
+        label: label,
+        termination: Ongoing,
+      ) {
+        Ok { value: _ } => false
+        Err { value: r } => match r {
+          IntakeNeedsEstablishedBoundary { slot: s } => s == (operator_host_srv1 as HostIdentity)
+          _ => false
+        }
+      }
+    }
+  }
+}
+
+// A LABEL BORROWED FROM ANOTHER MEMBER REFUSES. The boundary's subject and the name's slot are checked
+// against each other, so the machine that returns cannot be handed the identity of the machine that left
+// by passing the label its operator prefers.
+test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
+      Absent => false
+      Present { value: other } => match fleet_member_label(allocation: other) {
+        Err { value: _ } => false
+        Ok { value: foreign_label } => match own_host_incarnation(
+          id: "p2-witness-borrowed-label" as OwnedHostIncarnationId,
+          slot: operator_host_srv1,
+          ownership: fleet_owned_asset(),
+          origin: preexisting_member(),
+          allocation: srv1,
+          label: foreign_label,
+          termination: Ongoing,
+        ) {
+          Ok { value: _ } => false
+          Err { value: r } => match r {
+            LabelNotThisSlot { slot: s, cause: _ } => s == (operator_host_srv1 as HostIdentity)
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// A BINDING CANNOT CITE ANOTHER MACHINE'S LIFE. The attachment says srv1 and the incarnation says srv13;
+// the model refuses at the binding's mint instead of letting the census record srv13's overlay facts as
+// evidence about srv1 -- the plan's defect, typed at the seam where it would actually be committed.
+test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
+      Absent => false
+      Present { value: attachment } => match incarnation_of(slot_text: operator_host_srv13) {
+        Err { value: _ } => false
+        Ok { value: other_life } => match overlay_member_binding(
+          attachment: attachment,
+          allocation: srv1,
+          incarnation: Present { value: other_life },
+          desired_roles: declared_roles(subject: srv1.fleet_slot),
+        ) {
+          Ok { value: _ } => false
+          Err { value: r } => match r {
+            BindingIncarnationIsAnotherMachine { subject: s, other_slot: o, incarnation: _ } =>
+              s == srv1.fleet_slot && o == (operator_host_srv13 as HostIdentity)
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// AN ENDED LIFE IS NOT EVIDENCE ABOUT THE MEMBER ATTACHED NOW. A decommissioned incarnation keeps its
+// slot and its label -- that is the whole hazard -- so only the termination the boundary gave it
+// separates it from a live one, and a binding that cites it is refused.
+test fn witness_binding_cannot_cite_an_ended_life() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
+      Absent => false
+      Present { value: attachment } => match incarnation_of_ended() {
+        Err { value: _ } => false
+        Ok { value: ended } => match overlay_member_binding(
+          attachment: attachment,
+          allocation: srv1,
+          incarnation: Present { value: ended },
+          desired_roles: declared_roles(subject: srv1.fleet_slot),
+        ) {
+          Ok { value: _ } => false
+          Err { value: r } => match r {
+            BindingIncarnationHasEnded { subject: s, incarnation: _ } => s == srv1.fleet_slot
+            _ => false
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// fixtures and helpers. No helper makes a claim: the claims are the `test fn`s above, and a helper that
+// returned true would only ever make one of them wrong.
+// ---------------------------------------------------------------------------------------------
+
+// ONE ATTACHMENT FOR srv1, minted through the module's only mint. Its realization is the P1 census's
+// managed tail, named as text at this phase: the provider-side halves of a real tailscale realization
+// (device id, node id) are NOT declared here -- see fleet_overlay_provider_identity_frontier, and the
+// P1 sibling's extdeps.tailscale/devices.dag, which is their one home.
+fn attachment_of(subject: HostIdentity) -> Optional<FleetOverlayAttachment> {
+  match fleet_overlay_attachment(
+    subject: subject,
+    realization: Named { realization: ("tailnet-fleet-managed" as OverlayRealization) },
+    kind: ManagedOverlay,
+    selection: srv1_selection(),
+  ) {
+    Ok { value: a } => Present { value: a }
+    Err { value: _ } => Absent
+  }
+}
+
+fn srv1_selection() -> AttachmentSelection {
+  AttachmentSelection {
+    selected_at: 1765000000000,
+    policy_version: "p2" as NonEmptyStr,
+  }
+}
+
+fn binding_for_srv1() -> Result<OverlayMemberBinding, OverlayRefusal> {
+  match row_for(slot: operator_host_srv1) {
+    Absent => Err {
+      value: BindingNeedsALabel {
+        subject: operator_host_srv1,
+        cause: "the roster holds no row for the fixture slot" as NonEmptyStr,
+      },
+    }
+    Present { value: row } => match attachment_of(subject: row.fleet_slot) {
+      Absent => Err {
+        value: BindingNeedsALabel {
+          subject: row.fleet_slot,
+          cause: "no attachment could be minted for the fixture slot" as NonEmptyStr,
+        },
+      }
+      Present { value: attachment } => match incarnation_of(slot_text: operator_host_srv1) {
+        Err { value: _ } => Err {
+          value: BindingNeedsALabel {
+            subject: row.fleet_slot,
+            cause: "no incarnation could be minted for the fixture slot" as NonEmptyStr,
+          },
+        }
+        Ok { value: life } => overlay_member_binding(
+          attachment: attachment,
+          allocation: row,
+          incarnation: Present { value: life },
+          // WHAT THE MEMBER DECLARED, read from the enrollment record rather than typed at this call site.
+          desired_roles: declared_roles(subject: row.fleet_slot),
+        )
+      }
+    }
+  }
+}
+
+// AN OWNERSHIP, MINTED THROUGH THE ONLY ROUTE: a fleet-owned asset with an asset tag. The tag is real
+// enough to be a fact about a machine the fleet holds; it is not provider output, and the model does not
+// pretend a rented box is a fleet asset (which would claim a history nobody read).
+fn fleet_owned_asset() -> IncarnationOwnership {
+  FleetOwnedAsset { asset_tag: "fleet-srv1" as NonEmptyStr }
+}
+
+fn preexisting_member() -> IncarnationOrigin {
+  PreexistingFleetMember
+}
+
+// THE RECEIPT SHAPES, both declared rather than forged: the intake case has none (which is what makes it
+// the refusal case), and srv1's own lives are pre-existing members because P2 is model only -- no
+// producer feeds a live intake receipt into a fleet incarnation yet, and the frontier says so rather
+// than the code pretending the seam is wired.
+fn absent_receipt() -> Optional<PriorLifeBoundaryEstablished> {
+  Absent
+}
+
+// AN INCARNATION FOR A NAMED SLOT, minted through own_host_incarnation. Ongoing, because a binding's
+// subject must be a life that has not ended.
+fn incarnation_of(slot_text: HostIdentity) -> Result<OwnedHostIncarnation, IncarnationRefusal> {
+  match row_for(slot: slot_text) {
+    Absent => Err { value: no_fixture_row() }
+    Present { value: row } => match fleet_member_label(allocation: row) {
+      Err { value: _ } => Err { value: no_fixture_label(slot: row.fleet_slot) }
+      Ok { value: label } => own_host_incarnation(
+        id: incarnation_id_of(slot_text: slot_text),
+        slot: row.fleet_slot,
+        ownership: fleet_owned_asset(),
+        origin: preexisting_member(),
+        allocation: row,
+        label: label,
+        termination: Ongoing,
+      )
+    }
+  }
+}
+
+fn incarnation_of_srv1() -> Result<OwnedHostIncarnation, IncarnationRefusal> {
+  incarnation_of(slot_text: operator_host_srv1)
+}
+
+// ONE ID PER SLOT, derived from the slot's own text rather than authored per call site: two incarnations
+// of the same machine are distinguished by their id, so a fixture that reused one id across slots would
+// be a weaker shape than the model allows.
+fn incarnation_id_of(slot_text: HostIdentity) -> OwnedHostIncarnationId {
+  ("p2-witness-" + (slot_text as String)) as OwnedHostIncarnationId
+}
+
+// THE SAME SLOT, A LIFE THAT ENDED. Same slot, same label, different termination -- the pair the corpus
+// confuses, which is why the refusal has to exist.
+fn incarnation_of_ended() -> Result<OwnedHostIncarnation, IncarnationRefusal> {
+  match row_for(slot: operator_host_srv1) {
+    Absent => Err { value: no_fixture_row() }
+    Present { value: row } => match fleet_member_label(allocation: row) {
+      Err { value: _ } => Err { value: no_fixture_label(slot: row.fleet_slot) }
+      Ok { value: label } => own_host_incarnation(
+        id: "p2-witness-srv1-ended-life" as OwnedHostIncarnationId,
+        slot: row.fleet_slot,
+        ownership: fleet_owned_asset(),
+        origin: preexisting_member(),
+        allocation: row,
+        label: label,
+        termination: Decommissioned { at: 1765000000000, archive: fixture_archive_digest() },
+      )
+    }
+  }
+}
+
+// AN ARCHIVE DIGEST, spelled the way the corpus spells one: a lowercase 64-digit hex sha256 digest
+// inside the ContentHash coproduct. The bytes behind it are the witness's own; what matters to the
+// claim is that a termination CARRIES one -- a decommission that archives nothing is a deletion.
+// FIXTURE FAILURE IS REPORTED AS A REFUSAL, never as an Ok: if the roster or the policy does not yield
+// what a fixture needs, the claim that consumes it goes red rather than minting something from nothing.
+fn no_fixture_row() -> IncarnationRefusal {
+  IntakeNeedsEstablishedBoundary {
+    slot: operator_host_srv1,
+    cause: "the roster holds no row for the fixture slot" as NonEmptyStr,
+  }
+}
+
+fn no_fixture_label(slot: HostIdentity) -> IncarnationRefusal {
+  LabelNotThisSlot {
+    slot: slot,
+    cause: "the naming policy issues no label for the fixture slot" as NonEmptyStr,
+  }
+}
+
+fn fixture_archive_digest() -> ContentHash {
+  Sha256Hash(Sha256Digest { hex: "9b74c9897bac770ffc029102a200c5de38f3d8ed5e5e84efef6a7b679e37ad0f" })
+}
+
+fn prior_rows_excluding(slot: HostIdentity) -> List<HostnameAllocation> {
+  filter(gunbc_fleet_hostname_allocations, a => a.fleet_slot != slot)
+}
+
+// THE URL READER AND THE SOCKET READER AGREE, asked as one question so the two cannot drift into two
+// addresses for one service. The URL is rendered from the socket's own host by the network module, so a
+// URL that addressed a different host than the socket, or dropped the port, fails here rather than in a
+// browser -- and neither spelling is authored by this claim, which is the point of testing the pair.
+fn url_agrees_with_the_socket(
+  endpoint: ServiceEndpointIdentity,
+  host: NetworkHost,
+  port: Port,
+) -> Bool {
+  match service_endpoint_https_url(endpoint: endpoint) {
+    // THE URL READER REFUSED A ROLE THAT PUBLISHES NO URL -- this fixture's role does publish one, so a
+    // refusal here is a defect in the reader, not an answer.
+    Err { value: _ } => false
+    Ok { value: text } => {
+      let expected = render_uri_host(host: host) as String
+      string_contains(s: text, pattern: "https://")
+        && string_contains(s: text, pattern: expected)
+        && string_contains(s: text, pattern: to_string(port as Int))
+    }
+  }
+}
+
+fn row_for(slot: HostIdentity) -> Optional<HostnameAllocation> {
+  match filter(gunbc_fleet_hostname_allocations, a => a.fleet_slot == slot).first() {
+    Absent => Absent
+    Present { value: row } => Present { value: row }
+  }
+}
+
+fn count_matching(rows: List<HostnameAllocation>, slot: HostIdentity) -> Int {
+  filter(rows, a => a.fleet_slot == slot).count()
+}
+
+fn count_by_canonical(rows: List<HostnameAllocation>, row: HostnameAllocation) -> Int {
+  let want = allocated_canonical_hostname(allocation: row) as String
+  filter(rows, a => (allocated_canonical_hostname(allocation: a) as String) == want).count()
+}
+
+fn same_human_name(a: HumanName, b: HumanName) -> Bool {
+  (human_name_text(name: a) as String) == (human_name_text(name: b) as String)
+}
+
+fn human_name_text(name: HumanName) -> String {
+  match name {
+    FirstOnly { first: f } => f as String
+    FirstLast { first: f, last: l } => join([f as String, "-", l as String], "")
+    FirstMiddleLast { first: f, middle: m, last: l } =>
+      join([f as String, "-", m as String, "-", l as String], "")
+  }
+}
+
+// A legacy row with no label is the POLICY's decision only while the policy says legacy rows stay; under
+// a policy that would require a drawn name the same refusal is a defect. The claim distinguishes the two
+// rather than tolerating both.
+fn legacy_row_under_a_staying_policy(allocation: HostnameAllocation, refusal: FleetNamingRefusal) -> Bool {
+  match allocation.name {
+    LegacyHostname { label: _ } => match refusal {
+      LegacyRowNeedsMigration { slot: _, spelling: _ } => legacy_labels_may_stay(policy: select_fleet_naming_policy())
+      MemberSourceUnallocated { slot: _, cause: _ } => false
+      LabelFormUnusable { slot: _, spelling: _, cause: _ } => false
+    }
+    DrawnHumanName { name: _, draw: _ } => false
+  }
+}
+
+fn member_endpoint_for(
+  slot: HostIdentity,
+) -> Result<ProviderEndpoint, FleetNamingRefusal> {
+  match row_for(slot: slot) {
+    Absent => Err {
+      value: MemberSourceUnallocated {
+        slot: slot,
+        cause: "the roster holds no row for this slot" as NonEmptyStr,
+      }
+    }
+    Present { value: row } => provider_endpoint(allocation: row)
+  }
+}
+
+// The port ntfy is published on. A literal lives in a witness because a fixture may be concrete where the
+// model is not; the Port brand is what makes an out-of-range value a compile refusal rather than a runtime
+// surprise.
+fn ntfy_port() -> Port {
+  // Port is Int where range(min: 1, max: 65535); a literal is minted directly.
+  8443
+}
+
+// A SECOND PORT FOR THE SAME SERVICE, so a claim can ask whether the port is part of the identity rather
+// than asserting that it is.
+fn other_port() -> Port {
+  8444
+}
+
+fn service_endpoint_fixture(
+  authority: ServiceEndpointAuthority,
+) -> Result<ServiceEndpointIdentity, ServiceEndpointRefusal> {
+  match member_endpoint_for(slot: operator_host_srv9) {
+    Err { value: _ } => Err {
+      value: HostUnparsable { service: NtfyNotifier, raw: "no row for the fixture slot" as NonEmptyStr },
+    }
+    Ok { value: m } => service_endpoint_identity(
+      authority: authority,
+      service: NtfyNotifier,
+      member: m,
+      port: ntfy_port(),
+    )
+  }
+}
+
+// A fixture that says when it has nothing, rather than fabricating an endpoint: an absent fixture makes
+// the claims that need one report false, which is the honest reading of "the precondition failed".
+fn reach_target_fixture() -> Optional<ReachTarget> {
+  match service_endpoint_fixture(authority: ProviderNameserver) {
+    Ok { value: e } => Present { value: ServiceOnMember { endpoint: e } }
+    Err { value: _ } => Absent
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// THE SEAMS A READER OF THE MODEL MUST NOT BE ABLE TO FUDGE.
+//
+// Each claim below asks the model's own reader the same question an OWNING module asks, so a local helper
+// is never graded against itself. These are the P2 declarations whose only consumer at this phase is this
+// claim; they are exercised here so a declaration cannot become a habit nobody checks -- the socket
+// reader (the form P5 hands a transport), the realization filter (a census selects managed attachments
+// through it), incarnation equality (P5 reconciles two views of one machine through it), and the two
+// receipt readers (the machine-intake seam itself).
+// ════════════════════════════════════════════════════════════════════════════
+
+// AN ENDPOINT'S SOCKET IS ITS MEMBER'S ADDRESS AND ITS OWN PORT. The host is read through the network
+// module's renderer and compared to the identity's host by the DNS module's own equality -- not by string
+// comparison, which is the thing ServiceEndpointIdentity exists to replace. And the URL the same endpoint
+// renders has to agree with the socket it renders: two renderings of one fact, so a display string cannot
+// drift into a second address for one service.
+test fn witness_endpoint_socket_is_the_members_address_and_the_endpoints_port() -> Bool {
+  match service_endpoint_fixture(authority: ProviderNameserver) {
+    Err { value: _ } => false
+    Ok { value: endpoint } => {
+      let address = service_endpoint_address(endpoint: endpoint)
+      // THE PORT IS THE IDENTITY'S PORT, unchanged on the way through the network module.
+      address.port == endpoint.port
+        // THE ADDRESS IS THE MEMBER'S NAME, not a literal: this endpoint's authority is the provider's
+        // nameserver, so a socket spelled from an address here would be a second authority over where the
+        // member lives.
+        && match address.host {
+          HostByName { name: n } => host_name_eq(a: n, b: endpoint.host)
+          HostByAddress { address: _ } => false
+        }
+        // THE URL AND THE SOCKET AGREE. Rendered from the socket itself by the network module, the URL has
+        // to be that host under https and carry the same port. A URL addressing a different host than the
+        // socket fails here rather than in a browser.
+        && url_agrees_with_the_socket(endpoint: endpoint, host: address.host, port: address.port)
+    }
+  }
+}
+
+// THE CENSUS FILTER SELECTS ON KIND ALONE. A fleet holds more than one realization -- the managed overlay,
+// the site LAN, a bootstrap tail -- so a census that read "the" overlay had better select by kind and
+// nothing else: a filter that also leaned on the realization's spelling, or on the member, would hand a
+// census an attachment that traverses the site LAN while reading like fabric.
+test fn witness_the_managed_overlay_filter_selects_on_kind_alone() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
+      Absent => false
+      Present { value: managed } => match fleet_overlay_attachment(
+        subject: srv1.fleet_slot,
+        kind: SiteLan,
+        realization: Named { realization: ("site-lan-vlan180" as OverlayRealization) },
+        selection: srv1_selection(),
+      ) {
+        Err { value: _ } => false
+        Ok { value: site } =>
+          // ONE OF TWO SURVIVES, and it is the managed one -- by its kind and its realization, read back
+          // off the survivor rather than off the input.
+          match managed_overlay_attachments(attachments: [site, managed]).first() {
+            Absent => false
+            Present { value: kept } =>
+              managed_overlay_attachments(attachments: [site, managed]).count() == 1
+                && kept.kind == ManagedOverlay
+                && (kept.realization as String) == "tailnet-fleet-managed"
+                // A SITE LAN IS NOT A MANAGED ATTACHMENT: alone, it selects nothing, so a census cannot
+                // read site-LAN facts as fabric facts.
+                && managed_overlay_attachments(attachments: [site]).count() == 0
+                // THE SITE LAN IS STILL AN ATTACHMENT OF THE SAME MEMBER. The filter's job is selection,
+                // not deletion -- nothing about the site LAN stops being a fact about this machine.
+                && site.subject == managed.subject
+                && site.kind == SiteLan
+          }
+      }
+    }
+  }
+}
+
+// AN INCARNATION EQUALS ONLY ITS OWN LIFE. Equality is id, slot, AND boundary: two readings of one
+// machine's life that disagree about the archive are two lives, which is the plan's defect stated as an
+// equality function. P5 reconciles two views of one machine through this fn, so it has to say "two lives"
+// when the ids differ even though every other field matches.
+test fn witness_an_incarnation_equals_only_its_own_life() -> Bool {
+  match incarnation_of(slot_text: operator_host_srv1) {
+    Err { value: _ } => false
+    Ok { value: first } => match incarnation_of(slot_text: operator_host_srv1) {
+      // TWO READINGS OF ONE MINT COLLAPSE, so a reconciliation pass does not report a conflict it cannot
+      // resolve.
+      Err { value: _ } => false
+      Ok { value: again } =>
+        owned_host_incarnation_eq(a: first, b: again)
+          && (match own_host_incarnation(
+            id: "p2-witness-srv1-a-second-life" as OwnedHostIncarnationId,
+            slot: first.slot,
+            ownership: first.ownership,
+            origin: first.origin,
+            allocation: first.allocation,
+            label: first.label,
+            termination: Ongoing,
+          ) {
+            Err { value: _ } => false
+            Ok { value: second } =>
+              // A DIFFERENT ID IS A DIFFERENT LIFE...
+              !owned_host_incarnation_eq(a: first, b: second)
+                // ...EVEN THOUGH EVERYTHING ELSE LOOKS THE SAME. That is exactly why the id is part of the
+                // equality: same slot, same ownership, same label, same origin.
+                && first.slot == second.slot
+                && (first.label.label as String) == (second.label.label as String)
+                && owned_incarnation_boundary_agrees(a: first, b: second)
+          })
+    }
+  }
+}
+
+// THE RECEIPT IS READ AS MACHINE INTAKE HOLDS IT. The fleet's two readers of the boundary receipt are
+// compared against an INDEPENDENT call to the boundary module's own accessors, so the seam cannot drift:
+// if this module could show a consumer a different archive than the one intake holds, this claim goes red.
+// Today the honest answer for every rostered member is "no prior life is archived yet" -- that is what
+// P2 being model-only means, and an incarnation cannot fabricate one.
+test fn witness_the_receipt_is_read_as_machine_intake_holds_it() -> Bool {
+  match incarnation_of(slot_text: operator_host_srv1) {
+    Err { value: _ } => false
+    Ok { value: first } => match first.origin {
+      // A PRE-EXISTING MEMBER INHERITS A BOUNDARY IT NEVER ESTABLISHED, so it carries none, and the two
+      // readers say the same thing about it: no arm, no consumed step.
+      PreexistingFleetMember =>
+        match incarnation_boundary_arm(origin: first.origin) {
+          Absent => match incarnation_receipt_key(origin: first.origin) {
+            Absent => match first.boundary {
+              // NO PRIOR LIFE IS CLAIMED, and the fleet says so instead of minting one.
+              Absent => match first.consumed {
+                Absent => true
+                Present { value: _ } => false
+              }
+              Present { value: _ } => false
+            }
+            Present { value: _ } => false
+          }
+          Present { value: _ } => false
+        }
+      // THE OTHER ORIGINS ARE NOT CLAIMED BY THIS FIXTURE. An intake admission WITH a receipt must show the
+      // boundary module's own archive; that shape is unreachable at P2 (no producer feeds a live receipt
+      // into a fleet incarnation), so the frontier says so and this arm refuses to grade itself by
+      // returning false rather than true.
+      FleetIntakeAdmitted { receipt: _ } => false
+      RebuildInPlace { prior: _ } => false
+    }
+  }
+}
+
+// THE THREE CONFUSIONS ARE SAYABLE, AND ONLY THEY. The sum below is the reason this module exists; each arm
+// is CONSTRUCTED here from real model values, so an arm that was cut stops building rather than leaving
+// the sum as a comment about intent. And each arm carries exactly the evidence its confusion needs: an
+// attachment confused with a route needs no grant, and a route confused with a grant is the only arm that
+// carries a demand -- P5's authorization decisions branch on that difference.
+test fn witness_the_three_confusions_are_sayable_and_distinct() -> Bool {
+  match binding_for_srv1() {
+    Err { value: _ } => false
+    Ok { value: binding } => match reach_target_fixture() {
+      Absent => false
+      Present { value: target } => match reach_demand(
+        requester: CiConvergence,
+        target: target,
+        transport: Fabric,
+        intent: ObserveStatus,
+        duration: ForSession,
+        justification: "the census wants to read the member's status" as NonEmptyStr,
+      ) {
+        Err { value: _ } => false
+        Ok { value: demand } => {
+          // EACH ARM IS CONSTRUCTED FROM REAL MODEL VALUES, so an arm that was cut stops building rather
+          // than leaving the sum as a comment about intent.
+          let stood_in_for_route: OverlayEvidenceConfusion = AttachmentStoodInForRoute { binding: binding }
+          let route_as_grant: OverlayEvidenceConfusion = RouteStoodInForGrant { binding: binding, demand: demand }
+          let key_as_principal: OverlayEvidenceConfusion = HostKeyStoodInForPrincipal { binding: binding }
+          // THE ARMS DO NOT BLEED INTO EACH OTHER: only the grant arm carries a demand, and only the
+          // principal arm carries neither a route nor a grant. P5's authorization decisions branch on
+          // exactly that difference -- which decision is available is decided by what went wrong, not by
+          // how the reporter felt about it.
+          (match stood_in_for_route {
+            AttachmentStoodInForRoute { binding: a } =>
+              a.subject == binding.subject
+                && (a.desired_label.label as String) == (binding.desired_label.label as String)
+            _ => false
+          })
+          && (match route_as_grant {
+            RouteStoodInForGrant { binding: b, demand: d } =>
+              b.subject == binding.subject
+                // THE DEMAND TRAVELS WITH THIS ARM AND ONLY THIS ARM, still naming the fabric: a route
+                // confused with a grant is a failure ABOUT a demand.
+                && d.transport == Fabric
+                && match stood_in_for_route {
+                  // THE ROUTE ARM CARRIES NO DEMAND AT ALL: it is a different confusion, and it is
+                  // reportable without ever having asked for a grant.
+                  AttachmentStoodInForRoute { binding: _ } => match key_as_principal {
+                    HostKeyStoodInForPrincipal { binding: c } => c.subject == binding.subject
+                    _ => false
+                  }
+                  _ => false
+                }
+            _ => false
+          })
+        }
+      }
+    }
+  }
+}
+
+// ===================== THE FRONTIER READ AGAINST THE LIVE DECLARATION CENSUS =====================
+// The frontier claims above are shape claims: they read the row's own fields and compare them with
+// strings hand-typed beside them. That is exactly how review 87158 caught subjects pointing at
+// declarations that do not exist -- `gunbc.fleet` as a module_path (a directory, not a module) and
+// `OverlayMemberBinding.provider_device_identity` as a decl_name (the resolver reads a declaration's
+// field list, never a dotted path through one) -- both read green, because nothing in the claim ever
+// asked the tree. These claims ask it: one keyed census read over the population the rows name, then
+// the join every consumer uses. A ref that names no declaration makes them red whatever its string says.
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ROOTS ARE SIBLINGS, NOT NESTED. A walk of `dag/gunbc` already covers `dag/gunbc/fleet`; passing
+// both walked every fleet file twice, the join then found two rows under one qualified name, and the
+// resolver answered "ambiguous" -- the census declining to pick between its own duplicates. A root
+// that does not exist, or holds no .dag, refuses the read outright rather than contributing nothing.
+data frontier_census_pool_roots: List<String> = ["dag/gunbc", "dag/extdeps/tailscale"]
+
+// The whole population: three provider-identity rows, the authority gap, the deployment-risk seam, and
+// the transport gap -- read from the model's own data, never re-listed here.
+data frontier_census_rows: List<FrontierRow> = list_append(
+  left: list_append(
+    left: list_append(left: fleet_overlay_provider_identity_frontier, right: fleet_endpoint_authority_frontier),
+    right: fleet_endpoint_deployment_risk_frontier,
+  ),
+  right: fleet_endpoint_transport_frontier,
+)
+
+fn frontier_census_subject_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.subject {
+      DeclSubject { ref: r } => list_append(left: acc, right: [r])
+      PathSubject { path: _ } => acc
+    }
+  })
+}
+
+fn frontier_census_trigger_refs(rows: List<FrontierRow>) -> List<DeclarationRef> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.dissolution {
+      BoundDissolution { trigger: t } => list_append(left: acc, right: [dissolution_trigger_ref(trigger: t)])
+      UnboundDissolution { description: _ } => acc
+    }
+  })
+}
+
+// THE SPELLINGS THAT MUST NOT RESOLVE. Each is a defect this PR actually had, kept here as the
+// discriminating negative: same name, wrong home. A read that answered "present" to these is not a
+// read of the tree at all, and the subject claim above would then prove nothing either.
+data frontier_census_misspellings: List<DeclarationRef> = [
+  // The subject half left off: `gunbc.fleet` is a directory, and the resolver's module key is the
+  // module, not the folder it sits under.
+  decl_ref(module_path: "gunbc.fleet", decl_name: "service_endpoint_identity"),
+  decl_ref(module_path: "gunbc.fleet", decl_name: "FleetOverlayAttachment"),
+  // A field is not a declaration: a dotted decl_name matches no row, so a field-grain subject reads
+  // absent forever and its row never dissolves.
+  decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "OverlayMemberBinding.provider_device_identity"),
+  decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "overlay_member_binding.provider_device_identity"),
+  decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "FleetOverlayAttachment.provider_device_identity"),
+  // The transport frontier's subject, spelled against the folder instead of the module -- the exact
+  // misspelling a new subject invites, since ServiceEndpointIdentity now sits in a census subject list.
+  decl_ref(module_path: "gunbc.fleet", decl_name: "ServiceEndpointIdentity"),
+]
+
+// ONE LIVE DECLARATION PER ROOT, as the vacuity guard: if a root were mistyped or unreadable, every
+// trigger would read absent and the pending claim below would be a green no-op. These resolve or the
+// absence claims mean nothing.
+data frontier_census_controls: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "service_endpoint_https_url"),
+  decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_external_binding_table"),
+  decl_ref(module_path: "extdeps.tailscale.identity", decl_name: "tailnet_identity_of"),
+]
+
+// ONE keyed read for the whole population -- subjects, triggers, misspellings, and controls.
+data frontier_census_requested_refs: List<DeclarationRef> = list_append(
+  left: list_append(
+    left: frontier_census_subject_refs(rows: frontier_census_rows),
+    right: frontier_census_trigger_refs(rows: frontier_census_rows),
+  ),
+  right: list_append(left: frontier_census_misspellings, right: frontier_census_controls),
+)
+
+// WHY THE KEYED READ IS WRITTEN OUT RATHER THAN TAKEN FROM `declaration_ref_live_facts`: the census
+// matches a FUNCTION or a DATA row by qualified name and a TYPE only by its bare name -- a qualified
+// name asked of a type returns zero rows, which is no answer at all. Most of these subjects ARE types
+// (ServiceEndpointIdentity, OverlayMemberBinding, FleetOverlayAttachment), so the bare-name key is
+// asked for alongside. Both keys come from the refs themselves, never from a spelling typed here, and
+// the join still filters what came back by qualified name and kind.
+data frontier_census_live_facts: List<DeclFact> = decl_facts_at(
+  pool_roots: frontier_census_pool_roots,
+  qualified_names: list_map(
+    xs: frontier_census_requested_refs,
+    f: fn(r) { declaration_ref_target_qualified_name(ref: r) }
+  ),
+  type_names: list_map(xs: frontier_census_requested_refs, f: fn(r) { r.decl_name as String }),
+)
+
+fn frontier_census_arm(ref: DeclarationRef) -> String {
+  declaration_ref_resolution_arm_key(
+    resolution: resolve_declaration_ref_live_over(
+      ref: ref,
+      pool_roots: frontier_census_pool_roots,
+      live_facts: frontier_census_live_facts,
+    )
+  )
+}
+
+fn frontier_census_resolves(ref: DeclarationRef) -> Bool { frontier_census_arm(ref: ref) == "resolved" }
+
+// Absent means the census walked the module and the name is not there (or the module itself is not):
+// the gap is real. It is not "the read did not look", which is what the controls above rule out.
+fn frontier_census_is_absent_today(ref: DeclarationRef) -> Bool {
+  let arm = frontier_census_arm(ref: ref)
+  arm == "module-absent" || arm == "declaration-absent"
+}
+
+test fn witness_frontier_subjects_are_declarations_the_live_tree_has() -> Bool {
+  // Population counted first: a row dropped from the fold would take its subject and its trigger out
+  // of the census together, and the two claims below would each lose a branch to silence.
+  frontier_census_rows.count() == 6
+    && frontier_census_subject_refs(rows: frontier_census_rows).count() == 6
+    // EVERY SUBJECT RESOLVES against the tree. This is the claim review 87158's first finding needed:
+    // a subject naming no declaration -- wrong module, or a field spelled with a dot -- makes it red.
+    && frontier_census_subject_refs(rows: frontier_census_rows).all(fn(r) { frontier_census_resolves(ref: r) })
+    // ...and the answer came from the tree, not from a matching pair of strings.
+    && frontier_census_misspellings.all(fn(bad) { !frontier_census_resolves(ref: bad) })
+}
+
+test fn witness_frontier_triggers_describe_gaps_the_tree_still_has() -> Bool {
+  frontier_census_trigger_refs(rows: frontier_census_rows).count() == 6
+    // EVERY TRIGGER IS ABSENT TODAY: each row describes a capability that does not exist yet, so the
+    // row is pending rather than fired at birth -- the shape review 87158's second finding had, where
+    // the deployment-risk seam's trigger was the row's own subject, present the moment it was written.
+    && frontier_census_trigger_refs(rows: frontier_census_rows).all(fn(t) { frontier_census_is_absent_today(ref: t) })
+    // THE PAIR THAT MAKES THE ANSWER MEAN SOMETHING: the same read, in the same roots, does find the
+    // declarations that exist -- one control per root.
+    && frontier_census_controls.all(fn(c) { frontier_census_resolves(ref: c) })
+    // AND NO ROW RETIRES ON THE DECLARATION IT IS ABOUT.
+    && overlay_frontier_rows_do_not_dissolve_on_their_own_subject()
+    && deployment_risk_seam_does_not_dissolve_on_its_own_subject()
+    // ...including the transport gap: its subject is the identity that would grow the slot, and its
+    // trigger is the carrier, which the tree does not have yet (so the claim is not vacuous).
+    && transport_gap_frontier_names_the_identity_it_gates()
+    && frontier_census_is_absent_today(
+         ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: "ServiceEndpointTransport"),
+       )
+}
+
+// THE ONE-HOME RULE, CHECKED WHERE A FORK WOULD BE: P1 owns provider device/node identity in
+// extdeps.tailscale.devices, so no fleet module may mint a stand-in beside it. The census answers, so
+// a local DeviceId declared tomorrow turns this red without anyone re-reading the comment.
+test fn witness_provider_device_identity_is_not_forked_into_the_fleet_namespace() -> Bool {
+  ["DeviceId", "DeviceKey", "NodeId", "DeviceIdentity"].all(fn(name) {
+    !frontier_census_resolves(ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: name))
+      && !frontier_census_resolves(ref: decl_ref(module_path: "gunbc.fleet.fleet_endpoint", decl_name: name))
+  })
+    && frontier_census_is_absent_today(ref: decl_ref(module_path: "extdeps.tailscale.devices", decl_name: "DeviceId"))
+    // The overlay's triggers point at P1's home, not at a fleet-local name.
+    && frontier_census_trigger_refs(rows: fleet_overlay_provider_identity_frontier)
+         .all(fn(t) { t.module_path == "extdeps.tailscale.devices" || t.module_path == "gunbc.fleet.fleet_overlay" })
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE ROLE THAT PUBLISHES NO URL IS REFUSED ONE, BY A TYPED DECISION RATHER THAN BY SILENCE
+// ---------------------------------------------------------------------------------------------
+//
+// FabricStorageShare is the sixth service role and the odd one out: it is an EXPORT, addressed by host and
+// port -- which is exactly what makes the BMC's NFS share server nameable (adhoc-37e2c372-ad5) -- and it
+// serves no URL. Review 87570 and the side chat both landed on the same defect from two sides: the model
+// said transport was part of a service endpoint's identity while the type carried no transport, so the one
+// place a URL is assembled hardcoded HTTPS and equality could not tell two transports apart. Two fixes were
+// offered: carry a scheme, or narrow the claim. Inflating the rung was refused (DESIGN section 4b: rung
+// inflation is worse than sitting low), because extdeps.uri.UriScheme is the RFC 3986 set -- Http, Https,
+// Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto -- with no export arm: a scheme slot here would be
+// filled with Https for a share (a lie that launders an NFS export into an HTTPS service) or with an
+// invented nfs:// (a net concept grown by re-invention, DESIGN section 2). So HTTPS is named where it is
+// used, as a CONTRACT of `service_endpoint_https_url`, and the roles that do not serve it are refused by
+// `service_role_publishes_url` -- which is the reader's own partition rather than a second answer beside it.
+// The day a second transport ships, the frontier at the foot of that module names the carrier that has to
+// exist and the identity whose slot it fills.
+
+fn endpoint_for_service(
+  member: ProviderEndpoint,
+  role: FleetServiceRole,
+) -> Optional<ServiceEndpointIdentity> {
+  match service_endpoint_identity(
+    authority: FleetDns,
+    service: role,
+    member: member,
+    port: ntfy_port(),
+  ) {
+    Err { value: _ } => Absent
+    Ok { value: endpoint } => Present { value: endpoint }
+  }
+}
+
+// THE SHARE IS STILL ADDRESSABLE, and by the member's own resolved name and the endpoint's own port: the
+// mount line names a server, and that server is typed here rather than written as a string.
+fn share_socket_is_the_members_own_address(share: ServiceEndpointIdentity) -> Bool {
+  let socket = service_endpoint_address(endpoint: share)
+  match socket.host {
+    HostByName { name: n } => host_name_eq(a: n, b: share.host) && socket.port == share.port
+    HostByAddress { address: _ } => false
+  }
+}
+
+// THE READER REFUSES THE SHARE, with the reason that names the role rather than a generic failure.
+fn share_url_is_refused_because_a_share_publishes_none(share: ServiceEndpointIdentity) -> Bool {
+  match service_endpoint_https_url(endpoint: share) {
+    Ok { value: _ } => false
+    Err { value: UrlFormAbsent { service: s } } => s == FabricStorageShare
+    Err { value: _ } => false
+  }
+}
+
+// AND IT DOES NOT REFUSE EVERYTHING: the notifier, which does publish a URL, still gets one -- so the
+// refusal above is about the role and not about the reader failing.
+fn notifier_url_is_https(member: ProviderEndpoint) -> Bool {
+  match endpoint_for_service(member: member, role: NtfyNotifier) {
+    Absent => false
+    Present { value: notifier } => match service_endpoint_https_url(endpoint: notifier) {
+      Err { value: _ } => false
+      Ok { value: text } => string_contains(s: text, pattern: "https://")
+    }
+  }
+}
+
+test fn witness_a_share_has_a_socket_and_is_refused_a_url() -> Bool {
+  match member_endpoint_for(slot: operator_host_srv9) {
+    Err { value: _ } => false
+    Ok { value: member } => match endpoint_for_service(member: member, role: FabricStorageShare) {
+      Absent => false
+      Present { value: share } => share_socket_is_the_members_own_address(share: share)
+        && share_url_is_refused_because_a_share_publishes_none(share: share)
+        && notifier_url_is_https(member: member)
+        // THE GATE IS THE PARTITION THE READER ALREADY USES, role by role over the whole role set: a caller
+        // consulting it and a caller calling the reader cannot get different verdicts.
+        && !service_role_publishes_url(role: FabricStorageShare)
+        && [
+          ApprovalBroker,
+          DeploymentRiskApi,
+          LiveDeployHealth,
+          NtfyNotifier,
+          WorkspaceGateway,
+        ].all(fn(r) { service_role_publishes_url(role: r) })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE PROVIDER'S SILENCE IS A VARIANT, NOT A STRING COMPARED AGAINST A LIST
+// ---------------------------------------------------------------------------------------------
+//
+// Review 87570's second finding: `overlay_realization_is_unnamed` decided "this names nothing" by matching
+// a hand-picked list of words ("unknown", "none", "TODO"). Any word the list did not contain -- "n/a",
+// "Unknown", "tbd" -- passed as a real realization name, and no list could be complete because the question
+// it was answering ("is this string a real overlay name?") has no closed answer at this rung. DESIGN section
+// 4: in a closed system a heuristic is never necessary -- the richer source always exists or can be written.
+// The richer source is the provider's own field, which P4's census reads; so the gap between asking and
+// being answered became `OverlayRealizationAnswer.ProviderHasNotAnswered`, and what remains in the mint is
+// the judgment it really holds: an attachment may only be minted from an answer, and a name made entirely of
+// whitespace names nothing. The four calls below assert the OTHER half -- that placeholder-looking words are
+// no longer refused here -- because the cheapest way to "fix" the finding again is to rebuild the word list.
+
+fn attachment_builds_from_a_named_realization(text: String) -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match fleet_overlay_attachment(
+      subject: srv1.fleet_slot,
+      realization: Named { realization: text as OverlayRealization },
+      kind: ManagedOverlay,
+      selection: srv1_selection(),
+    ) {
+      Ok { value: _ } => true
+      Err { value: _ } => false
+    }
+  }
+}
+
+// ASKED, NOT ANSWERED: the silence variant refuses, by the reason that says the realization names nothing,
+// and it names the subject the census would have to come back about.
+fn providers_silence_is_refused() -> Bool {
+  match row_for(slot: operator_host_srv1) {
+    Absent => false
+    Present { value: srv1 } => match fleet_overlay_attachment(
+      subject: srv1.fleet_slot,
+      realization: ProviderHasNotAnswered,
+      kind: ManagedOverlay,
+      selection: srv1_selection(),
+    ) {
+      Ok { value: _ } => false
+      Err { value: r } => match r {
+        RealizationUnnamed { subject: s, kind: _ } => s == srv1.fleet_slot
+        _ => false
+      }
+    }
+  }
+}
+
+test fn witness_the_providers_silence_is_a_variant_and_a_word_is_not_the_gap() -> Bool {
+  providers_silence_is_refused()
+    // AND NO WORD IS THE GAP EITHER. These four all build, which is the claim's other half: if a word list
+    // ever returns to the mint -- the cheapest way to "re-fix" the finding -- this goes red.
+    && ["n/a", "Unknown", "tbd", "TODO"].all(fn(w) { attachment_builds_from_a_named_realization(text: w) })
+}

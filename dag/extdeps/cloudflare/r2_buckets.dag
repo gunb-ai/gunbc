@@ -1,4 +1,5 @@
 module extdeps.cloudflare.r2_buckets
+import std.types { Bearer }
 import std.resources { Network }
 
 import std.types { NonEmptyStr, String, List, Secret, HttpStatus }

@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.phantom_marker_emitted_beside_a_same_named_type_definition
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data phantom_marker_emitted_beside_a_same_named_type_definition: RecurringFailureMode = RecurringFailureMode {
+  identity: "phantom_marker_emitted_beside_a_same_named_type_definition" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "an executing emit-and-build control over a coproduct whose arms name a local record, an imported record and a unit variant, enrolled where it runs on every change to the Rust emitter, so a marker beside a declaration it shadows is refused before a consumer crate reaches rustc; and resolve stamping coproduct arm references in their declaring scope, so the decision reads the carried declaration instead of re-deriving the scope's binding (v1.compiler.infer_emit_info referencing_module_declarer_route_dissolves_on)" } },
+
+  receipts: [
+    "**a unit variant's phantom ZST marker is emitted beside a type definition of the same name** (INVALID STATE: v1.compiler.emit_rust collect_phantom_zst_markers emits `pub struct X;` for a closure-unique unit variant X, skipping names a shadow predicate found declared in the module. That predicate recognized type aliases and opaque declarations but not type DEFINITIONS.",
+
+    "HARM: gunbc.roadmap.roadmap_model declares the records `type AcceptanceNodeReopensActiveFrontier {}` and `type AcceptanceNodeRemainsSuperseded {}` beside the coproduct AcceptanceRevocationDisposition whose arms carry those names, so each record was emitted twice (rustc E0428 and E0119 on every derive, on the rfm-rung-census route; class 1 of stern-bat-401's emitter-debt list).",
+
+    "ROOT CAUSE (DESIGN section 6b): the boundary was the marker decision itself, which answered a question of identity (does this arm denote a declaration?) by comparing spellings over the module's own items, and read the absence of a same-named item as proof that the marker was valid. Module locality does not turn spelling into identity: an arm naming a record the module imports had no same-named local item and was still given a marker (stern-bat-401 side chat, 2026-10-24).",
+
+    "REPAIRED: v1.compiler.emit_rust phantom_marker_decision asks what the arm's name binds in its own module's scope (v1.compiler.infer_emit_info type_decl_occurrence_binding over EmitGraphInfo.type_decl_items: the module's own declaration, then a named import, then the kernel, joined to declaration identity). An arm whose name binds a declaration owes no marker. A marker is owed only when the name binds none AND the unit-variant index names this very arm, by declaring span; unavailable evidence, or evidence naming another node, refuses as a located compile_error! item. The spelling predicate phantom_marker_name_shadowed_by_real_type_item is deleted. The corpus-wide spelling route (resolve_type_decl_reference's leaf arm) was tried first and FALSIFIED by measurement: it dropped the markers of unit variants whose names an unrelated module declares (std.coercion HostText, std.constructors Optional, std.types Template, std.measure Volume, rustc E0573 on the census route) and refused std.fidelity's Unit on the kernel spelling. RED/control: test.claim.phantom_marker_same_named_record_witness same_named_record_suppresses_the_variant_marker and imported_record_arm_owes_no_marker.",
+
+    "SECOND BOUNDARY, A NAME BOUND BUT UNIDENTIFIED (review 85692): the scope's answer v1.compiler.infer_env bare_occurrence_binding used one arm, BareOccurrenceUndecided, both for `the file declares, imports and kernel-names nothing of this name` and for `no answer` (two declarations in the file, an import chain that ends at no declaration), and v1.compiler.infer_emit_info type_decl_occurrence_binding added a third meaning, a binding to a declaration the type-declaration index does not identify. The marker decision read all three as unbound, so an arm sharing its name with a non-type item of its module (a data item) still owed `pub struct X;` beside it. REPAIRED upstream: BareOccurrenceUnbound and OccurrenceUnbound carry the positive `binds nothing`, the marker decision acts only on that, and Undecided refuses, located. Its readers that took no bound from either arm (the spelling route, the occurrence identity, unstamped_reference_is_host_option) map the two arms identically. RED/control: arm_bound_to_an_unindexed_declaration_refuses.",
+
+    "THIRD BOUNDARY, THE COLLECTOR WALKED RECORDS: collect_phantom_zst_markers selected every type definition whose children are childless, and a record's fields are childless nodes (their types are not children), so std.algebra FinitePowerSet's contains and length and FreeMonoidUniqueState's unique reached the arm decision as if they were unit variants. Only the unit-variant index's silence kept them from owing a marker; once Undecided refused, the seed's std-core crate refused all three. A marker stands for a unit variant and only a coproduct has variants, so the collector now selects Disj declarations. Emitted v2 closures (source_root_eval, compile_cli) are byte-identical before and after both repairs.",
+
+    "RUNG: found at and still mitigatable (the failure is rustc's, and the witnesses are text oracles). Ceiling structurally guaranteed; climbable but unbuilt.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "phantom_marker_decision", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.phantom_marker_same_named_record_witness", decl_name: "same_named_record_suppresses_the_variant_marker", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.phantom_marker_same_named_record_witness", decl_name: "imported_record_arm_owes_no_marker", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.phantom_marker_same_named_record_witness", decl_name: "arm_bound_to_an_unindexed_declaration_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.infer_env", decl_name: "bare_occurrence_binding", field: WholeDeclaration },
+  ],
+}

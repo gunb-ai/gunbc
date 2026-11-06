@@ -1,6 +1,6 @@
 module test.claim.e0599_emitter_decision_census_witness
 
-import std.types { list_length }
+import std.algebra { length }
 import gunbc.instruments.e0599_emitter_decision_census {
   TargetApiRequirement,
   OwnedDeconstructionRequirement,
@@ -122,7 +122,7 @@ test fn e0599_b0_red_unresolved_row_lookup_is_absent() -> Bool {
 }
 
 test fn e0599_b0_classification_line_carries_seven_fields() -> Bool {
-  list_length(items: e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 7
+  length(xs: e0599_classification_line(method: "is_empty", receiver_expr: "__fm") |> split(delimiter: "\t")) == 7
 }
 
 test fn e0599_b0_classification_line_carries_the_ownership_alternative() -> Bool {

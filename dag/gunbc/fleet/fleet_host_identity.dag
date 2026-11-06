@@ -5,8 +5,8 @@ import product.host_identity { HostIdentity }
 
 // THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet.fleet_intent_network,
 // beside the topology that ENROLLS hosts (its `endpoints`); they moved here so a module that only
-// needs a host's name -- the approval broker composing its ntfy address, gunbc.auth.approval_ntfy_publish --
-// does not import the topology's assets, segments and endpoints. The notes below were written when
+// needs a host's name -- the ntfy retirement naming the host whose front door it closes,
+// gunbc.fleet.approval_ntfy_retirement -- does not import the topology's assets, segments and endpoints. The notes below were written when
 // the rows lived in gunbc.fleet.fleet_intent_network: where one says "this module" or "here" about NAMING,
 // it now means this leaf; where it speaks of enrollment or `endpoints`, that is still
 // gunbc.fleet.fleet_intent_network. Naming is not enrollment, and the split makes the two separate modules.
@@ -71,6 +71,21 @@ data operator_host_srv14: HostIdentity = "srv14"
 data operator_host_srv15: HostIdentity = "srv15"
 data operator_host_srv16: HostIdentity = "srv16"
 
+// ONE BOARD, ONE SLOT (operator, 2026-11-05). srv14 is the ASRock Rack ALTRAD8UD-1L2T with board serial
+// BR80S6102300077, and that board had been given a second slot: host-94c81d (hostname "owen"), named
+// 2026-10-16 for "ALTRAD8UD-1L2T-6, board serial BR80S6102300077". Both rows read the same board:
+// artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16 (serial BR80S6102300077, BMC
+// 9c:6b:00:e7:c9:fa at 192.168.1.250) and artifacts/bmc/srv14-first-contact-2026-10-28 (SerialNumber
+// BR80S6102300077, ServiceEntryPointUUID d57ef793-ef91-4ba3-b521-41616f9ce420). On 2026-11-05 the
+// controller at .250 still answers its unauthenticated Redfish root with that UUID. host-94c81d is deleted;
+// srv14 (butch) is the board.
+//
+// srv13 and srv15 ALSO NAME ONE BOARD (board serial BR80S6102300049, host NIC 9c:6b:00:e7:ca:63), and the
+// operator keeps srv15 (bobo). That merge is not done here, because srv13's 2026-10-07 captures at
+// 192.168.1.247 carry the machine-intake witnesses through srv13's own write-controller row. It is
+// recorded, with the obligations the merge must keep, as gunbc.integration_concern
+// srv13_and_srv15_name_one_board.
+
 // OPAQUE IDENTITIES (2026-10-07). From here on a new fleet subject's identity carries no meaning in
 // its spelling -- not a provider, an architecture, a role or a rack position -- because every such
 // fact has its own authority and a spelling that encodes one becomes a second, unmaintained copy of
@@ -78,6 +93,13 @@ data operator_host_srv16: HostIdentity = "srv16"
 // mtcollins1 and mtjade1 keep their historical identities, whose spellings are now just keys.
 data operator_host_183527: HostIdentity = "host-183527"
 data operator_host_3dde7f: HostIdentity = "host-3dde7f"
+
+// SUPERMICRO H11SSL UNIT 1 (operator, 2026-10-30; gunbc.plans.gpu_card_host_program row N0b, "an
+// opaque identity for the H11 host"). The host that serves the A16 Strata pool. Its board, BMC, DIMM
+// and fan readings are keyed by its BMC MAC under gunbc.machine_intake (supermicro_h11ssl_unit1_*); its
+// operator-facing hostname is the LEGACY spelling gunbc.hostname_allocation records. OPAQUE per the rule
+// above: neither the board nor its GPUs are read off this spelling, and either can change under it.
+data operator_host_6ce85c: HostIdentity = "host-6ce85c"
 
 // THE NAMED ROSTER, ONE LIST BESIDE THE ROWS. A step subject or other label resolves to a host only
 // by joining this membership; a spelling that is not a row here is not a fleet host.
@@ -98,6 +120,7 @@ data operator_hosts: List<HostIdentity> = [
   operator_host_srv16,
   operator_host_183527,
   operator_host_3dde7f,
+  operator_host_6ce85c,
 ]
 
 fn operator_host_named(label: NonEmptyStr) -> HostIdentity? {

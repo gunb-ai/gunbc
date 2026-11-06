@@ -37,13 +37,15 @@ module gunbc.runner.runner_capability_labels
 // the files without importing either converge, and the converges depend on the table rather than the table
 // on them.
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.algebra { string_contains }
 import product.host_identity { HostIdentity }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
 import gunbc.runner.runner_registration_labels {
   HostCapabilityRow, HostCapabilityWitness, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
   RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
-  runner_registration_labels, runner_label_set_union,
+  runner_evidence_gated_registration_labels, runner_label_set_union,
   gunbc_browser_ready_label, gunbc_gpu_docker_label,
 }
 
@@ -144,6 +146,51 @@ fn host_capability_label_is_declared(label: String) -> Bool {
   })
 }
 
+// WHETHER A ROW'S DROP-IN EXISTS, three-valued. ABSENT is a decided fact (the host does not hold that
+// capability) and contributes no label; UNREADABLE is "could not look" (sudo refused, a directory
+// unreadable, transport failure) and keeps refusing. The presence probe is a directory walk that exits 0
+// with empty stdout for a missing entry, so the verdict comes from the exit status and stdout and never from
+// parsing a tool's error text.
+type HostCapabilityDropinPresence
+  = DropinPresent
+  | DropinAbsent
+  | DropinUnreadable { cause: String }
+
+fn host_capability_dropin_presence(exit_code: Int, stdout: String, unreadable_cause: String) -> HostCapabilityDropinPresence {
+  if exit_code != 0 {
+    DropinUnreadable { cause: unreadable_cause }
+  } else if stdout == "" {
+    DropinAbsent
+  } else {
+    DropinPresent
+  }
+}
+
+// THE WITNESS FOR ONE ROW, from its presence verdict and, when present, the read of its bytes. `read` is
+// consulted only for a present drop-in; a failed read of a drop-in that exists is unreadable, not absent.
+fn host_capability_witness_of_reads(
+  label: String,
+  presence: HostCapabilityDropinPresence,
+  read_exit_code: Int,
+  read_stdout: String,
+  read_cause: String,
+) -> HostCapabilityWitness {
+  match presence {
+    DropinUnreadable { cause: c } => CapabilityUnobservable { label: label, cause: c }
+    DropinAbsent => CapabilityAbsent { label: label }
+    DropinPresent =>
+      if read_exit_code != 0 {
+        CapabilityUnobservable { label: label, cause: read_cause }
+      } else if string_contains(s: read_stdout, pattern: label) {
+        CapabilityHeld { label: label }
+      } else {
+        CapabilityAbsent { label: label }
+      }
+  }
+}
+
+data runner_unit_dropin_search_root: String = "/etc/systemd/system"
+
 // THE ONE PRODUCER OF A CAPABILITY-BEARING LABEL SET. Every LABELS_JSON drop-in that advertises a
 // capability composes its set here: the host's own offered set, plus the label this converge earned, plus
 // every sibling label whose row was OBSERVED as held. It is the only place that union is spelled, which is
@@ -163,6 +210,7 @@ fn runner_capability_registration_labels(
   host: HostIdentity,
   own: List<String>,
   witnesses: List<HostCapabilityWitness>,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> RunnerRegistrationLabelsResolution {
   let unreadable_reasons = flat_map(witnesses, w => match w {
     CapabilityUnobservable { label: l, cause: c } =>
@@ -183,7 +231,7 @@ fn runner_capability_registration_labels(
       cause: join(["refusing to render LABELS_JSON rather than revoke or fabricate a capability: ", join(reasons, "; ")], "") as NonEmptyStr,
     }
   } else {
-    match runner_registration_labels(host: host) {
+    match runner_evidence_gated_registration_labels(host: host, receipt: receipt) {
       RegistrationLabelsRefused { host: h, cause: c } => RegistrationLabelsRefused { host: h, cause: c }
       RegistrationLabelsResolved { labels: ls } => {
         let restated = map(filter(witnesses, w => host_capability_witness_held(w: w)), w => host_capability_witness_label(w: w))
@@ -199,6 +247,6 @@ fn runner_capability_registration_labels(
 // not the browser one, and not any future one. That is the test of whether the generalization is real: this
 // function would have to change under the design review 86550 rejected, and it cannot change under adding
 // the fourth capability.
-fn runner_gpu_docker_ready_registration_labels(host: HostIdentity, witnesses: List<HostCapabilityWitness>) -> RunnerRegistrationLabelsResolution {
-  runner_capability_registration_labels(host: host, own: [gunbc_gpu_docker_label], witnesses: witnesses)
+fn runner_gpu_docker_ready_registration_labels(host: HostIdentity, witnesses: List<HostCapabilityWitness>, receipt: RunnerUserSessionReceiptInput) -> RunnerRegistrationLabelsResolution {
+  runner_capability_registration_labels(host: host, own: [gunbc_gpu_docker_label], witnesses: witnesses, receipt: receipt)
 }

@@ -11,7 +11,7 @@ module gunbc.serving.home_serving_candidate_field
 //     and this module stops resolving, so the lists are load-bearing rather than inert. §3c is
 //     explicit that "a list of things" is not a contribution and a witness asserting the lists
 //     exist does not close it; the fold that consumes them does.
-//   - every candidate figure is read off an extdeps.gpu.nvidia row. This module cites nothing.
+//   - every candidate figure is read off an extdeps.gpu.nvidia board row. This module cites nothing.
 //   - the meaning of a recorded watt comes from gunbc.serving.home_serving_power_policy. The
 //     candidate is the option-C PAIR — cited catalog TDP and planned applied limit, kept distinct
 //     and related by that module's rule — and a pair becomes a candidate only by passing that
@@ -96,7 +96,17 @@ import extdeps.external_authority {
   FactCitation,
   TranscribedUncited,
 }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.types {
+  GpuBoardCatalogRow,
+  GpuBoardCatalogFacts,
+  GpuBoardAdmission,
+  GpuBoardAdmitted,
+  GpuBoardRefused,
+  GpuBoardRefusal,
+  gpu_board_admission_facts,
+  gpu_board_power_ceiling,
+  gpu_catalog_row_eq,
+}
 // NOT the four rows. This module used to import each add-in card by name so two hand-written chains could
 // key on those names; review 86449 filed that as the second source of the roster. A card now enters the
 // sweep only through home_serving_add_in_card_catalog_rows in gunbc.serving.home_serving_accelerator_field,
@@ -245,8 +255,8 @@ fn home_serving_cell_identity(anchor: String, rung: Watt) -> DeclarationRef {
 }
 
 // THE ROW'S ANCHOR AND ITS CEILING, TAKEN FROM THE ONE ENTRY THAT RECORDS BOTH. Every
-// figure_citations row on these four cards is anchored at the card's own declaration (checked: 5/5, 5/5,
-// 5/5 and 4/4 entries respectively), so the `tdp_watts` citation states both WHERE the figure came from
+// figure_citations row on these four boards is anchored at the board's own facts declaration, so the
+// `board_power` citation states both WHERE the figure came from
 // and WHICH ROW it is a figure of. Reading the row's identity out of that citation instead of a chain of
 // `gpu_catalog_row_eq` calls against hand-typed strings is what keeps a datasheet rename honest: the cell
 // names follow the row rather than drifting from a copy in this module (§3, "each fact lives in exactly
@@ -266,7 +276,7 @@ type HomeServingCellWarrant {
 }
 
 // WHY A CAUSE AND NOT AN `Absent`. Two different facts stop a cell here and they need different fixes:
-// the row publishes NO tdp_watts figure at all (TdpUnread — go find a datasheet that states one), versus
+// the board publishes NO power figure at all (TdpUnread — go find a datasheet that states one), versus
 // the row publishes a figure with nothing citing it (TdpStandingUnstated — the number exists, its warrant
 // does not). Collapsing them into one `Absent` would send a reader looking for a datasheet that already
 // exists. The causes are the policy module's own (§6: no second vocabulary for the same question).
@@ -274,17 +284,20 @@ type HomeServingWarrantRead
   = WarrantRead { warrant: HomeServingCellWarrant }
   | WarrantMissing { cause: HomeServingPowerCause }
 
-fn hscf_cell_warrant(row: GpuModelCatalogRow) -> HomeServingWarrantRead {
-  match row.tdp_watts {
+// The ceiling is the BOARD's: a GPU has no power figure of its own (extdeps.gpu.types GpuDeviceCatalogRow),
+// and the board's specification gives the most it may draw (gpu_board_power_ceiling). The citation that
+// grounds it is the board's own entry naming board_power.
+fn hscf_cell_warrant(board: GpuBoardCatalogRow) -> HomeServingWarrantRead {
+  match board.facts.board_power {
     Absent => WarrantMissing { cause: TdpUnread }
-    Present { value: tdp } =>
-      match hscf_find_tdp_citation(citations: row.figure_citations) {
+    Present { value: spec } =>
+      match hscf_find_tdp_citation(citations: board.facts.figure_citations) {
         Absent => WarrantMissing { cause: TdpStandingUnstated }
         Present { value: citation } =>
           WarrantRead {
             warrant: HomeServingCellWarrant {
               anchor: citation.fact.decl_name as String,
-              tdp: HomeServingPowerReading { limit: tdp, standing: CitedToAuthority { authority: citation.authority } },
+              tdp: HomeServingPowerReading { limit: gpu_board_power_ceiling(spec: spec), standing: CitedToAuthority { authority: citation.authority } },
             },
           }
       }
@@ -301,7 +314,7 @@ fn hscf_find_tdp_citation(citations: List<FactCitation>) -> FactCitation? {
         Absent =>
           match c.fact.field {
             NamedField { field_name: f } =>
-              if f == ("tdp_watts" as NonEmptyStr) {
+              if f == ("board_power" as NonEmptyStr) {
                 Present { value: c }
               } else {
                 Absent
@@ -317,8 +330,8 @@ fn hscf_find_tdp_citation(citations: List<FactCitation>) -> FactCitation? {
 // label AND in the derived identity's name, so neither can be read as the whole fact. TOTAL, with no
 // roster lookup: the label is made of what the row itself states plus the rung it is offered at, so there
 // is no longer an `Absent` path for it to fall through.
-fn home_serving_candidate_label(row: GpuModelCatalogRow, limit: Watt) -> NonEmptyStr {
-  (row.model + " @ " + nat_to_decimal_string(value: watt_count(w: limit)) + " W applied") as NonEmptyStr
+fn home_serving_candidate_label(board: GpuBoardCatalogFacts, limit: Watt) -> NonEmptyStr {
+  (board.model + " @ " + nat_to_decimal_string(value: watt_count(w: limit)) + " W applied") as NonEmptyStr
 }
 
 // THE OUTCOME OF ONE CELL, AND WHY IT IS NOT `ParetoEntry?`. Review 86449 filed the defect this type
@@ -332,10 +345,17 @@ fn home_serving_candidate_label(row: GpuModelCatalogRow, limit: Watt) -> NonEmpt
 // NAMEABLE: home_serving_candidate_exclusions returns them, located by the roster row and the rung, with
 // the policy module's own HomeServingPowerCause as the cause — no second cause vocabulary (§6).
 type HomeServingCellExclusion {
-  row: GpuModelCatalogRow
+  board: GpuBoardCatalogFacts
   rung: Watt
-  cause: HomeServingPowerCause
+  cause: HomeServingExclusionCause
 }
+
+// WHY A CELL IS OUT. The power policy's causes are its own vocabulary and are carried unchanged; a board
+// the catalog's own admission refused (extdeps.gpu.types admit_gpu_board) never reaches the policy, and
+// is excluded with that refusal rather than silently dropped from the roster.
+type HomeServingExclusionCause
+  = ExcludedByPowerPolicy { cause: HomeServingPowerCause }
+  | ExcludedBoardRefused { refusal: GpuBoardRefusal }
 
 type HomeServingCellOutcome
   = CellOffered { entry: ParetoEntry }
@@ -357,7 +377,7 @@ type HomeServingCellOutcome
 // test.claim.home_serving_candidate_field_witness::home_serving_offered_plus_excluded_is_the_whole_product —
 // not by a literal copied out of the tree. The arms this function can also return are executed there by
 // data the catalog already holds: home_serving_row_without_a_tdp_is_excluded_with_its_cause excludes the
-// real B200 SXM row (its tdp_watts is none), and
+// real B200 SXM board (its board_power is none), and
 // home_serving_comparison_arms_are_reachable_on_one_card runs both comparison arms over the RTX PRO 5000
 // 48 GB row's own cited 300 W ceiling (200 W admitted, 400 W refused) using probe rungs whose standing is
 // cited — the same probe convention test.claim.home_serving_power_policy_witness already uses for the
@@ -371,15 +391,23 @@ type HomeServingCellOutcome
 // grounded comparison run — over-capacity refusal, admitted selection — pass a rung row carrying
 // ObservedByReceipt through the same function, which is how those two arms get an executing route
 // (DESIGN.md: every added declaration names its consumer AND its executing route).
-fn home_serving_candidate_entry(row: GpuModelCatalogRow, rung: HomeServingPowerReading) -> HomeServingCellOutcome {
+fn home_serving_candidate_entry(board: GpuBoardAdmission, rung: HomeServingPowerReading) -> HomeServingCellOutcome {
+  match board {
+    GpuBoardRefused { facts: facts, refusal: refusal } =>
+      CellExcluded { exclusion: HomeServingCellExclusion { board: facts, rung: rung.limit, cause: ExcludedBoardRefused { refusal: refusal } } }
+    GpuBoardAdmitted { row: row } => home_serving_admitted_board_entry(board: row, rung: rung)
+  }
+}
+
+fn home_serving_admitted_board_entry(board: GpuBoardCatalogRow, rung: HomeServingPowerReading) -> HomeServingCellOutcome {
   let limit: Watt = rung.limit
-  match hscf_cell_warrant(row: row) {
+  match hscf_cell_warrant(board: board) {
     // A row that cannot lend a GROUNDED number to the ceiling is excluded, with the policy's own cause
     // saying which of the two it is: no figure at all, or a figure nobody cites. Both are reported rather
     // than answered `Absent`, because an excluded cell and a vanished cell are different facts and only a
     // nameable one can be chased down. Neither mints an entry whose axis value nobody stated (§4d).
     WarrantMissing { cause: cause } =>
-      CellExcluded { exclusion: HomeServingCellExclusion { row: row, rung: limit, cause: cause } }
+      CellExcluded { exclusion: HomeServingCellExclusion { board: board.facts, rung: limit, cause: ExcludedByPowerPolicy { cause: cause } } }
     WarrantRead { warrant: warrant } =>
       match home_serving_power_policy(
         tdp: Present { value: warrant.tdp },
@@ -389,7 +417,7 @@ fn home_serving_candidate_entry(row: GpuModelCatalogRow, rung: HomeServingPowerR
           CellOffered {
             entry: ParetoEntry {
               identity: home_serving_cell_identity(anchor: warrant.anchor, rung: home_serving_power_admission_applied(admission: admitted)),
-              display_label: home_serving_candidate_label(row: row, limit: home_serving_power_admission_applied(admission: admitted)),
+              display_label: home_serving_candidate_label(board: board.facts, limit: home_serving_power_admission_applied(admission: admitted)),
               readings: [
                 AxisReading {
                   axis: ax_applied_draw_watts,
@@ -403,7 +431,7 @@ fn home_serving_candidate_entry(row: GpuModelCatalogRow, rung: HomeServingPowerR
         // that breaks the card's own cited ceiling, and §3d excludes it before Pareto, never ranks it. It
         // is reported, not silently absent — see the exclusion type above.
         PowerPolicyRefused { cause: cause } =>
-          CellExcluded { exclusion: HomeServingCellExclusion { row: row, rung: limit, cause: cause } }
+          CellExcluded { exclusion: HomeServingCellExclusion { board: board.facts, rung: limit, cause: ExcludedByPowerPolicy { cause: cause } } }
         // UNREAD IS NOT REFUSED, and dropping the cell here was the defect this comment now forbids.
         // The rung is a planned sweep value with no power-limit receipt behind it yet; the card and the
         // rung are both known, so the candidate EXISTS and its watt is UNREAD — two different facts.
@@ -419,7 +447,7 @@ fn home_serving_candidate_entry(row: GpuModelCatalogRow, rung: HomeServingPowerR
           CellOffered {
             entry: ParetoEntry {
               identity: home_serving_cell_identity(anchor: warrant.anchor, rung: limit),
-              display_label: home_serving_candidate_label(row: row, limit: limit),
+              display_label: home_serving_candidate_label(board: board.facts, limit: limit),
               readings: [],
               missing_inputs: [AxisGap { axis: ax_applied_draw_watts, cause: hscf_unread_gap_cause(cause: c) }],
             },
@@ -433,11 +461,11 @@ fn home_serving_candidate_entry(row: GpuModelCatalogRow, rung: HomeServingPowerR
 // the partition is a property of one function applied once per cell, which is what lets the witness
 // claim offered + excluded = |roster| x |ladder| without trusting a count typed into a test file.
 fn home_serving_candidate_field() -> List<ParetoEntry> {
-  flat_map(home_serving_add_in_card_catalog_rows, row =>
+  flat_map(home_serving_add_in_card_catalog_rows, board =>
     flat_map(home_serving_applied_rungs, rung =>
       // The rung is passed as the RECORD, warrant included. Handing the policy a watt and letting this
       // module supply a standing was the defect the minter's comment above documents.
-      match home_serving_candidate_entry(row: row, rung: rung) {
+      match home_serving_candidate_entry(board: board, rung: rung) {
         CellOffered { entry: entry } => [entry]
         CellExcluded { exclusion: _ } => []
       },
@@ -446,9 +474,9 @@ fn home_serving_candidate_field() -> List<ParetoEntry> {
 }
 
 fn home_serving_candidate_exclusions() -> List<HomeServingCellExclusion> {
-  flat_map(home_serving_add_in_card_catalog_rows, row =>
+  flat_map(home_serving_add_in_card_catalog_rows, board =>
     flat_map(home_serving_applied_rungs, rung =>
-      match home_serving_candidate_entry(row: row, rung: rung) {
+      match home_serving_candidate_entry(board: board, rung: rung) {
         CellOffered { entry: _ } => []
         CellExcluded { exclusion: exclusion } => [exclusion]
       },
@@ -575,7 +603,8 @@ fn home_serving_selection_for(terms: HomeServingBuyerTerms) -> RealizationSelect
 // NON-candidate rather than to be ignored: if they were simply unused, "reference only" would be a
 // comment. Their absence from the field is also claimed in the witness, where it can go red.
 fn home_serving_sxm_rows_are_not_candidates() -> Bool {
-  all(home_serving_reference_sxm_catalog_rows, row =>
-    !any(home_serving_add_in_card_catalog_rows, add_in => gpu_catalog_row_eq(a: row, b: add_in))
+  all(home_serving_reference_sxm_catalog_rows, sxm =>
+    !any(home_serving_add_in_card_catalog_rows, add_in =>
+      gpu_catalog_row_eq(a: gpu_board_admission_facts(admission: sxm).gpu, b: gpu_board_admission_facts(admission: add_in).gpu))
   )
 }

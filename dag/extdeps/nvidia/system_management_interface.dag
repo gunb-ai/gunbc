@@ -1,8 +1,11 @@
 module extdeps.nvidia.system_management_interface
 
-import std.types { NonEmptyStr, Bool, Int, List, Unit }
+import std.types { NonEmptyStr, Bool, Int, List, Unit, String }
 import std.nat { Nat }
-import std.measure { Mebibyte, mebibyte, Milliwatt, milliwatt, milliwatt_count, Hertz, hertz, hertz_count, Celsius, celsius }
+import std.measure { Mebibyte, mebibyte, Milliwatt, milliwatt, Hertz, hertz, mega_factor, Celsius, celsius, Microsecond, microsecond, micro_per_unit, milli_per_unit, Bandwidth, bandwidth, milliwatt_count, hertz_count, Millisecond, millisecond, Second, second, millisecond_count, second_count }
+import std.optional { Present, Absent }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_unix_seconds_at, iso8601_seconds_since_midnight }
 import std.algebra { trim, skip, string_contains }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
@@ -268,6 +271,310 @@ fn parse_compute_apps(text: String) -> NvidiaComputeAppsRead {
       ComputeAppsParsed { apps: xs } => xs
       ComputeAppsUnparsed { line: _ } => [] as List<NvidiaComputeApp>
     }) }
+  }
+}
+
+// ── GPU IDENTITY AND SAMPLES, AS `--query-gpu` PRINTS THEM ─────────────────────────────────────
+//
+// `nvidia-smi --query-gpu=<fields> --format=csv,noheader,nounits` prints one comma-separated row per
+// device, fields in the order asked (nvidia-smi --help-query-gpu). Units are dropped: memory in MiB,
+// power in W with two decimals, clocks in MHz, temperature in degrees C. The clocks event mask prints
+// as 0x-prefixed hex (extdeps.nvidia.management_library NvmlClocksEventReason). A field the device cannot
+// report prints a bracketed marker; a row holding one is not a row of numbers and is refused whole.
+// The field lists below are the queries a serving benchmark asks, kept beside their parsers so the
+// order the parser reads is the order the query asked.
+
+data nvidia_smi_gpu_identity_fields: String = "index,uuid,name,vbios_version,driver_version,memory.total,power.limit,pcie.link.gen.max,pcie.link.width.max"
+
+data nvidia_smi_gpu_sample_fields: String = "timestamp,uuid,power.draw,clocks.sm,clocks.mem,temperature.gpu,clocks_event_reasons.active,pcie.link.gen.gpucurrent,pcie.link.width.current"
+
+// THE TWO SAMPLER COMMANDS, RENDERED WHERE THEIR FLAGS ARE DOCUMENTED. A sampler's cadence is a
+// duration on the std.measure axis; `nvidia-smi`'s own words (`-lms` takes milliseconds, dmon's `-d`
+// takes whole seconds) are rendered here, never spelled as string literals inside a gunbc instrument.
+// The version pins the cadence (gunbc.serving.serving_benchmark), so a run's rows carry the rate they
+// were sampled at.
+
+fn nvidia_smi_gpu_sample_command(fields: String, interval: Millisecond, out_path: String) -> List<String> {
+  ["nvidia-smi", concat("--query-gpu=", fields), "--format=csv,noheader,nounits", "-lms", to_string(millisecond_count(m: interval)), "-f", out_path]
+}
+
+fn nvidia_smi_dmon_pcie_command(interval: Second, out_path: String) -> List<String> {
+  ["nvidia-smi", "dmon", "-s", "t", "-o", "DT", "-d", to_string(second_count(s: interval)), "-f", out_path]
+}
+
+type NvidiaSmiGpuIdentity {
+  index: Nat
+  uuid: NonEmptyStr
+  name: NonEmptyStr
+  vbios: NonEmptyStr
+  driver: NonEmptyStr
+  memory_total: Mebibyte
+  power_limit: Milliwatt
+  link_generation_max: Nat
+  link_width_max: Nat
+}
+
+// A sample's timestamp is `YYYY/MM/DD HH:MM:SS.mmm` in the sampling process's local time zone; a
+// caller that pins TZ=UTC for the sampler reads it as UTC, and this reader states that reading by
+// returning Unix microseconds only under that premise (nvidia_smi_utc_timestamp_micros).
+type NvidiaSmiGpuSample {
+  at_unix: Microsecond
+  uuid: NonEmptyStr
+  power_draw: Milliwatt
+  sm_clock: Hertz
+  memory_clock: Hertz
+  temperature: Celsius
+  clocks_event_mask: Nat
+  link_generation: Nat
+  link_width: Nat
+}
+
+fn nvidia_smi_cells(line: String) -> List<String> {
+  map(split(s: line, delimiter: ","), c => trim(s: c))
+}
+
+fn cell_at(cells: List<String>, i: Nat) -> String? {
+  first(cells |> skip(n: i))
+}
+
+fn nonempty_cell(cells: List<String>, i: Nat) -> NonEmptyStr? {
+  match cell_at(cells: cells, i: i) {
+    Absent => none
+    Present { value: c } => if c == "" || starts_with(s: c, prefix: "[") { none } else { Present { value: c as NonEmptyStr } }
+  }
+}
+
+fn nat_cell(cells: List<String>, i: Nat) -> Nat? {
+  match cell_at(cells: cells, i: i) { Absent => none, Present { value: c } => parse_nat(raw: c) }
+}
+
+// Watts with up to three decimals, as milliwatts: "52.31" is 52,310 mW. A fourth decimal or a
+// non-numeral refuses rather than rounding.
+fn milliwatts_of_watts(raw: String) -> Milliwatt? {
+  let parts = split(s: raw, delimiter: ".")
+  match first(parts) {
+    Absent => none
+    Present { value: whole } => match parse_nat(raw: whole) {
+      Absent => none
+      Present { value: w } =>
+        if count(parts) == 1 {
+          Present { value: milliwatt(count: w * 1000) }
+        } else if count(parts) == 2 {
+          match first(parts |> skip(n: 1)) {
+            Absent => none
+            Present { value: frac } =>
+              if length(frac) == 0 || length(frac) > 3 { none } else {
+                match parse_nat(raw: frac) {
+                  Absent => none
+                  Present { value: f } => Present { value: milliwatt(count: w * 1000 + f * pow10_nat(n: 3 - length(frac))) }
+                }
+              }
+          }
+        } else { none }
+    }
+  }
+}
+
+fn pow10_nat(n: Nat) -> Nat {
+  if n == 0 { 1 } else { 10 * pow10_nat(n: n - 1) }
+}
+
+fn milliwatt_cell(cells: List<String>, i: Nat) -> Milliwatt? {
+  match cell_at(cells: cells, i: i) { Absent => none, Present { value: c } => milliwatts_of_watts(raw: c) }
+}
+
+fn megahertz_cell(cells: List<String>, i: Nat) -> Hertz? {
+  match nat_cell(cells: cells, i: i) { Absent => none, Present { value: n } => Present { value: hertz(count: n * mega_factor()) } }
+}
+
+// "0x0000000000000004": leading zeros are not significant, and the remaining digits must fit the
+// fifteen-digit hex word reader.
+fn hex_mask_cell(cells: List<String>, i: Nat) -> Nat? {
+  match cell_at(cells: cells, i: i) {
+    Absent => none
+    Present { value: c } =>
+      if !starts_with(s: c, prefix: "0x") { none } else {
+        let digits = strip_leading_zeros(s: substring(s: c, start: 2, end: length(c)))
+        if digits == "" { Present { value: 0 } } else {
+          match base16_word_value(word: digits, max_digits: 15) { Absent => none, Present { value: v } => Present { value: v } }
+        }
+      }
+  }
+}
+
+fn strip_leading_zeros(s: String) -> String {
+  if starts_with(s: s, prefix: "0") { strip_leading_zeros(s: substring(s: s, start: 1, end: length(s))) } else { s }
+}
+
+fn nvidia_smi_gpu_identity_row(line: String) -> NvidiaSmiGpuIdentity? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 9 { none } else {
+    match nat_cell(cells: c, i: 0) { Absent => none, Present { value: index } =>
+    match nonempty_cell(cells: c, i: 1) { Absent => none, Present { value: uuid } =>
+    match nonempty_cell(cells: c, i: 2) { Absent => none, Present { value: name } =>
+    match nonempty_cell(cells: c, i: 3) { Absent => none, Present { value: vbios } =>
+    match nonempty_cell(cells: c, i: 4) { Absent => none, Present { value: driver } =>
+    match nat_cell(cells: c, i: 5) { Absent => none, Present { value: mem } =>
+    match milliwatt_cell(cells: c, i: 6) { Absent => none, Present { value: limit } =>
+    match nat_cell(cells: c, i: 7) { Absent => none, Present { value: gen } =>
+    match nat_cell(cells: c, i: 8) { Absent => none, Present { value: width } =>
+      Present { value: NvidiaSmiGpuIdentity { index: index, uuid: uuid, name: name, vbios: vbios, driver: driver, memory_total: mebibyte(count: mem), power_limit: limit, link_generation_max: gen, link_width_max: width } }
+    } } } } } } } } }
+  }
+}
+
+// `YYYY/MM/DD HH:MM:SS.mmm` read as UTC, to Unix microseconds.
+fn nvidia_smi_utc_timestamp_micros(raw: String) -> Microsecond? {
+  let halves = split(s: raw, delimiter: " ")
+  let date = split(s: match first(halves) { Present { value: d } => d, Absent => "" }, delimiter: "/")
+  let time = split(s: match first(halves |> skip(n: 1)) { Present { value: t } => t, Absent => "" }, delimiter: ":")
+  let secs = split(s: match first(time |> skip(n: 2)) { Present { value: s } => s, Absent => "" }, delimiter: ".")
+  if count(halves) != 2 || count(date) != 3 || count(time) != 3 || count(secs) != 2 { none } else {
+    match nat_cell(cells: date, i: 0) { Absent => none, Present { value: y } =>
+    match nat_cell(cells: date, i: 1) { Absent => none, Present { value: mo } =>
+    match nat_cell(cells: date, i: 2) { Absent => none, Present { value: d } =>
+    match nat_cell(cells: time, i: 0) { Absent => none, Present { value: h } =>
+    match nat_cell(cells: time, i: 1) { Absent => none, Present { value: mi } =>
+    match nat_cell(cells: secs, i: 0) { Absent => none, Present { value: s } =>
+    match nat_cell(cells: secs, i: 1) { Absent => none, Present { value: ms } =>
+      if mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 60 || ms > 999 { none } else {
+        let unix = iso8601_unix_seconds_at(date: Iso8601CivilDate { year: y, month: mo, day: d }, since_midnight: iso8601_seconds_since_midnight(hour: h, minute: mi, second: s))
+        if unix < 0 { none } else { Present { value: microsecond(count: unix * micro_per_unit() + ms * milli_per_unit()) } }
+      }
+    } } } } } } }
+  }
+}
+
+fn nvidia_smi_gpu_sample_row(line: String) -> NvidiaSmiGpuSample? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 9 { none } else {
+    match cell_at(cells: c, i: 0) { Absent => none, Present { value: ts } =>
+    match nvidia_smi_utc_timestamp_micros(raw: ts) { Absent => none, Present { value: at } =>
+    match nonempty_cell(cells: c, i: 1) { Absent => none, Present { value: uuid } =>
+    match milliwatt_cell(cells: c, i: 2) { Absent => none, Present { value: draw } =>
+    match megahertz_cell(cells: c, i: 3) { Absent => none, Present { value: sm } =>
+    match megahertz_cell(cells: c, i: 4) { Absent => none, Present { value: mem } =>
+    match nat_cell(cells: c, i: 5) { Absent => none, Present { value: temp } =>
+    match hex_mask_cell(cells: c, i: 6) { Absent => none, Present { value: mask } =>
+    match nat_cell(cells: c, i: 7) { Absent => none, Present { value: gen } =>
+    match nat_cell(cells: c, i: 8) { Absent => none, Present { value: width } =>
+      Present { value: NvidiaSmiGpuSample { at_unix: at, uuid: uuid, power_draw: draw, sm_clock: sm, memory_clock: mem, temperature: celsius(count: temp), clocks_event_mask: mask, link_generation: gen, link_width: width } }
+    } } } } } } } } } }
+  }
+}
+
+// EVERY CSV QUERY IS READ THE SAME WAY: blank lines skip, and any other line that is not a row refuses the
+// whole read with that line, so a sample the parser cannot read is never a missing sample. Each query has
+// its own entry below over the shared line split, so the row type is stated, not inferred, and each
+// has its own read type.
+type NvidiaSmiIdentityRead
+  = NvidiaSmiIdentityRowsParsed { rows: List<NvidiaSmiGpuIdentity> }
+  | NvidiaSmiIdentityRowUnparsed { line: String }
+
+type NvidiaSmiSampleRead
+  = NvidiaSmiSampleRowsParsed { rows: List<NvidiaSmiGpuSample> }
+  | NvidiaSmiSampleRowUnparsed { line: String }
+
+type NvidiaSmiPcieRead
+  = NvidiaSmiPcieRowsParsed { rows: List<NvidiaSmiPcieSample> }
+  | NvidiaSmiPcieRowUnparsed { line: String }
+
+type NvidiaSmiMemoryUsedRead
+  = NvidiaSmiMemoryUsedRowsParsed { rows: List<NvidiaSmiGpuMemoryUsed> }
+  | NvidiaSmiMemoryUsedRowUnparsed { line: String }
+
+fn nvidia_smi_data_lines(text: String) -> List<String> {
+  flat_map(split(s: text, delimiter: "\n"), l => if trim(s: l) == "" { [] as List<String> } else { [l] })
+}
+
+fn nvidia_smi_identity_rows(text: String) -> NvidiaSmiIdentityRead {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_identity_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiIdentityRowUnparsed { line: b }
+    Absent => NvidiaSmiIdentityRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_identity_row(line: l) { Absent => [] as List<NvidiaSmiGpuIdentity>, Present { value: r } => [r] }) }
+  }
+}
+
+fn nvidia_smi_sample_rows(text: String) -> NvidiaSmiSampleRead {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_sample_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiSampleRowUnparsed { line: b }
+    Absent => NvidiaSmiSampleRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_sample_row(line: l) { Absent => [] as List<NvidiaSmiGpuSample>, Present { value: r } => [r] }) }
+  }
+}
+
+// ── PCIE THROUGHPUT, AS `nvidia-smi dmon -s t -o DT` PRINTS IT ─────────────────────────────────
+//
+// Two `#` header lines, then one row per device per interval: date YYYYMMDD, time HH:MM:SS, the
+// device index, rxpci and txpci in "MB/s" (the dmon page's unit word). WHICH MEGABYTE is not stated
+// by the page this repository read, so the reading below takes the decimal one (10^6 bytes) as a
+// TranscribedUncited premise; read obligation: NVML nvmlDeviceGetPcieThroughput reports KB/s, and the
+// dmon source's KB-to-MB divisor decides the basis. A binary reading would raise every figure by 4.9%.
+
+type NvidiaSmiPcieSample {
+  at_unix: Microsecond
+  index: Nat
+  rx: Bandwidth
+  tx: Bandwidth
+}
+
+fn nvidia_smi_dmon_pcie_row(line: String) -> NvidiaSmiPcieSample? {
+  if starts_with(s: trim(s: line), prefix: "#") { none } else {
+    let c = flat_map(split(s: line, delimiter: " "), w => if w == "" { [] as List<String> } else { [w] })
+    if count(c) != 5 { none } else {
+      match cell_at(cells: c, i: 0) { Absent => none, Present { value: ymd } =>
+      match cell_at(cells: c, i: 1) { Absent => none, Present { value: hms } =>
+        if length(ymd) != 8 { none } else {
+          match nvidia_smi_utc_timestamp_micros(raw: join([substring(s: ymd, start: 0, end: 4), "/", substring(s: ymd, start: 4, end: 6), "/", substring(s: ymd, start: 6, end: 8), " ", hms, ".000"], "")) {
+            Absent => none
+            Present { value: at } =>
+              match nat_cell(cells: c, i: 2) { Absent => none, Present { value: idx } =>
+              match nat_cell(cells: c, i: 3) { Absent => none, Present { value: rx } =>
+              match nat_cell(cells: c, i: 4) { Absent => none, Present { value: tx } =>
+                Present { value: NvidiaSmiPcieSample { at_unix: at, index: idx, rx: bandwidth(count: rx * mega_factor()), tx: bandwidth(count: tx * mega_factor()) } }
+              } } }
+          }
+        }
+      } }
+    }
+  }
+}
+
+// dmon's header lines are part of its output, not rows, so they are dropped before the rows are read.
+fn nvidia_smi_dmon_pcie_rows(text: String) -> NvidiaSmiPcieRead {
+  let lines = nvidia_smi_data_lines(text: text) |> filter(l => !starts_with(s: trim(s: l), prefix: "#"))
+  match first(lines |> filter(l => match nvidia_smi_dmon_pcie_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiPcieRowUnparsed { line: b }
+    Absent => NvidiaSmiPcieRowsParsed { rows: flat_map(lines, l => match nvidia_smi_dmon_pcie_row(line: l) { Absent => [] as List<NvidiaSmiPcieSample>, Present { value: r } => [r] }) }
+  }
+}
+
+// ── DEVICE MEMORY IN USE, per GPU: `--query-gpu=uuid,memory.used` ─────────────────────────────
+//
+// Read beside the process list because a container's nvidia-smi sees the device but not necessarily
+// the processes of other PID namespaces: memory in use is what any holder leaves on the device.
+data nvidia_smi_gpu_memory_used_fields: String = "uuid,memory.used"
+
+type NvidiaSmiGpuMemoryUsed {
+  uuid: NonEmptyStr
+  used: Mebibyte
+}
+
+fn nvidia_smi_gpu_memory_used_row(line: String) -> NvidiaSmiGpuMemoryUsed? {
+  let c = nvidia_smi_cells(line: line)
+  if count(c) != 2 { none } else {
+    match nonempty_cell(cells: c, i: 0) { Absent => none, Present { value: uuid } =>
+    match nat_cell(cells: c, i: 1) { Absent => none, Present { value: m } =>
+      Present { value: NvidiaSmiGpuMemoryUsed { uuid: uuid, used: mebibyte(count: m) } }
+    } }
+  }
+}
+
+fn nvidia_smi_memory_used_rows(text: String) -> NvidiaSmiMemoryUsedRead {
+  let lines = nvidia_smi_data_lines(text: text)
+  match first(lines |> filter(l => match nvidia_smi_gpu_memory_used_row(line: l) { Absent => true, Present { value: _ } => false })) {
+    Present { value: b } => NvidiaSmiMemoryUsedRowUnparsed { line: b }
+    Absent => NvidiaSmiMemoryUsedRowsParsed { rows: flat_map(lines, l => match nvidia_smi_gpu_memory_used_row(line: l) { Absent => [] as List<NvidiaSmiGpuMemoryUsed>, Present { value: r } => [r] }) }
   }
 }
 

@@ -35,7 +35,7 @@ import std.algebra { Cons, list_append, list_map, empty_map }
 // resolution consulted; a supplied tree was never resolved, so it carries an index holding NO
 // declarations -- the name says so, and a declaration lookup through it finds nothing and refuses.
 fn claim_resolved_tree_without_declarations(root: Node) -> ResolvedTree {
-  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), occurrence_bindings: empty_map(), duplicate_binding_records: [], module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
+  ResolvedTree { root: root, symbol_index: empty_symbol_index(), resolved_declarations: empty_symbol_index(), occurrence_resolutions: empty_map(), duplicate_binding_records: [], module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent() }
 }
 
 fn claim_atom_node(s: Symbol) -> Node {
@@ -237,7 +237,7 @@ fn claim_resolved_call_tree(
       callee_path: callee_path,
       params: params
     ),
-    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    occurrence_resolutions: empty_map(), duplicate_binding_records: [],
     module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(), constructing_module: optional_absent()
@@ -305,7 +305,7 @@ fn claim_resolved_projection_tree(
       callee_path: fn_path,
       params: [param]
     ),
-    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    occurrence_resolutions: empty_map(), duplicate_binding_records: [],
     module_outcomes: unavailable,
     outcome_index: module_outcome_index(outcomes: unavailable),
     member_kinds: no_member_declaration_kinds(),

@@ -5,14 +5,14 @@ import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import extdeps.toolchain.types { Architecture, Aarch64, architecture_diagnostic_name }
-import extdeps.exec.command { shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_command, cat_command, nproc_command, ls_one_per_line_command }
 import extdeps.linux.procfs { ProcMeminfo, procfs_path_literal }
 import extdeps.systemd.udevd { udev_disk_by_label_dir }
 import extdeps.systemd { systemd_booted_runtime_dir }
-import extdeps.tools.tar { tar_extract_command }
+import extdeps.tools.tar { tar_extract_command, TarOverwriteDir }
 import extdeps.posix.test_utility { test_executable_command, test_directory_command }
 import extdeps.posix.sh_invocation { posix_sh_script_command }
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
@@ -35,14 +35,20 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import gunbc.host.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVolumeLabel, BootMediumNoTerminal, bmc_boot_image_export }
-import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine }
+import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_machine, boot_subject_host }
+import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved, RunningDeliveredArtifact }
+import gunbc.host.host_boot_id { host_boot_id_of_capture_run }
 import gunbc.machine_intake.host_capture_envelope {
   HostCaptureStage, HostCaptureRunIdentity, BoundHostCaptureEnvelope,
   HostCaptureBound, HostCaptureOpen, HostCaptureNotBegun, HostCaptureUnbound,
   HostCaptureSectionReading, SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
-  host_capture_program, host_capture_bind, host_capture_section_reading,
+  host_capture_program, host_capture_bind, host_capture_section_reading, host_capture_run_identity_value,
 }
+import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, checked_host_key, per_boot_pin_from_checked_key }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
+import gunbc.executor_privileged_operation { ensure_system_account_converge_command_as_root }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -99,6 +105,15 @@ fn runner_host_listener_path() -> String {
   concat(actions_runner_base_dir, actions_runner_listener_relative_path)
 }
 
+// THE ACCOUNT THE IMAGE'S LISTENERS RUN AS (operator decision, merry-fox-82, 2026-10-27: option B). The image is
+// stateless and image-baked, so no SSH converge enrols it and no runner_host_spec row describes it; the image itself
+// declares the account and creates it at every boot as a captured, gated section (runner-account), so a boot that did
+// not create it is refused by runner_host_up_readback rather than reported up. Slots on an image-baked host read
+// their runner user from here through gunbc.runner.runner_host_listener_account host_unit_slot_runner_user. A system
+// account with no home and no login shell: the listener needs an identity the App key's custody row does not admit,
+// nothing more. CHANGING THIS CHANGES THE BOOT IMAGE (the medium's user-data, so its output digest).
+data runner_host_medium_runner_account: NonEmptyStr = "gunbc-runner"
+
 // THE SECTION NAMES ARE READ BACK BY NAME, so the program's roster and the predicate's reads are one
 // set of rows.
 data runner_host_section_boot_media: NonEmptyStr = "boot-media"
@@ -107,6 +122,10 @@ data runner_host_section_runner_clear: NonEmptyStr = "runner-clear"
 data runner_host_section_runner_dir: NonEmptyStr = "runner-dir"
 data runner_host_section_runner_extract: NonEmptyStr = "runner-extract"
 data runner_host_section_runner_listener: NonEmptyStr = "runner-listener"
+data runner_host_section_runner_account: NonEmptyStr = "runner-account"
+data runner_host_section_host_key_gen: NonEmptyStr = "host-key-gen"
+data runner_host_section_host_key_pub: NonEmptyStr = "host-key-pub"
+data runner_host_section_host_key_fingerprint: NonEmptyStr = "host-key-fingerprint"
 data runner_host_section_systemd: NonEmptyStr = "systemd-manager"
 data runner_host_section_meminfo: NonEmptyStr = "meminfo"
 data runner_host_section_nproc: NonEmptyStr = "nproc"
@@ -119,11 +138,53 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_runner_dir,
   runner_host_section_runner_extract,
   runner_host_section_runner_listener,
+  runner_host_section_runner_account,
+  runner_host_section_host_key_gen,
+  runner_host_section_host_key_pub,
+  runner_host_section_host_key_fingerprint,
   runner_host_section_systemd,
   runner_host_section_meminfo,
   runner_host_section_nproc,
   runner_host_section_machine,
 ]
+
+// THE PER-BOOT HOST KEY (S4(c), a PROPOSAL pending the operator's route pick; gunbc.host.anchored_host_transport
+// anchored_host_transport_per_boot is the fleet's side). The image is stateless, so its host key is generated
+// at EVERY boot into tmpfs (/run, fresh per boot: ssh-keygen refuses an existing file, so a stale key fails loudly),
+// The PUBLIC half and its fingerprint are each the output of ONE
+// structured command stage (cat, ssh-keygen -l), carried inside the capture envelope on the serial console; the
+// fleet-side reader (runner_host_key_observation) splits them in .dag and takes the boot id from the envelope, so no
+// stage composes text in shell. Nothing private leaves the host and nothing is stored: the key dies with the boot. The
+// boot id is the kernel's (/proc/sys/kernel/random/boot_id), the source the envelope's begin/end markers bind to
+// (host_capture_program GUNBC_BOOT_ID). No sshd is started: a daemon is admitted by its consumer (DESIGN §3c), and none exists until the
+// fleet public key is seeded and a route consumes the pin.
+data runner_host_key_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key"
+data runner_host_key_public_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key.pub"
+// The three key commands are built over the key file as a PARAMETER and the stages render them over the declared
+// path, so the inhabitance claim runs the SAME commands the image runs against a scratch path (DESIGN section 3).
+fn runner_host_key_gen_argv(key_file: String) -> ArgvCommand {
+  ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: key_file, comment: "gunbc-runner-host-per-boot")
+}
+
+fn runner_host_key_pub_argv(public_key_file: String) -> ArgvCommand {
+  cat_command(path: public_key_file)
+}
+
+fn runner_host_key_fingerprint_argv(public_key_file: String) -> ArgvCommand {
+  ssh_keygen_fingerprint_command(key_file: public_key_file)
+}
+
+fn runner_host_key_gen_command() -> String {
+  shell_command_render(command: runner_host_key_gen_argv(key_file: runner_host_key_file as String))
+}
+
+fn runner_host_key_pub_command() -> String {
+  shell_command_render(command: runner_host_key_pub_argv(public_key_file: runner_host_key_public_file as String))
+}
+
+fn runner_host_key_fingerprint_command() -> String {
+  shell_command_render(command: runner_host_key_fingerprint_argv(public_key_file: runner_host_key_public_file as String))
+}
 
 // THE ROSTER. The slot unit is a transient systemd unit started per attempt
 // (gunbc.runner.runner_host_unit_slot HostUnitSlot.argv, systemd-run), so no slot unit exists at
@@ -136,8 +197,12 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_tarball_digest, command: shell_command_render(command: sha256sum_file_command(path: runner_host_medium_tarball_on_medium(artifact: artifact))) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_clear, command: shell_command_render(command: rm_recursive_force_command(path: actions_runner_base_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_account, command: ensure_system_account_converge_command_as_root(login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path) },
+    HostCaptureStage { name: runner_host_section_host_key_gen, command: runner_host_key_gen_command() as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_host_key_pub, command: runner_host_key_pub_command() as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_host_key_fingerprint, command: runner_host_key_fingerprint_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
@@ -333,7 +398,7 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
   }
   let digest_refusals = runner_host_tarball_digest_refusals(read: runner_host_section_read(envelope: envelope, name: runner_host_section_tarball_digest))
   let gates = append(append(media_refusals, items: digest_refusals), items: flat_map(
-    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_systemd],
+    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_runner_account, runner_host_section_host_key_gen, runner_host_section_host_key_pub, runner_host_section_host_key_fingerprint, runner_host_section_systemd],
     n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
   ))
   let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)
@@ -418,6 +483,22 @@ fn runner_host_up_readback(capture: String, subject: AdmittedBootSubject) -> Run
   }
 }
 
+// THE EPHEMERAL ROW'S RUNNING-OS FACT (gunbc.host.running_os): the runner medium runs its delivered artifact in
+// memory, so a runner-host-up readback of the admitted subject proves that subject's medium digest is what runs, on
+// the boot the capture names. It reads the same subject the readback is taken over, so the digest and the readback
+// cannot come from two subjects. A capture keyed by a historical attempt ordinal names no boot and is unobserved.
+fn runner_host_running_os(capture: String, subject: AdmittedBootSubject) -> RunningOsReading {
+  match runner_host_up_readback(capture: capture, subject: subject) {
+    RunnerHostUpPending { reason: r } => RunningOsUnobserved { cause: concat("the runner-host-up capture is not closed: ", r) }
+    RunnerHostUpRefused { refusals: rs } => RunningOsUnobserved { cause: concat("the capture does not establish runner-host-up: ", join(map(rs, x => runner_host_up_refusal_text(refusal: x)), "; ")) }
+    RunnerHostUpObserved { up: up } =>
+      match host_boot_id_of_capture_run(run: up.run) {
+        Present { value: boot } => RunningOsObserved { running: RunningDeliveredArtifact { digest: subject.medium.digest }, observed_host: boot_subject_host(subject: subject), observed_on: boot }
+        Absent => RunningOsUnobserved { cause: "the capture names a historical attempt ordinal, not a kernel boot id" }
+      }
+  }
+}
+
 // THE READBACK OVER A MACHINE NAME AND A LABEL, for a consumer that holds a capture and no boot: the
 // boot subject's own readback delegates here, so the bind and the acceptance are one fold. The caller
 // names the machine the envelope must bind to and the label of the medium it expects
@@ -428,5 +509,67 @@ fn runner_host_up_readback_of(capture: String, machine: NonEmptyStr, label: NonE
     HostCaptureUnbound { reason: r } => RunnerHostUpRefused { refusals: [RunnerHostCaptureUnbound { reason: r }] }
     HostCaptureOpen { envelope: e } => runner_host_up_over_open(envelope: e)
     HostCaptureBound { envelope: e } => runner_host_up_over_closed(envelope: e, label: label)
+  }
+}
+
+// THE SOL READER (S4(c)): the fleet's pin for this boot, read out of the CLOSED, BOUND envelope the serial console
+// carried. Bound to the machine first (host_capture_bind: one begin, its matching end, never a search over the
+// stream), so the pin cannot be assembled from another run; the expected boot id is that envelope's own run identity,
+// the kernel boot id the markers carry. The pin is composed from the host-key-pub and host-key-fingerprint sections only when
+// every host-key section EXITED 0 -- those sections show the key was generated and read back on this boot,
+// not that any daemon serves it (none is started here).
+// An open envelope observes nothing (the program's END is its own statement that it wrote everything), and a
+// section that printed none, or a malformed one, is not observed. The pin is built here from the
+// producers' own outputs through checked_host_key (the console grammar is not composed and re-parsed).
+type RunnerHostKeyObservation
+  = RunnerHostKeyObserved { boot_id: NonEmptyStr, pin: PerBootHostPin }
+  | RunnerHostKeyNotObserved { cause: String }
+
+// The nth space-separated field of a section's first non-empty line; Absent when the section has none, so absence is
+// never composed into a line as an empty field.
+fn runner_host_nth_field(output: List<String>, n: Int) -> String? {
+  match first(filter(map(output, l => trim(s: l)), l => l != "")) {
+    Absent => none
+    Present { value: l } => first(skip(filter(split(s: l, delimiter: " "), f => f != ""), n: n))
+  }
+}
+
+fn runner_host_key_observation(capture: String, machine: NonEmptyStr, row: AnchoredHostRow) -> RunnerHostKeyObservation {
+  match host_capture_bind(capture: capture, machine: machine) {
+    HostCaptureNotBegun => RunnerHostKeyNotObserved { cause: "no begin marker for this machine in the console read" }
+    HostCaptureUnbound { reason: r } => RunnerHostKeyNotObserved { cause: r }
+    HostCaptureOpen { envelope: _ } => RunnerHostKeyNotObserved { cause: "the envelope is still open; no pin is taken before END" }
+    HostCaptureBound { envelope: e } => {
+      let refusals = flat_map(
+        [runner_host_section_host_key_gen, runner_host_section_host_key_pub, runner_host_section_host_key_fingerprint],
+        n => runner_host_section_refusal(read: runner_host_section_read(envelope: e, name: n)),
+      )
+      if count(refusals) != 0 {
+        RunnerHostKeyNotObserved { cause: join(map(refusals, r => runner_host_up_refusal_text(refusal: r)), "; ") }
+      } else {
+        let pub_read = runner_host_section_output(read: runner_host_section_read(envelope: e, name: runner_host_section_host_key_pub))
+        let fp_read = runner_host_section_output(read: runner_host_section_read(envelope: e, name: runner_host_section_host_key_fingerprint))
+        let boot_id = host_capture_run_identity_value(run: e.run)
+        match runner_host_nth_field(output: pub_read, n: 0) {
+          Absent => RunnerHostKeyNotObserved { cause: "the host-key-pub section printed no key type" }
+          Present { value: key_type } => match runner_host_nth_field(output: pub_read, n: 1) {
+            Absent => RunnerHostKeyNotObserved { cause: "the host-key-pub section printed no key blob" }
+            Present { value: key_b64 } => match runner_host_nth_field(output: fp_read, n: 1) {
+              Absent => RunnerHostKeyNotObserved { cause: "the host-key-fingerprint section printed no fingerprint" }
+              Present { value: fingerprint } => {
+                if boot_id == "" {
+                  RunnerHostKeyNotObserved { cause: "the envelope carries no boot id" }
+                } else {
+                  match checked_host_key(boot_id: boot_id as NonEmptyStr, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint) {
+                    Absent => RunnerHostKeyNotObserved { cause: "the key type, blob or fingerprint printed by the key sections did not check" }
+                    Present { value: checked } => RunnerHostKeyObserved { boot_id: boot_id as NonEmptyStr, pin: per_boot_pin_from_checked_key(row: row, parsed: checked) }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

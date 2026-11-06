@@ -1,0 +1,1 @@
+{"@odata.type":"#VirtualMediaCollection.VirtualMediaCollection","@odata.id":"/redfish/v1/Managers/1/VirtualMedia","Name":"Virtual Media Collection","Description":"Collection of Virtual Media for this System","Members":[{"@odata.id":"/redfish/v1/Managers/1/VirtualMedia/CD1"}],"Members@odata.count":1}

@@ -1,0 +1,24 @@
+module gunbc.serving.strata_checkpoint_transfer
+
+import std.types { String, Int }
+import extdeps.tools.curl { classify_curl_http_code_after_newline, curl_body_before_http_code, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import extdeps.strata.session_file { SlotRequest, SlotReply, SlotReplyUnreadable, slot_reply }
+
+// A transport failure does not establish whether the native mutation completed.
+type SlotExchange
+  = SlotAnswered { reply: SlotReply }
+  | SlotOutcomeUnknown { detail: String }
+
+fn strata_slot_exchange(request: SlotRequest, exit_code: Int, stdout: String, stderr: String) -> SlotExchange {
+  if exit_code != 0 { SlotOutcomeUnknown { detail: stderr } }
+  else { match classify_curl_http_code_after_newline(stdout: stdout) {
+    CurlWroteNoHttpStatus { cause: c } => SlotOutcomeUnknown { detail: c as String }
+    CurlWroteHttpStatus { status: status } => {
+      let reply = slot_reply(request: request, status: status, body: curl_body_before_http_code(stdout: stdout))
+      match reply {
+        SlotReplyUnreadable { detail: d } => SlotOutcomeUnknown { detail: d }
+        _ => SlotAnswered { reply: reply }
+      }
+    }
+  } }
+}

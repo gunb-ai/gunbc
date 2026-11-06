@@ -1,11 +1,9 @@
 module test.claim.host.host_build_cache_provision_real_execution_witness
 
 import std.logic { Bool }
-import gunbc.output_policy { OutcomeIsData }
 import extdeps.shell
 import gunbc.retained_shell_script { retained_runtime }
 import extdeps.filesystem.filesystem_io
-import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.host.host_effect_realize {
   RunArgvTransportObserved,
   RunArgvTransportRefused,
@@ -51,23 +49,6 @@ fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
   let cmd = fake_sccache_chmod_command(path: path)
   let chmod = shell.Exec.RunArgv(program: cmd.program.invocation as String, arguments: cmd.arguments)
   wrote.success && chmod.exit_code == 0
-}
-
-fn run_body(prelude: String, body: String) -> ShellExecObserved {
-  let full = concat("set -euo pipefail\n", concat(prelude, body))
-  let result = shell.Exec.Run(
-    script: retained_runtime(
-      body: shell_exec_via_bash(body: full),
-      reason: "build-cache provision witness body under fake failing sccache" as NonEmptyStr,
-    ),
-    expect: OutcomeIsData,
-  )
-  ShellExecObserved {
-    exit_code: result.exit_code,
-    success: result.success,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  }
 }
 
 // THE WITNESS THAT WAS STAGED FOR THIS MOMENT. This lane's own staged note

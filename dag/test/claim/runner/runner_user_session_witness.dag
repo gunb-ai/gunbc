@@ -8,11 +8,13 @@ import extdeps.systemd.loginctl { loginctl_enable_linger_argv }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_on, runner_job_user_session_hosts, srv1_runner_host_spec, srv4_runner_host_spec }
 import extdeps.systemd.loginctl { loginctl_show_user_linger_command, loginctl_linger_reading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
+import gunbc.runner.runner_user_session_receipt {
+  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of, runner_user_session_converge_receipt_path,
+}
 import gunbc.runner.runner_user_session {
-  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered, user_session_answer_of,
   UserSessionHostAdmission, UserSessionHostAdmitted, UserSessionHostRefused, user_session_host_admission,
   user_session_enable_linger_command, user_session_readback_command,
-  user_session_receipt_then, runner_user_session_converge_receipt_path,
+  user_session_receipt_then,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }

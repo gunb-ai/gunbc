@@ -3,9 +3,6 @@ module gunbc.provisioning.public_nocloud_seed
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.algebra { FreeSemigroup, list_head, skip }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
 import extdeps.ssh.keys { ssh_canonical_public_key_line_admitted }
@@ -319,14 +316,3 @@ fn admit_public_nocloud_seed(client_mac: Eui48Address, user_data: YamlValue) -> 
   }
 }
 
-// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. Today the admission's only callers are witnesses, and the
-// edge ships with no install binding (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_bindings is empty).
-data public_nocloud_seed_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.provisioning.public_nocloud_seed", decl_name: "admit_public_nocloud_seed"),
-    reason: "no production seed is admitted yet: the per-board amd64 seed renderer (the generalized autoinstall seed, gunbc.provisioning) is not landed, and the site PXE edge's install bindings are empty until it is",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a site_pxe_edge_converge install binding for a roster MAC carries a PublicNoCloudSeed admitted from the amd64 seed renderer's documents (autoinstall_user_data_document), and the edge's readback of the served user-data agrees with that seed's bytes; a witness over a hand-built tree does not fire this"
-    )
-  ),
-]

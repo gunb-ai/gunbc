@@ -245,8 +245,18 @@ test fn mab_binder_spelling_a_where_alias_binds() -> Bool {
     && mab_has_atom(o: mab_resolved_where_alias_binder(), id: ^W)
 }
 
-test fn mab_binder_spelling_a_record_data_row_binds() -> Bool {
-  mab_has_atom(o: mab_resolved_record_data_binder(), id: ^d)
+// REVERSED BY THE DECLARATION-SHAPE SPLIT (queued item of tidy-ant-251, 2026-10-25, decided there with
+// its reason). This row asserted that a field binder spelled like a module `data` row binds. Once the
+// index tells a `data` row (an Arrow marked ConstantMemberEdge) from a function (v2.std.symbol_index
+// type_decl_member_shape), a pattern atom naming a visible module-level value is the same situation at
+// either pattern position as one naming a frame value: the author meant to compare or to shadow, and
+// the compiler cannot tell which, so it refuses resolve_reason_pattern_atom_names_visible_value
+// (rename to bind, or use an equality guard to compare). Binding it is the silent wrong answer when
+// the arm reads the atom (`A(d) => d` would return the scrutinee's payload, not the constant). Kept,
+// reversed, as the regression control (DESIGN section 4b(4)); a binder spelled like a module FUNCTION
+// still binds (mab_a_binder_spelled_like_a_module_function_still_binds).
+test fn mab_binder_spelling_a_record_data_row_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_record_data_binder(), reason: ^resolve_reason_pattern_atom_names_visible_value)
 }
 
 // A BINDER SPELLED LIKE A NON-PAYLOAD DECLARED IN TWO MODULES BINDS. `n` is off the arm's lexical
@@ -423,7 +433,10 @@ test fn mab_declared_constructor_in_a_pattern_stays_a_declaration_reference() ->
 // atom resolves as a reference and refuses unbound, rather than becoming a catch-all binder that
 // matches every A(_). WHAT IT DISCRIMINATES, measured: red with the GlobalBareLookupAmbiguous arm
 // answering binder; still green with the declared-payload fact forced false, because this spelling
-// never reaches the GlobalBareHit arm. It is the executed receipt for the bridge's fail-safe
+// never reaches the GlobalBareHit arm. RE-MEASURED 2026-10-25 on #15125, and it contradicts that: this
+// row stays GREEN with GlobalBareLookupAmbiguous answering binder, and goes RED with GlobalBareHit and
+// GlobalBareLookupUnbound both answering binder, so its live route is one of those two, not the
+// ambiguous arm. The paragraph above is kept as the record of what was claimed. It is the executed receipt for the bridge's fail-safe
 // direction, not evidence for the index-keyed payload fact.
 fn mab_resolved_unimported_constructor() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
@@ -447,4 +460,235 @@ test fn mab_unimported_constructor_in_a_pattern_refuses_rather_than_binding() ->
     o: mab_resolved_unimported_constructor(),
     reason: ^resolve_reason_unbound_symbol
   )
+}
+
+// A BARE-ATOM ARM PATTERN IS A PATTERN ATOM LIKE A FIELD'S, AND BINDS ITS ARM BY THE SAME RULE.
+// `other => other` is the catch-all binder the since-retired ambient-name census reported unbound
+// at both occurrences, pattern and body, in v2.compiler.lexical_scope
+// pattern_binder_candidates took candidates only from a construct's field atoms, so a pattern with no
+// construct tag offered none and the atom resolved as a plain reference. The outer `other` is
+// TEST-MARKED for the reason (1) above states: with the arm binding it the module assembles, and
+// without the binder `other` reaches the root and refuses resolve_reason_test_code_referenced.
+fn mab_resolved_bare_binder() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\ntest fn other() -> Int { 1 }\n\nfn pick(c: C) -> C {\n  match c {\n    A(y) => c\n    other => other\n  }\n}\n")
+}
+
+// The binder scopes exactly its arm: a sibling arm naming it, and the rest of the function after the
+// match, each see the enclosing scope, where nothing declares `other`.
+fn mab_resolved_bare_binder_sibling() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> C {\n  match c {\n    A(y) => other\n    other => c\n  }\n}\n")
+}
+
+fn mab_resolved_bare_binder_after_match() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> C {\n  let k = match c {\n    other => other\n  }\n  other\n}\n")
+}
+
+// A bare atom naming a declared nullary variant stays a constructor: `B` resolves to its
+// declaration and is never a frame binder.
+fn mab_resolved_bare_nullary_variant() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    B => 0\n  }\n}\n")
+}
+
+test fn mab_bare_atom_binder_binds_its_arm() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_bare_binder())
+    && mab_has_atom(o: mab_resolved_bare_binder(), id: ^other)
+}
+
+test fn mab_bare_atom_binder_does_not_leak_to_a_sibling_arm() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_bare_binder_sibling(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+test fn mab_bare_atom_binder_does_not_leak_past_the_match() -> Bool {
+  mab_outcome_refuses_with(
+    o: mab_resolved_bare_binder_after_match(),
+    reason: ^resolve_reason_unbound_symbol
+  )
+}
+
+test fn mab_bare_nullary_variant_stays_a_declaration_reference() -> Bool {
+  match mab_resolved_bare_nullary_variant() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
+        found || (match declaration_reference_path_optional(node: m) {
+          Present { value: path } => qualified_name_last_segment(qn: path) == Present { value: ^B }
+          Absent => false
+        })
+      })
+  }
+}
+
+// The rule reads the index, not the spelling: a LOWERCASE atom naming a payload declared in scope is a
+// constructor, exactly as an uppercase one is.
+fn mab_resolved_bare_lowercase_variant() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype K = on | off\n\nfn bit(k: K) -> Int {\n  match k {\n    on => 1\n    off => 0\n  }\n}\n")
+}
+
+test fn mab_bare_lowercase_payload_stays_a_constructor() -> Bool {
+  match mab_resolved_bare_lowercase_variant() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: n, diagnostics: _ } =>
+      fold(node_subtree_nodes(root: n.root), init: false, f: fn(found, m) {
+        found || (match declaration_reference_path_optional(node: m) {
+          Present { value: path } => qualified_name_last_segment(qn: path) == Present { value: ^on }
+          Absent => false
+        })
+      })
+  }
+}
+
+// AN ABSENCE LITERAL IS NEVER A BINDER (v2.extdeps.languages.dag dag_pattern_atom_is_literal). The seed
+// reads `none` and `null` in a pattern as LitNull; read as binders they would match every value. Each
+// stays an atom that resolves as a reference and refuses, at the top and in a field alike.
+fn mab_resolved_bare_none() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    none => 0\n  }\n}\n")
+}
+
+fn mab_resolved_bare_null() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    null => 0\n  }\n}\n")
+}
+
+fn mab_resolved_field_null() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(null) => 1\n    A(_) => 2\n    B => 0\n  }\n}\n")
+}
+
+test fn mab_absence_literal_pattern_refuses_rather_than_binding() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_bare_none(), reason: ^resolve_reason_unbound_symbol)
+    && mab_outcome_refuses_with(o: mab_resolved_bare_null(), reason: ^resolve_reason_unbound_symbol)
+    && mab_outcome_refuses_with(o: mab_resolved_field_null(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// A CATCH-ALL BINDER ITS ARM NEVER READS REFUSES (v2.compiler.resolve
+// resolve_catch_all_binder_read_gate); the remedy is `_`. Its sharpest case is the one this gate exists
+// for: a MISSPELLED nullary variant in the last arm (`Bx` for `B`) names no payload and reads as a
+// binder, and, unread, it refuses rather than silently covering `B`. Both rows red with the gate
+// deleted: the first accepts, and the second accepts with the misspelling covering every leftover
+// variant.
+fn mab_resolved_unread_catch_all() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    other => 0\n  }\n}\n")
+}
+
+fn mab_resolved_misspelled_last_nullary() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A(y) => y\n    Bx => 0\n  }\n}\n")
+}
+
+test fn mab_unread_catch_all_binder_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_unread_catch_all(), reason: ^resolve_reason_catch_all_binder_unread)
+}
+
+test fn mab_misspelled_nullary_in_the_last_arm_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_misspelled_last_nullary(), reason: ^resolve_reason_catch_all_binder_unread)
+}
+
+// AN UNIMPORTED NULLARY VARIANT WHOSE ARM READS IT REFUSES, NEVER BINDS. `Absent => Absent` reads the
+// atom, so the unread-binder gate cannot catch it; what keeps it a constructor is the payload test
+// itself (resolve_pattern_atom_names_constructor). `Absent` is declared only in p.o and not imported
+// into p.q, so it is off the arm's lexical chain and the test takes the global-bare branch, which
+// names it a declared variant BY IDENTITY: GlobalBareHit, whose one path is a declared payload, not the
+// canonical-symbol spelling fallback. The atom then resolves as a reference and refuses unbound. Read as
+// a binder it would be a catch-all whose arm returns the scrutinee, Accepted with the wrong meaning.
+// WHAT DISCRIMINATES IT, measured 2026-10-25 on #15125: red with the GlobalBareHit and
+// GlobalBareLookupUnbound arms both answering binder; green with only GlobalBareLookupUnbound (the
+// canonical fallback) answering binder, and green with GlobalBareLookupAmbiguous answering binder.
+fn mab_resolved_unimported_bare_nullary_read() -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(
+    ingest: Cons {
+      head: mab_file(src: "module p.o\n\ntype Opt = Present { value: Int } | Absent\n", id: ^match_arm_binder_unimported_bare_o_cu),
+      tail: Cons {
+        head: mab_file(src: "module p.q\n\nfn pick(o: Int) -> Int {\n  match o {\n    Absent => Absent\n  }\n}\n", id: ^match_arm_binder_unimported_bare_q_cu),
+        tail: Empty
+      }
+    },
+    admission: Admission {
+      subject: ResolutionSubject { name: Cons { head: ^p, tail: Cons { head: ^q, tail: Empty } } },
+      imports: Empty
+    },
+    lm: dag_language_model()
+  )
+}
+
+test fn mab_unimported_bare_nullary_read_by_its_arm_refuses_rather_than_binding() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_unimported_bare_nullary_read(), reason: ^resolve_reason_unbound_symbol)
+}
+
+// A PATTERN ATOM NAMING A VALUE OF AN ENCLOSING FRAME REFUSES WITH ONE CAUSE THAT NAMES BOTH READINGS
+// (v2.compiler.resolve resolve_pattern_atom_naming_a_frame_value, resolve_reason_pattern_atom_names_visible_value:
+// rename to bind, or use an equality guard to compare). Before, these programs refused
+// binder_hides_visible_value, and the first one's arm is also unread: the reason asserted is the one cause
+// that replaces both for a pattern atom. A binder spelled like a module FUNCTION is not decided here
+// (module-level names are a declaration-shape modeling item) and still binds.
+fn mab_resolved_constant_frame_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C, x: C) -> Int {\n  match c {\n    x => 1\n  }\n}\n")
+}
+
+fn mab_resolved_constant_frame_field_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A(Int) | B\n\nfn pick(c: C, k: Int) -> Int {\n  match c {\n    A(k) => 1\n    A(_) => 2\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_binder_spelled_like_a_function() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\nfn twice(v: Int) -> Int { v }\n\ntype C = A(Int) | B\n\nfn pick(c: C) -> C {\n  match c {\n    A(y) => c\n    twice => twice\n  }\n}\n")
+}
+
+test fn mab_a_pattern_atom_naming_a_frame_value_refuses_naming_both_readings() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_constant_frame_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
+}
+
+test fn mab_a_field_pattern_atom_naming_a_frame_value_refuses_naming_both_readings() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_constant_frame_field_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
+}
+
+test fn mab_a_binder_spelled_like_a_module_function_still_binds() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_binder_spelled_like_a_function())
+    && mab_has_atom(o: mab_resolved_binder_spelled_like_a_function(), id: ^twice)
+}
+
+// A MODULE-LEVEL CONSTANT IN PATTERN POSITION refuses with the same cause, now that the index tells a
+// `data` row from a function (v2.std.symbol_index type_decl_member_shape). The first row is
+// v2.extdeps.languages.wasm's shape: the seed read each atom as a catch-all binder.
+fn mab_resolved_module_constant_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype F { w: Int }\n\ndata fa: F = F { w: 1 }\n\ndata fb: F = F { w: 2 }\n\nfn id(f: F) -> Int {\n  match f {\n    fa => 1\n    fb => 2\n  }\n}\n")
+}
+
+fn mab_resolved_module_constant_read_pattern() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype F { w: Int }\n\ndata fa: F = F { w: 1 }\n\nfn id(f: F) -> F {\n  match f {\n    fa => fa\n  }\n}\n")
+}
+
+test fn mab_a_module_constant_in_pattern_position_refuses_naming_both_readings() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_module_constant_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
+    && mab_outcome_refuses_with(o: mab_resolved_module_constant_read_pattern(), reason: ^resolve_reason_pattern_atom_names_visible_value)
+}
+
+// THE WHOLE-ARM BARE ATOM (PatternTagPosition). The position reports one way for a nullary tag and
+// for a catch-all binder, so it cannot tell them apart: resolution decides, by what the atom names on
+// the arm's chain. The discriminator is the unread-binder rule: a catch-all binder its arm never reads
+// refuses (resolve_reason_catch_all_binder_unread), so `A => 1` accepting means A was taken as the
+// tag, not as a binder; `other => 1` refusing means `other` was taken as a binder. A binder the body
+// reads stays the Atom it was spelled as. (Atom presence of a tag's own spelling proves nothing: the
+// type declaration spells it too.)
+fn mab_resolved_nullary_tag_arm() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A => 1\n    B => 0\n  }\n}\n")
+}
+
+fn mab_resolved_fresh_name_arm() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A | B\n\nfn pick(c: C) -> Int {\n  match c {\n    A => 1\n    other => 0\n  }\n}\n")
+}
+
+fn mab_resolved_fresh_name_arm_body_reads_it() -> Outcome<ResolvedTree> {
+  mab_assemble(src: "module p\n\ntype C = A | B\n\nfn pick(c: C) -> C {\n  match c {\n    A => B\n    other => other\n  }\n}\n")
+}
+
+test fn mab_a_bare_atom_arm_naming_a_nullary_tag_binds_the_tag() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_nullary_tag_arm())
+}
+
+test fn mab_a_bare_atom_arm_naming_nothing_binds_a_binder_its_body_reads() -> Bool {
+  mab_outcome_accepts(o: mab_resolved_fresh_name_arm_body_reads_it())
+    && mab_has_atom(o: mab_resolved_fresh_name_arm_body_reads_it(), id: ^other)
+}
+
+test fn mab_an_unread_catch_all_binder_refuses() -> Bool {
+  mab_outcome_refuses_with(o: mab_resolved_fresh_name_arm(), reason: ^resolve_reason_catch_all_binder_unread)
 }

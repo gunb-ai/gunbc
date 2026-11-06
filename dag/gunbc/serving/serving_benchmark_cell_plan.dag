@@ -1,0 +1,58 @@
+module gunbc.serving.serving_benchmark_cell_plan
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { Mebibyte, Minute, Second, second }
+import std.nat { Nat }
+import product.host_identity { HostIdentity }
+import extdeps.docker { DockerMount }
+import extdeps.strata.serve_flags { StrataServeFlags }
+import gunbc.serving.serving_benchmark_run_receipt { ServingEngineBuild, ServingArtifact, ServingTopology }
+
+// WHAT A SERVING-BENCHMARK RUN STARTS, for one serving cell: the engine (its image, its in-image argv,
+// the flags it serves with, the weights it mounts read-only), the gpu-bench kit that drives it, and the
+// sampler image nvidia-smi runs in. The run receipt's cell identity is read from the host where it can be
+// (GPUs, CPU, RAM) and taken from this plan where only the plan knows it (the engine build, the
+// artifact, the topology), so a plan row is the cell's declared half and the receipt checks the rest.
+//
+// The kit's CTX argument sizes each session's history in the kit's own unit (CTX x 0.72 words); it is
+// chosen so the primed prompt lands inside the version's retained-context band on this model's tokenizer,
+// and admission refuses the run if it does not.
+// AN IMAGE THE RUN NEEDS MAY NOT EXIST YET, and that is a typed state, not a placeholder string: a plan
+// whose engine or kit is pending names what it awaits, and the instrument answers no observation with
+// that reason instead of starting anything. The engine's build identity (upstream, base, patches, the
+// binary's digest) is a fact of the pinned image, so it is carried by the pinned arm.
+type ServingEngineInput
+  = EngineImagePinned { reference: NonEmptyStr, command: List<String>, build: ServingEngineBuild }
+  | EngineImagePending { awaiting: NonEmptyStr }
+
+type ServingKitInput
+  = KitImagePinned { reference: NonEmptyStr, command: List<String> }
+  | KitImagePending { awaiting: NonEmptyStr }
+
+type ServingBenchmarkCellPlan {
+  host: HostIdentity
+  engine: ServingEngineInput
+  engine_flags: StrataServeFlags
+  engine_mounts: List<DockerMount>
+  engine_port: Nat
+  artifact: ServingArtifact
+  topology: ServingTopology
+  kit: ServingKitInput
+  kit_model_name: NonEmptyStr
+  kit_ctx: Nat
+  // A duration, so the carrier carries the unit; the kit's positional argv word converts it with
+  // minute_count at the command boundary (serving_benchmark_run.dag), never from the field's name.
+  kit_duration: Minute
+  sampler_image: NonEmptyStr
+  // A GPU whose device memory in use is above this before the engine starts, or after it is removed,
+  // is held by something else.
+  idle_gpu_memory_bound: Mebibyte
+  // The engine-readiness poll policy, pinned by the cell: attempts x delay bounds the wait and
+  // max_time bounds each request (curl --retry/--retry-delay/--max-time, rendered by
+  // extdeps.http.client from these carriers — the instrument never spells them as strings). A model
+  // load on this cell takes minutes; the wait is policy of the cell, so it lives here, not in argv
+  // literals in the instrument (review 86842, DESIGN.md §3).
+  readiness_attempts: Nat
+  readiness_delay: Second
+  readiness_max_time: Second
+}

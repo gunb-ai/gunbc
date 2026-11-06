@@ -4,7 +4,11 @@
 use self::ContentHash::*;
 use self::ContentHashComparison::*;
 use self::HashFamily::*;
-pub use crate::std_algebra::{collection_concat_shape, collection_join_shape};
+use crate::std_algebra::Ordering::*;
+pub use crate::std_algebra::{
+    collection_concat_shape, collection_join_shape, list_at_optional, string_compare_canonical,
+    Ordering, TotalOrder,
+};
 pub use crate::std_host_text::chars;
 pub use crate::std_optional::Optional;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -51,6 +55,17 @@ pub type Sha1DigestHex = String;
 pub type Sha512DigestHex = String;
 
 pub type Fnv1a64StructuralDigestHex = String;
+
+pub fn fnv1a64_digest_hex_compare(a: String, b: String) -> Ordering {
+    crate::std_algebra::string_compare_canonical(a, b)
+}
+
+pub fn fnv1a64_digest_hex_total_order() -> Rc<TotalOrder<String>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(fnv1a64_digest_hex_compare),
+        _phantom: std::marker::PhantomData,
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Fnv1a64Structural {
@@ -361,15 +376,15 @@ pub fn serialize_content_hash(hash: Rc<ContentHash>) -> String {
 
 pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
     if v1_rt::starts_with(wire.clone(), "sha256:".to_string()) {
-        match Rc::new(
-            wire.clone()
-                .split(&"sha256:".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        )
-        .get((1) as usize)
-        .cloned()
-        {
+        match v1_rt::list_get_optional(
+            &Rc::new(
+                wire.clone()
+                    .split(&"sha256:".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            ),
+            1,
+        ) {
             std::option::Option::None => std::option::Option::None,
             Some(hex) => match sha256_hex_digest(hex.clone()) {
                 std::option::Option::None => std::option::Option::None,
@@ -378,15 +393,15 @@ pub fn parse_content_hash_candidate(wire: String) -> Option<Rc<ContentHash>> {
         }
     } else {
         if v1_rt::starts_with(wire.clone(), "sha512:".to_string()) {
-            match Rc::new(
-                wire.clone()
-                    .split(&"sha512:".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            )
-            .get((1) as usize)
-            .cloned()
-            {
+            match v1_rt::list_get_optional(
+                &Rc::new(
+                    wire.clone()
+                        .split(&"sha512:".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                ),
+                1,
+            ) {
                 std::option::Option::None => std::option::Option::None,
                 Some(hex) => match sha512_hex_digest(hex.clone()) {
                     std::option::Option::None => std::option::Option::None,
@@ -425,6 +440,19 @@ pub fn sha256_digest_wire_form(digest: Rc<Sha256Digest>) -> String {
 
 pub fn sha512_digest_wire_form(digest: Rc<Sha512Digest>) -> String {
     Rc::new(vec!["sha512:".to_string(), digest.hex.clone()]).join(&"".to_string())
+}
+
+pub fn identity_frame(label: String, value: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(label, ":".to_string()),
+                (v1_rt::string_length(&value)).to_string(),
+            ),
+            ":".to_string(),
+        ),
+        value.clone(),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

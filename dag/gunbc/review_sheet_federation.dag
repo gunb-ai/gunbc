@@ -46,7 +46,7 @@ data review_sheet_converge_environment: NonEmptyStr = "review-sheet-converge"
 
 data review_sheet_converge_wif_pool_id: NonEmptyStr = "github-review-sheet-converge"
 
-data review_sheet_converge_wif_provider_id: NonEmptyStr = "github-review-sheet-converge-oidc"
+data review_sheet_converge_wif_provider_id: NonEmptyStr = "github-review-sheet-oidc"
 
 data review_sheet_converge_service_account_id: NonEmptyStr = "review-sheet-converge"
 

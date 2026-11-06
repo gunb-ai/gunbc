@@ -254,9 +254,10 @@ fn unattended_required(e: PrivilegedEffect) -> Bool {
 //     (gunbc.auth.gcp_secret_access SecretAccessGrant, rostered in
 //     gunbc.auth.fleet_secret_accessor_roster). Zero human actions per effect; receipt is the run.
 // (b) OperatorApprovedCapability -- one request (gunbc.auth.access_request) filed and notified
-//     (approval_request_submission, approval_notification), one tap on the operator's phone, one
-//     capability bound to that request's revision (approval_capability), redeemed once
-//     (approval_broker), the effect executed by the authority adapter under ITS identity. One human
+//     (approval_request_submission, approval_apns_publish), one biometric-gated decision in the
+//     enrolled Approve app, one capability bound to that request's revision (approval_capability),
+//     redeemed once under the device's signature (approval_device_redemption
+//     redeem_device_over_store), the effect executed by the authority adapter under ITS identity. One human
 //     action per effect; the credential is scoped to the request; receipt is the decision store row.
 // (c) HumanOnlyStep -- the effect has no API. The selection cannot automate it and says so by naming
 //     the std.human_intervention row that models the step.

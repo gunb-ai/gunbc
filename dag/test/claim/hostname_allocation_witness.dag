@@ -234,3 +234,33 @@ test fn witness_unknown_selector_is_unknown() -> Bool {
     HostSelectorAmbiguous { selector: _, candidates: _ } => false
   }
 }
+
+test fn witness_butch_and_its_identity_resolve_to_srv14() -> Bool {
+  let by_name = match resolve_host_selector(selector: "butch") {
+    HostSelectorResolved { host: h } => (h as String) == (operator_host_srv14 as String)
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  let by_identity = match resolve_host_selector(selector: "srv14") {
+    HostSelectorResolved { host: h } => (h as String) == (operator_host_srv14 as String)
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+    HostSelectorUnknown { selector: _ } => false
+  }
+  by_name && by_identity
+}
+
+// THE DELETED SECOND SLOT FOR srv14's BOARD NO LONGER RESOLVES (gunbc.fleet.fleet_host_identity, the ONE
+// BOARD, ONE SLOT note): neither its hostname nor its identity names a host.
+test fn witness_owen_and_host_94c81d_name_no_host() -> Bool {
+  let by_name = match resolve_host_selector(selector: "owen") {
+    HostSelectorUnknown { selector: s } => s == "owen"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+  }
+  let by_identity = match resolve_host_selector(selector: "host-94c81d") {
+    HostSelectorUnknown { selector: s } => s == "host-94c81d"
+    HostSelectorResolved { host: _ } => false
+    HostSelectorAmbiguous { selector: _, candidates: _ } => false
+  }
+  by_name && by_identity
+}

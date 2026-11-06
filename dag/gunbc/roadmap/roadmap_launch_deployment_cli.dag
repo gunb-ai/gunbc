@@ -73,6 +73,7 @@ import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
   LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitGrammarRefused,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
@@ -86,6 +87,7 @@ import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding, DashboardServiceRefused, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
+import gunbc.deploy_transition_store { transition_inhibition_store }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_refusal_detail }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_read_for_instance, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
@@ -130,6 +132,7 @@ import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import gunbc.repository { gunbc_repository }
 import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import std.algebra { length }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
 // every witness cite the same path.
@@ -273,7 +276,7 @@ fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardIns
     deployed_revision_hex: deployed_revision_hex_text(o: tree),
     deployed_tree_hex: deployed_tree_hex_text(o: tree),
     running_release_hex: running_release_hex_routed(base: routed_base),
-    transition: transition_text(s: transition_actuation_standing(instance_root: instance.instance_root as String)),
+    transition: transition_text(s: transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance))),
     active_instance: active_instance_text_routed(base: routed_base),
   }
 }
@@ -407,6 +410,13 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
           property: "oidc-readback",
           expected: "LiveDeployServeUnitEmitted",
           observed: cause as String,
+        }
+      LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+        DashboardServiceRefused {
+          unit: spec.names.unit_name as String,
+          property: "serve-binary-grammar",
+          expected: "LiveDeployServeUnitEmitted",
+          observed: join([bp as String, ": ", r as String], ""),
         }
     },
     exit_path: observe_belt_event_path_standing(
@@ -700,7 +710,7 @@ fn rlm_launch_deployment_receipt_bound(
     deployed_tree: deployed_root_tree_standing(candidate_tree_hex: candidate_tree, observation: tree),
     release_binding: binding,
     readiness: readiness,
-    transition: transition_actuation_standing(instance_root: instance.instance_root as String),
+    transition: transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance)),
     unit_standing: unit_standing,
     tick_standing: tick_fact(instance: instance),
     event_backlog: event_backlog_fact(instance: instance, now: now),
@@ -724,7 +734,7 @@ fn rlm_launch_deployment_receipt_bound(
         DeploymentIncomplete { subject: _, facts: _, first_blocker: _, further_blockers: _ } =>
           exit_failure(reason: join([
             document,
-            "\nrlm_launch_deployment_receipt: DeploymentIncomplete — ", to_string(list_length(items: verdict_blockers(v: verdict))), " blocker(s); receipt persisted at ", hp, " sha256=", digest,
+            "\nrlm_launch_deployment_receipt: DeploymentIncomplete — ", to_string(length(xs: verdict_blockers(v: verdict))), " blocker(s); receipt persisted at ", hp, " sha256=", digest,
           ], ""))
         DeploymentComplete { subject: _, facts: _, proof: _ } => {
         let summary = Filesystem.Write(

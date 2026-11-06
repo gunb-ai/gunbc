@@ -15,6 +15,13 @@ import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_effect_realize { run_argv_over_host_effect_transport, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused }
 import gunbc.host.user_session_runtime { user_session_runtime_dir, user_session_launcher_env }
 import gunbc.runner.runner_host_deploy { RunnerHostSpec, runner_job_user_session_on }
+import gunbc.runner.runner_user_session_receipt {
+  UserSessionAnswer, UserSessionAnswered, UserSessionNotAnswered,
+  UserSessionLingerEnable, UserSessionLingerEnableOk, UserSessionLingerEnableFailed,
+  user_session_answer_of, user_session_answer_text,
+  runner_user_session_receipt_header_line, runner_user_session_receipt_enable_linger_line,
+  runner_user_session_receipt_linger_line, runner_user_session_converge_receipt_path,
+}
 import gunbc.runner.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
@@ -56,25 +63,6 @@ import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 // exits non-zero on a degraded manager that is perfectly reachable (that probe's own note). Writing
 // /var/lib/systemd/linger/<user> alone would leave the manager unstarted until a reboot, which is why the file
 // is not the desired state.
-
-type UserSessionAnswer
-  = UserSessionAnswered
-  | UserSessionNotAnswered { cause: String }
-
-fn user_session_answer_of(exit_code: Int, stderr: String) -> UserSessionAnswer {
-  if exit_code == 0 {
-    UserSessionAnswered
-  } else {
-    UserSessionNotAnswered { cause: join(["systemctl --user show-environment exit ", to_string(value: exit_code), ": ", trim(s: stderr)], "") }
-  }
-}
-
-fn user_session_answer_text(a: UserSessionAnswer) -> String {
-  match a {
-    UserSessionAnswered => "user_manager=answered"
-    UserSessionNotAnswered { cause: c } => concat("user_manager=not-answered cause=", c)
-  }
-}
 
 type UserSessionHostAdmission
   = UserSessionHostAdmitted { job_user: NonEmptyStr }
@@ -122,18 +110,8 @@ fn uid_of(outcome: RunArgvTransportOutcome) -> Int? {
 
 data runner_user_session_converge_attempt_raw: String = "runner-user-session-converge-ci"
 
-data runner_user_session_converge_receipt_path: String = "target/runner-user-session-converge-receipt.txt"
-
 fn user_session_admin_target(host: NonEmptyStr) -> SshTargetResolution {
   fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
-}
-
-fn linger_reading_text(r: LoginctlLingerReading) -> String {
-  match r {
-    LoginctlLingerEnabled => "linger=yes"
-    LoginctlLingerDisabled => "linger=no"
-    LoginctlLingerUnread { cause: c } => concat("linger=unread cause=", c)
-  }
 }
 
 fn linger_reading_of(outcome: RunArgvTransportOutcome) -> LoginctlLingerReading {
@@ -146,10 +124,17 @@ fn linger_reading_of(outcome: RunArgvTransportOutcome) -> LoginctlLingerReading 
 // THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the admission, including a refused SSH context
 // or target, so the upload step always finds it.
 fn user_session_receipt_then(host: NonEmptyStr, job_user: NonEmptyStr, lines: List<String>, holds: Bool) -> ProcessExit {
+  // The header line is RENDERED by the receipt module (review 88438: the wire vocabulary had two sources,
+  // the writer's literals and the parser's prefixes; one module now owns both directions). The clock word
+  // is read HERE, at the effect edge that performs the probe -- the renderer is pure and takes the instant
+  // as input (DESIGN 2).
   let body = join([
-    "runner_user_session_converge host=", host as String,
-    " job_user=", job_user as String,
-    " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+    runner_user_session_receipt_header_line(
+      host: host as String,
+      job_user: job_user as String,
+      probed_at: probed_at_word(reading: clock_now_probed_at()) as String
+    ),
+    "\n",
     join(lines, "\n"), "\n",
   ], "")
   let w = Filesystem.Write(path: runner_user_session_converge_receipt_path, content: body)
@@ -208,8 +193,8 @@ fn runner_user_session_converge_ci_wet() -> ProcessExit {
                     && match answer { UserSessionAnswered => true  UserSessionNotAnswered { cause: _ } => false }
                   user_session_receipt_then(host: host, job_user: job_user, lines: [
                     trim(s: context_receipt),
-                    concat("enable_linger=", if linger_ok { "ok" } else { observed_or_cause(step: "loginctl enable-linger", outcome: linger) }),
-                    linger_reading_text(r: lingers),
+                    runner_user_session_receipt_enable_linger_line(enable: if linger_ok { UserSessionLingerEnableOk } else { UserSessionLingerEnableFailed { cause: observed_or_cause(step: "loginctl enable-linger", outcome: linger) } }),
+                    runner_user_session_receipt_linger_line(reading: lingers),
                     user_session_answer_text(a: answer),
                   ], holds: holds)
                 }

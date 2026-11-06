@@ -1,6 +1,7 @@
 module test.claim.mt_jade_platform_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { Int }
 import std.measure {
   hertz_count, microsecond_count, micrometer_count, megatransfers_per_second_count,
@@ -228,7 +229,7 @@ test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
 
 // SECTION 7.10.3 NAMES SEVEN RAILS IN ORDER, STARTING AT VDD_SOC AND ENDING AT VDD3V3_SOC.
 test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
-  list_length(items: processor_power_rail_enable_order) == 7
+  length(xs: processor_power_rail_enable_order) == 7
     && (processor_power_rail_name(rail: VddSoc) as String) == "VDD_SOC"
     && (processor_power_rail_name(rail: Vdd3v3Soc) as String) == "VDD3V3_SOC"
     && soc_pwrgd_minimum_system_clock_cycles == 32
@@ -253,7 +254,7 @@ test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool
 
 // THE CPLD ROLE SET INCLUDES THE THREE FUNCTIONS THE SPEC SPREADS ACROSS GPIO, JTAG AND RESET.
 test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
-  list_length(items: mt_jade_board_cpld_responsibilities) == 7
+  length(xs: mt_jade_board_cpld_responsibilities) == 7
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: PciePerstDecodeFromCpuGpio)
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: BmcJtagMasterProgramsCpld)
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: SysResetPathWithBmc)
@@ -262,7 +263,7 @@ test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
 
 // THE CLOCK TREE NAMES THE RENESAS GENERATORS AT 100 MHZ AND KEEPS THE CPLD TIMER DERIVATION SEPARATE.
 test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bool {
-  list_length(items: mt_jade_clock_tree) == 6
+  length(xs: mt_jade_clock_tree) == 6
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGV1006B")
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGL0841")
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "5P35023")
@@ -272,7 +273,7 @@ test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bo
 
 // REFERENCE PART ROWS CARRY THE AST2500 BMC AND THE CLOCK GENERATORS AS PRECEDENT, EACH CITING THE OCP AUTHORITY.
 test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
-  list_length(items: mt_jade_reference_parts) == 9
+  length(xs: mt_jade_reference_parts) == 9
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: BaseboardManagementController)
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockGenerator)
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockBuffer)
@@ -328,7 +329,7 @@ test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e_phy() -> Bool {
 }
 
 test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool {
-  list_length(items: mt_jade_cited_bmc_firmware_options) == 2
+  length(xs: mt_jade_cited_bmc_firmware_options) == 2
     && mt_jade_cited_bmc_firmware_options_include(
     options: mt_jade_cited_bmc_firmware_options,
     wanted: AmiMegaRac,

@@ -34,7 +34,7 @@ import gunbc.auth.approval_device_crypto_realization {
 import gunbc.auth.approval_device_crypto_receipt { device_crypto_receipt_startup }
 import gunbc.auth.approval_device_crypto_wire { SignatureCheck, P256Multiple, OrderItself, OrderMinusOne }
 
-// THE DEVICE-CRYPTO SERVICE'S STARTUP SELF-CHECK (gunbc.native_serve native_serve_startup_entry_function).
+// THE DEVICE-CRYPTO SERVICE'S STARTUP SELF-CHECK (the startup fold its program descriptor names, gunbc.auth.approval_device_crypto_realization device_crypto_native_ingress).
 // Before the verifier binds a port it executes every obligation of
 // gunbc.auth.approval_device_crypto_realization device_crypto_obligations on the real folds, mints a
 // DeviceCryptoHandlerReceipt over the ones that held, and asks device_crypto_receipt_admission whether that receipt

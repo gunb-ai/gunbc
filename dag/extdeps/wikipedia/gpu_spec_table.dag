@@ -1,0 +1,113 @@
+module extdeps.wikipedia.gpu_spec_table
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Bandwidth, Milliwatt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.storage.types { PcieLink }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+
+// THE SHAPE OF A GPU SPECIFICATION TABLE ON A PINNED WIKIPEDIA REVISION, as the page states it. A page
+// module (extdeps.wikipedia.list_of_nvidia_graphics_processing_units and its siblings) records EVERY
+// wikitable of one revision, in document order, so the page is a closed population: a table is either a
+// spec table, every row of which is recorded, or a non-spec table with the reason it carries no rows. The
+// counts the page module declares are read off that revision, which is what lets a deleted row be found.
+//
+// A row holds what its cells say. Each figure is kept twice: the cell text as read, and the reading of it
+// a consumer needs (a year, sizes, rates). The reading never adds what the cell does not state -- a cell
+// listing two memory sizes is two sizes, a cell stating "2x 12" is two GPUs of 12, a power cell stating a
+// range is every value it names -- and a cell that cannot be read is Absent beside its text.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Help:Table"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.wikipedia.gpu_spec_table", decl_name: "WikipediaGpuSpecPage", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// A memory cell. gpu_count is the multiplier the cell states ("2x 12" is 2), else 1; sizes are per GPU,
+// in mebibytes so an old 512 MB card and a 1.5 GB one are both exact. The column header's unit decides
+// GB against MB where the cell states none, and a cell with neither is not read.
+type WikipediaMemoryCell {
+  gpu_count: Nat
+  sizes_mib: List<Nat>
+}
+
+// A bandwidth cell, read the same way: its own multiplier and every rate it names, per GPU. The two
+// multipliers are kept apart because a page can state them differently for one board.
+type WikipediaBandwidthCell {
+  gpu_count: Nat
+  rates: List<Bandwidth>
+}
+
+type WikipediaGpuSpecRow {
+  ordinal: Nat
+  model: String?
+  launch_cell: String?
+  launch_year: Nat?
+  memory_cell: String?
+  memory: WikipediaMemoryCell?
+  memory_type_cell: String?
+  bandwidth_cell: String?
+  bandwidth: WikipediaBandwidthCell?
+  power_cell: String?
+  power: List<Milliwatt>
+  bus_cell: String?
+  bus: PcieLink?
+}
+
+type WikipediaNonSpecReason = NoModelColumn | NoMemorySizeColumn
+
+type WikipediaGpuSpecTable
+  = WikipediaSpecTable { ordinal: Nat, heading: NonEmptyStr, row_count: Nat, rows: List<WikipediaGpuSpecRow> }
+  | WikipediaNonSpecTable { ordinal: Nat, heading: NonEmptyStr, reason: WikipediaNonSpecReason }
+
+// One pinned revision. html_sha256 is the digest of the revision's rendered HTML as fetched, so a reader
+// can tell whether a later fetch is the same page; table_count is the number of wikitables on it.
+type WikipediaGpuSpecPage {
+  revision: ExternalAuthority
+  html_sha256: NonEmptyStr
+  table_count: Nat
+  tables: List<WikipediaGpuSpecTable>
+}
+
+fn wikipedia_table_ordinal(t: WikipediaGpuSpecTable) -> Nat {
+  match t {
+    WikipediaSpecTable { ordinal: o, heading: _, row_count: _, rows: _ } => o
+    WikipediaNonSpecTable { ordinal: o, heading: _, reason: _ } => o
+  }
+}
+
+fn wikipedia_table_heading(t: WikipediaGpuSpecTable) -> NonEmptyStr {
+  match t {
+    WikipediaSpecTable { ordinal: _, heading: h, row_count: _, rows: _ } => h
+    WikipediaNonSpecTable { ordinal: _, heading: h, reason: _ } => h
+  }
+}
+
+// Exactly count_declared ordinals, each below it, none repeated: by pigeonhole that is exactly 0..n-1.
+fn wikipedia_ordinals_dense(ordinals: List<Nat>, count_declared: Nat) -> Bool {
+  count(ordinals) == count_declared
+    && ordinals |> all(o => o < count_declared && count(ordinals |> filter(p => p == o)) == 1)
+}
+
+// THE PAGE IS CLOSED: every table ordinal 0..table_count-1 appears exactly once, and every spec table
+// carries exactly its declared rows, ordinals 0..row_count-1. A row or table dropped from the module, or
+// one recorded twice, makes this false.
+fn wikipedia_spec_page_complete(page: WikipediaGpuSpecPage) -> Bool {
+  wikipedia_ordinals_dense(ordinals: page.tables |> map(t => wikipedia_table_ordinal(t: t)), count_declared: page.table_count)
+    && page.tables |> all(t => match t {
+      WikipediaSpecTable { ordinal: _, heading: _, row_count: n, rows: rs } =>
+        wikipedia_ordinals_dense(ordinals: rs |> map(r => r.ordinal), count_declared: n)
+      WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => true
+    })
+}
