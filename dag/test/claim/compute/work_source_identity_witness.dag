@@ -1,10 +1,11 @@
 module test.claim.compute.work_source_identity_witness
 
 // CANONICAL WORK AND SOURCE IDENTITY (remote-build PR 2). Each claim has a RED control inside it.
-// What these supply: file sets and toolchain fixtures at the pure boundary. What they do NOT show: that
+// Files enter the identity by digest (ruling B); the digests here are supplied. What these supply: file sets and toolchain fixtures at the pure boundary. What they do NOT show: that
 // the provider's git listing (ls-files --cached --others --exclude-standard) yields the file set; that
 // route is the provider's wet run. The pure half is the identity rule both adapters share.
 
+import extdeps.crypto.hash { sha256_digest }
 import std.types { String, Bool, NonEmptyStr, List }
 import std.optional { Optional, Present, Absent }
 import product.fabric.work { SourceManifestRef }
@@ -18,8 +19,24 @@ import gunbc.fabric.fabric_source_snapshot {
 }
 import test.claim.compute.work_request_witness { key_with, tc_default }
 
+// A file is its digest: the 64-hex digest is supplied, standing for the sha256 of the file's bytes.
+// "d" repeated stands for distinct byte contents; `empty` and a binary digest are ordinary members.
 fn file(directory: String, name: String, content: String) -> SnapshotSourceFile {
-  SnapshotSourceFile { directory: directory as NonEmptyStr, name: name as NonEmptyStr, content: content as NonEmptyStr }
+  SnapshotSourceFile { directory: directory as NonEmptyStr, name: name as NonEmptyStr, digest: sha256_digest(hex: digest_of(content: content) as NonEmptyStr) }
+}
+
+fn digest_of(content: String) -> String {
+  match content {
+    "module a" => "1111111111111111111111111111111111111111111111111111111111111111"
+    "module b" => "2222222222222222222222222222222222222222222222222222222222222222"
+    "fn main() {}" => "3333333333333333333333333333333333333333333333333333333333333333"
+    "[package]" => "4444444444444444444444444444444444444444444444444444444444444444"
+    "module n" => "5555555555555555555555555555555555555555555555555555555555555555"
+    "binary" => "6666666666666666666666666666666666666666666666666666666666666666"
+    "binary flipped" => "6666666666666666666666666666666666666666666666666666666666667666"
+    "empty" => "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    _ => "9999999999999999999999999999999999999999999999999999999999999999"
+  }
 }
 
 fn clean_files() -> List<SnapshotSourceFile> {
@@ -89,4 +106,16 @@ test fn a_new_untracked_file_is_in_the_identity() -> Bool {
   let with_new = manifest_of(files: concat(clean_files(), [file(directory: "dag", name: "new_untracked.dag", content: "module n")]))
   let outside = manifest_of(files: concat(clean_files(), [file(directory: "docs", name: "n.md", content: "x")]))
   with_new != "refused" && with_new != base && outside == "refused"
+}
+
+// (5) RULING B: a binary file and the empty file are ordinary members, identical under both adapters
+// (provenance only differs), and one flipped byte (a different digest) is a different identity.
+test fn binary_and_empty_files_are_digest_members_of_the_identity() -> Bool {
+  let with_binary = concat(clean_files(), [file(directory: "dag", name: "blob.bin", content: "binary"), file(directory: "dag", name: "empty.dag", content: "empty")])
+  let flipped = concat(clean_files(), [file(directory: "dag", name: "blob.bin", content: "binary flipped"), file(directory: "dag", name: "empty.dag", content: "empty")])
+  let m = manifest_of(files: with_binary)
+  m != "refused" && m != manifest_of(files: clean_files())
+    && identity_key(s: git_subject(manifest: m)) == identity_key(s: worktree_subject(manifest: m))
+    && m != manifest_of(files: flipped)
+    && identity_key(s: git_subject(manifest: m)) != identity_key(s: git_subject(manifest: manifest_of(files: flipped)))
 }

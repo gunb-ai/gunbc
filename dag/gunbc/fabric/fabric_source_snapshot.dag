@@ -111,6 +111,7 @@ import gunbc.fabric.fabric_storage_file_store {
   fabric_storage_file_put,
 }
 import std.algebra { trim }
+import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512, sha256_digest, sha256sum_line_digest }
 import std.judgment_contract { length_prefixed_encode }
 import product.fabric.work { SourceManifestRef }
 
@@ -574,25 +575,37 @@ fn capture_source_snapshot(
 // producers of a work's source -- a clean Git tree and a dirty worker worktree -- therefore call THIS
 // function over what they read, and equal bytes under an equal composition mint one ref whichever
 // adapter listed them. Entries are put in path order, the same order capture_source_snapshot stores
-// them in, and both build the manifest body with the one snapshot_manifest_object, so the ref a capture
-// publishes and the ref derived here are meant to be one value. NO EXECUTING CLAIM COMPARES THEM YET:
-// capture needs a store, so the equality is only checkable by a wet run (an inclusion of
-// gunbc.instruments.source_snapshot_handoff comparing its stored manifest with this function over the
-// same files is the owed inhabitance claim; trigger: the first consumer that publishes a capture and
-// keys work on a derived ref, PR 5's executor).
+// them in, and both build the manifest body with the one snapshot_manifest_object. THE DERIVED REF IS
+// AN IDENTITY MANIFEST OF DIGESTS, NOT THE STORED CAPTURE'S REF: capture stores file bytes as leaves,
+// this function leaves a digest per file (snapshot_digest_leaf_body), so the two refs are different
+// values by design and the derived one does not carry the bytes. Moving bytes to an executor is the
+// snapshot/transport obligation of PRs 5 and 7 (recorded on durable_work_program_boundaries), and any
+// claim relating a stored capture to a derived identity is owed to that wet route.
 //
 // A NEW UNTRACKED FILE IS IN THE IDENTITY BY THE SAME ROUTE as a tracked one: the inclusion list is
 // the requester's, and this function has no notion of tracked. An absent file is therefore a
 // DIFFERENT manifest, never a silently equal one.
-// The accepted-work name for a manifest: the same bytes the store would hold, branded once here.
+// The accepted-work name for a manifest, branded once here.
 fn source_manifest_ref(manifest: FabricObjectRef) -> SourceManifestRef {
   fabric_object_ref_wire(object: manifest) as SourceManifestRef
 }
 
+// A SOURCE FILE ENTERS THE IDENTITY BY THE DIGEST OF ITS BYTES, never by the bytes. The kind of file
+// (empty, binary, text) is therefore not a case: every file is one leaf, so equal bytes are one leaf
+// under any path or adapter, the identity's size is independent of the source's, and an empty or
+// non-UTF-8 file is an ordinary member. The leaf body names the digest's algorithm
+// (snapshot_digest_leaf_body), so a later family is a distinct leaf, never a silent re-key.
 type SnapshotSourceFile {
   directory: NonEmptyStr
   name: NonEmptyStr
-  content: NonEmptyStr
+  digest: Digest
+}
+
+fn snapshot_digest_leaf_body(digest: Digest) -> NonEmptyStr {
+  match digest.algorithm {
+    Sha256 => join(["sha256:", digest.hex as String], "") as NonEmptyStr
+    Sha512 => join(["sha512:", digest.hex as String], "") as NonEmptyStr
+  }
 }
 
 fn snapshot_source_file_path(file: SnapshotSourceFile) -> String {
@@ -632,7 +645,7 @@ type SnapshotIdentityAcc {
 fn snapshot_identity_entry_ref(file: SnapshotSourceFile) -> FabricObjectRef {
   fabric_object_ref_of(object: snapshot_entry_object(
     name: fabric_object_ref_of(object: snapshot_leaf_object(body: file.name)),
-    content: fabric_object_ref_of(object: snapshot_leaf_object(body: file.content)),
+    content: fabric_object_ref_of(object: snapshot_leaf_object(body: snapshot_digest_leaf_body(digest: file.digest))),
     directory: file.directory,
   ))
 }

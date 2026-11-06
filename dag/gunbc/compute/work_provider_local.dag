@@ -14,7 +14,7 @@ import std.optional { Optional, Present, Absent }
 import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.algebra { trim }
+import std.algebra { trim, skip, take_prefix, zip_map }
 import std.list { first_where }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
@@ -27,6 +27,7 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string, json_arr
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
+import extdeps.crypto.hash { Digest, sha256sum_line_digest }
 import gunbc.fabric.fabric_source_snapshot {
   SnapshotSourceFile, SnapshotIdentityRefused, SnapshotIdentified, snapshot_manifest_identity, source_manifest_ref,
   snapshot_identity_refusal_detail, admit_relative_source_path, RelativePathRefused, RelativePathAdmitted, snapshot_path_inside_composition,
@@ -299,35 +300,59 @@ type SubjectResolution
 // adapter (compute_resolve_subject) materializes a commit and calls this; a dirty worker worktree calls
 // it directly. Candidates are git's own list of the directory -- tracked plus untracked-not-ignored,
 // minus deleted -- so a NEW UNTRACKED FILE is in the identity and a deleted tracked file is not. The
-// bytes are READ through Filesystem (no exec per file) and handed to
+// bytes are DIGESTED, one sha256sum exec per batch of paths, and the digests handed to
 // gunbc.fabric.fabric_source_snapshot snapshot_manifest_identity, which keeps no notion of tracked,
-// commit or path. DECLARED LIMIT (trigger: a fabric object body that admits empty and non-UTF-8
-// bytes): Filesystem reads host text and a leaf body is NonEmptyStr, so an empty or non-text file under
-// a declared root refuses, typed and located, rather than hashing as something it is not.
+// commit or path. Every file, empty or binary included, is one digest leaf (ruling B), so no file kind
+// refuses. LIMIT: the identity NAMES bytes by digest and does not carry them; moving bytes to an
+// executor is PRs 5 and 7 (durable_work_program_boundaries).
 type SubjectManifestReading
   = SubjectManifestRead { manifest: SourceManifestRef, files: Int, toolchain_file: String }
   | SubjectManifestRefused { detail: String }
 
-type SubjectFileReading
-  = SubjectFileRead { file: SnapshotSourceFile }
-  | SubjectFileRefused { detail: String }
+type SubjectDigestsReading
+  = SubjectDigestsRead { digests: List<Digest> }
+  | SubjectDigestsRefused { detail: String }
 
 fn compute_listed_paths(listing: String) -> List<String> {
   split(s: listing, delimiter: "\n") |> filter(l => trim(s: l) != "")
 }
 
-fn compute_subject_file(directory: String, path: String) -> SubjectFileReading {
-  let parts = path.split(sep: "/")
-  let name = compute_basename(path: path)
-  let dir = if count(parts) == 1 { "." } else { join(take_prefix(parts, count(parts) - 1), "/") }
-  let read = Filesystem.Read(path: join([directory, "/", path], ""))
-  if !read.success {
-    SubjectFileRefused { detail: join(["declared source file ", path, " is unreadable: ", read.error], "") }
-  } else if read.content == "" {
-    SubjectFileRefused { detail: join(["declared source file ", path, " is empty; the snapshot leaf cannot hold an empty body (declared limit)"], "") }
-  } else {
-    SubjectFileRead { file: SnapshotSourceFile { directory: dir as NonEmptyStr, name: name as NonEmptyStr, content: read.content as NonEmptyStr } }
+// ONE sha256sum EXEC PER BATCH of paths, never per file; its output lines are in argument order and a
+// count that disagrees with the paths refuses (a file sha256sum could not read fails the exec, typed).
+fn compute_digest_batch(directory: String, paths: List<String>) -> SubjectDigestsReading {
+  match compute_exec(program: env_absolute_program().invocation as String, workdir: directory, args: concat(["sha256sum", "--"], paths)) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectDigestsRefused { detail: join(["sha256sum exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout, stderr: _ } => {
+      let lines = compute_listed_paths(listing: stdout)
+      let digests = lines |> flat_map(l => match sha256sum_line_digest(line: l) { Present { value } => [value]  Absent => [] })
+      if (count(lines) == count(paths)) && (count(digests) == count(paths)) {
+        SubjectDigestsRead { digests: digests }
+      } else {
+        SubjectDigestsRefused { detail: join(["sha256sum returned ", to_string(value: count(digests)), " digests for ", to_string(value: count(paths)), " declared files"], "") }
+      }
+    }
   }
+}
+
+fn compute_digest_batches(directory: String, paths: List<String>) -> SubjectDigestsReading {
+  if count(paths) == 0 {
+    SubjectDigestsRead { digests: [] }
+  } else {
+    match compute_digest_batch(directory: directory, paths: take_prefix(paths, 200)) {
+      SubjectDigestsRefused { detail } => SubjectDigestsRefused { detail: detail }
+      SubjectDigestsRead { digests: head } =>
+        match compute_digest_batches(directory: directory, paths: skip(xs: paths, n: 200)) {
+          SubjectDigestsRefused { detail } => SubjectDigestsRefused { detail: detail }
+          SubjectDigestsRead { digests: rest } => SubjectDigestsRead { digests: concat(head, rest) }
+        }
+    }
+  }
+}
+
+fn compute_source_file(path: String, digest: Digest) -> SnapshotSourceFile {
+  let parts = path.split(sep: "/")
+  let dir = if count(parts) == 1 { "." } else { join(take_prefix(parts, count(parts) - 1), "/") }
+  SnapshotSourceFile { directory: dir as NonEmptyStr, name: compute_basename(path: path) as NonEmptyStr, digest: digest }
 }
 
 fn compute_subject_in_declared_source(path: String) -> Bool {
@@ -355,38 +380,27 @@ fn compute_directory_manifest(instance: HostDashboardInstance, directory: String
   }
 }
 
-// The subject's own rust-toolchain.toml bytes (a declared-source file), "" when it holds none.
-fn compute_toolchain_file_text(readings: List<SubjectFileReading>) -> String {
-  let texts = readings |> flat_map(r => compute_toolchain_file_of(reading: r))
-  match first_where(texts, keep: t => true) {
-    Present { value: text } => text
-    Absent => ""
-  }
-}
-
-fn compute_toolchain_file_of(reading: SubjectFileReading) -> List<String> {
-  match reading {
-    SubjectFileRefused { detail: _ } => []
-    SubjectFileRead { file } => {
-      let n = file.name as String
-      let d = file.directory as String
-      if (n == "rust-toolchain.toml") && (d == ".") { [file.content as String] } else { [] }
-    }
+// The subject's own rust-toolchain.toml text (a declared-source file), "" when the listing holds none.
+// The text is read for the REQUIREMENT, separately from the digest that puts the file in the identity.
+fn compute_toolchain_file_text(directory: String, paths: List<String>) -> String {
+  if any(paths, p => p == "rust-toolchain.toml") {
+    let read = Filesystem.Read(path: join([directory, "/rust-toolchain.toml"], ""))
+    if read.success { read.content } else { "" }
+  } else {
+    ""
   }
 }
 
 fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectManifestReading {
-  let readings = map(paths, p => compute_subject_file(directory: directory, path: p))
-  match readings |> filter(r => match r { SubjectFileRefused { detail: _ } => true  SubjectFileRead { file: _ } => false }) |> first() {
-    Present { value: SubjectFileRefused { detail } } => SubjectManifestRefused { detail: detail }
-    Present { value: SubjectFileRead { file: _ } } => SubjectManifestRefused { detail: "internal: a read file was selected as a refusal" }
-    Absent =>
+  match compute_digest_batches(directory: directory, paths: paths) {
+    SubjectDigestsRefused { detail } => SubjectManifestRefused { detail: detail }
+    SubjectDigestsRead { digests } =>
       match snapshot_manifest_identity(
         composition: work_declared_source,
-        files: readings |> flat_map(r => match r { SubjectFileRead { file } => [file]  SubjectFileRefused { detail: _ } => [] }),
+        files: zip_map(a: paths, b: digests, f: fn(p, d) { compute_source_file(path: p, digest: d) }),
       ) {
         SnapshotIdentityRefused { cause } => SubjectManifestRefused { detail: join(["manifest identity refused: ", snapshot_identity_refusal_detail(cause: cause)], "") }
-        SnapshotIdentified { manifest, files, composition: _ } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files, toolchain_file: compute_toolchain_file_text(readings: readings) }
+        SnapshotIdentified { manifest, files, composition: _ } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files, toolchain_file: compute_toolchain_file_text(directory: directory, paths: paths) }
       }
   }
 }
