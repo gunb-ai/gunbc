@@ -47,7 +47,11 @@ data per_boot_console_marker: String = "GUNBC-HOST-KEY"
 // THE PARSED LINE, policy-free. One grammar, two consumption policies keyed on the boot that printed it
 // (#15664's provisioned-install enrolment reads the same record; a runtime-boot line pins per boot here).
 // The parser holds no trust decision: it only says what a well-formed line carried.
-type HostKeyConsoleLine {
+//
+// SEALED: a HostKeyConsoleLine is minted only by host_key_console_line_checked, which verifies the key type, the
+// blob and that the fingerprint names the blob. The console parser and the runner reader (which already holds
+// these fields as typed values) both go through it, so neither re-composes the line grammar to reach a pin.
+type HostKeyConsoleLine sole_constructor {
   boot_id: NonEmptyStr
   key_type: String
   public_key_base64: String
@@ -74,8 +78,11 @@ fn host_key_console_line_of_fields(fields: List<String>) -> HostKeyConsoleLine? 
           Present { value: key_b64 } => match fields |> skip(n: 4) |> first {
             Absent => none
             Present { value: fingerprint } =>
-              if marker == per_boot_console_marker && key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
-                host_key_console_line_of(boot_field: boot_field, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint)
+              if marker == per_boot_console_marker {
+                match boot_id_of_field(boot_field: boot_field) {
+                  Absent => none
+                  Present { value: id } => host_key_console_line_checked(boot_id: id, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint)
+                }
               } else { none }
           }
         }
@@ -92,22 +99,29 @@ fn has_no_third_piece(s: String) -> Bool {
   }
 }
 
-fn host_key_console_line_of(boot_field: String, key_type: String, key_b64: String, fingerprint: String) -> HostKeyConsoleLine? {
+fn boot_id_of_field(boot_field: String) -> NonEmptyStr? {
   match split(s: boot_field, delimiter: "=") |> first {
     Absent => none
     Present { value: tag } => match split(s: boot_field, delimiter: "=") |> skip(n: 1) |> first {
       Absent => none
       Present { value: id } =>
-        if tag == "boot_id" && id != "" && has_no_third_piece(s: boot_field) {
-          Present { value: HostKeyConsoleLine {
-            boot_id: id as NonEmptyStr,
-            key_type: key_type,
-            public_key_base64: key_b64,
-            sha256_fingerprint: fingerprint,
-          } }
-        } else { none }
+        if tag == "boot_id" && id != "" && has_no_third_piece(s: boot_field) { Present { value: id as NonEmptyStr } } else { none }
     }
   }
+}
+
+// THE CHECKED CONSTRUCTOR, shared by the console parser and any reader that already holds the fields: the key type
+// is ed25519, the blob parses as one, and the fingerprint is the one derived from the blob (§5: a line whose fields
+// disagree is no line).
+fn host_key_console_line_checked(boot_id: NonEmptyStr, key_type: String, key_b64: String, fingerprint: String) -> HostKeyConsoleLine? {
+  if key_type == (ssh_key_algorithm_token(a: Ed25519) as String) && ssh_key_blob_parses_for(material: key_b64 as NonEmptyStr, algorithm: Ed25519) && fingerprint_names_blob(blob: key_b64, fingerprint: fingerprint) {
+    Present { value: HostKeyConsoleLine {
+      boot_id: boot_id,
+      key_type: key_type,
+      public_key_base64: key_b64,
+      sha256_fingerprint: fingerprint,
+    } }
+  } else { none }
 }
 
 // THE PER-BOOT POLICY over a parsed line: the pin's anchor is the line's key, with the ConsolePerBoot
@@ -115,20 +129,24 @@ fn host_key_console_line_of(boot_field: String, key_type: String, key_b64: Strin
 fn per_boot_pin_from_console_line(row: AnchoredHostRow, line: String) -> PerBootHostPin? {
   match host_key_console_line_parse(line: line) {
     Absent => none
-    Present { value: parsed } => Present { value: PerBootHostPin {
-      boot_id: parsed.boot_id,
-      anchor: KnownHostKeyRow {
-        host: row.host,
-        address: row.address,
-        key_type: parsed.key_type,
-        public_key_base64: parsed.public_key_base64,
-        sha256_fingerprint: parsed.sha256_fingerprint,
-        provenance: ConsolePerBoot {
-          boot_id: parsed.boot_id,
-          channel: join(["the BMC serial console (SOL), printed by the image from the host key it generated at that boot; read obligation: ", row.read_obligation as String], "") as NonEmptyStr
-        },
+    Present { value: parsed } => Present { value: per_boot_pin_from_host_key_line(row: row, parsed: parsed) }
+  }
+}
+
+fn per_boot_pin_from_host_key_line(row: AnchoredHostRow, parsed: HostKeyConsoleLine) -> PerBootHostPin {
+  PerBootHostPin {
+    boot_id: parsed.boot_id,
+    anchor: KnownHostKeyRow {
+      host: row.host,
+      address: row.address,
+      key_type: parsed.key_type,
+      public_key_base64: parsed.public_key_base64,
+      sha256_fingerprint: parsed.sha256_fingerprint,
+      provenance: ConsolePerBoot {
+        boot_id: parsed.boot_id,
+        channel: join(["the BMC serial console (SOL), printed by the image from the host key it generated at that boot; read obligation: ", row.read_obligation as String], "") as NonEmptyStr
       },
-    } }
+    },
   }
 }
 
