@@ -322,11 +322,13 @@ fn continuation_next_attempt(prior: PriorExecutionObservation, why: String) -> C
 // read; the branch carries the work). LAB BUG #2: after a reap the belt can only act by restoring, so joining
 // forever on an owed segment would itself be the block the bug forbids. The complete / in-flight / damaged
 // outcomes are NOT here -- they are the SHARED cascade arms (AlreadyComplete / AlreadyRunning / Refuse), so a
-// change to segment semantics is made in ONE place (review 91390, DESIGN §6b).
+// change to segment semantics is made in ONE place (review 91390, DESIGN §6b). THIS IS THE NEXT-ATTEMPT (NEW
+// KEY) REAPED PATH: it mints a fresh attempt off the branch for a lineage that ENDED without a candidate. It is
+// DISTINCT from the same-key ContinuationPlan.Restore, which recovers a STILL-LIVE attempt under its own key.
 fn continuation_reaped_restore(prior: PriorExecutionObservation, why: String) -> ContinuationPlan {
   continuation_next_attempt(
     prior: prior,
-    why: join([why, "; its worktree is gone but its branch ", prior.branch, " is still live, so the committed work is the durable record -- restore the worktree from that branch's head and continue from it"], ""),
+    why: join([why, "; its worktree is gone but its branch ", prior.branch, " is still live, so the committed work is the durable record -- a NEW attempt (a fresh key, NOT the same-key Restore which recovers a still-live attempt) is started off that branch's head"], ""),
   )
 }
 
