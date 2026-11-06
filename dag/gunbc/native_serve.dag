@@ -18,11 +18,13 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 // which release this process is and what its deadline is (gunbc.http_ingress
 // http_ingress_native_contract, over the binding the exact constructor returned), whether a request
 // head is admissible and how many body bytes to read (native_serve_frame), and whether the request is
-// answered before the handler is entered (native_serve_route). The admitted handler contract is the
-// seed's legacy request facts plus one optional trailing startup value -- `(method, path, body,
-// tailscale_identity, authorization, release_revision[, startup]) -> ServeWireResponse` -- checked by the emitter
-// against the declaration the program descriptor names (gunbc.plans.converged_ingress M2a; M2b
-// widens it to the binding's whole fact plan).
+// answered before the handler is entered (native_serve_route). The handler contract is the seed's
+// whole one: the handler's request parameters are planned by gunbc.http_ingress http_ingress_fact_plan
+// over the binding's listener, exactly as the seed's realization plans them, followed by zero or one
+// startup value from the exact startup declaration (a realization fact, not a request fact), and the
+// combined signature is judged before any bind (gunbc.http_ingress http_ingress_native_contract;
+// gunbc.plans.converged_ingress M2b). The listener is TCP or a unix socket whose every peer the
+// kernel attests; peer_user is read off the accepted connection, never from the request.
 //
 // WHERE THIS DOOR IS BETTER THAN THE SEED'S, WHICH IS THE BAR (DESIGN section 7):
 // - the 40-hex release check is the binding constructor's (gunbc.http_ingress http_ingress_binding,
@@ -42,16 +44,6 @@ import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
 //   process then exits with native_serve_deadline_exit_code for its supervisor to restart: the
 //   timed-out computation ends with the process rather than surviving abandoned (operator decision
 //   2026-11-04, exit-after-timeout).
-//
-// WHAT THIS DOOR DOES NOT YET HAVE, DECLARED RATHER THAN SILENT:
-// - the unix-socket listener and its kernel-attested peer_user argument: TCP only, and a binding
-//   that names a unix socket is refused before any bind (gunbc.http_ingress
-//   http_ingress_native_contract). Declared frontier below.
-
-// THE UNIX-SOCKET FRONTIER. The seed's ingress realization binds a unix socket and attests each peer
-// by SO_PEERCRED, passing peer_user to handlers that declare it (gunbc.fabric.fabric_storage_serve).
-// This door binds TCP only; that is admitted as a frontier with a stated trigger, not as a property.
-data native_serve_unix_socket_frontier_trigger: String = "gunbc.plans.converged_ingress M2b: the native door realizes the binding's whole fact plan, including the unix-socket listener and its kernel-attested peer_user"
 
 // The seed's limits, carried as values in the units std.measure owns. They are the seed's numbers
 // because the served programs were written against them; a change to either is a change to every
@@ -86,10 +78,9 @@ data native_serve_application_json: String = "application/json; charset=utf-8"
 // deadline the native door enforces, their minimum: a single thread that stops at it has spent no
 // more CPU and no more wall time than either bound, and the process exit after a crossing is what
 // makes "stops at it" true. handler_identity is the module-qualified handler the binding names, which
-// /livez reports.
+// /livez reports. Which address to bind is the binding's listener, carried beside this contract
+// (gunbc.http_ingress HttpIngressNativeStart), never restated in it.
 type NativeServeContract {
-  host: String
-  port: Int
   release_revision: CommitSha
   handler_identity: String
   head_limit: ByteSize
@@ -100,12 +91,6 @@ type NativeServeContract {
   request_deadline: Millisecond
   startup_deadline: Second
 }
-
-// A refused start binds nothing: the main prints the reason and exits 2 before any listener exists,
-// so a process that cannot say which release it is never becomes reachable.
-type NativeServeStart
-  = NativeServeListen { contract: NativeServeContract }
-  | NativeServeStartRefused { reason: String }
 
 fn native_serve_announcement(c: NativeServeContract, bound_host: String, bound_port: Int) -> String {
   join([
@@ -423,6 +408,19 @@ fn native_serve_outgoing(r: ServeWireResponse) -> NativeServeOutgoing {
 // ── THE PER-REQUEST BUDGET, DECIDED HERE ──────────────────────────────────────────────────────
 // The rendered main asks native_serve_deadline_refused for the response when a request crosses the
 // contract's effective deadline, writes it, and exits with native_serve_deadline_exit_code.
+
+// THE REQUEST'S ARGUMENTS DO NOT HAVE THE SHAPES THE HANDLER WAS TYPED WITH. The start judged every
+// planned fact against its parameter's shape before binding (gunbc.http_ingress
+// http_ingress_native_contract), so no request reaches this; the worker answers it rather than call the
+// handler with values of another shape, and nothing ran.
+fn native_serve_arguments_unplanned() -> ServeWireResponse {
+  ServeWireResponse {
+    status: 500,
+    content_type_label: native_serve_text_plain,
+    body: "the request's arguments do not have the shapes the handler was planned with; the handler was not called\n",
+    headers: [],
+  }
+}
 
 // A WORKER THAT ENDS WITHOUT AN ANSWER -- the compiled handler panicked, so its result never reached
 // the loop -- is a handler failure, not a deadline: it is answered with this typed 500, and the

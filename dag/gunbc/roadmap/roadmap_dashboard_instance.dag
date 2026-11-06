@@ -143,6 +143,10 @@ type DashboardProvisionTransport
 // (gunbc.live_deploy.serve_binary_build). Optional<FilePath> hid this choice in an Absent.
 type DashboardServeBinaryOrigin
   = DeclaredBuiltBinary { path: FilePath }
+  // The cargo release output OF THIS INSTANCE'S OWN CHECKOUT, staged under its apply workdir.
+  // Constructed only where the ExistingRepo origin is derived (below): the construction site IS
+  // the fact -- provenance is named by the arm, never inferred from where the path sits.
+  | CargoReleaseOfInstanceCheckout { path: FilePath }
   | BuildInPlaceFromAdmittedRevision
 
 type DashboardSourceSeed
@@ -613,14 +617,14 @@ fn dashboard_instance_serve_binary_origin(instance: HostDashboardInstance) -> Da
   match instance.source_seed {
     DashboardSeededByConvergence { serve_binary_origin, apply_workdir: _ } => serve_binary_origin
     DashboardExistingRepo { anchor_ref: _ } =>
-      DeclaredBuiltBinary {
+      CargoReleaseOfInstanceCheckout {
         path: dashboard_instance_child(
           root: dashboard_instance_apply_workdir(instance: instance),
           child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
         ),
       }
     DashboardGitBundle { controller_repo, staged_bundle: _, anchor_ref: _, history_remote: _ } =>
-      DeclaredBuiltBinary {
+      CargoReleaseOfInstanceCheckout {
         path: dashboard_instance_child(
           root: controller_repo,
           child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
@@ -3606,6 +3610,7 @@ fn dashboard_instance_provision_op_row(
         detail: join([
           match serve_binary_origin {
             DeclaredBuiltBinary { path: v } => join(["copy the declared built seed from ", v as String, "; atomic move, never a build"], "")
+            CargoReleaseOfInstanceCheckout { path: v } => join(["copy this checkout's cargo release output from ", v as String, "; atomic move, never a build"], "")
             BuildInPlaceFromAdmittedRevision => "build in place from the admitted revision (staged, previous kept, one rename)"
           },
         ], ""),

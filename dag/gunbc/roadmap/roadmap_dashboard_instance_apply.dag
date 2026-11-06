@@ -99,6 +99,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
   DashboardServeBinaryOrigin,
   DeclaredBuiltBinary,
+  CargoReleaseOfInstanceCheckout,
   BuildInPlaceFromAdmittedRevision,
   dashboard_provision_transport,
   prod_role_realization,
@@ -579,6 +580,7 @@ fn dashboard_ensure_serve_binary(
   match serve_binary_origin {
     BuildInPlaceFromAdmittedRevision => dashboard_build_serve_binary_in_place(instance: instance, path: path)
     DeclaredBuiltBinary { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, built_binary_path: declared, path: path)
+    CargoReleaseOfInstanceCheckout { path: declared } => dashboard_ensure_declared_serve_binary(instance: instance, apply_workdir: apply_workdir, built_binary_path: declared, path: path)
   }
 }
 
