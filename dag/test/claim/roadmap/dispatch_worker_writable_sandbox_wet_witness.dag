@@ -150,6 +150,86 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data wet_probe_node: RoadmapNodeId = "writable-probe" as RoadmapNodeId
 data wet_probe_key: String = "wetprobe"
 
+// A LABEL IS A BARE WORD, NEVER A UNIT NAME. THE DERIVATION APPENDS THE SUFFIX; IT DOES NOT CHECK
+// THAT ONE IS ALREADY THERE. `systemd_service_unit_name` admits any stem over the [A-Za-z0-9-._:]
+// charset -- a dot is legal -- and `systemd_unit_name_wire` then joins ".service" to it, so a label
+// that already spells its own suffix yields a unit called `X.service.service`. That is not a
+// cosmetic doubling: on srv2 at 06995b57 (stern, run15794m) the sandbox-touch legs passed the labels
+// "gunbc-writable-probe-wt.service" and "gunbc-writable-probe-control.service", both legs launched
+// under `…-wt.service.service`, and the retirement readback -- derived the SAME way -- was looking
+// for the same doubled name, so a leg that had leaked a unit could still print `unit-retired ... ok`
+// about a name no production path would ever have used. The fix is at the boundary, not at the call
+// site: a label carrying any systemd unit suffix is REFUSED here, so no caller can reach a doubled
+// name by passing one, and the labels below are bare words. Stripping the suffix at a call site would
+// have left the trap in place for the next author.
+data wet_unit_suffixes: List<String> = [
+  ".service", ".socket", ".timer", ".target", ".slice", ".scope",
+  ".mount", ".swap", ".device", ".automount", ".path",
+]
+
+// THE LABELS THIS WITNESS LAUNCHES UNDER, as data, so a claim can walk them. Each is a bare word:
+// the suffix is the derivation's to add. `sandbox_touch` derives a unit name from its `unit:`
+// argument, and the launcher legs pass their cell key; the drain and the served-image probe prefix
+// their own label. A new leg adds a row here and the claim below covers it, because the claim reads
+// this list rather than trusting the author to remember.
+data wet_sandbox_touch_unit_labels: List<String> = [
+  // THE EIGHT SANDBOX-TOUCH LEGS. These are the ones that carried ".service" on srv2 at 06995b57.
+  "gunbc-writable-probe-control",
+  "gunbc-writable-probe-bin",
+  "gunbc-writable-probe-tree",
+  "gunbc-writable-probe-binding",
+  "gunbc-writable-probe-attempt-file",
+  "gunbc-writable-probe-hook",
+  "gunbc-writable-probe-wt",
+  "gunbc-writable-probe-log",
+]
+
+// THE LAUNCHER CELLS, as the legs name them. What reaches the unit-name boundary is NOT these strings
+// but launcher_probe_key(cell) -- "wetprobe-<cell>" -- so a claim over the raw cells alone would be a
+// claim about strings no unit is ever built from. The rows are the cells because that is what a new leg
+// adds; the derived list below is what gets walked.
+data wet_launcher_cell_keys: List<String> = [
+  "bin",
+  "hooks",
+  "containment",
+  "exitrec",
+  "foreign",
+  "roothook",
+  "spool-control",
+  "sudo-n-true",
+  "sudo-n-touch",
+]
+
+// THE UNSANDBOXED SIBLINGS, retired through the USER manager by their own label, unprefixed.
+data wet_user_manager_unit_labels: List<String> = [
+  "inhabit-enoent",
+  "inhabit-eacces",
+  "inhabit-ok",
+]
+
+// THE LABELS AT THE BOUNDARY. Every label a unit name in this witness is built from, in the exact form
+// the boundary receives it: the sandbox-touch legs raw, the launcher cells through launcher_probe_key,
+// the unsandboxed siblings raw. A locus label ("served-image", "drain:bin") is NOT here, because a locus
+// label names a directory and never reaches a unit derivation -- putting it here would let the claim
+// look like it covered a launch it never covered.
+fn wet_launched_unit_labels() -> List<String> {
+  concat(
+    wet_sandbox_touch_unit_labels,
+    concat(map(wet_launcher_cell_keys, cell => launcher_probe_key(unit_key: cell)), wet_user_manager_unit_labels),
+  )
+}
+
+fn wet_label_carries_a_unit_suffix(label: String) -> Bool {
+  // A fold, not a chain: every suffix is asked, so no arm can be dropped without the answer changing.
+  fold(wet_unit_suffixes, init: false, f: (hit, suffix) => hit || ends_with(s: label, suffix: suffix))
+}
+
+fn wet_label_is_admissible(label: String) -> Bool {
+  // Empty labels are production's refusal to make; this boundary only closes the suffix trap, and the
+  // dotfile-only label (`".service"` itself) is caught here as well because it ENDS in the suffix.
+  label != "" && !wet_label_carries_a_unit_suffix(label: label)
+}
+
 // WET: a real systemd-run --user transient with the worker unit's production properties, then one
 // argv `touch -- <path>` per subject. Asserts the kernel REFUSES a forbidden write: the touch must
 // have RUN and failed with the path absent afterwards (sandbox_touch_reading_of), in a unit shape
@@ -414,32 +494,56 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
     WetLocusRefused {
       cause: "GUNBC_WET_SERVE_BINARY is unset, so there is no image to stage into a locus",
     }
-  } else if !witness_stage_release_binary(instance: instance, image: named) {
-    WetLocusRefused {
-      cause: join(["the release stage could not be written at ", witness_release_stage_member(instance: instance)], ""),
-    }
   } else {
     let revision = witness_guest_tree_revision(instance: instance)
-    let verdict = witness_locus_install(instance: instance, revision_text: revision)
-    if !witness_locus_install_converged(verdict: verdict) {
-      WetLocusRefused { cause: witness_locus_install_refusal_cause(verdict: verdict) }
-    } else if !wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
-      // The fold said it converged; the filesystem still gets the last word, because the question the
-      // drain will be asked is the filesystem's, not the fold's.
-      WetLocusRefused {
-        cause: join(
-          [
-            "the install fold converged but the locus does not read as one: ",
-            witness_locus_receipt_path(instance: instance, revision_text: revision),
-            " or the locus dag dir is absent",
-          ],
-          "",
-        ),
-      }
-    } else {
+    if revision != "" && wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
+      // ONE FOLD PER CLAIM, NOT ONE PER LEG -- THE COST SHAPE. srv2's S1 at 06995b57 measured
+      // `the_worker_worktree_is_writable_inside_the_same_sandbox` at 663 s wall / 450 s CPU / 27.5M eval
+      // steps for TWO legs, and the bin leg at 4ffbdfcc at 1,656 s / 570 s CPU / 36.6M eval steps for
+      // three gate calls. The cause is not the wait: every leg called wet_locus_prepare, and each call
+      // re-ran production's whole install fold -- observe_tree_hashes over the planted tree (the two
+      // release-locus subdirs of this repo are 10,117 files), sort, per-file digest on both sides -- into
+      // the SAME directory, for the SAME revision, because witness_claim_locus_dir is keyed by
+      // (instance_root, revision) and nothing else. A leg that only has to ask "is my locus there" was
+      // re-installing it. The fold now runs when the locus is NOT there; a leg that finds it answers with
+      // the three-path readback the drain itself will ask. That is not a memo across claims -- each claim
+      // builds its own root, so each claim pays the fold exactly once, and a locus whose revision differs
+      // names a different directory and so runs the fold again. What the cheap arm does NOT re-check is
+      // the per-file digest of every planted file -- a locus that LOST files after installing would still
+      // read as installed here. The check that would catch that is the one every launching leg still runs:
+      // the served probe, the image answering its own route. So the reuse arm trades a re-install for the
+      // probe that leg was going to run anyway, and nothing is trusted that was not trusted before.
+      wet_stage(stage: "claim-locus-reused", ok: true)
       WetLocusReady {
         revision: revision,
         dir: witness_locus_dir_text(instance: instance, revision_text: revision),
+      }
+    } else if !witness_stage_release_binary(instance: instance, image: named) {
+      WetLocusRefused {
+        cause: join(["the release stage could not be written at ", witness_release_stage_member(instance: instance)], ""),
+      }
+    } else {
+      let verdict = witness_locus_install(instance: instance, revision_text: revision)
+      if !witness_locus_install_converged(verdict: verdict) {
+        WetLocusRefused { cause: witness_locus_install_refusal_cause(verdict: verdict) }
+      } else if !wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
+        // The fold said it converged; the filesystem still gets the last word, because the question the
+        // drain will be asked is the filesystem's, not the fold's.
+        WetLocusRefused {
+          cause: join(
+            [
+              "the install fold converged but the locus does not read as one: ",
+              witness_locus_receipt_path(instance: instance, revision_text: revision),
+              " or the locus dag dir is absent",
+            ],
+            "",
+          ),
+        }
+      } else {
+        WetLocusReady {
+          revision: revision,
+          dir: witness_locus_dir_text(instance: instance, revision_text: revision),
+        }
       }
     }
   }
@@ -1053,13 +1157,25 @@ fn wet_attempt_key(root: NonEmptyStr, label: String) -> String {
 // The exact name production would have derived for this claim's (node_id, attempt_key), read back
 // through the SAME production symbols -- the one used to retire a unit by name, never to name one.
 fn wet_unit_name_for(root: NonEmptyStr, label: String) -> NonEmptyStr? {
-  match systemd_service_unit_name(
-    stem: dispatch_attempt_unit_stem(node_id: wet_probe_node as String, attempt_key: wet_attempt_key(root: root, label: label)),
+  // A LABEL THAT BRINGS ITS OWN SUFFIX IS REFUSED HERE, at the one boundary every launched unit name
+  // passes through -- not trimmed at each caller. The stem must carry no suffix because the suffix is
+  // what production appends, so a label that spells one puts it INSIDE the stem and the name comes out
+  // with two: srv2's S1 at 06995b57 (run15794m) retired
+  // `gunbc-attempt-writable-probe-gunbc-sandbox-worktree-writable-2LCcB6-gunbc-writable-probe-wt.service.service`
+  // at exit 5. Refusing is a caller-error posture; repairing (stripping) at the call site would let the
+  // next suffixed label through wherever the strip was forgotten. `no_unit_this_witness_names_ever_ends_in_a_doubled_service_suffix`
+  // is the claim over the whole label table.
+  if !wet_label_is_admissible(label: label) {
+    Absent
+  } else {
+    match systemd_service_unit_name(
+      stem: dispatch_attempt_unit_stem(node_id: wet_probe_node as String, attempt_key: wet_attempt_key(root: root, label: label)),
   ) {
     SystemdUnitNameAdmitted { name: name } => Present { value: systemd_unit_name_wire(name: name) }
     SystemdUnitNameStemEmpty => Absent
     SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => Absent
-    SystemdUnitNameOverlong { length: _ } => Absent
+      SystemdUnitNameOverlong { length: _ } => Absent
+    }
   }
 }
 
@@ -1103,13 +1219,19 @@ fn wet_unit_is_gone(unit: NonEmptyStr) -> Bool {
 fn wet_control_unit_name(root: NonEmptyStr, label: String) -> NonEmptyStr? {
   match witness_claim_leaf(path: root as String) {
     Absent => Absent
-    Present { value: leaf } => match systemd_service_unit_name(
-      stem: join(["gunbc-sandbox-control-", leaf, "-", label], "") as NonEmptyStr,
-    ) {
-      SystemdUnitNameAdmitted { name: name } => Present { value: systemd_unit_name_wire(name: name) }
-      SystemdUnitNameStemEmpty => Absent
-      SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => Absent
-      SystemdUnitNameOverlong { length: _ } => Absent
+    // Same boundary as `wet_attempt_key`: the sibling's stem is built here, so a suffixed label never
+    // reaches the host's name authority to be doubled there.
+    Present { value: leaf } => if !wet_label_is_admissible(label: label) {
+      Absent
+    } else {
+      match systemd_service_unit_name(
+        stem: join(["gunbc-sandbox-control-", leaf, "-", label], "") as NonEmptyStr,
+      ) {
+        SystemdUnitNameAdmitted { name: name } => Present { value: systemd_unit_name_wire(name: name) }
+        SystemdUnitNameStemEmpty => Absent
+        SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => Absent
+        SystemdUnitNameOverlong { length: _ } => Absent
+      }
     }
   }
 }
@@ -1601,7 +1723,7 @@ fn worker_shape_runs_an_allowed_touch(instance: HostDashboardInstance, root: Non
   let control = join([probe_worker_dir(instance: instance), "/.gunbc-worker-control-probe"], "")
   sandbox_touch_wrote(
     instance: instance,
-    unit: "gunbc-writable-probe-control.service" as NonEmptyStr,
+    unit: "gunbc-writable-probe-control" as NonEmptyStr,
     path: control,
     root: root,
   ) && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", control]).exit_code == 0
@@ -1623,31 +1745,31 @@ test fn writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox() 
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-bin.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-bin" as NonEmptyStr,
       path: join([inst.serve_binary as String, ".write-probe"], ""),
     )
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-tree.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-tree" as NonEmptyStr,
       path: join([inst.repo_root as String, "/.gunbc-worker-write-probe"], ""),
     )
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-binding.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-binding" as NonEmptyStr,
       path: join([attempt, "/request-binding.json"], ""),
     )
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-attempt-file.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-attempt-file" as NonEmptyStr,
       path: join([attempt, "/forged-owner-record"], ""),
     )
     && sandbox_touch_write_refused(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-hook.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-hook" as NonEmptyStr,
       path: join([inst.repo_root as String, "/.git/hooks/post-commit"], ""),
     )
   // THE VERDICT IS REPORTED BEFORE THE CLEANUP, AND THE CLEANUP RUNS EITHER WAY: a
@@ -1678,13 +1800,13 @@ test fn the_worker_worktree_is_writable_inside_the_same_sandbox() -> Bool {
     && sandbox_touch_wrote(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-wt.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-wt" as NonEmptyStr,
       path: probe,
     )
     && sandbox_touch_wrote(
       instance: inst,
       root: root,
-      unit: "gunbc-writable-probe-log.service" as NonEmptyStr,
+      unit: "gunbc-writable-probe-log" as NonEmptyStr,
       path: log_probe,
     )
     && shell.Exec.RunArgv(program: "rm", arguments: ["-f", "--", probe, log_probe]).exit_code == 0
@@ -2319,6 +2441,14 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
 // one line rather than a tune applied to whichever leg is currently red.
 data wet_answer_wait_beats: Int = 240
 
+// A REAL BOUND, NOT ZERO. The wait's outcomes are testable with a zero-beat probe, but a zero-beat probe
+// cannot tell a bound that fires from a bound that is never reached, and it cannot price a beat. This is
+// the number of beats the bound-claim below actually waits, chosen so one claim pays ~20 s of sleep and
+// nothing else: `eval_steps` of that claim minus `eval_steps` of the zero-beat claim, over this number, is
+// the cost of ONE beat -- the measurement that answers whether the wait or the locus install was the cost
+// driver. It is deliberately not 240: a claim must not pay a whole bound to prove a bound exists.
+data wet_answer_wait_probe_beats: Int = 20
+
 type WetAnswerWait
   = WetAnswerArrived { verdict: String }
   | WetAnswerEchoMismatch { path: String, echoed_chars: Int, wanted_chars: Int }
@@ -2705,6 +2835,51 @@ test fn an_answer_for_another_request_is_reported_as_a_mismatch_not_as_a_wait() 
   }
 }
 
+test fn an_answer_that_never_arrives_refuses_at_a_real_bound_naming_beats_and_path() -> Bool {
+  // WHY THIS CLAIM EXISTS. srv2's launcher leg spent 570 s of CPU / 36.6M eval steps inside this wait and
+  // the trail could only say `answer-arrived FAILED` -- no bound, no path, no cause (see the comment on
+  // `wet_answer_wait`). The wait now returns WHY it stopped; a zero-beat probe proves it can NAME the
+  // states, and this claim proves the bound itself fires: after `wet_answer_wait_probe_beats` beats with
+  // nothing at the path it must stop, must name the beats it REALLY waited (not the bound it was given),
+  // and must name the path it looked at -- and that path must be inside the claim's own root, which is the
+  // confinement read for the channel the launcher legs wait on. It is also the measurement behind the cost
+  // report: with the zero-beat claim as the baseline, the difference over the probe beats is the price of
+  // one beat.
+  let root = wet_claim_root(tag: "answer-bound" as NonEmptyStr)
+  let mine = "the body this claim asked for"
+  let prepared = wet_prepare_attempt_unit_spool_at(instance_root: root)
+  let at_bound = match wet_answer_wait_poll(
+    instance_root: root,
+    entry: "keen-bound-probe",
+    request_body: mine,
+    remaining: wet_answer_wait_probe_beats,
+    waited: 0,
+  ) {
+    WetAnswerNeverArrived { path: path, beats: beats } =>
+      beats == wet_answer_wait_probe_beats
+        && string_contains(path, "/answers/keen-bound-probe")
+        && string_contains(path, root)
+    _ => wet_stage(stage: "answer-bound-did-not-refuse-at-the-bound", ok: false)
+  }
+  // THE SAME ROUTE AT ZERO BEATS, IN THE SAME SPOOL: a beat spent must be a beat counted, and a claim that
+  // waits nothing must not report the whole bound. Both arms decide, so neither number is taken on trust.
+  let at_zero = match wet_answer_wait_poll(
+    instance_root: root,
+    entry: "keen-bound-none",
+    request_body: mine,
+    remaining: 0,
+    waited: 0,
+  ) {
+    WetAnswerNeverArrived { path: path, beats: beats } =>
+      beats == 0 && string_contains(path, "/answers/keen-bound-none")
+    _ => wet_stage(stage: "answer-zero-did-not-refuse-immediately", ok: false)
+  }
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: prepared && at_bound && at_zero,
+    roots: [root as NonEmptyStr],
+  )
+}
+
 // THE LEAF IS WHAT MAKES A PROBE UNIT NAME UNREUSABLE, so it is now a pure `.dag` fold and must be
 // tested as one. Review 91550 asked why a claim was starting a `basename` process to split a string it
 // already held; the honest answer is that it should not, and it no longer does -- the fold lives in
@@ -2793,6 +2968,130 @@ test fn the_claim_leaf_is_the_host_segment_and_two_roots_never_name_one_unit() -
   wet_claim_verdicts_with_root_readbacks(
     verdict: shapes && distinct && stable,
     roots: [root_a as NonEmptyStr, root_b as NonEmptyStr]
+  )
+}
+
+// THE LABEL BOUNDARY, CLAIMED. A UNIT NAME BUILT FROM ANY LABEL THIS WITNESS USES ENDS IN EXACTLY ONE
+// ".service", and a label that already carries a unit suffix is REFUSED rather than doubled. Written
+// because srv2 at 06995b57 (stern, run15794m) measured the opposite: the sandbox-touch legs passed
+// "gunbc-writable-probe-wt.service" and "gunbc-writable-probe-control.service", the derivation appended
+// a second ".service", and `sudo -n systemctl stop …-wt.service.service` exited 5 -- a retirement aimed
+// at a name no production path would have used, derived by the same code as the launch, so the leg's own
+// retirement readback could not see the mismatch. This claim is pure: it names units, it never launches
+// one, and so it costs nothing and runs on any host.
+fn wet_single_service_suffix(name: String) -> Bool {
+  // The second arm is the whole point: ".service" is the shape production renders, and ".service.service"
+  // is the shape the doubled label produced. Asking only for the first would pass both.
+  ends_with(s: name, suffix: ".service") && !ends_with(s: name, suffix: ".service.service")
+}
+
+fn wet_label_names_one_service_unit(root: FilePath, label: String) -> Bool {
+  match wet_unit_name_for(root: root as NonEmptyStr, label: label) {
+    Absent => wet_stage(stage: join(["unit-name-underivable-for-label:", label], ""), ok: false)
+    Present { value: name } => wet_stage(
+      stage: join(["unit-name-suffix:", name as String], ""),
+      ok: wet_single_service_suffix(name: name as String),
+    )
+  }
+}
+
+fn wet_suffixed_label_is_refused(root: FilePath, suffix: String) -> Bool {
+  let label = join(["gunbc-writable-probe", suffix], "")
+  let attempt_refused = match wet_unit_name_for(root: root as NonEmptyStr, label: label) {
+    Present { value: name } => wet_stage(stage: join(["unit-suffix-doubled:", name as String], ""), ok: false)
+    Absent => true
+  }
+  let control_refused = match wet_control_unit_name(root: root, label: label) {
+    Present { value: name } => wet_stage(stage: join(["control-unit-suffix-doubled:", name as String], ""), ok: false)
+    Absent => true
+  }
+  // NOT VACUOUS: the same label without its suffix must still name a unit, or a boundary that refused
+  // every label would pass the two arms above by refusing everything.
+  let bare_still_names_a_unit = match wet_unit_name_for(root: root as NonEmptyStr, label: "gunbc-writable-probe") {
+    Present { value: name } => wet_single_service_suffix(name: name as String)
+    Absent => false
+  }
+  attempt_refused && control_refused && bare_still_names_a_unit
+}
+
+test fn no_unit_this_witness_names_ever_ends_in_a_doubled_service_suffix() -> Bool {
+  // TWO ROOTS, because every derivation here is a function of (root, label) and the leaf is what keeps
+  // two runs of one claim apart; a bug that dropped the leaf would show up as one root naming the other's
+  // unit, and the two-roots claim above covers that half. These are path TEXT: the derivation is pure, so
+  // the claim creates nothing and has nothing to clean up.
+  let root_a = "/tmp/gunbc-sandbox-suffix-Aa1Bb2" as FilePath
+  let root_b = "/tmp/gunbc-sandbox-suffix-Cc3Dd4" as FilePath
+  // EVERY LABEL IN THE TABLE, under BOTH ROOTS. The table is the witness's own list of what it launches
+  // under, so adding a leg without a row here is a gap this claim can be extended to catch, and adding
+  // one with a suffix in it reddens it immediately.
+  let every_label_once = fold(
+    wet_launched_unit_labels(),
+    init: true,
+    f: (acc, label) =>
+      acc
+        && wet_label_names_one_service_unit(root: root_a, label: label)
+        && wet_label_names_one_service_unit(root: root_b, label: label),
+  )
+  let every_suffix_refused = fold(
+    wet_unit_suffixes,
+    init: true,
+    f: (acc, suffix) => acc && wet_suffixed_label_is_refused(root: root_a, suffix: suffix),
+  )
+  every_label_once && every_suffix_refused
+}
+
+// THE REUSE ARM, BUILT BY HAND SO IT IS TESTABLE WHERE THE FOLD CANNOT RUN. The three paths are the
+// fixture's own accessors -- the same three the drain's reader asks about -- so this is the shape the
+// fold's readback checks, written by the claim rather than by the fold. What it does NOT claim: the
+// per-file digests. Those are the FOLD's duty, on the leg that runs it, and this claim says so instead
+// of pretending to have re-verified them.
+fn wet_stage_locus_by_hand(instance: HostDashboardInstance, revision_text: String, image: String) -> Bool {
+  wet_ok(command: mkdir_parents_command(path: witness_locus_dag_dir(instance: instance, revision_text: revision_text)))
+    && Filesystem.Write(
+      path: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
+      content: "hand-staged for the locus reuse arm\n",
+    ).success
+    && wet_ok(command: install_file_mode_command(
+      source: image,
+      destination: witness_locus_binary_path(instance: instance, revision_text: revision_text),
+      mode: "0755" as NonEmptyStr,
+    ))
+}
+
+test fn a_leg_that_finds_its_locus_installed_does_not_reinstall_it() -> Bool {
+  // WHY THIS CLAIM EXISTS. srv2's S1 at 06995b57 spent 450 s of CPU re-installing a locus that was
+  // already installed, once per leg, inside a single claim (27.5M eval steps for two legs). The fix makes
+  // a leg that FINDS its locus answer with the three-path readback instead. That arm is judgeable here,
+  // on a host with no sudo, precisely because it does not call the fold -- and the arm below proves the
+  // gate still refuses when there is nothing to reuse, so the pass above is not the trivial truth of a
+  // gate that always says yes.
+  let root = wet_claim_root(tag: "locus-reuse" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+  // A revision needs a committed guest tree, and the plant route is what commits one.
+  let planted = wet_plant_confined_tree(instance: inst)
+  let revision = witness_guest_tree_revision(instance: inst)
+  let staged =
+    named != ""
+      && revision != ""
+      && wet_stage_locus_by_hand(instance: inst, revision_text: revision, image: named)
+  let reused = staged && match wet_locus_gate(instance: inst, label: "reuse-arm") {
+    Present { value: read } => wet_stage(stage: "locus-reuse-arm-converged", ok: read == revision)
+    Absent => wet_stage(stage: "locus-reuse-arm-refused", ok: false)
+  }
+  // THE OTHER ARM, ON THE SAME HOST. With no locus on disk this host has no way to install one -- the
+  // fold refuses for want of elevation -- so the gate must refuse. On a host that CAN elevate this arm
+  // is discharged by the fold's own readback in the launching legs; it is not faked here.
+  let bare_root = wet_claim_root(tag: "locus-bare" as NonEmptyStr)
+  let bare = wet_supplied_lab_instance(scratch_parent: bare_root)
+  let refused_without_elevation = witness_sudo_elevation_available()
+    || match wet_locus_gate(instance: bare, label: "no-locus") {
+      Absent => true
+      Present { value: _ } => wet_stage(stage: "locus-no-locus-converged-without-elevation", ok: false)
+    }
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: planted && reused && refused_without_elevation,
+    roots: [root as NonEmptyStr, bare_root as NonEmptyStr],
   )
 }
 
