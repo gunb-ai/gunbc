@@ -447,6 +447,31 @@ fn seat_exit_listings_unreadable(listings: List<AttemptExitStageListing>) -> Lis
   })
 }
 
+// AN UNDECODABLE EXIT ENTRY IS NOT "NO EXIT". Its name resolves to no subject, so it proves no seat's
+// ending - seat_worker_exit_owners claims no ended owner from it - and it must not vanish from the
+// record either, which is what let a seat with such an entry in its spool look live indefinitely. Each
+// one is named here so the discharge pass carries a located refusal for it, exactly as
+// seat_exit_listings_unreadable surfaces a stage it could not read. srv1 carries such an entry from
+// 2026-10-28: a worker exit entry whose systemd variables were never substituted, written outside
+// systemd's own ExecStopPost expansion. It is evidence that the WRITER is broken, never proof of any
+// holder's death, and death is what a seat release would need (see the holder-identity rule in
+// gunbc.compute.compute_run_unit_cold and gunbc.systemd_unit_invocation_liveness).
+type SeatUndecodableExitEntry {
+  entry_name: String
+  reason: String
+}
+
+fn seat_exit_entries_undecodable(listings: List<AttemptExitStageListing>) -> List<SeatUndecodableExitEntry> {
+  listings |> flat_map(l => match l {
+    AttemptExitStageNames { names } =>
+      names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+        AttemptExitEntryDecoded { record: _ } => [] as List<SeatUndecodableExitEntry>
+        AttemptExitEntryMalformed { entry_name, reason } => [SeatUndecodableExitEntry { entry_name: entry_name, reason: reason }]
+      })
+    AttemptExitStageUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
+  })
+}
+
 // ONE PASS OVER THE ATTEMPTS WHOSE WORKER EXIT WAS RECORDED. A stage that cannot be read refuses the
 // whole pass: "I could not look" is never "there is no exit".
 fn compute_seat_discharge_all(instance: HostDashboardInstance, leases: ComputeProducerLeases, subject: ComputeCapacitySubject, appropriation: Kibibyte, source: UnitLifecycleSource) -> SeatDischargePass {
@@ -459,9 +484,12 @@ fn compute_seat_discharge_all(instance: HostDashboardInstance, leases: ComputePr
         SeatLiveSeatsListed { seats: live } =>
           SeatDischargeRan {
             outcomes: concat(
+              seat_exit_entries_undecodable(listings: listings)
+                |> flat_map(u => seat_discharge_outcomes(p: SeatDischargeRefused { reason: join(["an attempt-exit entry exists that this reader cannot decode, so no seat's ending is inferred from it and it is not treated as absent either: ", u.entry_name, " (", u.reason, ")"], "") }, located: join(["exit-entry/", u.entry_name], ""))),
+              concat(
               seat_worker_exit_owners(listings: listings)
                 |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(instance: instance, leases: leases, subject: subject, appropriation: appropriation, node_id: o.node_id, attempt_key: o.attempt_key, source: source), located: join(["dispatch-", o.attempt_key], ""))),
-              live |> flat_map(seat => seat_discharge_outcomes(p: compute_seat_discharge_live(instance: instance, seat: seat, leases: leases, subject: subject, appropriation: appropriation, source: source), located: compute_seat_wire(seat: seat)))),
+              live |> flat_map(seat => seat_discharge_outcomes(p: compute_seat_discharge_live(instance: instance, seat: seat, leases: leases, subject: subject, appropriation: appropriation, source: source), located: compute_seat_wire(seat: seat))))),
           }
       }
   }

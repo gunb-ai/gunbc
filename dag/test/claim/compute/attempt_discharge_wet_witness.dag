@@ -33,7 +33,7 @@ import gunbc.compute.work_provider_local {
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
-  attempt_exit_spool_stage_dir,
+  attempt_exit_spool_stage_dir, attempt_exit_stage_listings,
 }
 import gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_lease_slots, compute_producer_leases, compute_producer_lease_acquire, compute_producer_lease_standing }
 import gunbc.compute.compute_seat_ensure {
@@ -42,6 +42,7 @@ import gunbc.compute.compute_seat_ensure {
   compute_seat_ensure_in,
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
   SeatDischargeStanding, SeatDischargePassRefused, seat_discharge_pass_standing,
+  seat_exit_entries_undecodable, seat_outcome_is_refused,
 }
 
 // KILL-AT-EACH-TRANSITION CONTROLS FOR THE COMPUTE SEAT (gunbc.recurring_failure_mode
@@ -1001,4 +1002,65 @@ fn the_operator_door_resolves_a_dispatch_owned_seat_and_refuses_an_unreadable_at
 
 fn absent_of(root: String) -> String {
   join([root, "/absent"], "")
+}
+
+// AN UNDECODABLE EXIT ENTRY IS NAMED, NOT SWALLOWED. A spool entry whose name resolves to no subject is
+// not "no exit": it proves no seat's ending (seat_worker_exit_owners claims no ended owner from it) and
+// it must not disappear from the record either - silently dropping it is what let a seat whose exit entry
+// could not be decoded look live without end. srv1 carries such an entry from 2026-10-28, written outside
+// systemd's own ExecStopPost expansion with its variables unexpanded. The pass now carries a located
+// refusal for it; the refusal is NOT a death proof and releases nothing, because a seat release needs
+// holder death bound to the holder's identity (the manager that ran the unit, its boot, and the
+// InvocationID where the observer can key one).
+test fn an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending() -> Bool {
+  let root = fresh_root()
+  let ok = an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending_cell(root: String) -> Bool {
+  made(path: lease_dir_at(root: root))
+    && made(path: join([attempt_exit_spool_stage_dir(root: root, stage: AttemptExitRefused), "/node-a+key-a+worker"], ""))
+    && with_leases(root: root, body: fn(l) {
+      let listings = attempt_exit_stage_listings(instance_root: root)
+      match seat_exit_entries_undecodable(listings: listings).first() {
+        Absent => false
+        Present { value: u } =>
+          string_contains(s: u.entry_name, pattern: "node-a+key-a+worker")
+            && string_contains(s: u.reason, pattern: "seven")
+            && (match seat_worker_exit_owners(listings: listings).first() {
+              Absent => match compute_seat_discharge_all(instance: instance_at(root: root), leases: l, subject: subject_at(root: root), appropriation: witness_appropriation(), source: ended()) {
+                SeatDischargeRan { outcomes: os } => match (os |> filter(o => seat_outcome_is_refused(o: o))).first() {
+                  Present { value: _ } => true
+                  Absent => false
+                }
+                SeatDischargeRefused { reason: _ } => false
+                SeatDischargeSkipped { why: _ } => false
+              }
+              Present { value: _ } => false
+            })
+      }
+    })
+}
+
+// CONTROL, decodable entry: the same spool read with a well-formed entry name claims the ended owner and
+// reports NOTHING undecodable. Without this row the row above could be satisfied by a reader that simply
+// reports every entry as undecodable.
+test fn a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable() -> Bool {
+  let root = fresh_root()
+  let ok = a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable_cell(root: root)
+  let removed = shell.Remove.RecursiveForce(path: root)
+  ok && removed.success
+}
+
+fn a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable_cell(root: String) -> Bool {
+  exit_recorded(root: root, key: "key-a")
+    && (match seat_exit_entries_undecodable(listings: attempt_exit_stage_listings(instance_root: root)).first() {
+      Absent => match seat_worker_exit_owners(listings: attempt_exit_stage_listings(instance_root: root)).first() {
+        Present { value: o } => o.node_id == "node-a" && o.attempt_key == "key-a"
+        Absent => false
+      }
+      Present { value: u } => false
+    })
 }
