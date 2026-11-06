@@ -76,7 +76,7 @@ fn baseline_cases() -> List<BaselineCase> {
     BaselineCase { name: "base_e1_phase_p3", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "p3-all-poles-on" }, established: false },
     BaselineCase { name: "base_e1_phase_p0", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "p0-bias" }, established: true },
     BaselineCase { name: "base_e1_phase_none", layout: p4261_e1_layout, finding: CarrierPhaseObserved { key: "no-such-phase" }, established: false },
-    BaselineCase { name: "base_e1_bus_p3", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p3-all-poles-on" }, established: true },
+    BaselineCase { name: "base_e1_bus_p3", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p3-all-poles-on" }, established: false },
     BaselineCase { name: "base_e1_bus_p0", layout: p4261_e1_layout, finding: ProtectedInputBusInPhase { key: "p0-bias" }, established: false },
     BaselineCase { name: "base_e1_notcomp", layout: p4261_e1_layout, finding: ComponentIdentified { component: k1_u1_p5 }, established: false },
     BaselineCase { name: "base_k1_j20inv", layout: p4261_k1_layout, finding: J20ContactInventory, established: false },
@@ -99,14 +99,14 @@ fn is_established_arm(s: FindingStanding) -> Bool {
   }
 }
 
-// EVERY FINDING HOLDS AS IT DID BEFORE THE CUT, EXCEPT THREE THAT THE ENFORCEMENT PR (#15966) CHANGED ON PURPOSE: the
+// EVERY FINDING HOLDS AS IT DID BEFORE THE CUT, EXCEPT FOUR THAT THE ENFORCEMENT PR (#15966) CHANGED ON PURPOSE: the
 // E1's C10 (a candidate now: its reading is not boxed) and the K1's two identified rows (the K1 roster is empty, so
-// nothing can be attributed) no longer establish identification. Thirteen established and twenty-two not, across
+// nothing can be attributed) no longer establish identification, and the E1's protected bus in p3 rests on Q21_P5's terminals, which are now a candidate. Twelve established and twenty-three not, across
 // every finding kind on both boards, a phase not recorded and a component of the other board included.
 test fn every_finding_holds_as_before_the_cut() -> Bool {
   let cs = baseline_cases()
   count(cs) == 35 && all(cs, c => finding_established(j: judge_finding(layout: c.layout, f: c.finding)) == c.established)
-    && count(filter(cs, c => c.established)) == 13
+    && count(filter(cs, c => c.established)) == 12
 }
 
 // THE RENDERED ARM IS THE JUDGMENT'S. For every case, the report's rendered result is the rendering of
