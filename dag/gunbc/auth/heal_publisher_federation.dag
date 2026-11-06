@@ -2,6 +2,7 @@ module gunbc.auth.heal_publisher_federation
 
 import std.types { NonEmptyStr, String, Int, List, Map, Bool }
 import std.optional { Present }
+import std.measure { Second, second }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpProjectId, WifPool, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
 import gunbc.auth.github_apps { gunbai_bot_app_pem_secret }
@@ -118,7 +119,7 @@ data heal_publisher_service_account_display_name: NonEmptyStr = "Heal publisher 
 // to request it: the publisher's Secret Manager read must be authorized by a token no longer live than
 // five minutes. It lived as the federation step's access_token_lifetime input until the exchange moved
 // into the seed; it is the same 300s, and a second spelling of it anywhere is the divergence to watch.
-data heal_publisher_cloud_token_lifetime: String = "300s"
+data heal_publisher_cloud_token_lifetime: Second = second(count: 300)
 
 fn public_heal_publisher_federation() -> HealPublisherFederation {
   HealPublisherFederation {

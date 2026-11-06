@@ -28,7 +28,8 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_yml_for }
 import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloorGenerationRefused, witness_floor_build_step }
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
-import std.measure { byte_size, Minute, minute }
+import std.measure { byte_size, Minute, minute, second_count }
+import extdeps.cloud.gcp.iam { token_lifetime_wire, token_lifetime_within_maximum }
 import std.optional { Optional, Present, Absent }
 import std.algebra { for_all, list_head, list_map }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -579,7 +580,9 @@ test fn the_federation_audiences_are_two_spellings_of_one_resource_and_the_lifet
   let resource = heal_publisher_wif_provider_resource()
   heal_publisher_exchange_audience() as String == join(["//iam.googleapis.com/", resource], "")
     && heal_publisher_assertion_audience() as String == join(["https://iam.googleapis.com/", resource], "")
-    && heal_publisher_cloud_token_lifetime == "300s"
+    && second_count(s: heal_publisher_cloud_token_lifetime) == 300
+    && token_lifetime_wire(s: heal_publisher_cloud_token_lifetime) == "300s"
+    && token_lifetime_within_maximum(s: heal_publisher_cloud_token_lifetime)
 }
 
 
