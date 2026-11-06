@@ -110,7 +110,6 @@ fn instrument_producer_rust(producer: TargetProducer) -> String {
     EvaluationStoreAddressExactHeadProducer => "TargetProducer::EvaluationStoreAddressExactHead"
     TypedGraphExclusiveBytesProducer => "TargetProducer::TypedGraphExclusiveBytes"
     TypedGraphExclusiveBytesFloorSubjectProducer => "TargetProducer::TypedGraphExclusiveBytesFloorSubject"
-    RequiredLaneResolutionCensusProducer => "TargetProducer::RequiredLaneResolutionCensus"
     BareReferenceChannelOutcomeProducer => "TargetProducer::BareReferenceChannelOutcome"
     SelfHostBehavioralEquivalenceProducer => "TargetProducer::SelfHostBehavioralEquivalence"
     SelfHostFrontierProducer => "TargetProducer::SelfHostFrontier"
