@@ -12,11 +12,14 @@
 // host builtin `compile_dag_rust_emit_check` and asserts on the EMITTED TEXT, in BOTH directions:
 // the expected spelling present, the wrong spelling forbidden, at the named site.
 //
-// WHY A MARKER LINE TRAVELS IN EVERY `includes` (§5, no silent collapse). The builtin answers Bool;
-// a false could mean refused, file-not-found, or emitted-but-different. Each cell therefore also
-// requires the fixture's OWN `fn <name>(` signature line: if emission did not happen, that line is
-// absent and the cell reads red AS a failure — never as evidence of the behaviour — while a green
-// can only be read from text that really came out of the emitter.
+// WHY EACH BEHAVIOUR CELL TRAVELS WITH ITS OWN MARKER-ONLY CELL (§5, no silent collapse). The
+// builtin answers Bool, and `includes` is a CONJUNCTION: one list holding both the marker and the
+// expected text collapses emission failure (refused, file-not-found) into the same false as
+// emitted-but-different. So each fixture module has a PAIR: an `emits_..._reaches_the_assertions`
+// cell whose `includes` is ONLY the fixture's own `fn <name>(` signature line — it must be TRUE —
+// and the behaviour cell beside it. A red behaviour cell whose marker cell is TRUE reads as
+// emitted-but-different, the one red this probe claims; any other red is a refusal read and is
+// reported as such, not as evidence about the move.
 //
 // MIRROR CAVEAT, stated so no receipt claims more than it reads (§4b): the builtin runs the emitter
 // COMPILED INTO THE BINARY IN USE — the generated stage0 mirror. At a head whose mirror has not yet
@@ -39,6 +42,34 @@ import test.claim.emit_last_use_acc_clone_fixtures {
   retain_capture_source,
   retain_branch_arms_source,
   retain_shadowed_source
+}
+
+// THE MARKER PAIRS (amendment 5, paired one-to-one below). Each asserts ONLY that the fixture's
+// own signature line came out of the emitter: TRUE means the module compiled and emitted, so a red
+// on the behaviour cell beside it can only mean the TEXT differs. A false here is the collapsed
+// refusal reading — reported as a refusal, never as evidence about the move.
+test fn the_move_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(move_case_source, "src/test_claim_lastuse_move.rs", ["fn join_pair("], [])
+}
+
+test fn the_second_use_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_second_use_source, "src/test_claim_lastuse_retain_second_use.rs", ["fn join_twice("], [])
+}
+
+test fn the_vec_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(move_vec_accumulator_source, "src/test_claim_lastuse_vec.rs", ["fn collect_one("], [])
+}
+
+test fn the_capture_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_capture_source, "src/test_claim_lastuse_capture.rs", ["fn join_captured("], [])
+}
+
+test fn the_branch_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_branch_arms_source, "src/test_claim_lastuse_branch.rs", ["fn join_branch("], [])
+}
+
+test fn the_shadow_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(retain_shadowed_source, "src/test_claim_lastuse_shadow.rs", ["fn join_shadowed("], [])
 }
 
 // THE ONE-USE PARAMETER MOVES. `join_pair`'s lambda passes `acc` exactly once, by value, to the
