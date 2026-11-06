@@ -1,0 +1,99 @@
+module test.claim.cooling_design_power_standing_witness
+
+import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
+import extdeps.cooling.dynatron { dynatron_w1_catalog }
+import extdeps.cooling.types { CpuCoolerCatalogRow }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog, altra_q8030_catalog }
+import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
+import gunbc.fleet.fleet_asset_identity { cooler_srv3 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
+import std.measure { Watt, watt }
+import std.types { Bool, Int }
+import extdeps.cpu.types { CpuModelCatalogRow }
+import product.cooling_qualification {
+  CoolingCatalogCompatible,
+  CoolingCatalogRefused,
+  CoolingDesignPowerUnestablished,
+  CoolerDesignPowerBelowProcessorTdp,
+  CoolerMountDoesNotMatchProcessorMount,
+  BaseboardNotInCoolerSupportedPopulation,
+  InstalledCoolingRealization,
+  InstalledCoolingUnobserved,
+  InstalledCoolingAmbiguous,
+  CoolingCatalogVerdict,
+  cooling_catalog_verdict,
+  cooling_catalog_verdict_admits_qualification,
+}
+
+// SUPPLIED BOUNDARY (DESIGN 3): these claims supply the realization directly and import neither
+// gunbc.fleet.fleet_physical_inventory nor the BMC effect route, so they execute where
+// cooling_qualification_witness cannot. The real-path inhabitance claim for the live srv3 pairing
+// stays in cooling_qualification_witness.
+
+fn realization_with(
+  cooler_power: Watt,
+  processor: CpuModelCatalogRow,
+) -> InstalledCoolingRealization {
+  InstalledCoolingRealization {
+    host: operator_host_srv3,
+    cooler_asset: cooler_srv3,
+    cooler: CpuCoolerCatalogRow {
+      model: dynatron_w1_catalog.model,
+      manufacturer: dynatron_w1_catalog.manufacturer,
+      socket: dynatron_w1_catalog.socket,
+      active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
+      minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
+      max_design_power: cooler_power,
+      supported_motherboards: dynatron_w1_catalog.supported_motherboards,
+    },
+    processor: processor,
+    baseboard_model: asrock_altrad8ud_board_authority,
+  }
+}
+
+test fn cited_250w_against_250w_is_compatible_with_cited_standing() -> Bool {
+  match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 250), processor: altra_max_m12830_catalog)) {
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => true
+    _ => false
+  }
+}
+
+test fn cited_250w_against_249w_is_the_below_tdp_refusal() -> Bool {
+  match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 249), processor: altra_max_m12830_catalog)) {
+    CoolingCatalogRefused { host: _, cause: CoolerDesignPowerBelowProcessorTdp { cooler_max_design_power: _, processor_tdp: _ } } => true
+    _ => false
+  }
+}
+
+// An uncited TDP is unestablished: neither compatible nor below-TDP, at a cooler that would pass
+// AND at one that would fail the comparison, so the verdict cannot be the comparison's outcome.
+test fn uncited_design_power_is_unestablished_either_side_of_the_comparison() -> Bool {
+  (match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 250), processor: altra_q8030_catalog)) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => true
+    _ => false
+  })
+    && (match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 1), processor: altra_q8030_catalog)) {
+      CoolingDesignPowerUnestablished { host: _, standing: _ } => true
+      _ => false
+    })
+}
+
+test fn an_unestablished_design_power_does_not_admit_qualification() -> Bool {
+  !cooling_catalog_verdict_admits_qualification(
+    verdict: cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 250), processor: altra_q8030_catalog)),
+  )
+}
+
+// Q64-30 (124 W) and Q80-30 (161 W) carry watts whose design-power row is unread: even against a
+// cooler vastly over the figure, cooling withholds rather than admits.
+test fn q64_and_q80_figures_are_never_compared_as_design_power() -> Bool {
+  let q64 = match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 1000), processor: altra_q6430_catalog)) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => true
+    _ => false
+  }
+  let q80 = match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 1000), processor: altra_q8030_catalog)) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => true
+    _ => false
+  }
+  q64 && q80
+}
