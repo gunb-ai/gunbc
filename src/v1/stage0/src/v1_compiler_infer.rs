@@ -7426,15 +7426,15 @@ pub fn equality_helper_visible(
                 > 0)))
 }
 
-pub fn equality_helpers_visible(
-    plan: Rc<EqualityPlan>,
+pub fn equality_body_helpers_visible(
+    structure: Rc<EqualityStructure>,
     imports: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let missing = Rc::new({
             let mut __result = Vec::new();
-            for h in equality_plan_helpers(plan).iter().cloned() {
+            for h in equality_structure_helpers(structure).iter().cloned() {
                 if ((Rc::new({
                     let mut __result = Vec::new();
                     for imp in imports.iter().cloned() {
@@ -38072,27 +38072,33 @@ pub fn equality_synthesized_for(
                             if !equality_plan_synthesizable(plan.clone()) {
                                 Rc::new(vec![])
                             } else {
-                                if !equality_helpers_visible(plan.clone(), imports, si.clone()) {
-                                    Rc::new(vec![])
-                                } else {
-                                    match Rc::new({
-                                        let mut __result = Vec::new();
-                                        for d in plan.declarations.clone().iter().cloned() {
-                                            if (d.declaration.clone() == identity.clone()) {
-                                                __result.push(d);
-                                            }
+                                match Rc::new({
+                                    let mut __result = Vec::new();
+                                    for d in plan.declarations.clone().iter().cloned() {
+                                        if (d.declaration.clone() == identity.clone()) {
+                                            __result.push(d);
                                         }
-                                        __result
-                                    })
-                                    .first()
-                                    .cloned()
-                                    {
-                                        std::option::Option::None => Rc::new(vec![]),
-                                        Some(dp) => Rc::new(vec![equality_derived_declaration(
-                                            scope.module_name.clone(),
-                                            name.clone(),
-                                            dp.clone(),
-                                        )]),
+                                    }
+                                    __result
+                                })
+                                .first()
+                                .cloned()
+                                {
+                                    std::option::Option::None => Rc::new(vec![]),
+                                    Some(dp) => {
+                                        if !equality_body_helpers_visible(
+                                            dp.structure.clone(),
+                                            imports,
+                                            si.clone(),
+                                        ) {
+                                            Rc::new(vec![])
+                                        } else {
+                                            Rc::new(vec![equality_derived_declaration(
+                                                scope.module_name.clone(),
+                                                name.clone(),
+                                                dp.clone(),
+                                            )])
+                                        }
                                     }
                                 }
                             }
