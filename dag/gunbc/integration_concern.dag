@@ -646,7 +646,7 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
         decl_ref(module_path: "gunbc.instruments.emit_copy_qualification_transport", decl_name: "path_ends_with"),
         decl_ref(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "ends_with_segment"),
         decl_ref(module_path: "extdeps.languages.json.grammar", decl_name: "json_text_starts_with_at"),
-        decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_match_at"),
+        decl_ref(module_path: "extdeps.whatwg.html_attribute_tokenization", decl_name: "html_octets_match_at"),
         decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_starts_with"),
         decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_string_ends_with"),
       ],
