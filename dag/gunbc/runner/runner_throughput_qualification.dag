@@ -440,11 +440,16 @@ type MemoryEnvelopeStanding
   | MemoryReceiptDisagreesAt { subject: NonEmptyStr, printed_violated: Bool, verdict: MemoryEnvelopeVerdict }
   | MemoryUnread { reason: NonEmptyStr }
 
-// THE SUBJECT ROSTER IS AN IDENTITY JOIN, NOT A COUNT: every emitted subject row read exactly once in every run.
+// THE SUBJECT ROSTER IS AN IDENTITY JOIN, NOT A COUNT, IN BOTH DIRECTIONS: every emitted subject row read exactly once,
+// and every reading a declared row (merry-fox side chat on e07e4205). A reading of a subject the roster does not declare
+// is not extra evidence to ignore; it means the run did other work than the roster says, and it refuses by name. The
+// same join holds every assessed run and the baseline (readings_roster_standing), so neither can pass on a roster the
+// other would refuse.
 type SubjectRosterStanding
   = SubjectRosterComplete
   | SubjectMissing { subject: NonEmptyStr }
   | SubjectDuplicated { subject: NonEmptyStr }
+  | SubjectUndeclared { subject: NonEmptyStr }
   | SubjectRosterNotAssessed { because: NonEmptyStr }
 
 // THE BASELINE IS OBSERVED, NEVER A LITERAL (operator decision A): a run of the same subject rows at the same revision
@@ -470,7 +475,7 @@ type SubjectWallStanding
   | SubjectWallExceedsBaseline { subject: NonEmptyStr, wall: Second, baseline: Second, allowance: NonzeroNatFraction }
   | BaselineOnTheSubjectHost { host: HostIdentity }
   | BaselineAtAnotherRevision { selected: CommitSha, baseline: CommitSha }
-  | BaselineMissingSubject { subject: NonEmptyStr }
+  | BaselineRosterDidNotHold { standing: SubjectRosterStanding }
   | SubjectWallsNotAssessed { because: NonEmptyStr }
 
 // THE SLOT COUNT IS READ OFF THE SELECTED ALLOCATION: its runner slice over the selected slot's
@@ -488,26 +493,30 @@ fn reading_is_row(r: SubjectStepReading, row: EmittedSubjectBuildRow) -> Bool {
   (subject_label(row: r.row) as String) == (subject_label(row: row) as String)
 }
 
-fn run_roster_standing(run: ObservedRunnerQualificationRun, rows: List<EmittedSubjectBuildRow>) -> SubjectRosterStanding {
-  fold(rows, init: SubjectRosterComplete, f: (acc, row) =>
+fn readings_roster_standing(subjects: List<SubjectStepReading>, rows: List<EmittedSubjectBuildRow>) -> SubjectRosterStanding {
+  let declared = fold(rows, init: SubjectRosterComplete, f: (acc, row) =>
     match acc {
       SubjectRosterComplete => {
-        let n = count(run.subjects |> filter(r => reading_is_row(r: r, row: row)))
+        let n = count(subjects |> filter(r => reading_is_row(r: r, row: row)))
         if n == 0 { SubjectMissing { subject: subject_label(row: row) } } else if n > 1 { SubjectDuplicated { subject: subject_label(row: row) } } else { acc }
       }
-      SubjectMissing { subject: _ } => acc
-      SubjectDuplicated { subject: _ } => acc
-      SubjectRosterNotAssessed { because: _ } => acc
+      _ => acc
     })
+  match declared {
+    SubjectRosterComplete =>
+      match subjects |> filter(r => !(rows |> any(row => reading_is_row(r: r, row: row)))) |> first() {
+        Absent => SubjectRosterComplete
+        Present { value: r } => SubjectUndeclared { subject: subject_label(row: r.row) }
+      }
+    _ => declared
+  }
 }
 
 fn subject_roster_standing(runs: List<ObservedRunnerQualificationRun>, rows: List<EmittedSubjectBuildRow>) -> SubjectRosterStanding {
   fold(runs, init: SubjectRosterComplete, f: (acc, r) =>
     match acc {
-      SubjectRosterComplete => run_roster_standing(run: r, rows: rows)
-      SubjectMissing { subject: _ } => acc
-      SubjectDuplicated { subject: _ } => acc
-      SubjectRosterNotAssessed { because: _ } => acc
+      SubjectRosterComplete => readings_roster_standing(subjects: r.subjects, rows: rows)
+      _ => acc
     })
 }
 
@@ -567,12 +576,10 @@ fn max_subject_wall(runs: List<ObservedRunnerQualificationRun>, row: EmittedSubj
   }))
 }
 
-fn baseline_wall(baseline: FleetBaselineRun, row: EmittedSubjectBuildRow) -> Second? {
-  match baseline.subjects |> filter(s => reading_is_row(r: s, row: row)) |> first() {
-    Absent => none
-    Present { value: s } => Present { value: s.wall }
-  }
-}
+// THE BASELINE'S ROSTER IS JOINED BEFORE ANY WALL IS COMPARED (merry-fox side chat on e07e4205): with two baseline
+// readings of one subject, choosing the first would let the order of the decoder's output pick the comparison. Once
+// the join holds in both directions, the baseline's readings ARE the declared rows, each exactly once, so the comparison
+// walks those readings and never looks a row's wall up (a lookup would need an answer for a row it cannot miss).
 
 fn subject_wall_standing<P>(selection: SelectedRunnerQualification<P>, runs: List<ObservedRunnerQualificationRun>, baseline: FleetBaselineRun, rows: List<EmittedSubjectBuildRow>) -> SubjectWallStanding {
   let allowance = selection.wall_allowance
@@ -581,22 +588,22 @@ fn subject_wall_standing<P>(selection: SelectedRunnerQualification<P>, runs: Lis
   } else if baseline.revision != selection.workload.revision {
     BaselineAtAnotherRevision { selected: selection.workload.revision, baseline: baseline.revision }
   } else {
-    fold(rows, init: SubjectWallsWithinBaseline, f: (acc, row) =>
-      match acc {
-        SubjectWallsWithinBaseline =>
-          match baseline_wall(baseline: baseline, row: row) {
-            Absent => BaselineMissingSubject { subject: subject_label(row: row) }
-            Present { value: b } => {
-              let observed = max_subject_wall(runs: runs, row: row)
-              if nat_mul(a: observed, b: nonzero_nat_fraction_denom(r: allowance)) > nat_mul(a: second_count(b), b: allowance.num) {
-                SubjectWallExceedsBaseline { subject: subject_label(row: row), wall: second(count: observed), baseline: b, allowance: allowance }
+    match readings_roster_standing(subjects: baseline.subjects, rows: rows) {
+      SubjectRosterComplete =>
+        fold(baseline.subjects, init: SubjectWallsWithinBaseline, f: (acc, b) =>
+          match acc {
+            SubjectWallsWithinBaseline => {
+              let observed = max_subject_wall(runs: runs, row: b.row)
+              if nat_mul(a: observed, b: nonzero_nat_fraction_denom(r: allowance)) > nat_mul(a: second_count(b.wall), b: allowance.num) {
+                SubjectWallExceedsBaseline { subject: subject_label(row: b.row), wall: second(count: observed), baseline: b.wall, allowance: allowance }
               } else {
                 acc
               }
             }
-          }
-        _ => acc
-      })
+            _ => acc
+          })
+      refused => BaselineRosterDidNotHold { standing: refused }
+    }
   }
 }
 
@@ -740,6 +747,7 @@ fn subject_roster_refusal(s: SubjectRosterStanding) -> List<ThroughputRefusal> {
     SubjectRosterComplete => []
     SubjectMissing { subject: _ } => [SubjectRosterDidNotHold { standing: s }]
     SubjectDuplicated { subject: _ } => [SubjectRosterDidNotHold { standing: s }]
+    SubjectUndeclared { subject: _ } => [SubjectRosterDidNotHold { standing: s }]
     SubjectRosterNotAssessed { because: _ } => [SubjectRosterDidNotHold { standing: s }]
   }
 }
@@ -750,7 +758,7 @@ fn subject_wall_refusal(s: SubjectWallStanding) -> List<ThroughputRefusal> {
     SubjectWallExceedsBaseline { subject: _, wall: _, baseline: _, allowance: _ } => [SubjectWallDidNotHold { standing: s }]
     BaselineOnTheSubjectHost { host: _ } => [SubjectWallDidNotHold { standing: s }]
     BaselineAtAnotherRevision { selected: _, baseline: _ } => [SubjectWallDidNotHold { standing: s }]
-    BaselineMissingSubject { subject: _ } => [SubjectWallDidNotHold { standing: s }]
+    BaselineRosterDidNotHold { standing: _ } => [SubjectWallDidNotHold { standing: s }]
     SubjectWallsNotAssessed { because: _ } => [SubjectWallDidNotHold { standing: s }]
   }
 }
@@ -891,7 +899,7 @@ fn leg_authority(leg: RouteLegStanding) -> DeclarationRef? {
 
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
   lands_with: "a collect stage on the qualification route that reads the floor job's step times and its log into gunbc.runner.runner_qualification_subject_readings subject_readings_of at the attempt unit, the unit's effective properties and the guest's idle meminfo, and mints observed_run from them; and the same reading of a named fleet host's required run of the same rows into observed_baseline" as NonEmptyStr,
-  sufficient_for: "minting ObservedRunnerQualificationRuns, a FleetBaselineRun and a sealed concurrent cohort from real runs of the floor, so assess_runner_throughput is fed by execution rather than fixtures" as NonEmptyStr,
+  sufficient_for: "minting ObservedRunnerQualificationRuns, a FleetBaselineRun and a sealed concurrent cohort from real runs of the floor, so assess_runner_throughput is fed by execution rather than fixtures; each run's and the baseline's revision is the revision that EXECUTED, established by the collector, never read off the run's head_sha (a pull request run's head_sha need not be the commit its job checked out)" as NonEmptyStr,
 }
 
 // ── WIRE ──────────────────────────────────────────────────────────────────────────────────────
@@ -915,6 +923,16 @@ fn memory_standing_wire(s: MemoryEnvelopeStanding) -> NonEmptyStr {
   }
 }
 
+fn subject_roster_wire(s: SubjectRosterStanding) -> String {
+  match s {
+    SubjectRosterComplete => "subject roster complete"
+    SubjectMissing { subject: x } => concat("subject missing from the readings: ", x as String)
+    SubjectDuplicated { subject: x } => concat("subject read more than once: ", x as String)
+    SubjectUndeclared { subject: x } => concat("subject read but not declared by the roster: ", x as String)
+    SubjectRosterNotAssessed { because: b } => concat("subject roster not assessed: ", b as String)
+  }
+}
+
 fn subject_wall_wire(s: SubjectWallStanding) -> String {
   match s {
     SubjectWallsWithinBaseline => "every subject step's wall is within the baseline allowance"
@@ -922,7 +940,7 @@ fn subject_wall_wire(s: SubjectWallStanding) -> String {
       join(["subject ", x as String, " wall ", nat_wire(n: second_count(w)), "s exceeds the baseline ", nat_wire(n: second_count(b)), "s times ", nat_wire(n: a.num), "/", nat_wire(n: nonzero_nat_fraction_denom(r: a))], "")
     BaselineOnTheSubjectHost { host: h } => concat("the baseline run is on the subject host itself: ", h as String)
     BaselineAtAnotherRevision { selected: x, baseline: b } => join(["the baseline ran revision ", b as String, ", the subject runs ", x as String], "")
-    BaselineMissingSubject { subject: x } => concat("the baseline carries no reading of subject ", x as String)
+    BaselineRosterDidNotHold { standing: r } => concat("the baseline's subject roster did not hold: ", subject_roster_wire(s: r))
     SubjectWallsNotAssessed { because: b } => concat("subject walls not assessed: ", b as String)
   }
 }
@@ -949,13 +967,7 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
         ConservativePerAxis { minimum_runs: m } => join(["sampling policy wants at least ", int_to_decimal_string(value: m), " runs, observed ", int_to_decimal_string(value: n)], "")
       }
     MemoryEnvelopeDidNotHold { standing: s } => memory_standing_wire(s: s) as String
-    SubjectRosterDidNotHold { standing: s } =>
-      match s {
-        SubjectRosterComplete => "subject roster complete"
-        SubjectMissing { subject: x } => concat("subject missing from the run: ", x as String)
-        SubjectDuplicated { subject: x } => concat("subject read more than once: ", x as String)
-        SubjectRosterNotAssessed { because: b } => concat("subject roster not assessed: ", b as String)
-      }
+    SubjectRosterDidNotHold { standing: s } => subject_roster_wire(s: s)
     SubjectWallDidNotHold { standing: s } => subject_wall_wire(s: s)
     SlotWidthDidNotHold { standing: s } => slot_width_wire(s: s) as String
     ConcurrencyDidNotHold { standing: s } => concurrency_standing_wire(s: s)

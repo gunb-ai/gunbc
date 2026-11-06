@@ -29,7 +29,7 @@ import product.fabric.node_qualification {
   ClaimedDeliveryHolds, ClaimedDeliveryUnqualified, ClaimedDeliveryOfferMismatch,
   RunnerThroughputDidNotHold,
 }
-import gunbc.emitted_subject_build_gate { emitted_subject_build_rows, emitted_subject_build_label_text }
+import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.runner.runner_slot_allocation { gunbc_runner_cores_per_slot }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.fabric.fabric_executor_class {
@@ -58,11 +58,11 @@ import gunbc.runner.runner_throughput_qualification {
   HostAllocationAdmitted, HostAllocationRefused,
   subject_join_axis_wire, SubjectJoined, SubjectJoinRefused,
   PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryEnvelopeViolatedAt, MemoryReceiptDisagreesAt, MemoryUnread,
-  SubjectRosterComplete, SubjectMissing, SubjectDuplicated,
-  SubjectWallsWithinBaseline, SubjectWallExceedsBaseline, BaselineOnTheSubjectHost, BaselineAtAnotherRevision, BaselineMissingSubject,
+  SubjectRosterComplete, SubjectMissing, SubjectDuplicated, SubjectUndeclared,
+  SubjectWallsWithinBaseline, SubjectWallExceedsBaseline, BaselineOnTheSubjectHost, BaselineAtAnotherRevision, BaselineRosterDidNotHold,
   SlotWidthDerived, SlotWidthUnderivable,
   ThroughputRefusal, SubjectJoinDidNotHold, SamplingDidNotHold,
-  RunnerThroughputAssessment, assess_runner_throughput, assessment_holds, assessment_wire,
+  RunnerThroughputAssessment, assess_runner_throughput, assess_runner_throughput_over, assessment_holds, assessment_wire,
   qualification_run_producer_frontier, leg_is_wired, leg_authority, RouteLegStanding, LegAuthorityImplemented, LegAwaitingAuthority,
   AssessedFact, SlotMemoryEnvelope, SubjectWallsAgainstFleetBaseline, ConcurrentCohortAtWidth,
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
@@ -686,8 +686,70 @@ test fn a_baseline_on_the_subject_host_at_another_revision_or_missing_a_subject_
   let partial = assess_against(baseline: baseline_at(host: "srv3", revision: pin_revision, subjects: baseline_readings() |> filter(r => label_of(r: r) != first_label())), runs: [good_run(id: run_a)])
   (match on_subject.subject_walls { BaselineOnTheSubjectHost { host: h } => (h as String) == "mtcollins1" _ => false })
     && (match other_rev.subject_walls { BaselineAtAnotherRevision { selected: _, baseline: _ } => true _ => false })
-    && (match partial.subject_walls { BaselineMissingSubject { subject: s } => (s as String) == first_label() _ => false })
+    && (match partial.subject_walls { BaselineRosterDidNotHold { standing: SubjectMissing { subject: s } } => (s as String) == first_label() _ => false })
     && !assessment_holds(a: on_subject) && !assessment_holds(a: other_rev) && !assessment_holds(a: partial)
+}
+
+// ── the roster is joined in both directions, for the runs and the baseline (merry-fox side chat on e07e4205) ──
+
+fn first_only(rs: List<SubjectStepReading>) -> List<SubjectStepReading> {
+  rs |> filter(r => label_of(r: r) == first_label())
+}
+
+// A ROSTER THAT DECLARES ONLY THE FIRST SUBJECT ROW, so the recorded second subject's reading is one the roster does not
+// declare. The rows are the gate's own, narrowed; no row is invented.
+fn first_row_only() -> List<EmittedSubjectBuildRow> {
+  emitted_subject_build_rows() |> filter(row => emitted_subject_build_label_text(row: row) == first_label())
+}
+
+fn assess_over(rows: List<EmittedSubjectBuildRow>, baseline: FleetBaselineRun, runs: List<ObservedRunnerQualificationRun>) -> RunnerThroughputAssessment<HostIdentity> {
+  assess_runner_throughput_over(selection: selection(), runs: runs, baseline: baseline, cohort: NoCohortObserved, rows: rows)
+}
+
+fn second_label() -> String {
+  match subject_readings() |> filter(r => label_of(r: r) != first_label()) |> first() {
+    Present { value: r } => label_of(r: r)
+    Absent => ""
+  }
+}
+
+// RED: {first} declared against a run that read {first, second} is NOT complete: the second subject is undeclared and
+// refuses by name. The control is the same roster against a run that read only the first, which joins.
+test fn a_run_reading_a_subject_the_roster_does_not_declare_refuses() -> Bool {
+  let narrowed_baseline = baseline_at(host: "srv3", revision: pin_revision, subjects: first_only(rs: baseline_readings()))
+  let extra = assess_over(rows: first_row_only(), baseline: narrowed_baseline, runs: [good_run(id: run_a)])
+  let exact = assess_over(rows: first_row_only(), baseline: narrowed_baseline, runs: [varied_run(id: run_a, subjects: first_only(rs: subject_readings()))])
+  count(first_row_only()) == 1 && second_label() != ""
+    && !assessment_holds(a: extra)
+    && (match extra.subject_roster { SubjectUndeclared { subject: s } => (s as String) == second_label() _ => false })
+    && (match exact.subject_roster { SubjectRosterComplete => true _ => false })
+    && (match exact.subject_walls { SubjectWallsWithinBaseline => true _ => false })
+}
+
+fn baseline_first_subject_duplicated(a: RunnerThroughputAssessment<HostIdentity>) -> Bool {
+  match a.subject_walls {
+    BaselineRosterDidNotHold { standing: SubjectDuplicated { subject: s } } => (s as String) == first_label()
+    _ => false
+  }
+}
+
+// RED: TWO BASELINE READINGS OF ONE SUBJECT refuse before any wall is compared, whichever comes first. The duplicate is
+// given a one-second wall, so a first-match lookup would compare against it when it leads and against the recorded
+// wall when it trails; both orders refuse the same way.
+test fn a_baseline_reading_one_subject_twice_refuses_before_comparing() -> Bool {
+  let short = first_only(rs: baseline_readings()) |> map(r => with_wall(r: r, seconds: 1))
+  let leads = assess_against(baseline: baseline_at(host: "srv3", revision: pin_revision, subjects: concat(short, baseline_readings())), runs: [good_run(id: run_a)])
+  let trails = assess_against(baseline: baseline_at(host: "srv3", revision: pin_revision, subjects: concat(baseline_readings(), short)), runs: [good_run(id: run_a)])
+  baseline_first_subject_duplicated(a: leads) && baseline_first_subject_duplicated(a: trails) && !assessment_holds(a: leads) && !assessment_holds(a: trails)
+}
+
+// RED: A BASELINE READING A SUBJECT THE ROSTER DOES NOT DECLARE is not a baseline for that roster, though the run's own
+// roster joins.
+test fn a_baseline_reading_a_subject_the_roster_does_not_declare_refuses() -> Bool {
+  let a = assess_over(rows: first_row_only(), baseline: baseline(), runs: [varied_run(id: run_a, subjects: first_only(rs: subject_readings()))])
+  (match a.subject_roster { SubjectRosterComplete => true _ => false })
+    && (match a.subject_walls { BaselineRosterDidNotHold { standing: SubjectUndeclared { subject: s } } => (s as String) == second_label() _ => false })
+    && !assessment_holds(a: a)
 }
 
 // THE WIDTH IS OBSERVED, NOT ONLY DIVIDED. Every run below is the good run; what varies is the cohort.

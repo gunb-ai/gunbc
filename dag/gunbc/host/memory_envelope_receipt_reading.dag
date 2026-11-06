@@ -53,8 +53,11 @@ data receipt_key_oom_kills_delta: ReceiptKey = ReceiptKey { key: "oom_kills_delt
 data receipt_key_swap_current_bytes: ReceiptKey = ReceiptKey { key: "swap_current_bytes", kind: ReceiptCount }
 // THE SWAP PEAK'S RISE IS A BYTE COUNT (the printer's saturating after - before), OR THE PRINTER'S OWN SENTENCE THAT THIS
 // KERNEL CANNOT SHOW IT, read to the end of the line because that sentence has spaces. Nothing else: a value that is
-// neither is garbled, never read as unobservable.
-data receipt_swap_peak_unobservable_prefix: String = "unobservable"
+// neither is garbled, never read as unobservable. The sentence is matched WHOLE, never by a prefix (merry-fox side chat
+// on e07e4205): a value that only begins like it, `unobservablegarbage`, is not the printer's sentence and is garbled.
+// Its one producer is the seed's receipt printer, target_invocation_host's swap_peak_text, whose unobservable arm writes
+// exactly this text.
+data receipt_swap_peak_unobservable_sentence: String = "unobservable (no memory.swap.peak on this kernel)"
 data receipt_key_swap_peak_delta: ReceiptKey = ReceiptKey { key: "swap_peak_delta", kind: ReceiptCountOrUnobservable }
 
 // THE PRINTER'S ORDER.
@@ -179,7 +182,7 @@ fn receipt_count_or_unobservable(payload: String, k: ReceiptKey) -> ReceiptCount
   match receipt_text(payload: payload, k: k) {
     Absent => ReceiptCountUnreadable
     Present { value: v } =>
-      if starts_with(s: v, prefix: receipt_swap_peak_unobservable_prefix) {
+      if v == receipt_swap_peak_unobservable_sentence {
         ReceiptCountUnobservable
       } else {
         match parse_int(s: v) {

@@ -3,8 +3,8 @@ module gunbc.runner.runner_qualification_subject_readings
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { Second, second, second_count }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
-import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep }
+import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep, WorkflowRunConclusion, Success }
 import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds, iso8601_utc_epoch_seconds_floor }
 import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_step_name }
 import gunbc.host.memory_envelope_receipt_reading {
@@ -28,7 +28,7 @@ import gunbc.host.memory_envelope_receipt_reading {
 // memory to another step's wall.
 //
 // EVERY SUBJECT MUST BE READ EXACTLY ONCE, OR THE READING REFUSES. A job record that carries no steps, a subject step
-// that is absent, repeated, untimed or carries an instant this reader cannot parse, a garbled or untimed receipt, a
+// that is absent, repeated, did not conclude Success, untimed or carries an instant this reader cannot parse, a garbled or untimed receipt, a
 // receipt bounded by any cgroup but the slot's, and every failure of the join above: each is a typed refusal, never a
 // partial reading.
 
@@ -42,6 +42,7 @@ type SubjectReadingsRefusal
   = JobStepsUnrecorded
   | SubjectStepAbsent { step: String }
   | SubjectStepRepeated { step: String, count: Int }
+  | SubjectStepNotSucceeded { step: String, conclusion: WorkflowRunConclusion? }
   | SubjectStepUntimed { step: String }
   | SubjectStepInstantUnreadable { step: String, instant: String }
   | SubjectStepEndsBeforeItStarts { step: String }
@@ -64,13 +65,32 @@ type SubjectWindow {
   step: String
   from: Second
   to: Second
+  wall: Second
 }
 
 type StepWindow
   = StepWindowRead { window: SubjectWindow }
   | StepWindowRefused { refusal: SubjectReadingsRefusal }
 
+// ONLY A STEP THAT CONCLUDED Success IS A READING (merry-fox side chat on e07e4205). A failed, cancelled or timed-out
+// step still carries instants and may still have printed a receipt, and its shorter wall would read as faster than the
+// baseline; it refuses before any window is built. A step with no conclusion yet has not finished and refuses the same
+// way. If a failed step's timing is ever wanted, it is a separate, non-qualifying reading, not this one.
+//
+// THE WALL IS THE WINDOW'S, computed once here by the naturals' own subtraction (std.nat nat_sub): an end before the
+// start is that subtraction's own refusal arm, so no later step re-derives the wall or maps an impossible difference
+// to a number.
+fn step_succeeded(step: WorkflowJobStep) -> Bool {
+  match step.conclusion {
+    Present { value: Success } => true
+    _ => false
+  }
+}
+
 fn step_window(row: EmittedSubjectBuildRow, step: WorkflowJobStep) -> StepWindow {
+  if !step_succeeded(step: step) {
+    StepWindowRefused { refusal: SubjectStepNotSucceeded { step: step.name, conclusion: step.conclusion } }
+  } else {
   match step.started_at {
     Absent => StepWindowRefused { refusal: SubjectStepUntimed { step: step.name } }
     Present { value: started } =>
@@ -83,14 +103,14 @@ fn step_window(row: EmittedSubjectBuildRow, step: WorkflowJobStep) -> StepWindow
               match iso8601_utc_epoch_seconds(text: completed) {
                 Absent => StepWindowRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: completed } }
                 Present { value: e } =>
-                  if (second_count(e) as Int) < (second_count(s) as Int) {
-                    StepWindowRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
-                  } else {
-                    StepWindowRead { window: SubjectWindow { row: row, step: step.name, from: s, to: e } }
+                  match nat_sub(a: second_count(e), b: second_count(s)) {
+                    NatSubtrahendExceedsMinuend => StepWindowRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
+                    NatDifference { value: d } => StepWindowRead { window: SubjectWindow { row: row, step: step.name, from: s, to: e, wall: second(count: d) } }
                   }
               }
           }
       }
+  }
   }
 }
 
@@ -123,13 +143,6 @@ fn subject_windows(steps: List<WorkflowJobStep>, rows: List<EmittedSubjectBuildR
           StepWindowRead { window: w } => SubjectWindowsRead { windows: list_push(ws, w) }
         }
     })
-}
-
-fn window_wall(w: SubjectWindow) -> Second {
-  match checked_int_magnitude(a: (second_count(w.to) as Int) - (second_count(w.from) as Int)) {
-    CheckedNatOverflow { cause: _ } => second(count: 0)
-    CheckedNatReady { value: n } => second(count: n)
-  }
 }
 
 fn window_holds(w: SubjectWindow, at: Second) -> Bool {
@@ -223,7 +236,7 @@ fn joined_by_window(windows: List<SubjectWindow>, receipts: List<TimedReceipt>) 
         } else {
           match held.first() {
             Absent => JoinedRefused { refusal: SubjectReceiptMissing { step: w.step } }
-            Present { value: r } => JoinedRead { readings: list_push(rs, SubjectStepReading { row: w.row, wall: window_wall(w: w), receipt: r.reading }) }
+            Present { value: r } => JoinedRead { readings: list_push(rs, SubjectStepReading { row: w.row, wall: w.wall, receipt: r.reading }) }
           }
         }
       }

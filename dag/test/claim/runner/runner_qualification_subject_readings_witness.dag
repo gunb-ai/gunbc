@@ -12,7 +12,7 @@ import std.optional { Absent, Present }
 import std.measure { second_count, byte_size_count }
 import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited, CgroupMemoryUnlimited }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep, Completed, Success }
+import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep, WorkflowRunConclusion, Completed, Success, Failure, Cancelled }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
 import gunbc.host.memory_envelope_receipt_reading {
   memory_receipt_line, MemoryReceiptReading, MemoryReceiptRead, MemoryReceiptGarbled, NotAMemoryReceipt,
@@ -21,7 +21,7 @@ import gunbc.host.memory_envelope_receipt_reading {
 import gunbc.runner.runner_qualification_subject_readings {
   subject_readings_of, SubjectReadings, SubjectReadingsRead, SubjectReadingsRefused, JobStepsUnrecorded, SubjectReceiptMissing,
   SubjectReceiptRepeated, SubjectReceiptOutsideEveryStep, SubjectReceiptInTwoSteps, SubjectReceiptUntimed,
-  SubjectReceiptOutsideSlot, SubjectReceiptGarbled, SubjectStepAbsent,
+  SubjectReceiptOutsideSlot, SubjectReceiptGarbled, SubjectStepAbsent, SubjectStepNotSucceeded, SubjectStepEndsBeforeItStarts,
 }
 import test.fixture.recorded_v2_bootstrap_receipts {
   recorded_v2_bootstrap_receipt_log, recorded_v2_bootstrap_subject_steps, recorded_v2_bootstrap_slot_unit,
@@ -186,6 +186,63 @@ test fn the_swap_peak_rise_is_bytes_or_the_printers_sentence() -> Bool {
       MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "swap_peak_delta")
       _ => false
     })
+}
+
+// RED, NEAR-MATCH: the unobservable sentence is matched whole. A value that only begins like it, or the sentence with
+// more after it, is not the printer's sentence and garbles the receipt naming the key; neither reads as an absent delta.
+test fn a_near_match_of_the_unobservable_sentence_is_garbled() -> Bool {
+  let prefixed = replace(s: first_receipt_line(), from: "swap_peak_delta=0", to: "swap_peak_delta=unobservablegarbage")
+  let trailed = replace(s: first_receipt_line(), from: "swap_peak_delta=0", to: "swap_peak_delta=unobservable (no memory.swap.peak on this kernel) or so")
+  (match memory_receipt_line(line: prefixed) {
+    MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "swap_peak_delta")
+    _ => false
+  })
+    && (match memory_receipt_line(line: trailed) {
+      MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "swap_peak_delta")
+      _ => false
+    })
+}
+
+// ── only a step that concluded Success is a reading (merry-fox side chat on e07e4205) ───────────────────────
+
+// The recorded run's first subject step with one field replaced; every other field is the record's own.
+fn first_step_with(conclusion: WorkflowRunConclusion?, started_at: String, completed_at: String) -> List<WorkflowJobStep> {
+  recorded_v2_bootstrap_subject_steps |> map(st => if st.number == 11 {
+    WorkflowJobStep { name: st.name, status: st.status, conclusion: conclusion, number: st.number, started_at: Present { value: started_at }, completed_at: Present { value: completed_at } }
+  } else { st })
+}
+
+fn read_steps(steps: List<WorkflowJobStep>) -> SubjectReadings {
+  subject_readings_of(job: job_with(steps: steps), log: recorded_v2_bootstrap_receipt_log, slot_unit: slot(), rows: emitted_subject_build_rows())
+}
+
+fn refused_as_not_succeeded(r: SubjectReadings) -> Bool {
+  match r {
+    SubjectReadingsRefused { refusal: SubjectStepNotSucceeded { step: st, conclusion: _ } } => st == "emit and build //gunbc/instruments:self-host"
+    _ => false
+  }
+}
+
+// RED: the SAME recorded step, instants and receipt unchanged, with its conclusion moved off Success. A failed, a
+// cancelled and an unconcluded step each refuse naming the step, so a step that stopped early never becomes a
+// qualifying wall that reads faster than the baseline. The control is the record itself, which concludes Success and
+// reads (a_recorded_required_run_decodes_to_one_reading_per_subject_step).
+test fn a_subject_step_that_did_not_succeed_refuses_whatever_its_timing() -> Bool {
+  let from = "2026-10-27T13:11:40Z"
+  let to = "2026-10-27T13:25:13Z"
+  (match read_steps(steps: first_step_with(conclusion: Present { value: Success }, started_at: from, completed_at: to)) { SubjectReadingsRead { readings: _ } => true _ => false })
+    && refused_as_not_succeeded(r: read_steps(steps: first_step_with(conclusion: Present { value: Failure }, started_at: from, completed_at: to)))
+    && refused_as_not_succeeded(r: read_steps(steps: first_step_with(conclusion: Present { value: Cancelled }, started_at: from, completed_at: to)))
+    && refused_as_not_succeeded(r: read_steps(steps: first_step_with(conclusion: none, started_at: from, completed_at: to)))
+}
+
+// RED: a step whose completion precedes its start has no wall. The difference is std.nat nat_sub's own refusal arm,
+// never a wall of zero seconds (which would read as the fastest subject of all).
+test fn a_step_that_ends_before_it_starts_refuses_rather_than_reading_a_zero_wall() -> Bool {
+  match read_steps(steps: first_step_with(conclusion: Present { value: Success }, started_at: "2026-10-27T13:25:13Z", completed_at: "2026-10-27T13:11:40Z")) {
+    SubjectReadingsRefused { refusal: SubjectStepEndsBeforeItStarts { step: st } } => st == "emit and build //gunbc/instruments:self-host"
+    _ => false
+  }
 }
 
 // ── the identity join (review 87065) ───────────────────────────────────────────────────────────
