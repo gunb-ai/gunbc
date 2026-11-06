@@ -1843,39 +1843,60 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
         let rel = repo_rel(file.path());
         files_scanned += 1;
         let content = file.read().ok();
-        let module_path = content
-            .as_ref()
-            .and_then(|c| extract_module_path(c))
-            .unwrap_or_default();
         // The acquired bytes, not a second read of the path: a derived roster has no file.
         let filename = file
             .path()
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("?");
-        let Some(parsed) = content.as_deref().and_then(|c| {
-            crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename)
-        }) else {
+        let Some(rows) = decl_facts_of_source(&rel, filename, content.as_deref()) else {
             continue;
         };
         files_parsed += 1;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let kind = item_kind(item.clone());
-            out.push(DeclFactRaw {
-                qualified_name: decl_qualified_name(&module_path, &name),
-                name,
-                kind,
-                node: item.clone(),
-                rel_path: rel.clone(),
-                source_indices: si.clone(),
-            });
-        }
+        out.extend(rows);
     }
+    sort_decl_facts(&mut out);
+    DeclFactsCorpusWalk {
+        facts: out,
+        files_scanned,
+        files_parsed,
+    }
+}
+
+/// The declaration rows of ONE source: `None` when it does not parse (the census skips it),
+/// otherwise every named top-level item, `qualified_name` = the file's own module line + name. The
+/// ONE per-file fold: the census walk and the keyed read (`keyed_decl_facts`) both project it, so a
+/// keyed row is the census row byte for byte.
+fn decl_facts_of_source(
+    rel: &str,
+    filename: &str,
+    content: Option<&str>,
+) -> Option<Vec<DeclFactRaw>> {
+    let module_path = content.and_then(extract_module_path).unwrap_or_default();
+    let parsed = content
+        .and_then(|c| crate::module_path_index::parsed_dag_file::parse_dag_content(c, filename))?;
+    let si = parsed.source_indices;
+    let mut out = Vec::new();
+    for item in parsed.items.iter() {
+        let name = authored_name_at(si.clone(), item.clone());
+        if name.is_empty() {
+            continue;
+        }
+        let kind = item_kind(item.clone());
+        out.push(DeclFactRaw {
+            qualified_name: decl_qualified_name(&module_path, &name),
+            name,
+            kind,
+            node: item.clone(),
+            rel_path: rel.to_string(),
+            source_indices: si.clone(),
+        });
+    }
+    Some(out)
+}
+
+/// The census's canonical row order: (rel_path, name, kind).
+fn sort_decl_facts(out: &mut [DeclFactRaw]) {
     out.sort_by(|a, b| {
         let kind_ord = |k: ItemKind| match k {
             ItemKind::FnItem => 0,
@@ -1891,11 +1912,49 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
             kind_ord(b.kind),
         ))
     });
-    DeclFactsCorpusWalk {
-        facts: out,
-        files_scanned,
-        files_parsed,
+}
+
+/// The KEYED declaration read: the census rows whose `qualified_name` is in `qualified_names`,
+/// without walking the pool. A top-level item's qualified name is its module + "." + its name, so
+/// the module is the name minus its last segment; each module's files are located from the NAME
+/// (`cli_run::keyed_module_lookup`, `gunbc.source_layout`) and only those files are parsed. Every
+/// file declaring the module contributes (two roots shadowing one module path emit both copies:
+/// `DeclarationRefAmbiguous` is derived from that multiplicity). The census stays the offline
+/// oracle (`keyed_reads_equal_the_whole_pool_census`) and is never a fallback.
+pub fn keyed_decl_facts(pool_roots: &[String], qualified_names: &[String]) -> Vec<DeclFactRaw> {
+    let wanted: std::collections::HashSet<&str> =
+        qualified_names.iter().map(String::as_str).collect();
+    // An item name may itself be dotted (`service oauth2.Google`), so the declaring module is any
+    // proper dotted prefix of the qualified name; a prefix with no file costs one stat, and the
+    // rows are still filtered to the wanted names.
+    let mut modules: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for q in &wanted {
+        let mut rest = *q;
+        while let Some((module, _)) = rest.rsplit_once('.') {
+            // A prefix with no storage path (the bare `v2` namespace) names no module.
+            if crate::cli_run::source_layout_lookup::module_storage_relative(module).is_ok() {
+                modules.insert(module);
+            }
+            rest = module;
+        }
     }
+    let mut out = Vec::new();
+    for module in modules {
+        for src in crate::cli_run::keyed_module_lookup::keyed_module_sources(pool_roots, module) {
+            let filename = std::path::Path::new(&src.path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("?");
+            if let Some(rows) = decl_facts_of_source(&src.path, filename, Some(&src.content)) {
+                out.extend(
+                    rows.into_iter()
+                        .filter(|f| wanted.contains(f.qualified_name.as_str())),
+                );
+            }
+        }
+    }
+    sort_decl_facts(&mut out);
+    out
 }
 
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
@@ -2114,15 +2173,22 @@ pub fn eval_decl_facts_at(
     let qualified: std::collections::HashSet<&str> =
         qualified_names.iter().map(String::as_str).collect();
     let typed: std::collections::HashSet<&str> = type_names.iter().map(String::as_str).collect();
-    let facts = decl_facts_for_roots_shared(pool_roots);
-    let matching: Vec<DeclFactRaw> = facts
-        .iter()
-        .filter(|f| {
-            qualified.contains(f.qualified_name.as_str())
-                || (f.kind == ItemKind::TypeItem && typed.contains(f.name.as_str()))
-        })
-        .cloned()
-        .collect();
+    // KEYED BY NAME: the qualified-name arm locates each module from its name and reads only those
+    // files. Only the bare-spelling arm (`type_names`) genuinely needs the population, and it alone
+    // stays on the census.
+    let mut matching: Vec<DeclFactRaw> = keyed_decl_facts(pool_roots, qualified_names);
+    if !typed.is_empty() {
+        let facts = decl_facts_for_roots_shared(pool_roots);
+        for f in facts.iter() {
+            if f.kind == ItemKind::TypeItem
+                && typed.contains(f.name.as_str())
+                && !qualified.contains(f.qualified_name.as_str())
+            {
+                matching.push(f.clone());
+            }
+        }
+        sort_decl_facts(&mut matching);
+    }
     eval_decl_facts_rows(ctx, &matching)
 }
 
