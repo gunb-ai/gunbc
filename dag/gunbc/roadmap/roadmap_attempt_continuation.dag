@@ -199,7 +199,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
                   from_branch: prior.branch,
                 }
               BranchGone =>
-                Refuse { cause: BranchAbsent, reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, " is live but its worktree is reaped and its branch ", prior.branch, " is gone, so there is nothing to restore the resumable attempt onto"], "") }
+                Refuse { cause: BranchAbsent, reason: join(["the prior attempt ", prior.attempt_key, " is live but its worktree is reaped and its branch ", prior.branch, " is gone, so there is nothing to restore the resumable attempt onto"], "") }
               BranchUnknown { reason: why } =>
                 Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the live attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present to restore its reaped worktree from; a failed branch check is not an absence (", why, ")"], "") }
             }
@@ -224,7 +224,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             match prior.branch_head {
               BranchLive => continuation_from_segments(prior: prior, reaped: true)
               BranchGone =>
-                Refuse { cause: BranchAbsent, reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
+                Refuse { cause: BranchAbsent, reason: join(["the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
               BranchUnknown { reason: why } =>
                 Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
             }
