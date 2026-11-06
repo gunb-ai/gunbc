@@ -14,6 +14,8 @@ import extdeps.memory.types {
 }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -104,12 +106,13 @@ type DimmSensorAccuracy {
   range_high: Celsius
 }
 
-// A sensor MODEL's identity is a declaration, never a part-name string: an upstream module declares one row of
+// A sensor MODEL's identity is its declaration (never a part-name string); the manufacturer is the
+// cited vendor entity and manufacturer_part_number only the label the datasheet prints: an upstream module declares one row of
 // this shape (its ExternalModelScope subject), and a module that fits that sensor references the declaration
 // symbolically. The accuracy is an attribute of that exact model.
 type DimmSensorModel {
-  manufacturer: NonEmptyStr
-  part: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+  manufacturer_part_number: NonEmptyStr
   active_range_accuracy: RowField<DimmSensorAccuracy>
 }
 

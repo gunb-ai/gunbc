@@ -5,6 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedToAuthority }
 import extdeps.cited_field { RowField, FromCitedFigure }
 import extdeps.memory.jedec { DimmSensorAccuracy, DimmSensorModel }
+import extdeps.vendor.renesas { renesas }
 import extdeps.uri { Uri, Https }
 
 // The Renesas TSE2004GB2B0 DIMM temperature sensor with SPD hub, a part compliant to the JEDEC TSE2004av
@@ -36,8 +37,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // model (trigger: P5 landing and that fitted-sensor fact).
 // Consumer: P5 margin derivation, joined through the Samsung fitted-sensor reference. Trigger: P5 landing and the fitted-sensor fact being read.
 data tse2004gb2b0: DimmSensorModel = DimmSensorModel {
-  manufacturer: "Renesas Electronics",
-  part: "TSE2004GB2B0",
+  manufacturer: renesas,
+  manufacturer_part_number: "TSE2004GB2B0",
   active_range_accuracy: FromCitedFigure {
     value: DimmSensorAccuracy { max_error: celsius_delta(1), range_low: celsius(75), range_high: celsius(95) },
     standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
