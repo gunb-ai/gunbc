@@ -1,28 +1,95 @@
 module v2.test.claim.execution.loop_fold_driver
 
 import v2.compiler.eval { eval_loop_admit }
+import v2.compiler.fold_lowering { fold_family_realization, fold_realization_declaration_path }
+import v2.extdeps.languages.dag { dag_loop_measure_node }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_terminal_value }
+import std.algebra { empty_map }
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
-import v2.std.node { symbol_lexeme, ComputationNode, Loop, Node }
+import v2.std.node { symbol_lexeme, ComputationNode, Edge, Loop, Node, NotADeclaration, Positional, core_edge_label, LoopBoundEdge, LoopRealizedDeclarationEdge, TypeNode, Atom }
+import v2.std.qualified_name { declaration_reference_node }
+import v2.std.runtime { EvaluationEnvironment, EvaluationFrame, Iterate, RuntimeUnit, RuntimeUnitValue }
 
-// ADMISSION CONTROL C3 OF THE FOLD-FIRST LOOP DRIVER (PR-1). ENROLLED, NOT EXECUTED: CI evaluates no
-// witness, so this claim has not run. C4 (role absent), C5 (direction absent) and C-admitted (a proven,
-// fold-realized, directed Loop refuses as semantics_deferred at the step, showing admission passed) need a
-// Loop fixture with a proven bound and a realized edge; they are NOT written here and are owed. C1 and C2
-// (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is std.algebra
-// fold_list_right, NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2.
+// THE ADMISSION CONTROLS OF THE FOLD-FIRST LOOP DRIVER (PR-1). ENROLLED, NOT EXECUTED: CI evaluates no
+// witness, so none of these has run; each is source-only until an executed receipt exists at the exact head.
+// C1 and C2 (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is
+// std.algebra fold_list_right; NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2.
 
-fn bare_loop() -> Node {
-  Node { kind: ComputationNode { behavior: Loop }, occurrence_id: OccurrenceSynthetic, children: [] }
+fn fd_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, occurrence_id: OccurrenceSynthetic, children: [] }
 }
 
-fn admit_reason(n: Node) -> String {
+fn fd_step() -> Node {
+  fd_atom(s: ^fd_step_body)
+}
+
+fn fd_loop_bound_only(bound: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    occurrence_id: OccurrenceSynthetic,
+    children: [
+      Edge { label: Positional, target: fd_step(), declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: bound, declaration: NotADeclaration }
+    ]
+  }
+}
+
+fn fd_loop_realized(head: Symbol) -> Node {
+  match fold_family_realization(head: head) {
+    Absent => fd_loop_bound_only(bound: dag_loop_measure_node())
+    Present { value: r } =>
+      Node {
+        kind: ComputationNode { behavior: Loop },
+        occurrence_id: OccurrenceSynthetic,
+        children: [
+          Edge { label: Positional, target: fd_step(), declaration: NotADeclaration },
+          Edge { label: core_edge_label(marker: LoopBoundEdge), target: dag_loop_measure_node(), declaration: NotADeclaration },
+          Edge {
+            label: core_edge_label(marker: LoopRealizedDeclarationEdge),
+            target: declaration_reference_node(qn: fold_realization_declaration_path(r: r), occurrence_id: OccurrenceSynthetic),
+            declaration: NotADeclaration
+          }
+        ]
+      }
+  }
+}
+
+fn fd_admit_reason(n: Node) -> String {
   match eval_loop_admit(node: n) {
     Accepted { value: _, diagnostics: _ } => "executed"
     Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
   }
 }
 
+// C3: no bound at all, so termination is not proven.
 test fn a_loop_with_no_bound_is_refused_requires_termination_proof_holds() -> Bool {
-  admit_reason(n: bare_loop()) == "v2_eval_loop_requires_termination_proof"
+  fd_admit_reason(n: Node { kind: ComputationNode { behavior: Loop }, occurrence_id: OccurrenceSynthetic, children: [] }) == "v2_eval_loop_requires_termination_proof"
+}
+
+// C4: the bound is proven (the registered dag_loop_measure) but no realized edge names a fold family
+// declaration, so the Loop is not a fold realization and its bound is not executable.
+test fn a_proven_loop_without_a_fold_realization_is_refused_bound_not_executable_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_bound_only(bound: dag_loop_measure_node())) == "v2_eval_loop_bound_not_executable"
+}
+
+// Direction absent: proven, realized on fold_node (a role without a member, no iteration order).
+test fn a_proven_fold_node_loop_is_refused_iteration_direction_absent_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_realized(head: ^fold_node)) == "v2_eval_loop_iteration_direction_absent"
+}
+
+// Admitted-then-deferred: proven, fold-realized (fold_list), directed. Admission passes, so the Loop
+// refuses with the existing semantics_deferred (located at the step arrow).
+test fn a_proven_fold_realized_directed_loop_passes_admission_and_defers_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_realized(head: ^fold_list)) == "v2_eval_semantics_deferred"
+}
+
+// C5: an Iterate control transfer is not a result; the terminal reader refuses it.
+test fn an_iterate_at_the_terminal_is_refused_iterate_at_terminal_holds() -> Bool {
+  let unit = RuntimeUnit { value: RuntimeUnitValue { unit_type: fd_atom(s: ^fd_unit) } }
+  match v2_eval_terminal_value(control: Iterate { carrier: unit }, frame: EvaluationFrame { current: fd_step(), environment: EvaluationEnvironment { bindings: empty_map() } }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) == "v2_eval_loop_iterate_at_terminal"
+  }
 }
