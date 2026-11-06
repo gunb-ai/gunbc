@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.microchip_technology { microchip_technology }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { ClockFanoutSpec, ClockFanoutSpecification, ElectronicComponentRow, MillivoltRange }
+import extdeps.electronic_component.types { , ClockFanoutSpec, ClockFanoutSpecification, ElectronicComponentRow, MillivoltRange }
 
 // Microchip's ZL40294, "20-Output PCIe Gen 6 Clock Fanout Buffer (DB2000QL)", Document DS20006768B
 // (2023), read 2026-11-05 from the Internet Archive snapshot of 2025-11-16 of Microchip's own URL (the live
@@ -50,7 +50,7 @@ data zl40294ldg6: ElectronicComponentRow = ElectronicComponentRow {
   vendor: microchip_technology,
   ordering_code: "ZL40294LDG6",
   package: "80-lead 6 mm x 6 mm WGQFN (tray; ZL40294LDF6 is the tape-and-reel form of the same device)",
-  top_marking: Present { value: "ZL40294 / X X e3 / YYWWNNN" },
+  top_marking: Present { value: MarkDescribedNotStructured { text: "ZL40294 / X X e3 / YYWWNNN", why: "the document does not say which glyphs of the X X e3 line are fixed and which vary" } },
   specification: ClockFanoutSpec { clock: ClockFanoutSpecification {
     inputs: 1,
     outputs: 20,

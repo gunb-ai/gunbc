@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs,
   ElectronicComponentRow,
   UsbHubSpec,
   UsbHubSpecification,
@@ -56,7 +56,7 @@ data tusb8042a_rgc: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TUSB8042A",
   package: "VQFN (RGC), 64 pins",
-  top_marking: Present { value: "TUSB8042A" },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "TUSB8042A" }] }] } },
   specification: UsbHubSpec { hub: UsbHubSpecification {
     downstream_ports: 4,
     upstream_ports: 1,

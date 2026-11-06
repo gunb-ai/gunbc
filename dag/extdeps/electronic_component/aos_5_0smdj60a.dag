@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.alpha_and_omega_semiconductor { alpha_and_omega_semiconductor }
-import extdeps.electronic_component.types { ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
+import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs, ElectronicComponentRow, TvsDiodeSpec, TvsSpecification, Unidirectional }
 
 // Alpha and Omega Semiconductor's 5.0SMDJ60A datasheet, Rev.2.2 July 2021, read 2026-10-15. Its
 // electrical table pairs 5.0SMDJ60A (unipolar) with marking 5PGK -- the same code Bourns's table gives
@@ -35,7 +35,7 @@ data aos_tvs_5_0smdj60a: ElectronicComponentRow = ElectronicComponentRow {
   vendor: alpha_and_omega_semiconductor,
   ordering_code: "5.0SMDJ60A",
   package: "DO-214AB",
-  top_marking: Present { value: "5PGK" },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "5PGK" }] }] } },
   specification: TvsDiodeSpec { tvs: TvsSpecification {
     polarity: Unidirectional,
     reverse_standoff: volt(count: 60),

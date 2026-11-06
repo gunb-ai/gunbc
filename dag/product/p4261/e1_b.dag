@@ -28,7 +28,7 @@ import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
 import extdeps.electronic_component.micron_mt25qu02g { mt25qu02gcbb8e12 }
-import extdeps.electronic_component.types { ElectronicComponentRow }
+import extdeps.electronic_component.types { ElectronicComponentRow, row_sole_fixed_glyphs }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 import extdeps.electronic_component.diodes_bss138 { bss138 }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
@@ -2699,7 +2699,7 @@ fn fsv20100v_identification(marking: MarkingReading) -> ComponentIdentification 
   match fsv20100v_device_code(reading: marking) {
     Absent => MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
       discriminator: "the print we read is not one of the two receipt transcriptions, so no device code joins the vendor mark" }
-    Present { value: code } => match onsemi_schottky_fsv20100v.top_marking {
+    Present { value: code } => match row_sole_fixed_glyphs(row: onsemi_schottky_fsv20100v) {
       Absent => MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
         discriminator: "the vendor row carries no printed mark to join" }
       Present { value: printed } => if code == printed {

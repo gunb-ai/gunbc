@@ -4,7 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.microchip_technology { microchip_technology }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs,
   ElectronicComponentRow, RootOfTrustSpec, RootOfTrustSpecification,
   SpiFlashRuntimeProtection, I2cSmbusFiltering, SecureBoot, ComponentAttestation, LifecycleManagement,
 }
@@ -39,7 +39,7 @@ data cec1736: ElectronicComponentRow = ElectronicComponentRow {
   vendor: microchip_technology,
   ordering_code: "CEC1736 (orderable suffix unread)",
   package: "WFBGA-84",
-  top_marking: Present { value: "Microchip logo / CEC1736 / <trace line> / <date and lot line>" },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "CEC1736" }] }] } },
   specification: RootOfTrustSpec { root_of_trust: RootOfTrustSpecification {
     core: "Arm Cortex-M4, 96 MHz",
     protections: [SpiFlashRuntimeProtection, I2cSmbusFiltering, SecureBoot, ComponentAttestation, LifecycleManagement],

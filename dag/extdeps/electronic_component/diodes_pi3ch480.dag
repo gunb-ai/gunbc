@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.diodes_incorporated { diodes_incorporated }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
+import extdeps.electronic_component.types { , BusMultiplexerSpec, BusMultiplexerSpecification, ElectronicComponentRow, MillivoltRange }
 
 // Diodes Incorporated's PI3CH480 data sheet, Document Number DS40329 Rev 5.2, December 2021, fetched from
 // www.diodes.com/assets/Datasheets/PI3CH480.pdf and read 2026-11-03. Four of the five body styles this
@@ -59,7 +59,7 @@ data pi3ch480_qex: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "PI3CH480QEX",
   package: "QSOP-16 (Q), 150 mil body; exposed pad tied to GND",
-  top_marking: Present { value: "PI3CH / 480QE_ / ZYWXX" },
+  top_marking: Present { value: MarkDescribedNotStructured { text: "PI3CH / 480QE_ / ZYWXX", why: "the final underscore stands for a character printed with a bar over the fab code, which is not a glyph run" } },
   specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
     channels: 4,
     inputs_per_channel: 2,
