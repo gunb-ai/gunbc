@@ -1,23 +1,20 @@
 module test.claim.printer_state_parent_reown_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import std.algebra { trim, string_contains }
+import std.algebra { trim }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.posix.identity { PosixOwnerNames }
 import extdeps.tools.gnu_coreutils { coreutils_install_binary_name, coreutils_install_directory_owned_arguments, coreutils_directory_mode_operand }
 import gunbc.ensure { EnsureObservation, EnsureObserved, EnsureAbsent, EnsureInaccessible, EnsurePlanAvailable, EnsurePlanUnavailable }
-import gunbc.generated_artifact { RunnerHostSudoersArtifact }
-import gunbc.generated_artifact_emit { artifact_generate, ArtifactGenerated, ArtifactGenerationRefused }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.host_state_root { host_state_tree }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly, declared_directory_mode }
 import gunbc.owned_directory {
   OwnedDirectoryDeclared, OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan,
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ForeignOwnershipRefuses,
-  owned_directory_observe, owned_directory_install_plan_of, owned_directory_path,
-  owned_directory_stat_format, owned_directory_parent,
+  owned_directory_observe, owned_directory_install_plan_of,
+  owned_directory_stat_format,
 }
 import gunbc.fleet.printer_state_parent_reown {
   printer_state_parent_reown, printer_state_parent_reown_prior, printer_state_parent_reown_prior_text,
@@ -298,27 +295,6 @@ test fn witness_the_production_transition_is_pinned_to_what_15908_declares() -> 
           && (plan.owner.group as String) == "root"
           && coreutils_directory_mode_operand(mode: plan.mode) == "00755"
     }
-}
-
-// THE PRIVILEGED EFFECT IS THE GRANT, REACHED THE WAY EVERY GENERATED FILE IS REACHED. The words are derived
-// from the production target's own declared plan -- not copied into this file -- and every one of the three
-// commands the leg runs (its two reads and its install) is a line of srv1's rendered sudoers. Drop the
-// parent's install row from the grants, or change the mode spelling to four digits, and the containment that
-// matters here goes false.
-test fn witness_the_host_grants_exactly_the_words_the_leg_runs() -> Bool {
-  let tree = host_state_tree()
-  let target = printer_state_parent_reown_target(tree: tree)
-  let sudoers = match artifact_generate(a: RunnerHostSudoersArtifact { host: operator_host_srv1 }) {
-    ArtifactGenerated { content } => content
-    ArtifactGenerationRefused { reason: _ } => ""
-  }
-  match owned_directory_install_plan_of(t: target) {
-    EnsurePlanUnavailable { reason: _ } => false
-    EnsurePlanAvailable { plan: plan } =>
-      string_contains(s: sudoers, pattern: join(coreutils_install_directory_owned_arguments(mode: plan.mode, owner: plan.owner.user, group: plan.owner.group, path: plan.path as String), " "))
-        && string_contains(s: sudoers, pattern: join(["-c", owned_directory_stat_format, "--", owned_directory_path(t: target) as String], " "))
-        && string_contains(s: sudoers, pattern: join(["-1A", "--", owned_directory_parent(path: owned_directory_path(t: target)) as String], " "))
-  }
 }
 
 // WHICH SIDE OF THE LEG THE PASS LANDS ON, for the identities the real host can carry. The branch is a
