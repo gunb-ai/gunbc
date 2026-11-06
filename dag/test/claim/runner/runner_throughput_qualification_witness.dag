@@ -47,7 +47,8 @@ import gunbc.runner.runner_qualification_subject_readings {
 }
 import test.fixture.recorded_v2_bootstrap_receipts {
   recorded_v2_bootstrap_run, recorded_v2_bootstrap_head_sha, recorded_v2_bootstrap_slot_unit,
-  recorded_v2_bootstrap_receipt_log, recorded_v2_bootstrap_subject_steps,
+  recorded_v2_bootstrap_receipt_log, recorded_v2_bootstrap_subject_steps, recorded_v2_bootstrap_limit_max,
+  recorded_v2_bootstrap_limit_high,
 }
 import gunbc.runner.runner_throughput_qualification {
   FloorWorkloadPin, SelectedRunnerRuntime, PeerScratchExport, WorkspaceBytesLocus, OnSubjectChargedToSlot, OnSubjectUncharged, OffSubject,
@@ -263,9 +264,25 @@ fn readings_of(log: String, unit: NonEmptyStr) -> List<SubjectStepReading> {
   }
 }
 
-// THE RECORDED RECEIPTS, RE-BOUNDED TO THE ATTEMPT'S UNIT: the only edit is the unit at the tail of each cgroup path.
+// THE RECORDED RECEIPTS, RE-BOUNDED TO THE ATTEMPT'S SLOT: the unit at the tail of each cgroup path, and the two
+// limits each receipt prints, which become the selected slot's (gunbc.runner.runner_slot_desired). Nothing else is
+// edited, so every peak, delta and wall stays the recording's. The limits are re-bounded because an attempt runs
+// under the slot the selection binds, and the recording's slot (recorded_v2_bootstrap_limit_max / _high) is not it
+// since the 2026-11-04 ruling; without this the positive control would assess srv3's old slot against today's
+// selection and refuse on the bound axis, as it did after that ruling landed.
 fn attempt_log() -> String {
-  replace(s: recorded_v2_bootstrap_receipt_log, from: concat("/", recorded_v2_bootstrap_slot_unit), to: concat("/", slot_unit() as String))
+  let d = gunbc_runner_slot_desired()
+  let on_unit = replace(s: recorded_v2_bootstrap_receipt_log, from: concat("/", recorded_v2_bootstrap_slot_unit), to: concat("/", slot_unit() as String))
+  let on_max = replace(
+    s: on_unit,
+    from: concat("limit_max=", recorded_v2_bootstrap_limit_max),
+    to: concat("limit_max=", nat_to_decimal_string(value: byte_size_count(b: d.memory_max))),
+  )
+  replace(
+    s: on_max,
+    from: concat("limit_high=", recorded_v2_bootstrap_limit_high),
+    to: concat("limit_high=", nat_to_decimal_string(value: byte_size_count(b: d.memory_high))),
+  )
 }
 
 fn attempt_log_with(from: String, to: String) -> String {
