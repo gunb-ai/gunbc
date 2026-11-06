@@ -357,9 +357,21 @@ fn compute_directory_manifest(instance: HostDashboardInstance, directory: String
 
 // The subject's own rust-toolchain.toml bytes (a declared-source file), "" when it holds none.
 fn compute_toolchain_file_text(readings: List<SubjectFileReading>) -> String {
-  match readings |> flat_map(r => match r { SubjectFileRead { file } => if file.name as String == "rust-toolchain.toml" && file.directory as String == "." { [file.content as String] } else { [] }  SubjectFileRefused { detail: _ } => [] }) |> first_where(keep: t => true) {
+  let texts = readings |> flat_map(r => compute_toolchain_file_of(reading: r))
+  match first_where(texts, keep: t => true) {
     Present { value: text } => text
     Absent => ""
+  }
+}
+
+fn compute_toolchain_file_of(reading: SubjectFileReading) -> List<String> {
+  match reading {
+    SubjectFileRefused { detail: _ } => []
+    SubjectFileRead { file } => {
+      let n = file.name as String
+      let d = file.directory as String
+      if (n == "rust-toolchain.toml") && (d == ".") { [file.content as String] } else { [] }
+    }
   }
 }
 
