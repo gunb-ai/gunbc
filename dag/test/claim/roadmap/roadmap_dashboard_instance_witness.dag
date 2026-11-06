@@ -1324,14 +1324,15 @@ test fn a_demand_list_without_the_session_slots_creator_leaves_that_root_uncreat
   slot_store_roots_without_a_creator(instance: lab, demands: without) == [sessions]
 }
 
-// The lab NAMES its serve-binary source: it builds in place from the admitted revision, chosen on the instance and
-// never defaulted by the apply, so there is no guessed path and no Absent to default from.
-test fn the_lab_serve_binary_input_is_a_named_in_place_build() -> Bool {
+// The lab NAMES its serve-binary source, chosen on the instance and never defaulted by the apply. On the r2 lab line
+// (LAB-ONLY, ld449-lab-r2 4/4) that source is the packet's witnessed build, copied and never rebuilt; reverting 4/4
+// restores the in-place-build assertion this row carried before.
+test fn the_lab_serve_binary_input_is_the_declared_witnessed_build() -> Bool {
   any(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance()), op => match op {
     DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin, path: _ } =>
       match serve_binary_origin {
-        BuildInPlaceFromAdmittedRevision => true
-        DeclaredBuiltBinary { path: _ } => false
+        BuildInPlaceFromAdmittedRevision => false
+        DeclaredBuiltBinary { path: p } => (p as String) == "/home/briansrls/runs/ld449-r2work/target/release/gunbc"
         CargoReleaseOfInstanceCheckout { path: _ } => false
       }
     _ => false
