@@ -1,8 +1,14 @@
 module v2.std.diagnostic
 
 import std.types { List }
-import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
+import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape, zip_eq, map_values_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): the names below are
+// referenced ONLY by the compiler's synthesized equality bodies, never by hand-written code in this
+// module — an authoring leak. Dissolution trigger: a synthesized equality body references its helpers
+// by the declaring module's path (std.algebra / this module), not through the consumer's import scope;
+// at that point this block is deleted verbatim.
+import v2.std.diagnostic { equality_derived_extent, equality_derived_locus, equality_derived_no_correction_reason, equality_derived_correction, equality_derived_diagnostic, equality_derived_non_empty_diagnostics, equality_derived_diagnostics, equality_derived_diagnostic_accumulation, equality_derived_stage_diagnostic_policy, equality_derived_diagnostic_severity, equality_derived_emit_directive }
 import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
 
 type Extent
