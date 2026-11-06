@@ -234,9 +234,6 @@ test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alon
   }
 }
 
-// AN UNREADABLE STATE REFUSES. The path's parent is a symlink to nowhere, so the provider's own listing of
-// that parent fails and its presence walk establishes nothing: the reading the leg is handed is
-// EnsureInaccessible with a real origin behind it, and no policy installs on a read that failed.
 // AN UNREADABLE STATE REFUSES. The parent is a real directory that the observing account cannot READ: mode 0300 keeps
 // it traversable, so the directory underneath still stats, while the provider's own listing of the parent fails and
 // presence cannot be established -- which is the unreadable outcome, not the absent one. A broken symlink in the
@@ -263,9 +260,20 @@ test fn witness_an_unreadable_state_refuses() -> Bool {
           EnsureObserved { evidence } =>
             match printer_state_parent_reown(target: declared_target(root: locked, owner: evidence.owner, mode: DirectoryOwnerAllEveryoneTraverse), prior: OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
               PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } => {
+                // Read straight through stat, OUTSIDE the provider, to prove the state is merely unreadable to
+                // a LISTING and not absent: the same command the leg's own observer runs, taken by hand. The
+                // read is taken here, after the refusal, because what is being asserted is that the refusal
+                // changed nothing. ObserverRead is a sum, so the text comes out by matching, as the provider
+                // itself takes it (gunbc.owned_directory owned_directory_observe); and the owner names are
+                // NonEmptyStr, which join sees only as String.
+                let raw = match identity_read(path: path as FilePath) {
+                  ObserverReadOut { stdout: out } => out
+                  ObserverReadFailed { origin: _ } => "stat-read-failed"
+                }
                 (at == path) && reown_refusal_cause_name(cause: cause) == "path-unreadable"
-                  && identity_read(path: path as FilePath).stdout == join(["directory", evidence.owner.user, evidence.owner.group, "2770"], "|")
+                  && raw == join(["directory", evidence.owner.user as String, evidence.owner.group as String, "2770"], "|")
+              }
               PrinterStartsParentReownRefused { path: _, cause: _ } => false
             }
           EnsureAbsent { reason: _ } => false
