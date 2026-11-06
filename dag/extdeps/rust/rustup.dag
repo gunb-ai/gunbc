@@ -1,6 +1,9 @@
 module extdeps.rust.rustup
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.optional { Optional, Present, Absent }
+import std.algebra { trim, skip }
+import std.list { first_where }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -66,3 +69,50 @@ data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthori
 // and the .dag front end reads a one-arm coproduct as a type alias besides, so the fact is stated
 // directly. A second rustup variable arriving is what turns this into an enumeration.
 data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"
+
+data rustup_toolchain_file_authority_note: NonEmptyStr = "rustup book, Overrides, 'The toolchain file' (rust-lang.github.io/rustup/overrides.html): rust-toolchain.toml holds a [toolchain] table whose `channel` key names the toolchain. This is a bounded reader of that one field, not a TOML parser: it admits the key `channel` exactly (a key such as channel_override does not match), only inside the [toolchain] table, with a basic (\") or literal (') string value. Anything else names no channel, which the consumer refuses typed."
+
+type ToolchainFileScan {
+  in_table: Bool
+  channel: String
+}
+
+// The `channel` of a rust-toolchain.toml, read from the [toolchain] table only. First match wins.
+fn rustup_toolchain_file_channel(text: String) -> NonEmptyStr? {
+  let scan = fold(split(s: text, delimiter: "\n") |> map(l => trim(s: l)), init: ToolchainFileScan { in_table: false, channel: "" }, f: (acc, line) => rustup_toolchain_scan_step(acc: acc, line: line))
+  if scan.channel == "" { none } else { Present { value: scan.channel as NonEmptyStr } }
+}
+
+fn rustup_toolchain_scan_step(acc: ToolchainFileScan, line: String) -> ToolchainFileScan {
+  if starts_with(s: line, prefix: "[") {
+    ToolchainFileScan { in_table: line == "[toolchain]", channel: acc.channel }
+  } else if acc.in_table && acc.channel == "" {
+    ToolchainFileScan { in_table: true, channel: rustup_channel_value(line: line) }
+  } else {
+    acc
+  }
+}
+
+// `channel = "x"` or `channel = 'x'`; the key must be exactly `channel`, followed by `=`.
+fn rustup_channel_value(line: String) -> String {
+  let parts = split(s: line, delimiter: "=")
+  if count(parts) < 2 || trim(s: rustup_first_text(parts)) != "channel" {
+    ""
+  } else {
+    let value = trim(s: join(skip(xs: parts, n: 1), "="))
+    rustup_unquote(value: value)
+  }
+}
+
+fn rustup_unquote(value: String) -> String {
+  let basic = skip(xs: split(s: value, delimiter: "\""), n: 1)
+  let literal = skip(xs: split(s: value, delimiter: "'"), n: 1)
+  if starts_with(s: value, prefix: "\"") { rustup_first_text(basic) } else if starts_with(s: value, prefix: "'") { rustup_first_text(literal) } else { "" }
+}
+
+fn rustup_first_text(xs: List<String>) -> String {
+  match first_where(xs, keep: x => true) {
+    Present { value } => value
+    Absent => ""
+  }
+}

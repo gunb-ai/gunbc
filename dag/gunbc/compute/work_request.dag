@@ -1,8 +1,8 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.algebra { trim, skip, take_prefix }
-import std.list { first_where }
+import std.algebra { trim }
+import extdeps.rust.rustup { rustup_toolchain_file_channel }
 import extdeps.rust.target_triple { render_rust_target_triple }
 import extdeps.toolchain.types { TargetTriple, X86_64, UnknownVendor, Linux, Gnu }
 import std.measure { Kibibyte, kibibyte_count }
@@ -115,23 +115,9 @@ fn work_toolchain_requirement(toolchain_file: String) -> WorkToolchainRequiremen
   match render_rust_target_triple(triple: work_declared_target) {
     Absent => none
     Present { value: spelling } =>
-      match toolchain_file_channel(text: toolchain_file) {
+      match rustup_toolchain_file_channel(text: toolchain_file) {
         Absent => none
         Present { value: channel } => Present { value: WorkToolchainRequirement { target_triple: spelling, rustc_release_prefix: channel } }
-      }
-  }
-}
-
-fn toolchain_file_channel(text: String) -> NonEmptyStr? {
-  let lines = split(s: text, delimiter: "\n")
-    |> map(l => trim(s: l))
-    |> filter(l => starts_with(s: l, prefix: "channel"))
-  match first_where(lines, keep: l => true) {
-    Absent => none
-    Present { value: line } =>
-      match first_where(take_prefix(skip(split(s: line, delimiter: "\""), 1), 1), keep: q => q != "") {
-        Absent => none
-        Present { value: channel } => Present { value: channel as NonEmptyStr }
       }
   }
 }

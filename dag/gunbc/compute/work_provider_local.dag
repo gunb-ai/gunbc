@@ -380,14 +380,19 @@ fn compute_directory_manifest(instance: HostDashboardInstance, directory: String
   }
 }
 
-// The subject's own rust-toolchain.toml text (a declared-source file), "" when the listing holds none.
-// The text is read for the REQUIREMENT, separately from the digest that puts the file in the identity.
-fn compute_toolchain_file_text(directory: String, paths: List<String>) -> String {
+// The subject's own rust-toolchain.toml text (a declared-source file), read for the REQUIREMENT
+// separately from the digest that puts the file in the identity. Absent from the listing is "" (the
+// requirement then names no channel); a listed file that cannot be read is its OWN typed refusal.
+type SubjectToolchainFile
+  = SubjectToolchainText { text: String }
+  | SubjectToolchainUnread { detail: String }
+
+fn compute_toolchain_file_text(directory: String, paths: List<String>) -> SubjectToolchainFile {
   if any(paths, p => p == "rust-toolchain.toml") {
     let read = Filesystem.Read(path: join([directory, "/rust-toolchain.toml"], ""))
-    if read.success { read.content } else { "" }
+    if read.success { SubjectToolchainText { text: read.content } } else { SubjectToolchainUnread { detail: join(["declared source file rust-toolchain.toml is unreadable: ", read.error], "") } }
   } else {
-    ""
+    SubjectToolchainText { text: "" }
   }
 }
 
@@ -400,7 +405,11 @@ fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectM
         files: zip_map(a: paths, b: digests, f: fn(p, d) { compute_source_file(path: p, digest: d) }),
       ) {
         SnapshotIdentityRefused { cause } => SubjectManifestRefused { detail: join(["manifest identity refused: ", snapshot_identity_refusal_detail(cause: cause)], "") }
-        SnapshotIdentified { manifest, files, composition: _ } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files, toolchain_file: compute_toolchain_file_text(directory: directory, paths: paths) }
+        SnapshotIdentified { manifest, files, composition: _ } =>
+          match compute_toolchain_file_text(directory: directory, paths: paths) {
+            SubjectToolchainUnread { detail } => SubjectManifestRefused { detail: detail }
+            SubjectToolchainText { text } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files, toolchain_file: text }
+          }
       }
   }
 }

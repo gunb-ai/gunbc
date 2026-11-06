@@ -119,3 +119,15 @@ test fn binary_and_empty_files_are_digest_members_of_the_identity() -> Bool {
     && m != manifest_of(files: flipped)
     && identity_key(s: git_subject(manifest: m)) != identity_key(s: git_subject(manifest: manifest_of(files: flipped)))
 }
+
+// (6) The toolchain-file channel reader (extdeps.rust.rustup): exact key, [toolchain] table, both quote
+// styles. RED controls: a prefix key, a channel outside the table and an unquoted value name no channel.
+test fn the_toolchain_file_channel_is_read_by_exact_key_in_its_table() -> Bool {
+  let r = (t: String) => work_toolchain_requirement(toolchain_file: t)
+  let has = (t: String) => match r(t) { Present { value: _ } => true  Absent => false }
+  has("[toolchain]\nchannel = \"1.93.0\"\n") && has("[toolchain]\nchannel = '1.93.0'\n")
+    && !has("[toolchain]\nchannel_override = \"1.93.0\"\n")
+    && !has("channel = \"1.93.0\"\n")
+    && !has("[other]\nchannel = \"1.93.0\"\n[toolchain]\ncomponents = []\n")
+    && !has("[toolchain]\nchannel = 1.93.0\n")
+}
