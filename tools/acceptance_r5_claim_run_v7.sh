@@ -1,10 +1,24 @@
-# script.sh (frozen copy for fierce-wren-19-r5-dff57af7, v6): acceptance grant set row R5,
+# script.sh (frozen copy for fierce-wren-19-r5-dff57af7, v7): acceptance grant set row R5,
 # gunbc. PREPARE ONLY: this file has not been RUN anywhere. It is the staged script a booked calmcrab-udrv
 # v4 row would execute on srv1, re-framed on keen-otter's hardened srv1 frame (template:
 # wise-moth-707-rdpo's rdpo.sh, sha256 aaf32964184a30d66f6320de707bfb03975f0df683cccd1133dcf2d024ed9366,
 # gunbc#15938 comment 6672252712). No claim execution, no ssh, no partition write happened here.
 #
-# WHAT v6 ADDS (sleek-owl msg_995f146b): this row is its OWN job, with its own clone,
+# WHAT v7 CHANGES (calm-eagle-670 msg_ac20c593, from sleek-owl-397 msg_9a42d63c):
+#   (1) the exit decision is one function, final_verdict, reading THIS packet's own evidence files. The v6
+#       verdict block named state variables belonging to the R4 packet (S4A, S4B), which under set -u is
+#       exit 127 arriving in the middle of the verdict after every probe had been spent.
+#   (2) every gate refusal returns a non-zero status. v6's wall_gate and producer_gate printed a refusal and
+#       returned 0, so `WM=$(wall_gate …) || nox …` never fired: the refusal existed only as a string.
+#   (3) classification is PER CLAIM, not per leg, exactly as pre-registered by the acceptance owner (the leg
+#       contract, below, quoted verbatim in the header and in the manifest). FALSIFIED outranks
+#       NO_OBSERVATION, because a bare FAIL in a well-formed leg is a real result.
+#   (4) post-leg gates: the pinned worktree must be clean (git status --porcelain empty) and the runner must
+#       still hash to the bytes hashed before the legs. Either failure voids every claim in the run.
+#   (5) the one argument is gated (absolute, the launcher's <JOB>/out shape, and the booked job name); the
+#       fixture self-run is wrapped in timeout; CARGO_HOME is under the evidence dir; the stray-verdict
+#       detector fails closed; the gate-boundary OOM label carries the verdict it actually got.
+# WHAT v6 ADDED (sleek-owl msg_995f146b), carried unchanged into v7: this row is its OWN job, with its own clone,
 #   fetch, checkout, build, launcher line and RUNTIME_S, because the installed calmcrab-udrv v4
 #   (855920ac) refuses any RUNTIME_S above 7200 in its own preflight: a 9900 s booking is a
 #   PRE_SCOPE_REFUSAL, the same failure as #15695 diag-v2 at 11700. The packet now refuses such a
@@ -30,10 +44,10 @@
 #   R5    5 claims  entry dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag
 # Row R4 (six partition-witness claims, pin db56530f) is NOT here either: it is its own job
 # fierce-wren-19-r4-db56530f with its own clone, build and launcher line, in
-# acceptance_r4_claim_run_v6.sh. One row per job is what keeps every RUNTIME_S inside the
+# acceptance_r4_claim_run_v7.sh. One row per job is what keeps every RUNTIME_S inside the
 # installed launcher cap.
 # Row R6 (one live-corpus claim) is NOT here: it reads the live fabric store and is held behind
-# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v6.sh.
+# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v7.sh.
 #
 # PINS (fetched from the hard-coded origin by sha; HEAD and the tree must both match, and the entry
 # files must be the frozen blobs, before anything is built):
@@ -50,7 +64,7 @@
 #           process, so a leg that times out loses all its claims at once.                    1 x 900 =  900 s
 #   CAPPED SUM = 720 + 2400 + 900 = 4020 s. That capped sum is NOT a prediction of the wall: it is the
 #   ceiling the timeouts admit.
-# WALL ACCOUNTING (v6, per row): the scope's RuntimeMaxSec is 4500 s — the capped sum 4020 s (720 setup +
+# WALL ACCOUNTING (v7, per row — unchanged from v6): the scope's RuntimeMaxSec is 4500 s — the capped sum 4020 s (720 setup +
 #   2400 build + 1 x 900 leg) plus a 480 s margin for process startup, the build's cargo-network stall
 #   allowance and evidence writing; a row that RuntimeMaxSec cuts off is incomplete, which is
 #   NO_OBSERVATION (2). 4020 <= 4500 <= 7200 (the installed calmcrab-udrv v4 preflight cap) and the driver
@@ -76,7 +90,7 @@ BOOKED="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)
 # LAUNCHER (calmcrab-udrv.sh, v4 form) — no bare systemd-run. Full argv, in the launcher's order:
 #   calmcrab-udrv.sh <JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%> <STAGED_SCRIPT> <SCRIPT_SHA> OUT
 # For THIS row the call is literally:
-#   calmcrab-udrv.sh fierce-wren-19-r5-dff57af7 4500 32 28 4096 3200% <STAGED_SCRIPT> <v6 packet sha256> OUT
+#   calmcrab-udrv.sh fierce-wren-19-r5-dff57af7 4500 32 28 4096 3200% <STAGED_SCRIPT> <v7 packet sha256> OUT
 # Units are the launcher's: RUNTIME in SECONDS (the scope's wall, sized from the capped per-step timeouts
 # below), memory in GiB, CPU with the %% sign, SCRIPT_SHA is the PACKET'S OWN sha256 (NOT the source commit),
 # and OUT is passed LITERALLY — the script derives JOB as basename(dirname(OUT)), so OUT must be
@@ -91,9 +105,30 @@ BOOKED="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)
 #   back to the ledger. This script books nothing and writes no ledger: it REFUSES (2) when the environment
 #   it was started in does not match the booking.
 #
-# EXIT CONTRACT (v3 item 4). THREE codes, no others:
-#   0  every claim in every leg printed a bare PASS and the runner's own exit agreed (expectations held)
-#   1  a claim printed a bare FAIL (expectation FALSIFIED — a finding, and the reason for the row)
+# EXIT CONTRACT (v3 item 4; per-claim wording pre-registered by the acceptance owner, v7 item 3).
+# THREE codes, no others:
+#   0  every claim in every leg printed a bare PASS and every leg was OBSERVED (expectations held)
+#   1  a claim printed a bare FAIL inside an OBSERVED leg (expectation FALSIFIED - a finding, and the
+#      reason for the row). FALSIFIED outranks NO_OBSERVATION: a bare FAIL in a well-formed leg is real,
+#      so a second leg that produced nothing does not cancel it.
+#   2  NO_OBSERVATION: any setup, usage, scope, bounds, clone, checkout, blob, name, build, wall,
+#      out-dir, timeout, OOM, counter-incoherence, completion-record, verdict-line, post-leg or
+#      return-code failure - every gate refusal is 2, including a run dir that already exists.
+# THE LEG CONTRACT, verbatim as pre-registered:
+#   A leg is OBSERVED iff a completion record is present AND every claim in the leg has exactly one bare
+#   verdict line AND there are no stray verdict-shaped lines AND rc == 0 when every claim PASSes, else
+#   rc == 1. Within an observed leg a bare PASS is HELD and a bare FAIL is FALSIFIED, per claim. Anything
+#   else (an rc inconsistent with the verdicts, a missing or duplicate verdict, a reasoned FAIL, a
+#   timeout, an OOM) makes EVERY claim in that leg NO_OBSERVATION.
+#   Packet exit: 1 if any claim is FALSIFIED, else 2 if any claim is NO_OBSERVATION, else 0.
+# Classification is therefore PER CLAIM, not per leg: a leg that is not observed marks its claims
+# NO_OBSERVATION and lets the other legs stand.
+# POST-LEG GATE: after the legs, the pinned worktree must still be clean (git status --porcelain empty)
+# and the runner binary must hash to the bytes hashed before the legs ran. Either failing makes EVERY
+# claim in the run NO_OBSERVATION, because nothing those legs printed can be attributed to the pin.
+# The verdict is computed by final_verdict over THIS packet's own evidence files only. It never names a
+# variable belonging to another row's packet: under set -u that is not a typo, it is exit 127 arriving
+# in the middle of the verdict, after every probe has been spent.
 #   2  NO_OBSERVATION: any setup, usage, scope, bounds, clone, checkout, blob, name, build, timeout,
 #      OOM, counter-incoherence, classifier or return-code failure — every gate refusal is 2, including
 #      a run dir that already exists and a leg whose output is not exactly bare verdict lines.
@@ -178,6 +213,9 @@ csv() { local s; s=$(printf '%s,' $1); printf '%s' "${s%,}"; }
 C5=$(csv "$N5")
 
 T_SETUP_CLONE=300; T_SETUP_FETCH=300; T_SETUP_CHECKOUT=120; T_BUILD=2400; T_LEG=900
+# the fixture self-run is a step like any other: uncapped, a hung classifier would burn the wall budget
+# before a probe was spent, and the wall arithmetic below would be a fiction. It is inside the margin.
+T_SELFRUN=300
 # the row's CAPPED SUM: one clone + one shallow fetch + one checkout + one build + N_LEGS legs
 WALL_SUM=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG ))
 
@@ -224,28 +262,75 @@ oom_snap() { # $1=event file $2=tag; publishes the raw bytes by exclusive create
     if ( set -C; printf '%s\n' "$t" > "$f" ) 2>/dev/null; then echo "$(oom_parse "$t" oom_kill)/$(oom_parse "$t" oom)"
     else echo UNKNOWN/UNKNOWN; fi
   else ( set -C; : > "$f.unreadable" ) 2>/dev/null; echo UNKNOWN/UNKNOWN; fi; }
-# CLAIM CLASSIFIER: bare lines only, one per expected name, plus the runner's own exit code checked apart.
-wall_gate() { # $1=capped per-step sum $2=scope RuntimeMaxSec $3=installed launcher cap $4=driver RuntimeMaxSec
-  local s=$1 r=$2 cap=$3 d=$4
-  [ "$r" -le "$cap" ] || { echo "RUNTIME_S $r exceeds the installed calmcrab-udrv v4 preflight cap of $cap; the launcher would refuse before any scope exists (PRE_SCOPE_REFUSAL, the #15695 diag-v2 shape at 11700)"; return; }
-  [ "$s" -le "$r" ] || { echo "the capped per-step sum $s s exceeds the scope RuntimeMaxSec $r; a cut-off leg is NO_OBSERVATION"; return; }
-  [ "$d" = "$((r+300))" ] || { echo "the driver service must be RuntimeMaxSec $((r+300)), the scope's $r plus 300 s; the packet says $d"; return; }
-  echo OK; }
+# CLASSIFIER, COMPLETION RECORD AND VERDICT RULES (v4 rules, kept verbatim into v7; the v7 leg
+# contract below sits ON TOP of them, it does not replace them):
+#   VERDICT RULES (v4, sleek-owl blocker 3). Only a BARE `^PASS <name>$` counts as held and only a BARE
+#   `^FAIL <name>$` counts as falsified. Each expected name must also have EXACTLY ONE outcome line of ANY
+#   keyword -- PASS/FAIL/UNOBSERVED/PANICKED, bare or qualified: zero outcome lines for a name, or two, is
+#   NO_OBSERVATION, and a QUALIFIED line (`FAIL <fn> (reason)`) is NO_OBSERVATION, never a falsification.
+#   Anything else is also NO_OBSERVATION: a contradiction, an indented line, a name that is not one of this
+#   row's, an empty or missing log, or a timeout (rc 124).
+# COMPLETION RECORD (v4, sleek-owl blocker 2, keen-otter msg_a9e94d36). The runner's exit 1 ALSO covers
+#   setup/resolve refusals, so bare verdict lines alone cannot prove a leg completed. claim_batch's
+#   ProcessPartition::render emits EXACTLY ONE `[process-partition] total_ms=...` record per process, on the
+#   Ok path only. Per leg the gate therefore does TWO stages: (a) count lines with the PREFIX
+#   `^[process-partition] total_ms` and require exactly one -- a single-stage filter-and-count cannot see a
+#   malformed competitor sitting next to a good one; (b) test the SHAPE `^\[process-partition\] total_ms=[0-9]+( |$)`
+#   on that one line. Zero, two, or one valid plus one malformed is NO_OBSERVATION. Whole-line anchoring
+#   (`...total_ms=[0-9]+$`) is WRONG: render pushes the span fields unconditionally, and that exact mistake
+#   is what spent #15695's G1 attempt (15/15 bare PASS and still NO_OBSERVATION). The neighbour line
+#   `[process-partition-exit] run_returned_ms=... main_end_ms=...` does NOT start with `[process-partition]`
+#   and must not be counted -- hence the `]` in the prefix.
+#   WHICH STREAM, checked at the pin: that record goes to STDERR, not stdout. The pinned source has exactly
+#   one emission of the record -- the single eprintln!("{}", partition.render(&timings)) call site in the
+#   run() path of src/v1/stage0/src/bin/claim_batch.rs (blob 12a71786bd92f683dbd0aec2ae5d6f426e651a44
+#   -- the same bytes at dff57af7 and at db56530f), while every PASS/FAIL verdict goes to stdout. So the
+#   completion gate reads the leg stderr capture (logs/<leg>.err) and the classifier reads the leg stdout
+#   (<leg>.out). Pointing that gate at stdout reads 0 records on every leg and NO_OBSERVATIONs a full-green
+#   row: the #15695 G1 shape by another route. The pinned source is therefore blob-gated like every other
+#   input and re-read for its render site (producer_gate), and the fixtures drive THIS packet's own leg() with
+#   a stub standing in for the binary: record on stderr plus verdict on stdout is an observation, record only
+#   on stdout is not, and two records on stderr is not.
 
-claim_classify() { # $1=output file $2=rc $3=name -> HELD | FAILED | NO_OBSERVATION
-  local f=$1 rc=$2 n=$3 p q
-  [ -f "$f" ] || { echo NO_OBSERVATION; return; }
-  [ "$rc" = 124 ] && { echo NO_OBSERVATION; return; }
-  case "$rc" in ''|missing|*[!0-9]*) echo NO_OBSERVATION; return;; esac
+# LEG CONTRACT (pre-registered by the acceptance owner, calm-eagle-670 msg_ac20c593) -- verbatim:
+#   A leg is OBSERVED iff a completion record is present AND every claim in the leg has exactly one bare
+#   verdict line AND there are no stray verdict-shaped lines AND rc == 0 when every claim PASSes, else rc == 1.
+#   Within an observed leg a bare PASS is HELD and a bare FAIL is FALSIFIED, per claim.
+#   Anything else (an rc inconsistent with the verdicts, a missing or duplicate verdict, a reasoned FAIL, a
+#   timeout, an OOM) makes EVERY claim in that leg NO_OBSERVATION.
+#   Packet exit: 1 if any claim is FALSIFIED, else 2 if any claim is NO_OBSERVATION, else 0.
+#   FALSIFIED therefore wins over NO_OBSERVATION: a bare FAIL seen in a well-formed leg is a real result.
+# LEG EXIT-CODE CONSISTENCY: rc must be 0 when every claim has a bare PASS, and 1 when at least one claim
+# has a bare FAIL. Anything else -- including 124 (timeout), a signal, or a non-numeric rc -- is a mismatch.
+leg_rc_expect() { # $1=stdout file $2=rc $3=name list -> OK | MISMATCH <what>
+  local f=$1 rc=$2 names=$3 n q fails=0
+  case "$rc" in ''|*[!0-9]*) echo "MISMATCH rc=$rc is not a number"; return;; esac
+  for n in $names; do q=$(grep -c "^FAIL $n\$" "$f" 2>/dev/null); [ "${q:-0}" = 1 ] && fails=$((fails+1)); done
+  if [ "$fails" = 0 ]; then
+    [ "$rc" = 0 ] && echo OK || echo "MISMATCH rc=$rc but no claim printed a bare FAIL, so 0 was required"
+  else
+    [ "$rc" = 1 ] && echo OK || echo "MISMATCH rc=$rc but $fails claim(s) printed a bare FAIL, so 1 was required"
+  fi; }
+# CLAIM CLASSIFIER: bare lines only, one per expected name, and only inside an observed leg (rcst=OK).
+claim_classify() { # $1=stdout file $2=leg rc-consistency (OK | MISMATCH …) $3=name -> HELD | FAILED | NO_OBSERVATION
+  local f=$1 rcst=$2 n=$3 any p q
+  [ -r "$f" ] || { echo NO_OBSERVATION; return; }
+  [ "$rcst" = OK ] || { echo NO_OBSERVATION; return; }
   # exactly one outcome line for this name, of ANY keyword (bare or qualified); zero or two -> no observation
   any=$(grep -cE "^(PASS|FAIL|UNOBSERVED|PANICKED) $n( |$)" "$f" 2>/dev/null)
-  [ "$any" = 1 ] || { echo NO_OBSERVATION; return; }
+  [ "${any:-0}" = 1 ] || { echo NO_OBSERVATION; return; }
   p=$(grep -c "^PASS $n\$" "$f" 2>/dev/null); q=$(grep -c "^FAIL $n\$" "$f" 2>/dev/null)
-  if [ "$p" = 1 ] && [ "$q" = 0 ] && [ "$rc" = 0 ]; then echo HELD; return; fi
-  if [ "$p" = 0 ] && [ "$q" = 1 ] && [ "$rc" = 1 ]; then echo FAILED; return; fi
-  # a qualified FAIL, an UNOBSERVED or a PANICKED line, or a bare line whose process exit disagrees, is not
-  # an observation at all: the claim was attempted but its outcome was not reported in a countable form.
+  [ "${p:-0}" = 1 ] && [ "${q:-0}" = 0 ] && { echo HELD; return; }
+  [ "${p:-0}" = 0 ] && [ "${q:-0}" = 1 ] && { echo FAILED; return; }
+  # a qualified FAIL, an UNOBSERVED or a PANICKED line, or two bare lines: attempted, but not countable.
   echo NO_OBSERVATION; }
+wall_gate() { # $1=capped per-step sum $2=scope RuntimeMaxSec $3=installed launcher cap $4=driver RuntimeMaxSec
+  local s=$1 r=$2 cap=$3 d=$4
+  [ "$r" -le "$cap" ] || { echo "RUNTIME_S $r exceeds the installed calmcrab-udrv v4 preflight cap of $cap; the launcher would refuse before any scope exists (PRE_SCOPE_REFUSAL, the #15695 diag-v2 shape at 11700)"; return 1; }
+  [ "$s" -le "$r" ] || { echo "the capped per-step sum $s s exceeds the scope RuntimeMaxSec $r; a cut-off leg is NO_OBSERVATION"; return 1; }
+  [ "$d" = "$((r+300))" ] || { echo "the driver service must be RuntimeMaxSec $((r+300)), the scope's $r plus 300 s; the packet says $d"; return 1; }
+  echo OK; }
+
 # COMPLETION RECORD GATE: two stages on purpose (see the header). Prefix count first, then shape on that one.
 PP_PREFIX='^[[]process-partition[]] total_ms'
 PP_SHAPE='^[[]process-partition[]] total_ms=[0-9]+( |$)'
@@ -261,6 +346,7 @@ pp_check() { # $1=output file -> "OK <the record>" or the reason it is not an ob
   printf '%s\n' "$line" | grep -qE "$PP_SHAPE" || { echo "the single completion record is malformed: $line"; return; }
   echo "OK $line"; }
 leg_state() { # $1=classes file ("name CLASS" lines) $2=name list; AS_EXPECTED | FALSIFIED | NOOBS
+  # per-LEG summary for the receipt only; the packet's exit code comes from final_verdict, per CLAIM.
   local n c
   for n in $2; do
     c=$(grep -c "^$n " "$1" 2>/dev/null); [ "$c" = 1 ] || { echo NOOBS; return; }
@@ -271,9 +357,12 @@ leg_state() { # $1=classes file ("name CLASS" lines) $2=name list; AS_EXPECTED |
   if grep -q ' FAILED$' "$1" 2>/dev/null; then echo FALSIFIED; else echo AS_EXPECTED; fi; }
 # lines that LOOK like verdicts must all be exact bare lines for names of this leg; a qualified line, an
 # indented one, or a name this leg did not ask for is NO_OBSERVATION for the whole leg.
-stray_verdict_lines() { # $1=output file $2=name list -> count of verdict-shaped lines that are not exact bare lines for these names
+stray_verdict_lines() { # $1=output file $2=name list -> 0, or the reason it is not a clean bare-verdict set
+  # FAILS CLOSED: an unreadable file, or a grep that could not run, is a reason, never a zero. A zero from a
+  # failed read would read as "no stray lines" and let a leg be observed on evidence nobody looked at.
   local f=$1 names=$2 tot exact n
-  tot=$(grep -cE '^(PASS|FAIL|UNOBSERVED|PANICKED) ' "$f" 2>/dev/null || echo 0)
+  [ -r "$f" ] || { echo "unreadable verdict file: $f"; return; }
+  tot=$(grep -cE '^(PASS|FAIL|UNOBSERVED|PANICKED) ' "$f" 2>/dev/null) || { echo "verdict scan failed on $f"; return; }
   exact=$(for n in $names; do grep -cE "^(PASS|FAIL) $n\$" "$f" 2>/dev/null; done | awk '{s+=$1} END{print s+0}')
   [ "$tot" = "$exact" ] && echo 0 || echo "stray=$tot exact=$exact"; }
 names_gate() { # $1=checkout dir $2=entry file $3=name list: every name must be a `test fn` in the entry file
@@ -292,81 +381,183 @@ nox() { echo "$1" >> "$O"; echo "VERDICT=NO_OBSERVATION reason=$2" >> "$O"; echo
 
 producer_gate() { # $1 = a checked-out claim_batch.rs: the completion record MUST be rendered to stderr
   local f=$1 n line
-  [ -r "$f" ] || { echo "the pinned claim_batch.rs is unreadable: $f"; return; }
+  [ -r "$f" ] || { echo "the pinned claim_batch.rs is unreadable: $f"; return 1; }
   n=$(grep -cF 'partition.render(&timings)' "$f" 2>/dev/null)
-  [ "$n" = 1 ] || { echo "expected exactly one completion-record render site, found $n in $f"; return; }
+  [ "$n" = 1 ] || { echo "expected exactly one completion-record render site, found $n in $f"; return 1; }
   line=$(grep -m1 -F 'partition.render(&timings)' "$f")
   case "$line" in
     *'eprintln!("{}", partition.render(&timings));'*) echo OK ;;
-    *) echo "the completion record is NOT emitted to stderr (eprintln) at the render site: $line"; return ;;
+    *) echo "the completion record is NOT emitted to stderr (eprintln) at the render site: $line"; return 1 ;;
   esac; }
 
 leg() { # $1=leg name $2=CMD variable name $3=name list
-  local L=$1 rc k0 k1 LO st cl sv
+  local L=$1 rc k0 k1 LO st cl sv pc causes n p q rcst
   cmd=${2}
   k0=$(oom_snap "$EV" "$L-leg-before")
   timeout "$T_LEG" bash -c "$2" > "$OUT/$L.out" 2> "$OUT/logs/$L.err"; rc=$?
   k1=$(oom_snap "$EV" "$L-leg-after"); LO=$(oom_pair_verdict "$k0" "$k1"); LASTOOM=$k1
   echo "== $L rc=$rc oom=$LO ($k0 -> $k1) $(tm "$OUT/logs/$L.err")" >> "$O"
-  if [ "$LO" != none ]; then
-    echo "$L oom=$LO" >> "$O"; nox "leg $L: memory.events moved $k0 -> $k1" "$([ "$LO" = OOM_KILLED ] && echo leg-oom || echo counter-incoherent)"
-  fi
+  # Every condition below is a LEG-level cause. A cause does not end the packet: it makes every claim in
+  # this leg NO_OBSERVATION and lets the other legs stand, because the packet exit is decided per claim
+  # (a bare FAIL in a well-formed leg elsewhere is a real falsification and must still report exit 1).
+  causes=""
+  [ "$LO" = none ] || causes="$causes oom=$LO($k0->$k1)"
+  [ "$rc" = 124 ] && causes="$causes timeout-at-${T_LEG}s"
+  pc=$(pp_check "$OUT/logs/$L.err")
+  echo "== $L completion_record: $pc" >> "$O"
+  [ "${pc%% *}" = OK ] || causes="$causes completion-record($pc)"
   sv=$(stray_verdict_lines "$OUT/$L.out" "$3")
   if [ "$sv" != 0 ]; then
     grep -E '^(PASS|FAIL|UNOBSERVED|PANICKED) ' "$OUT/$L.out" 2>/dev/null | head -6 | cut -c1-300 | sed 's/^/  | /' >> "$O"
-    nox "leg $L is not exactly bare verdict lines: $sv" classifier
+    causes="$causes verdict-lines($sv)"
   fi
+  for n in $3; do
+    p=$(grep -c "^PASS $n\$" "$OUT/$L.out" 2>/dev/null); q=$(grep -c "^FAIL $n\$" "$OUT/$L.out" 2>/dev/null)
+    [ "$(( ${p:-0} + ${q:-0} ))" = 1 ] || causes="$causes no-single-bare-verdict($n:p=${p:-?},q=${q:-?})"
+  done
+  rcst=$(leg_rc_expect "$OUT/$L.out" "$rc" "$3")
+  [ "$rcst" = OK ] || causes="$causes $rcst"
   : > "$OUT/$L.classes"
-  pc=$(pp_check "$OUT/logs/$L.err")
-  echo "== $L completion_record: $pc" >> "$O"
-  # a leg without exactly one well-formed completion record never finished the producer's reporting path,
-  # so its verdict lines are not an observation; leg_state reads this line and the leg becomes NOOBS (exit 2).
-  [ "${pc%% *}" = OK ] || echo "completion NO_OBSERVATION" >> "$OUT/$L.classes"
-  for cl in $3; do echo "$cl $(claim_classify "$OUT/$L.out" "$rc" "$cl")" >> "$OUT/$L.classes"; done
+  if [ -n "$causes" ]; then
+    for cl in $3; do echo "$cl NO_OBSERVATION" >> "$OUT/$L.classes"; done
+    echo "== $L NOT OBSERVED:$causes" >> "$O"
+    echo "  every claim in $L is NO_OBSERVATION" >> "$O"
+  else
+    for cl in $3; do echo "$cl $(claim_classify "$OUT/$L.out" OK "$cl")" >> "$OUT/$L.classes"; done
+  fi
   cat "$OUT/$L.classes" | sed 's/^/  /' >> "$O"
   st=$(leg_state "$OUT/$L.classes" "$3")
   echo "== $L state=$st" >> "$O"; echo "$st" > "$OUT/$L.state"; }
+
+# POST-LEG GATES: the legs are read-only probes of a pinned checkout. If they left the worktree dirty, or
+# the runner binary is not the exact bytes that were hashed before the legs, then nothing any leg printed
+# can be attributed to the pinned source: every claim in the run becomes NO_OBSERVATION.
+post_leg_gate() { # $1=worktree $2=runner binary $3=pre-leg sha256 ; writes $OUT/post-leg.cause (empty = clean)
+  local w=$1 b=$2 pre=$3 post dirty
+  : > "$OUT/post-leg.cause"
+  if ! git -C "$w" status --porcelain > "$OUT/git-status.txt" 2>&1; then
+    echo "git status --porcelain could not run in $w" > "$OUT/post-leg.cause"
+  fi
+  dirty=$(grep -c . "$OUT/git-status.txt" 2>/dev/null)
+  if [ "${dirty:-1}" != 0 ]; then
+    echo "the worktree $w is not clean after the legs: ${dirty} changed entr$([ "${dirty}" = 1 ] && echo y || echo ies): $(head -3 "$OUT/git-status.txt" | tr '\n' ' ')" > "$OUT/post-leg.cause"
+  fi
+  post=$(bin_sha "$b" || echo unreadable)
+  if [ "$post" != "$pre" ] || [ "$pre" = unreadable ]; then
+    echo "the runner changed during the run: pre-leg sha256=$pre, after the legs sha256=$post" > "$OUT/post-leg.cause"
+  fi
+  echo "post_leg: worktree_clean=$([ -s "$OUT/post-leg.cause" ] && echo no || echo yes) runner_sha256_pre=$pre post=$post cause=$(cat "$OUT/post-leg.cause")" >> "$O"; }
+
+# THE PACKET'S EXIT DECISION, per the leg contract above. Reads the per-claim classes the legs wrote; a
+# post-leg cause turns every claim into NO_OBSERVATION. Exits: 1 FALSIFIED, 2 NO_OBSERVATION, 0 held.
+# It names ONLY this packet's own files -- no state variable from any other row's packet, which under
+# set -u is not a typo but an exit 127 in the middle of the verdict.
+final_verdict() {
+  local pc="" f n c sum="" anyF=0 anyN=0 nclaims=0 nlegs=0
+  [ -s "$OUT/post-leg.cause" ] && pc=$(cat "$OUT/post-leg.cause")
+  for f in "$OUT"/*.classes; do
+    [ -f "$f" ] || continue
+    nlegs=$((nlegs+1))
+    for n in $(awk '{print $1}' "$f"); do
+      c=$(awk -v k="$n" '$1==k {print $2}' "$f"); nclaims=$((nclaims+1))
+      [ -n "$pc" ] && c=NO_OBSERVATION
+      case "$c" in
+        HELD) : ;;
+        FAILED) anyF=1 ;;
+        *) anyN=1 ;;
+      esac
+      sum="$sum $n=$c"
+    done
+  done
+  echo "claims classified:${sum:- none} post_leg_cause=${pc:-none}" >> "$O"
+  if [ "$anyF" = 1 ]; then
+    echo "VERDICT=FALSIFIED claims=$nclaims legs=$nlegs mutation_legs=0 (a bare FAIL inside an observed leg; falsification outranks any no-observation)" >> "$O"
+    echo "DONE $(date -u +%FT%TZ)" >> "$O"
+    echo "FALSIFIED:${sum}" >&2; exit 1
+  fi
+  if [ "$anyN" = 1 ]; then
+    echo "VERDICT=NO_OBSERVATION claims=$nclaims legs=$nlegs (one or more claims had no countable observation; post-leg cause: ${pc:-none})" >> "$O"
+    echo "DONE $(date -u +%FT%TZ)" >> "$O"
+    echo "NO_OBSERVATION:${sum}${pc:+ post_leg=$pc}" >&2; exit 2
+  fi
+  echo "VERDICT=AS_EXPECTED claims=$nclaims legs=$nlegs mutation_legs=0" >> "$O"
+  echo "DONE $(date -u +%FT%TZ)" >> "$O"
+  echo "ALL-HELD:${sum}" >&2; exit 0; }
+
+# The one argument, and the job it names, are gates rather than prose: a relative OUT resolves against
+# whatever cwd the launcher happened to start in, and an OUT whose <JOB> component is not the booked job
+# means the evidence is landing in somebody else's run directory.
+out_gate() { # $1=OUT $2=booked JOB -> prints the reason and returns 1, or returns 0
+  local o=$1 j=$2 job
+  case "$o" in /*) ;; *) echo "OUT '$o' is relative; the evidence dir must be absolute (the launcher maps it to \$HOME/runs/<JOB>/out)"; return 1;; esac
+  case "$o" in */out) ;; *) echo "OUT '$o' does not end in /out (calmcrab-udrv v4 maps the row's evidence dir to <RUNTIME>/out)"; return 1;; esac
+  case "$o" in */out/*|/out|/out/) echo "OUT '$o' has a path below /out; the evidence dir is the /out entry itself"; return 1;; esac
+  job=$(basename "$(dirname "$o")" 2>/dev/null || echo "")
+  [ -n "$job" ] || { echo "cannot derive the booked JOB from OUT '$o' (expected <RUNTIME>/<JOB>/out)"; return 1; }
+  [ "$job" = "$j" ] || { echo "OUT '$o' names job '$job', this packet is booked as '$j' (the ledger rows, the scope and the driver unit all name $j)"; return 1; }
+  return 0; }
 
 # ---------------------------------------------------------------- fixture mode: run BEFORE any probe is spent
 if [ "${1:-}" = "--classifier-fixtures" ]; then
   T=$(mktemp -d); okn=0; badn=0
   ck() { if [ "$3" = "$2" ]; then echo "FIXTURE PASS $1 -> $3"; okn=$((okn+1)); else echo "FIXTURE FAIL $1 expected $2 got $3"; badn=$((badn+1)); fi; }
   L() { printf '%s\n' "$1"; }
-  # the classifier, in both directions, on the runner's real line shapes
-  L "PASS witness_inbox_stale_live_receipt_refuses" > $T/p;  ck bare-pass HELD "$(claim_classify $T/p 0 witness_inbox_stale_live_receipt_refuses)"
-  L "FAIL witness_inbox_stale_live_receipt_refuses" > $T/f;  ck bare-fail FAILED "$(claim_classify $T/f 1 witness_inbox_stale_live_receipt_refuses)"
-  ck pass-wrong-rc NO_OBSERVATION "$(claim_classify $T/p 1 witness_inbox_stale_live_receipt_refuses)"
-  ck fail-wrong-rc NO_OBSERVATION "$(claim_classify $T/f 0 witness_inbox_stale_live_receipt_refuses)"
-  ck all-pass-but-partition-refused NO_OBSERVATION "$(claim_classify $T/p 1 witness_inbox_stale_live_receipt_refuses)"
-  ck timeout-124 NO_OBSERVATION "$(claim_classify $T/p 124 witness_inbox_stale_live_receipt_refuses)"
-  ck signal-137 NO_OBSERVATION "$(claim_classify $T/p 137 witness_inbox_stale_live_receipt_refuses)"
-  ck missing-rc NO_OBSERVATION "$(claim_classify $T/p missing witness_inbox_stale_live_receipt_refuses)"
-  ck empty-rc NO_OBSERVATION "$(claim_classify $T/p '' witness_inbox_stale_live_receipt_refuses)"
-  ck no-such-file NO_OBSERVATION "$(claim_classify $T/nothing-here 0 witness_inbox_stale_live_receipt_refuses)"
-  ck name-not-in-log NO_OBSERVATION "$(claim_classify $T/p 0 witness_inbox_other_thing)"
-  { L "PASS witness_inbox_stale_live_receipt_refuses"; L "PASS witness_inbox_stale_live_receipt_refuses"; } > $T/d
-  ck duplicate-line NO_OBSERVATION "$(claim_classify $T/d 0 witness_inbox_stale_live_receipt_refuses)"
-  { L "PASS witness_inbox_stale_live_receipt_refuses"; L "FAIL witness_inbox_stale_live_receipt_refuses"; } > $T/c
-  ck contradictory NO_OBSERVATION "$(claim_classify $T/c 1 witness_inbox_stale_live_receipt_refuses)"
-  L "  PASS witness_inbox_stale_live_receipt_refuses" > $T/i; ck indented NO_OBSERVATION "$(claim_classify $T/i 0 witness_inbox_stale_live_receipt_refuses)"
-  for q in 'FAIL witness_x (runtime error [E]: boom)' 'FAIL witness_x (returned ProcessExit::ExitFailure, code 3: no)' 'UNOBSERVED witness_x (route gap)' 'PANICKED witness_x (the host unwound)'; do
-    L "$q" > $T/q; ck "qualified-$(printf '%s' "$q" | cut -c1-4)" NO_OBSERVATION "$(claim_classify $T/q 2 witness_x)"
+  # ckp: the expected text must APPEAR in the value. A refusal message names the offending path or number
+  # first, and pinning the whole sentence would make the fixtures test the wording instead of the refusal.
+  ckp() { case "$3" in *"$2"*) echo "FIXTURE PASS $1 -> $3"; okn=$((okn+1));; *) echo "FIXTURE FAIL $1 expected [$2] inside [$3]"; badn=$((badn+1));; esac; }
+  # THE LEG CONTRACT, classifier level (calm-eagle-670 msg_ac20c593). claim_classify is only ever asked
+  # about a claim inside an OBSERVED leg: the second argument is the leg's exit-code consistency, which
+  # leg() computes over EVERY claim in the leg before it asks about any of them.
+  L "PASS witness_x" > $T/p; ck bare-pass HELD "$(claim_classify $T/p OK witness_x)"
+  L "FAIL witness_x" > $T/f; ck bare-fail FAILED "$(claim_classify $T/f OK witness_x)"
+  ck leg-not-observed-no-pass NO_OBSERVATION "$(claim_classify $T/p 'MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required' witness_x)"
+  ck leg-not-observed-no-fail NO_OBSERVATION "$(claim_classify $T/f 'MISMATCH rc=0 but 1 claim(s) printed a bare FAIL, so 1 was required' witness_x)"
+  ck empty-rcst NO_OBSERVATION "$(claim_classify $T/p '' witness_x)"
+  ck no-such-file NO_OBSERVATION "$(claim_classify $T/nothing-here OK witness_x)"
+  ck name-not-in-log NO_OBSERVATION "$(claim_classify $T/p OK witness_other)"
+  { L "PASS witness_x"; L "PASS witness_x"; } > $T/d
+  ck duplicate-line NO_OBSERVATION "$(claim_classify $T/d OK witness_x)"
+  { L "PASS witness_x"; L "FAIL witness_x"; } > $T/c
+  ck contradictory NO_OBSERVATION "$(claim_classify $T/c OK witness_x)"
+  L "  PASS witness_x" > $T/i; ck indented NO_OBSERVATION "$(claim_classify $T/i OK witness_x)"
+  for q in 'FAIL witness_x (runtime error [E]: boom)' 'FAIL witness_x (returned ProcessExit::ExitFailure, code 3: no)' 'UNOBSERVED witness_x (route gap)' 'PANICKED witness_x (assert!)'; do
+    L "$q" > $T/q; ckp "qualified-$(printf '%s' "$q" | cut -c1-4)" NO_OBSERVATION "$(claim_classify $T/q OK witness_x)"
     ck "qualified-stray-$(printf '%s' "$q" | cut -c1-4)" "stray=1 exact=0" "$(stray_verdict_lines $T/q 'witness_x')"
   done
-  # stray-line detector: a qualified line among clean ones must be caught per leg, not per name
+  # THE LEG EXIT CODE must agree with the bare verdicts of the WHOLE leg, not of one claim.
+  { L "PASS a"; L "FAIL b"; } > $T/mix
+  { L "PASS a"; L "FAIL b"; L "FAIL c"; } > $T/mix2
+  { L "PASS a"; L "PASS b"; } > $T/allpass
+  ck rc0-single-pass OK "$(leg_rc_expect $T/p 0 witness_x)"
+  ck rc1-pass-plus-fail OK "$(leg_rc_expect $T/mix 1 'a b')"
+  ck rc1-two-fails OK "$(leg_rc_expect $T/mix2 1 'a b c')"
+  ckp rc0-two-fails-and-a-pass "MISMATCH" "$(leg_rc_expect $T/mix2 0 'a b c')"
+  ckp rc1-while-every-claim-passed "MISMATCH" "$(leg_rc_expect $T/allpass 1 'a b')"
+  ckp rc0-while-a-claim-failed "MISMATCH" "$(leg_rc_expect $T/mix 0 'a b')"
+  ckp rc124-timeout-is-a-mismatch "MISMATCH" "$(leg_rc_expect $T/allpass 124 'a b')"
+  ckp rc137-signal-is-a-mismatch "MISMATCH" "$(leg_rc_expect $T/allpass 137 'a b')"
+  ckp rc-not-a-number "MISMATCH" "$(leg_rc_expect $T/allpass missing 'a b')"
+  ckp rc-empty "MISMATCH" "$(leg_rc_expect $T/allpass '' 'a b')"
+  # a name the log never mentions is NOT an exit-code mismatch (0 was still the right code for the
+  # verdicts that were printed); it is caught by the per-name bare-verdict check inside leg(), which
+  # is what the contract-case fixtures below exercise end to end.
+  ck rc0-names-not-in-the-log-is-still-a-consistent-rc OK "$(leg_rc_expect $T/allpass 0 'a b witness_x')"
+  # stray-line detector: a qualified line among clean ones must be caught per leg, not per name, and the
+  # detector FAILS CLOSED: an unreadable verdict file or a grep that could not run is a reason, never a 0.
   { L "PASS a_holds"; L "FAIL b_holds (runtime error [E]: boom)"; L "PASS c_holds"; } > $T/s
   ck stray-detected "stray=3 exact=2" "$(stray_verdict_lines $T/s 'a_holds b_holds c_holds')"
   { L "PASS a_holds"; L "PASS b_holds"; L "PASS c_holds"; } > $T/s2
   ck stray-clean 0 "$(stray_verdict_lines $T/s2 'a_holds b_holds c_holds')"
   L "PASS a_holds" > $T/s3; ck stray-extra-name "stray=1 exact=0" "$(stray_verdict_lines $T/s3 'b_holds')"
-  # leg state
+  ckp stray-unreadable-fails-closed "unreadable verdict file" "$(stray_verdict_lines $T/no-such-file-here 'a_holds')"
+  # per-leg summary for the receipt (the packet's exit code is decided per CLAIM, by final_verdict)
   mk() { : > $T/$1; for x in a b c; do echo "$x HELD" >> $T/$1; done; }
   mk l1; ck leg-as-expected AS_EXPECTED "$(leg_state $T/l1 'a b c')"
   mk l2; sed -i 's/^b HELD/b FAILED/' $T/l2; ck leg-falsified FALSIFIED "$(leg_state $T/l2 'a b c')"
   mk l3; sed -i 's/^b HELD/b NO_OBSERVATION/' $T/l3; ck leg-noobs NOOBS "$(leg_state $T/l3 'a b c')"
   mk l4; sed -i '/^c /d' $T/l4; ck leg-missing-name NOOBS "$(leg_state $T/l4 'a b c')"
   mk l5; echo "d HELD" >> $T/l5; ck leg-extra-name-recorded AS_EXPECTED "$(leg_state $T/l5 'a b c')"
-  mk l6; sed -i 's/^a HELD/a HELD/; s/^b HELD/b FAILED/; s/^c HELD/c NO_OBSERVATION/' $T/l6; ck leg-noobs-beats-falsified NOOBS "$(leg_state $T/l6 'a b c')"
+  mk l6; sed -i 's/^a HELD/a HELD/; s/^b HELD/b FAILED/; s/^c HELD/c NO_OBSERVATION/' $T/l6; ck leg-noobs-beats-falsified-in-a-leg NOOBS "$(leg_state $T/l6 'a b c')"
   # names gate, against a real entry-file shape
   mkdir -p $T/wt/dag; printf 'module x\ntest fn a_holds() -> Bool {\n  true\n}\ntest fn c_holds() -> Bool {\n  true\n}\n' > $T/wt/dag/e.dag
   names_gate $T/wt dag/e.dag 'a_holds c_holds' && ck names-ok ok ok || ck names-ok ok refused
@@ -577,20 +768,27 @@ oom 0' oom)"
   ck completion-wholeline-anchor-is-wrong 0 "$(printf '%s\n' "$PP_REAL" | grep -cE '^[[]process-partition[]] total_ms=[0-9]+$')"
   ck completion-shape-accepts-real 1 "$(printf '%s\n' "$PP_REAL" | grep -cE "$PP_SHAPE")"
   # fixture part 1 of 2: the leg-level controls run once leg() is defined (see part 2)
-  # -------- verdict rules (v4 blocker 3): bare lines count, one outcome line per name, qualified refuses
-  ck verdict-bare-pass-rc0 HELD "$(claim_classify "$T/v_pass.txt" 0 w_x)"
-  ck verdict-bare-fail-rc1 FAILED "$(claim_classify "$T/v_fail.txt" 1 w_x)"
-  ck verdict-qualified-fail-is-not-falsified NO_OBSERVATION "$(claim_classify "$T/v_qfail.txt" 1 w_x)"
-  ck verdict-qualified-fail-rc0 NO_OBSERVATION "$(claim_classify "$T/v_qfail.txt" 0 w_x)"
-  ck verdict-unobserved NO_OBSERVATION "$(claim_classify "$T/v_unobs.txt" 2 w_x)"
-  ck verdict-panicked NO_OBSERVATION "$(claim_classify "$T/v_panic.txt" 1 w_x)"
-  ck verdict-two-outcome-lines NO_OBSERVATION "$(claim_classify "$T/v_two.txt" 0 w_x)"
-  ck verdict-pass-and-fail NO_OBSERVATION "$(claim_classify "$T/v_both.txt" 1 w_x)"
-  ck verdict-bare-pass-plus-qualified-fail NO_OBSERVATION "$(claim_classify "$T/v_bare_plus_q.txt" 0 w_x)"
-  ck verdict-no-outcome-line NO_OBSERVATION "$(claim_classify "$T/v_none.txt" 0 w_x)"
-  ck verdict-bare-pass-rc1-cost-partition NO_OBSERVATION "$(claim_classify "$T/v_pass.txt" 1 w_x)"
-  ck verdict-bare-pass-rc124 NO_OBSERVATION "$(claim_classify "$T/v_pass.txt" 124 w_x)"
-  ck verdict-prefix-name-not-matched NO_OBSERVATION "$(claim_classify "$T/v_other.txt" 0 w_x)"
+  # -------- verdict rules (v4 blocker 3 + v7 item 3). A bare line counts only inside an OBSERVED leg, so
+  # -------- the second argument is the leg's exit-code consistency, computed once for the whole leg.
+  ck verdict-bare-pass-in-an-observed-leg HELD "$(claim_classify "$T/v_pass.txt" OK w_x)"
+  ck verdict-bare-fail-in-an-observed-leg FAILED "$(claim_classify "$T/v_fail.txt" OK w_x)"
+  ck verdict-qualified-fail-is-not-falsified NO_OBSERVATION "$(claim_classify "$T/v_qfail.txt" OK w_x)"
+  ck verdict-qualified-fail-in-a-mismatching-leg NO_OBSERVATION "$(claim_classify "$T/v_qfail.txt" MISMATCH w_x)"
+  ck verdict-unobserved NO_OBSERVATION "$(claim_classify "$T/v_unobs.txt" OK w_x)"
+  ck verdict-panicked NO_OBSERVATION "$(claim_classify "$T/v_panic.txt" OK w_x)"
+  ck verdict-two-outcome-lines NO_OBSERVATION "$(claim_classify "$T/v_two.txt" OK w_x)"
+  ck verdict-pass-and-fail NO_OBSERVATION "$(claim_classify "$T/v_both.txt" OK w_x)"
+  ck verdict-bare-pass-plus-qualified-fail NO_OBSERVATION "$(claim_classify "$T/v_bare_plus_q.txt" OK w_x)"
+  ck verdict-no-outcome-line NO_OBSERVATION "$(claim_classify "$T/v_none.txt" OK w_x)"
+  ck verdict-prefix-name-not-matched NO_OBSERVATION "$(claim_classify "$T/v_other.txt" OK w_x)"
+  # the exit code has to agree with the bare verdicts of the whole leg; that is asked once per leg
+  ck verdict-pass-with-rc0-is-consistent OK "$(leg_rc_expect "$T/v_pass.txt" 0 w_x)"
+  ck verdict-fail-with-rc1-is-consistent OK "$(leg_rc_expect "$T/v_fail.txt" 1 w_x)"
+  ckp verdict-pass-with-rc1-is-a-mismatch "MISMATCH" "$(leg_rc_expect "$T/v_pass.txt" 1 w_x)"
+  ckp verdict-pass-with-rc124-is-a-mismatch "MISMATCH" "$(leg_rc_expect "$T/v_pass.txt" 124 w_x)"
+  ckp verdict-fail-with-rc0-is-a-mismatch "MISMATCH" "$(leg_rc_expect "$T/v_fail.txt" 0 w_x)"
+  # a clean claim in a leg whose exit code disagreed still reports nothing
+  ck verdict-clean-claim-in-a-disagreeing-leg NO_OBSERVATION "$(claim_classify "$T/v_pass.txt" "$(leg_rc_expect "$T/v_pass.txt" 1 'w_x w_xy')" w_x)"
 
   echo "fixture part 1 ok=$okn fail=$badn so far"
 fi
@@ -654,6 +852,107 @@ STUBPB
   ck producer-two-render-sites-refuses "expected exactly one completion-record render site, found 2" "$(producer_gate "$T/pb_two.rs" | cut -d' ' -f1-8)"
   ck producer-unreadable-refuses "the pinned claim_batch.rs is unreadable: $T/nope.rs" "$(producer_gate "$T/nope.rs")"
   ck completion-predicates-empty-refuses "the completion predicates are empty; a vacuous pattern would count every line" "$(PP_PREFIX= ; pp_check "$T/pp_real.txt")"
+  # ---- THE MULTI-CLAIM LEG CONTRACT end to end, through this packet's real leg() and its real exit
+  # ---- decision. A stub stands in for claim_batch: bare verdict lines on stdout, the frozen completion
+  # ---- record on stderr, and the exit code the case asks for. Every case reports
+  # ---- "<class a> <class b> <leg state> <packet exit>", so the exit code is asserted, not described.
+  mkstub() { local f=$1 rc=$2; shift 2
+    { printf '#!/bin/sh\n'
+      for l in "$@"; do printf 'printf "%%s\\n" "%s"\n' "$l"; done
+      printf 'printf "%%s\\n" "%s" >&2\nexit %s\n' "$PP_REAL" "$rc"; } > "$f"
+    chmod +x "$f"; }
+  cc_case() { # $1=case name $2=rc $3..=verdict lines -> the four fields above, from the packet's own code
+    local nm=$1 rc=$2 D ex
+    D=$T/cc_$nm; mkdir -p "$D/mem" "$D/logs"
+    OUT=$D; O=$D/receipt.txt; MEMDIR=$D/mem; EV=$D/events
+    printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > "$EV"
+    mkstub "$D/stub" "$rc" "$@"
+    BIN4=$D/stub; BIN5=$D/stub; BIN6=$D/stub; export BIN4 BIN5 BIN6
+    leg "$nm" "\"\$BIN4\" --source-root dag --entry x.dag --functions a,b" "a b"
+    ( final_verdict ) > "$D/fv.txt" 2>&1; ex=$?
+    echo "$(awk '$1=="a"{print $2}' "$D/$nm.classes") $(awk '$1=="b"{print $2}' "$D/$nm.classes") $(cat "$D/$nm.state") $ex"; }
+  ck contract-pass-and-fail-at-rc1 "HELD FAILED FALSIFIED 1" "$(cc_case MIX1 1 "PASS a" "FAIL b")"
+  ck contract-all-pass-at-rc1 "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case ALLP1 1 "PASS a" "PASS b")"
+  ck contract-pass-and-fail-at-rc0 "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case MIX0 0 "PASS a" "FAIL b")"
+  ck contract-all-pass-at-rc0 "HELD HELD AS_EXPECTED 0" "$(cc_case ALLP0 0 "PASS a" "PASS b")"
+  ck contract-reasoned-fail "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case RSN 1 "PASS a" "FAIL b (runtime error [E]: boom)")"
+  ck contract-missing-verdict "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case MIS 0 "PASS a")"
+  ck contract-duplicate-verdict "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case DUP 0 "PASS a" "PASS b" "PASS b")"
+  ck contract-timeout-rc124 "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case T124 124 "PASS a" "PASS b")"
+  # FALSIFIED outranks NO_OBSERVATION, but only across legs: leg 1 is a well-formed bare FAIL, leg 2 has
+  # no completion record at all. The FAIL is still a finding, so the packet exits 1, not 2.
+  D=$T/cc_ACROSS; mkdir -p "$D/mem" "$D/logs"
+  OUT=$D; O=$D/receipt.txt; MEMDIR=$D/mem; EV=$D/events
+  printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > "$EV"
+  mkstub "$D/stub1" 1 "PASS a" "FAIL b"
+  BIN4=$D/stub1; BIN5=$D/stub1; BIN6=$D/stub1; export BIN4 BIN5 BIN6
+  leg GOODFAIL "\"\$BIN4\" --source-root dag --entry x.dag --functions a,b" "a b"
+  printf '#!/bin/sh\nprintf "PASS c\\n"\nexit 0\n' > "$D/stub2"; chmod +x "$D/stub2"
+  BIN4=$D/stub2
+  leg NORC "\"\$BIN4\" --source-root dag --entry x.dag --functions c" "c"
+  ( final_verdict ) > "$D/fv.txt" 2>&1; rc=$?
+  ck falsified-outranks-no-observation 1 "$rc"
+  ck across-legs-the-clean-claims-still-classify "HELD FAILED NO_OBSERVATION" "$(awk '{printf "%s ", $2}' "$D/GOODFAIL.classes" "$D/NORC.classes" | sed 's/ $//')"
+  # ---- POST-LEG GATES. Real git in a throwaway repo, because the gate runs real git and a stub of git
+  # ---- would test the stub. Clean worktree + unchanged binary = no cause; either failure names every
+  # ---- claim NO_OBSERVATION in final_verdict, even a bare FAIL that was otherwise well formed.
+  pg_case() { # $1=name $2=clean|dirtywt|binchanged -> "<cause> exit=<packet exit>" for a well-formed FAIL
+    local D=$T/pg_$1 wt=$T/pg_$1/wt ex pre
+    mkdir -p "$D/logs" "$wt"
+    # real git in a throwaway temp dir, because the gate runs real git: stubbing git would test the stub.
+    git -c init.defaultBranch=main -c user.email=fixture@packet -c user.name=fixture init -q "$wt" </dev/null >/dev/null 2>&1
+    printf 'x\n' > "$wt/file"
+    git -C "$wt" add file </dev/null >/dev/null 2>&1
+    git -C "$wt" commit -q -m seed </dev/null >/dev/null 2>&1
+    OUT=$D; O=$D/receipt.txt
+    printf 'a HELD\nb FAILED\n' > "$D/LEGX.classes"
+    : > "$D/bin"
+    pre=$(bin_sha "$D/bin" || echo unreadable)
+    case "$2" in
+      dirtywt) printf 'left behind by a leg\n' > "$wt/untracked" ;;
+      binchanged) printf 'the bytes under the runner changed\n' > "$D/bin" ;;
+    esac
+    post_leg_gate "$wt" "$D/bin" "$pre"
+    ( final_verdict ) > "$D/fv.txt" 2>&1; ex=$?
+    echo "$(cut -c1-28 "$D/post-leg.cause") exit=$ex"; }
+  ckp post-leg-clean-no-cause "exit=1" "$(pg_case clean clean)"
+  ckp post-leg-dirty-worktree-refuses "the worktree" "$(pg_case dirtywt dirtywt)"
+  ckp post-leg-runner-changed-refuses "the runner changed" "$(pg_case binchanged binchanged)"
+  # a cause rewrites EVERY claim, including the bare FAIL that was otherwise a finding: the pinned bytes
+  # are no longer what the legs ran against, so nothing in the leg can be attributed to the pin.
+  # the cause is applied when the verdict is computed and recorded in the receipt; the classes files keep
+  # what the legs wrote, so the audit trail shows both what a leg printed and what it was allowed to mean.
+  ckp post-leg-dirty-forces-every-claim-nood "a=NO_OBSERVATION b=NO_OBSERVATION" "$(grep -o 'claims classified:.*' "$T/pg_dirtywt/receipt.txt")"
+  ckp post-leg-dirty-makes-a-bare-fail-exit-2 "exit=2" "$(pg_case dirtywt2 dirtywt)"
+  ckp post-leg-clean-keeps-the-finding "a=HELD b=FAILED" "$(grep -o 'claims classified:.*' "$T/pg_clean/receipt.txt")"
+  ckp post-leg-binchange-forces-every-claim-nood "a=NO_OBSERVATION b=NO_OBSERVATION" "$(grep -o 'claims classified:.*' "$T/pg_binchanged/receipt.txt")"
+  ckp post-leg-cause-is-recorded-in-the-receipt "post_leg:" "$(cat "$T/pg_dirtywt/receipt.txt")"
+  # ---- out_gate: the one argument, gated.
+  ck out_gate-accepts-the-booked-shape 0 "$(out_gate /home/x/runs/BOOKED-JOB/out BOOKED-JOB; echo $?)"
+  ckp out_gate-refuses-relative "OUT 'runs/J/out' is relative" "$(out_gate runs/J/out J)"
+  ckp out_gate-refuses-no-out-suffix "does not end in /out" "$(out_gate /home/x/runs/J/logs J)"
+  # the /out suffix is checked before anything below /out, so this path is refused as a missing suffix;
+  # only a bare /out (which does end in /out) reaches the "path below /out" arm, and that is asserted too.
+  ckp out_gate-refuses-a-path-under-out "does not end in /out" "$(out_gate /home/x/runs/J/out/extra J)"
+  ckp out_gate-refuses-a-different-job "names job 'other-job'" "$(out_gate /home/x/runs/other-job/out BOOKED-JOB)"
+  ckp out_gate-refuses-a-bare-out "/out entry itself" "$(out_gate /out J)"
+  # ---- gate exit codes: a refusal that returns 0 is a gate that never closes. Every arm is checked.
+  wg_rc() { wall_gate "$1" "$2" "$3" "$4" >/dev/null 2>&1; echo $?; }
+  ck wall-gate-ok-exits-0 0 "$(wg_rc "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S")"
+  ck wall-gate-refuses-over-cap-nonzero 1 "$(wg_rc "$WALL_SUM" 9900 "$LAUNCHER_CAP" 10200)"
+  ck wall-gate-refuses-sum-over-scope-nonzero 1 "$(wg_rc 99999 "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S")"
+  ck wall-gate-refuses-short-driver-nonzero 1 "$(wg_rc "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" 1)"
+  ckp wall-gate-names-the-cap-refusal "exceeds the installed calmcrab-udrv v4 preflight cap" "$(wall_gate "$WALL_SUM" 9900 "$LAUNCHER_CAP" 10200)"
+  ckp wall-gate-names-the-sum-refusal "exceeds the scope RuntimeMaxSec" "$(wall_gate 99999 "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S")"
+  ckp wall-gate-names-the-driver-refusal "the driver service must be RuntimeMaxSec" "$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" 1)"
+  pg_rc() { producer_gate "$1" >/dev/null 2>&1; echo $?; }
+  ck producer-gate-ok-exits-0 0 "$(pg_rc "$T/pb_ok.rs")"
+  ck producer-gate-stdout-render-refuses-nonzero 1 "$(pg_rc "$T/pb_stdout.rs")"
+  ck producer-gate-two-sites-refuses-nonzero 1 "$(pg_rc "$T/pb_two.rs")"
+  ck producer-gate-unreadable-refuses-nonzero 1 "$(pg_rc "$T/nope.rs")"
+  og_rc() { out_gate "$1" "$2" >/dev/null 2>&1; echo $?; }
+  ck out_gate-ok-exits-0 0 "$(og_rc /home/x/runs/J/out J)"
+  ck out_gate-refusals-exit-nonzero 1 "$(og_rc runs/J/out J)"
   echo "FIXTURES pass=$okn fail=$badn"; [ $badn -eq 0 ]; exit $?
 fi
 
@@ -663,7 +962,7 @@ bytes_of() { printf '%s' "$1" | wc -c | tr -d ' '; }
 if [ "${1:-}" = "--predict-only" ]; then
   # Writes NOTHING, contacts nothing: no run dir, no clone, no build, no store. The bytes and sha256 below
   # are over the LITERAL frozen string, before $OUT / $BIN4 / $BIN5 are expanded at run time.
-  echo "PREDICT-ONLY row=R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v6_manifest.md"
+  echo "PREDICT-ONLY row=R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v7_manifest.md"
   echo "THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed."
   echo "pin_r5=$H5 tree_r5=$T5"
   printf 'blob %s %s\n' "$E5" "$B5"
@@ -688,11 +987,14 @@ fi
 
 # ---------------------------------------------------------------- usage: ONE argument, the launcher's OUT
 [ $# -eq 1 ] && [ -n "$1" ] && [ "${1#-}" = "$1" ] || { echo "NO_OBSERVATION: usage: script.sh <OUT> — one argument, the launcher's fresh evidence dir (<RUNTIME>/out); a leading dash is a flag, never a path" >&2; exit 2; }
-OUT=$1
+OUT=${1%/}
 export OUT
-case "$OUT" in */out) ;; *) echo "NO_OBSERVATION: OUT '$OUT' does not end in /out (calmcrab-udrv v4 maps the row's evidence dir to <RUNTIME>/out)" >&2; exit 2;; esac
+# ONE argument, and it is gated rather than described (v7 non-blocking): absolute, in the launcher's
+# <RUNTIME>/out shape, and naming the job this packet is booked as. A relative OUT resolves against
+# whatever directory the launcher happened to start in, and an OUT naming someone else's job would file
+# this row's evidence where the next reader will not look for it.
+OG=$(out_gate "$OUT" "$J") || { echo "NO_OBSERVATION: $OG" >&2; exit 2; }
 JOB=$(basename "$(dirname "$OUT")" 2>/dev/null || echo "")
-[ -n "$JOB" ] || { echo "NO_OBSERVATION: cannot derive the booked JOB from OUT '$OUT' (expected <RUNTIME>/<JOB>/out)" >&2; exit 2; }
 command -v timeout >/dev/null || { echo "NO_OBSERVATION: timeout(1) is missing and every step would be unbounded" >&2; exit 2; }
 [ -x /usr/bin/time ] || { echo "NO_OBSERVATION: /usr/bin/time is missing; elapsed and peak-RSS evidence could not be recorded" >&2; exit 2; }
 out_absent "$OUT" || { echo "NO_OBSERVATION: OUT $OUT already exists (any entry — file, directory, symlink or dangling symlink — refuses; a row's evidence dir is never reused)" >&2; exit 2; }
@@ -701,19 +1003,27 @@ chmod 700 "$OUT"
 MEMDIR=$OUT/memevents; mkdir -- "$MEMDIR" || { echo "NO_OBSERVATION: cannot make $MEMDIR" >&2; exit 2; }
 mkdir -- "$OUT/logs" || { echo "NO_OBSERVATION: cannot make $OUT/logs" >&2; exit 2; }
 export TMPDIR=$OUT/tmp; mkdir -- "$TMPDIR" || { echo "NO_OBSERVATION: cannot make $TMPDIR" >&2; exit 2; }
+# CARGO_HOME lives under the evidence dir (v7 non-blocking): the build must not write into whoever's home
+# the launcher happened to start in, and the registry cache the build resolved against becomes part of
+# the row's evidence instead of vanishing with the account.
+export CARGO_HOME=$OUT/cargo-home; mkdir -- "$CARGO_HOME" || { echo "NO_OBSERVATION: cannot make $CARGO_HOME" >&2; exit 2; }
 O=$OUT/receipt.txt
 echo "job=$JOB booked_job=$J host=$(hostname 2>/dev/null || echo unreadable) machine_id=$(cat /etc/machine-id 2>/dev/null || echo unreadable) start=$(date -u +%FT%TZ)" > "$O"
 S=$(bin_sha "$0") || nox "cannot hash the staged script at $0" script-hash
 echo "script_sha256=$S (compare with the published frozen value; a file cannot gate its own hash)" >> "$O"
 
 # FIXTURES BEFORE ANY WORK IS SPENT: a misfired classifier ends the row with no claim attempted.
-bash "$0" --classifier-fixtures > "$OUT/logs/selfcheck.log" 2>&1 || nox "the packet's own classifier fixtures misfired; no claim attempted (see logs/selfcheck.log)" fixtures
+timeout "$T_SELFRUN" bash "$0" --classifier-fixtures > "$OUT/logs/selfcheck.log" 2>&1; SFX=$?
+[ "$SFX" = 0 ] || nox "the packet's own classifier fixtures misfired or hung (exit $SFX); no claim attempted (see logs/selfcheck.log)" "fixtures(exit=$SFX)"
 echo "fixtures: $(grep -c '^FIXTURE PASS' "$OUT/logs/selfcheck.log") pass, $(grep -c '^FIXTURE FAIL' "$OUT/logs/selfcheck.log") fail" >> "$O"
 
 CG=$(scope_gate "$(cat /proc/self/cgroup 2>/dev/null)" "$JOB") || nox "scope gate: /proc/self/cgroup is not exactly one 0:: line whose path ends in /$JOB.scope: $(tr '\n' ' ' < /proc/self/cgroup 2>/dev/null)" scope
 EV=/sys/fs/cgroup$CG/memory.events
 GA=$(oom_snap "$EV" gate-a); GB=$(oom_snap "$EV" gate-b)
-[ "$(oom_pair_verdict "$GA" "$GB")" = none ] || nox "memory.events at $EV unreadable or already OOM-marked at the gate: $GA -> $GB" "$([ "$(oom_pair_verdict "$GA" "$GB")" = UNKNOWN ] && echo counter-incoherent || echo oom-before-work)"
+GV=$(oom_pair_verdict "$GA" "$GB")
+# the reason label carries the verdict the gate actually got: an unreadable counter is not an
+# incoherent counter, and calling one the other is how a read failure gets reported as a memory event.
+[ "$GV" = none ] || nox "memory.events at $EV unreadable or already OOM-marked at the gate: $GA -> $GB" "gate-read-$GV"
 BM=$(bounds_check "/sys/fs/cgroup$CG") || nox "booked bounds: $BM" bounds
 WM=$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S") || nox "wall gate: $WM" wall
 echo "wall sum=${WALL_SUM}s scope_RuntimeMaxSec=${RUNTIME_S} driver_RuntimeMaxSec=${DRIVER_S} launcher_cap=${LAUNCHER_CAP} legs=${N_LEGS}" >> "$O"
@@ -753,7 +1063,7 @@ build_pin() { # $1=worktree; builds claim_batch under the booked bounds, OOM jud
   echo "== build $1 exit=$BX oom=$BO $(tm "$OUT/logs/$1-build.log")" >> "$O"
   [ "$BX" = 124 ] && nox "$1 build timed out at ${T_BUILD}s" build-timeout
   [ "$BX" = 0 ] || { tail -10 "$OUT/logs/$1-build.log" >> "$O"; nox "$1 build exit=$BX" build; }
-  [ "$BO" = none ] || nox "$1 build oom=$BO ($k0 -> $k1)" "$([ "$BO" = OOM_KILLED ] && echo build-oom || echo counter-incoherent)"
+  [ "$BO" = none ] || nox "$1 build oom=$BO ($k0 -> $k1)" "build-oom-$BO"
   B=$W/target/release/claim_batch
   [ -x "$B" ] || nox "$1 build produced no executable at $B" build
   echo "binary $B sha256=$(bin_sha "$B" || echo unreadable)" >> "$O"; }
@@ -766,6 +1076,8 @@ build_pin wt-r5
 # argv[0] empty — a defect that reads as a runner failure rather than as what it is.
 BIN5=$OUT/wt-r5/target/release/claim_batch
 [ -x "$BIN5" ] || nox "runner missing at $BIN5" build
+PREBIN5=$(bin_sha "$BIN5" || echo unreadable)
+WT=$OUT/wt-r5; RUNNER=$BIN5; PREBIN=$PREBIN5
 export OUT BIN5
 
 leg R5  "$CMD_LEG_R5"  "$N5"
@@ -773,18 +1085,10 @@ leg R5  "$CMD_LEG_R5"  "$N5"
 FA=$(oom_snap "$EV" final)
 FV=$(oom_pair_verdict "$LASTOOM" "$FA")
 echo "== final oom vs last leg after: $LASTOOM -> $FA verdict=$FV" >> "$O"
-[ "$FV" = none ] || nox "memory events moved between the last leg and the final snapshot: $LASTOOM -> $FA ($FV)" "$([ "$FV" = OOM_KILLED ] && echo oom-in-teardown || echo counter-incoherent)"
+[ "$FV" = none ] || nox "memory events moved between the last leg and the final snapshot: $LASTOOM -> $FA ($FV)" "teardown-oom-$FV"
 echo "memory.peak (printed, never judged): $(cat "/sys/fs/cgroup$CG/memory.peak" 2>/dev/null || echo unreadable)" >> "$O"
 
-S5=$(cat "$OUT/R5.state")
-echo "row R5 states: R5=$S5 (presence only; this row discriminates nothing)" >> "$O"
-if [ "$S5" = NOOBS ]; then
-  echo "VERDICT=NO_OBSERVATION reason=one-or-more-legs-had-no-observation" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
-  echo "NO_OBSERVATION: a leg produced no clean bare-verdict observation (R5=$S5)" >&2; exit 2
-fi
-if [ "$S4A" = FALSIFIED ] || [ "$S4B" = FALSIFIED ] || [ "$S5" = FALSIFIED ]; then
-  echo "VERDICT=FALSIFIED R5=$S5" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
-  echo "FALSIFIED: a claim printed a bare FAIL (R5=$S5)" >&2; exit 1
-fi
-echo "VERDICT=AS_EXPECTED claims=5 legs=1 mutation_legs=0" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
-exit 0
+# post-leg gates, then the exit decision. final_verdict reads only this packet's own classes files and
+# its own post-leg.cause; it prints the per-claim table, then the verdict, and exits 0 / 1 / 2.
+post_leg_gate "$WT" "$RUNNER" "$PREBIN"
+final_verdict

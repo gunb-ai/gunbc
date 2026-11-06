@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# acceptance_r4_r5_r6_selfcheck_v6 — the fixture self-test for the three v6 packets: one job per row (R4,
+# acceptance_r4_r5_r6_selfcheck_v7 — the fixture self-test for the three v7 packets: one job per row (R4,
 # R5, and R6 held). Item 8 is the v5 stream fix (the completion record is the runner's stderr, not stdout).
 # NOTHING FROM EITHER REPOSITORY IS EXECUTED and nothing is run on srv1: it feeds synthetic claim logs,
 # synthetic cgroup and memory.events files, synthetic run dirs and the packets' OWN tokenized command lines
@@ -26,14 +26,14 @@
 # usage: acceptance_r4r5_selfcheck_v3.sh [repo-with-pinned-commits]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# acceptance_r4_r5_r6_selfcheck_v6 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
+# acceptance_r4_r5_r6_selfcheck_v7 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
 # because the installed calmcrab-udrv v4 (855920ac) refuses any RUNTIME_S above 7200 in its own preflight
 # (sleek-owl-397 via calm-eagle-670 msg_384bca0f; same shape as #15695 diag-v2 booked at 11700). So each
 # row is its own job: its own clone/fetch/checkout/build, its own legs, its own launcher line, and its own
 # wall_gate that refuses a booking over the cap BEFORE any fetch. Every v5 gate stays, in all three.
-P4="$HERE/acceptance_r4_claim_run_v6.sh"
-P5="$HERE/acceptance_r5_claim_run_v6.sh"
-P6="$HERE/acceptance_r6_live_read_claim_run_v6.sh"
+P4="$HERE/acceptance_r4_claim_run_v7.sh"
+P5="$HERE/acceptance_r5_claim_run_v7.sh"
+P6="$HERE/acceptance_r6_live_read_claim_run_v7.sh"
 PKTS="$P4 $P5 $P6"
 REPO="${1:-}"
 for f in "$P4" "$P5" "$P6"; do [ -f "$f" ] || { echo "packet $f not found next to the self-check" >&2; exit 1; }; done
@@ -85,7 +85,9 @@ for f in $PKTS; do grep -q 'LAUNCHER_CAP=7200' "$f" && ok || bad "$(basename "$f
 for f in $PKTS; do
   out=$(bash "$f" --classifier-fixtures 2>&1); rc=$?
   np=$(printf '%s\n' "$out" | grep -c '^FIXTURE PASS'); nf=$(printf '%s\n' "$out" | grep -c '^FIXTURE FAIL')
-  if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 60 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf"; fi
+  # v6 was 178/176/180; v7 adds the per-claim contract, the post-leg gates and the argument gate, so a
+  # count under 220 means fixtures were dropped, which is the same as a rule losing its proof.
+  if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 220 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf (want rc 0, 0 failures, > 220 assertions)"; fi
   echo "  $(basename "$f"): $np embedded fixtures pass, $nf fail (rc=$rc)"
 done
 
@@ -119,35 +121,36 @@ for f in "$SB/h4.sh" "$SB/h5.sh" "$SB/h6.sh"; do
 done
 H="$SB/h4.sh"
 
-echo "== the classifier: bare PASS/FAIL only, one per name, and the runner's exit code checked apart"
+echo "== the classifier (v7): per claim, inside an OBSERVED leg; the leg's exit code checked as a set"
 printf 'PASS witness_inbox_stale_live_receipt_refuses\n' > "$SB/p"
-check "a bare PASS line with rc 0 is an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' 0 witness_inbox_stale_live_receipt_refuses)\" = HELD ]"
 printf 'FAIL witness_inbox_stale_live_receipt_refuses\n' > "$SB/f"
-check "a bare FAIL line with rc 1 is an observation (a falsified expectation)" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/f' 1 witness_inbox_stale_live_receipt_refuses)\" = FAILED ]"
-check "a bare PASS with rc 1 is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' 1 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "all-pass but exit 1 (the cost-accounting partition refused) is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' 1 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "a bare FAIL with rc 0 is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/f' 0 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "rc 124 (timeout) is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' 124 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "rc 137 (signalled) is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' 137 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "a missing rc is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' missing witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "an empty rc is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' '' witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "no output file at all is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/nothing' 0 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-: > "$SB/e"; check "an empty output file is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/e' 0 witness_inbox_stale_live_receipt_refuses)\" = NO_OBSERVATION ]"
-check "a name this leg did not ask for is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/p' 0 witness_other)\" = NO_OBSERVATION ]"
-printf 'PASS x\nPASS x\n' > "$SB/dup"; check "a duplicate PASS line is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/dup' 0 x)\" = NO_OBSERVATION ]"
-printf 'PASS x\nFAIL x\n' > "$SB/con"; check "PASS and FAIL for one name is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/con' 1 x)\" = NO_OBSERVATION ]"
-printf '  PASS x\n' > "$SB/ind"; check "an indented verdict line is NOT an observation" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/ind' 0 x)\" = NO_OBSERVATION ]"
-for q in 'FAIL x (runtime error [E]: boom)' 'FAIL x (returned ProcessExit::ExitFailure, code 3: nope)' 'UNOBSERVED x (route gap; see remedy)' 'PANICKED x (the host unwound)'; do
-  printf '%s\n' "$q" > "$SB/q"
-  check "a qualified line is NOT an observation: ${q:0:12}" 0 bash -c "source $H; [ \"\$(claim_classify '$SB/q' 2 x)\" = NO_OBSERVATION ]"
-  check_out "the stray detector sees the qualified line: ${q:0:12}" 0 "stray=1 exact=0" bash -c "source $H; stray_verdict_lines '$SB/q' 'x'"
+{ printf 'PASS a\n'; printf 'FAIL b\n'; } > "$SB/mix"
+{ printf 'PASS a\n'; printf 'PASS b\n'; } > "$SB/allpass"
+N=witness_inbox_stale_live_receipt_refuses
+# inside an observed leg (the second argument is the leg's exit-code consistency, computed once for the
+# whole leg by leg_rc_expect): a bare PASS holds and a bare FAIL is the falsified class.
+check_out "a bare PASS inside an observed leg is HELD" 0 "HELD" bash -c "source '$H'; claim_classify '$SB/p' OK $N"
+check_out "a bare FAIL inside an observed leg is the falsified class" 0 "FAILED" bash -c "source '$H'; claim_classify '$SB/f' OK $N"
+# the classifier refuses to classify at all when the leg was not observed. Every non-OK token is a refusal;
+# these are NOT vacuous, because the same files above do classify when the token is OK.
+check_out "an unobserved leg yields NO_OBSERVATION for a PASS claim" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/p' MISMATCH $N"
+check_out "an unobserved leg yields NO_OBSERVATION for a FAIL claim" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/f' MISMATCH $N"
+check_out "an empty leg-consistency token is a refusal" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/p' '' $N"
+# THE LEG EXIT CODE, over every claim in the leg: 0 when all passed, 1 when at least one failed.
+check_out "all-pass with rc 0 is consistent" 0 "OK" bash -c "source '$H'; leg_rc_expect '$SB/allpass' 0 'a b'"
+check_out "one pass one fail with rc 1 is consistent" 0 "OK" bash -c "source '$H'; leg_rc_expect '$SB/mix' 1 'a b'"
+for rc in 1 124 137 2 99 missing; do
+  check_out "all-pass with rc $rc is a mismatch" 0 "MISMATCH" bash -c "source '$H'; leg_rc_expect '$SB/allpass' $rc 'a b' | grep -q MISMATCH && echo MISMATCH"
 done
-printf 'PASS a\nFAIL b (runtime error [E]: boom)\nPASS c\n' > "$SB/mixed"
-check_out "the stray detector fires on one qualified line among clean ones" 0 "stray=3 exact=2" bash -c "source $H; stray_verdict_lines '$SB/mixed' 'a b c'"
-printf 'PASS a\nPASS b\nPASS c\n' > "$SB/clean"
-check "a clean bare-verdict log passes the stray detector" 0 bash -c "source $H; [ \"\$(stray_verdict_lines '$SB/clean' 'a b c')\" = 0 ]"
-printf 'PASS a\n' > "$SB/one"; check "a verdict for a name outside the leg is stray" 0 bash -c "source $H; [ \"\$(stray_verdict_lines '$SB/one' 'b')\" != 0 ]"
-
+for rc in 0 124 137 2 99 missing; do
+  check_out "a leg with a bare FAIL and rc $rc is a mismatch" 0 "MISMATCH" bash -c "source '$H'; leg_rc_expect '$SB/mix' $rc 'a b' | grep -q MISMATCH && echo MISMATCH"
+done
+check_out "a name the log never printed does not change the rc verdict" 0 "OK" bash -c "source '$H'; leg_rc_expect '$SB/allpass' 0 'a b $N'"
+check_out "the mismatch text says what was required" 0 "0 was required" bash -c "source '$H'; leg_rc_expect '$SB/allpass' 1 'a b' | grep -o '0 was required'"
+check_out "the mismatch text counts the fails it saw" 0 "1 claim" bash -c "source '$H'; leg_rc_expect '$SB/mix' 0 'a b' | grep -o '1 claim'"
+# a qualified line is never an outcome, and one is enough to make the whole leg unobservable
+check_out "a reasoned FAIL is not a bare FAIL: rc 0 is still consistent with it" 0 "OK" bash -c "source '$H'; printf 'PASS a\nFAIL b (boom)\n' > '$SB/vq'; leg_rc_expect '$SB/vq' 0 'a b'"
+check_out "…and the same leg at rc 1 is a mismatch, because a reasoned FAIL is not a countable one" 0 "0 was required" bash -c "source '$H'; printf 'PASS a\nFAIL b (boom)\n' > '$SB/vq'; leg_rc_expect '$SB/vq' 1 'a b' | grep -o '0 was required'"
 echo "== leg state: one FAIL falsifies, one NO_OBSERVATION outranks it"
 mk() { : > "$SB/$1"; for x in a b c; do echo "$x HELD" >> "$SB/$1"; done; }
 mk L1; check "all HELD is AS_EXPECTED" 0 bash -c "source $H; [ \"\$(leg_state '$SB/L1' 'a b c')\" = AS_EXPECTED ]"
@@ -258,10 +261,12 @@ check_out "an unknown flag is not swallowed as a path (exit 2)" 2 "NO_OBSERVATIO
 check_out "a run dir that is not a job's out dir is refused (exit 2)" 2 "does not end in /out" bash "$P4" "$SB/notout"
 check "…and nothing was created for it" 0 bash -c "[ ! -e '$SB/notout' ]"
 check_out "held R6 with no argument is NO_OBSERVATION (exit 2)" 2 "NO_OBSERVATION" bash "$P6"
-check_out "held R6 with OUT but no grant reference refuses (exit 2)" 2 "msg_3407a188" bash "$P6" "$SB/r6job/out"
-check "…and the hold leaves nothing behind (no OUT, no clone)" 0 bash -c "[ ! -e '$SB/r6job/out' ]"
-check_out "held R6 refuses a flag where the grant reference belongs (exit 2)" 2 "execution-grant reference" bash "$P6" "$SB/r6job/out" --yes
-check "…still nothing behind it" 0 bash -c "[ ! -e '$SB/r6job/out' ]"
+R6JOBOUT=$SB/$(grep -m1 "^J=" "$P6" | cut -d= -f2)/out   # the booked job name, not a made-up one
+check_out "held R6 with OUT but no grant reference refuses (exit 2)" 2 "msg_3407a188" bash "$P6" "$R6JOBOUT"
+
+check "…and the hold leaves nothing behind (no OUT, no clone)" 0 bash -c "[ ! -e '$R6JOBOUT' ]"
+check_out "held R6 refuses a flag where the grant reference belongs (exit 2)" 2 "execution-grant reference" bash "$P6" "$R6JOBOUT" --yes
+check "…still nothing behind it" 0 bash -c "[ ! -e '$R6JOBOUT' ]"
 check_out "held R6 --predict-only states the hold and exits 0" 0 "state=HELD" bash "$P6" --predict-only
 check "…and --predict-only creates nothing" 0 bash -c "[ ! -e '$SB/predict' ] && cd '$SB' && bash '$P6' --predict-only >/dev/null"
 check "the grant gate refuses blank, whitespace and flag-like references" 0 bash -c "source $(helpers "$P6" > $SB/h6b.sh; echo $SB/h6b.sh); grant_gate '' >/dev/null && exit 1; grant_gate '  ' >/dev/null && exit 1; grant_gate '--x' >/dev/null && exit 1; grant_gate 'keen-otter-cleared' >/dev/null"
@@ -285,7 +290,7 @@ for f in $PKTS; do
   want="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)) memory.swap.max=0 pids.max=$TASKS_MAX cpu.max=$((CPU_PCT*1000))_100000"
   [ "$BOOKED" = "$want" ] && ok || bad "$b freezes bounds ($BOOKED) that are not the GiB/pids/cpu booking it states ($want)"
   grep_in "$b passes RUNTIME in seconds" "$f" "calmcrab-udrv.sh $(grep -m1 '^J=' "$f" | cut -d= -f2) $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT>"
-  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v6 packet sha256> OUT"
+  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v7 packet sha256> OUT"
 done
 
 for f in $PKTS; do
@@ -526,7 +531,7 @@ done
 printf '%s\n' "$M6" | grep -qE '^PREDICT-ONLY row=R6 .* state=HELD gate=keen-otter-msg_3407a188' && ok || bad "the R6 manifest does not state the hold and its gate"
 printf '%s\n' "$M4" | grep -qE '^PREDICT-ONLY row=R4 job=fierce-wren-19-r4-db56530f host_booked=srv1' && ok || bad "the R4 manifest does not name its own row and job"
 printf '%s\n' "$M5" | grep -qE '^PREDICT-ONLY row=R5 job=fierce-wren-19-r5-dff57af7 host_booked=srv1' && ok || bad "the R5 manifest does not name its own row and job"
-for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v6_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
+for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v7_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
 for m in M4 M5 M6; do
   f=$(eval printf '%s' "\${P${m#M}}")
   d=$(diff <(printf '%s\n' "${!m}" | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)') <(cd "$SB" && bash "$f" --predict-only | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)'))
@@ -548,9 +553,9 @@ run_probe() { # run_probe <packet> <extra args…> — exercises the main flow u
 }
 # /usr/bin/time is absent in this container (it is booked to exist on srv1), so the earliest local refusal is
 # that tooling gate; everything below it is exercised with a copy whose tooling check is relaxed.
-check_out "the shipped R4 packet stops at a named missing-tool gate before creating OUT" 2 "/usr/bin/time" bash "$P4" "$SB/tooljob4/out"
-check_out "…the R5 packet likewise" 2 "/usr/bin/time" bash "$P5" "$SB/tooljob5/out"
-check_out "…and the held R6 packet stops there too, even with a grant reference in hand" 2 "/usr/bin/time" bash "$P6" "$SB/tooljob6/out" keen-otter-msg_3407a188-cleared
+check_out "the shipped R4 packet stops at a named missing-tool gate before creating OUT" 2 "/usr/bin/time" bash "$P4" "$SB/$(grep -m1 '^J=' "$P4" | cut -d= -f2)/out"
+check_out "…the R5 packet likewise" 2 "/usr/bin/time" bash "$P5" "$SB/$(grep -m1 '^J=' "$P5" | cut -d= -f2)/out"
+check_out "…and the held R6 packet stops there too, even with a grant reference in hand" 2 "/usr/bin/time" bash "$P6" "$SB/$(grep -m1 '^J=' "$P6" | cut -d= -f2)/out" keen-otter-msg_3407a188-cleared
 check "…and none of the three created an evidence dir on the way to that refusal" 0 bash -c "[ ! -e '$SB/tooljob4/out' ] && [ ! -e '$SB/tooljob5/out' ] && [ ! -e '$SB/tooljob6/out' ]"
 cp "$P4" "$SB/relaxed4.sh"; cp "$P5" "$SB/relaxed5.sh"; cp "$P6" "$SB/relaxed6.sh"
 python3 - "$SB" <<'PY'
@@ -565,7 +570,9 @@ for f in (sb+"/relaxed4.sh", sb+"/relaxed5.sh", sb+"/relaxed6.sh"):
 PY
 for pair in "$SB/relaxed4.sh:" "$SB/relaxed5.sh:" "$SB/relaxed6.sh:grantish"; do
   f=${pair%%:*}; extra=${pair##*:}
-  jb=$SB/probe-$(basename "$f")-job; mkdir -p "$jb"
+  # the packet's own argument gate refuses an OUT whose <JOB> component is not the booked job, so a probe
+  # that wanted to reach the scope gate had to be booked under the real job name; the probe dir now IS it.
+  jb=$SB/$(grep -m1 '^J=' "$f" | cut -d= -f2); mkdir -p "$jb"
   if [ -n "$extra" ]; then out=$(bash "$f" "$jb/out" "keen-otter-msg_3407a188-cleared" 2>&1); else out=$(bash "$f" "$jb/out" 2>&1); fi
   rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q "scope gate"; then ok; else bad "$f: expected a scope-gate refusal (exit 2), got rc=$rc: $(printf '%s' "$out" | head -2 | tr '\n' '|')"; fi
@@ -671,18 +678,109 @@ printf 'UNOBSERVED w_x (no receipt)\n' > "$SB/v_unobs.txt"
 printf 'PANICKED w_x (panic)\n' > "$SB/v_panic.txt"
 printf 'no verdict here\n' > "$SB/v_none.txt"
 printf 'PASS w_xy\n' > "$SB/v_prefix.txt"
-check_out "a qualified FAIL is NO_OBSERVATION, never a falsification" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_q.txt' 1 w_x"
-check_out "two outcome lines for one name is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_two.txt' 0 w_x"
-check_out "contradictory outcome lines are NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_both.txt' 1 w_x"
+check_out "a qualified FAIL is NO_OBSERVATION, never a falsification" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_q.txt' OK w_x"
+check_out "two outcome lines for one name is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_two.txt' OK w_x"
+check_out "contradictory outcome lines are NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_both.txt' OK w_x"
 printf 'PASS w_x\nFAIL w_x (runtime error: boom)\n' > "$SB/v_bare_q.txt"
-check_out "a bare PASS beside a qualified FAIL is NO_OBSERVATION (only the exactness rule sees this)" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_bare_q.txt' 0 w_x"
-check_out "UNOBSERVED is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_unobs.txt' 2 w_x"
-check_out "PANICKED is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_panic.txt' 1 w_x"
-check_out "no outcome line for the name is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_none.txt' 0 w_x"
-check_out "a longer name's line is not counted for a shorter name" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_prefix.txt' 0 w_x"
-check_out "a bare PASS with rc 0 still holds" 0 "HELD" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; claim_classify '$SB/v_held.txt' 0 w_x"
-check_out "a bare FAIL with rc 1 is still a falsification" 0 "FAILED" bash -c "source '$H'; printf 'FAIL w_x\\n' > '$SB/v_fals.txt'; claim_classify '$SB/v_fals.txt' 1 w_x"
+check_out "a bare PASS beside a qualified FAIL is NO_OBSERVATION (only the exactness rule sees this)" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_bare_q.txt' OK w_x"
+check_out "UNOBSERVED is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_unobs.txt' OK w_x"
+check_out "PANICKED is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_panic.txt' OK w_x"
+check_out "no outcome line for the name is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_none.txt' OK w_x"
+check_out "a longer name's line is not counted for a shorter name" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_prefix.txt' OK w_x"
+check_out "a bare PASS with rc 0 still holds" 0 "HELD" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; claim_classify '$SB/v_held.txt' OK w_x"
+check_out "a bare FAIL with rc 1 is still a falsification" 0 "FAILED" bash -c "source '$H'; printf 'FAIL w_x\\n' > '$SB/v_fals.txt'; claim_classify '$SB/v_fals.txt' OK w_x"
 
+check_out "the shipped leg_rc_expect wants 0 when every claim passed" 0 "OK" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; leg_rc_expect '$SB/v_held.txt' 0 w_x"
+check_out "the shipped leg_rc_expect wants 1 when a claim failed" 0 "OK" bash -c "source '$H'; printf 'FAIL w_x\\n' > '$SB/v_fals.txt'; leg_rc_expect '$SB/v_fals.txt' 1 w_x"
+check_out "the shipped leg_rc_expect refuses an inconsistent pair" 0 "MISMATCH" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; leg_rc_expect '$SB/v_held.txt' 1 w_x | grep -o MISMATCH"
+check_out "a clean claim in a leg whose rc disagreed is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; claim_classify '$SB/v_held.txt' \"\$(leg_rc_expect '$SB/v_held.txt' 1 w_x)\" w_x"
+check_out "the same claim in a consistent leg is HELD, so the pair above is not vacuous" 0 "HELD" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; claim_classify '$SB/v_held.txt' \"\$(leg_rc_expect '$SB/v_held.txt' 0 w_x)\" w_x"
+
+
+# ---------------------------------------------------------------- v7: the per-claim decision, gate exit codes,
+# ---------------------------------------------------------------- the post-leg gates, the argument gate (manager msg_ac20c593)
+echo "== v7: the refusal-position audit; no foreign state variables; the exit decision per claim"
+for f in "$P4" "$P5" "$P6"; do
+  b=$(basename "$f")
+  # A gate called as X=$(fn …) || nox … decides by exit code. In v6 wall_gate and producer_gate printed a
+  # refusal and returned 0, so the refusal existed only as a string in a variable. Any bare `return` arm
+  # in such a function inherits the status of the last command, which after an echo is 0.
+  fns=$(grep -vE '^[[:space:]]*#' "$f" | grep -E '\|\| (nox|\{)' | grep -oE '\$\([a-z_]+' | sed 's/$(//' | sort -u | while read -r c; do grep -q "^$c() {" "$f" && printf '%s\n' "$c"; done)
+  nf=$(printf '%s ' $fns | wc -w)
+  if [ "$nf" -ge 6 ]; then ok; else bad "$b: only $nf gates found in refusal position: $fns"; fi
+  for fn in $fns; do
+    body=$(awk -v fn="$fn" 'index($0, fn"() {")==1 {p=1} p && /^[^[:space:]#]/ && index($0, fn"() {")!=1 {exit} p {print}' "$f")
+    if [ -z "$body" ]; then bad "$b: $fn is used in refusal position but has no definition at column 0"; continue; fi
+    bare=$(printf '%s\n' "$body" | grep -cE '; return(;|\}|$)|[^-a-z_]return;')
+    r1=$(printf '%s\n' "$body" | grep -cE 'return 1([^0-9]|$)')
+    if [ "$bare" = 0 ] && [ "$r1" -ge 1 ]; then ok; else bad "$b: gate $fn (X || nox) has bare-return arms=$bare non-zero arms=$r1"; fi
+  done
+  printf '%s\n' $fns | grep -qx wall_gate || bad "$b: wall_gate is not in the refusal-position set"
+  printf '%s\n' $fns | grep -qx producer_gate || bad "$b: producer_gate is not in the refusal-position set"
+  printf '%s\n' $fns | grep -qx out_gate || bad "$b: the new argument gate is not in the refusal-position set"
+  # v7 blocker 1: the verdict named another row's state variables. Prose may mention them; code may not.
+  hits=$(grep -vE '^[[:space:]]*#' "$f" | grep -cE 'S4A|S4B|\bS5\b|\bS6\b')
+  if [ "$hits" = 0 ]; then ok; else bad "$b: $hits non-comment lines still name a row state variable"; fi
+  # the wiring, by name: post-leg gates before the decision, the pre-leg hash, the argument gate, the
+  # bounded self-run, and CARGO_HOME under the evidence dir.
+  for needle in 'post_leg_gate "$WT" "$RUNNER" "$PREBIN"' 'final_verdict' 'out_gate "$OUT" "$J"' 'timeout "$T_SELFRUN" bash "$0" --classifier-fixtures' 'T_SELFRUN=' 'export CARGO_HOME=$OUT/cargo-home' 'gate-read-$GV' 'leg_rc_expect' 'claims classified:'; do
+    grep -qF "$needle" "$f" && ok || bad "$b: missing wiring: $needle"
+  done
+  grep -qE 'PREBIN[456]=\$\(bin_sha' "$f" && ok || bad "$b: the runner is not hashed before the legs (PREBINn=\$(bin_sha …))"
+  grep -qE 'WT=\$OUT/wt-r[45]|WT=\$W; RUNNER=' "$f" && ok || bad "$b: post_leg_gate would point at no worktree (WT is never set)"
+  grep -qE 'RUNNER=\$BIN[456]' "$f" && ok || bad "$b: post_leg_gate would point at no runner binary (RUNNER is never set)" 
+  # order matters: the post-leg gate must run after the legs and before the exit decision
+  ln_legs=$(grep -n 'leg R' "$f" | tail -1 | cut -d: -f1)
+  ln_post=$(grep -n 'post_leg_gate "$WT"' "$f" | cut -d: -f1)
+  ln_final=$(grep -n '^final_verdict$' "$f" | cut -d: -f1)
+  if [ -n "$ln_legs" ] && [ -n "$ln_post" ] && [ -n "$ln_final" ] && [ "$ln_legs" -lt "$ln_post" ] && [ "$ln_post" -lt "$ln_final" ]; then
+    ok
+  else
+    bad "$b: the post-leg gate must run after the last leg and before final_verdict (legs=$ln_legs post=$ln_post final=$ln_final)"
+  fi
+done
+for hpair in "$SB/h4.sh:$P4" "$SB/h5.sh:$P5" "$SB/h6.sh:$P6"; do
+  h=${hpair%%:*}; p=${hpair##*:}; b=$(basename "$p")
+  # the packet's own exit decision, driven end to end: 0 held, 1 falsified, 2 no-observation, and the
+  # precedence rule (falsified outranks no-observation; a post-leg cause outranks both).
+  fvrc() { # $1=dir $2=classes as a printf format $3=post-leg cause ('' = none) -> the exit code
+    local d=$1 rc
+    rm -rf "$d"; mkdir -p "$d/logs"
+    printf '%b\n' "$2" > "$d/LEGX.classes"
+    if [ -n "$3" ]; then printf '%s\n' "$3" > "$d/post-leg.cause"; else : > "$d/post-leg.cause"; fi
+    rc=$(OUT="$d" O="$d/receipt.txt" bash -c "source '$h'; final_verdict" >/dev/null 2>&1; echo $?)
+    echo "$rc"; }
+  check "$b: every claim held exits 0" 0 test "$(fvrc "$SB/fv_a_$b" 'a HELD\nb HELD' '')" = 0
+  check "$b: one falsified claim exits 1" 0 test "$(fvrc "$SB/fv_b_$b" 'a HELD\nb FAILED' '')" = 1
+  check "$b: one unobserved claim exits 2" 0 test "$(fvrc "$SB/fv_c_$b" 'a HELD\nb NO_OBSERVATION' '')" = 2
+  check "$b: falsified outranks unobserved" 0 test "$(fvrc "$SB/fv_d_$b" 'a FAILED\nb NO_OBSERVATION\nc NO_OBSERVATION' '')" = 1
+  check "$b: a post-leg cause voids even a bare FAIL" 0 test "$(fvrc "$SB/fv_e_$b" 'a HELD\nb FAILED' 'the runner changed during the run')" = 2
+  check "$b: a post-leg cause with everything held is still 2" 0 test "$(fvrc "$SB/fv_f_$b" 'a HELD\nb HELD' 'the worktree is not clean')" = 2
+  check_out "$b: the verdict names the claims it decided" 0 'claims classified: a=HELD b=FAILED' bash -c "rm -rf '$SB/fv_g_$b'; mkdir -p '$SB/fv_g_$b/logs'; printf 'a HELD\nb FAILED\n' > '$SB/fv_g_$b/LEGX.classes'; : > '$SB/fv_g_$b/post-leg.cause'; ( source '$h'; OUT='$SB/fv_g_$b' O='$SB/fv_g_$b/receipt.txt'; final_verdict ) >/dev/null 2>&1; grep -o 'claims classified:.*' '$SB/fv_g_$b/receipt.txt'"
+  # the argument gate, on the shipped helpers
+  check "$b: out_gate accepts the booked shape" 0 bash -c "source '$h'; out_gate /home/x/runs/J/out J"
+  check "$b: out_gate refuses a relative OUT" 1 bash -c "source '$h'; out_gate runs/J/out J"
+  check "$b: out_gate refuses another job's directory" 1 bash -c "source '$h'; out_gate /home/x/runs/other/out J"
+  check "$b: out_gate refuses a bare /out" 1 bash -c "source '$h'; out_gate /out J"
+  check "$b: out_gate refuses a path below /out" 1 bash -c "source '$h'; out_gate /home/x/runs/J/out/deeper J"
+  # the post-leg gate, on the shipped helpers: clean passes, a dirty worktree or a changed runner refuses
+  plg_case() { # $1=dir $2=clean|dirtywt|binchanged -> the cause text
+    local d=$1 wt=$1/wt pre
+    rm -rf "$d"; mkdir -p "$d/logs" "$wt"
+    git -c init.defaultBranch=main -c user.email=fixture@selfcheck -c user.name=selfcheck init -q "$wt" </dev/null >/dev/null 2>&1
+    printf 'x\n' > "$wt/file"; git -C "$wt" add file </dev/null >/dev/null 2>&1
+    git -C "$wt" commit -q -m seed </dev/null >/dev/null 2>&1
+    : > "$d/bin"; pre=$(sha256sum "$d/bin" | cut -d' ' -f1)
+    case "$2" in
+      dirtywt) printf 'left behind\n' > "$wt/untracked" ;;
+      binchanged) printf 'the runner changed\n' > "$d/bin" ;;
+    esac
+    OUT="$d" O="$d/receipt.txt" bash -c "source '$h'; post_leg_gate '$wt' '$d/bin' '$pre'" >/dev/null 2>&1
+    if [ -s "$d/post-leg.cause" ]; then cut -c1-24 "$d/post-leg.cause"; else echo NO-CAUSE; fi; }
+  check_out "$b: a clean worktree and an unchanged runner leave no cause" 0 "NO-CAUSE" plg_case "$SB/plg_clean_$b" clean
+  check_out "$b: a dirty worktree names the cause" 0 "the worktree" plg_case "$SB/plg_dirty_$b" dirtywt
+  check_out "$b: a changed runner names the cause" 0 "the runner changed" plg_case "$SB/plg_bin_$b" binchanged
+done
 echo "== negative controls (a mutated packet must FAIL, or the checks are decorative)"
 cat > "$SB/mut15.py" <<'PY15'
 import sys,re
@@ -709,6 +807,102 @@ b = s.index("  ck completion-predicates-empty-refuses", a)
 b = s.index(chr(10), b)
 open(p,"w").write(s[:a] + "  # (control removed by the mutation)\n" + s[b:])
 PY14
+
+
+cat > "$SB/mut16.py" <<'PY16'
+# weaken the leg exit-code agreement: never count a bare FAIL, so an rc of 1 with a FAIL line (or 0 with
+# none) looks consistent. Every contract fixture and the classifier controls must then refuse.
+import sys, re
+p=sys.argv[1]; s=open(p).read()
+old = 'for n in $names; do q=$(grep -c "^FAIL $n\\$" "$f" 2>/dev/null); [ "${q:-0}" = 1 ] && fails=$((fails+1)); done'
+assert old in s
+open(p,"w").write(s.replace(old, 'for n in $names; do q=0; done', 1))
+PY16
+
+cat > "$SB/mut17.py" <<'PY17'
+# v7 blocker 2, the exact v6 defect: wall_gate prints its refusal and returns 0.
+import sys, re
+p=sys.argv[1]; s=open(p).read()
+m = re.search(r'(?m)^wall_gate\(\) \{.*?\n\n', s, re.S)
+assert m, 'wall_gate'
+b = m.group(0).replace('; return 1; }', '; return; }')
+assert b != m.group(0), 'no wall_gate refusal arm to weaken'
+open(p,"w").write(s[:m.start()] + b + s[m.end():])
+PY17
+
+cat > "$SB/mut18.py" <<'PY18'
+# the same defect in the producer gate: a refusal that returns 0 is a gate that never closes.
+import sys, re
+p=sys.argv[1]; s=open(p).read()
+m = re.search(r'(?m)^producer_gate\(\) \{.*?\n\n', s, re.S)
+assert m, 'producer_gate'
+b = m.group(0).replace('; return 1; }', '; return; }').replace('; return 1 ;;', '; return ;;')
+assert b != m.group(0), 'no producer_gate refusal arm to weaken'
+open(p,"w").write(s[:m.start()] + b + s[m.end():])
+PY18
+
+cat > "$SB/mut19.py" <<'PY19'
+# final_verdict ignores the post-leg cause: a dirty worktree or a swapped runner would still report the
+# legs' verdicts as if nothing had changed under them.
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = '[ -s "$OUT/post-leg.cause" ] && pc=$(cat "$OUT/post-leg.cause")'
+assert old in s
+open(p,"w").write(s.replace(old, ':', 1))
+PY19
+
+cat > "$SB/mut20.py" <<'PY20'
+# leg() stops asking whether the process exit agrees with the leg's bare verdicts: rc 0 with a FAIL, or
+# rc 1 with none, would then classify as if it were an observation.
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'rcst=$(leg_rc_expect "$OUT/$L.out" "$rc" "$3")'
+assert old in s
+open(p,"w").write(s.replace(old, 'rcst=OK', 1))
+PY20
+
+cat > "$SB/mut21.py" <<'PY21'
+# the exit precedence inverted: a packet that has a real falsification AND an unobserved leg would report
+# NO_OBSERVATION (exit 2) and the finding would be lost.
+import sys
+p=sys.argv[1]; s=open(p).read()
+a = 'if [ "$anyF" = 1 ]; then'
+b = 'if [ "$anyN" = 1 ]; then'
+assert s.count(a) == 1 and s.count(b) == 1, (s.count(a), s.count(b))
+s = s.replace(a, '@@B@@', 1).replace(b, a, 1).replace('@@B@@', b, 1)
+open(p,"w").write(s)
+PY21
+
+cat > "$SB/mut22.py" <<'PY22'
+# the argument gate stops refusing a relative OUT: the evidence dir would resolve against whatever cwd
+# the launcher happened to start in, and the row's receipts would land outside the booked run.
+import sys, re
+p=sys.argv[1]; s=open(p).read()
+m = re.search(r'(?m)^out_gate\(\) \{.*?\n\n', s, re.S)
+assert m, 'out_gate'
+b = m.group(0).replace('; return 1;; esac', ';; esac', 1)
+assert b != m.group(0), 'no relative-OUT arm to weaken'
+open(p,"w").write(s[:m.start()] + b + s[m.end():])
+PY22
+
+cat > "$SB/mut23.py" <<'PY23'
+# the post-leg worktree check disabled: a leg that wrote into the pinned checkout would go unnoticed.
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'if [ "${dirty:-1}" != 0 ]; then'
+assert old in s
+open(p,"w").write(s.replace(old, 'if [ "${dirty:-1}" = 99999 ]; then', 1))
+PY23
+
+cat > "$SB/mut24.py" <<'PY24'
+# the post-leg runner-identity check disabled: a binary that changed between the pre-leg hash and the
+# legs would still have its verdicts attributed to the pinned source.
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'if [ "$post" != "$pre" ] || [ "$pre" = unreadable ]; then'
+assert old in s
+open(p,"w").write(s.replace(old, 'if [ -z "$post" ]; then', 1))
+PY24
 
 negctl() { # negctl <label> <base packet> <mutation script>: the mutated copy must fail its OWN fixtures
   local label=$1 base=$2 mut=$3
@@ -784,14 +978,14 @@ PY8
 cat > "$SB/mut9.py" <<'PY9'
 import sys
 p=sys.argv[1]; s=open(p).read()
-old = '[ "$any" = 1 ] || { echo NO_OBSERVATION; return; }'
+old = '[ "${any:-0}" = 1 ] || { echo NO_OBSERVATION; return; }'
 assert old in s
 open(p,"w").write(s.replace(old,':',1))
 PY9
 cat > "$SB/mut10.py" <<'PY10'
 import sys
 p=sys.argv[1]; s=open(p).read()
-old = 'q=$(grep -c "^FAIL $n\\$" "$f" 2>/dev/null)'
+old = 'p=$(grep -c "^PASS $n\\$" "$f" 2>/dev/null); q=$(grep -c "^FAIL $n\\$" "$f" 2>/dev/null)'
 assert old in s
 open(p,"w").write(s.replace(old,'q=$(grep -c "^FAIL $n" "$f" 2>/dev/null)',1))
 PY10
@@ -810,9 +1004,9 @@ old = '[ "$n" = 1 ] || { echo "completion records:'
 assert old in s
 open(p,"w").write(s.replace(old,'[ "$n" -ge 1 ] || { echo "completion records:',1))
 PY11
-for mu in 3 4 5 6 8 9 10 11 12 13; do negctl "mutation $mu applied to the R4 job" "$P4" "$SB/mut$mu.py"; done
-for mu in 3 4 5 6 8 9 10 11 12 13; do negctl "mutation $mu applied to the R5 job" "$P5" "$SB/mut$mu.py"; done
-for mu in 3 4 5 6 8 9 11 12 13; do negctl "mutation $mu applied to the R6 job" "$P6" "$SB/mut$mu.py"; done
+for mu in 3 4 5 6 8 9 10 11 12 13 16 17 18 19 20 21 22 23 24; do negctl "mutation $mu applied to the R4 job" "$P4" "$SB/mut$mu.py"; done
+for mu in 3 4 5 6 8 9 10 11 12 13 16 17 18 19 20 21 22 23 24; do negctl "mutation $mu applied to the R5 job" "$P5" "$SB/mut$mu.py"; done
+for mu in 3 4 5 6 8 9 10 11 12 13 16 17 18 19 20 21 22 23 24; do negctl "mutation $mu applied to the R6 job" "$P6" "$SB/mut$mu.py"; done
 negctl "defect (1) reintroduced: a literal claim_batch token after the binary" "$P4" "$SB/mut1.py"
 negctl "defect (2) reintroduced: a space-separated name in the CSV" "$P4" "$SB/mut2.py"
 negctl "defect (1) in the R6 packet as well" "$P6" "$SB/mut7.py"
