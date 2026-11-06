@@ -1,0 +1,58 @@
+module test.claim.by_ref_bridge_argument_declared_carrier_witness
+
+// THE BY-REF BORROW IS ONE SPELLING, AND IT STAYS PLAIN WHEREVER NOTHING ASKS MORE OF IT.
+//
+// A by-ref runtime bridge (`extdeps.languages.rust.emit rt_function_registry` rows with
+// `passes_by_ref: true`) takes its argument as `&<expr>`, in two spellings -- the bridge's first
+// argument and a method receiver -- and this head centralizes that borrow into `v1.compiler.emit_rust`
+// `rust_by_ref_bridge_argument` so neither spelling can drift from the other. The invalid state that
+// borrow once caused over a GENERIC call argument, the harm, the distinguishing facts and the runs
+// that recorded them live in exactly one place: gunbc.recurring_failure_mode
+// by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow. This file cites that row by
+// symbol and states no occurrence of its own -- a second account of one fact is a DESIGN section 3
+// defect. The repair half of that row -- the callee rendering its own `::<..>` clause, with the
+// refusal in place of a `::<_>` hole -- ships WITH THE CHANGE THAT BRINGS ITS FIRST ELIGIBLE CALL
+// SITE, together with the claim that exercises it (the row names the trigger); review 91465 found the
+// one-way door in shipping an unexecuted annotation arm ahead of the corpus, and deleting it from this
+// PR rather than shipping it unexecuted is the DESIGN 5 answer.
+//
+// WHAT THESE CLAIMS ARE, AND WHAT THEY ARE NOT. Two arms over two programs, each one seed compile,
+// each pinning EMITTED TEXT. They are shape evidence, and they exist to go RED if the plain borrow is
+// ever widened into a wrapper or a block at sites that need no clause: the name arm pins the borrow
+// over a name, the branch arm pins the borrow over an `if` whose branches are calls -- the borrowed
+// expression has no callee, so nothing behind it may be asked to name type arguments. They are NOT
+// execution evidence, and this header does not pretend otherwise: no lane under `.github/workflows`
+// evaluates the claim pool these arms belong to. The rustc differential for the class, including the
+// `&if` shape these programs emit, is recorded in the row.
+
+// The bridge over a NAME: the shape that has always compiled and must keep its plain borrow.
+fn by_ref_plain_name_source() -> String {
+  "module byrefplainname\n\nimport std.types { Int, String }\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n"
+}
+
+// The bridge over an `if` whose branches are calls to the generic `fold_list`. The borrowed expression
+// has no callee; the calls its branches render are not the bridged argument and their own branch
+// context is what pins their type arguments. This is the shape that must keep main's clause-free
+// spelling: requiring the branches to carry a clause -- or handing a permission to a borrowed
+// expression that cannot answer it -- reddens this floor.
+fn by_ref_branch_call_argument_source() -> String {
+  "module byrefbrancharg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(flag: Bool, ids: List<Int>) -> List<Int> {\n  sorted_map_keys(if flag { fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }) } else { empty_map() })\n}\n"
+}
+
+test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_plain_name_source(),
+    "src/byrefplainname.rs",
+    ["v1_rt::string_length(&s"],
+    ["v1_rt::string_length(&{"]
+  )
+}
+
+test fn by_ref_bridge_over_a_branch_call_keeps_the_plain_borrow() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_branch_call_argument_source(),
+    "src/byrefbrancharg.rs",
+    ["v1_rt::sorted_map_keys(&if flag.clone() {", "crate::std_algebra::fold_list(ids, v1_rt::rc_empty_map::<_, _>(), |m, id| v1_rt::rc_map_insert(m, id, true))"],
+    ["fold_list::<", "__by_ref_arg", "::<_>"]
+  )
+}

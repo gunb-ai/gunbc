@@ -88,6 +88,19 @@ import product.p4261.findings { ImageReadingsJudged }
 import product.p4261.k1_a { p4261_k1_layout }
 
 import product.electrical.identification {
+  observation_relied_on,
+  marking_text,
+  // The channels, not the rendering: these four rows are checked on what was read as letters and what was
+  // recorded as the maker's mark, so the witness projects the spans instead of comparing a rendered string.
+  sole_glyph_text,
+  glyph_spans_in,
+  content_spans,
+  glyph_text_eq,
+  Annotation,
+  Glyphs,
+  PrintedLogo,
+  BodyFeature,
+  ReadingCircumstance,
   InstalledComponent,
   MarkingReading,
 }
@@ -256,7 +269,7 @@ fn e1_marking_at(designator: NonEmptyStr) -> MarkingReading? {
   match e1_installed_at(designator) {
     Absent => Absent
     Present { value: row } => match row.identification {
-      IdentifiedByMarking { row: _, marking } => Present { value: marking }
+      IdentifiedByMarking { row: _, observation } => Present { value: observation_relied_on(o: observation) }
       _ => Absent
     }
   }
@@ -307,7 +320,9 @@ fn boxes(designator: NonEmptyStr, want: PixelRegion) -> Bool {
 fn prints(designator: NonEmptyStr, want: String) -> Bool {
   match e1_marking_at(designator) {
     Absent => false
-    Present { value: reading } => reading.text == want
+    // A reading renders what was read; there is no optional text field to compare any more, and the
+    // reporting function is the only thing that turns content into words.
+    Present { value: reading } => marking_text(r: reading) == (want as String)
   }
 }
 
@@ -343,9 +358,72 @@ test fn the_fsv_rows_box_the_bodies_their_receipts_named() -> Bool {
 // Text is what the receipt records, character for character. Stated as equality rather than "the
 // printed marking appears in the reading", because std has no substring primitive and a hand-rolled
 // matcher in a witness would be a second authority over the text (§3).
-test fn the_fsv_rows_say_exactly_what_the_receipts_say() -> Bool {
-  count(filter(["D2_P1", "D8_P1"], d => !prints(designator: d, want: "FSV20100V / JC03 / ON logo"))) == 0
-    && count(filter(["D2_P5", "D8_P5"], d => !prints(designator: d, want: "(ON logo) JC03 FSV20100V"))) == 0
+// What the receipts record for these four is the LETTERS on the body, and rev 6 keeps the vendor's mark in a
+// channel of its own: `PrintedLogo { span: "ON logo", whose: "onsemi -- the ON mark" }`. So the check is made
+// on the channels -- the sole glyph span, and the one logo beside it -- and not on the rendering. Pinning the
+// rendering would re-assert the pre-rev-6 single-line text, in which "ON logo" sat inside the glyphs, and that
+// was a misclassification: those words are the bench naming a mark, not glyphs printed on the part.
+// Three properties, three verdicts. This was one conjunction, and when it failed it named nothing: the
+// lookup, the letters and the logo are different things that can break for different reasons, and a control
+// that cannot say which of three it is cannot direct anyone to the fix.
+
+// (1) The join landed. `e1_marking_at` only answers for a row identified BY its marking, so this says the
+// device code we read actually became the vendor's printed mark -- not a candidate beside it.
+test fn the_four_fsv_rows_are_identified_by_their_marking() -> Bool {
+  count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => match e1_marking_at(designator: d) {
+    Absent => true
+    Present { value: _ } => false
+  })) == 0
+}
+
+// (2) The letters are what the receipts transcribed, in the order the bench read them, per pair.
+test fn the_fsv_p1_pair_prints_the_device_code_then_the_package_code() -> Bool {
+  count(filter(["D2_P1", "D8_P1"], d => !prints_glyphs(designator: d, want: "FSV20100V / JC03"))) == 0
+}
+
+test fn the_fsv_p5_pair_prints_the_package_code_then_the_device_code() -> Bool {
+  count(filter(["D2_P5", "D8_P5"], d => !prints_glyphs(designator: d, want: "JC03 FSV20100V"))) == 0
+}
+
+// (3) The maker's mark is recorded on all four as the maker's mark and nothing else: exactly one PrintedLogo
+// attributed to onsemi, and exactly one span of glyphs -- which is what makes the identification rest on
+// the letters rather than on a logo nobody described.
+test fn all_four_fsv_rows_carry_the_onsemi_logo_beside_one_span_of_glyphs() -> Bool {
+  count(filter(["D2_P1", "D8_P1", "D2_P5", "D8_P5"], d => !carries_onsemi_logo(designator: d))) == 0
+}
+
+fn prints_glyphs(designator: NonEmptyStr, want: NonEmptyStr) -> Bool {
+  match e1_marking_at(designator) {
+    Absent => false
+    // The channel-aware accessor: these rows record a logo beside the letters, so "exactly one span of any
+    // kind" would call them unread. It hands back the span's TEXT (`type MarkingGlyphs = NonEmptyStr`) rather
+    // than the record, because the sighting it carried is not what this check is about.
+    Present { value: reading } => match sole_glyph_text(c: reading.content) {
+      Absent => false
+      Present { value: glyphs } => glyph_text_eq(a: glyphs, b: want)
+    }
+  }
+}
+
+fn carries_onsemi_logo(designator: NonEmptyStr) -> Bool {
+  match e1_marking_at(designator) {
+    Absent => false
+    Present { value: reading } => {
+      let spans = content_spans(c: reading.content)
+      count(glyph_spans_in(spans: spans)) == 1
+        // Both span arms named: a Coproduct match in this language takes no wildcard, and naming them also
+        // shows that only a PrintedLogo can be the mark -- a body feature or an aside does not make a maker.
+        && count(filter(spans, s => match s {
+             Annotation { annotation: a } => match a {
+               PrintedLogo { preceded_by: _, span, whose, sighting: _ } =>
+                 glyph_text_eq(a: span, b: "ON logo") && glyph_text_eq(a: whose, b: "onsemi -- the ON mark")
+               BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => false
+               ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => false
+             }
+             Glyphs { glyphs: _ } => false
+           })) == 1
+    }
+  }
 }
 
 // Two exact strings pinned separately would still let an edit pair the right receipt with the wrong
@@ -700,10 +778,34 @@ test fn the_real_e1_judges_every_image_reading() -> Bool {
       // exhaustive over Checkable | Gap | Broken). The four DesignatorReading rows are untouched --
       // three of them are still gaps and are the next PR's re-citation targets, which will move this
       // line again; D2_P5's designator row is checkable on p089 and stays.
-      read == 522
-        && checkable == 379
+      //
+      // The 2026-11-04 C3_F1 correction REMOVES two readings, and both were gaps: read 522 -> 520 and
+      // gaps 143 -> 141, checkable untouched at 379. C3_F1's DesignatorReading cited
+      // e1_unlocated_frame_closing -- a frame no receipt of its designator registers -- and its
+      // InstalledComponent carried a MarkingReading under MarkingUnresolved whose text was the three
+      // neighbours' marking, copied and stored as if read. Neither rested on bytes the store holds, so
+      // removing them lowers the frontier rather than raising it: a row that should never have existed
+      // was counting as a reading. Deleted rows move this number DOWN, which is the direction that
+      // catches a quiet deletion today. Measured at probe, one candidate per family, with
+      // checkable + count(broken) + count(gaps) == read holding at 520.
+      //
+      // The same day's stored-frame evidence for J3 did not add a reading, it replaced one: grain A
+      // allows one modelled reading per part, so the bench row whose bytes never arrived (a gap) gives
+      // way to a row citing frame _22, boxed, which the store holds. read stays 520 -- one out, one in
+      // -- while checkable 379 -> 380 and gaps 141 -> 140. That is the movement worth pinning: a
+      // citation invented rather than read would have landed back in gaps, a second reading for J3
+      // would have raised read, and a quiet deletion would have lowered it. The other two frames the
+      // operator named are carried by the receipts' authority rather than by extra rows, which is where
+      // corroboration belongs when the board is allowed one reading per part.
+      // 2026-11-05, the U521/U535/U536/U522/U1_P1 re-citations: 8 readings that cited bytes the store
+      // does not hold (e1_unlocated_frame x 7, e1_unstored_photo x 1 -- counted in the diff, not assumed)
+      // now cite a frame the store holds, each with its subject-bound box. So 8 move from gaps to
+      // checkable: 520 read stays (no reading was added or removed), 380 + 8 = 388 checkable,
+      // 140 - 8 = 132 gaps, broken still 0.
+      read == 520
+        && checkable == 388
         && count(broken) == 0
-        && count(gaps) == 143
+        && count(gaps) == 132
         && !image_readings_rest_on_stored_bytes(board_image_reading_grounding(p4261_e1_layout))
         && gaps.all(g => match g.standing {
           BytesNeverStored { taken_on: _, locator: _, obligation } => string_length(obligation as String) > 0

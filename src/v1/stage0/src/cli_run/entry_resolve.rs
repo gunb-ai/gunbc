@@ -1230,6 +1230,21 @@ fn spawn_live_pool_thread() -> (
     (tx, handle)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many whole-pool index builds THIS thread has started. Test-only: every whole-pool build
+    /// passes through `yield_live_pool_before_building_another`, so this one counter sees both
+    /// builders (`build_multi_entry_index` and the process-shared index), and a test that replays a
+    /// production route on its own thread can assert the route builds none.
+    static WHOLE_POOL_INDEX_BUILDS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Whole-pool index builds started on this thread (test-only discriminator).
+#[cfg(test)]
+pub(crate) fn whole_pool_index_builds_on_this_thread() -> u64 {
+    WHOLE_POOL_INDEX_BUILDS.with(|builds| builds.get())
+}
+
 /// THE PROCESS HOLDS ONE LIVE WHOLE-POOL INDEX AT A TIME. Called by every whole-pool index build
 /// (`try_process_shared_index_for_pool`, `build_multi_entry_index`): before any other thread builds
 /// one, the live-pool thread's pool is released -- the thread exits, which drops its index and
@@ -1240,6 +1255,7 @@ fn spawn_live_pool_thread() -> (
 /// thread itself, and any thread a running claim spawned (`LIVE_POOL_BUSY`).
 #[cfg(test)]
 pub(crate) fn yield_live_pool_before_building_another() {
+    WHOLE_POOL_INDEX_BUILDS.with(|builds| builds.set(builds.get() + 1));
     if std::thread::current().name() == Some("live-pool") || LIVE_POOL_BUSY.load(Ordering::SeqCst) {
         return;
     }
@@ -2886,10 +2902,9 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 /// `module_path`, or none.
 ///
 /// The population read exists because a consumer wanted every module; this exists because most
-/// consumers want ONE — "is this module declared, and where does it live". Both project the one
-/// `build_module_path_index` authority, so a hit here is the same `(module, path)` pair the list
-/// carries; the difference is that the keyed form neither materializes nor sorts ~thousands of rows
-/// to answer about one, and the interpreter never marshals them.
+/// consumers want ONE — "is this module declared, and where does it live". A hit here is the same `(module, path)` pair
+/// the list carries (differential: `keyed_reads_equal_the_whole_pool_census`); the keyed form
+/// derives the path from the name and reads no other pool file.
 ///
 /// `Option`, not a bool: the two questions a keyed caller asks — declared? at which path? — are one
 /// lookup, and answering only the first would send the second back through the population read.
@@ -2897,12 +2912,13 @@ pub fn module_declaration_fact_at(
     pool_roots: &[String],
     module_path: &str,
 ) -> Option<ModuleDeclarationFactRaw> {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    with_module_path_index(&abs_pool_roots, |index| {
-        index.get(module_path).map(|path| ModuleDeclarationFactRaw {
+    // Derived from the name (gunbc.source_layout), never from the whole-pool index: see
+    // `keyed_module_lookup`. The answer is the row the index would hold for this module.
+    super::keyed_module_lookup::keyed_module_path(pool_roots, module_path).map(|path| {
+        ModuleDeclarationFactRaw {
             module: module_path.to_string(),
-            path: path.clone(),
-        })
+            path,
+        }
     })
 }
 

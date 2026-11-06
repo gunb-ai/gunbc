@@ -1,7 +1,7 @@
 module extdeps.cpu.types
 
 
-import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.vendor { Vendor }
@@ -168,6 +168,27 @@ type ProcessorThermalLimits {
   authority: ExternalAuthority
 }
 
+// DESIGN POWER AND USAGE POWER ARE TWO FACTS (host thermal plan finding A). A vendor states TDP, the
+// power the cooling and supply must be built for, and separately a usage power measured under a named
+// workload. CpuModelCatalogRow.tdp_watts is the DESIGN figure; folding the usage figure into it made
+// every cooling check read 67 W of margin that the part does not have. Usage power is the heat a
+// stated workload makes, and it never stands in for the worst case.
+type CpuUsagePower {
+  subject: CpuModelCatalogRow
+  watts: Watt
+  workload_basis: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+// The uncited standing of a design-power figure whose vendor datasheet row has not been read for this
+// repository: a typed bet a consumer (product.cooling_qualification, product.node_power_envelope)
+// carries to its own answer instead of consuming it as deduced (DESIGN 4d).
+data cpu_tdp_unread_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "the vendor datasheet's thermal design power row for this exact model" as NonEmptyStr,
+}
+
+// tdp_watts is the vendor's thermal DESIGN power (what coolers and supplies must cover), never the
+// usage power of a workload: see CpuUsagePower.
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
@@ -178,6 +199,7 @@ type CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
   tdp_watts: Watt
+  tdp_standing: CitedFigureStanding
   l1_cache: CpuL1CacheGeometry
   l1_cache_citations: List<FactCitation>
   l2_cache: CpuL2CacheGeometry

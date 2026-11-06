@@ -7499,6 +7499,7 @@ mod compiler_tests {
                     String,
                     std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
                 >();
+                let mut equality_by_target = crate::v1_rt::rc_empty_map::<String, bool>();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -7543,6 +7544,7 @@ mod compiler_tests {
                         source_indices.clone(),
                         intern_table.clone(),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
+                        equality_by_target.clone(),
                     );
                     let env_elapsed = t_env.elapsed();
                     let rss_after_env = get_rss_bytes();
@@ -7585,6 +7587,7 @@ mod compiler_tests {
                             String,
                             std::rc::Rc<crate::v1_compiler_infer_env::TypeBinding>,
                         >(),
+                        equality_by_target.clone(),
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();
@@ -7627,6 +7630,11 @@ mod compiler_tests {
                             variant_surfaces.clone(),
                             source_indices.clone(),
                         ),
+                    );
+                    equality_by_target = crate::v1_compiler_infer::equality_table_with_module(
+                        equality_by_target,
+                        typed.clone(),
+                        source_indices.clone(),
                     );
                     mi_raw.insert(name, typed);
                 }

@@ -6,7 +6,7 @@ import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import extdeps.tailscale.serve { tailscale_serve_enable_argv, tailscale_serve_unix_target_path, tailscale_serve_backend_is_unix_target }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
 import gunbc.live_deploy.emit {
-  live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused, LiveDeployServeUnitGrammarRefused,
   live_deploy_tailnet_door_unit_file, live_deploy_protocol,
   LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
   LiveDeployTailnetDoorUnitOidcReadbackRefused,
@@ -57,7 +57,7 @@ test fn production_serve_route_unit_and_mapping_name_one_door_socket() -> Bool {
   tailscale_serve_backend_is_unix_target(endpoint: spec.names.tailscale_serve_endpoint)
     && deployment_tailnet_door_socket(names: spec.names) == Present { value: door_socket() as NonEmptyStr }
     && argv == join(["serve --bg --https=443 unix:", door_socket()], "")
-    && string_contains(s: unit_text(spec: spec), pattern: join([" --unix-socket ", door_socket(), " "], ""))
+    && string_contains(s: unit_text(spec: spec), pattern: join([" --arg listener=unix:", door_socket(), " "], ""))
 }
 
 // THE DOOR UNIT IS THE LOOPBACK UNIT ON ANOTHER LISTENER AND ENTRY, and nothing else: replacing
@@ -70,14 +70,15 @@ test fn the_door_unit_differs_from_the_loopback_unit_only_in_entry_and_listener(
   let loopback = match live_deploy_serve_unit_emission(spec: spec, revision: door_revision(), now_epoch: claim_oidc_now_for(spec: spec)) {
     LiveDeployServeUnitEmitted { file } => serialize_systemd_unit_file(file: file)
     LiveDeployServeUnitOidcReadbackRefused { cause: _ } => ""
+    LiveDeployServeUnitGrammarRefused { binary_path: _, reason: _ } => ""
   }
   let rebuilt = door
-    .replace(from: "gunbc roadmap tailnet door (gunbc serve)", to: "gunbc roadmap HTTP server (gunbc serve)")
-    .replace(from: " --function roadmap_serve_handle_door ", to: " --function roadmap_serve_handle ")
-    .replace(from: join([" --unix-socket ", door_socket()], ""), to: join([" --host ", spec.service.listen.host, " --port ", to_string(spec.service.listen.port)], ""))
+    .replace(from: "gunbc roadmap tailnet door (gunbc run, ingress binding)", to: "gunbc roadmap HTTP server (gunbc run, ingress binding)")
+    .replace(from: " --arg handler=roadmap_serve_handle_door ", to: " --arg handler=roadmap_serve_handle ")
+    .replace(from: join([" --arg listener=unix:", door_socket()], ""), to: join([" --arg listener=tcp:", spec.service.listen.host, ":", to_string(spec.service.listen.port)], ""))
   door != "" && door != loopback && rebuilt == loopback
-    && string_contains(s: door, pattern: " --function roadmap_serve_handle_door --unix-socket ")
-    && !string_contains(s: door, pattern: " --port ")
+    && string_contains(s: door, pattern: " --arg handler=roadmap_serve_handle_door --arg listener=unix:")
+    && !string_contains(s: door, pattern: "listener=tcp:")
 }
 
 fn step_is(step: DeploymentStep, door: Bool) -> Bool {

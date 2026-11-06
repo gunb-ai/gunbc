@@ -1,0 +1,33 @@
+module test.claim.ci.workflow_artifact_upload_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import extdeps.languages.yaml.types { YamlKeyValue, YamlString }
+import gunbc.ci.workflow_artifact_upload { AbsenceRefused, AbsenceExpected, workflow_artifact_upload_with }
+
+fn no_files_word(with: List<YamlKeyValue>) -> String {
+  with |> fold(init: "", f: (acc, k) => if k.key == "if-no-files-found" {
+    match k.value { YamlString { value: v } => v  _ => "not-a-string" }
+  } else { acc })
+}
+
+fn keys_of(with: List<YamlKeyValue>) -> List<String> {
+  with |> map(k => k.key)
+}
+
+// THE DEFAULT REFUSES, AND ONLY A STATED REASON REACHES warn. The refusing arm renders the action's `error`, the
+// reasoned arm its `warn`; nothing else can reach either word, so a row that states no reason fails closed.
+test fn absence_refused_renders_error_and_only_a_reason_renders_warn() -> Bool {
+  let refused = workflow_artifact_upload_with(name: "r", path: "p", retention_days: Present { value: 30 }, compression_level: none, absence: AbsenceRefused)
+  let expected = workflow_artifact_upload_with(name: "r", path: "p", retention_days: Present { value: 30 }, compression_level: none, absence: AbsenceExpected { reason: "a fixture reason" as NonEmptyStr })
+  no_files_word(with: refused) == "error" && no_files_word(with: expected) == "warn"
+}
+
+// THE INPUTS RENDER IN action.yml's NAMES AND ONE ORDER, so a migrated row emits the bytes the hand-written row did:
+// name, path, if-no-files-found, then retention-days and compression-level only when the step passes them.
+test fn the_inputs_render_in_action_yml_names_in_one_order_and_omit_what_is_not_passed() -> Bool {
+  let full = workflow_artifact_upload_with(name: "r", path: "p", retention_days: Present { value: 7 }, compression_level: Present { value: 0 }, absence: AbsenceRefused)
+  let bare = workflow_artifact_upload_with(name: "r", path: "p", retention_days: none, compression_level: none, absence: AbsenceRefused)
+  keys_of(with: full) == ["name", "path", "if-no-files-found", "retention-days", "compression-level"]
+    && keys_of(with: bare) == ["name", "path", "if-no-files-found"]
+}

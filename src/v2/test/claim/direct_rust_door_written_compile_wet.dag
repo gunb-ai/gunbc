@@ -1,0 +1,34 @@
+module v2.test.claim.direct_rust_door_written_compile_wet
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool }
+import v2.compiler.self_host.direct_rust_door_written_compile {
+  direct_rust_door_written_missing_rule,
+  direct_rust_door_written_production,
+  direct_rust_door_written_unwritable,
+  written_file_not_written,
+  written_compile_holds,
+  written_route_refused
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// WET BY NECESSITY (Filesystem.Write + a rustc subprocess), so not enrolled in the hermetic floor,
+// like v2.test.claim.dag_acceptance_rustc_wet. The pair is the discriminator, over the SAME route:
+// the production target writes a file rustc accepts, and the planted incomplete target refuses
+// before anything is written or compiled. direct_rust_door_production_group_closing_expectation_holds
+// stays as the in-memory regression wall.
+
+test fn written_production_source_is_accepted_by_rustc_on_the_written_file() -> Bool {
+  written_compile_holds(observation: direct_rust_door_written_production())
+}
+
+test fn missing_rule_refuses_on_the_written_route() -> Bool {
+  written_route_refused(observation: direct_rust_door_written_missing_rule())
+}
+
+// RED for the write guard: a workspace that cannot be created yields WrittenFileNotWritten, never a
+// rustc verdict (the 3927f5b1 srv1 run read ENOENT as a bare FAIL because nothing checked the write).
+test fn unwritable_workspace_refuses_before_rustc() -> Bool {
+  written_file_not_written(observation: direct_rust_door_written_unwritable())
+}

@@ -1,6 +1,9 @@
 module gunbc.live_deploy.belt_cadence
 
 import std.measure { Second, second, second_count }
+import std.integer { nat_to_int }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
   belt_attempt_obligation_order,
@@ -44,16 +47,141 @@ data belt_exit_trigger_limit_burst: Int = 200
 data belt_tick_run_bound: Second = second(count: 2700)
 
 data capture_obligation_run_bound: Second = second(count: 2700)
-data verify_obligation_run_bound: Second = second(count: 2700)
 data review_obligation_run_bound: Second = second(count: 2700)
 data audit_obligation_run_bound: Second = second(count: 2700)
 data publish_obligation_run_bound: Second = second(count: 2700)
 data launch_obligation_run_bound: Second = second(count: 2700)
 
+// THE VERIFICATION BOUND IS DERIVED FROM THE ENTRIES IT VERIFIES (the per-node figure is a receipt line; only the unit's outer bound kills a run) (DESIGN 6b: the 2700s row it replaces was
+// one number for a cost that scales with the entry count). One claim_batch per entry pays one full entry
+// compile, so the obligation costs the sum of its entries' compile times. Each entry's figure is a
+// RECORDED OBSERVATION; an entry with no sample runs under a typed provisional bet (VerifyRunProvisional, below); with no sample at all it refuses typed (DESIGN 4d, 5).
+type EntryCompileSample {
+  entry: String
+  seconds: Second
+  standing: CitedFigureStanding
+}
+
+// Reproduce: `gunbc compile --source-root dag --source-root src/v2 --entry <entry> --output-dir <dir>`;
+// the figure is the `process_invocation_total` phase of its timing lines.
+data verify_entry_compile_samples: List<EntryCompileSample> = [
+  EntryCompileSample {
+    entry: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag",
+    seconds: second(count: 4143),
+    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 4142.6 s, 3987.4 s and 3892.1 s, the slowest kept; run 3 read counters inside the scope: memory.events high 0, pressure ~0, cpu usage/wall 0.9998, so one busy core and not throttled; runs 1 and 2 scopes are gone); re-derive by running the compile command above on srv1 and reading process_invocation_total" as NonEmptyStr },
+  },
+  EntryCompileSample {
+    entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag",
+    seconds: second(count: 4018),
+    standing: TranscribedUncited { read_obligation: "transcribed from loyal-deer-449's srv1 report (2026-11-05, origin/main 4a5b8feb, own systemd-run scope, runs 3903.0 s and 4017.8 s, the slower kept; scopes are gone, so throttling is unread, but the same entry family ran unthrottled at one busy core); re-derive by running the compile command above on srv1 and reading process_invocation_total" as NonEmptyStr },
+  },
+]
+
+// POLICY BUDGETS, each with its reason (DESIGN 5 explicit policy budget). The headroom is a falsifiable
+// operator figure: a verify unit killed at its bound for a within-ceiling node means it is wrong.
+data verify_entries_ceiling: Nat = 2
+// Reason (operator decision 2026-11-05, escalation default at timeout): srv1's compute pool holds two seats and one entry compiles in ~4143 s on one core, so the derived outer limit at 2 is 13,329 s; a node past two entries is not one attempt's verification
+// and is refused before any run starts, so the outer bound is never the way a predictable overrun ends.
+data verify_run_headroom_percent: Nat = 50
+// Reason: compile time on a shared host varies with neighbours; 50% over the recorded figure.
+data verify_run_slack: Second = second(count: 900)
+// Reason: the drain bound (event_backlog_drain_bound) is the corpus-load allowance the same unit pays once.
+
+// A PROVISIONAL BOUND IS A TYPED BET (DESIGN 4d), NOT A DEFAULT: an entry with no recorded sample runs under the
+// slowest recorded sample as its figure, plus the same declared headroom and slack, and the arm names every
+// entry it bets on and the sample it borrowed. It is a loud, bounded interim (DESIGN 5): a node with unsampled
+// entries still verifies, the bet is carried to the attempt's receipt line, and it is countable there.
+// DISSOLUTION TRIGGER: the measured compile time of an unsampled entry's first run is recorded as its sample
+// (verify_entry_compile_samples is a hand-authored data row today, so the write-back is not modeled; owed
+// follow-up, tracked at gunbc.recurring_failure_mode a_provisional_verify_bound_is_a_bet_until_its_sample_is_recorded). With no recorded sample at all there is nothing to borrow, so the entry refuses typed.
+type VerifyRunBound
+  = VerifyRunBounded { bound: Second, entries: Int }
+  | VerifyRunProvisional { bound: Second, entries: Int, unsampled: List<String>, borrowed_entry: String, borrowed_seconds: Second }
+  | VerifyRunOverCeiling { entries: Int, ceiling: Int }
+  | VerifyRunUnsampled { entry: String }
+
+fn verify_entry_sample_seconds(samples: List<EntryCompileSample>, entry: String) -> Nat? {
+  match filter(samples, s => s.entry == entry) {
+    Empty {} => none
+    Cons { head: first, tail: _ } => Present { value: second_count(s: first.seconds) }
+  }
+}
+
+fn verify_slowest_sample(samples: List<EntryCompileSample>) -> EntryCompileSample? {
+  let slowest = fold(samples, init: second_count(s: second(count: 0)), f: (acc, s) => if second_count(s: s.seconds) > acc { second_count(s: s.seconds) } else { acc })
+  match filter(samples, s => second_count(s: s.seconds) == slowest) {
+    Empty {} => none
+    Cons { head: first, tail: _ } => Present { value: first }
+  }
+}
+
+// The entries are the node's distinct validation entries; the bound is their summed figures (recorded, or the
+// borrowed slowest for an unsampled one) plus headroom and slack. samples, ceiling, headroom and slack are
+// supplied so each arm is exercisable.
+fn verify_run_bound_for(entries: List<String>, samples: List<EntryCompileSample>, ceiling: Nat, headroom_percent: Nat, slack: Second) -> VerifyRunBound {
+  if length(entries) > nat_to_int(n: ceiling) {
+    VerifyRunOverCeiling { entries: length(entries), ceiling: nat_to_int(n: ceiling) }
+  } else {
+    let missing = filter(entries, e => match verify_entry_sample_seconds(samples: samples, entry: e) {
+      Absent => true
+      Present { value: _ } => false
+    })
+    match verify_slowest_sample(samples: samples) {
+      Absent => match missing {
+        Cons { head: first, tail: _ } => VerifyRunUnsampled { entry: first }
+        Empty {} => VerifyRunBounded { bound: second(count: second_count(s: slack)), entries: length(entries) }
+      }
+      Present { value: slowest } => {
+        let borrowed = second_count(s: slowest.seconds)
+        let total = fold(entries, init: second_count(s: second(count: 0)), f: (acc, e) => match verify_entry_sample_seconds(samples: samples, entry: e) {
+          Present { value: n } => acc + n
+          Absent => acc + borrowed
+        })
+        let bound = second(count: total + total * headroom_percent / 100 + second_count(s: slack))
+        match missing {
+          Empty {} => VerifyRunBounded { bound: bound, entries: length(entries) }
+          Cons { head: _, tail: _ } => VerifyRunProvisional { bound: bound, entries: length(entries), unsampled: missing, borrowed_entry: slowest.entry, borrowed_seconds: second(count: borrowed) }
+        }
+      }
+    }
+  }
+}
+
+// The receipt line for a provisional bet; empty when no entry is unsampled (the standing of the sample rows themselves is said by the derived line). Countable by prefix.
+// The standing of the figures a bound rests on is read, not dropped: a row that is not cited or receipted is a bet
+// (DESIGN 4d) and the receipt line says how many of the rows are.
+fn verify_uncited_sample_count(samples: List<EntryCompileSample>) -> Int {
+  length(filter(samples, s => match s.standing {
+    TranscribedUncited { read_obligation: _ } => true
+    CitedToAuthority { authority: _ } => false
+    ObservedByReceipt { observed: _ } => false
+  }))
+}
+
+fn verify_sample_standing_clause() -> String {
+  join(["; ", to_string(value: verify_uncited_sample_count(samples: verify_entry_compile_samples)), " of ", to_string(value: length(verify_entry_compile_samples)), " sample rows are TranscribedUncited, so this bound rests on a bet, not a receipted observation"], "")
+}
+
+fn verify_run_bound_derived_line(bound: VerifyRunBound) -> String {
+  match bound {
+    VerifyRunBounded { bound: b, entries } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)", verify_sample_standing_clause()], "")
+    VerifyRunProvisional { bound: b, entries, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } => join(["derived verify bound ", to_string(value: nat_to_int(n: second_count(s: b))), " s for ", to_string(value: entries), " entries (a receipt figure; the enforced kill limit is the unit's outer ", to_string(value: nat_to_int(n: second_count(s: verify_unit_outer_run_bound()))), " s)", verify_sample_standing_clause()], "")
+    _ => ""
+  }
+}
+
+fn verify_run_bound_note(bound: VerifyRunBound) -> String {
+  match bound {
+    VerifyRunProvisional { bound: _, entries: _, unsampled, borrowed_entry, borrowed_seconds } =>
+      join(["ProvisionalUnsampled: ", to_string(value: length(unsampled)), " entries ran under a bound borrowed from the sample of ", borrowed_entry, " (", to_string(value: nat_to_int(n: second_count(s: borrowed_seconds))), " s each): ", join(unsampled, ", ")], "")
+    _ => ""
+  }
+}
+
 fn attempt_obligation_run_bound(kind: BeltAttemptObligationKind) -> Second {
   match kind {
     CaptureObligation => capture_obligation_run_bound
-    VerifyObligation => verify_obligation_run_bound
+    VerifyObligation => verify_unit_outer_run_bound()
     ReviewObligation => review_obligation_run_bound
     AuditObligation => audit_obligation_run_bound
     PublishObligation => publish_obligation_run_bound
@@ -69,6 +197,23 @@ fn instance_obligation_run_bound(kind: BeltInstanceObligationKind) -> Second {
     DogfoodStartRecordObligation => belt_tick_run_bound
     SnapshotCensusObligation => belt_tick_run_bound
   }
+}
+
+// The attempt unit's outer safety net: the ceiling's worth of the slowest recorded entry, derived from the
+// same rows, so changing a sample or the ceiling moves it (no second copy). With no samples the slowest figure is
+// 0 and the net is the slack alone; that is not a live state, because with no samples every node with an entry
+// refuses typed (VerifyRunUnsampled) before any run starts, so nothing runs under the small net.
+fn verify_outer_run_bound_for(samples: List<EntryCompileSample>, ceiling: Nat, headroom_percent: Nat, slack: Second) -> Second {
+  let slowest = match verify_slowest_sample(samples: samples) {
+    Present { value: v } => second_count(s: v.seconds)
+    Absent => 0
+  }
+  let total = slowest * ceiling
+  second(count: total + total * headroom_percent / 100 + second_count(s: slack))
+}
+
+fn verify_unit_outer_run_bound() -> Second {
+  verify_outer_run_bound_for(samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack)
 }
 
 fn belt_attempt_obligation_unit_run_bound() -> Second {

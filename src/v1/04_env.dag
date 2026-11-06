@@ -39,6 +39,7 @@ type TypeEnv {
   module_path: String
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
   unit_variant_index_observed: Bool
+  equality_by_target: Map<String, Bool>
 }
 
 // `alias_rhs` is the alias's RIGHT-HAND-SIDE REFERENCE, retained when this binding is a transparent alias
@@ -257,7 +258,8 @@ fn empty_type_env() -> TypeEnv {
     source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: empty_symbol_index(),
     unit_variant_index: empty_map(),
-    unit_variant_index_observed: false
+    unit_variant_index_observed: false,
+    equality_by_target: empty_map()
   }
 }
 
@@ -1562,6 +1564,28 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
+// The one write path of the equality table: an env is built, then its declarations are summarized against it
+// (build_equality_by_target), so the table is attached to a copy of the env it was computed from.
+fn type_env_with_equality_by_target(env: TypeEnv, by_target: Map<String, Bool>) -> TypeEnv {
+  TypeEnv { module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: env.ancestry_str_bindings,
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names,
+    authored_import_names: env.authored_import_names,
+    symbol_index: env.symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed,
+    equality_by_target: by_target
+  }
+}
+
 fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
@@ -1585,7 +1609,8 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       authored_import_names: e.authored_import_names,
       symbol_index: e.symbol_index,
       unit_variant_index: updated_index,
-      unit_variant_index_observed: e.unit_variant_index_observed
+      unit_variant_index_observed: e.unit_variant_index_observed,
+      equality_by_target: e.equality_by_target
     }
   )
 }
@@ -1609,7 +1634,8 @@ fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_name
     source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: census,
     unit_variant_index: empty_map(),
-    unit_variant_index_observed: false
+    unit_variant_index_observed: false,
+    equality_by_target: empty_map()
   }
   env_with_type_variable_bindings(env: base, tp_names: tp_names)
 }
