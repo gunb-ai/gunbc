@@ -2,6 +2,7 @@ module std.decl_ref
 
 import std.types { NonEmptyStr, List }
 import std.algebra { collection_concat_shape, Ordering, int_compare_canonical, string_compare_canonical }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -164,4 +165,22 @@ fn declaration_ref_display_key(ref: DeclarationRef) -> String {
         concat("::", concat(ref.decl_name as String, concat("::<", concat(t as String, ">")))),
       )
   }
+}
+
+// THE STRUCTURAL IDENTITY OF A DeclarationRef, beside the type, its equality and its order: module path,
+// declaration name and the field coordinate, each tagged so that no two coordinates share a preimage. A
+// consumer that keys on a declaration reference (gunbc.serving.serving_layout's grant identity) asks the
+// type's own home instead of a census module.
+fn declaration_ref_identity(reference: DeclarationRef) -> Fnv1a64Structural {
+  let module_part = content_hash_tagged_structural(tag: "declaration-module", payload: content_hash_atom(value: reference.module_path))
+  let name_part = content_hash_tagged_structural(tag: "declaration-name", payload: content_hash_atom(value: reference.decl_name))
+  let field_part = match reference.field {
+    WholeDeclaration =>
+      content_hash_tagged_structural(tag: "declaration-field-whole", payload: content_hash_atom(value: "whole"))
+    NamedField { field_name: named } =>
+      content_hash_tagged_structural(tag: "declaration-field-named", payload: content_hash_atom(value: named))
+    TypeParameter { name: parameter } =>
+      content_hash_tagged_structural(tag: "declaration-field-type-parameter", payload: content_hash_atom(value: parameter))
+  }
+  content_hash_combine_structural(left: module_part, right: content_hash_combine_structural(left: name_part, right: field_part))
 }

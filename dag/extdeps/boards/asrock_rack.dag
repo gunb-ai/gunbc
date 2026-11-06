@@ -4,8 +4,13 @@ import extdeps.boards.types { HeldManualRevision,
   BaseboardCatalogRow, DimmPopulation,
   BaseboardPhysicalProfile,
   PowerInputPopulationStanding, PowerInputMinimumOneStated,
+  BoardFunction, BmcManagementFunction, BmcGraphicsController, PcieErrorFirmwareFirstHandling,
+  BoardFunctionSwitch, JumperSwitch, FirmwareSetupSwitch, SwitchNotStated,
+  OnboardEthernetPort, OnboardEthernetPortRow, BmcSharingStated, BmcSharingNotStated, PortRowsStated,
+  BoardExpansionSlot, BoardExpansionSlots, SlotLaneObstacle,
 }
 import extdeps.vendor.asrock_rack { asrock_rack }
+import extdeps.boards.asrock_altrad8ud_setup_varstore { ras_menu, ras_pcie_aer_firmware_first_item }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
   BmcRedfishSurfaceRow,
@@ -40,13 +45,20 @@ import std.measure {
   Micrometer, micrometer, ByteSize, MegatransfersPerSecond, byte_size, celsius, megatransfers_per_second, percent, positive_celsius_delta, positive_measure_count,
   Watt, watt, Millimeter, millimeter, Celsius, Ampere, Volt, volt,
 }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.cited_field { RowField, FromCitedFigure, NeedsReading }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalConstruction, axis_aligned_rectangle2 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.board_authority { BoardAuthorityRef }
-import extdeps.standards.micro_atx { MountingLocationId, LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
+import extdeps.standards.motherboard_mounting_location { LocB, LocC, LocF, LocH, LocJ, LocL, LocM, LocR, LocS }
+import extdeps.boards.types {
+  HoleCorrespondenceInferred, HoleAbsenceExplicitlyDirected, HoleNotObservedInDrawing,
+  BoardStandardLocationCorrespondence, board_location_correspondence,
+  BoardStandardLocationRoster, board_standard_location_roster,
+}
+import extdeps.standards.motherboard_mounting_grid { MicroAtxMountingGrid }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { ampere_lga4926_socket }
 import extdeps.uri { Uri, Https }
@@ -91,11 +103,20 @@ data asrock_altrad8ud_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   }
 }
 
+// The rear-panel LAN ports (manual v1.20 section 1.6, I/O panel items 2, 3 and 5; controllers from
+// section 1.2): LAN1 and LAN2 are the X550's two 10GbE ports, ALTRAD8UD-1L2T only, and LAN1 is marked
+// "shared NIC"; LAN3 is the I210's one 1GbE port. The UEFI setup chapter states no item that disables
+// an onboard LAN controller, so every port's switch is SwitchNotStated.
+data asrock_altrad8ud_1l2t_lan1: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN1", controller: "Intel X550", bmc_sharing: BmcSharingStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 3: 10G LAN RJ-45 Port (LAN1, shared NIC)" }
+data asrock_altrad8ud_1l2t_lan2: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN2", controller: "Intel X550", bmc_sharing: BmcSharingNotStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 2: 10G LAN RJ-45 Port (LAN2)" }
+data asrock_altrad8ud_1l2t_lan3: OnboardEthernetPortRow = OnboardEthernetPortRow { designator: "LAN3", controller: "Intel i210", bmc_sharing: BmcSharingNotStated, switch: SwitchNotStated { coarser: Absent }, citation: "manual v1.20 section 1.6, I/O panel item 5: 1G LAN RJ-45 Port (LAN3)" }
+
 data asrock_altrad8ud_1l2t_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
   model: asrock_altrad8ud_board_authority,
   model_label: "ASRock Rack ALTRAD8UD-1L2T",
   vendor: asrock_rack,
   bmc_firmware: OpenBmc,
+  onboard_ethernet_ports: PortRowsStated { rows: [asrock_altrad8ud_1l2t_lan1, asrock_altrad8ud_1l2t_lan2, asrock_altrad8ud_1l2t_lan3] },
 }
 
 data asrock_altrad8ud_redfish_system_id: NonEmptyStr = "system"
@@ -749,54 +770,9 @@ data asrock_altrad8ud_standoff_figure_authority: ExternalAuthority = ExternalAut
   }
 }
 
-// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
-// route, so the grade is readable from the constructor rather than from prose beside it.
-// Image-position estimates (used by Jade review) do not establish a location; unlike
-// a correspondence to exact standard coordinates, they cannot admit a standoff.
-type BoardLocationStanding
-  = HoleCorrespondenceInferred
-  | HolePositionEstimatedFromImage
-  | HoleAbsenceExplicitlyDirected
-  | HoleNotObservedInDrawing
-  | HolePhysicallyConfirmedPresent
-  | HolePhysicallyConfirmedAbsent
-
-// WHY a location must stay empty. Distinct from the standing that established it.
-type StandoffProhibitionCause
-  = ProductSaysRemove
-  | NoAdmittedBoardHole
-
-// WHAT IS DONE at a standard location by a chassis built for this board.
-type StandoffPlacementDecision
-  = StandoffAdmitted
-  | StandoffProhibited { cause: StandoffProhibitionCause }
-
-// The join, and the reason the two types are worth separating: this is total, so a new standing arm
-// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
-// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
-fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
-  match standing {
-    HolePositionEstimatedFromImage => StandoffProhibited { cause: NoAdmittedBoardHole }
-    HoleCorrespondenceInferred => StandoffAdmitted
-    HolePhysicallyConfirmedPresent => StandoffAdmitted
-    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
-    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
-    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
-  }
-}
-
-type BoardStandardLocationCorrespondence sole_constructor {
-  location: MountingLocationId
-  standing: BoardLocationStanding
-}
-
-fn board_location_correspondence(
-  location: MountingLocationId,
-  standing: BoardLocationStanding,
-) -> BoardStandardLocationCorrespondence {
-  BoardStandardLocationCorrespondence { location: location, standing: standing }
-}
-
+// THE CORRESPONDENCE VOCABULARY (BoardLocationStanding, standoff_placement,
+// BoardStandardLocationCorrespondence) moved to extdeps.boards.types when a second vendor's board
+// needed it: a Supermicro row must not import an ASRock module to say which standard holes it has.
 // Coordinates are deliberately ABSENT from these rows. A correspondence names a location; the
 // location owns its position. Copying the coordinates here would fork the grid — the exact defect
 // this session already paid for once, where the coupon's holes were computed a second time instead
@@ -826,6 +802,46 @@ data asrock_altrad8ud_standard_location_correspondence: List<BoardStandardLocati
   board_location_correspondence(location: LocS, standing: HoleNotObservedInDrawing),
 ]
 
+// The roster binds this correspondence to the microATX grid its letters are read against.
+data asrock_altrad8ud_standard_location_roster: BoardStandardLocationRoster? = board_standard_location_roster(
+  grid: MicroAtxMountingGrid,
+  locations: asrock_altrad8ud_standard_location_correspondence,
+)
+
+
+// THE CPU SOCKET'S PLACE ON THE BOARD, read off the same section 1.4 layout figure as the holes above
+// (manual v1.20, asrock_altrad8ud_manual_held, page 12), from its vector drawing rather than a raster.
+// The figure is a CAD export: one scale (1.11197 pt/mm) and one proper rotation put all seven drawn
+// standoff circles on their microATX coordinates with 0.00 mm residual, and the same transform reads the
+// outline as 243.86 x 266.74 mm against 243.84 x 266.70. Read through that transform, three concentric
+// hole patterns surround the socket: 94 x 60 mm (circles about 9.4 mm across), 106 x 72 mm (about 5.5 mm)
+// and 98.5 x 40 mm (about 8 mm). The first and the 72 of the second are callouts of the community-posted
+// LGA4926 retention-frame drawing (extdeps.cpu_attachment.ilm4926: 2X94.00, 2X60.00, 2X72.00), which is the
+// cross-check that these are the retention assembly's holes. The fields below are the socket centre and
+// the extent of every hole centre in those patterns, in this module's board frame (along the rear I/O edge
+// from the F/J/M end, depth from the rear edge). What it does NOT give: the backplate's own outline, its
+// thickness, or how far it stands below the board -- Lotes AZIF0222's drawing is requested and not held
+// (extdeps.cpu_attachment.ilm4926 azif0222_retention_drawing_request).
+type Altrad8udSocketPlacement {
+  centre_along_rear_edge: Micrometer
+  centre_depth_from_rear_edge: Micrometer
+  attachment_holes_along_min: Micrometer
+  attachment_holes_along_max: Micrometer
+  attachment_holes_depth_min: Micrometer
+  attachment_holes_depth_max: Micrometer
+  largest_attachment_hole_diameter: Micrometer
+  standing: CitedFigureStanding
+}
+data asrock_altrad8ud_socket_placement: Altrad8udSocketPlacement = Altrad8udSocketPlacement {
+  centre_along_rear_edge: micrometer(count: 75980),
+  centre_depth_from_rear_edge: micrometer(count: 146900),
+  attachment_holes_along_min: micrometer(count: 39980),
+  attachment_holes_along_max: micrometer(count: 111980),
+  attachment_holes_depth_min: micrometer(count: 93900),
+  attachment_holes_depth_max: micrometer(count: 199900),
+  largest_attachment_hole_diameter: micrometer(count: 9360),
+  standing: CitedToAuthority { authority: extdeps_external_authority_anchor },
+}
 
 // THE DEEP EXTENSION, and the cassette requirement that falls out of it.
 //
@@ -969,8 +985,55 @@ data asrock_altrad8ud_manual_held: HeldManualRevision = HeldManualRevision {
   version_label: "1.20",
   published_label: "Jul. 2025",
   page_count: 95,
-  sha256_hex: Absent,
+  sha256_hex: Present { value: "2160675a09583bbd62e4d1223628f38cbf6c59b8fecc1cc32ec3b8be1f953848" },
   authority: extdeps_external_authority_anchor,
+}
+
+// The digest above is of the operator's copy read again on 2026-11-02 (Version 1.20, Jul. 2025, 95
+// pages, so the same revision as the 2026-10-04 reading); the earlier reading recorded none.
+
+// ---- 1.2 Specifications and 2.5 Expansion Slots: the four PCIe slots, PCIE4 to PCIE7, SLOT7 nearest
+// the CPU. Section 1.2: "SLOT7: PCIe4.0 x16*, SLOT6: PCIe4.0 x16*, SLOT5: PCIe4.0 x16, SLOT4: PCIe4.0
+// x16**", with "*Supports PCIe4.0 x8 when using Ampere Altra processors" and "**SLOT4 does not support
+// full-length card". Section 1.4's layout draws the four slots as an evenly spaced run with no empty
+// position between them.
+//
+// THE POSITIONS ARE AN INFERENCE, and they are typed as one. The manual numbers the slots 4 to 7, which
+// is the numbering of the four ATX expansion positions a micro-ATX board keeps, and that makes them
+// adjacent positions one CEM pitch apart. The manual prints no slot dimension. Scaled against its own
+// printed board dimensions (26.7 cm and 24.4 cm, read off the section 1.4 drawing's vector layer on
+// 2026-11-02), the slot outlines sit 22.54, 22.60 and 22.65 points apart, about 20.9 mm, against 20.32 mm
+// for one CEM pitch: consistent with adjacency to about 3 %, and a drawing that is not dimensioned cannot
+// do better. A ruler settles it, so the standing names that reading.
+// THE RTC COIN CELL, read by the operator on 2026-11-04 on the board in the A2 chassis after a blower design
+// that ignored it had already been drawn: the cell stands vertically, its holder 17 mm above the board, in
+// PCIE4's lane -- the slot farthest from the CPU (SLOT7 is nearest, above) -- in the row of the FAN headers near
+// the front edge, and it is the tallest component in that row. It was read 66.44 mm beyond the far end of an
+// NVIDIA A2 in PCIE4; with the A2's stated 167.6 mm length (extdeps.gpu.nvidia_a2) that is 234.04 mm from the
+// bracket plane. Whether 66.44 mm is to the cell's near face or its centre was not said, so half_extent is
+// generous (a 20 mm cell in a holder, either side, plus the ambiguity).
+data asrock_altrad8ud_coin_cell: SlotLaneObstacle = SlotLaneObstacle {
+  label: "RTC coin cell (vertical holder)",
+  slot: "PCIE4",
+  depth_from_bracket_plane: micrometer(count: 234040),
+  half_extent: micrometer(count: 13000),
+  height_above_board: micrometer(count: 17000),
+  standing: TranscribedUncited {
+    read_obligation: "operator, on the board: the coin-cell holder's footprint and its centre's depth from the rear bracket plane, read directly (this row is 66.44 mm read beyond an installed A2's far end plus the A2's stated length), and its designator from the manual's section 1.4 layout",
+  },
+}
+
+data asrock_altrad8ud_expansion_slots: BoardExpansionSlots = BoardExpansionSlots {
+  lane_obstacles: [asrock_altrad8ud_coin_cell],
+  slots: [
+    BoardExpansionSlot { designator: "PCIE4", position: 4 },
+    BoardExpansionSlot { designator: "PCIE5", position: 5 },
+    BoardExpansionSlot { designator: "PCIE6", position: 6 },
+    BoardExpansionSlot { designator: "PCIE7", position: 7 },
+  ],
+  positions: TranscribedUncited {
+    read_obligation: "operator, on the board, with a caliper: the centre-to-centre distance from PCIE4 to PCIE7 (or across the four card brackets). Adjacent positions predict 60.96 mm (three CEM pitches of 20.32 mm); the manual's undimensioned section 1.4 drawing scales to about 62.7 mm.",
+  },
 }
 
 // ---- 1.2 Specifications, the comparison profile. Moved here from extdeps.boards.gigabyte, where
@@ -1089,6 +1152,30 @@ type RearIoPort
   | RearUidSwitch
 data asrock_altrad8ud_rear_io_ports: List<RearIoPort> = [RearVga, RearLan2TenGbe, RearLan1TenGbeSharedNic, RearUsb3Pair12, RearLan3OneGbe, RearUsb3Pair34, RearIpmiLan, RearUidSwitch]
 
+// ---- Switching a board function off (manual v1.20). Section 2.6 states one jumper, the 3-pin
+// BMC_DIS (layout item 22), "BMC Enabled (Default)" / "BMC Disabled": it removes the whole AST2500,
+// so for the controller's graphics function it is a COARSER switch, not this function's switch. No
+// section states a graphics-only disable, and section 3.3.3's PCIE Link Width/Speed items name the
+// slots, Slimline, OCuLink and M.2 ports, not the controller's link. Section 3.3.2 (RAS Configuration)
+// states: "PCIe AER Firmware First: Use this item to enable firmware to detect PCIe AER first.
+// Otherwise OS detects AER." The setting's value labels are not printed, so the off arm is carried
+// as the manual's own words rather than a guessed label.
+fn asrock_altrad8ud_function_switch(f: BoardFunction) -> BoardFunctionSwitch {
+  match f {
+    BmcManagementFunction => JumperSwitch { designator: "BMC_DIS", off_position: "BMC Disabled (BMC Enabled is the default)", citation: "manual v1.20 section 2.6, layout item 22" }
+    BmcGraphicsController => SwitchNotStated { coarser: Present { value: "BMC_DIS (section 2.6, layout item 22) disables the whole BMC" } }
+    PcieErrorFirmwareFirstHandling => FirmwareSetupSwitch {
+      menu: ras_menu,
+      item: ras_pcie_aer_firmware_first_item,
+      off_meaning: "Otherwise OS detects AER",
+      citation: "manual v1.20 section 3.3.2",
+    }
+    OnboardEthernetPort { port } => port.switch
+  }
+}
+
+
+
 // Which rear ports carry an Ethernet cable in service. The 1L2T has two 10GbE (LAN1 shared with
 // the BMC NC-SI path), one 1GbE and one dedicated IPMI port; how many a deployment plugs is a
 // fleet decision, so the row carries the available count and nothing about the plugged count.
@@ -1138,3 +1225,21 @@ data asrock_altrad8ud_operating_ambient_max: Celsius = celsius(count: 35)
 // PMBus supply; a supply shared by several boards can be monitored by at most one of them through
 // this header, which is a station design fact rather than a board one.
 data asrock_altrad8ud_psu_smbus_header_pin_count: Nat = 5
+
+// VOLTAGE-REGULATOR TEMPERATURE LIMITS of the ALTRAD8UD board: two independently limited components, so two
+// rows (the CPU0_SOC_VRDTemp and CPU0_DIMMVRDTemp sensors read different regulators whose controllers and
+// power stages may publish different junction limits). The board manual held here (v1.20) states no
+// regulator ceiling, so none is authored. A single conservative threshold for a shared guard role is a
+// downstream policy derivation (B5), not a board fact. Once the parts are identified the limits move to
+// their vendors' own authorities and these rows reference them.
+// Consumer: declared frontier, the P5 hard constraints and the B5 guard, whose VoltageRegulator ceiling in
+// gunbc.machine_intake.megarac_fan_thermal_guard is Absent today (trigger: P5 landing).
+// Consumer: P5 hard constraint on the SoC regulator, and the B5 guard VoltageRegulator ceiling (megarac_guard_component_ceiling, Absent today). Trigger: P5 landing.
+data asrock_altrad8ud_soc_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Identify the SoC-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_SOC_VRDTemp sensor location; manual v1.20 gives no regulator limit."
+}
+
+// Consumer: P5 hard constraint on the DIMM regulator, and the B5 guard VoltageRegulator ceiling (megarac_guard_component_ceiling, Absent today). Trigger: P5 landing.
+data asrock_altrad8ud_dimm_vrd_temperature_limit: RowField<Celsius> = NeedsReading {
+  read_obligation: "Identify the DIMM-rail VRM controller and power stages of the ALTRAD8UD-1L2T (board BOM or ASRock Rack support) and read their datasheets for maximum junction temperature, relating it to the CPU0_DIMMVRDTemp sensor location; manual v1.20 gives no regulator limit."
+}

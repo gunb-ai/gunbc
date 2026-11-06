@@ -1,0 +1,136 @@
+// Witness for the LAB AGENT'S DOOR UNIT on the typed live_deploy route (slice row 2 of the lab
+// integration): the spec derives the door from the deployment's write policy, the unit emit binds the
+// socket the spec's directory demand names, and the typed apply installs it (gunbc.live_deploy.apply_legs
+// deploy_apply_agent_door_plan). The apply-plan rows read the typed legs at the plan interface; the
+// real apply route is executed once by live_deploy_apply_plan_witness
+// (the_real_apply_route_refuses_a_remote_locus_typed), so supplying the plan removes nothing.
+//
+// RED CONTROL (structural, the higher rung): AgentDoorServeUnit is a ComposeOwned arm of an exhaustive
+// match in deploy_apply_step_plan, so deleting the leg refuses compilation of the apply route, and
+// deleting only its body (an empty-legs arm) turns the rows below red: the lab plan carries no
+// agent-door-unit leg.
+module test.claim.live_deploy.agent_door_witness
+
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.live_deploy.apply_legs { DeployApplyLeg, ApplyLegEnsureDirectory }
+import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
+import gunbc.live_deploy.emit {
+  live_deploy_agent_door_unit_file,
+  LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed,
+  LiveDeployTailnetDoorUnitOidcReadbackRefused,
+}
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.spec {
+  DeploymentSpec, deployment_agent_door_socket_of, deployment_agent_door_unit_path, deployment_agent_door_steps,
+}
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_lab_dashboard_instance, srv1_live_dashboard_instance, dashboard_instance_agent_door_socket,
+  owned_directory_is_agent_door,
+}
+import gunbc.owned_directory { ForeignOwnershipRefuses, owned_directory_group_adoption }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import test.claim.live_deploy.live_deploy_apply_plan_witness { plan_for, legs_of, has_step, payload_at, step_index }
+
+fn agent_door_revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "b2dd729f92954e50e3d8d9bbd65022c2d58f14dd" as CommitSha }
+}
+
+fn agent_door_unit_text(spec: DeploymentSpec) -> String {
+  match live_deploy_agent_door_unit_file(spec: spec, revision: agent_door_revision(), now_epoch: claim_oidc_now_for(spec: spec)) {
+    LiveDeployTailnetDoorUnitNotDeployed => ""
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause: _ } => ""
+    LiveDeployTailnetDoorUnitEmitted { file } => serialize_systemd_unit_file(file: file)
+  }
+}
+
+fn agent_door_apply_legs(spec: DeploymentSpec) -> List<DeployApplyLeg> {
+  legs_of(p: plan_for(spec: spec, plan: deploy_witness_full_install_plan(spec: spec)))
+}
+
+// THE LAB DEPLOYMENT DERIVES THE AGENT DOOR: one unit member at the unit path, a socket read back
+// from the spec's agent-door directory demand (so unit and directory name one path), launched on the
+// lab's agent-door entry. RED if the lab loses its door, or the unit names another socket or entry.
+test fn the_lab_deployment_derives_one_agent_door_unit_on_the_lab_socket() -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let socket = dashboard_instance_agent_door_socket(instance: srv1_lab_dashboard_instance())
+  let text = agent_door_unit_text(spec: lab)
+  deployment_agent_door_socket_of(spec: lab) == Present { value: socket }
+    && count(deployment_agent_door_steps(instance: srv1_lab_dashboard_instance(), names: lab.names)) == 1
+    && string_contains(s: text, pattern: join([" --arg listener=unix:", socket as String, " "], ""))
+    && string_contains(s: text, pattern: " --arg handler=roadmap_serve_handle_srv1_lab_agent_door ")
+}
+
+// Index of the ensure-directory leg that targets the agent-door directory (-1 when none).
+fn door_ensure_index_from(legs: List<DeployApplyLeg>, i: Int) -> Int {
+  match legs {
+    Empty => 0 - 1
+    Cons { head: h, tail: rest } =>
+      match h {
+        ApplyLegEnsureDirectory { target: t } => if owned_directory_is_agent_door(t: t) { i } else { door_ensure_index_from(legs: rest, i: i + 1) }
+        _ => door_ensure_index_from(legs: rest, i: i + 1)
+      }
+  }
+}
+
+// THE ROW'S ORDER CONJUNCT: the door directory is ensured, and BEFORE the unit install.
+fn door_directory_ensured_before_unit(legs: List<DeployApplyLeg>) -> Bool {
+  let d = door_ensure_index_from(legs: legs, i: 0)
+  d >= 0 && d < step_index(legs: legs, step: "agent-door-unit")
+}
+
+// THE APPLY-PLAN ROW: a spec that carries AgentDoorServeUnit gets the door unit INSTALLED by the typed
+// apply -- the staged unit file, reload, enable and restart legs, with the unit text on the lab socket
+// and entry. (The directory it binds in is a spec demand ensured by the standing directories plan,
+// which already folds every spec.directories member.) RED if the apply leg is
+// removed (no agent-door-unit leg), or installs a unit that names another socket or entry.
+test fn the_lab_apply_plan_installs_the_agent_door_unit_and_ensures_its_directory() -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let legs = agent_door_apply_legs(spec: lab)
+  let socket = dashboard_instance_agent_door_socket(instance: srv1_lab_dashboard_instance())
+  let payload = payload_at(legs: legs, step: "agent-door-unit")
+  has_step(legs: legs, step: "agent-door-unit")
+    && has_step(legs: legs, step: "agent-door-reload")
+    && has_step(legs: legs, step: "agent-door-enable")
+    && has_step(legs: legs, step: "agent-door-restart")
+    && door_directory_ensured_before_unit(legs: legs)
+    && string_contains(s: payload, pattern: join([" --arg listener=unix:", socket as String, " "], ""))
+    && string_contains(s: payload, pattern: " --arg handler=roadmap_serve_handle_srv1_lab_agent_door ")
+}
+
+// RED CONTROL: drop the door directory from the spec and the ensure conjunct goes false (the spec no
+// longer demands the directory, so the apply neither ensures it nor installs a door on it).
+test fn a_spec_without_the_agent_door_directory_turns_the_apply_row_red() -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  let dropped = DeploymentSpec {
+    role_singletons: lab.role_singletons,
+    target: lab.target,
+    steps: lab.steps,
+    service: lab.service,
+    approval_broker: lab.approval_broker,
+    names: lab.names,
+    instance_id: lab.instance_id,
+    directories: filter(xs: lab.directories, predicate: d => !owned_directory_is_agent_door(t: d)),
+  }
+  door_directory_ensured_before_unit(legs: agent_door_apply_legs(spec: lab))
+    && !door_directory_ensured_before_unit(legs: agent_door_apply_legs(spec: dropped))
+}
+
+// CONTROL: PRODUCTION DERIVES NO AGENT DOOR. No directory demand, no step, no socket, no unit text
+// and no apply leg, because the write policy rosters no agent for its deployment. RED if the door is
+// keyed on anything but the policy's answer (a second list of lab deployments) or leaks to prod.
+test fn the_production_deployment_derives_no_agent_door() -> Bool {
+  let prod = deployment_spec_srv1()
+  let legs = agent_door_apply_legs(spec: prod)
+  deployment_agent_door_socket_of(spec: prod) == none
+    && count(deployment_agent_door_steps(instance: srv1_live_dashboard_instance(), names: prod.names)) == 0
+    && agent_door_unit_text(spec: prod) == ""
+    && !has_step(legs: legs, step: "agent-door-unit")
+}
+
+// THE DIRECTORY'S OWNERSHIP BINDING: the host-prepared door directory adopts no foreign group.
+test fn the_agent_door_directory_refuses_foreign_ownership() -> Bool {
+  let lab = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  any(lab.directories, d => owned_directory_is_agent_door(t: d) && owned_directory_group_adoption(t: d) == ForeignOwnershipRefuses)
+}

@@ -39,7 +39,7 @@ data bss138: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "BSS138-7-F",
   package: "SOT23 (Standard)",
-  top_marking: "K38",
+  top_marking: Present { value: "K38" },
   specification: MosfetSpec { mosfet: MosfetSpecification {
     channel: NChannel,
     drain_source_maximum: volt(count: 50),

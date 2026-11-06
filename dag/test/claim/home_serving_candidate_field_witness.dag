@@ -79,7 +79,9 @@ import extdeps.gpu.types {
   GpuBoardAdmitted,
   GpuBoardRefused,
   GpuBoardCatalogFacts,
-  BoardCarriesNoGpu,
+  SeveralGpusCountBelowTwo,
+  SeveralGpus,
+  InterconnectUnread,
   admit_gpu_board,
   gpu_board_admission_facts,
   gpu_catalog_row_eq,
@@ -597,11 +599,11 @@ fn hscf_row_at_rung(row_name: String, rung_watts: Nat) -> String {
 // ── A BOARD THE CATALOG REFUSES IS EXCLUDED WITH THAT REFUSAL, NOT DROPPED ─────────────────────
 // The roster holds board ADMISSIONS, so a board extdeps.gpu.types admit_gpu_board refuses reaches the
 // fold. Every live board is admitted, so this arm is executed on a refused copy of the real RTX PRO 5000
-// 48 GB board's facts (gpu_count 0, the BoardCarriesNoGpu refusal): every rung comes back excluded, naming
+// 48 GB board's facts ("several" GPUs counting one, the SeveralGpusCountBelowTwo refusal): every rung comes back excluded, naming
 // that board and the refusal, and none is offered.
 fn hscf_without_gpus(f: GpuBoardCatalogFacts) -> GpuBoardCatalogFacts {
   GpuBoardCatalogFacts {
-    vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment,
+    vendor: f.vendor, model: f.model, gpu: f.gpu, composition: SeveralGpus { count: 1, interconnect: InterconnectUnread { read_obligation: "fixture" } }, attachment: f.attachment,
     board_power: f.board_power, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
     figure_citations: f.figure_citations,
   }
@@ -614,7 +616,7 @@ test fn home_serving_refused_board_is_excluded_with_its_refusal() -> ProcessExit
   let all_refused = all(outcomes, o => match o {
     CellExcluded { exclusion: x } =>
       gpu_catalog_row_eq(a: x.board.gpu, b: live.gpu) && (match x.cause {
-        ExcludedBoardRefused { refusal: BoardCarriesNoGpu } => true
+        ExcludedBoardRefused { refusal: SeveralGpusCountBelowTwo { count: 1 } } => true
         _ => false
       })
     CellOffered { entry: _ } => false

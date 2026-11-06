@@ -1,0 +1,36 @@
+module test.claim.attempt_identity_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE ATTEMPT IDENTITY STORE CANNOT BE SPELLED OR CAST OUTSIDE ITS DECLARING FILE.
+// gunbc.roadmap.roadmap_attempt_identity_store_root AttemptIdentityStore is sole_constructor, built only by its
+// one mint, which takes the instance and derives the root from its declaration. Each RED hands the compiler a
+// module outside the defining file that forges the record and asserts EXACTLY ONE SoleConstructorViolation
+// keyed on its name; the same text against the seal-stripped twin draws none, so the refusal is the keyword.
+// Claimed: construction is sealed. NOT claimed: that business code cannot read store.root (field reads are
+// not sealed; gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+
+fn seal_violations(source: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: "AttemptIdentityStore")
+}
+
+data forged_literal_source: String = "module probe_forged_attempt_identity_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_identity_store_root { AttemptIdentityStore }\nfn forged(d: NonEmptyStr) -> AttemptIdentityStore {\n  AttemptIdentityStore { instance: d, root: d }\n}\n"
+
+data forged_cast_source: String = "module probe_cast_attempt_identity_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_identity_store_root { AttemptIdentityStore }\nfn forged(d: NonEmptyStr) -> AttemptIdentityStore {\n  d as AttemptIdentityStore\n}\n"
+
+data twin_source: String = "module probe_twin_attempt_identity_store\nimport std.types { NonEmptyStr }\nimport test.fixture.attempt_identity_seal.unsealed { AttemptIdentityStore }\nfn forged(d: NonEmptyStr) -> AttemptIdentityStore {\n  AttemptIdentityStore { instance: d, root: d }\n}\n"
+
+test fn a_forged_attempt_identity_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_literal_source), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_attempt_identity_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_cast_source), holds: fn(n) { n == 1 }))
+}
+
+test fn the_same_literal_against_the_stripped_twin_draws_no_violation() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: twin_source), holds: fn(n) { n == 0 }))
+}

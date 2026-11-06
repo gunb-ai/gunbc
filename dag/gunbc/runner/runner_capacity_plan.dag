@@ -13,10 +13,12 @@ import gunbc.fleet.fleet_runner_connectivity {
   RosterReadUnavailable,
   partial_roster_unseen_reason,
   runner_slot_connectivity_verdict_for_incarnation,
+  committed_incarnation_main_process_unread,
   materialized_width_for_host,
   local_incarnations_for_host,
   RegistrationSlotDecoding,
   RegistrationNamesCommittedSlot,
+  RegistrationNamesDeadIncarnation,
   RegistrationNamesNoCommittedSlot,
   RegistrationHostWidthUnresolved,
   decode_registration_slot,
@@ -175,6 +177,7 @@ fn accumulate_decoded_registration(
           GitHubSlotPopulationHostWidthUnresolved { registration_name: n, host: uh, cause: c }
         RegistrationNamesNoCommittedSlot { registration_name: n } =>
           GitHubSlotPopulationForeignRegistration { registration_name: n }
+        RegistrationNamesDeadIncarnation { slot: _ } => GitHubSlotPopulationObserved { identities: ids }
         RegistrationNamesCommittedSlot { slot: slot } =>
           if (slot.host as String) == (host as String) {
             if identity_in_list(identity: slot, members: ids) {
@@ -238,7 +241,7 @@ fn connectivity_replace_action(
   match find_local_incarnation_for_slot(slot: slot) {
     Absent => none
     Present { value: inc } =>
-      match runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, roster: roster, receipt: receipt) {
+      match runner_slot_connectivity_verdict_for_incarnation(incarnation: inc, main: committed_incarnation_main_process_unread, roster: roster, receipt: receipt) {
         SlotConnectivityDetached { slot: s, registration_id: _ } =>
           Present {
             value: RunnerIncarnationReplace {

@@ -1,7 +1,7 @@
 module extdeps.cloud.hetzner_cloud_api
 import std.resources { Network }
 
-import std.types { Int, NonEmptyStr, String, Secret }
+import std.types { Bearer, Int, NonEmptyStr, String, Secret }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }

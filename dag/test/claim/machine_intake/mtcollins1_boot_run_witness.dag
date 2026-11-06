@@ -5,7 +5,7 @@ import gunbc.machine_intake.mtcollins1_boot_run { fan_gate_continuation, FanGate
 import gunbc.machine_intake.mtcollins1_boot_fan_gate { mtcollins1_fitted_fan_set, mtcollins1_boot_fan_gate_allowance }
 import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
 import gunbc.machine_intake.chassis_fan_establishment { PostPowerChassisUnreadable }
-import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
+import gunbc.machine_intake.bmc_fan_observation { SdrVerboseNotRequired, FanObservationRound, ThermalUnreadable, FanSensorsUnreadable }
 import extdeps.bmc.ipmi_chassis_control { ChassisUnreadable }
 import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.host.managed_host_boot_phase_timing { PhaseStepSkipped }
@@ -57,6 +57,7 @@ import gunbc.machine_intake.mtcollins1_census_image { census_boot_medium, mtcoll
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   BmcAuthRefused, BmcSessionUnestablished, BootParam5Read, MegaRacEndMediaNotTaken, MegaRacHandoffNotReached, MegaRacMediaAttachNotAttempted, megarac_diagnostics_allowance,
+  boot_override_clears_not_required, boot_override_clears_none_found,
 }
 import gunbc.host.smpro_platform_capability {
   SmproNotTaken, SmproProbed, SmproReading,
@@ -775,11 +776,11 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
+  let never = mtcollins1_boot_run_record(media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, clears: boot_override_clears_not_required(reason: "fixture"), power_after: HostPowerRead { state: PowerOff }, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr })
   let ended = mtcollins1_boot_run_record(
     media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
     stage: ActuationCensusEnded { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
-    before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff },
+    before: consumed, after: consumed, clears: boot_override_clears_none_found(reason: "fixture"), power_after: HostPowerRead { state: PowerOff },
     timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
   )
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
@@ -788,7 +789,7 @@ test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
     && (match mtcollins1_boot_run_record(
       media: MegaRacMediaAttachNotAttempted { reason: "fixture" }, handoff_media: MegaRacHandoffNotReached { reason: "fixture" }, end_media: MegaRacEndMediaNotTaken { reason: "fixture" },
       stage: ActuationPoweredOn { selection: uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
-      before: consumed, after: consumed, power_after: HostPowerRead { state: PowerOff },
+      before: consumed, after: consumed, clears: boot_override_clears_none_found(reason: "fixture"), power_after: HostPowerRead { state: PowerOff },
       timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"), fan_gate: PostPowerFanGateNotReached { reason: "fixture" as NonEmptyStr },
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
@@ -1089,7 +1090,7 @@ test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool 
 // (test.claim.machine_intake.mtcollins1_boot_fan_gate_admission_witness). The effectful gate (settle, read, PowerDown) is exercised
 // only by a real boot; no control here claims it.
 fn gc_round() -> FanObservationRound {
-  FanObservationRound { observed_at: "2026-10-19T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable }
+  FanObservationRound { observed_at: "2026-10-19T00:00:00Z" as NonEmptyStr, round_index: 0, chassis: ChassisUnreadable, chassis_raw: "", thermal: ThermalUnreadable, fans: FanSensorsUnreadable, verbose: SdrVerboseNotRequired }
 }
 
 fn gc_refused_reading() -> PoweredFanGate {

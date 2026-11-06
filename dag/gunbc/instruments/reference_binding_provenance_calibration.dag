@@ -1,6 +1,7 @@
 module gunbc.instruments.reference_binding_provenance_calibration
 
-import std.types { Bool, Int, List, SourceSpan, String, list_length }
+import std.types { Bool, Int, List, SourceSpan, String }
+import std.algebra { length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -510,7 +511,7 @@ fn cell_distinguishability(
   arm: CalibrationResolutionArm,
 ) -> CellDistinguishability {
   let colliding = collisions_for(kind: kind, arm: arm)
-  if list_length(items: colliding) > 0 {
+  if length(xs: colliding) > 0 {
     ProvenanceCollapsed {
       collapses_with: join_labels(labels: colliding),
       mechanism: "gunbc.namespace_cut.namespace_reference_derived_closure_admission.binding_outcome_from_resolution maps every non-Resolved arm to Absent, and each consumer arm maps Absent to the same refused(capability, failure) as a structural non-match",
@@ -765,19 +766,19 @@ fn distinct_labels(labels: List<String>) -> List<String> {
 }
 
 fn distinct_cell_key_count(cells: List<ProvenanceCell>) -> Int {
-  list_length(items: distinct_labels(labels: fold(cells, init: [], f: fn(acc, c) {
+  length(xs: distinct_labels(labels: fold(cells, init: [], f: fn(acc, c) {
     concat(acc, [cell_key(c: c)])
   })))
 }
 
 fn distinct_arm_label_count_of(arms: List<CalibrationResolutionArm>) -> Int {
-  list_length(items: distinct_labels(labels: fold(arms, init: [], f: fn(acc, a) {
+  length(xs: distinct_labels(labels: fold(arms, init: [], f: fn(acc, a) {
     concat(acc, [resolution_arm_label(a: a)])
   })))
 }
 
 fn distinct_kind_label_count_of(kinds: List<CalibrationObservationKind>) -> Int {
-  list_length(items: distinct_labels(labels: fold(kinds, init: [], f: fn(acc, k) {
+  length(xs: distinct_labels(labels: fold(kinds, init: [], f: fn(acc, k) {
     concat(acc, [observation_kind_label(k: k)])
   })))
 }
@@ -807,7 +808,7 @@ fn declared_cell_population_over(
   kinds: List<CalibrationObservationKind>,
   arms: List<CalibrationResolutionArm>,
 ) -> Int {
-  list_length(items: kinds) * list_length(items: arms)
+  length(xs: kinds) * length(xs: arms)
 }
 
 fn declared_cell_population() -> Int {
@@ -865,11 +866,11 @@ fn traversal_is_complete_over(
   kinds: List<CalibrationObservationKind>,
   arms: List<CalibrationResolutionArm>,
 ) -> Bool {
-  list_length(items: kinds) > 0
-    && list_length(items: arms) > 0
-    && distinct_arm_label_count_of(arms: arms) == list_length(items: arms)
-    && distinct_kind_label_count_of(kinds: kinds) == list_length(items: kinds)
-    && list_length(items: cells) == declared_cell_population_over(kinds: kinds, arms: arms)
+  length(xs: kinds) > 0
+    && length(xs: arms) > 0
+    && distinct_arm_label_count_of(arms: arms) == length(xs: arms)
+    && distinct_kind_label_count_of(kinds: kinds) == length(xs: kinds)
+    && length(xs: cells) == declared_cell_population_over(kinds: kinds, arms: arms)
     && distinct_cell_key_count(cells: cells) == declared_cell_population_over(kinds: kinds, arms: arms)
 }
 
@@ -885,7 +886,7 @@ fn calibration_verdict(cells: List<ProvenanceCell>) -> ProcessExit {
   if !traversal_is_complete(cells: cells) {
     exit_failure(reason: "provenance_calibration_report: refusing -- the traversal is incomplete or carries a duplicate key, so the matrix does not cover the declared population and an empty unsound-cell list would mean nothing was measured rather than nothing was wrong.")
   } else {
-    if list_length(items: unsound_cells(cells: cells)) == 0 {
+    if length(xs: unsound_cells(cells: cells)) == 0 {
       ExitSuccess
     } else {
       exit_failure(reason: "provenance_calibration_report: refusing -- not every cell is both provenance-distinguished at the consumer and production-demonstrated, so a corpus run's silence about a resolution arm is not evidence that arm is clean.")

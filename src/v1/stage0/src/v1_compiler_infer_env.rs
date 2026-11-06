@@ -82,6 +82,7 @@ pub struct TypeEnv {
     pub module_path: String,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     pub unit_variant_index_observed: bool,
+    pub equality_by_target: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -402,6 +403,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
         >(),
         unit_variant_index_observed: false,
+        equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
     })
 }
 
@@ -1791,6 +1793,7 @@ pub fn qualify_borrowed_type_names(
                         let qname =
                             v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
                         Rc::new(Node {
+                            ident: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -1814,7 +1817,6 @@ pub fn qualify_borrowed_type_names(
                             declaration_marker: n.declaration_marker.clone(),
                             declaration: n.declaration.clone(),
                             expr_data: n.expr_data.clone(),
-                            ident: None,
                         })
                     }
                 }
@@ -1948,13 +1950,41 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
+pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    {
+        let declarer_segs = crate::v1_std_core::module_path_segments(declarer.clone());
+        ((segment_lcp_len(
+            declarer_segs.clone(),
+            crate::v1_std_core::module_path_segments(env.module_path.clone()),
+        ) == (declarer_segs.clone().len() as i64))
+            || (import_visible_name(env.clone(), name) && {
+                let mut __found = false;
+                for p in env.parents.clone().iter().cloned() {
+                    if (p.module_path.clone() == declarer.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }))
+    }
+}
+
 pub fn global_bare_lookup_candidates(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: declarer,
+            binding,
+            ..
+        }) => {
+            if global_bare_declarer_in_scope(env.clone(), name.clone(), declarer.clone()) {
+                Some(binding.clone())
+            } else {
+                std::option::Option::None
+            }
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
@@ -2591,6 +2621,30 @@ pub fn inductive_fields_list_to_map(
     }
 }
 
+pub fn type_env_with_equality_by_target(
+    env: Rc<TypeEnv>,
+    by_target: Rc<HashMap<String, bool>>,
+) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: env.symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
+        equality_by_target: by_target.clone(),
+    })
+}
+
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
     tp_names
         .iter()
@@ -2599,6 +2653,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tp_name.clone(),
                     span: crate::v1_std_core::kernel_span(tp_name.clone()),
@@ -2622,7 +2677,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     declaration_marker: DeclarationMarker::Unmarked,
                     declaration: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 alias_rhs: std::option::Option::None,
@@ -2668,6 +2722,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
                 unit_variant_index_observed: e.unit_variant_index_observed.clone(),
+                equality_by_target: e.equality_by_target.clone(),
             })
         })
 }
@@ -2698,6 +2753,7 @@ pub fn census_declaration_type_env(
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
             unit_variant_index_observed: false,
+            equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
         });
         env_with_type_variable_bindings(base, tp_names)
     }
@@ -3888,6 +3944,7 @@ pub fn substitute_type_slots_mode(
                                         __result
                                     });
                                     Rc::new(Node {
+                                        ident: std::option::Option::None,
                                         occurrence_identity: child.occurrence_identity.clone(),
                                         name: child.name.clone(),
                                         span: child.span.clone(),
@@ -3911,7 +3968,6 @@ pub fn substitute_type_slots_mode(
                                         declaration_marker: child.declaration_marker.clone(),
                                         declaration: child.declaration.clone(),
                                         expr_data: child.expr_data.clone(),
-                                        ident: None,
                                     })
                                 }
                             } else {
@@ -3944,6 +4000,7 @@ pub fn substitute_type_slots_mode(
                     _ => n.inferred.clone(),
                 };
                 Rc::new(Node {
+                    ident: std::option::Option::None,
                     occurrence_identity: n.occurrence_identity.clone(),
                     name: n.name.clone(),
                     span: n.span.clone(),
@@ -3965,7 +4022,6 @@ pub fn substitute_type_slots_mode(
                     declaration_marker: n.declaration_marker.clone(),
                     declaration: n.declaration.clone(),
                     expr_data: n.expr_data.clone(),
-                    ident: None,
                 })
             }
         }
@@ -4134,6 +4190,31 @@ pub fn transparent_alias_rhs(pre: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
+pub fn refinement_rhs_of_declaration(
+    item_ref: Rc<DeclarationRef>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<Node>> {
+    match symbol_index_lookup(
+        env.symbol_index.clone(),
+        v1_rt::concat(
+            v1_rt::concat(item_ref.module_path.clone(), ".".to_string()),
+            item_ref.decl_name.clone(),
+        ),
+    ) {
+        std::option::Option::None => std::option::Option::None,
+        Some(item) => match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rhs, .. }) => {
+                if is_where_refinement_node(rhs.clone()) {
+                    Some(rhs.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+            _ => std::option::Option::None,
+        },
+    }
+}
+
 pub fn alias_rhs_of_declaration(
     item_ref: Rc<DeclarationRef>,
     env: Rc<TypeEnv>,
@@ -4199,6 +4280,7 @@ pub fn alias_rhs_with_index_identity(
         match declaration_named_in_module(spelled, owner_module, env.clone()) {
             std::option::Option::None => std::option::Option::None,
             Some(d) => Some(Rc::new(Node {
+                ident: std::option::Option::None,
                 occurrence_identity: rhs.occurrence_identity.clone(),
                 name: rhs.name.clone(),
                 span: rhs.span.clone(),
@@ -4220,7 +4302,6 @@ pub fn alias_rhs_with_index_identity(
                 declaration_marker: rhs.declaration_marker.clone(),
                 declaration: Some(d.clone()),
                 expr_data: rhs.expr_data.clone(),
-                ident: None,
             })),
         }
     }
@@ -4585,6 +4666,74 @@ pub fn alias_rhs_head_of_declaration(
     match alias_rhs_of_declaration(item_ref, env) {
         Some(rhs) => rhs.declaration.clone(),
         std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn settled_head_of_declaration(
+    mut __tco_loop_d: Rc<DeclarationRef>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut __tco_loop_env: Rc<TypeEnv>,
+    mut __tco_loop_fuel: i64,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut d = __tco_loop_d;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut env = __tco_loop_env;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
+                return std::option::Option::None;
+            }
+            match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                Some(rhs) => match rhs.declaration.clone() {
+                    Some(head) => {
+                        let __tco_0 = head.clone();
+                        let __tco_1 = source_indices;
+                        let __tco_2 = env;
+                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                        __tco_loop_d = __tco_0;
+                        __tco_loop_source_indices = __tco_1;
+                        __tco_loop_env = __tco_2;
+                        __tco_loop_fuel = __tco_3;
+                        continue;
+                    }
+                    std::option::Option::None => {
+                        break Some(d.clone());
+                    }
+                },
+                std::option::Option::None => {
+                    match parameterized_alias_of_declaration(
+                        d.clone(),
+                        source_indices.clone(),
+                        env.clone(),
+                    ) {
+                        std::option::Option::None => {
+                            break Some(d.clone());
+                        }
+                        Some(pa) => match pa.rhs.declaration.clone() {
+                            Some(head) => {
+                                let __tco_0 = head.clone();
+                                let __tco_1 = source_indices;
+                                let __tco_2 = env;
+                                let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                __tco_loop_d = __tco_0;
+                                __tco_loop_source_indices = __tco_1;
+                                __tco_loop_env = __tco_2;
+                                __tco_loop_fuel = __tco_3;
+                                continue;
+                            }
+                            std::option::Option::None => {
+                                break Some(d.clone());
+                            }
+                        },
+                    }
+                }
+            }
+        }
     }
 }
 

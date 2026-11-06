@@ -8,7 +8,7 @@ import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
 import gunbc.auth.request_authentication {
   RequestAccessPath, RequestAuthenticationEvidence, DeploymentAccessPolicy,
   AccessPathTailnetUnobserved, AccessPathTailnetProxy, AccessPathDirectHttps, AccessPathLocalDev,
-  GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent,
+  GoogleOidcSession, FabricServiceEvidence, HostAccountPeerEvidence, SessionStandingInvalid, AuthAbsent,
   TailnetRouteGap, tailnet_route_gap_sentence, tailnet_route_gap_label,
 }
 import extdeps.languages.json.emit { json_object, json_kv, json_string }
@@ -56,6 +56,7 @@ fn workspace_write_unavailable_gap(request: ServeHttpRequest<RequestAccessPath, 
         AccessPathLocalDev => none
       }
     FabricServiceEvidence { kind: _, authenticated_at: _ } => none
+    HostAccountPeerEvidence { account: _, principal: _ } => none
     SessionStandingInvalid { standing: _ } => none
     AuthAbsent => none
   }
