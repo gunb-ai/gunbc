@@ -385,7 +385,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
         runner: selected_ci_runner_target(),
-        timeout: minute(90)
+        timeout: minute(150)
       }
     },
     drift: Present {
