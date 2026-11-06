@@ -113,7 +113,7 @@ fn resolve_secret_manager_credential_version(printer: PhysicalAssetIdentity, tok
     PrinterAccessCodeLocusUnknown { printer: _ } => none
     PrinterAccessCodeLocusConflict { printer: _, matches: _ } => none
     PrinterAccessCodeDesiredLocusFound { locus: locus } =>
-      match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: "latest"), credential_source: credential_source) {
+      match fetch_secret_ref_credential(secret_ref: secret_ref_pin_version(ref: locus.secret, version: "latest"), token_source: token_source) {
         SecretCredentialReady { credential: c, resolved_version: version } => if (c as String) == "" { none } else {
           match sm_resolved_version_id(identity: version) { SmVersionIdProjected { version: v } => Present { value: v as NonEmptyStr } SmVersionIdNotAVersionResource { supplied: _ } => none }
         }
