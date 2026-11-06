@@ -22,8 +22,7 @@ import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
-import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_client { FabricStorageBindingUnplaced }
 import extdeps.transports.shell { ShellOutcome, ShellExited, ShellSpawnRefused }
 import extdeps.filesystem.filesystem_io {
   FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
@@ -94,7 +93,10 @@ fn reviewer_grant(node_id: String, attempt_key: String, criterion_key: String) -
     partition: "reviewer-memory-srv1" as NonEmptyStr as PartitionId,
     amount: kibibyte(count: 8388608),
     class_grant: GrantAtCeiling { class: WorkClassReviewerSession, amount: kibibyte(count: 8388608), reason: ClassUnmeasured },
-    store: FabricStorageLocalFiles { root: fabric_storage_file_root(root: "/state/capacity" as NonEmptyStr) },
+    // THE BINDING IS UNPLACED, NOT FAKED: the real ops record is sealed-minted wet, and this
+    // dry table never reads the ledger (every row answers from its inputs; the release arm is
+    // witnessed WET). Unplaced fails loudly if any future row ever reaches for the store.
+    store: FabricStorageBindingUnplaced,
     slot: session_reviewer_attempt_record(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, unit: unit, granted: kibibyte(count: 8388608), now: 1000),
     slot_generation: cas_generation_first(),
   }
