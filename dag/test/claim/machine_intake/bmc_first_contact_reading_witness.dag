@@ -1033,7 +1033,7 @@ test fn h11ssl_unit1_first_contact_reports_what_its_capture_set_holds() -> Bool 
 
 fn unit2_claims(reading: BmcFirstContactReading) -> Bool {
   reading.controller == "h11ssl-unit2" as NonEmptyStr
-    && reading.observed_at == "2026-10-27T00:00:00Z" as NonEmptyStr
+    && reading.observed_at == "2026-10-23T00:00:00Z" as NonEmptyStr
     // The unit-2 directory holds the CGI generic-info page only: no Managers resource, so the family gate stays
     // unobserved and the family-tagged identity is REFUSED even though the page names a release.
     && match reading.family {
