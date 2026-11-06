@@ -971,7 +971,7 @@ type MegaRacUiPageReading {
 // in the case-folded body. No token's text is a vendor string, no count is a slice, and no URL, header
 // or attribute value is carried (the body bytes never reach the artifact).
 type MegaRacUiPageShape {
-  body_length: Int
+  body_length: ByteSize
   body_sha256: String
   script_tags: Int
   ref_double_quoted: Int
@@ -1014,7 +1014,7 @@ fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
   let length = count(folded)
   let refs = ui_attr_refs_scan(orig, folded, length, 0, [])
   MegaRacUiPageShape {
-    body_length: length,
+    body_length: byte_size(count: length),
     body_sha256: sha256_hex_of_text(text: body),
     script_tags: ui_count_token(folded, length, "<script"),
     ref_double_quoted: ui_refs_with_style(refs, DoubleQuoted),
@@ -1036,7 +1036,7 @@ fn ui_page_shape_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
   let shape = reading.shape
   join([
     "page_shape path=", reading.path as String,
-    " body_length=", megarac_ui_count_text(shape.body_length),
+    " body_length=", megarac_ui_count_text(byte_size_count(b: shape.body_length)),
     " body_sha256=", shape.body_sha256,
     " script_tags=", megarac_ui_count_text(shape.script_tags),
     " ref_dq=", megarac_ui_count_text(shape.ref_double_quoted),
