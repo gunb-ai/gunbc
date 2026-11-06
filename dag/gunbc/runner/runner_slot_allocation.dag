@@ -118,7 +118,7 @@ fn srv1_deploy_slot() -> RunnerSlotIdentity {
 
 data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
 
-// A TRANSITIONAL CI SLOT IS A DECLARED OVER-ADMISSION, NOT A WIDTH THE ENVELOPE ADMITS. At the 25 GiB
+// A TRANSITIONAL CI SLOT IS A DECLARED ROW ON TOP OF THE WIDTH THE ENVELOPE ADMITS, SIZED TO THE ENVELOPE REMAINDER (no over-admission; see below). At the 25 GiB
 // slot (#15850) srv1's envelope admits two authored microVM slots and the deploy slot srv1-02, and no
 // CI slot. srv1-01, a CI slot in group gunbai, is the only srv1 runner that has served the
 // srv1-pinned fleet-converge jobs: 16 of 16 in the 60 completed runs read 2026-11-05. srv1-02 is not
@@ -657,7 +657,8 @@ fn memory_admitted_width_of_envelope(envelope: ByteSize, authored_slots: List<Ru
 // over-admit the envelope and gunbc.ci.ci_runner_placement host_allocation_verdict would refuse the host
 // (HostAllocationOversubscribedOnHost), which is why the row is NOT charged the fleet constant. A host
 // with no authored slots has no remainder to grant; an envelope that cannot hold the authored charge
-// grants zero, and that host's memory width is already zero, which the placement refuses by name.
+// grants zero; committed_width_of REFUSES that case by name (WidthSlotShapeInadmissible) and never commits the
+// slot at MemoryMax zero. Both arms (envelope under the authored charge; exact-fit remainder of zero) are that refusal.
 fn transitional_ci_slot_memory_max_of_envelope(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>, transitional_count: Int) -> ByteSize {
   match measure_sub(a: envelope, b: authored_microvm_slots_charge(slots: authored_slots)) {
     MeasureSubtrahendExceedsMinuend => byte_size(0)
@@ -1030,11 +1031,19 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
           }
         MemoryDenominatorEstablished =>
+          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max(host: f.host)) == 0 {
+            RunnerWidthUnresolved {
+              cause: WidthSlotShapeInadmissible {
+                reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
+              },
+            }
+          } else {
           match f.cpu {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
             CpuWidthDerived { slots: by_cpu } =>
               RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
+          }
           }
       }
   }
