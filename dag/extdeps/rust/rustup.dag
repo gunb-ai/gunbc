@@ -70,7 +70,17 @@ data rustup_environment_variables_authority: ExternalAuthority = ExternalAuthori
 // directly. A second rustup variable arriving is what turns this into an enumeration.
 data rustup_home_env_name: NonEmptyStr = "RUSTUP_HOME"
 
-data rustup_toolchain_file_authority_note: NonEmptyStr = "rustup book, Overrides, 'The toolchain file' (rust-lang.github.io/rustup/overrides.html): rust-toolchain.toml holds a [toolchain] table whose `channel` key names the toolchain. This is a bounded reader of that one field, not a TOML parser: it admits the key `channel` exactly (a key such as channel_override does not match), only inside the [toolchain] table, with a basic (\") or literal (') string value. Anything else names no channel, which the consumer refuses typed."
+// rustup book, Overrides, "The toolchain file": rust-toolchain.toml holds a [toolchain] table whose
+// `channel` key names the toolchain. rustup_toolchain_file_channel below is a bounded reader of that
+// one field, not a TOML parser: the key must be exactly `channel` (channel_override does not match),
+// inside [toolchain] only, with a basic or literal string value; anything else names no channel and the
+// consumer refuses typed.
+data rustup_toolchain_file_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "rust-lang.github.io/rustup/overrides.html"
+  }
+}
 
 type ToolchainFileScan {
   in_table: Bool
