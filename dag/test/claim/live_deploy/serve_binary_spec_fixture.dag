@@ -1,8 +1,10 @@
 module test.claim.live_deploy.serve_binary_spec_fixture
 
-import std.types { String }
-import gunbc.live_deploy.spec { DeploymentSpec, DeploymentServiceConfig }
+import std.types { String, NonEmptyStr, Port }
+import gunbc.live_deploy.spec { DeploymentSpec, DeploymentServiceConfig, DeploymentNames }
 import gunbc.live_deploy.serve_binary { AdmittedFixedServeBinary }
+import extdeps.http.server { HttpServerListenConfig }
+import extdeps.tailscale.serve { TailscaleServeEndpoint }
 
 // REBUILD A DEPLOYMENT SPEC WITH A DIFFERENT ADMITTED SERVE BINARY, IN ONE PLACE. The serve-unit
 // emitter witnesses and the collision-law witnesses both need to hold every other deployment
@@ -24,6 +26,59 @@ fn spec_with_serve_binary(base: DeploymentSpec, binary: AdmittedFixedServeBinary
               provider_state_root: ps, instance_root: ir, repo_root: rr, service_user: su, service_uid: uid,
               listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall,
             }
+          }
+      }
+  }
+}
+
+// OVERRIDE THE SURFACES THE SAME-HOST COLLISION LAW READS, IN ONE PLACE. The law
+// (gunbc.live_deploy.desired spec_same_host_surface_collision) is a nine-way disjunction over
+// names-surface fields; a per-clause witness needs to hold eight surfaces fixed and move exactly
+// one, and it must be able to move it BACK. Passing each surface's own current value rebuilds an
+// equal spec, so a claim restores one surface without a second mutation shape. Every surface the
+// law reads lives here and nowhere else; a future tenth axis joins this one rebuild point or the
+// per-clause suite goes red naming it. Lives under dag/test/ so it cannot reach production.
+fn spec_overriding_surfaces(
+  base: DeploymentSpec,
+  unit_name: NonEmptyStr,
+  listen_port: Port,
+  repo_root: NonEmptyStr,
+  serve_function: NonEmptyStr,
+  tree_sync_unit_name: NonEmptyStr,
+  tree_sync_env_path: NonEmptyStr,
+  tailscale_endpoint: TailscaleServeEndpoint,
+) -> DeploymentSpec {
+  match base {
+    DeploymentSpec { target: t, steps: s, names: n, service: svc, approval_broker: ab, instance_id: iid } =>
+      match svc {
+        DeploymentServiceConfig { unit_name: _, serve_binary: b, serve_entry: se, serve_function: _,
+          provider_state_root: ps, instance_root: ir, repo_root: _, service_user: su, service_uid: uid,
+          listen: l, serve_cpu_limit: cpu, serve_wall_limit: wall } =>
+          match l {
+            HttpServerListenConfig { host: h, port: _ } =>
+              match n {
+                DeploymentNames { unit_name: _, tailscale_serve_endpoint: _, tree_sync_unit_name: _,
+                  tree_sync_env_path: _, publication_principal: pp } =>
+                  DeploymentSpec {
+                    target: t, steps: s, instance_id: iid, approval_broker: ab,
+                    directories: base.directories,
+                    role_singletons: base.role_singletons,
+                    names: DeploymentNames {
+                      unit_name: unit_name,
+                      tailscale_serve_endpoint: tailscale_endpoint,
+                      tree_sync_unit_name: tree_sync_unit_name,
+                      tree_sync_env_path: tree_sync_env_path,
+                      publication_principal: pp,
+                    },
+                    service: DeploymentServiceConfig {
+                      unit_name: unit_name, serve_binary: b, serve_entry: se, serve_function: serve_function,
+                      provider_state_root: ps, instance_root: ir, repo_root: repo_root,
+                      service_user: su, service_uid: uid,
+                      listen: HttpServerListenConfig { host: h, port: listen_port },
+                      serve_cpu_limit: cpu, serve_wall_limit: wall,
+                    }
+                  }
+              }
           }
       }
   }

@@ -506,9 +506,10 @@ test fn the_refusal_dropping_builder_is_deleted() -> ProcessExit {
 // ---------------------------------------------------------------------------
 // THE PRIVILEGED-INSTALL PARENT RULING (quick-newt-573 security fix, 2026-11-05). A privileged
 // `install -d -o G -g G -m M <path>` applies its ownership only to the named leaf; when the model ALSO
-// declares the leaf's PARENT as one of these install targets and that parent's GROUP can write it, the
-// de-privileged grantee (a member of that group, via runner_host_grants EnsureSupplementaryGroupMembership)
-// can plant a symlink in the parent that root's install then follows and chowns -- an ownership escalation.
+// declares the leaf's PARENT as one of these install targets and a non-root principal can write that parent
+// (by owner, group, or other -- owned_directory_caller_can_write), so the de-privileged grantee (a member of
+// that group, in the group-writable case, via runner_host_grants EnsureSupplementaryGroupMembership) can plant
+// a symlink in the parent that root's install then follows and chowns -- an ownership escalation.
 // The fold (executor_privileged_owned_directory_plans -> executor_privileged_writable_parent_refusal) refuses
 // such a target. The two fixtures below place the parent at the REAL printer-state path so the refusal names
 // a directory the host actually needs, exactly as the /var/lib/gunbc/printer-starts finding did.

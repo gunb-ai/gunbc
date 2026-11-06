@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import std.measure { millivolt }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkDescribedNotStructured,
   ElectronicComponentRow, LogicGateSpec, LogicGateSpecification, GateFunction, MillivoltRange, GatePin,
   GateInput, GateOutput, GateGround, GateSupply,
 }
@@ -39,7 +39,7 @@ data sn74lv1t08_dck: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "SN74LV1T08DCKR",
   package: "SC70-5 (DCK)",
-  top_marking: Present { value: "WEJ (one of 1QZ, WE3, WEJ, WES)" },
+  top_marking: Present { value: MarkDescribedNotStructured { text: "WEJ (one of 1QZ, WE3, WEJ, WES)", why: "the document lists four alternative marks for the one part" } },
   specification: LogicGateSpec { gate: LogicGateSpecification {
     function: GateFunction { inputs: 2, inverted_output: false },
     supply: MillivoltRange { minimum: millivolt(count: 1600), maximum: millivolt(count: 5500) },

@@ -20,6 +20,7 @@ module test.claim.product.p4261_photograph_witness
 //
 // (unset GUNBC_RESOLVED_GRAPH_CACHE_DIR and GUNBC_NATIVE_CACHE_ROOT first).
 
+import extdeps.electronic_component.types { published_fixed_line_contains }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
 import std.list { distinct_by_key, duplicated_by_key, first_where }
 import std.nat { Nat }
@@ -88,6 +89,7 @@ import product.p4261.findings { ImageReadingsJudged }
 import product.p4261.k1_a { p4261_k1_layout }
 
 import product.electrical.identification {
+  observation_relied_on,
   marking_text,
   // The channels, not the rendering: these four rows are checked on what was read as letters and what was
   // recorded as the maker's mark, so the witness projects the spans instead of comparing a rendered string.
@@ -268,7 +270,7 @@ fn e1_marking_at(designator: NonEmptyStr) -> MarkingReading? {
   match e1_installed_at(designator) {
     Absent => Absent
     Present { value: row } => match row.identification {
-      IdentifiedByMarking { row: _, marking } => Present { value: marking }
+      IdentifiedByMarking { row: _, observation } => Present { value: observation_relied_on(o: observation) }
       _ => Absent
     }
   }
@@ -333,10 +335,7 @@ fn joins_vendor_mark(designator: NonEmptyStr) -> Bool {
     Absent => false
     Present { value: reading } => match fsv20100v_device_code(reading: reading) {
       Absent => false
-      Present { value: code } => match onsemi_schottky_fsv20100v.top_marking {
-        Absent => false
-        Present { value: printed } => code == printed
-      }
+      Present { value: code } => published_fixed_line_contains(row: onsemi_schottky_fsv20100v, code: code)
     }
   }
 }
