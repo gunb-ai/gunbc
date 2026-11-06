@@ -660,6 +660,18 @@ test fn witness_find_node_misses() -> Bool {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
 }
 
+// Pairing claim for verify_without_observable_subject_defers_instead_of_rerunning: that witness SUPPLIES
+// NodeMissing at belt_verify_terminal_attempt. This asserts the real producer of the node answer, the
+// pure lookup belt_lookup_node folds the projection through, yields exactly NodeMissing (not the refusal arm,
+// not a found node) for an id absent from a bounded real node list, so the supplied value cannot drift unseen.
+test fn witness_find_node_absent_id_is_exactly_node_missing() -> Bool {
+  match belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "belt-verify-probe-node") {
+    NodeMissing => true
+    NodeFound { node: _ } => false
+    AuthorityProjectionRefused { detail: _ } => false
+  }
+}
+
 fn owned_node(id: String, owner: String) -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_F2RWDMNTDKS0ZR1P4VNZ" as RoadmapNodeIdentity,
