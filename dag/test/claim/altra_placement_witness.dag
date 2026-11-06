@@ -1,6 +1,7 @@
 module test.claim.altra_placement_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { Int, int_to_decimal_string }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.measure { micrometer_count }
@@ -701,8 +702,8 @@ test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
     },
     pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
   }
-  let prod_roles = list_length(items: required_roles(d: prod))
-  let fixture_roles = list_length(items: required_roles(d: fixture))
+  let prod_roles = length(xs: required_roles(d: prod))
+  let fixture_roles = length(xs: required_roles(d: fixture))
   prod_roles - fixture_roles == 3
     && role_is_required_under(r: HostNetworkPhy, intent: Production)
     && !role_is_required_under(r: HostNetworkPhy, intent: EngineeringBringUp)
@@ -818,7 +819,7 @@ test fn w_slot_obligations_follow_routed_copper_not_the_shipped_population() -> 
   let d = design_routed(routed: eight_routed_one_position(),
                         l: ShipsWithProductionPopulation { production: four_populated_one_position() })
   memory_role_count(d: d) == 8
-    && list_length(items: four_populated_one_position().populated_channels) == 4
+    && length(xs: four_populated_one_position().populated_channels) == 4
     && requires_slot(d: d, c: DdrChannel7, p: FirstDimmOnChannel)
 }
 

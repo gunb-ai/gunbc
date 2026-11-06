@@ -1,6 +1,20 @@
 module product.electrical.identification
 
-import std.types { List, NonEmptyStr, String }
+import std.types { List, NonEmptyStr, String, Char }
+import std.logic { Bool }
+import std.algebra { Cons, Empty, Equal, Greater, fold_list, is_empty, Less, list_push, Ordering }
+import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
+import std.list { first_duplicate_by_key }
+import v2.std.text {
+  CharAbsent,
+  CharFound,
+  CharResult,
+  char_eq,
+  string_contains_char,
+  string_eq,
+  string_head,
+  string_join
+}
 import std.nat { Nat }
 import std.measure { Ampere, Volt, volt_count }
 import extdeps.electronic_component.types {
@@ -8,15 +22,38 @@ import extdeps.electronic_component.types {
   DrainSourceMaximum,
   ElectronicComponentRow,
   FuseInterruptRating,
+  CapacitorSpec,
+  ConnectorSpec,
+  HotSwapControllerSpec,
+  LevelTranslatorSpec,
+  LogicGateSpec,
+  MosfetSpec,
+  ProgrammableLogicSpec,
   RegulatorPin,
+  RootOfTrustSpec,
+  SerialFlashSpec,
+  ShiftRegisterSpec,
   SwitchingRegulatorSpec,
+  TemperatureSensorSpec,
+  TvsDiodeSpec,
   TvsReverseStandoff,
   voltage_withstand,
   VoltageWithstand,
   VoltageWithstandKind,
+  RectifierSpec,
+  RectifierRepetitivePeak,
 }
-import product.electrical.connectivity { ComponentInstanceIdentity, TerminalIdentity }
-import product.electrical.continuity { EvidenceRef }
+import product.electrical.connectivity { ComponentInstanceIdentity, TerminalIdentity, component_identity_eq }
+import product.electrical.continuity {
+  EvidenceRef,
+  OrderUnrecorded,
+  ReadingOrder,
+  evidence_citation,
+  evidence_ref_text
+}
+import product.electrical.photograph {
+  BoardSightings, PhotographCitation, same_boxed_frame, same_sighting, sighting_attributed
+}
 
 // HOW AN INSTALLED PART IS IDENTIFIED, for any board read at the bench. A part credits its
 // datasheet row (extdeps.electronic_component) only once its marking is read and matched; until then it
@@ -38,26 +75,1023 @@ import product.electrical.continuity { EvidenceRef }
 // Each reading of a marking carries its own receipt, so a part never inherits another's identity by
 // sitting nearby or looking alike.
 
+// THE MARKING TEXT, AND WHAT WAS SAID BESIDE IT (marking contract §1, revision 5).
+//
+// WHY A NAME FOR THE TEXT RATHER THAN A PLAIN STRING. The rule it carries is the one the contract calls
+// the only one worth a type: a marking row with no glyphs is not a reading, and it cannot be written.
+//
+// WHY THERE IS NO PREDICATE ON IT. The draft refused a span sitting in brackets, on the premise that
+// brackets occur only in the bench's editorial asides. The corpus falsified the premise: U451's printed
+// text includes "(swirl logo)" and "(e4)", and U10CX085's includes "(logo)" and "(circled)". What is
+// printed on a body and what the bench said beside it are written with the SAME characters, so no
+// predicate over characters can sort them, and a type that claimed to would only be a guess with a
+// compiler's authority behind it. The guard moved to a control that does not ask a string what it means:
+// `duplicate_channel_claim` refuses a row that records one observed span in two channels at once.
+// THE MARKING, AS OBSERVATION (marking contract §6, revision 6 — approved 2026-11-05).
+//
+// WHY A SPAN IS THE UNIT. What the bench records about one body is several things at once: characters
+// printed on it, a maker's logo, a physical feature, and something said about the reading itself. Rev 5
+// kept the first in `text` and the rest in a side list, which forced every check to guess where one
+// channel ended — and the guess was a word list matched against prose, which §1 forbids and which the
+// corpus defeated twice (printed text really does contain "(logo)" and "(swirl)"). A span carries its
+// own classification, so the channels are separated by the TYPE, and nothing inspects words to decide.
+//
+// WHY THE HEAD OF A TRANSCRIPTION IS A GLYPH SPAN, NOT A LIST. The contract writes
+// `Transcribed { first: MarkingSpan.Glyphs, rest }`: a reading that recorded only annotations would be a
+// no-glyph read wearing the clothes of a transcription. This language has no way to name one arm of a sum
+// as a type, so the glyphs arm is factored out as `GlyphSpan` and used BOTH inside the `Glyphs` arm and as
+// the head of `Transcribed` — the same guarantee, spelled structurally: `Transcribed { [BodyFeature] }`
+// cannot be built. `LookedNothingReadable` is the other arm, and it is the honest home for "looked, read
+// no glyphs", which rev 5 could only express as the string "none" and then guess at.
+//
+// WHY AN UNREAD MARK IS NOT A DISPUTE. '?' means "this glyph is not readable": silence, not dissent. It
+// consumes no dispute and grounds no identification; it does still record where the read came from. The
+// corpus is why this is settled rather than argued: U12 reads `P617A / 01 14 / 226` and U13, the same
+// part type, reads `P617A / ?? ?? / ???`; Q3_5 reads `BC4X` beside `BC4X?`; `WEJ` beside `?WEJ` beside
+// `?W?J`. Treating '?' as disagreement would manufacture conflicts between identical parts, and one such
+// pair sits on a row that relies on its identification today.
+
+// Characters printed on the body. The name is the contract's only rule worth a type: a reading with no
+// glyphs is not a transcription, and it cannot be written.
+type MarkingGlyphs = NonEmptyStr
+
+// ONE OBSERVED SPAN AND THE PIXELS IT WAS READ FROM. `sighting` is the frame and the box, bound to the
+// span rather than to the reading: an identification may rest on a span only when that span's own
+// evidence can be checked (§6.3). Absent is legal and is recorded evidence debt — such a span may sit in
+// `others`, and it can never carry reliance.
+type GlyphSpan {
+  preceded_by: String
+  span: MarkingGlyphs
+  sighting: PhotographCitation?
+}
+
+// A span, classified by what it is, at the point it is recorded. The duplicate-channel control reads this
+// classification and nothing else: two spans of DIFFERENT kinds claiming the SAME digest and the SAME box
+// is the contradiction, so the control asks about evidence identity — never about text, and never about
+// boxes overlapping.
+type MarkingAnnotation
+  = PrintedLogo { preceded_by: String, span: NonEmptyStr, whose: NonEmptyStr, sighting: PhotographCitation? }
+  | BodyFeature { preceded_by: String, span: NonEmptyStr, described: NonEmptyStr, sighting: PhotographCitation? }
+  | ReadingCircumstance { preceded_by: String, span: NonEmptyStr, noted: NonEmptyStr, sighting: PhotographCitation? }
+
+type MarkingSpan
+  = Glyphs { glyphs: GlyphSpan }
+  | Annotation { annotation: MarkingAnnotation }
+
+// What one bench session recorded about one marking. Two states, and the difference between them is the
+// whole point: glyphs were transcribed, or the bench looked and could not read any.
+type MarkingContent
+  = Transcribed { leading: List<MarkingAnnotation>, first: GlyphSpan, rest: List<MarkingSpan>, followed_by: String }
+  | LookedNothingReadable { circumstances: List<MarkingAnnotation>, followed_by: String }
+
+// One bench reading of one marking. `content` carries the spans; `evidence` is the receipt for the reading
+// as a whole, and is what a `MarkingObservation` binds its reliance to.
 type MarkingReading {
-  text: NonEmptyStr
+  content: MarkingContent
   evidence: EvidenceRef
+}
+
+// THE ONE REDUCTION THE CONTRACT MANDATES (§3): transcribed lines split at "/", with the declared
+// non-glyph spacing removed from each. WHY ONE PLACE AND NOT TWO NEIGHBOURING IMPLEMENTATIONS: the rule
+// "spaces inside a transcribed line are not glyph identity" was carried in a witness comment while the
+// model compared raw strings, and the two disagreed in front of a reviewer. Any comparison that needs the
+// reduction calls THESE functions, so changing the reduction changes one thing and a witness notices.
+//
+// WHY THE REDUCTION IS A CHARACTER LIST AND NOT TEXT. Host text and a structural List<Char> are different
+// values in this language: string_eq refuses a cons-built list ("chars expects a string argument, got
+// List", measured), so text is never reassembled from scalars -- reports fold it back with
+// unicode_scalar_fold, the conversion std.coercion names -- and every position that gets COMPARED is
+// compared as a Char. Separators are never written as literals either: v2.std.text has no character
+// literals, so the separator and the spacing scalar come out of one-character host strings via string_head.
+//
+// WHY AN UNAVAILABLE REDUCTION IS A DISPUTE AND NOT A SHRUG. If a scalar cannot be obtained, no comparison
+// can be made; reporting nothing would let no_dissent mint over a comparison that never happened, which is
+// the one thing this function exists to prevent. So the failure is itself a reported dispute, and the only
+// standing it can produce is a preferred-under-dissent one -- which requires the relied-on reading to be
+// checkable for its subject, so a reduction that cannot run cannot smuggle an identification through.
+
+type ReducedLine {
+  glyphs: List<Char>
+}
+
+type GlyphReduction
+  = Reduced { lines: List<ReducedLine> }
+  | ReductionUnavailable { why: NonEmptyStr }
+
+// The text of a transcribed string, for COMPARISON only: identity never goes through text, and the prose
+// that leaves this module is built by std's own fold.
+//
+// WHY THIS HELPER'S RESULT IS ALWAYS BOUND TO A NAME BEFORE IT IS PASSED.
+//
+// A seed defect substitutes an ARGUMENT'S SOURCE TEXT into the callee's parameter list. It is invisible to
+// tokenize, parse, resolve and typecheck and dies at eval (about step 88) with, for example:
+//
+//   call contract mismatch calling 'unicode_scalar_unfold': no parameter named 'host' (declared: [s])
+//
+// where the name is whatever source text stood in the caller's argument position -- so the word moves when
+// the argument is renamed. 'unicode_scalar_unfold' (src/v2/std/integer.dag:1119, one parameter `s`) is
+// simply the first inner call that checks its labels, so it is where every shape surfaces.
+//
+// Measured, each row a separate claim_batch run (the shapes, by name; the probe sources are not part of this tree):
+//   PASS  non-recursive, literal argument                           into string_any_char_in
+//   PASS  non-recursive, bound name (coerced) + literal alphabet   into string_any_char_in
+//   PASS  non-recursive, bound name + destructured Char             into string_contains_char
+//   PASS  non-recursive, call expression as the argument            into string_eq
+//   FAIL  non-recursive, bound name in the `alphabet:` label         into string_any_char_in
+//   FAIL  RECURSIVE,   bound name                                    into string_contains_char
+//   FAIL  RECURSIVE,   bound name (coerced)                          into string_contains_char
+//   FAIL  RECURSIVE,   bound name (coerced)                          into string_eq
+//
+// So the two shapes this module keeps away from these calls are: a bound name reached from a RECURSIVE frame,
+// and a bound name in `alphabet:`. Recursion is the switch, not the callee -- the rows above are the same
+// function handed three different predicates, and the same function without the recursive arm is green.
+// The smallest repro is a twelve-line recursive function handing a bound name to string_contains_char.
+//
+// It is NOT a cast, NOT an identifier spelled like the keyword `as`, and NOT a member access: each of those
+// was eliminated by measured shapes (five, seven and one respectively), and `reduced_marking` below has carried a cast inside a labelled argument for
+// months. Renaming this helper moved the word inside the error message and changed nothing else.
+//
+// What this note does NOT claim: that the boundary above is complete. It is drawn where it was measured.
+// `span_carries_mark` below exists because of this defect -- it is the leaf the recursive walk is not
+// allowed to be -- and an earlier revision of this comment justified these bindings with probe rows that
+// never called the failing function at all.
+//
+// The defect is filed: gunbc.recurring_failure_mode.a_generated_crossing_call_is_labelled_from_source_text_not_the_callee_parameter.
+// These bindings are REQUIRED at the recursive-frame sites that call this helper, for v1-interpreted evaluation, because of that row (the non-recursive sites span_carries_mark and scalar_of cast inline: a run without their bindings passed); a v1 fix
+// was judged not admissible under v1_maintenance_standing (no v2 self-host caller exists). Restoration trigger,
+// the row's own: a v1 fix, or witness evaluation moving to the native compiler; then these bindings go.
+fn shown_text(t: NonEmptyStr) -> String {
+  t as String
+}
+
+fn scalar_of(one: NonEmptyStr) -> Char? {
+  match string_head(s: one as String) {
+    CharFound { value: c } => Present { value: c }
+    CharAbsent => Absent
+  }
+}
+
+// Text back out of characters, for REPORTS only. Comparison never goes this way: host text and a
+// structural list of scalars are different values here (string_eq refuses a cons-built list with "chars
+// expects a string argument, got List", measured), so what gets compared is always a Char, and the only
+// text that leaves this module is a report's prose built by std's own fold.
+fn text_of(glyphs: List<Char>) -> String {
+  unicode_scalar_fold(xs: glyphs)
+}
+
+fn reduced_marking(text: MarkingGlyphs) -> GlyphReduction {
+  // The host text is bound once, on a line of its own, so the two unfold calls below read as work on one
+  // string. NOT because a cast cannot sit inside an argument list: it can, five shapes of it measured in
+  // a probe run on 2026-11-05, including this exact one (the probe is not kept in this tree). What cannot
+  // be done is NAME a parameter or pattern `as` -- the first version of `same_chars` declared
+  // `(as: List<Char>, bs: ...)` and every call to it died at RUNTIME with "calling 'unicode_scalar_unfold':
+  // no parameter named 'as' (declared: [s])", because the labelled argument `as:` collides with the cast
+  // keyword. The compiler is silent about it where it is written; that is the defect to report, not the
+  // cast. Renaming the parameters to l:/r: is what fixed it.
+  let host = text as String
+  match scalar_of(one: "/") {
+    Absent => ReductionUnavailable { why: "no scalar could be obtained for the line separator" }
+    Present { value: separator } =>
+      match scalar_of(one: " ") {
+        Absent => ReductionUnavailable { why: "no scalar could be obtained for transcribed spacing" }
+        Present { value: spacing } =>
+          Reduced {
+            lines: collect_reduced_lines(
+              rest: unicode_scalar_unfold(s: host),
+              separator: separator,
+              spacing: spacing,
+              current: [],
+              done: []
+            )
+          }
+      }
+  }
+}
+
+// Splitting at the separator rather than at the three-character " / " is the SAME reduction, because the
+// spaces around a line break are spacing and the rule that drops the spaces inside a line drops them too.
+// The witness that reduces a real multi-line transcription is what would notice if that were untrue.
+fn collect_reduced_lines(
+  rest: List<Char>,
+  separator: Char,
+  spacing: Char,
+  current: List<Char>,
+  done: List<ReducedLine>
+) -> List<ReducedLine> {
+  match rest {
+    Empty => list_push(xs: done, item: ReducedLine { glyphs: current })
+    Cons { head: c, tail: fewer } =>
+      if char_eq(a: c, b: separator) {
+        collect_reduced_lines(
+          rest: fewer,
+          separator: separator,
+          spacing: spacing,
+          current: [],
+          done: list_push(xs: done, item: ReducedLine { glyphs: current })
+        )
+      } else if char_eq(a: c, b: spacing) {
+        collect_reduced_lines(
+          rest: fewer, separator: separator, spacing: spacing, current: current, done: done
+        )
+      } else {
+        collect_reduced_lines(
+          rest: fewer,
+          separator: separator,
+          spacing: spacing,
+          current: list_push(xs: current, item: c),
+          done: done
+        )
+      }
+  }
+}
+
+// The two characters at one position, as a report names them: the relied-on glyph versus the one another
+// reading saw there. The word is a report and nothing branches on it, which is why it carries no type of
+// its own; what is typed is the list's membership, which is what every standing decision reads.
+fn disputed_pair(left: String, right: String) -> NonEmptyStr {
+  string_join(fields: [left, " vs ", right], separator: "") as NonEmptyStr
+}
+
+fn char_text(c: Char) -> String {
+  text_of(glyphs: [c])
+}
+
+fn missing_text() -> String {
+  "(no character)"
+}
+
+// WHERE TWO REDUCED LINES DISAGREE, position for position. Two readings of different length dissent at
+// every position the longer one has beyond the shorter: the shorter one read nothing there, and "nothing"
+// is a position, not an absence of disagreement. Characters are compared here and never whole strings, so
+// the reduction above decides what counts as the same glyph and nothing else can quietly re-add spacing.
+fn positions_in_dispute(relied_glyphs: List<Char>, other_glyphs: List<Char>) -> List<NonEmptyStr> {
+  match relied_glyphs {
+    Empty => other_glyphs.map(ch => disputed_pair(left: missing_text(), right: char_text(ch)))
+    Cons { head: c, tail: fewer } =>
+      match other_glyphs {
+        Empty => relied_glyphs.map(ch => disputed_pair(left: char_text(ch), right: missing_text()))
+        Cons { head: d, tail: fewer_d } =>
+          if char_eq(a: c, b: d) {
+            positions_in_dispute(relied_glyphs: fewer, other_glyphs: fewer_d)
+          } else {
+            [disputed_pair(left: char_text(c), right: char_text(d))]
+              + positions_in_dispute(relied_glyphs: fewer, other_glyphs: fewer_d)
+          }
+      }
+  }
+}
+
+// ── SPANS: THE UNIT OF A RECORDING (contract §6.2) ──────────────────────────────────────────────
+//
+// A span knows which channel it was recorded in, so every control below reads a classification instead of
+// asking prose what it means. §1 forbids the alternative — "or any word list" — and the corpus proved the
+// point twice: what is printed on a body really does include "(logo)" and "(swirl)".
+
+// What was observed, quoted. Each arm's companion field says what it MEANS, and the companion is never what
+// a control compares: comparing descriptions is how two channels both containing "TI" once looked like
+// duplication, when the contradiction is one observed span recorded in two channels.
+fn annotation_quoted(a: MarkingAnnotation) -> NonEmptyStr {
+  match a {
+    PrintedLogo { preceded_by: _, span, whose: _, sighting: _ } => span
+    BodyFeature { preceded_by: _, span, described: _, sighting: _ } => span
+    ReadingCircumstance { preceded_by: _, span, noted: _, sighting: _ } => span
+  }
+}
+
+fn span_quoted(s: MarkingSpan) -> NonEmptyStr {
+  match s {
+    Glyphs { glyphs } => glyphs.span as NonEmptyStr
+    Annotation { annotation } => annotation_quoted(a: annotation)
+  }
+}
+
+// The pixels this span was read from, if any. Absent is RECORDED EVIDENCE DEBT, not a claim about the whole
+// frame: such a span may sit among `others`, and can never carry reliance (§6.3).
+fn annotation_sighting(a: MarkingAnnotation) -> PhotographCitation? {
+  match a {
+    PrintedLogo { preceded_by: _, span: _, whose: _, sighting } => sighting
+    BodyFeature { preceded_by: _, span: _, described: _, sighting } => sighting
+    ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting } => sighting
+  }
+}
+
+fn span_sighting(s: MarkingSpan) -> PhotographCitation? {
+  match s {
+    Glyphs { glyphs } => glyphs.sighting
+    Annotation { annotation } => annotation_sighting(a: annotation)
+  }
+}
+
+// Whether two spans were recorded in DIFFERENT channels. Four, closed: glyphs, a maker's printed logo, a
+// physical feature of the package, a circumstance of the reading. Decided by matching the pair of arms
+// directly, so a fifth arm is a compile-time non-exhaustive match and no number stands for an arm.
+fn annotation_channels_differ(a: MarkingAnnotation, b: MarkingAnnotation) -> Bool {
+  match a {
+    PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } =>
+      match b {
+        PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => false
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => true
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => true
+      }
+    BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } =>
+      match b {
+        PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => true
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => false
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => true
+      }
+    ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } =>
+      match b {
+        PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => true
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => true
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => false
+      }
+  }
+}
+
+fn channels_differ(a: MarkingSpan, b: MarkingSpan) -> Bool {
+  match a {
+    Glyphs { glyphs: _ } =>
+      match b {
+        Glyphs { glyphs: _ } => false
+        Annotation { annotation: _ } => true
+      }
+    Annotation { annotation: x } =>
+      match b {
+        Glyphs { glyphs: _ } => true
+        Annotation { annotation: y } => annotation_channels_differ(a: x, b: y)
+      }
+  }
+}
+
+// Every span a reading recorded, in the order the bench wrote them.
+fn content_spans(c: MarkingContent) -> List<MarkingSpan> {
+  match c {
+    Transcribed { leading, first, rest, followed_by: _ } =>
+      map(leading, a => Annotation { annotation: a })
+        + Cons { head: Glyphs { glyphs: first }, tail: rest }
+    LookedNothingReadable { circumstances, followed_by: _ } =>
+      map(circumstances, a => Annotation { annotation: a })
+  }
+}
+
+fn glyph_spans_in(spans: List<MarkingSpan>) -> List<GlyphSpan> {
+  match spans {
+    Empty => []
+    Cons { head: s, tail: rest } =>
+      match s {
+        Glyphs { glyphs } => Cons { head: glyphs, tail: glyph_spans_in(spans: rest) }
+        Annotation { annotation: _ } => glyph_spans_in(spans: rest)
+      }
+  }
+}
+
+// The spans that carry the transcription. `LookedNothingReadable` yields NONE, which is how "looked, read no
+// glyphs" became a fact of the type instead of a string a function has to recognise: rev 5 could only write
+// it as "none" and then guess at it, which is the heuristic §4 says a closed system never needs.
+fn glyph_spans(c: MarkingContent) -> List<GlyphSpan> {
+  glyph_spans_in(spans: content_spans(c))
+}
+
+fn read_no_glyphs(c: MarkingContent) -> Bool {
+  is_empty(xs: glyph_spans(c))
+}
+
+fn any_glyph_unread(spans: List<GlyphSpan>) -> Bool {
+  match scalar_of(one: "?") {
+    // Losing the mark's scalar costs the reading its SILENCE EXEMPTION rather than granting it: the reading
+    // is then compared like any other, so a mint can fail but cannot be won by an unrun comparison. The
+    // direction is deliberate, and is the one reduced_marking already takes when a separator has no scalar.
+    Absent => false
+    Present { value: mark } => any_span_carries_mark(spans: spans, mark: mark)
+  }
+}
+
+// The unread mark is compared as a CHARACTER, obtained once from the one-character string the contract
+// defines -- the way reduced_marking obtains "/" and " ". It is never compared as an alphabet. std's
+// string_any_char_in is `!(for_all(xs: s, predicate: fn(c) { !(string_contains_char(s: alphabet, c: c)) }))`,
+// and that predicate CAPTURES `alphabet`: its first labelled argument is the outer call's SECOND parameter.
+// Handing that call an identifier in the `s:` position puts the identifier's own spelling into the nested
+// call's parameter slot, and nothing says so until execution deep inside the capture -- four tests of the
+// marking witness died with "calling 'unicode_scalar_unfold': no parameter named 'glyphs' (declared: [s])"
+// after tokenize, parse, resolve and typecheck had all passed. A literal there is fine, and so is a call:
+// only an identifier leaks, which is why each of the two shapes that looked like the trigger was green on
+// its own. string_contains_char passes `xs: s` -- the first parameter, no capture -- and the same bound
+// identifier through it ran green (the non-recursive bound-name row in the table above).
+// So the mark is a Char here, obtained once, and the test is membership.
+// The leaf is its own function on purpose, and this split is load-bearing rather than tidiness. The label leak
+// described above needs BOTH halves in one function: the recursive arm + bound coercion + the capturing
+// predicate is red, while the same binding in a function that does not recurse, and the same arm
+// without the recursive tail, are both green. This is the filed class gunbc.recurring_failure_mode.a_generated_crossing_call_is_labelled_from_source_text_not_the_callee_parameter
+// (the argument's spelling appears as the callee's parameter label). So the coercion is bound in a function that never calls itself,
+// and the walk below binds nothing at all.
+fn span_carries_mark(s: GlyphSpan, mark: Char) -> Bool {
+  string_contains_char(s: s.span as String, c: mark)
+}
+
+fn any_span_carries_mark(spans: List<GlyphSpan>, mark: Char) -> Bool {
+  match spans {
+    Empty => false
+    Cons { head: s, tail: rest } => span_carries_mark(s: s, mark: mark) || any_span_carries_mark(spans: rest, mark: mark)
+  }
+}
+
+// THE SILENCE RULE, read off the type (contract §5, closed at rev 6). A reading dissents with nothing when
+// it read no glyphs at all, or when a glyph it transcribed carries an unread mark.
+//
+// WHY '?' IS SILENCE AND NOT DISSENT, from the corpus rather than from argument: U12 reads
+// `P617A / 01 14 / 226` while U13 — the same part type — reads `P617A / ?? ?? / ???`; Q3_5 carries `BC4X`
+// beside `BC4X?`; `WEJ` beside `?WEJ` beside `?W?J`; `WG3` beside `?WG3`. Treating the mark as disagreement
+// would invent conflicts between identical parts, and one such pair sits under an identification that relies
+// on its reading today. '?' still records WHERE the read came from: a boxed glyph span containing '?' grounds
+// provenance while staying silent about identity.
+fn consumes_no_dispute(c: MarkingContent) -> Bool {
+  read_no_glyphs(c) || any_glyph_unread(spans: glyph_spans(c))
+}
+
+// THE ONE REDUCTION, applied across a reading's glyph spans in the order they were written. An unreadable
+// reduction stays a dispute rather than becoming a shrug, as §3 requires: no comparison ran, and reporting
+// nothing would let `no_dissent` mint over a comparison that never happened.
+fn reduce_glyphs(spans: List<GlyphSpan>) -> GlyphReduction {
+  match spans {
+    Empty => Reduced { lines: [] }
+    Cons { head: s, tail: rest } =>
+      match reduced_marking(text: s.span) {
+        ReductionUnavailable { why } => ReductionUnavailable { why: why }
+        Reduced { lines: here } =>
+          match reduce_glyphs(spans: rest) {
+            ReductionUnavailable { why } => ReductionUnavailable { why: why }
+            Reduced { lines: further } => Reduced { lines: here + further }
+          }
+      }
+  }
+}
+
+fn reduced_content(c: MarkingContent) -> GlyphReduction {
+  reduce_glyphs(spans: glyph_spans(c))
+}
+
+fn line_disputes(
+  relied_lines: List<ReducedLine>,
+  other_lines: List<ReducedLine>
+) -> List<NonEmptyStr> {
+  match relied_lines {
+    Empty => other_lines.map(l => disputed_pair(left: missing_text(), right: text_of(glyphs: l.glyphs)))
+    Cons { head: relied_line, tail: relied_rest } =>
+      match other_lines {
+        Empty =>
+          relied_lines.map(l => disputed_pair(left: text_of(glyphs: l.glyphs), right: missing_text()))
+        Cons { head: other_line, tail: other_rest } =>
+          positions_in_dispute(
+            relied_glyphs: relied_line.glyphs,
+            other_glyphs: other_line.glyphs
+          )
+            + line_disputes(relied_lines: relied_rest, other_lines: other_rest)
+      }
+  }
+}
+
+fn disputed_glyphs(relied: MarkingReading, others: List<MarkingReading>) -> List<NonEmptyStr> {
+  fold_list(
+    xs: others,
+    empty: [],
+    cons: fn(acc, other) { acc + reading_disputes(relied: relied, other: other) }
+  )
+}
+
+fn reading_disputes(relied: MarkingReading, other: MarkingReading) -> List<NonEmptyStr> {
+  if consumes_no_dispute(c: relied.content) || consumes_no_dispute(c: other.content) {
+    []
+  } else {
+    match reduced_content(c: relied.content) {
+      ReductionUnavailable { why } => {
+        let un = shown_text(t: why)
+        [disputed_pair(left: "(reduction unavailable)", right: un)]
+      }
+      Reduced { lines: relied_lines } =>
+        match reduced_content(c: other.content) {
+          ReductionUnavailable { why } => {
+            let un = shown_text(t: why)
+            [
+              disputed_pair(left: "(reduction unavailable)", right: un)
+            ]
+          }
+          Reduced { lines: other_lines } =>
+            line_disputes(relied_lines: relied_lines, other_lines: other_lines)
+        }
+    }
+  }
+}
+
+// CONTROL 7, rev-6 form (§6.3): ONE OBSERVED SPAN, ONE CHANNEL. Among the spans that carry a sighting, two
+// spans classified DIFFERENTLY and claiming the SAME digest and the SAME box is the contradiction — one thing
+// observed, written once as glyphs and once as, say, a circumstance of the reading.
+//
+// WHY EXACT EVIDENCE IDENTITY AND NOTHING ELSE. The rev-5 qualification forbade inferring duplication "merely
+// because the same characters appear in both fields", and a text test was struck on #15823 for the same
+// reason; this asks only whether two spans claim one identical piece of evidence. `same_boxed_frame` is that
+// question — cryptographic digest equality plus both regions present and all four edges equal. No text is
+// compared, and boxes are never checked for OVERLAP: a part is shot at many zooms, so two overlapping boxes
+// are two observations rather than one named twice. Spans without a sighting are outside the guarantee —
+// recorded debt has no pixels to contradict — which is stated rather than hidden.
+fn duplicate_channel_claim(r: MarkingReading) -> Bool {
+  any_against(content_spans(r.content), content_spans(r.content))
+}
+
+// The pair scan, over the same list twice. Kept as its own function because this language has no `let`.
+fn any_against(xs: List<MarkingSpan>, ys: List<MarkingSpan>) -> Bool {
+  any(xs, a =>
+    match span_sighting(s: a) {
+      Absent => false
+      Present { value: ca } =>
+        any(ys, b =>
+          channels_differ(a: a, b: b)
+            && match span_sighting(s: b) {
+                 Absent => false
+                 Present { value: cb } => same_boxed_frame(a: ca, b: cb)
+               }
+        )
+    }
+  )
+}
+
+// Two contents carry the same glyphs when their reductions agree line for line. `same_reading` needs this and
+// not string equality because the reduction says spaces inside a transcribed line are not glyph identity:
+// "2BK G4" read from 05-06 and "2BK  G4" from 05-07 are one honest reading seen twice, not two readings.
+fn same_glyph_text(a: MarkingContent, b: MarkingContent) -> Bool {
+  match reduced_content(c: a) {
+    // An unreducible reading is not the same reading as anything, including itself: identity here means a
+    // comparison actually ran.
+    ReductionUnavailable { why: _ } => false
+    Reduced { lines: la } =>
+      match reduced_content(c: b) {
+        ReductionUnavailable { why: _ } => false
+        Reduced { lines: lb } => same_reduced_lines(la: la, lb: lb)
+      }
+  }
+}
+
+// Char-level equality, so the language's own text equality never decides whether two readings agree (the
+// rule it was written for: a comparison goes through Char, never through assembled text).
+fn same_reduced_lines(la: List<ReducedLine>, lb: List<ReducedLine>) -> Bool {
+  match la {
+    Empty => is_empty(xs: lb)
+    Cons { head: a, tail: a_rest } =>
+      match lb {
+        Empty => false
+        Cons { head: b, tail: b_rest } =>
+          same_chars(l: a.glyphs, r: b.glyphs) && same_reduced_lines(la: a_rest, lb: b_rest)
+      }
+  }
+}
+
+fn same_chars(l: List<Char>, r: List<Char>) -> Bool {
+  match l {
+    Empty => is_empty(xs: r)
+    Cons { head: x, tail: xs } =>
+      match r {
+        Empty => false
+        Cons { head: y, tail: ys } => char_eq(a: x, b: y) && same_chars(l: xs, r: ys)
+      }
+  }
+}
+
+// WHETHER TWO READINGS ARE THE ONE READING: the same glyphs, from the same evidence. This is what the
+// contract's duplicate refusal compares, and it compares evidence as well as glyphs because two frames can
+// carry the same honest reading — which is agreement, the thing `no_dissent` exists to record, and not a copy
+// of one row into a list to give it weight.
+fn same_reading(a: MarkingReading, b: MarkingReading) -> Bool {
+  same_glyph_text(a: a.content, b: b.content) && same_evidence(a: a.evidence, b: b.evidence)
+}
+
+fn same_evidence(a: EvidenceRef, b: EvidenceRef) -> Bool {
+  match a {
+    OperatorStatement { stated_on: sa, verbatim: va } =>
+      match b {
+        OperatorStatement { stated_on: sb, verbatim: vb } => {
+          let said_a = shown_text(t: sa)
+          let said_b = shown_text(t: sb)
+          let on_a = shown_text(t: va)
+          let on_b = shown_text(t: vb)
+          string_eq(a: said_a, b: said_b) && string_eq(a: on_a, b: on_b)
+        }
+        OperatorPhotograph { citation: _ } => false
+        SellerListingPhotograph { listing: _, read_on: _ } => false
+      }
+    OperatorPhotograph { citation: ca } =>
+      match b {
+        OperatorPhotograph { citation: cb } => same_sighting(a: ca, b: cb)
+        OperatorStatement { stated_on: _, verbatim: _ } => false
+        SellerListingPhotograph { listing: _, read_on: _ } => false
+      }
+    SellerListingPhotograph { listing: la, read_on: ra } =>
+      match b {
+        SellerListingPhotograph { listing: lb, read_on: rb } => {
+          let left = shown_text(t: la)
+          let right = shown_text(t: lb)
+          let from_a = shown_text(t: ra)
+          let from_b = shown_text(t: rb)
+          string_eq(a: left, b: right) && string_eq(a: from_a, b: from_b)
+        }
+        OperatorStatement { stated_on: _, verbatim: _ } => false
+        OperatorPhotograph { citation: _ } => false
+      }
+  }
+}
+
+// A DUPLICATE READING IS REFUSED (contract §2): the same (evidence, text) pair may not appear twice, so a
+// frame cannot be copied into `others` to give it weight. Reported rather than hidden, because the row is
+// the thing at fault and a witness has to name which row.
+fn has_duplicate_reading(relied: MarkingReading, others: List<MarkingReading>) -> Bool {
+  any(others, o => same_reading(a: relied, b: o))
+    || match first_duplicate_by_key(others, key: fn(r) { reading_key(r: r) }) {
+         Present { value: _ } => true
+         Absent => false
+       }
+}
+
+// The key that notices a row wrote the same reading twice. It is a DIAGNOSTIC spelling -- the report's own
+// words for the reading -- and it is used for nothing else. Where two readings must be judged the same
+// SIGHTING, that goes through `same_reading` and the store's content identity, never through text.
+fn reading_key(r: MarkingReading) -> String {
+  match reduced_content(c: r.content) {
+    // Distinct keys for distinct failures, so a row whose reduction cannot run never groups with a row whose
+    // reduction produced text.
+    ReductionUnavailable { why } => join(["(unreducible:", why as String, ") @ "], evidence_ref_text(e: r.evidence))
+    Reduced { lines: ls } => join([lines_text(ls: ls), " @ "], evidence_ref_text(e: r.evidence))
+  }
+}
+
+// The transcribed lines, reduced and rejoined with the separator, for KEYS ONLY. Comparison never goes
+// through text — `same_chars` does that — but a key has to be a String to group by.
+fn lines_text(ls: List<ReducedLine>) -> String {
+  match ls {
+    Empty => ""
+    Cons { head: l, tail: rest } =>
+      match rest {
+        Empty => text_of(glyphs: l.glyphs)
+        Cons { head: _, tail: _ } => join([text_of(glyphs: l.glyphs), "/", lines_text(ls: rest)], "")
+      }
+  }
+}
+
+// ─── THE RELIANCE AN OBSERVATION CARRIES (marking contract §2, revision 5) ──────────────────────
+//
+// WHY AN EXPLICIT STANDING RATHER THAN "MORE THAN ONE READING EXISTS". Because the second kind of free
+// pass is a row that lists several readings and lets the earliest win. A standing records WHY one reading
+// may carry an identification, and there are exactly three reasons the contract allows, each with its own
+// sealed witness: the marking was read once, several readings agree, or the readings dissent and the
+// bench preferred the one that is checkable.
+//
+// WHY THE WITNESSES ARE SEALED AND THE MINTS ARE PUBLIC. Only a constructor can decide an absence, and a
+// row may not have a quantifier: `only_reading` is the only thing in the model that can produce an
+// `OnlyReadingWitness`, so "no other reading of this marking exists" is decided by code and not written
+// by an author. Sealing stops the forged standing -- an arm anyone can type is not a verdict -- while
+// keeping the check reviewable, which is why these mints are ordinary checked functions rather than the
+// `admit_callers` lists an earlier draft had: a gate naming its callers proves who called, not that the
+// check passed, and it puts an authorisation list in the public graph for a fact the graph already shows.
+// Each witness carries the SUBJECT it was minted for, so a witness minted for one specimen cannot be
+// pasted into another specimen's row without a witness noticing.
+//
+// DIVERGENCE FROM THE CONTRACT'S WRITTEN SIGNATURES, stated per DESIGN §3b. The contract types
+// `only_reading(roster, observation: MarkingObservation)`, but the observation CARRIES the reliance a mint
+// produces -- a mint cannot consume the record it is being asked to complete. All three mints therefore
+// consume a `MarkingReadingSet`: the same three fields, without the standing. The contract's own
+// `prefer_checkable(subject, relied, dissents)` was already written that way, and its `dissents: Bool`
+// parameter is dropped here for a reason §2b gives itself -- "neither can be written by hand by a row",
+// and a Bool parameter is a row writing the dissent verdict. `MarkingReliance` stays an ordinary sum
+// because a seal binds records and not coproduct arms (extdeps/external_authority, the precedent this
+// follows, says so); what is sealed is each arm's witness, so the arm anyone can type carries nothing
+// that decides anything.
+
+// What a mint is asked about: the readings of one marking on one specimen, before any standing.
+type MarkingReadingSet {
+  subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
+  others: List<MarkingReading>
+}
+
+type OnlyReadingWitness sole_constructor {
+  subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
+}
+
+type NoDissentWitness sole_constructor {
+  subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
+}
+
+// The one basis the contract allows. A fourth kind arrives with a consumer that reads it, not before.
+type PreferenceKind = CheckablePreferredOverUncheckable { }
+
+type ConflictSelectionBasis sole_constructor {
+  subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
+  basis: PreferenceKind
+}
+
+type MarkingReliance
+  = OnlyReading { witness: OnlyReadingWitness }
+  | NoDissent { witness: NoDissentWitness }
+  | PreferredUnderDissent { basis: ConflictSelectionBasis }
+
+// The readings of one marking on one specimen, with the standing they may carry. SEALED: the subject and the
+// relied-on reading are NOT stored here -- they are the sealed standing's own (each witness carries the
+// subject and the exact reading it was minted for), so an observation cannot hold a standing beside a
+// different reading or a different subject, and `others` sits inside the same seal so a standing cannot be
+// attached to another set of extra readings. `identify_by_marking` is the only constructor; a consumer that
+// receives an IdentifiedByMarking receives an observation that was minted, and does not revalidate it.
+type MarkingObservation sole_constructor {
+  reliance: MarkingReliance
+  others: List<MarkingReading>
+}
+
+fn reliance_subject(r: MarkingReliance) -> ComponentInstanceIdentity {
+  match r {
+    OnlyReading { witness } => witness.subject
+    NoDissent { witness } => witness.subject
+    PreferredUnderDissent { basis } => basis.subject
+  }
+}
+
+fn reliance_relied_on(r: MarkingReliance) -> MarkingReading {
+  match r {
+    OnlyReading { witness } => witness.relied_on
+    NoDissent { witness } => witness.relied_on
+    PreferredUnderDissent { basis } => basis.relied_on
+  }
+}
+
+fn observation_subject(o: MarkingObservation) -> ComponentInstanceIdentity { reliance_subject(r: o.reliance) }
+
+fn observation_relied_on(o: MarkingObservation) -> MarkingReading { reliance_relied_on(r: o.reliance) }
+
+// Whether a reading is CHECKABLE AS A READING OF THIS SUBJECT: the board's own roster attributes this exact
+// citation -- these bytes AND these pixels -- to this specimen. Not "the store has these bytes": an
+// overview frame carries dozens of components, so bytes that exist say nothing about whose marking they
+// show, and contract §2b rules that digest alone does not bind. A citation with no region fails here even
+// when its bytes are in the store: fail closed, because the alternative is letting unboxed pixels into
+// reliance, which is what §2b refuses outright.
+fn reading_checkable_for_subject(
+  roster: BoardSightings,
+  subject: ComponentInstanceIdentity,
+  reading: MarkingReading
+) -> Bool {
+  match evidence_citation(e: reading.evidence) {
+    Present { value: citation } => sighting_attributed(roster: roster, subject: subject, citation: citation)
+    // A spoken statement or a seller's listing image is evidence of a kind, and is not bytes the store can
+    // check. It may sit in `others`; it cannot carry an identification.
+    Absent => false
+  }
+}
+
+// What no row may get wrong before a standing is even considered: no reading written twice, and no
+// observed span recorded in both channels. Both are faults of the ROW rather than of the world, so every
+// mint refuses them; a standing minted over a row that duplicates its own evidence is a standing over
+// padding.
+// §6.3, ENFORCED WHERE RELIANCE IS BORN. A reading may CARRY an identification only when:
+//   * at least one glyph was actually read — `LookedNothingReadable` describes a body that was looked at and
+//     not read, and rev 6's whole point is that this is now visible in the type instead of hiding in the
+//     string "none". It stays a legal row, and it may sit among `others`; it cannot be relied on. Without
+//     this clause rev 6 would have quietly weakened rev 5, whose entire `MarkingGlyphs` type existed to make
+//     a no-glyph row unwriteable.
+//   * EVERY glyph span that contributes to the transcription carries its own sighting, and that sighting is
+//     attributed to THIS subject by the board's roster. A span whose sighting is Absent is recorded evidence
+//     debt — legal to record, legal among `others`, and unable to carry weight. Digest alone never binds: an
+//     overview frame shows dozens of components, so bytes that exist say nothing about whose marking they
+//     show (§2b).
+//
+// WHY HERE AND NOT IN A CENSUS. The mint is where reliance comes from, so refusing there makes the illegal
+// state unconstructible; a counting process that reports unboxed relied-on readings instead would be a
+// census instrument, which §6 retires. Coverage is reported once, from the derivation script, as a number.
+fn reliance_may_rest_on(
+  roster: BoardSightings,
+  subject: ComponentInstanceIdentity,
+  reading: MarkingReading
+) -> Bool {
+  reading_checkable_for_subject(roster: roster, subject: subject, reading: reading)
+    && !read_no_glyphs(reading.content)
+    && every_glyph_bound(spans: glyph_spans(reading.content), roster: roster, subject: subject)
+}
+
+fn every_glyph_bound(
+  spans: List<GlyphSpan>,
+  roster: BoardSightings,
+  subject: ComponentInstanceIdentity
+) -> Bool {
+  match spans {
+    Empty => true
+    Cons { head: s, tail: rest } =>
+      match s.sighting {
+        // Recorded debt, not a lie about pixels: it may be read, and it may not be relied on.
+        Absent { } => false
+        Present { value: citation } =>
+          sighting_attributed(roster: roster, subject: subject, citation: citation)
+            && every_glyph_bound(spans: rest, roster: roster, subject: subject)
+      }
+  }
+}
+
+fn reading_set_is_wellformed(readings: MarkingReadingSet) -> Bool {
+  !has_duplicate_reading(relied: readings.relied_on, others: readings.others)
+    && !duplicate_channel_claim(r: readings.relied_on)
+    && !any(readings.others, o => duplicate_channel_claim(r: o))
+}
+
+// ONLY READING: the relied-on reading is checkable for this subject, and no second reading of the same
+// marking exists. A row cannot assert that absence; this function is the only thing in the model that can
+// produce the witness, and it produces it only over a roster that ties these pixels to this specimen.
+fn only_reading(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingReliance? {
+  if !reading_set_is_wellformed(readings: readings) {
+    Absent
+  } else if !is_empty(xs: readings.others) {
+    Absent
+  } else if !reliance_may_rest_on(
+    roster: roster, subject: readings.subject, reading: readings.relied_on
+  ) {
+    Absent
+  } else {
+    Present { value: OnlyReading { witness: OnlyReadingWitness { subject: readings.subject, relied_on: readings.relied_on } } }
+  }
+}
+
+// NO DISSENT: the readings agree under the one reduction. It requires at least one other reading -- an
+// agreement with nobody is the free pass this standing exists to refuse, and `only_reading` is the
+// standing for a single reading. Stricter than the contract's wording, which names only the refusal when
+// readings dissent; stated here so the difference is on the record rather than in a reviewer's surprise.
+fn no_dissent(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingReliance? {
+  if !reading_set_is_wellformed(readings: readings) {
+    Absent
+  } else if is_empty(xs: readings.others) {
+    Absent
+  } else if !reliance_may_rest_on(
+    roster: roster, subject: readings.subject, reading: readings.relied_on
+  ) {
+    Absent
+  } else if !is_empty(xs: disputed_glyphs(relied: readings.relied_on, others: readings.others)) {
+    Absent
+  } else {
+    Present { value: NoDissent { witness: NoDissentWitness { subject: readings.subject, relied_on: readings.relied_on } } }
+  }
+}
+
+// PREFERRED UNDER DISSENT: the readings do dissent, the relied-on reading is checkable AS A READING OF
+// THIS SUBJECT, and EVERY dissenting reading is not (one checkable dissenter refuses: two checkable
+// readings that conflict give no reason to prefer either, whatever else is in the set). The contract's `dissents: Bool` is computed
+// here instead, from `disputed_glyphs`, because §2b forbids a row writing its own dissent verdict -- and
+// `CheckablePreferredOverUncheckable` would otherwise be a label an author could put on any preference
+// whatsoever, which is the "row chooses" route this whole section exists to close.
+fn prefer_checkable(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingReliance? {
+  let disputes = disputed_glyphs(relied: readings.relied_on, others: readings.others)
+  if !reading_set_is_wellformed(readings: readings) {
+    Absent
+  } else if is_empty(xs: disputes) {
+    Absent
+  } else if !reliance_may_rest_on(
+    roster: roster, subject: readings.subject, reading: readings.relied_on
+  ) {
+    Absent
+  } else if any(readings.others, o =>
+    !is_empty(xs: reading_disputes(relied: readings.relied_on, other: o))
+      && reading_checkable_for_subject(roster: roster, subject: readings.subject, reading: o)) {
+    Absent
+  } else {
+    Present {
+      value: PreferredUnderDissent {
+        basis: ConflictSelectionBasis {
+          subject: readings.subject,
+          relied_on: readings.relied_on,
+          basis: CheckablePreferredOverUncheckable { }
+        }
+      }
+    }
+  }
 }
 
 type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Volt? }
 
+// TWO WAYS A FOOTPRINT SAYS SOMETHING ABOUT WHAT IS IN IT, read off a photograph rather than off a
+// marking. FootprintUnpopulated is absence: the pads are bare in a frame that identifies itself by
+// content, and it means no part is fitted there on this board. Its twin, BodySeenMarkingUnread, is
+// presence read the same way — a body stands in the cited region of the cited frame and no marking was
+// read from it — and it makes no claim about what the part is. The pair stays distinguishable in the
+// type. Do not write a sighted body as MarkingUnresolved with no text: that arm means a part named in
+// the session that nobody saw, and its observed_presence is PresenceUnobserved, so folding "we saw a
+// body" into it would make "we saw a part" and "we never looked" one state.
 type ComponentIdentification
-  = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
+  = IdentifiedByMarking { row: ElectronicComponentRow, observation: MarkingObservation }
   | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
   | MarkingCandidate { row: ElectronicComponentRow, marking: MarkingReading, discriminator: NonEmptyStr }
   | RatingPrintedOnBody { rating: PrintedRating, marking: MarkingReading }
   | ResistanceCodeRead { milliohms: Nat, marking: MarkingReading }
   | MarkingUnresolved { marking: MarkingReading?, discriminator: NonEmptyStr }
   | FootprintUnpopulated { evidence: EvidenceRef }
+  | BodySeenMarkingUnread { evidence: EvidenceRef }
 
+// WHEN THE COMPONENT WAS SEEN. seen is the observation's order against the board's dividing events, in
+// the vocabulary its readings use (product.electrical.continuity ReadingOrder). A part removed from the
+// board later is still the part that was seen fitted before, and only an order stated against that
+// removal says which side of it the observation fell on (product.electrical.bench_session
+// place_against). Whether a part was there at all is what the observation saw (observed_presence), and
+// whether it has been removed is the board's alteration ledger: neither is authored here.
 type InstalledComponent {
   component: ComponentInstanceIdentity
   terminals: List<TerminalIdentity>
   identification: ComponentIdentification
+  seen: ReadingOrder
+}
+
+// WHAT THE BENCH ESTABLISHED ABOUT A BODY, APART FROM WHAT THE PART IS. A specimen's terminals are
+// positions on a physical body, so they come from the body: either the positions a probe touched, or
+// the leads counted around the pin-1 mark. They NEVER come from the numbering of a part the row is
+// identified as or a candidate for: a datasheet table says how a maker numbers its leads, which is a
+// fact about the PART and says nothing about how many leads this body has or which ones were reached
+// (DESIGN §4d). Before this carrier existed, that line held only in prose, so a predicate could not
+// check it; the guard is product.p4261.carrier_layout_witness's
+// a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering.
+//
+// A count and a probe set are different observations, so they are different rows: a part may have all
+// its leads counted and only two of them probed. Where a part has both, the probed positions are
+// positions ON the counted body, so the probe set is a subset of the counted positions -- a body whose
+// probes fall outside its own lead count is a contradiction, not a wider sample. Rows live on the
+// board that observed them, in the same pattern as product.p4261.e1_body_sightings: one row per
+// observation, each citing the frame or statement it was read from.
+type ObservedLeadCount {
+  component: ComponentInstanceIdentity
+  count: Nat
+  counted_from: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+// One position of one body that a probe touched, named as the bench counted it (the pin-1 mark fixes
+// the direction, and the numbering is the body's, not a maker's). `evidence` is the frame or statement
+// that establishes the probe: a position nobody reached is not an observation.
+type ObservedProbedPosition {
+  component: ComponentInstanceIdentity
+  position: NonEmptyStr
+  evidence: EvidenceRef
+}
+
+// THE ONE CONSTRUCTOR OF AN IDENTIFICATION BY MARKING. An identification is the reliance a mint produced,
+// bound to the exact reading it was minted for; a row cannot write the arm, it asks here. The three mints
+// run in the order their strengths run: a lone reading, agreement among several, a checkable reading
+// preferred over uncheckable dissent. If none mints, the same row is a MarkingCandidate carrying the
+// discriminator the author states -- what would settle it -- so a reading that cannot be relied on stays a
+// candidate however well it reads, and the failure to rely is visible in the arm rather than in a count.
+fn mint_marking_reliance(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingReliance? {
+  match only_reading(roster: roster, readings: readings) {
+    Present { value: r } => Present { value: r }
+    Absent => match no_dissent(roster: roster, readings: readings) {
+      Present { value: r } => Present { value: r }
+      Absent => prefer_checkable(roster: roster, readings: readings)
+    }
+  }
+}
+
+fn identify_by_marking(
+  roster: BoardSightings,
+  row: ElectronicComponentRow,
+  readings: MarkingReadingSet,
+  discriminator: NonEmptyStr
+) -> ComponentIdentification {
+  match mint_marking_reliance(roster: roster, readings: readings) {
+    Present { value: reliance } => IdentifiedByMarking {
+      row: row,
+      observation: MarkingObservation {
+        reliance: reliance,
+        others: readings.others
+      }
+    }
+    Absent => MarkingCandidate { row: row, marking: readings.relied_on, discriminator: discriminator }
+  }
+}
+
+// WHAT AN OBSERVATION ESTABLISHES ABOUT PRESENCE. A part read in any way -- a matched, shared,
+// candidate or unresolved marking, a printed rating, a resistance code -- was seen on the board; an
+// empty footprint was seen without one. An entry with no marking read and no other reading records a
+// part named in the session, not one seen: its presence is unobserved, and the entry's type name is
+// not evidence.
+type ObservedPresence
+  = PartPresent
+  | PartAbsent
+  | PresenceUnobserved
+
+fn observed_presence(i: ComponentIdentification) -> ObservedPresence {
+  match i {
+    IdentifiedByMarking { row: _, observation: _ } => PartPresent
+    MarkingSharedByMakers { rows: _, marking: _ } => PartPresent
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => PartPresent
+    RatingPrintedOnBody { rating: _, marking: _ } => PartPresent
+    ResistanceCodeRead { milliohms: _, marking: _ } => PartPresent
+    MarkingUnresolved { marking, discriminator: _ } => match marking { Present { value: _ } => PartPresent, Absent => PresenceUnobserved }
+    FootprintUnpopulated { evidence: _ } => PartAbsent
+    BodySeenMarkingUnread { evidence: _ } => PartPresent
+  }
+}
+
+// An observation whose order against the board's dividing events was not stated: it is placed against
+// none of them, so it can never stand for a state that follows a removal of its own part.
+fn seen_unordered() -> ReadingOrder {
+  OrderUnrecorded { relative_to: [] }
 }
 
 fn names(ns: List<NonEmptyStr>) -> List<TerminalIdentity> {
@@ -70,6 +1104,7 @@ fn withstand_kind_key(k: VoltageWithstandKind) -> Nat {
     CapacitorRatedVoltage => 1
     DrainSourceMaximum => 2
     FuseInterruptRating => 3
+    RectifierRepetitivePeak => 4
   }
 }
 
@@ -103,7 +1138,7 @@ fn shared_withstand(rows: List<ElectronicComponentRow>) -> VoltageWithstand? {
 
 fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
   match i {
-    IdentifiedByMarking { row, marking: _ } => voltage_withstand(spec: row.specification)
+    IdentifiedByMarking { row, observation: _ } => voltage_withstand(spec: row.specification)
     MarkingSharedByMakers { rows, marking: _ } => shared_withstand(rows: rows)
     MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
     RatingPrintedOnBody { rating, marking: _ } => match rating {
@@ -115,6 +1150,27 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
     ResistanceCodeRead { milliohms: _, marking: _ } => Absent
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
+  }
+}
+
+// WHETHER AN IDENTIFICATION ESTABLISHES WHAT THE PART IS, decided on its arm and never on its text. A
+// candidate stays a candidate however well it reads: its text exists to say what would settle it, and
+// a finding that asked "is there text?" took that explanation for the identification (the
+// candidate-as-identified defect). A marking several makers share names the part's rows and leaves only
+// the maker open, so it identifies the part. A printed rating or a resistor code is the value the
+// part carries, read off its body. An unresolved marking, a bare footprint and a body sighted without a
+// readable marking identify nothing.
+fn identification_established(i: ComponentIdentification) -> Bool {
+  match i {
+    IdentifiedByMarking { row: _, observation: _ } => true
+    MarkingSharedByMakers { rows: _, marking: _ } => true
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => false
+    RatingPrintedOnBody { rating: _, marking: _ } => true
+    ResistanceCodeRead { milliohms: _, marking: _ } => true
+    MarkingUnresolved { marking: _, discriminator: _ } => false
+    FootprintUnpopulated { evidence: _ } => false
+    BodySeenMarkingUnread { evidence: _ } => false
   }
 }
 
@@ -130,24 +1186,156 @@ fn regulator_pins(row: ElectronicComponentRow) -> List<RegulatorPin> {
   }
 }
 
+fn no_pin_numbers() -> List<Nat> {
+  []
+}
+
+// The numbered pins a manufacturer's pin table declares, whatever the part's kind; a part whose row
+// carries no pin table answers none. A package feature with no pin number (an exposed pad) is not here.
+fn numbered_pins(row: ElectronicComponentRow) -> List<Nat> {
+  match row.specification {
+    TvsDiodeSpec { tvs: _ } => no_pin_numbers()
+    RectifierSpec { rectifier: _ } => no_pin_numbers()
+    CapacitorSpec { capacitor: _ } => no_pin_numbers()
+    MosfetSpec { mosfet: _ } => no_pin_numbers()
+    TemperatureSensorSpec { sensor } => map(sensor.pins, p => p.number)
+    ConnectorSpec { connector: _ } => no_pin_numbers()
+    HotSwapControllerSpec { controller } => map(controller.pins, p => p.number)
+    ShiftRegisterSpec { register } => map(register.pins, p => p.number)
+    LevelTranslatorSpec { translator } => map(translator.pins, p => p.number)
+    LogicGateSpec { gate } => map(gate.pins, p => p.number)
+    ProgrammableLogicSpec { logic: _ } => no_pin_numbers()
+    RootOfTrustSpec { root_of_trust: _ } => no_pin_numbers()
+    SerialFlashSpec { flash: _ } => no_pin_numbers()
+    SwitchingRegulatorSpec { regulator } => map(regulator.pins, p => p.number)
+    BusMultiplexerSpec { multiplexer: _ } => no_pin_numbers()
+    UsbHubSpec { hub: _ } => no_pin_numbers()
+    ClockFanoutSpec { clock: _ } => no_pin_numbers()
+  }
+}
+
+// A pin read on a part whose readings name it by number alone.
+fn pin_number_name(number: Nat) -> NonEmptyStr {
+  join(["pin ", to_string(number)], "") as NonEmptyStr
+}
+
 // THE BARE FOOTPRINTS ARE THEIR OWN POINTS. A pad read with its part lifted is a different physical
 // state from the lead read with the part fitted, so each lifted converter's footprint is a component of
 // its own (FootprintUnpopulated), its pads named from the row's pin order like the leads were, and every
 // reading at it is ordered after the lift. Nothing in the record joins a pad to the lead that sat on it,
-// so no netlist combines the intact board's readings with the bare footprint's by terminal identity;
-// selecting readings by physical state is the follow-up change the split lane owns.
+// so no netlist combines the intact board's readings with the bare footprint's by terminal identity,
+// and a netlist reads one physical state of the board in any case (product.electrical.bench_session
+// SpecimenState): the lift is a boundary, and the footprint's readings are of the state after it.
 fn pad_terminal_name(number: Nat, name: NonEmptyStr) -> NonEmptyStr {
   join(["pad ", to_string(number), " (", name as String, ")"], "") as NonEmptyStr
 }
 
+// Exact equality of two transcribed strings, character by character. This is the comparison the contract
+// allows: it asks whether two RECORDED spans carry the same glyphs, so it is exact evidence comparison, not
+// a matcher over prose. Nothing here splits, joins, normalises or searches -- a control that did would be a
+// second, unaudited authority over what was printed (contract §1).
+fn glyph_text_eq(a: MarkingGlyphs, b: MarkingGlyphs) -> Bool {
+  let left = a as String
+  let right = b as String
+  same_chars(l: unicode_scalar_unfold(s: left), r: unicode_scalar_unfold(s: right))
+}
+
+// The reading's single span of GLYPHS, when the glyph channel holds exactly one. Spans in the other channels
+// are not counted against it: letters plus the maker's logo is still one span of glyphs. Asking instead for
+// "exactly one span of any kind" is the wrong question and was caught by the store witness -- it made the four
+// FSV20100V rows look unread, because their ON logo sits in `rest` beside the glyphs. What must be unique is
+// the glyph channel, since two spans of glyphs in one reading is the duplicate-channel claim that control 7
+// refuses; where each span was sighted is a separate question, asked of each span where it matters.
+fn sole_glyph_text(c: MarkingContent) -> MarkingGlyphs? {
+  match glyph_spans_in(spans: content_spans(c)) {
+    Empty => Absent
+    Cons { head: only, tail: rest } =>
+      match rest {
+        Empty => Present { value: only.span }
+        Cons { head: _, tail: _ } => Absent
+      }
+  }
+}
+
+// Exactly one annotation beside the transcription, and that annotation is a PrintedLogo. Each Coproduct arm
+// is named rather than wildcarded, because this language takes no wildcard in a Coproduct match; the four
+// arms also make it visible that only a logo qualifies.
+fn one_printed_logo(beside: MarkingSpan, after: List<MarkingSpan>) -> NonEmptyStr? {
+  match beside {
+    Glyphs { glyphs: _ } => Absent
+    Annotation { annotation } =>
+      match annotation {
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => Absent
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => Absent
+        PrintedLogo { preceded_by: _, span: mark, whose: _, sighting: _ } =>
+          match after {
+            Empty => Present { value: mark }
+            Cons { head: _, tail: _ } => Absent
+          }
+      }
+  }
+}
+
+// HOW A READING READS IN A REPORT. VERBATIM: each recorded span's own text, with the annotations bracketed
+// so a reader of a finding can see that an aside is not part of the marking. This deliberately does NOT go
+// through the reduction -- the reduction declares spacing inside a line non-glyph for COMPARISON ("TI 31"
+// and "TI31" are one reading), and a report that printed the comparison form would lose what the bench
+// actually transcribed. Keys use the reduction (`reading_key`); prose like this never decides anything.
+fn marking_text(r: MarkingReading) -> String {
+  let glyphs = render_glyph_lines(gs: glyph_spans(r.content))
+  let asides = render_asides(spans: content_spans(r.content))
+  if is_empty(xs: glyph_spans(r.content)) {
+    join(["no glyphs read ", asides], "")
+  } else if string_eq(a: asides, b: "") {
+    glyphs
+  } else {
+    join([glyphs, " ", asides], "")
+  }
+}
+
+// The transcribed spans, in recorded order, joined by the line separator.
+fn render_glyph_lines(gs: List<GlyphSpan>) -> String {
+  match gs {
+    Empty => ""
+    Cons { head: g, tail: rest } =>
+      match rest {
+        Empty => g.span as String
+        Cons { head: _, tail: _ } =>
+          join([g.span as String, " / ", render_glyph_lines(gs: rest)], "")
+      }
+  }
+}
+
+// The non-glyph spans, bracketed. `Glyphs` arms are skipped: their text is already above, and printing one
+// twice is how a single span ends up looking like two.
+fn render_asides(spans: List<MarkingSpan>) -> String {
+  match spans {
+    Empty => ""
+    Cons { head: s, tail: rest } =>
+      match s {
+        Glyphs { glyphs: _ } => render_asides(spans: rest)
+        Annotation { annotation } =>
+          match annotation {
+            PrintedLogo { preceded_by: _, span, whose, sighting: _ } =>
+              join(["(", span as String, " logo: ", whose as String, ") ", render_asides(spans: rest)], "")
+            BodyFeature { preceded_by: _, span, described, sighting: _ } =>
+              join(["(", span as String, ": ", described as String, ") ", render_asides(spans: rest)], "")
+            ReadingCircumstance { preceded_by: _, span, noted, sighting: _ } =>
+              join(["(", span as String, " -- ", noted as String, ") ", render_asides(spans: rest)], "")
+          }
+      }
+  }
+}
+
 fn identification_text(i: ComponentIdentification) -> String? {
   match i {
-    IdentifiedByMarking { row, marking } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking.text as String, "'"], "") }
-    MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking.text as String, "'"], "") }
-    MarkingCandidate { row, marking, discriminator } => Present { value: join(["CANDIDATE ", row.vendor.legal_name as String, " ", row.ordering_code as String, " from the marking '", marking.text as String, "' (not identified: ", discriminator as String, ")"], "") }
-    RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking.text as String, "'"], "") }
-    ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking.text as String, "'"], "") }
+    IdentifiedByMarking { row, observation } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking_text(observation_relied_on(o: observation)), "'"], "") }
+    MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking_text(marking), "'"], "") }
+    MarkingCandidate { row, marking, discriminator } => Present { value: join(["CANDIDATE ", row.vendor.legal_name as String, " ", row.ordering_code as String, " from the marking '", marking_text(marking), "' (not identified: ", discriminator as String, ")"], "") }
+    RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking_text(marking), "'"], "") }
+    ResistanceCodeRead { milliohms, marking } => Present { value: join([to_string(milliohms), " milliohms by the resistor code '", marking_text(marking), "'"], "") }
     MarkingUnresolved { marking: _, discriminator: _ } => Absent
     FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
   }
 }

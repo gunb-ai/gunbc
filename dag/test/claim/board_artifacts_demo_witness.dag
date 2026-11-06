@@ -1,6 +1,7 @@
 module test.claim.board_artifacts_demo_witness
 
-import std.types { String, List, list_length }
+import std.types { String, List }
+import std.algebra { length }
 import gunbc.demo.board_artifacts {
   ArtifactArticleNotAdmitted,
   ArtifactRefusedByTarget,
@@ -40,7 +41,7 @@ fn source_at(path: String) -> String {
 
 test fn w_the_demo_renders_five_artifacts_and_refuses_none() -> Bool {
   let rs = renderings()
-  (list_length(items: rs) == 5)
+  (length(xs: rs) == 5)
     && fold(rs, init: true, f: fn(acc, r) { acc && rendering_is_rendered(r: r) })
 }
 

@@ -6,7 +6,8 @@ import gunbc.source_layout { layout_module_storage_path }
 import std.process { ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
-import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_runner_host_file_converge_target, GunbcRunStepTarget }
+import gunbc.ci.ci_spec { gunbc_run_step_targets, gunbc_ci_runner_host_file_converge_target }
+import gunbc.ci.ci_run_step_target { GunbcRunStepTarget }
 import v2.std.fn_index { FnArrowDecl, call_reachable_decls_from_root, fn_arrow_decl_facts_live }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

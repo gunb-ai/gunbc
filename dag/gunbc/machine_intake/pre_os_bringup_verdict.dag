@@ -5,7 +5,7 @@ import std.measure { ByteSize }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash }
 import std.decl_ref { DeclarationRef }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import extdeps.numeric.base16 { base16_digit_rows }
 import extdeps.bmc.ipmi_sel {
   OemSelPayload,
@@ -146,7 +146,7 @@ fn is_recognized_firmware_line(line: String) -> Bool {
 }
 
 fn firmware_lines_recognized(lines: List<String>) -> Int {
-  list_length(items: filter(xs: lines, f: l => is_recognized_firmware_line(line: l)))
+  length(xs: filter(xs: lines, f: l => is_recognized_firmware_line(line: l)))
 }
 
 // THE INTEGER BETWEEN `<marker>` AND THE NEXT `]`, or Absent when the line does not carry it in
@@ -236,7 +236,7 @@ fn firmware_report_step(acc: FirmwareReportFold, line: String) -> FirmwareReport
 // stay undecoded, and only a capture with neither reports no terminal.
 fn firmware_console_report(lines: List<String>) -> FirmwareConsoleReport {
   let done = fold(lines, init: FirmwareReportFold { statement: none, socket: none, memory_controller: none, first_error_line: none }, f: (acc, l) => firmware_report_step(acc: acc, line: l))
-  let err_lines = list_length(items: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
+  let err_lines = length(xs: filter(xs: lines, f: l => is_firmware_err_code_line(line: l)))
   let unknown = filter(xs: lines, f: line => is_firmware_error_line(line: line)
     && !line_carries_marker(line: line, marker: firmware_socket_marker)
     && !line_carries_marker(line: line, marker: firmware_memory_controller_marker)
@@ -352,11 +352,11 @@ fn open_cycle_saw_progress(cycles: BootCycleWindow) -> Bool {
 // PROGRESS IS COUNTED WHEREVER IT WAS SEEN, closed or open; absence of progress is counted over
 // CLOSED cycles only.
 fn cycles_with_progress(cycles: BootCycleWindow) -> Int {
-  list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen)) + (if open_cycle_saw_progress(cycles: cycles) { 1 } else { 0 })
+  length(xs: filter(xs: cycles.closed, f: c => c.progress_seen)) + (if open_cycle_saw_progress(cycles: cycles) { 1 } else { 0 })
 }
 
 fn closed_cycles_without_progress(cycles: BootCycleWindow) -> Int {
-  list_length(items: filter(xs: cycles.closed, f: c => c.progress_seen == false))
+  length(xs: filter(xs: cycles.closed, f: c => c.progress_seen == false))
 }
 
 // ── the verdict ────────────────────────────────────────────────────────────────────────────────

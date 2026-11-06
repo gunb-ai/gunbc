@@ -2,6 +2,7 @@ module gunbc.auth.tracker_web_oauth_client
 
 import std.types { String, NonEmptyStr, List, Bool, Int, Port }
 import std.nat { Nat }
+import extdeps.ietf.http_semantics { https_scheme_default_port }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure {
   Second, second, second_count, millisecond, millisecond_to_second_floor,
@@ -51,9 +52,13 @@ import extdeps.units.iso8601_calendar {
 
 data tracker_web_test_oauth_client_id: NonEmptyStr = "433089409875-2c1u5obhaeafee9ve7igpopt5oiqoa8k.apps.googleusercontent.com" as NonEmptyStr
 
-data tracker_web_test_oauth_console_project: NonEmptyStr = "433089409875" as NonEmptyStr
+data tracker_web_stage_oauth_client_id: NonEmptyStr = "433089409875-q072i67ddv7fghlpf978cbi8bv6r5pql.apps.googleusercontent.com" as NonEmptyStr
 
-data tracker_web_test_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEmptyStr
+data tracker_web_oauth_console_project: NonEmptyStr = "433089409875" as NonEmptyStr
+
+data tracker_web_stage_oauth_desired_revision: NonEmptyStr = "tracker-web-stage-2026-11-04" as NonEmptyStr
+
+data tracker_web_oauth_workspace_customer: NonEmptyStr = "gunb.ai" as NonEmptyStr
 
 data tracker_web_test_oauth_desired_revision: NonEmptyStr = "tracker-web-test-2026-10-11" as NonEmptyStr
 
@@ -85,7 +90,7 @@ data approve_ios_oauth_client: NativeOauthClientRegistration = NativeOauthClient
   display_name: "approvals" as NonEmptyStr,
   client_id: approve_ios_oauth_client_id,
   project_id: gunbc_tracker_oauth_console_project_id,
-  project_number: tracker_web_test_oauth_console_project,
+  project_number: tracker_web_oauth_console_project,
   registration: RegisteredIosClient { bundle_id: approve_ios_bundle_id },
 }
 
@@ -112,16 +117,22 @@ data tracker_web_test_srv2_public_port: Port = 18082
 data tracker_web_test_lab_https_port: Port = 8444
 
 fn tracker_web_oauth_public_redirect_uri(host_identity: String, https_port: Port) -> NonEmptyStr {
+  let authority_port = if https_port == https_scheme_default_port { "" } else { join([":", to_string(https_port)], "") }
   match fleet_tailnet_domain {
-    Absent => join(["https://", host_identity, ":", to_string(https_port), tracker_web_oauth_callback_path], "") as NonEmptyStr
+    Absent => join(["https://", host_identity, authority_port, tracker_web_oauth_callback_path], "") as NonEmptyStr
     Present { value: domain } =>
-      join(["https://", host_identity, ".", domain as String, ":", to_string(https_port), tracker_web_oauth_callback_path], "") as NonEmptyStr
+      join(["https://", host_identity, ".", domain as String, authority_port, tracker_web_oauth_callback_path], "") as NonEmptyStr
   }
 }
 
 data tracker_web_test_srv2_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
   host_identity: srv2_host.identity as String,
   https_port: tracker_web_test_srv2_public_port,
+)
+
+data tracker_web_stage_srv1_live_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
+  host_identity: srv1_host.identity as String,
+  https_port: https_scheme_default_port,
 )
 
 data tracker_web_test_lab_redirect_uri: NonEmptyStr = tracker_web_oauth_public_redirect_uri(
@@ -144,8 +155,8 @@ fn tracker_web_instance_login_rows() -> List<TrackerWebInstanceLoginRow> {
     },
     TrackerWebInstanceLoginRow {
       instance_id: srv1_dashboard_live_id,
-      environment: GoogleLoginEnvironmentProd,
-      redirect_uri: none,
+      environment: GoogleLoginEnvironmentStage,
+      redirect_uri: Present { value: tracker_web_stage_srv1_live_redirect_uri },
     },
   ]
 }
@@ -187,30 +198,33 @@ fn tracker_web_environment_redirect_uris(environment: GoogleLoginEnvironment) ->
   )
 }
 
-fn tracker_web_test_oauth_client_binding() -> TrackerWebOauthClientBinding {
+fn tracker_web_environment_clients() -> List<TrackerWebEnvironmentClient> {
+  [tracker_web_test_environment_client, tracker_web_stage_environment_client]
+}
+
+fn tracker_web_environment_client(environment: GoogleLoginEnvironment) -> TrackerWebEnvironmentClient? {
+  filter(tracker_web_environment_clients(), c => c.environment == environment).first()
+}
+
+fn tracker_web_environment_client_binding(client: TrackerWebEnvironmentClient) -> TrackerWebOauthClientBinding {
   TrackerWebOauthClientBinding {
     client: GoogleLoginClientTrackerWeb,
-    environment: GoogleLoginEnvironmentTest,
-    client_id: tracker_web_test_oauth_client_id,
-    redirect_uris: tracker_web_environment_redirect_uris(environment: GoogleLoginEnvironmentTest),
+    environment: client.environment,
+    client_id: client.client_id,
+    redirect_uris: tracker_web_environment_redirect_uris(environment: client.environment),
     hosted_domain: gunb_ai_hosted_domain,
-    admitted_audiences: [tracker_web_test_oauth_client_id],
+    admitted_audiences: [client.client_id],
   }
 }
 
-// Bound is constructed only for Test. Stage and Prod are Unbound until those clients exist, so
-// placement/standing do not match Bound × Stage/Prod — that pair has no constructor here.
+data tracker_web_environment_unbound_reason: NonEmptyStr = "no tracker-web OAuth client row is declared for this environment; its serve stays unconfigured until one exists" as NonEmptyStr
+
+// An environment has a client exactly when it has a row in tracker_web_environment_clients; adding
+// an environment's client is adding that row, not a branch here.
 fn tracker_web_oauth_standing_for_environment(environment: GoogleLoginEnvironment) -> TrackerWebOauthClientStanding {
-  match environment {
-    GoogleLoginEnvironmentTest => TrackerWebOauthClientBound { binding: tracker_web_test_oauth_client_binding() }
-    GoogleLoginEnvironmentStage => TrackerWebOauthClientUnbound {
-      environment: environment,
-      reason: "no tracker-web STAGE OAuth client is declared; instances assigned stage stay unconfigured until one exists" as NonEmptyStr,
-    }
-    GoogleLoginEnvironmentProd => TrackerWebOauthClientUnbound {
-      environment: environment,
-      reason: "no tracker-web PROD OAuth client is declared; production serve stays unconfigured until one exists" as NonEmptyStr,
-    }
+  match tracker_web_environment_client(environment: environment) {
+    Present { value: c } => TrackerWebOauthClientBound { binding: tracker_web_environment_client_binding(client: c) }
+    Absent => TrackerWebOauthClientUnbound { environment: environment, reason: tracker_web_environment_unbound_reason }
   }
 }
 
@@ -225,19 +239,19 @@ fn tracker_web_instance_environment(instance_id: NonEmptyStr) -> GoogleLoginEnvi
   }
 }
 
-fn tracker_web_test_workspace_identity_binding() -> WorkspaceIdentityBinding {
-  let b = tracker_web_test_oauth_client_binding()
+fn tracker_web_workspace_identity_binding(client: TrackerWebEnvironmentClient) -> WorkspaceIdentityBinding {
+  let b = tracker_web_environment_client_binding(client: client)
   WorkspaceIdentityBinding {
-    customer: tracker_web_test_oauth_workspace_customer,
-    project: tracker_web_test_oauth_console_project,
+    customer: tracker_web_oauth_workspace_customer,
+    project: tracker_web_oauth_console_project,
     client: b.client_id,
     top_org_unit: "/" as NonEmptyStr,
     redirect_uris: b.redirect_uris,
-    desired_revision: tracker_web_test_oauth_desired_revision,
+    desired_revision: client.desired_revision,
   }
 }
 
-// Transcribed from the bright-moth-475 2026-10-11 console receipt. These strings are the
+// Transcribed from the operator's 2026-11-04 console readback (client tracker-web-test). These strings are the
 // observation, not a second name for the desired URIs: aliasing the desired symbols here
 // made workspace_admin_assess compare a value with itself (DESIGN §3d / §5).
 data tracker_web_test_console_observed_redirect_uris: List<NonEmptyStr> = [
@@ -251,32 +265,32 @@ type TrackerWebConsoleUtcInstant {
 }
 
 data tracker_web_test_console_readback_observed_at: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
-  date: Iso8601CivilDate { year: 2026, month: 10, day: 11 },
-  since_midnight: second(count: 4 * 60 * 60),
+  date: Iso8601CivilDate { year: 2026, month: 11, day: 4 },
+  since_midnight: second(count: 7 * 60 * 60 + 45 * 60),
 }
 
 data tracker_web_test_console_readback_valid_until: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
-  date: Iso8601CivilDate { year: 2026, month: 11, day: 10 },
-  since_midnight: second(count: 4 * 60 * 60),
+  date: Iso8601CivilDate { year: 2026, month: 12, day: 4 },
+  since_midnight: second(count: 7 * 60 * 60 + 45 * 60),
 }
 
 // Unix seconds at a UTC civil date plus a duration since midnight, delegated to the ISO-8601
 // calendar's own combination (DESIGN §6b: the rule is owned there, not re-spelled here).
 // Inverse: iso8601_utc_text.
-fn tracker_web_test_console_readback_unix_int(at: TrackerWebConsoleUtcInstant) -> Int {
+fn tracker_web_console_instant_unix_int(at: TrackerWebConsoleUtcInstant) -> Int {
   iso8601_unix_seconds_at(date: at.date, since_midnight: (second_count(s: at.since_midnight) as Int))
 }
 
-fn tracker_web_test_console_readback_unix_at(at: TrackerWebConsoleUtcInstant) -> Second? {
-  match checked_int_to_nat(n: tracker_web_test_console_readback_unix_int(at: at)) {
+fn tracker_web_console_instant_unix_at(at: TrackerWebConsoleUtcInstant) -> Second? {
+  match checked_int_to_nat(n: tracker_web_console_instant_unix_int(at: at)) {
     Present { value: n } => Present { value: second(count: n) }
     Absent => none
   }
 }
 
-data tracker_web_test_console_readback_observed_at_epoch: Second? = tracker_web_test_console_readback_unix_at(at: tracker_web_test_console_readback_observed_at)
+data tracker_web_test_console_readback_observed_at_epoch: Second? = tracker_web_console_instant_unix_at(at: tracker_web_test_console_readback_observed_at)
 
-data tracker_web_test_console_readback_valid_until_epoch: Second? = tracker_web_test_console_readback_unix_at(at: tracker_web_test_console_readback_valid_until)
+data tracker_web_test_console_readback_valid_until_epoch: Second? = tracker_web_console_instant_unix_at(at: tracker_web_test_console_readback_valid_until)
 
 fn tracker_web_oidc_deploy_now_epoch() -> Second? {
   match observer_clock_read() {
@@ -289,26 +303,30 @@ fn tracker_web_oidc_deploy_now_epoch() -> Second? {
   }
 }
 
-fn tracker_web_test_registered_web_client_console_readback() -> WorkspaceAdminReadback? {
-  match tracker_web_test_console_readback_observed_at_epoch {
+fn tracker_web_registered_web_client_console_readback(client: TrackerWebEnvironmentClient) -> WorkspaceAdminReadback? {
+  match client.readback {
     Absent => none
-    Present { value: observed } =>
-      match tracker_web_test_console_readback_valid_until_epoch {
+    Present { value: rb } =>
+      match tracker_web_console_instant_unix_at(at: rb.observed_at) {
         Absent => none
-        Present { value: until } => Present { value: WorkspaceAdminReadback {
-          subject: AuthPlatformClient {
-            project: tracker_web_test_oauth_console_project,
-            client: tracker_web_test_oauth_client_id,
-          },
-          observed: RegisteredWebClient { redirect_uris: tracker_web_test_console_observed_redirect_uris },
-          source: AdminConsoleReadback {
-            administrator: workspace_operator_principal(),
-            evidence: "bright-moth-475 2026-10-11 operator console URI add; no Auth Platform write API" as NonEmptyStr,
-          },
-          observed_at_epoch: second_count(s: observed) as Int,
-          valid_until_epoch: second_count(s: until) as Int,
-          coverage: EffectiveAtDeclaredScope,
-        } }
+        Present { value: observed } =>
+          match tracker_web_console_instant_unix_at(at: rb.valid_until) {
+            Absent => none
+            Present { value: until } => Present { value: WorkspaceAdminReadback {
+              subject: AuthPlatformClient {
+                project: tracker_web_oauth_console_project,
+                client: client.client_id,
+              },
+              observed: RegisteredWebClient { redirect_uris: rb.observed_redirect_uris },
+              source: AdminConsoleReadback {
+                administrator: workspace_operator_principal(),
+                evidence: rb.evidence,
+              },
+              observed_at_epoch: second_count(s: observed) as Int,
+              valid_until_epoch: second_count(s: until) as Int,
+              coverage: EffectiveAtDeclaredScope,
+            } }
+          }
       }
   }
 }
@@ -324,6 +342,94 @@ data tracker_web_test_oauth_client_secret_ref: SecretRef = secret_ref_pin_versio
 data tracker_web_test_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev-client-secret" as NonEmptyStr
 
 data tracker_web_test_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-dev.json" as NonEmptyStr
+
+// Project 582015116396 (gunbai-secrets), version 1 enabled 2026-11-04T07:45:56Z (operator-confirmed).
+data tracker_web_stage_oauth_client_secret_ref: SecretRef = secret_ref_pin_version(
+  ref: fleet_secret_ref(secret_id: "tracker-web-stage-oauth-client-secret"),
+  version: "1",
+)
+
+data tracker_web_stage_oauth_client_secret_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-stage-client-secret" as NonEmptyStr
+
+data tracker_web_stage_oidc_config_host_path: NonEmptyStr = "/etc/gunbc-oidc/tracker-web-stage.json" as NonEmptyStr
+
+type TrackerWebConsoleReadbackRow {
+  observed_redirect_uris: List<NonEmptyStr>
+  observed_at: TrackerWebConsoleUtcInstant
+  valid_until: TrackerWebConsoleUtcInstant
+  evidence: NonEmptyStr
+}
+
+// ONE ROW PER ENVIRONMENT carries everything that is per-client: the Google client, its Secret
+// Manager pin, where its secret and oidc config live on the host, and the operator's console
+// readback of its registered redirect URIs. placement, standing and assessment read the row for the
+// instance's environment, so no environment can resolve another's path, secret or readback. An
+// environment without a readback has none: serving it refuses ('readback absent'), it never
+// borrows another environment's.
+type TrackerWebEnvironmentClient {
+  environment: GoogleLoginEnvironment
+  client_id: NonEmptyStr
+  desired_revision: NonEmptyStr
+  secret_ref: SecretRef
+  secret_host_path: NonEmptyStr
+  config_host_path: NonEmptyStr
+  readback: TrackerWebConsoleReadbackRow?
+}
+
+data tracker_web_test_console_readback_row: TrackerWebConsoleReadbackRow = TrackerWebConsoleReadbackRow {
+  observed_redirect_uris: tracker_web_test_console_observed_redirect_uris,
+  observed_at: tracker_web_test_console_readback_observed_at,
+  valid_until: tracker_web_test_console_readback_valid_until,
+  evidence: "operator 2026-11-04 console readback of client 433089409875-2c1u5obhaeafee9ve7igpopt5oiqoa8k (redirect URIs srv2:18082, srv1:8444); no Auth Platform write API" as NonEmptyStr,
+}
+
+data tracker_web_test_environment_client: TrackerWebEnvironmentClient = TrackerWebEnvironmentClient {
+  environment: GoogleLoginEnvironmentTest,
+  client_id: tracker_web_test_oauth_client_id,
+  desired_revision: tracker_web_test_oauth_desired_revision,
+  secret_ref: tracker_web_test_oauth_client_secret_ref,
+  secret_host_path: tracker_web_test_oauth_client_secret_host_path,
+  config_host_path: tracker_web_test_oidc_config_host_path,
+  readback: Present { value: tracker_web_test_console_readback_row },
+}
+
+// Operator console readback of client tracker-web-stage (created 2026-11-04T07:44:23Z, secret ****cQes
+// enabled, no JS origins). The URI is a literal, independent of the emitter: the witness compares the
+// emitted redirect URI to it byte for byte.
+data tracker_web_stage_console_observed_redirect_uris: List<NonEmptyStr> = [
+  "https://srv1.tailecbe08.ts.net/auth/google/callback" as NonEmptyStr,
+]
+
+data tracker_web_stage_console_readback_observed_at: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate { year: 2026, month: 11, day: 4 },
+  since_midnight: second(count: 9 * 60 * 60 + 5 * 60),
+}
+
+data tracker_web_stage_console_readback_valid_until: TrackerWebConsoleUtcInstant = TrackerWebConsoleUtcInstant {
+  date: Iso8601CivilDate { year: 2026, month: 12, day: 4 },
+  since_midnight: second(count: 9 * 60 * 60 + 5 * 60),
+}
+
+data tracker_web_stage_console_readback_observed_at_epoch: Second? = tracker_web_console_instant_unix_at(at: tracker_web_stage_console_readback_observed_at)
+
+data tracker_web_stage_console_readback_valid_until_epoch: Second? = tracker_web_console_instant_unix_at(at: tracker_web_stage_console_readback_valid_until)
+
+data tracker_web_stage_console_readback_row: TrackerWebConsoleReadbackRow = TrackerWebConsoleReadbackRow {
+  observed_redirect_uris: tracker_web_stage_console_observed_redirect_uris,
+  observed_at: tracker_web_stage_console_readback_observed_at,
+  valid_until: tracker_web_stage_console_readback_valid_until,
+  evidence: "operator 2026-11-04 console readback of client 433089409875-q072i67ddv7fghlpf978cbi8bv6r5pql (redirect URI srv1 portless /auth/google/callback); no Auth Platform write API" as NonEmptyStr,
+}
+
+data tracker_web_stage_environment_client: TrackerWebEnvironmentClient = TrackerWebEnvironmentClient {
+  environment: GoogleLoginEnvironmentStage,
+  client_id: tracker_web_stage_oauth_client_id,
+  desired_revision: tracker_web_stage_oauth_desired_revision,
+  secret_ref: tracker_web_stage_oauth_client_secret_ref,
+  secret_host_path: tracker_web_stage_oauth_client_secret_host_path,
+  config_host_path: tracker_web_stage_oidc_config_host_path,
+  readback: Present { value: tracker_web_stage_console_readback_row },
+}
 
 type TrackerWebOidcServeConfig {
   config_path: NonEmptyStr
@@ -345,20 +451,23 @@ type TrackerWebOidcServeStanding
   | TrackerWebOidcRealizationMissing { instance_id: NonEmptyStr, environment: GoogleLoginEnvironment }
   | TrackerWebOidcConsoleReadbackUnsatisfied { instance_id: NonEmptyStr, cause: NonEmptyStr }
 
-fn tracker_web_test_auth_platform_client_assessment(now_epoch: Second) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
-  let binding = tracker_web_test_workspace_identity_binding()
-  match workspace_identity_admin_obligations(binding: binding, discovery: BasicSignInOnly).first() {
-    Absent => GoalAssessmentRefused { cause: "tracker-web TEST Auth Platform obligation is missing" }
-    Present { value: ob } =>
-      match tracker_web_test_registered_web_client_console_readback() {
-        Absent => GoalAssessmentRefused { cause: "console readback unix seconds do not inhabit Nat" }
-        Present { value: receipt } =>
-          workspace_admin_assess(
-            goal: ob,
-            receipt: receipt,
-            admitted_admins: [workspace_operator_principal()],
-            now_epoch: second_count(s: now_epoch) as Int,
-          )
+fn tracker_web_auth_platform_client_assessment(client: TrackerWebEnvironmentClient, now_epoch: Second) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
+  match client.readback {
+    Absent => GoalAssessmentRefused { cause: "tracker-web console readback absent for this environment" }
+    Present { value: _ } =>
+      match workspace_identity_admin_obligations(binding: tracker_web_workspace_identity_binding(client: client), discovery: BasicSignInOnly).first() {
+        Absent => GoalAssessmentRefused { cause: "tracker-web Auth Platform obligation is missing" }
+        Present { value: ob } =>
+          match tracker_web_registered_web_client_console_readback(client: client) {
+            Absent => GoalAssessmentRefused { cause: "console readback unix seconds do not inhabit Nat" }
+            Present { value: receipt } =>
+              workspace_admin_assess(
+                goal: ob,
+                receipt: receipt,
+                admitted_admins: [workspace_operator_principal()],
+                now_epoch: second_count(s: now_epoch) as Int,
+              )
+          }
       }
   }
 }
@@ -367,23 +476,29 @@ fn tracker_web_oidc_serve_placement(instance_id: NonEmptyStr) -> TrackerWebOidcS
   match tracker_web_instance_login_row(instance_id: instance_id) {
     Absent => TrackerWebOidcPlacementUnassigned { instance_id: instance_id }
     Present { value: row } =>
-      match tracker_web_oauth_standing_for_environment(environment: row.environment) {
-        TrackerWebOauthClientUnbound { environment: _, reason } =>
-          TrackerWebOidcPlacementUnbound { instance_id: instance_id, reason: reason }
-        TrackerWebOauthClientBound { binding: b } =>
+      match tracker_web_environment_client(environment: row.environment) {
+        Absent => TrackerWebOidcPlacementUnbound { instance_id: instance_id, reason: tracker_web_environment_unbound_reason }
+        Present { value: client } =>
           match row.redirect_uri {
             Absent => TrackerWebOidcPlacementMissingRealization { instance_id: instance_id, environment: row.environment }
             Present { value: uri } =>
               TrackerWebOidcServeReady {
                 config: TrackerWebOidcServeConfig {
-                  config_path: tracker_web_test_oidc_config_host_path,
+                  config_path: client.config_host_path,
                   redirect_uri: uri,
-                  secret_file: tracker_web_test_oauth_client_secret_host_path,
-                  binding: b,
+                  secret_file: client.secret_host_path,
+                  binding: tracker_web_environment_client_binding(client: client),
                 }
               }
           }
       }
+  }
+}
+
+fn tracker_web_oidc_environment_assessment(environment: GoogleLoginEnvironment, now_epoch: Second) -> GoalAssessment<WorkspaceAdminEvidence, WorkspaceAdminDifference, String, String> {
+  match tracker_web_environment_client(environment: environment) {
+    Present { value: c } => tracker_web_auth_platform_client_assessment(client: c, now_epoch: now_epoch)
+    Absent => GoalAssessmentRefused { cause: "tracker-web environment has no client row" }
   }
 }
 
@@ -395,7 +510,7 @@ fn tracker_web_oidc_serve_standing(instance_id: NonEmptyStr, now_epoch: Second) 
     TrackerWebOidcPlacementMissingRealization { instance_id: id, environment } =>
       TrackerWebOidcRealizationMissing { instance_id: id, environment: environment }
     TrackerWebOidcServeReady { config: cfg } =>
-      match tracker_web_test_auth_platform_client_assessment(now_epoch: now_epoch) {
+      match tracker_web_oidc_environment_assessment(environment: cfg.binding.environment, now_epoch: now_epoch) {
         GoalSatisfied { evidence: _ } => TrackerWebOidcServeConfigured { config: cfg }
         GoalDiverged { deviations: _ } =>
           TrackerWebOidcConsoleReadbackUnsatisfied {

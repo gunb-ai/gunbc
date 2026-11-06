@@ -1,4 +1,5 @@
 module gunbc.drift_watch_workflow
+import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
 
 

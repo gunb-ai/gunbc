@@ -1,6 +1,7 @@
 module product.altra_motherboard.minimal_design
 
-import std.types { list_length, String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List }
+import std.algebra { length }
 import std.integer { Int }
 import extdeps.cpu.ampere_altra_package {
   altra_ddr4_channel_count,
@@ -115,7 +116,7 @@ type ActiveDdrTopology {
 }
 
 fn topology_channel_count(t: ActiveDdrTopology) -> Int {
-  list_length(items: t.populated_channels)
+  length(xs: t.populated_channels)
 }
 
 fn topology_slot_identities(t: ActiveDdrTopology) -> List<DdrSlotIdentity> {
@@ -256,7 +257,7 @@ fn board_slot_identities(d: AltraMinimalMotherboard) -> List<DdrSlotIdentity> {
 }
 
 fn board_total_dimm_positions(d: AltraMinimalMotherboard) -> Int {
-  list_length(items: board_slot_identities(d: d))
+  length(xs: board_slot_identities(d: d))
 }
 
 
@@ -319,7 +320,7 @@ type RoutedDdrTopology {
 }
 
 fn routed_channel_count(r: RoutedDdrTopology) -> Int {
-  list_length(items: r.routed_channels)
+  length(xs: r.routed_channels)
 }
 
 // A BOARD IS NOT ONE POPULATION, IT IS A POPULATION OVER TIME. One production board may route
@@ -406,12 +407,12 @@ fn population_subset_causes(routed: RoutedDdrTopology, populated: ActiveDdrTopol
 // Neither is a near-miss: the first names four channels while populating three, and the second
 // describes a board that populates no slot at all.
 fn identity_structural_causes(channels: List<DdrChannelIdentity>, positions: List<DimmSlotPosition>) -> List<DesignRefusal> {
-  let count_cause = if list_length(items: channels) > altra_ddr4_channel_count {
-    [ChannelCountExceedsControllerPopulation { selected: list_length(items: channels), available: altra_ddr4_channel_count }]
+  let count_cause = if length(xs: channels) > altra_ddr4_channel_count {
+    [ChannelCountExceedsControllerPopulation { selected: length(xs: channels), available: altra_ddr4_channel_count }]
   } else {
     duplicate_channel_causes(cs: channels)
   }
-  let dimm_cause = if list_length(items: positions) < 1 {
+  let dimm_cause = if length(xs: positions) < 1 {
     [ChannelHasNoDimmPositions]
   } else {
     duplicate_position_causes(ps: positions)
@@ -576,7 +577,7 @@ fn slot_list_covers(xs: List<DdrSlotIdentity>, ys: List<DdrSlotIdentity>) -> Boo
 fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
   let aslots = topology_slot_identities(t: a)
   let bslots = topology_slot_identities(t: b)
-  list_length(items: aslots) == list_length(items: bslots)
+  length(xs: aslots) == length(xs: bslots)
     && slot_list_covers(xs: aslots, ys: bslots)
 }
 
@@ -591,7 +592,7 @@ fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
 fn routed_topologies_eq(a: RoutedDdrTopology, b: RoutedDdrTopology) -> Bool {
   let aslots = routed_slot_identities(r: a)
   let bslots = routed_slot_identities(r: b)
-  list_length(items: aslots) == list_length(items: bslots)
+  length(xs: aslots) == length(xs: bslots)
     && slot_list_covers(xs: aslots, ys: bslots)
 }
 

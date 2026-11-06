@@ -11,6 +11,8 @@ import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 import v2.std.arrow_signature { declared_signature }
 
 import v2.extdeps.languages.rust {
+  RustGramBuild1StateInit,
+  RustGramBuild1StateReady,
   rust_add_declared_inhabitants_root,
   rust_binding_spellings,
   rust_collection_realization_catalog_node,
@@ -55,8 +57,8 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_emission_bundle_node
 }
 import v2.std.logic { bool_boolean_algebra }
-import v2.std.grammar { derive_grammar_relation_row_for_lhs }
-import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs, Sequence }
+import v2.std.compilers.target_model { ValueProducing, ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 import std.host_text { chars }
 import std.operation_argv { shell_materialize_operation_argv }
 

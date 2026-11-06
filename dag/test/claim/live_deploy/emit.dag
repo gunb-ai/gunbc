@@ -7,13 +7,13 @@ import gunbc.live_deploy.member_identity {
 }
 import gunbc.live_deploy.member_observe { deployment_member_roster }
 import gunbc.owned_directory { owned_directory_path, owned_directory_demand_at }
-import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now, apply_complete_object_source_serve }
+import test.claim.live_deploy.apply_emission_projection { pipeline_steps_text, pipeline_step_text, apply_empty_host_effects, claim_oidc_now_for, apply_complete_object_source_serve }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_executable_digest, deploy_witness_release_revision, deploy_witness_other_release_revision, deploy_witness_full_install_plan, deploy_witness_release_target, deploy_witness_spec_with_only_directory }
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr, Int, Port }
 import std.os.types { Apt, Winget, HomebrewDeFacto }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_door_socket, fabric_storage_door_directory_path, fabric_storage_store_root, fabric_storage_https_port, fabric_storage_entry_mode, FabricStorageEntryModeDerived, FabricStorageEntryModeRefused }
 import extdeps.access.posix { file_mode_octal }
-import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root }
+import gunbc.fabric.fabric_storage_file_store { fabric_store_area_paths, fabric_storage_slots }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
 import std.optional { Present, Absent }
 import gunbc.live_deploy.spec {
@@ -31,6 +31,7 @@ import gunbc.live_deploy.spec {
   deployment_tailnet_door_steps,
   deployment_approval_broker_front_door_steps,
   deployment_oidc_config_steps,
+  deployment_agent_door_steps,
   deployment_fabric_storage_serve_endpoint,
   EnsuredPackage,
   TailscalePackage,
@@ -70,7 +71,7 @@ import gunbc.live_deploy.spec {
   deployment_publication_path_unit_name,
   deployment_publication_service_unit_name,
 }
-import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment }
+import gunbc.live_deploy.desired { prod_role_actuated_realization, deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec, srv2_deploy_desired_deployment, spec_same_host_surface_collision, spec_owned_identities }
 import gunbc.live_deploy.lab_host_plan { LabPlanRefused, LabSandbox }
 import gunbc.host.host_software_surface { UserManagerSandboxEnforcementUnobserved }
 import gunbc.host.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var, srv1_attempt_state_directory }
@@ -101,7 +102,7 @@ import std.materialization_ladder { string_list_contains }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.shell_command_text { shell_privileged_command_text_of_argv, shell_command_text_of_node }
 import gunbc.live_deploy.operations {
-  systemctl_disable_now_command, systemctl_user_daemon_reload_command, install_directory_owned_command,
+  systemctl_disable_now_command, systemctl_user_daemon_reload_command,
 }
 import gunbc.live_deploy.effect_leaf {
   deploy_effect_command, systemctl_restart_effect,
@@ -114,7 +115,8 @@ import extdeps.systemd.unit_file {
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_host }
 import gunbc.host.host_layout { srv1_gunbc_approval_broker_root, srv1_gunbc_repo_root }
 import gunbc.live_deploy.spec { deployment_directory_demands }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, PerReleaseBinary, serve_binary_path, fixed_serve_binary_path, admit_fixed_serve_path, FixedServeBinary, AdmittedFixedServeBinary, SeedBuiltAtRevision, SourceUndeclared }
+import test.claim.live_deploy.serve_binary_spec_fixture { spec_with_serve_binary, spec_overriding_surfaces }
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.membership_reconcile { EffectRemove }
 import gunbc.live_deploy.retract_legs {
@@ -129,6 +131,8 @@ import gunbc.live_deploy.emit {
 import gunbc.live_deploy.emit {
   live_deploy_approval_broker_unit_file, live_deploy_fabric_storage_unit_file, deployment_serve_route_command, install_d_shared_mode, path_parent_dir, live_deploy_systemd_unit_for, live_deploy_remote_mutation_service_op_realization_dissolution_trigger, live_deploy_intent_dependency_graph_emit_dissolution_trigger, live_deploy_publication_path_unit_file,
   live_deploy_belt_service_unit_file, live_deploy_publication_service_unit_file,
+  install_d_owned_render_for, render_install_line, shell_inert_absolute_path,
+  InstallLine, InstallLineRefused, RefusalEmpty, RefusalNotAbsolute, RefusalUnsafeBytes,
 }
 import gunbc.live_deploy.release_locus {
   release_locus_tree_receipt_path,
@@ -397,18 +401,19 @@ test fn witness_execstart_carries_exactly_the_admitted_revision() -> Bool {
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let expected = join([
-    "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2",
-    " --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle",
-    " --host 127.0.0.1 --port 8080",
-    " --release-revision ", deploy_witness_release_revision as String,
-    " --eval-budget-cpu-ms 30000",
-    " --eval-budget-wall-ms 120000",
+    "ExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2",
+    " --entry dag/gunbc/roadmap/roadmap_ingress.dag --function roadmap_ingress",
+    " --arg handler=roadmap_serve_handle",
+    " --arg listener=tcp:127.0.0.1:8080",
+    " --arg release_revision=", deploy_witness_release_revision as String,
+    " --arg cpu_limit_ms=30000",
+    " --arg wall_limit_ms=120000",
   ], "")
   string_contains(s: unit, pattern: expected)
-    && !string_contains(s: unit, pattern: concat(expected, " --release-revision"))
+    && !string_contains(s: unit, pattern: concat(expected, " --arg release_revision"))
     && !string_contains(s: unit, pattern: deploy_witness_other_release_revision as String)
     && !string_contains(s: unit, pattern: "$")
 }
@@ -417,23 +422,23 @@ test fn witness_execstart_omitting_the_revision_is_not_the_emitted_line() -> Boo
   let unit = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
-  !string_contains(s: unit, pattern: "--port 8080\nRestart=")
-    && !string_contains(s: unit, pattern: "--release-revision \n")
-    && string_contains(s: unit, pattern: concat("--release-revision ", deploy_witness_release_revision as String))
+  !string_contains(s: unit, pattern: "listener=tcp:127.0.0.1:8080\nRestart=")
+    && !string_contains(s: unit, pattern: "--arg release_revision= ")
+    && string_contains(s: unit, pattern: concat("--arg release_revision=", deploy_witness_release_revision as String))
 }
 
 test fn witness_execstart_at_another_candidate_differs() -> Bool {
   let a = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   let b = live_deploy_systemd_unit_for(
     spec: deployment_spec_srv1(),
     revision: RevisionBoundAtEmission { revision: deploy_witness_other_release_revision },
-    now_epoch: claim_oidc_now(),
+    now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()),
   )
   a != b
     && string_contains(s: b, pattern: deploy_witness_other_release_revision as String)
@@ -441,8 +446,8 @@ test fn witness_execstart_at_another_candidate_differs() -> Bool {
 }
 
 test fn witness_systemd_unit_emitted() -> Bool {
-  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now())
-  string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc serve --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_serve.dag --function roadmap_serve_handle --host 127.0.0.1 --port 8080")
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, now_epoch: claim_oidc_now_for(spec: deployment_spec_srv1()))
+  string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/roadmap/roadmap_ingress.dag --function roadmap_ingress --arg handler=roadmap_serve_handle --arg listener=tcp:127.0.0.1:8080")
     && string_contains(s: unit, pattern: "User=briansrls")
     && string_contains(s: unit, pattern: "Group=briansrls")
     && string_contains(s: unit, pattern: "WorkingDirectory=/opt/gunbc/gunbc")
@@ -517,7 +522,10 @@ fn placement_scoped_paths(spec: DeploymentSpec, instance: HostDashboardInstance)
       deployment_approval_broker_front_door_steps(holding: spec.role_singletons),
       concat(
         deployment_tailnet_door_steps(names: spec.names),
-        deployment_oidc_config_steps(instance: instance),
+        concat(
+          deployment_oidc_config_steps(instance: instance),
+          deployment_agent_door_steps(instance: instance, names: spec.names),
+        ),
       ),
     ),
   ) |> map(s => s.path as String)
@@ -538,7 +546,7 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && !(deployment_plan_listen_port(spec: live) == deployment_plan_listen_port(spec: twin))
     && !(live.service.unit_name == twin.service.unit_name)
     && !(live.service.repo_root == twin.service.repo_root)
-    && !(live.service.serve_binary == twin.service.serve_binary)
+    && !(fixed_serve_binary_path(binary: live.service.serve_binary) == fixed_serve_binary_path(binary: twin.service.serve_binary))
     && count(live_instance_scoped) > 0
     && all(live_scoped_paths, h => any(live_paths, l => l == h))
     && all(twin_scoped_paths, h => any(twin_paths, t => t == h))
@@ -547,12 +555,14 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && count(deployment_fabric_storage_steps(holding: HoldsNoRoleSingleton, names: twin.names)) == 0
     && count(deployment_approval_broker_front_door_steps(holding: HoldsNoRoleSingleton)) == 0
     && count(deployment_tailnet_door_steps(names: twin.names)) == 0
-    && count(deployment_oidc_config_steps(instance: live_instance)) == 0
+    && count(deployment_oidc_config_steps(instance: live_instance)) == count(deployment_oidc_config_steps(instance: lab_instance))
     && count(deployment_oidc_config_steps(instance: lab_instance)) > 0
+    && count(deployment_agent_door_steps(instance: live_instance, names: live.names)) == 0
+    && count(deployment_agent_door_steps(instance: lab_instance, names: twin.names)) > 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file MOVED from converse to common member: since the 2026-11-04 Stage OAuth delivery (per-environment client rows; srv1 live bound as STAGE, the lab row TEST), tracker_web_oidc_serve_placement -- the single decider (gunbc.auth.tracker_web_oauth_client tracker_web_instance_login_rows) -- is ServeReady for BOTH instances, so each carries exactly one OIDC member and the claim pins the mirror plus the lab's non-degeneracy; no member difference is asserted there any more. The agent door is the same kind of member: it is decided by the deployment's write policy (deployment_admits_agent_peer, read through the instance's deployment), so the twin carries it and production does not. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -855,7 +865,10 @@ test fn the_fabric_storage_store_root_reaches_the_srv1_apply_path() -> Bool {
 // the deployment ensures the root alone, which is the state that refused fleet-converge run
 // 35818578751's host-effect claim with `object publication refused: not_found`.
 test fn the_fabric_storage_store_areas_reach_the_srv1_apply_path() -> Bool {
-  let files = fabric_storage_file_root(root: fabric_storage_store_root(instance: srv1_live_dashboard_instance()))
+  // THE AREAS THE DECLARATION IMPLIES, from the same rows the mint reads: this claim asserts the substrate
+  // demands THOSE paths, and it spells them through fabric_store_area_paths so a change to the declaration
+  // moves the demand and the assertion together.
+  let files = fabric_store_area_paths(members: fabric_storage_slots, instance: srv1_live_dashboard_instance())
   srv1_demands_directory(path: files.objects as String) && srv1_demands_directory(path: files.heads as String)
 }
 
@@ -926,7 +939,7 @@ test fn both_install_paths_bind_the_brokers_one_port() -> Bool {
   )
   service_has_execstart_containing(
     file: unit,
-    fragment: join([" --port ", to_string(approval_broker_listen_port)], ""),
+    fragment: join([":", to_string(approval_broker_listen_port), " --arg release_revision="], ""),
   )
 }
 
@@ -964,11 +977,11 @@ test fn the_broker_unit_binds_loopback_and_runs_from_its_own_tree() -> Bool {
     root: srv1_gunbc_approval_broker_root as String,
     revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision },
   )
-  string_contains(s: unit, pattern: join(["--host ", approval_broker_listen_host as String, " --port "], ""))
+  string_contains(s: unit, pattern: join(["--arg listener=tcp:", approval_broker_listen_host as String, ":"], ""))
     && !string_contains(s: unit, pattern: "0.0.0.0")
     && string_contains(s: unit, pattern: join(["WorkingDirectory=", release_dir], ""))
     && !string_contains(s: unit, pattern: join(["WorkingDirectory=", srv1_gunbc_repo_root as String, "\n"], ""))
-    && string_contains(s: unit, pattern: join(["ExecStart=", release_dir, "/gunbc serve"], ""))
+    && string_contains(s: unit, pattern: join(["ExecStart=", release_dir, "/gunbc run"], ""))
     && !string_contains(s: unit, pattern: "ExecStart=/opt/gunbc/bin/gunbc")
 }
 
@@ -984,7 +997,7 @@ test fn the_broker_serve_binary_is_the_per_release_arm_over_the_bound_revision()
 }
 
 test fn a_fixed_serve_binary_resolves_to_its_own_path_whatever_the_revision() -> Bool {
-  let admitted = admit_fixed_serve_path(path: "/opt/gunbc/bin/gunbc" as NonEmptyStr)
+  let admitted = admit_fixed_serve_path(path: "/opt/gunbc/bin/gunbc" as NonEmptyStr, source: SeedBuiltAtRevision)
   let fixed = FixedServeBinary { binary: admitted }
   fixed_serve_binary_path(binary: admitted) == "/opt/gunbc/bin/gunbc"
     && serve_binary_path(binary: fixed, release_root: "/x", revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }) == "/opt/gunbc/bin/gunbc"
@@ -1015,10 +1028,9 @@ test fn the_fixed_only_renderers_emit_no_unbound_marker_off_the_apply_route() ->
 test fn the_fabric_storage_unit_binds_its_door_socket_and_its_route_proxies_to_it() -> Bool {
   let unit = serialize_systemd_unit_file(file: live_deploy_fabric_storage_unit_file(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision }, door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance())))
   let route = deployment_fabric_storage_serve_endpoint(door_socket: fabric_storage_door_socket(instance: srv1_live_dashboard_instance()))
-  unit.contains("--function fabric_storage_serve_handle")
-    && unit.contains(join(["--unix-socket ", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], ""))
-    && !unit.contains("--host")
-    && !unit.contains("--port")
+  unit.contains("--entry dag/gunbc/fabric/fabric_storage_ingress.dag --function fabric_storage_ingress --arg handler=fabric_storage_serve_handle")
+    && unit.contains(join(["--arg listener=unix:", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], ""))
+    && !unit.contains("listener=tcp:")
     && route.https_port == fabric_storage_https_port
     && (route.backend as String) == join(["unix:", fabric_storage_door_socket(instance: srv1_live_dashboard_instance()) as String], "")
     && (match route.mount { ServeRootMount => true  ServeSetPath { path: _ } => false })
@@ -1052,4 +1064,240 @@ test fn the_retract_plan_never_restarts_the_serve_unit() -> Bool {
   let retract_text = retract_plan_text(spec: spec)
   !string_contains(s: retract_text, pattern: "REFUSED ")
     && !string_contains(s: retract_text, pattern: join(["restart ", unit], ""))
+}
+
+// ── THE TYPED INSTALL-LINE OUTCOME (review 90613): the refusal is a NAMED CAUSE, not prose in a
+// command position, and its total display fails a script closed rather than fabricating a line.
+
+test fn the_typed_render_refuses_a_hazardous_path_with_a_named_cause() -> Bool {
+  match install_d_owned_render_for(user: "briansrls" as NonEmptyStr, path: "/opt/gunbc/attempt-state; rm -rf /opt/gunbc") {
+    InstallLine { text: _ } => false
+    InstallLineRefused { cause } => match cause {
+      RefusalUnsafeBytes => true
+      _ => false
+    }
+  }
+}
+
+test fn a_refused_install_displays_as_a_false_command_carrying_no_path_bytes() -> Bool {
+  let shown: String = render_install_line(render: install_d_owned_render_for(user: "briansrls" as NonEmptyStr, path: "relative/path"))
+  starts_with(s: shown, prefix: "false ")
+    && !string_contains(s: shown, pattern: "relative/path")
+    && !string_contains(s: shown, pattern: ";")
+}
+
+test fn the_checked_constructor_admits_only_inert_absolute_paths() -> Bool {
+  match shell_inert_absolute_path(path: "/opt/gunbc/live/attempt-state") {
+    Present { value: v } => (v.raw as String) == "/opt/gunbc/live/attempt-state"
+    Absent => false
+  }
+    && match shell_inert_absolute_path(path: "/tmp/x;evil") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match shell_inert_absolute_path(path: "") {
+      Present { value: _ } => false
+      Absent => true
+    }
+    && match shell_inert_absolute_path(path: "tmp/x") {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+// The collision law is PATH-based since #15942 spelled provenance onto the admitted binary:
+// two deployments driving ONE binary path collide whatever their provenance arms say (the arms
+// are judged by the grammar gate, not the collision gate). RED test: break the path compare in
+// spec_same_host_surface_collision and the first claim goes red.
+test fn the_serve_binary_collision_clause_reads_the_path_not_the_provenance() -> Bool {
+  let live = deployment_spec_srv1()
+  let shared = fixed_serve_binary_path(binary: live.service.serve_binary)
+  let twin_forced = spec_with_serve_binary(
+    base: srv1_twin_spec(),
+    binary: admit_fixed_serve_path(path: shared as NonEmptyStr,
+      source: SourceUndeclared { reason: "collision-pair fixture: a declared built binary no lane records" }))
+  match live.service.serve_binary {
+    AdmittedFixedServeBinary { path: live_path, source: live_source } =>
+      match twin_forced.service.serve_binary {
+        AdmittedFixedServeBinary { path: twin_path, source: twin_source } =>
+          live_path == twin_path
+            && !(live_source == twin_source)
+            && spec_same_host_surface_collision(
+              a: live, b: twin_forced,
+              a_owned: spec_owned_identities(spec: live), b_owned: spec_owned_identities(spec: twin_forced))
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// CONTROL (discriminating the control): the untouched lab twin -- different path, different
+// provenance -- does NOT collide, so the claim above cannot be satisfied by a law that always
+// says true.
+test fn the_untouched_lab_twin_collides_with_nothing_under_the_law() -> Bool {
+  let live = deployment_spec_srv1()
+  let twin = srv1_twin_spec()
+  !(fixed_serve_binary_path(binary: live.service.serve_binary) == fixed_serve_binary_path(binary: twin.service.serve_binary))
+    && !(spec_same_host_surface_collision(
+      a: live, b: twin,
+      a_owned: spec_owned_identities(spec: live), b_owned: spec_owned_identities(spec: twin)))
+}
+
+// MEASURED, INSTRUMENT RETIRED (DESIGN section 2). The nineteen conjuncts of the twin claim were each
+// lifted into their own claim to find the false one; exactly one measured red -- the OIDC member,
+// legitimately changed by the 2026-11-04 Stage OAuth delivery -- and its permanent control stays
+// below; the rest duplicated the law and are gone.
+
+// PERMANENT CONTROL for the conjunct that measured red (the twin's OIDC non-mirror): the 2026-11-04
+// Stage OAuth delivery made tracker_web_oidc_serve_placement ServeReady for BOTH srv1 instances, so
+// each carries exactly one OIDC config member. If a client row silently unbinds, the instance loses
+// its OIDC config at deploy time -- a real failure this claim reddens, not a transcription habit.
+test fn the_srv1_instances_carry_their_oidc_config_members() -> Bool {
+  count(deployment_oidc_config_steps(instance: srv1_live_dashboard_instance())) == 1
+    && count(deployment_oidc_config_steps(instance: srv1_lab_dashboard_instance())) == 1
+}
+// PER-CLAUSE WITNESSES FOR THE SAME-HOST COLLISION LAW. The law is a nine-way disjunction. Each
+// claim below starts from a twin mutated away from live on EVERY surface (the all-distinct control
+// says such a pair collides with nothing) and restores EXACTLY ONE surface to live's own value --
+// the pair must then collide. Deleting that disjunct from spec_same_host_surface_collision turns
+// exactly one claim red and no other: the §4b rung this suite exists to hold. The mutation values
+// are live's own fields read off the admitted row, so no witness invents a second spelling of a
+// surface name. The owned-identity axis is fed through the law's owned-list parameters directly,
+// which is where the model already gets them (deployment_owned_identities_retract_order).
+fn law_pair_distinct_twin() -> DeploymentSpec {
+  spec_overriding_surfaces(
+    base: srv1_twin_spec(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: 14477,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: law_pair_witness_endpoint(),
+  )
+}
+
+fn law_pair_live() -> DeploymentSpec { deployment_spec_srv1() }
+
+// ONE SYNTHETIC ENDPOINT, DELIBERATELY UNLIKE LIVE'S ON EVERY FIELD, so the endpoint disjunct is
+// only ever satisfied by a claim that restores live's own record -- never by a mount or backend that
+// happens to coincide.
+fn law_pair_witness_endpoint() -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: 14478,
+    mount: ServeSetPath { path: "/law-witness" as NonEmptyStr },
+    backend: "law-witness" as NonEmptyStr,
+  }
+}
+
+test fn the_all_distinct_pair_collides_with_nothing() -> Bool {
+  let live = law_pair_live()
+  let twin = law_pair_distinct_twin()
+  !(spec_same_host_surface_collision(
+    a: live, b: twin, a_owned: [], b_owned: []))
+}
+
+test fn the_listen_port_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: live.service.listen.port,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: law_pair_witness_endpoint())
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+test fn the_unit_name_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: live.names.unit_name,
+    listen_port: 14477,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: law_pair_witness_endpoint())
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+test fn the_repo_root_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: 14477,
+    repo_root: live.service.repo_root,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: law_pair_witness_endpoint())
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+test fn the_serve_function_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: 14477,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: live.service.serve_function,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: law_pair_witness_endpoint())
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+test fn the_tree_sync_unit_name_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: 14477,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: live.names.tree_sync_unit_name,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: law_pair_witness_endpoint())
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+test fn the_tree_sync_env_path_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: 14477,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: live.names.tree_sync_env_path,
+    tailscale_endpoint: law_pair_witness_endpoint())
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+test fn the_tailscale_endpoint_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
+    unit_name: "law-witness-gonit-unit" as NonEmptyStr,
+    listen_port: 14477,
+    repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
+    serve_function: "law_witness_gonit_serve" as NonEmptyStr,
+    tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,
+    tree_sync_env_path: "/law-witness/gonit/tree-sync.env" as NonEmptyStr,
+    tailscale_endpoint: live.names.tailscale_serve_endpoint)
+  spec_same_host_surface_collision(a: live, b: twin, a_owned: [], b_owned: [])
+}
+
+// The path axis keeps its dedicated S4 pair (the_serve_binary_collision_clause_reads_the_path_not_the_provenance
+// + the untouched-twin control), which reads the record PATH through fixed_serve_binary_path and is
+// immune to the provenance arm by construction. This claim completes the nine by feeding the law's
+// OWNED-IDENTITY disjunct directly: a shared identity in the owned lists collides two otherwise
+// fully-distinct specs, and the all-distinct control above proves nothing else about this pair fires.
+test fn the_shared_owned_identity_clause_alone_collides() -> Bool {
+  let live = law_pair_live()
+  let twin = law_pair_distinct_twin()
+  spec_same_host_surface_collision(
+    a: live, b: twin,
+    a_owned: ["/law-witness/shared/store" as NonEmptyStr],
+    b_owned: ["/law-witness/shared/store" as NonEmptyStr])
 }

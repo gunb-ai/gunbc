@@ -1,6 +1,7 @@
 module gunbc.instruments.e0599_emitter_decision_census
 
-import std.types { Bool, Int, String, list_length }
+import std.types { Bool, Int, String }
+import std.algebra { length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
 import std.optional { Optional, Present, Absent }
@@ -395,7 +396,7 @@ fn e0599_classification_line(method: String, receiver_expr: String) -> String {
 
 fn e0599_classify_tuple_line(line: String) -> Result<String, E0599CensusParseError> {
   let parts = line |> split(delimiter: "\t")
-  let field_count = list_length(items: parts)
+  let field_count = length(xs: parts)
   if field_count != 2 {
     Err { value: MalformedCensusLine { line: line, field_count: field_count } }
   } else {

@@ -1,7 +1,7 @@
 module gunbc.machine_intake.bmc_secure
 
 import std.measure { Second, second_to_millisecond, millisecond_count }
-import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length, range }
+import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, range }
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -938,7 +938,7 @@ fn adjudicate_published_census_join(
   published_user: IpmiUserId,
   published_account: PublishedCredentialAccountObservation,
 ) -> BmcSecureOutcome {
-  if list_length(items: census.members) == 0 {
+  if length(xs: census.members) == 0 {
     BmcSecureRefused { cause: PublishedCredentialCensusNotTaken }
   } else if census_observed_at < applied_at {
     BmcSecureRefused {
@@ -1341,7 +1341,7 @@ fn derive_shared_store_retirement(
     SharedStoreRetirementRefused { cause: RetirementAccountIsNotTheManagedAccount { published: published_account, managed: managed_account } }
   } else if (match bmc_credential_policy_for(key: policy) { Absent => true  Present { value: _ } => false }) {
     SharedStoreRetirementRefused { cause: RetirementBuildHasNoPolicy { policy: policy } }
-  } else if list_length(items: served) == 0 {
+  } else if length(xs: served) == 0 {
     SharedStoreRetirementRefused { cause: RetirementServedSurfacesUnknown }
   } else if generation_is_published_password {
     SharedStoreRetirementRefused { cause: RetirementGenerationIsThePublishedPassword }
@@ -1914,6 +1914,7 @@ fn dry_apply_bmc_redfish_password_write(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_completed_patch_writes_the_credential_and_clears_the_forced_flag"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_failed_patch_changes_nothing_and_mints_no_receipt"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_forced_change_applies_once_and_the_second_run_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
   ]
 {
   BmcRedfishPasswordWriteDryStep {
@@ -2554,7 +2555,7 @@ fn channel_close_request(observed: BmcAccountStateObservation, channel: IpmiChan
 
 fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> ChannelWritesAdmission {
   let open = published_channels_left_open(observed: observed)
-  if list_length(items: open) == 0 {
+  if length(xs: open) == 0 {
     ChannelWritesAdmitted { writes: [] }
   } else {
     match input {
@@ -2806,6 +2807,7 @@ type BmcAccountApplication sole_constructor {
 
 fn apply_with_diverged_controller_clock(application: BmcAccountApplication, controller_clock: ControllerClockReading?) -> BmcAccountApplication
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_a_different_present_controller_clock_is_refused"),
   ]
 {
@@ -3038,6 +3040,7 @@ data bmc_secure_dry_realization_name: NonEmptyStr = "gunbc.machine_intake.bmc_se
 // lists are the only wall between a supplied number and a sealed instant.
 fn dry_bmc_account_instant(millis: EpochMs) -> ObserverClockInstant
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_read_bmc_account_state"),
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_fetched_generation"),
@@ -3171,6 +3174,7 @@ fn dry_read_bmc_account_state(
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "read_with"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root"),
     // The served-lockout witness reads a root state so its budget gate has a real
@@ -3183,6 +3187,7 @@ fn dry_read_bmc_account_state(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_for_a_later_break_glass_generation_is_refused"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_of_another_channel_state_is_refused"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "srv13_read_at_build"),
   ]
 {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -3306,6 +3311,7 @@ fn dry_apply_bmc_account_plan(
   applied_at_millis: EpochMs,
 ) -> BmcAccountDryStep
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "forced_write_sequence_at"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "applied_outcome_of_plan"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
@@ -3681,7 +3687,7 @@ fn bmc_spend_count(spends: List<BmcPlanFailedLoginSpend>, key: BmcFailedLoginBud
   let hits = filter(spends, s => bmc_failed_login_budget_key_same(a: s.key, b: key))
   match list_head(hits) {
     Absent => 0
-    Present { value: s } => list_length(s.logins)
+    Present { value: s } => length(s.logins)
   }
 }
 
@@ -4060,14 +4066,14 @@ fn bmc_counters_reached(surface: BmcFailedLoginSurface, reading: BmcControllerLo
     RedfishAccountServiceLogin => CountersReached { surfaces: [surface] }
     IpmiLanPlusLogin { channel: _ } => CountersReached { surfaces: [surface] }
     IpmiLanPlusLoginChannelUndetermined =>
-      if list_length(channels) == 0 {
+      if length(channels) == 0 {
         CountersNotBounded { cause: "no IPMI LAN channel of this controller was read, so the channel the lanplus transport will address is unknown" }
       } else {
         CountersReached { surfaces: channels }
       }
     SurfaceOfThePlannedWriteUndetermined => {
-      let saw_redfish = list_length(filter(reading.surfaces, s => match s.surface { RedfishAccountServiceLogin => true, _ => false })) > 0
-      if !(saw_redfish && list_length(channels) > 0) {
+      let saw_redfish = length(filter(reading.surfaces, s => match s.surface { RedfishAccountServiceLogin => true, _ => false })) > 0
+      if !(saw_redfish && length(channels) > 0) {
         CountersNotBounded { cause: "this login's surface is not named by the plan and the reading did not cover every transport it could authenticate on — the Redfish AccountService policy and a LAN channel policy are both needed to bound it" }
       } else {
         CountersReached { surfaces: concat([RedfishAccountServiceLogin], channels) }
@@ -4171,8 +4177,8 @@ fn bmc_known_failed_login(account: NonEmptyStr, surface: BmcFailedLoginSurface, 
 fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailedLoginBudgetKey, window: BmcFailedAttemptWindow, now: EpochMs, reading: BmcControllerLockoutReading) -> Int {
   let mine = filter(known, k => (k.key.account as String) == (key.account as String) && bmc_surface_reaches_counter(from: k.key.surface, counter: key.surface, reading: reading))
   match window {
-    FailedAttemptsNeverReset { reason: _ } => list_length(mine)
-    FailedAttemptWindowUnread { detail: _ } => list_length(mine)
+    FailedAttemptsNeverReset { reason: _ } => length(mine)
+    FailedAttemptWindowUnread { detail: _ } => length(mine)
     FailedAttemptsCountedFor { window: window } => {
       // The measure converts itself: seconds to milliseconds is
       // second_to_millisecond, and the elapsed value it is compared with is already
@@ -4182,7 +4188,7 @@ fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailed
       // A served window of 0 seconds is NOT read as "nothing counts": upstream
       // gives no sentence that licenses dropping a failure the controller has
       // already counted, so a 0 window counts everything too.
-      if window_ms <= 0 { list_length(mine) } else { bmc_failures_since_the_last_quiet_interval(failures: mine, window_ms: window_ms, now: now) }
+      if window_ms <= 0 { length(mine) } else { bmc_failures_since_the_last_quiet_interval(failures: mine, window_ms: window_ms, now: now) }
     }
   }
 }
@@ -4282,7 +4288,7 @@ fn bmc_failed_login_budget_verdict(
   now: EpochMs,
 ) -> BmcFailedLoginBudgetVerdict {
   let unbounded: List<BmcFailedLoginBudgetBlockReading> = fold(roster.spends, init: [], f: (acc, s) => {
-    let cost = list_length(s.logins)
+    let cost = length(s.logins)
     match bmc_counters_reached(surface: s.key.surface, reading: reading) {
       CountersReached { surfaces: _ } => acc
       // A spend recorded with zero logins is not a login and refuses nothing.
@@ -4301,7 +4307,7 @@ fn bmc_failed_login_budget_verdict(
   let over: List<BmcFailedLoginBudgetBlockReading> = fold(counters, init: [], f: (acc, k) => {
     let cost = fold(roster.spends, init: 0, f: (n, s) =>
       if (s.key.account as String) == (k.account as String) && bmc_surface_reaches_counter(from: s.key.surface, counter: k.surface, reading: reading) {
-        n + list_length(s.logins)
+        n + length(s.logins)
       } else { n })
     match bmc_failed_login_headroom(key: k, reading: reading, known: known, now: now) {
       // The controller serves no lockout on this account+surface: nothing this
@@ -4324,7 +4330,7 @@ fn bmc_failed_login_budget_verdict(
     }
   })
   let blocked = concat(unbounded, over)
-  if list_length(blocked) > 0 {
+  if length(blocked) > 0 {
     FailedLoginBudgetRefused { blocked: blocked, spends: roster.spends, exempt: roster.exempt }
   } else {
     FailedLoginBudgetAdmitted { spends: roster.spends, exempt: roster.exempt }

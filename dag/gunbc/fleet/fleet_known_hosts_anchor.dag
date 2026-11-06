@@ -1,7 +1,6 @@
 module gunbc.fleet.fleet_known_hosts_anchor
 import std.optional { Absent, Optional, Present }
 
-
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe, brand, FilePath }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
@@ -20,8 +19,6 @@ import std.content_hash {
   ContentHashCrossFamilyIncomparable,
 }
 import std.decl_ref { decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
 import extdeps.ssh.openssh_remote_command { openssh_release_of_version_output, openssh_remote_command_release_covered }
 import gunbc.remote_shell_command {
   RemoteExecCommand,
@@ -920,34 +917,6 @@ fn fleet_posix_quoted_leg(route: PosixRemoteRoute, argv: List<String>) -> FleetR
     }
   }
 }
-
-// THE FRONTIER THE WORD ALPHABET FILED THREE TIMES (merry-fox-82): a fleet leg whose words fall outside the alphabet is
-// refused at the transport, which bit the srv4 iPXE revision read (since deleted as redundant), the srv4 HTTP listen
-// readback (rewritten as a plain `ss -ltnH`) and the placement of the 24.04.3 ISO's pool .debs (names carrying `+`).
-// The quoted route above is its dissolution; a leg that keeps using the bare-only entry for such words still refuses.
-data remote_word_quoting_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "read_fleet_login_shell"),
-    reason: "no fleet route reads a target principal's login shell yet; its producer shape (getent passwd output) is inhabited locally by test.claim.fleet.posix_quoted_remote_word_real_execution_witness, and its first consumer is the srv4 placement step of the x86 network install (gunbc.fleet.site_pxe_edge_converge place_site_pxe_edge_ubuntu_chain, phase 3, on merry-fox-82's go)",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 reads the ubuntu principal's login shell through read_fleet_login_shell and the run receipt records the LoginShellStanding it minted; a witness over a supplied passwd line does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_exec_over_fleet_ssh_posix"),
-    reason: "no fleet leg runs a quoted word yet; its first consumer is the srv4 placement step, which names the 24.04.3 ISO's pool .debs (versions carrying '+'). The final remote string is proven structurally (extdeps.ssh.openssh_remote_command, cited to OpenSSH V_9_6_P1) and executed under a real login shell locally; it has not crossed a live sshd",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a site_pxe_edge_converge apply dispatch on srv4 runs a leg with a quoted word through typed_argv_exec_over_fleet_ssh_posix, the proof and the executor and srv4 OpenSSH releases read inside that call and covered by extdeps.ssh.openssh_remote_command, and the placed member's sha256 readback agrees with its pin; a hermetic rendering check or a supplied version line does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fleet.fleet_known_hosts_anchor", decl_name: "portable_remote_words"),
-    reason: "the bare-only constructor refuses any word outside its alphabet, so a leg needing a regex, an operator character or a version string with '+' was unrunnable; three legs met it",
-    dissolution: unbound_dissolution(
-      description: "dissolves when every fleet leg whose words fall outside the alphabet reaches the remote shell through gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh_posix with a PosixLoginShellProof read from the target principal's passwd entry in the same run, and the real-execution witness test.claim.fleet.posix_quoted_remote_word_real_execution_witness passes hostile words through an actual sh -c as one literal argument each; a leg that widens the alphabet instead does not fire this"
-    )
-  ),
-]
 
 fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
   concat([words.first.value as String], map(words.more, w => w.value as String))

@@ -1,0 +1,186 @@
+module v2.compiler.dependency_demand_facts
+
+import std.algebra { FreeMonoid, fold_list }
+import v2.compiler.dependency_demand { OperationFact, RequirementClass, RequiresNone, RequiresUndeclared }
+import std.types { List }
+import std.algebra { list_at_optional }
+import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
+import v2.std.grammar { node_atom_identity_optional }
+import std.types { Bool }
+import v2.std.node { positional_child_target_nodes, Arrow, Atom, Bind, Branch, ComputationNode, Conj, Disj, Instantiation, Loop, Match, Node, NodeKind, Symbol, Transform, TypeNode, Value, symbol_lexeme }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
+import std.decl_ref { DeclarationRef, decl_ref }
+import v2.std.operation_declaration { operation_declaration_projected_host_seam_at, operation_declaration_for, declaration_ref_of_qualified_name }
+import v2.std.text { String }
+
+// THE DEMAND FACTS (D13) that remain: two readings other code uses.
+//
+// THE SEAM ARM. A HostRealizedSeam declaration is an opaque operation read from its
+// v2.std.operation_declaration row, never from its self-call body; a missing row is RequiresUndeclared,
+// which blocks. The declaration key is std.decl_ref, shared with std.primitive_projection and the
+// operation_declaration roster. This module sits above v2.compiler.dependency_demand because
+// operation_declaration imports it for RequirementClass and cannot import this back.
+//
+// THE UNBOUND LOCUS. What the resolver refused, projected from the fatal diagnostic it already located
+// onto a carrier the CLI and the native driver render. The per-declaration fact walk and the `uses`
+// strip that once produced facts for a census report were retired with that report.
+
+// THE SEAM TEST AND ITS KEY (D13 seam opacity, Condition A). The declaration is host-seamed when
+// std.primitive_projection -- the one authority for "this declaration is host-realized" -- carries a
+// row for it at HostRealizedSeam. The join is DECLARATION-IDENTICAL: the walked path's owning module
+// segments become the DeclarationRef's module_path and its last segment the decl_name, so a seam
+// resolves at its real module-qualified path (v2.std.decl_index.decl_facts) rather than by the bare
+// slug string that never matched a walked operation. Both halves are the SAME std.decl_ref key the
+// projection roster and v2.std.operation_declaration are keyed by.
+fn demand_facts_declaration_is_host_seam(path: QualifiedName) -> Bool {
+  match declaration_ref_of_qualified_name(path: path) {
+    Absent => false
+    Present { value: declaration } =>
+      match operation_declaration_projected_host_seam_at(declaration: declaration) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// THE SEAM ARM, as a decision over its own key: the declaration row's requirement IS the
+// operation's requirement; with no row there is nothing to trust and the operation BLOCKS as
+// RequiresUndeclared (the same arm an undeclared opaque operation takes), never a default and never
+// a walk of the self-call body. the claims drive it directly, so deleting a declaration
+// row reddens through THIS arm.
+fn demand_facts_seam_operation_fact(path: QualifiedName) -> OperationFact {
+  OperationFact {
+    path: path,
+    requirement: match declaration_ref_of_qualified_name(path: path) {
+      Present { value: declaration } => demand_facts_seam_requirement(declaration: declaration)
+      Absent => RequiresUndeclared
+    }
+  }
+}
+
+// THE BLOCKING ARM, one step further in: the requirement a seam carries as a function of its
+// declaration key alone. A row is trusted; NO ROW IS THE TYPED UNDECLARED ARM, which blocks the
+// caller exactly as an undeclared opaque operation does -- never a default, never a silent
+// RequiresNone. Driving this from a key lets the controls exercise the blocking branch directly
+// (a key no row answers) as well as through deletion of a real row.
+fn demand_facts_seam_requirement(declaration: DeclarationRef) -> RequirementClass {
+  match operation_declaration_for(declaration: declaration) {
+    Present { value: row } => row.requirement
+    Absent => RequiresUndeclared
+  }
+}
+
+// What the resolver refused, as a locus.
+type DemandFactsUnboundLocus
+  = UnboundNamed { name: Symbol }
+  | UnboundShaped { kind: NodeKind, reference: Optional<QualifiedName> }
+
+// THE CANONICAL SHAPED REFERENCE OF A COMPOSITE MENTION, derived once: the mention's own reference
+// path, else its first positional child's (an instantiation's head, a list introduction's head).
+// The CLI renders this; a second walk of the node would be a second authority.
+fn demand_facts_shaped_reference_optional(node: Node) -> Optional<QualifiedName> {
+  match demand_facts_reference_path_optional(node: node) {
+    Present { value: p } => optional_present(value: p)
+    Absent =>
+      match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
+        Absent => optional_absent()
+        Present { value: head } => demand_facts_reference_path_optional(node: head)
+      }
+  }
+}
+
+// A REFERENCE IN EITHER FORM A REFUSED MENTION CAN CARRY: the marked declaration reference (a
+// compiler-generated head, or one resolve minted), or the qualified-name spine an AUTHORED qualified
+// name is before resolve binds it (`std.algebra.FreeMonoid<T>` written in a type ascription). The
+// the unbound-locus reader renders what the resolver refused, so it reads the pre-resolve spine as the path it spells;
+// this reads a name, it binds nothing.
+fn demand_facts_reference_path_optional(node: Node) -> Optional<QualifiedName> {
+  match declaration_reference_path_optional(node: node) {
+    Present { value: p } => optional_present(value: p)
+    Absent =>
+      if qualified_name_spine_shape_present(root: node) {
+        match qualified_name_from_node(root: node) {
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+          Rejected { diagnostics: _ } => optional_absent()
+        }
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+// WHAT IS UNBOUND, READ FROM THE FATAL THE RESOLVER ALREADY LOCATED. The diagnostic's NodeLocus
+// carries the mention; this projects it onto the locus carrier (atom identity, or the node's kind
+// plus shaped reference when the mention is a composite). A second consumer that re-walked the
+// node would be a second authority for the same fact (DESIGN section 3).
+fn demand_facts_unbound_locus_from_diagnostics(d: NonEmptyDiagnostics) -> Optional<DemandFactsUnboundLocus> {
+  let fatal = diagnostics_fatal(d: d)
+  if fatal.reason == ^resolve_reason_unbound_symbol {
+    match fatal.at {
+      NodeLocus { anchor: a } =>
+        match node_atom_identity_optional(node: a.at.node) {
+          Present { value: n } => optional_present(value: UnboundNamed { name: n })
+          Absent =>
+            optional_present(value: UnboundShaped {
+              kind: a.at.node.kind,
+              reference: demand_facts_shaped_reference_optional(node: a.at.node)
+            })
+        }
+      Textual { file: _, extent: _ } => optional_absent()
+      SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
+      InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
+      DeclarationLocus { declaration: _ } => optional_absent()
+    }
+  } else {
+    optional_absent()
+  }
+}
+
+
+fn demand_facts_text(parts: List<String>) -> String {
+  fold_list(xs: parts, empty: "", cons: fn(acc, p) { concat(acc, p) })
+}
+
+
+fn demand_facts_node_kind_word(k: NodeKind) -> String {
+  match k {
+    TypeNode { connective: Atom { identity: _ } } => "atom"
+    TypeNode { connective: Conj } => "conj"
+    TypeNode { connective: Disj } => "disj"
+    TypeNode { connective: Arrow } => "arrow"
+    TypeNode { connective: Instantiation } => "instantiation"
+    ComputationNode { behavior: Value } => "value"
+    ComputationNode { behavior: Transform } => "transform"
+    ComputationNode { behavior: Branch } => "branch"
+    ComputationNode { behavior: Loop } => "loop"
+    ComputationNode { behavior: Bind } => "bind"
+    ComputationNode { behavior: Match } => "match"
+  }
+}
+
+fn demand_facts_unbound_site_word(loc: DemandFactsUnboundLocus) -> String {
+  match loc {
+    UnboundNamed { name: n } => symbol_lexeme(sym: n)
+    UnboundShaped { kind: k, reference: p } =>
+      match p {
+        Absent => demand_facts_node_kind_word(k: k)
+        Present { value: qn } => qualified_name_to_dotted_string(qn: qn)
+      }
+  }
+}
+
+fn demand_facts_unbound_site_text(u: Optional<DemandFactsUnboundLocus>) -> String {
+  match u {
+    Absent => "unbound_locus="
+    Present { value: loc } =>
+      match loc {
+        UnboundNamed { name: n } => demand_facts_text(parts: ["unbound_name=", symbol_lexeme(sym: n)])
+        UnboundShaped { kind: k, reference: p } =>
+          match p {
+            Absent => demand_facts_text(parts: ["unbound_kind=", demand_facts_node_kind_word(k: k)])
+            Present { value: qn } => demand_facts_text(parts: ["unbound_ref=", qualified_name_to_dotted_string(qn: qn)])
+          }
+      }
+  }
+}
