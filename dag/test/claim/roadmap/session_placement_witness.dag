@@ -260,13 +260,13 @@ fn launching(rec: AttemptRecord) -> AttemptRecord {
 test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
   let k = unit_a() as NonEmptyStr
   let rec = slot_a(opened: 1000)
-  releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline + 1, release_settled: false, charge: SeatChargeNeverAcquired { reference: k }))
-    && !releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline - 1, release_settled: false, charge: SeatChargeNeverAcquired { reference: k }))
-    && releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitTerminatedSuccess { detail: "0" }, now: 1001, release_settled: false, charge: SeatChargeNeverAcquired { reference: k }))
-    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitStillRunning { detail: "active" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired { reference: k }))
-    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitLifecycleUnknown { detail: "systemctl refused" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired { reference: k }))
-    && !releases(d: session_settle_decide(key: k, slot: AttemptSlotUnreadable { detail: "torn" }, lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired { reference: k }))
-    && !releases(d: session_settle_decide(key: unit_b() as NonEmptyStr, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired { reference: unit_b() as NonEmptyStr }))
+  releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline + 1, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline - 1, release_settled: false, charge: SeatChargeNeverAcquired))
+    && releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitTerminatedSuccess { detail: "0" }, now: 1001, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitStillRunning { detail: "active" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: held(rec: launching(rec: rec)), lifecycle: UnitLifecycleUnknown { detail: "systemctl refused" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: k, slot: AttemptSlotUnreadable { detail: "torn" }, lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
+    && !releases(d: session_settle_decide(key: unit_b() as NonEmptyStr, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: 99999, release_settled: false, charge: SeatChargeNeverAcquired))
 }
 
 // THE UNIT CARRIES THE GRANT, THROUGH THE SHARED FOLD: MemoryMax is the granted amount (not the
