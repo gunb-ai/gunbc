@@ -1,8 +1,13 @@
 module gunbc.roadmap.roadmap_dashboard_instance_apply
 
-import std.algebra { trim, is_empty }
+import std.algebra { trim, is_empty, length }
 
-import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
+import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int, commit_sha_text_holds }
+import gunbc.http_ingress { http_ingress_release_argument_prefix }
+import gunbc.live_deploy.unit_standing { exec_start_argv_of_show_value, ExecStartArgv, ExecStartUnparseable, service_unit_expectation_of, ServiceExpectationDerived, ServiceExpectationUnderivable }
+import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_for_instance_id, DesiredDeploymentFound, DesiredDeploymentUnknownInstanceId, DesiredDeploymentRosterRefused, selected_deployment_spec, instance_id_text }
+import gunbc.live_deploy.emit { live_deploy_serve_unit_file_over }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.gunbc
@@ -93,7 +98,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_observe {
 }
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterUnitRead, LegacyWriterUnitUnreadable, legacy_writer_reading_summary, MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterRuns, LegacyWriterRunsDeclaredSuccessor, LegacyWriterRunsOther, LegacyWriterUnitRead, LegacyWriterUnitUnreadable, legacy_writer_reading_summary, MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, LegacyWriterUnit, LegacyWriterUnitReading, LegacyWriterRetirement, LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations, legacy_writer_retained_path, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
@@ -1420,13 +1425,52 @@ fn dashboard_legacy_writer_reading(instance: HostDashboardInstance, systemctl: N
     match parse_systemd_unit_load_state(raw: load_raw) {
       Present { value: l } =>
         match parse_systemd_unit_active_state(raw: active_raw) {
-          Present { value: a } => LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath"), exec_start: dashboard_show_word(text: r.stdout, key: "ExecStart") }
+          Present { value: a } => LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath"), runs: dashboard_legacy_writer_runs(instance: instance, show: dashboard_show_word(text: r.stdout, key: "ExecStart")) }
           Absent => LegacyWriterUnitUnreadable { detail: join(["ActiveState '", active_raw, "' is not a state extdeps.systemd declares"], "") }
         }
       Absent => LegacyWriterUnitUnreadable { detail: join(["LoadState '", load_raw, "' is not a state extdeps.systemd declares"], "") }
     }
   } else {
     LegacyWriterUnitUnreadable { detail: join(["systemctl show failed: ", r.stderr], "") }
+  }
+}
+
+// WHAT A LOADED UNIT RUNS, judged by EXACT comparison against the declared successor. The successor serve unit is
+// installed under the legacy unit's own name with the same handler, so the name cannot discriminate; what does is the
+// ExecStart the declared deployment emits (gunbc.live_deploy.emit live_deploy_serve_unit_file_over, the unit the
+// install step writes). The release revision is the ONE value that differs per release, so it is the only free
+// variable: it is read from the unit, must be a commit id (std.types commit_sha_text_holds), and the declared
+// rendering for that revision must equal the read argv text byte for byte. A unit that merely carries the release
+// argument but runs another binary, entry, handler, listener or budget is NOT the successor. An instance the roster
+// does not declare, or any text that does not parse, is LegacyWriterRunsOther (the fence then falls to the stopped
+// and unloadable checks, which refuse a running unit).
+fn dashboard_legacy_writer_runs(instance: HostDashboardInstance, show: String) -> LegacyWriterRuns {
+  match desired_deployment_for_instance_id(instance_id: instance_id_text(id: instance.instance_id)) {
+    DesiredDeploymentFound { row: row } => legacy_writer_runs_of_show(row: row, show: show)
+    DesiredDeploymentUnknownInstanceId { instance_id: _ } => LegacyWriterRunsOther
+    DesiredDeploymentRosterRefused { refusal: _ } => LegacyWriterRunsOther
+  }
+}
+
+fn legacy_writer_runs_of_show(row: DesiredDeployment, show: String) -> LegacyWriterRuns {
+  match exec_start_argv_of_show_value(value: show) {
+    ExecStartUnparseable { value: _ } => LegacyWriterRunsOther
+    ExecStartArgv { argv_text: argv } => {
+      let after = split(s: argv, delimiter: http_ingress_release_argument_prefix)
+      if length(xs: after) != 2 {
+        LegacyWriterRunsOther
+      } else {
+        let sha = fold(split(s: fold(after, init: "", f: fn(_, seg) { seg }), delimiter: " "), init: "", f: fn(acc, w) { if acc == "" { w } else { acc } })
+        if !commit_sha_text_holds(head: sha) {
+          LegacyWriterRunsOther
+        } else {
+          match service_unit_expectation_of(file: live_deploy_serve_unit_file_over(spec: selected_deployment_spec(row: row), revision: RevisionBoundAtEmission { revision: sha }, oidc_env: [])) {
+            ServiceExpectationUnderivable { detail: _ } => LegacyWriterRunsOther
+            ServiceExpectationDerived { expectation: e } => if e.exec_start == argv { LegacyWriterRunsDeclaredSuccessor } else { LegacyWriterRunsOther }
+          }
+        }
+      }
+    }
   }
 }
 
