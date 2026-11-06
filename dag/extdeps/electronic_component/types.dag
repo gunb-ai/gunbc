@@ -552,8 +552,10 @@ type PublishedMark
   = MarkStructured { lines: List<MarkLine> }
   | MarkDescribedNotStructured { text: NonEmptyStr, why: NonEmptyStr }
 
-// The glyphs of a mark that is exactly one line holding exactly one fixed run; any other shape, and
-// any mark that is only described, has no such run. Consumed by the FSV20100V device-code join and the
+// The glyphs of a mark whose LISTED structure is exactly one line holding exactly one fixed run; any
+// other shape, and any mark that is only described, has no such run. It reads the list as listed: a
+// row whose document names further lines without printing them is MarkDescribedNotStructured, never
+// a one-line MarkStructured, so this never reports a described mark's one printed run as its only run. Consumed by the FSV20100V device-code join and the
 // fsv row witnesses; the general comparison of a reading with a published mark is the join PR's.
 fn mark_sole_fixed_glyphs(m: PublishedMark) -> NonEmptyStr? {
   match m {
