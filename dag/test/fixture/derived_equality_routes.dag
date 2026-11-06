@@ -1,0 +1,77 @@
+module test.fixture.derived_equality_routes
+
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
+import v2.std.node { Atom, Node, NodeOccurrence, Symbol, TypeNode }
+
+// WHAT DERIVED `==` ANSWERS (std.operator_realization EqualityPlan), as plain functions so the SAME
+// fixture runs through the interpreter (v2.test.claim.derived_equality_routes) and through seed-emitted
+// Rust (gunbc.instruments.derived_equality_routes_native, label //gunbc/instruments:derived-equality-routes).
+// Each pair differs in exactly one respect: a bare Node member compares as a VALUE
+// (v2.std.node node_equal_ignoring_provenance), a NodeOccurrence member as the SAME OCCURRENCE
+// (node_same_occurrence). Each function returns the comparison's raw answer; the expected answer is
+// written independently by each consumer.
+
+fn deq_leaf(name: Symbol, at: Int) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceMinted { id: OccurrenceId { value: at } } }
+}
+
+fn deq_synthetic_leaf(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+type DeqValue {
+  value: Node
+}
+
+type DeqAt {
+  at: NodeOccurrence
+}
+
+type DeqBoth {
+  value: Node
+  at: NodeOccurrence
+}
+
+// Structurally equal, distinct occurrences (x1, x2); the same ordinal with a different structure (y1).
+fn deq_x1() -> Node { deq_leaf(name: ^deq_x, at: 1) }
+fn deq_x2() -> Node { deq_leaf(name: ^deq_x, at: 2) }
+fn deq_y1() -> Node { deq_leaf(name: ^deq_y, at: 1) }
+
+// OCCURRENCE-ONLY PAIR.
+fn deq_value_member_occurrence_only() -> Bool { DeqValue { value: deq_x1() } == DeqValue { value: deq_x2() } }
+fn deq_occurrence_member_occurrence_only() -> Bool { DeqAt { at: NodeOccurrence { node: deq_x1() } } == DeqAt { at: NodeOccurrence { node: deq_x2() } } }
+
+// STRUCTURE-ONLY PAIR.
+fn deq_value_member_structure_only() -> Bool { DeqValue { value: deq_x1() } == DeqValue { value: deq_y1() } }
+fn deq_occurrence_member_structure_only() -> Bool { DeqAt { at: NodeOccurrence { node: deq_x1() } } == DeqAt { at: NodeOccurrence { node: deq_y1() } } }
+
+// THE SAME OCCURRENCE.
+fn deq_occurrence_member_same() -> Bool { DeqAt { at: NodeOccurrence { node: deq_x1() } } == DeqAt { at: NodeOccurrence { node: deq_x1() } } }
+
+// SYNTHETIC: every synthetic node shares OccurrenceSynthetic, so the occurrence question degrades to
+// structure, deliberately (v2.std.node NodeOccurrence).
+fn deq_synthetic_same_structure() -> Bool { NodeOccurrence { node: deq_synthetic_leaf(name: ^deq_x) } == NodeOccurrence { node: deq_synthetic_leaf(name: ^deq_x) } }
+fn deq_synthetic_different_structure() -> Bool { NodeOccurrence { node: deq_synthetic_leaf(name: ^deq_x) } == NodeOccurrence { node: deq_synthetic_leaf(name: ^deq_y) } }
+
+// ONE COMPOSITE ROUTING THROUGH BOTH, each member decided by its own type.
+fn deq_composite_value_differs() -> Bool { DeqBoth { value: deq_x1(), at: NodeOccurrence { node: deq_x1() } } == DeqBoth { value: deq_x2(), at: NodeOccurrence { node: deq_x1() } } }
+fn deq_composite_occurrence_differs() -> Bool { DeqBoth { value: deq_x1(), at: NodeOccurrence { node: deq_x1() } } == DeqBoth { value: deq_x1(), at: NodeOccurrence { node: deq_x2() } } }
+
+// CARRIER CONTROLS (permanent, sleek-owl-397 / clever-crane-830): a routed leaf behind a RECURSIVE field (the
+// emitter stores it Box<..>) and behind a SHARED field (Rc<..>). The derived equality is an ordinary
+// declaration, so each carrier comes from the emitter's ordinary rules; these pairs fail if it does not.
+type DeqTree
+  = DeqLeaf { at: NodeOccurrence }
+  | DeqBranch { value: Node, rest: DeqTree }
+
+type DeqShared {
+  value: Node
+  holder: DeqValue
+}
+
+fn deq_tree(value: Node, at: Node) -> DeqTree { DeqBranch { value: value, rest: DeqLeaf { at: NodeOccurrence { node: at } } } }
+
+fn deq_boxed_value_occurrence_only() -> Bool { deq_tree(value: deq_x1(), at: deq_x1()) == deq_tree(value: deq_x2(), at: deq_x1()) }
+fn deq_boxed_occurrence_occurrence_only() -> Bool { deq_tree(value: deq_x1(), at: deq_x1()) == deq_tree(value: deq_x1(), at: deq_x2()) }
+fn deq_shared_value_occurrence_only() -> Bool { DeqShared { value: deq_x1(), holder: DeqValue { value: deq_x1() } } == DeqShared { value: deq_x2(), holder: DeqValue { value: deq_x2() } } }
+fn deq_shared_value_structure_only() -> Bool { DeqShared { value: deq_x1(), holder: DeqValue { value: deq_x1() } } == DeqShared { value: deq_x1(), holder: DeqValue { value: deq_y1() } } }

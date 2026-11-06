@@ -52,6 +52,7 @@ test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
             workspace_dir: "hermetic_fixture/containment",
             manifest_path: "hermetic_fixture/containment/Cargo.toml",
             main_rs_path: "hermetic_fixture/containment/src/lib.rs",
+            workspace_dir_ok: true,
             manifest_write_ok: true,
             main_write_ok: true
           }

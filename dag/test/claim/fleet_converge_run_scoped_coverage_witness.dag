@@ -49,6 +49,7 @@ fn uncovered_wires() -> List<String> {
 // grant would be enforced only by the branch's own workflow text), and the census partitions every mode.
 test fn plan_and_apply_are_covered_dashboard_deploy_is_not_and_the_census_partitions_every_mode() -> Bool {
   covered_wires().contains("plan") && covered_wires().contains("apply") && !covered_wires().contains("dashboard_deploy")
+    && covered_wires().contains("runner_host_file_observe") && covered_wires().contains("runner_host_file_converge")
     && uncovered_wires().contains("dashboard_deploy")
     && covered_wires().length() + uncovered_wires().length() == fleet_converge_workflow_modes.length()
 }

@@ -21,7 +21,7 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_floor_steps_after_ch
 
 // NOT REQUIRED AT THE WORKFLOW: the workflow carrying the floor is the shared fleet-converge workflow, where a required
 // input would be demanded of every mode's dispatch. The floor's dispatch always supplies it
-// (gunbc.runner.runner_qualification_dispatch qualification_dispatch_inputs), and an empty one leaves runs-on empty,
+// (gunbc.runner.runner_qualification_dispatch qualification_floor_dispatch_spec), and an empty one leaves runs-on empty,
 // which GitHub refuses rather than placing.
 data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
   name: "runner_attempt_label",

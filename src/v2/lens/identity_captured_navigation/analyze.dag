@@ -3,7 +3,7 @@ module v2.lens.identity_captured_navigation.analyze
 import v2.lens.identity_captured_navigation { Finding, IdentityNodeEscapesAsValue, Suspect }
 import v2.std.diagnostic { Accepted }
 import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel }
-import std.algebra { Cons, list_append, list_reverse, list_at_optional }
+import std.algebra { Cons, list_append, list_reverse, list_at_optional, length }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent, ParseSubtreeFound, dag_lex_token_symbol, parse_production_captured_child_optional, parse_subtree_find_production_captured }
 import v2.std.node_query { find_named_child }
 
@@ -80,9 +80,6 @@ fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
   Cons { head: item, tail: xs }
 }
 
-fn symbol_list_length(xs: List<Symbol>) -> Int {
-  fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
-}
 
 fn edge_is_identity_projection(e: Edge) -> Bool {
   match e.label {
@@ -268,7 +265,7 @@ fn classify_identity_match(source_node: Node, match_node: Node, mentions: List<S
   let non_absent = fold(mentions, init: empty_symbol_list(), f: fn(acc, s) {
     if s == ^Absent { acc } else { symbol_list_prepend(item: s, xs: acc) }
   })
-  let non_absent_total = symbol_list_length(xs: non_absent)
+  let non_absent_total = length(xs: non_absent)
   let reduction_count = count_symbol(xs: non_absent, needle: ^node_atom_identity_optional)
   let remaining = non_absent_total - reduction_count
   if reduction_count == 0 {

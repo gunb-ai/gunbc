@@ -1,4 +1,5 @@
 module extdeps.cloud.gcp.serviceusage
+import std.types { Bearer }
 
 
 import extdeps.external_authority { ExternalAuthority }

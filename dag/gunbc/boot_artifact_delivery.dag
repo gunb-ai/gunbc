@@ -1,8 +1,11 @@
 module gunbc.boot_artifact_delivery
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port, list_length }
+import extdeps.bmc.types { BootTargetCd, BootTargetPxe, BootTargetUefiHttp, RedfishBootSourceOverrideTarget }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, Port }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash, content_hash_equal }
+import std.list { first_where }
 import extdeps.uri { Uri }
 import product.placement_supply { SiteIdentity }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture }
@@ -156,8 +159,8 @@ import gunbc.network_boot_delivery {
 // MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its
 // operation contract requires; and every staged offer must name the requested digest, so 'the
 // URI serves digest B while the request names digest A' is a typed refusal.
-// gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access
-// context and therefore always refuses at AccessContextProfileLookupNotRun.
+// gunbc.fleet.fleet_boot_delivery_solution never binds an access context for the install path and
+// therefore every host refuses at AccessContextProfileLookupNotRun.
 
 type BootControlObligation
   = SetOneShotTarget
@@ -236,6 +239,17 @@ fn boot_artifact_delivery_boot_control(delivery: BootArtifactDelivery) -> BootCo
     OpenBmcConfigfsUsbGadget { params: _ } => BootFromRemovableMedia
     UefiHttpBoot { params: _ } => BootFromUefiHttp
     PxeChainBoot { evidence: _ } => BootFromNetworkPxe
+  }
+}
+
+// The Redfish boot-source override a control target is armed with. One answer for every install
+// consumer: a consumer that cannot realize an arm refuses the arm locally, it does not re-derive
+// the target.
+fn redfish_boot_target_of_control(control: BootControlTarget) -> RedfishBootSourceOverrideTarget {
+  match control {
+    BootFromRemovableMedia => BootTargetCd
+    BootFromNetworkPxe => BootTargetPxe
+    BootFromUefiHttp => BootTargetUefiHttp
   }
 }
 
@@ -520,6 +534,145 @@ type BootDeliverySolution
   = BootDeliveryPlanned { plan: BootDeliveryPlan }
   | BootDeliveryRefused { cause: BootDeliveryRefusalCause }
 
+// THE ADMISSION BOUNDARY: A PLAN IS CONSUMED ONLY IF IT IS THE SHAPE THE SOLVER EMITS. BootDeliveryPlan is
+// a plain record, so a hand-built one can pair any delivery with any control target, route basis and
+// eligibility; a consumer that read one field of it would arm whatever the other fields contradict. Every
+// consumer admits a plan here first, and the relations checked are exactly those select_boot_artifact_delivery
+// establishes by construction: the control target is the delivery's own, the route basis is the target's
+// addressing (a controller observation exists only for a controller-addressed target), a controller-gated
+// delivery needs a controller-addressed target, the selected eligibility is the evidence of THAT delivery
+// constructor, the profile provenance exists exactly when there is a controller, and a PXE establishment
+// was established for this plan's target. Eligibility itself is not re-run (the solver judged it); this is
+// the plan's internal coherence, so the inhabitance claim (the solver's output is admitted) and the RED
+// (an inconsistent supplied plan is refused) pair at this one interface.
+type BootDeliveryPlanIncoherence
+  = PlanBootControlNotTheDeliverys { declared: BootControlTarget, derived: BootControlTarget }
+  | PlanControlRouteNotTheTargets { target: BootDeliveryTarget }
+  | PlanControllerDeliveryWithoutController { target: BootDeliveryTarget }
+  | PlanEligibilityNotTheDeliverys { selected: SelectedCandidateEvidence }
+  | PlanEligibilityNotEstablished { delivery: BootArtifactDelivery }
+  | PlanProfileProvenanceNotTheTargets { target: BootDeliveryTarget }
+  | PlanNetworkEstablishmentForOtherTarget { plan_target: BootDeliveryTarget, establishment_target: BootDeliveryTarget }
+
+type BootDeliveryPlanAdmission
+  = BootDeliveryPlanAdmitted { plan: BootDeliveryPlan }
+  | BootDeliveryPlanIncoherent { cause: BootDeliveryPlanIncoherence }
+
+fn boot_delivery_target_has_controller(target: BootDeliveryTarget) -> Bool {
+  match target {
+    ControllerAddressedTarget { subject: _, endpoint: _ } => true
+    NetworkAddressedTarget { subject: _, mac: _ } => false
+  }
+}
+
+fn boot_artifact_delivery_needs_controller(delivery: BootArtifactDelivery) -> Bool {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => true
+    MegaRacRestRemoteMedia { params: _ } => true
+    OpenBmcNbdProxyWebsocket { params: _ } => true
+    OpenBmcConfigfsUsbGadget { params: _ } => true
+    UefiHttpBoot { params: _ } => false
+    PxeChainBoot { evidence: _ } => false
+  }
+}
+
+fn boot_control_route_matches_target(route: BootControlRouteBasis, target: BootDeliveryTarget) -> Bool {
+  match route {
+    BootControlRouteOnController { observation: _ } => boot_delivery_target_has_controller(target: target)
+    BootControlByFirmwareBootOrder => boot_delivery_target_has_controller(target: target) == false
+  }
+}
+
+fn selected_evidence_is_the_deliverys(delivery: BootArtifactDelivery, selected: SelectedCandidateEvidence) -> Bool {
+  match delivery {
+    RedfishVirtualMediaPull { params: _ } => match selected {
+      SelectedFromProfileIntersection { surface: s } => s == SurfaceRedfishVirtualMedia
+      _ => false
+    }
+    MegaRacRestRemoteMedia { params: _ } => match selected {
+      SelectedFromProfileIntersection { surface: s } => s == SurfaceOemRestRemoteMedia
+      _ => false
+    }
+    OpenBmcNbdProxyWebsocket { params: _ } => match selected {
+      SelectedFromProfileIntersection { surface: s } => s == SurfaceOemNbdWebsocket
+      _ => false
+    }
+    OpenBmcConfigfsUsbGadget { params: _ } => match selected {
+      SelectedFromConfigfsQualification { qualified_by: _ } => true
+      _ => false
+    }
+    UefiHttpBoot { params: _ } => match selected {
+      SelectedFromUefiHttpEvidence { evidence: _ } => true
+      _ => false
+    }
+    PxeChainBoot { evidence: e } => match selected {
+      SelectedFromNetworkBootEstablishment { establishment: est } => est == e
+      _ => false
+    }
+  }
+}
+
+// The solver's own digest relation (staged_digest_standing): a UEFI HTTP delivery serves the plan's
+// artifact. The other evidence-bearing arms carry no params-side fact the plan retains to compare (their
+// selected evidence is keyed to the target at a standing the plan does not keep); that residual is the
+// rung drop's, closed by the plan indexed by delivery family.
+fn delivery_params_serve_the_artifact(plan: BootDeliveryPlan) -> Bool {
+  match plan.delivery {
+    UefiHttpBoot { params: p } => p.artifact_digest == plan.artifact.digest
+    _ => true
+  }
+}
+
+// The configfs and UEFI HTTP arms carry evidence lists the plan cannot associate with the delivery's params
+// (the solver keys them to the target at a standing the plan drops), so admission cannot establish their
+// eligibility and REFUSES them rather than admit it unchecked. Retires with the plan indexed by delivery
+// family (gunbc.rung_drop boot_delivery_plan_coherence_is_admitted_not_constructed).
+fn delivery_eligibility_is_checkable(delivery: BootArtifactDelivery) -> Bool {
+  match delivery {
+    OpenBmcConfigfsUsbGadget { params: _ } => false
+    UefiHttpBoot { params: _ } => false
+    _ => true
+  }
+}
+
+fn plan_provenance_matches_target(plan: BootDeliveryPlan) -> Bool {
+  let has_provenance = match plan.eligibility.profile_provenance {
+    Present { value: _ } => true
+    Absent => false
+  }
+  has_provenance == boot_delivery_target_has_controller(target: plan.target)
+}
+
+// DIVERGENCE, STATED (DESIGN 3b): this boundary is a rung-2 validator where construction is
+// available; the ceiling is a plan indexed by delivery family. Declared, with trigger, at
+// gunbc.rung_drop boot_delivery_plan_coherence_is_admitted_not_constructed.
+fn admit_boot_delivery_plan(plan: BootDeliveryPlan) -> BootDeliveryPlanAdmission {
+  let derived = boot_artifact_delivery_boot_control(delivery: plan.delivery)
+  if derived != plan.boot_control {
+    BootDeliveryPlanIncoherent { cause: PlanBootControlNotTheDeliverys { declared: plan.boot_control, derived: derived } }
+  } else if boot_control_route_matches_target(route: plan.boot_control_route, target: plan.target) == false {
+    BootDeliveryPlanIncoherent { cause: PlanControlRouteNotTheTargets { target: plan.target } }
+  } else if boot_artifact_delivery_needs_controller(delivery: plan.delivery) && boot_delivery_target_has_controller(target: plan.target) == false {
+    BootDeliveryPlanIncoherent { cause: PlanControllerDeliveryWithoutController { target: plan.target } }
+  } else if (selected_evidence_is_the_deliverys(delivery: plan.delivery, selected: plan.eligibility.selected) == false || delivery_params_serve_the_artifact(plan: plan) == false) {
+    BootDeliveryPlanIncoherent { cause: PlanEligibilityNotTheDeliverys { selected: plan.eligibility.selected } }
+  } else if delivery_eligibility_is_checkable(delivery: plan.delivery) == false {
+    BootDeliveryPlanIncoherent { cause: PlanEligibilityNotEstablished { delivery: plan.delivery } }
+  } else if plan_provenance_matches_target(plan: plan) == false {
+    BootDeliveryPlanIncoherent { cause: PlanProfileProvenanceNotTheTargets { target: plan.target } }
+  } else {
+    match plan.delivery {
+      PxeChainBoot { evidence: e } =>
+        if same_boot_delivery_target(left: e.target, right: plan.target) {
+          BootDeliveryPlanAdmitted { plan: plan }
+        } else {
+          BootDeliveryPlanIncoherent { cause: PlanNetworkEstablishmentForOtherTarget { plan_target: plan.target, establishment_target: e.target } }
+        }
+      _ => BootDeliveryPlanAdmitted { plan: plan }
+    }
+  }
+}
+
 // THE REQUEST TARGET BOUND TO THE ACCESS CONTEXT (ruling 4 §1). The binder
 // joined the observation to the subject it was asked to bind; this joins the
 // REQUEST to that context, so a context bound for subject/controller A can no
@@ -775,12 +928,10 @@ fn network_addressed_candidate_verdicts(ev: BoundBootDeliveryEvidence, request: 
   ]
 }
 
+// One lookup answers which standing a candidate was given; eligibility reads it rather than
+// walking the verdicts a second way. A candidate never considered is not eligible.
 fn candidate_is_eligible(verdicts: List<BootDeliveryCandidateVerdict>, candidate: BootDeliveryCandidate) -> Bool {
-  fold(
-    verdicts,
-    init: false,
-    f: (acc, v) => acc || (v.candidate == candidate && v.standing == CandidateEligible),
-  )
+  boot_delivery_candidate_standing_of(verdicts: verdicts, candidate: candidate) == Present { value: CandidateEligible }
 }
 
 // Build the delivery an ELIGIBLE candidate names. Every BMC-side parameter is
@@ -1047,7 +1198,7 @@ fn observed_boot_control_route(ctx: BoundBmcAccessContext) -> ObservedBootContro
   match first_route_outside_profile(ctx: ctx) {
     Present { value: o } => BootControlRouteNotInProfile { observed: o }
     Absent => {
-      let n = list_length(items: observed)
+      let n = length(xs: observed)
       if n == 0 {
         BootControlRouteUnobserved
       } else if n == 1 {
@@ -1156,13 +1307,16 @@ fn solve_controller_addressed_delivery(
   }
 }
 
+// THE STANDING ONE CANDIDATE WAS GIVEN, or Absent when the verdicts never considered it. A
+// candidate that was not judged has no cause to report: answering CandidateCapabilityAbsent for
+// it would fabricate a finding about a capability nobody read (DESIGN.md Sec 5), and a caller
+// matching on that cause could not tell "the gate refused" from "the gate never ran".
 fn boot_delivery_candidate_standing_of(
   verdicts: List<BootDeliveryCandidateVerdict>,
   candidate: BootDeliveryCandidate,
-) -> BootDeliveryCandidateStanding {
-  fold(
-    verdicts,
-    init: CandidateIneligible { cause: CandidateCapabilityAbsent },
-    f: (acc, v) => if v.candidate == candidate { v.standing } else { acc },
-  )
+) -> BootDeliveryCandidateStanding? {
+  match first_where(verdicts, v => v.candidate == candidate) {
+    Present { value: v } => Present { value: v.standing }
+    Absent => none
+  }
 }
