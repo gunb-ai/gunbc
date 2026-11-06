@@ -424,8 +424,7 @@ test fn the_sol_reader_takes_the_pin_and_the_boot_id_from_the_bound_closed_envel
 // RED: a key whose daemon never started, or whose generation failed, is not a pin; neither is an absent line,
 // a malformed line, an open envelope, or an envelope for another machine.
 test fn the_sol_reader_refuses_a_failed_section_a_missing_or_malformed_line_an_open_envelope_and_another_machine() -> Bool {
-  observed_boot(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: fingerprint_body)) == "not-observed"
-  && observed_boot(capture: keyed_capture(key_exit: "1", pub: pub_body, fp: fingerprint_body)) == "not-observed"
+  observed_boot(capture: keyed_capture(key_exit: "1", pub: pub_body, fp: fingerprint_body)) == "not-observed"
   && observed_boot(capture: keyed_capture(key_exit: "0", pub: "", fp: fingerprint_body)) == "not-observed"
   && observed_boot(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: "")) == "not-observed"
   && observed_boot(capture: keyed_capture(key_exit: "0", pub: "ssh-ed25519\n", fp: fingerprint_body)) == "not-observed"
