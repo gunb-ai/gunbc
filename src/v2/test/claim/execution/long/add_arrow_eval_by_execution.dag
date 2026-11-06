@@ -938,11 +938,11 @@ fn aa_direct_reason() -> String {
 
 fn aa_verdict_label<S, A>(v: Verdict<S, A>) -> String {
   match v {
-    Pass => "V1_pass"
-    SemanticMismatch { actual: _, falsification: _ } => "V2_semantic_mismatch"
-    BuildFailed { actual: _, diagnostic: _ } => "V3_build_failed"
-    RunFailed { actual: _, diagnostic: _ } => "V4_run_failed"
-    Deferred { actual: _, diagnostic: _ } => "V5_deferred"
+    Pass => "v1_pass"
+    SemanticMismatch { actual: _, falsification: _ } => "v2_semantic_mismatch"
+    BuildFailed { actual: _, diagnostic: _ } => "v3_build_failed"
+    RunFailed { actual: _, diagnostic: _ } => "v4_run_failed"
+    Deferred { actual: _, diagnostic: _ } => "v5_deferred"
   }
 }
 
@@ -1042,38 +1042,38 @@ test fn add_arrow_branch_partition_remainder_holds() -> Bool {
 
 
 // VERDICT PARTITION V1..V5 of aa_source_reason (exactly one PASSes; Pass is the positive cell's own verdict).
-test fn add_arrow_source_partition_V1_pass_holds() -> Bool { aa_source_reason() == "V1_pass" }
-test fn add_arrow_source_partition_V2_semantic_mismatch_holds() -> Bool { aa_source_reason() == "V2_semantic_mismatch" }
-test fn add_arrow_source_partition_V3_build_failed_holds() -> Bool { aa_source_reason() == "V3_build_failed" }
-test fn add_arrow_source_partition_V4_run_failed_holds() -> Bool { aa_source_reason() == "V4_run_failed" }
-test fn add_arrow_source_partition_V5_deferred_holds() -> Bool { aa_source_reason() == "V5_deferred" }
+test fn add_arrow_source_partition_v1_pass_holds() -> Bool { aa_source_reason() == "v1_pass" }
+test fn add_arrow_source_partition_v2_semantic_mismatch_holds() -> Bool { aa_source_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_source_partition_v3_build_failed_holds() -> Bool { aa_source_reason() == "v3_build_failed" }
+test fn add_arrow_source_partition_v4_run_failed_holds() -> Bool { aa_source_reason() == "v4_run_failed" }
+test fn add_arrow_source_partition_v5_deferred_holds() -> Bool { aa_source_reason() == "v5_deferred" }
 test fn add_arrow_source_partition_add_arrow_eval_literal_miss_holds() -> Bool { aa_source_reason() == "add_arrow_eval_literal_miss" }
 test fn add_arrow_source_partition_fixture_absent_holds() -> Bool { aa_source_reason() == "fixture_absent" }
 test fn add_arrow_source_partition_remainder_holds() -> Bool {
   let r = aa_source_reason()
-  !(r == "V1_pass" || r == "V2_semantic_mismatch" || r == "V3_build_failed" || r == "V4_run_failed" || r == "V5_deferred" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
+  !(r == "v1_pass" || r == "v2_semantic_mismatch" || r == "v3_build_failed" || r == "v4_run_failed" || r == "v5_deferred" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
 }
 
 
 // VERDICT PARTITION V1..V5 of aa_generality_reason (exactly one PASSes; Pass is the positive cell's own verdict).
-test fn add_arrow_generality_partition_V1_pass_holds() -> Bool { aa_generality_reason() == "V1_pass" }
-test fn add_arrow_generality_partition_V2_semantic_mismatch_holds() -> Bool { aa_generality_reason() == "V2_semantic_mismatch" }
-test fn add_arrow_generality_partition_V3_build_failed_holds() -> Bool { aa_generality_reason() == "V3_build_failed" }
-test fn add_arrow_generality_partition_V4_run_failed_holds() -> Bool { aa_generality_reason() == "V4_run_failed" }
-test fn add_arrow_generality_partition_V5_deferred_holds() -> Bool { aa_generality_reason() == "V5_deferred" }
+test fn add_arrow_generality_partition_v1_pass_holds() -> Bool { aa_generality_reason() == "v1_pass" }
+test fn add_arrow_generality_partition_v2_semantic_mismatch_holds() -> Bool { aa_generality_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_generality_partition_v3_build_failed_holds() -> Bool { aa_generality_reason() == "v3_build_failed" }
+test fn add_arrow_generality_partition_v4_run_failed_holds() -> Bool { aa_generality_reason() == "v4_run_failed" }
+test fn add_arrow_generality_partition_v5_deferred_holds() -> Bool { aa_generality_reason() == "v5_deferred" }
 test fn add_arrow_generality_partition_add_arrow_eval_literal_miss_holds() -> Bool { aa_generality_reason() == "add_arrow_eval_literal_miss" }
 test fn add_arrow_generality_partition_fixture_absent_holds() -> Bool { aa_generality_reason() == "fixture_absent" }
 test fn add_arrow_generality_partition_remainder_holds() -> Bool {
   let r = aa_generality_reason()
-  !(r == "V1_pass" || r == "V2_semantic_mismatch" || r == "V3_build_failed" || r == "V4_run_failed" || r == "V5_deferred" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
+  !(r == "v1_pass" || r == "v2_semantic_mismatch" || r == "v3_build_failed" || r == "v4_run_failed" || r == "v5_deferred" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
 }
 
 
 // EXACT-REASON SIBLINGS of the five reds. swapped_operands and wrong_value are SemanticMismatch by design
 // (value computed, wrong expectation). The three excess reds are PRE-REGISTERED HYPOTHESES (the cause was not
 // derived from source for body/signature) and may FAIL; a FAIL reads the red as UNPROVEN.
-test fn add_arrow_swapped_operands_red_reason_is_semantic_mismatch_holds() -> Bool { aa_swapped_reason() == "V2_semantic_mismatch" }
-test fn add_arrow_wrong_value_red_reason_is_semantic_mismatch_holds() -> Bool { aa_wrong_value_reason() == "V2_semantic_mismatch" }
+test fn add_arrow_swapped_operands_red_reason_is_semantic_mismatch_holds() -> Bool { aa_swapped_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_wrong_value_red_reason_is_semantic_mismatch_holds() -> Bool { aa_wrong_value_reason() == "v2_semantic_mismatch" }
 test fn add_arrow_excess_signature_red_reason_is_argument_bind_absent_holds() -> Bool { aa_excess_signature_reason() == "eval_rejected_argument_bind_absent" }
-test fn add_arrow_excess_body_red_reason_is_hypothesis_semantic_mismatch_holds() -> Bool { aa_excess_body_reason() == "V2_semantic_mismatch" }
+test fn add_arrow_excess_body_red_reason_is_hypothesis_semantic_mismatch_holds() -> Bool { aa_excess_body_reason() == "v2_semantic_mismatch" }
 test fn add_arrow_excess_actual_red_reason_is_argument_bind_absent_holds() -> Bool { aa_excess_actual_reason() == "eval_rejected_argument_bind_absent" }
