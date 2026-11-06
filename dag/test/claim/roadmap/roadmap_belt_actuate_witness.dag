@@ -1346,7 +1346,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
   match belt_verify_terminal_attempt(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
-    lookup: NodeMissing,
+    lookup: AuthorityProjectionRefused { detail: "fixture" },
   ) {
     VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
