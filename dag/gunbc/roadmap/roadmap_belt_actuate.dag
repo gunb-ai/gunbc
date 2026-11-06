@@ -563,6 +563,7 @@ import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitt
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
+  WorktreeStands, WorktreeReaped, WorktreeUnknown,
   ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
   RefuseCause, LedgerUnobservable,
   continuation_plan,
@@ -2826,30 +2827,40 @@ fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
 fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> ContinuationPlan {
-  // THE WORKTREE AND BRANCH STANDING ARE READ, AS IS -- neither is inferred from what the caller wants to do
-  // next (DESIGN §5). The capture and recovery below are still read honestly; when the worktree is absent the
-  // decision ignores them (it routes on the read BRANCH standing instead), so no 'absent'/'none' default is
-  // ever fabricated over a read that did not happen.
+  // THE WORKTREE STANDING IS READ FIRST, AS IS -- nothing is inferred from what the caller wants next (DESIGN §5).
+  // The submission capture and recovery live INSIDE the worktree, so they are read ONLY on the WorktreeStands arm;
+  // the durable branch standing is the substitute read ONLY on the WorktreeReaped arm (the tree is gone, so there
+  // is nothing inside to read, and NOTHING is faked into a field the decision would never consult). This is what
+  // the standing-as-a-sum makes unwritable (DESIGN §5, "correctness by construction, not validation"): the belt can
+  // no longer pair a reaped tree with a placeholder capture, nor carry a branch standing the present path ignores.
   let worktree = belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
-  let branch_head = belt_branch_standing(instance: instance, branch: progress.branch)
+  let standing = match worktree {
+    AttemptWorktreePresent { path } =>
+      WorktreeStands {
+        path: path,
+        capture: belt_prior_attempt_capture(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+        // THE RECOVERY RECORD IS READ ON THIS ARM ONLY -- the one place the decision consults it (a session that
+        // stopped at a validated state resumes in place). It lives in the ATTEMPT LOG (its events member), so it
+        // COULD be read even when reaped, but the reaped path routes on the branch and can never Resume into a
+        // gone directory; carrying it there would be an inert, never-read field, so the sum omits it there.
+        recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+      }
+    AttemptWorktreeAbsent { path } =>
+      WorktreeReaped { path: path, branch_head: belt_branch_standing(instance: instance, branch: progress.branch) }
+    AttemptWorktreeUnobserved { path, cause } =>
+      WorktreeUnknown { path: path, cause: cause }
+  }
   continuation_plan(
     obs: Present { value: PriorExecutionObservation {
       attempt_key: progress.attempt_key,
       branch: progress.branch,
-      worktree: worktree,
-      branch_head: branch_head,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
-      capture: belt_prior_attempt_capture(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
+      standing: standing,
+      // THE LEDGER SEGMENTS survive a reap (they live in the ledger, not the tree), so they are read on every path
+      // -- genuinely independent of the standing, which is why they stay flat.
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
-      // THE RECOVERY RECORD IS READ HONESTLY, UNCONDITIONALLY. It lives in the ATTEMPT LOG (its events
-      // member), not inside the worktree, so it is readable even when the worktree has been reaped -- and it
-      // is never defaulted to 'none' just because the worktree is gone. When the worktree is absent the
-      // decision does not consult recovery at all (it routes on the branch standing, so it can never Resume
-      // into a directory that no longer exists); when the worktree is present a session that stopped at a
-      // validated state resumes in place exactly as before.
-      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
     } },
   )
 }
@@ -2908,14 +2919,13 @@ fn belt_prior_attempt_capture(instance: HostDashboardInstance, node_id: RoadmapN
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
     WorktreeHeadUnobserved { reason } =>
-      // THE WORKTREE IS NOT PRESENT -- it was reaped, or its head could not be read. The submission capture
-      // lives INSIDE the worktree and is NOT read here, so this is honestly 'unreadable', NEVER the
-      // fabricated 'handed in nothing' (CaptureAbsent would claim the worker submitted nothing when in fact
-      // nothing was read -- DESIGN §5: a fabricated default is a hard reject). When the worktree is absent
-      // the decision does not consult this capture at all; it routes on the read BRANCH standing instead
-      // (the general restore path). The branch standing, not a made-up capture, decides (lab bug #2).
+      // THE TREE IS PRESENT (this function is called only on the WorktreeStands arm) but ITS HEAD could not be
+      // read, so the submission capture AT THAT HEAD is honestly unreadable -- never the fabricated 'handed in
+      // nothing' (CaptureAbsent would claim the worker submitted nothing when in fact nothing was read: DESIGN
+      // §5, a fabricated default is a hard reject). The decision turns this into a typed CaptureStoreUnreadable
+      // refusal; it is not treated as an absence or as no-submission.
       CaptureUnreadable {
-        reason: join(["the prior attempt ", attempt_key, "'s worktree is not present, so its submission capture was not read: ", reason], ""),
+        reason: join(["the prior attempt ", attempt_key, "'s worktree is present but its head could not be read, so its submission capture is unreadable: ", reason], ""),
       }
     WorktreeHeadObserved { revision } =>
       belt_submission_capture_for_head(

@@ -10,6 +10,7 @@ import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
+  WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
   RefuseCause, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
   continuation_plan,
@@ -40,50 +41,42 @@ fn pri(
   PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree is here.
-    // The reaped-worktree cases build their own observation (they exercise the branch standing instead).
-    worktree: AttemptWorktreePresent { path: "/wt" },
-    branch_head: BranchLive,
+    // PRESENT by default: the whole existing partition is read from the CAPTURE, so the worktree STANDS here
+    // and its capture/recovery are exactly the fields the decision consults. Reaped cases build their own.
+    standing: WorktreeStands { path: "/wt", capture: capture, recovery: SessionRecoveryNone },
     worker_terminal: true,
-    capture: capture,
     verification: verification,
     review: review,
     goal_audit: goal_audit,
-    recovery: SessionRecoveryNone,
   }
 }
 
-// A PRIOR ATTEMPT WHOSE WORKTREE IS GONE (reaped). The capture and recovery were NOT read (they live in the
-// absent worktree) and are INERT here -- the decision routes on the branch standing instead. The capture is
-// left CaptureUnreadable to mirror exactly what the belt puts there when the worktree is absent, so a test
-// can prove the decision never reads it (it must not turn an unread capture into a Resume or a false 'absent').
+// A PRIOR ATTEMPT WHOSE WORKTREE IS GONE (reaped). Under the standing-as-a-sum (DESIGN §5: correctness by
+// construction), the capture and recovery that lived inside the tree are NOT CARRIED AT ALL -- there is no
+// field to fake them into. The prior witness's 'CaptureUnreadable { "worktree is not present..." }' placeholder
+// is now UNWRITABLE by the type. The durable branch standing is the only substitute the decision can route on
+// (lab bug #2), and the ledger segments stay because they live in the ledger, not the tree.
 fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
   PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: AttemptWorktreeAbsent { path: "/wt" },
-    branch_head: branch_head,
+    standing: WorktreeReaped { path: "/wt", branch_head: branch_head },
     worker_terminal: true,
-    capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
     verification: none,
     review: none,
     goal_audit: none,
-    recovery: SessionRecoveryNone,
   }
 }
 
-fn pri_reaped_not_terminal(worktree: AttemptWorktreeObservation, branch_head: BranchStanding) -> PriorExecutionObservation {
+fn pri_reaped_not_terminal(standing: WorktreeStanding) -> PriorExecutionObservation {
   PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: worktree,
-    branch_head: branch_head,
+    standing: standing,
     worker_terminal: false,
-    capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
     verification: none,
     review: none,
     goal_audit: none,
-    recovery: SessionRecoveryNone,
   }
 }
 
@@ -94,7 +87,7 @@ fn pri_reaped_not_terminal(worktree: AttemptWorktreeObservation, branch_head: Br
 // would orphan the live attempt's ledger under a new key) and not an AlreadyRunning join (which would claim
 // a session beside a missing tree); a gone/unreadable branch is refused, never restored onto a fiction.
 test fn reaped_live_branch_not_terminal_restores_same_key_never_next_attempt() -> Bool {
-  let o = pri_reaped_not_terminal(worktree: AttemptWorktreeAbsent { path: "/wt" }, branch_head: BranchLive)
+  let o = pri_reaped_not_terminal(standing: WorktreeReaped { path: "/wt", branch_head: BranchLive })
   (match continuation_plan(obs: Present { value: o }) {
     Restore { reason, attempt_key, from_branch } =>
       attempt_key == "a1"
@@ -111,7 +104,7 @@ test fn reaped_live_branch_not_terminal_restores_same_key_never_next_attempt() -
 }
 
 test fn reaped_gone_branch_not_terminal_refuses_never_restores() -> Bool {
-  let o = pri_reaped_not_terminal(worktree: AttemptWorktreeAbsent { path: "/wt" }, branch_head: BranchGone)
+  let o = pri_reaped_not_terminal(standing: WorktreeReaped { path: "/wt", branch_head: BranchGone })
   (match continuation_plan(obs: Present { value: o }) {
     Refuse { cause: BranchAbsent, reason: r } => r.contains("nothing to restore")
     _ => false
@@ -120,7 +113,7 @@ test fn reaped_gone_branch_not_terminal_refuses_never_restores() -> Bool {
 }
 
 test fn reaped_unknown_branch_not_terminal_refuses_never_restores() -> Bool {
-  let o = pri_reaped_not_terminal(worktree: AttemptWorktreeAbsent { path: "/wt" }, branch_head: BranchUnknown { reason: "git rev-parse exit 128: lock file exists" })
+  let o = pri_reaped_not_terminal(standing: WorktreeReaped { path: "/wt", branch_head: BranchUnknown { reason: "git rev-parse exit 128: lock file exists" } })
   (match continuation_plan(obs: Present { value: o }) {
     Refuse { cause: BranchUndetermined { reason: _ }, reason: r } => r.contains("failed branch check is not an absence")
     _ => false
@@ -130,8 +123,7 @@ test fn reaped_unknown_branch_not_terminal_refuses_never_restores() -> Bool {
 
 test fn reaped_unobserved_worktree_not_terminal_refuses_never_joins_or_restores() -> Bool {
   let o = pri_reaped_not_terminal(
-    worktree: AttemptWorktreeUnobserved { path: "/wt", cause: "the dispatch worktree root could not be listed" },
-    branch_head: BranchLive,
+    standing: WorktreeUnknown { path: "/wt", cause: "the dispatch worktree root could not be listed" },
   )
   (match continuation_plan(obs: Present { value: o }) {
     Refuse { cause: WorktreeUnobserved { cause: _ }, reason: r } => r.contains("could not be established")
@@ -192,14 +184,13 @@ test fn worker_not_terminal_joins_the_live_attempt_never_double() -> Bool {
   let joined = PriorExecutionObservation {
     attempt_key: running.attempt_key,
     branch: running.branch,
-    worktree: running.worktree,
-    branch_head: running.branch_head,
+    // LIVE attempt: the tree stands (its capture/recovery are the present-path facts) and the worker is not
+    // terminal -- the decision joins this session rather than starting a second attempt beside it.
+    standing: WorktreeStands { path: "/wt", capture: ready_capture(), recovery: SessionRecoveryNone },
     worker_terminal: false,
-    capture: running.capture,
-    verification: running.verification,
-    review: running.review,
-    goal_audit: running.goal_audit,
-    recovery: SessionRecoveryNone,
+    verification: none,
+    review: none,
+    goal_audit: none,
   }
   (match continuation_plan(obs: Present { value: joined }) {
     AlreadyRunning { reason, attempt_key } => attempt_key == "a1" && reason.contains("is live") && reason.contains("no second attempt")
@@ -348,14 +339,13 @@ fn pri_reaped_ledger(
   PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: AttemptWorktreeAbsent { path: "/wt" },
-    branch_head: BranchLive,
+    // REAPED with the live branch to restore from; the capture/recovery are absent (never faked), and the
+    // ledger segments -- which survive a reap -- are what the decision reads next.
+    standing: WorktreeReaped { path: "/wt", branch_head: BranchLive },
     worker_terminal: true,
-    capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
     verification: verification,
     review: review,
     goal_audit: goal_audit,
-    recovery: SessionRecoveryNone,
   }
 }
 
@@ -447,16 +437,14 @@ fn pri_worktree_unknown() -> PriorExecutionObservation {
   PriorExecutionObservation {
     attempt_key: "a1",
     branch: "roadmap/n1/a1",
-    worktree: AttemptWorktreeUnobserved { path: "/wt", cause: "the dispatch worktree root could not be listed" },
-    // Even a LIVE branch does not license a restore when the worktree's presence is unknown -- that is the
-    // whole point of separating Unknown from Absent.
-    branch_head: BranchLive,
+    // Presence NOT established: the sum carries ONLY the unreadability cause -- no branch_head, no capture.
+    // Even a LIVE branch could not license a restore here, and the type now makes pairing a possibly-live
+    // tree with a branch standing (or a fabricated capture) UNWRITABLE, not merely ruled out by match order.
+    standing: WorktreeUnknown { path: "/wt", cause: "the dispatch worktree root could not be listed" },
     worker_terminal: true,
-    capture: CaptureUnreadable { reason: "not read; the worktree's presence is not established" },
     verification: none,
     review: none,
     goal_audit: none,
-    recovery: SessionRecoveryNone,
   }
 }
 

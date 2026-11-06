@@ -91,22 +91,39 @@ type BranchStanding
   | BranchGone
   | BranchUnknown { reason: String }
 
+// HOW THE PRIOR ATTEMPT'S WORKTREE STANDS -- and ONLY the facts that could be read given that standing.
+// This is a SUM, not a flat record, on purpose (DESIGN 5: "stronger than catching a wrong state is making
+// it unwritable -- correctness by construction, not validation"). The submission capture and the recovery
+// record live INSIDE the worktree, so they can be read ONLY while it is present; the durable branch standing
+// is the substitute ONLY once it is reaped. A flat record let the belt pair a reaped worktree with a
+// FABRICATED placeholder capture (DESIGN 5: "a fabricated default ... is a hard reject") and let a consumer
+// read a field it never populated, treating a placeholder as a real reading. Each fact now exists only in the
+// arm that could have read it, so an impossible pairing (a reaped tree WITH a real capture; a present tree
+// WITH a branch standing consulted) is unwritable rather than ruled out by convention and match ORDER alone.
+type WorktreeStanding
+  // The worktree is HERE: the capture and recovery that live inside it WERE read. The branch standing is
+  // deliberately absent here -- while the tree stands there is nothing to restore onto, so it is never consulted.
+  = WorktreeStands { path: String, capture: SubmissionCaptureObservation, recovery: SessionRecovery }
+  // The worktree is GONE -- established by a listing that SUCCEEDED and found it absent (a failed read is
+  // Unobserved below, never this). The capture/recovery that lived inside it were NOT read and have no field
+  // to be faked into; the durable fact is the BRANCH, read against the shared object store that survives
+  // reaping, and THAT is what the decision routes on (lab bug #2: a reaped worktree must not block the decision).
+  | WorktreeReaped { path: String, branch_head: BranchStanding }
+  // Presence could NOT be established -- the root was unlistable, the subject refused, or a live tree's head
+  // could not be read. Neither the capture nor the branch is trusted; the decision refuses, never restores onto
+  // a possibly-live directory (DESIGN 5 filesystem_io: absence is established only by a listing that succeeded).
+  | WorktreeUnknown { path: String, cause: String }
+
 type PriorExecutionObservation = {
   attempt_key: String,
   branch: String,
-  // HOW THE WORKTREE AND ITS BRANCH STAND, as read by the belt -- the honest inputs that decide whether a
-  // reaped worktree is restorable. Neither is inferred from what the caller wants next: when the worktree
-  // is absent the capture and recovery below were NOT read and are inert here -- the decision routes on the
-  // branch standing instead. This is the general restore the CONTINUE verb needs (lab bug #2: a reaped
-  // worktree must not block the decision).
-  worktree: AttemptWorktreeObservation,
-  branch_head: BranchStanding,
   worker_terminal: Bool,
-  capture: SubmissionCaptureObservation,
+  standing: WorktreeStanding,
+  // THE LEDGER SEGMENTS, read flat -- these survive a worktree reap (they live in the ledger, not the tree),
+  // so they are consulted on BOTH the present and reaped paths and are genuinely independent of the standing.
   verification: WorkflowSegment?,
   review: WorkflowSegment?,
   goal_audit: WorkflowSegment?,
-  recovery: SessionRecovery,
 }
 
 // WHAT TO DO WITH THE NODE'S WORK NEXT. The seven variants are a partition of what a prior execution
@@ -194,14 +211,14 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
         // the SAME attempt in place from its live branch and reopens the claim naming it (operator ruling D3).
         // The double-spawn guard still holds: no second attempt key is ever minted for a live attempt -- a
         // present worktree JOINs under its key, a reaped worktree RESTORES the same key, nothing doubles it.
-        match prior.worktree {
-          AttemptWorktreePresent { path: _ } =>
+        match prior.standing {
+          WorktreeStands { path: _, capture: _, recovery: _ } =>
             AlreadyRunning {
               reason: join(["the prior attempt ", prior.attempt_key, " is live: its worker is not terminal; its session is JOINED and no second attempt is started beside it"], ""),
               attempt_key: prior.attempt_key,
             }
-          AttemptWorktreeAbsent { path: _ } =>
-            match prior.branch_head {
+          WorktreeReaped { path: _, branch_head } =>
+            match branch_head {
               BranchLive =>
                 Restore {
                   reason: join(["the prior attempt ", prior.attempt_key, " is live (not terminal) but its worktree was reaped; its session is resumable, so the SAME attempt is restored in place from its live branch ", prior.branch, " and its claim reopened -- no new attempt key is minted"], ""),
@@ -213,15 +230,15 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
               BranchUnknown { reason: why } =>
                 Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the live attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present to restore its reaped worktree from; a failed branch check is not an absence (", why, ")"], "") }
             }
-          AttemptWorktreeUnobserved { path: _, cause } =>
+          WorktreeUnknown { path: _, cause } =>
             Refuse { cause: WorktreeUnobserved { cause }, reason: join(["the worktree standing of the live attempt ", prior.attempt_key, " could not be established (", cause, "), so it is neither joined nor restored onto a possibly-absent tree"], "") }
         }
       } else {
         // THE WORKTREE STANDING IS READ FIRST, because the capture and recovery live INSIDE it. When the
         // worktree is absent they were NOT read, so the plan decides on the BRANCH standing (read against
         // the shared object store, which survives reaping) instead of pretending the capture is 'absent'.
-        match prior.worktree {
-          AttemptWorktreeAbsent { path: _ } =>
+        match prior.standing {
+          WorktreeReaped { path: _, branch_head } =>
             // LAB BUG #2 (a reaped worktree must not block the decision): the worktree is gone -- reaped
             // after the work was committed -- but the durable fact is the BRANCH. The capture was NOT read
             // (it lived inside the gone worktree); the decision reads the LEDGER instead, which survives the
@@ -231,14 +248,14 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             // and one with a verdict still in motion is JOINED, never doubled by a spawn beside it. A gone
             // branch leaves nothing; an unreadable branch is unknown, and unknown is refused, never restored
             // onto (a failed check is not the fact that a branch is gone).
-            match prior.branch_head {
+            match branch_head {
               BranchLive => continuation_from_segments(prior: prior, reaped: true)
               BranchGone =>
                 Refuse { cause: BranchAbsent, reason: join(["the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
               BranchUnknown { reason: why } =>
                 Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
             }
-          AttemptWorktreeUnobserved { path: _, cause } =>
+          WorktreeUnknown { path: _, cause } =>
             // PRESENCE COULD NOT BE ESTABLISHED -- the root was unlistable, the subject refused, or the
             // directory lists but its head could not be read (a git fault on a LIVE worktree). This is not
             // the reaped case: it must never be restored onto, because a still-present worktree may hold
@@ -247,12 +264,12 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             // filesystem_io: absence is established only by a listing that succeeded). The belt's own
             // re-observe is the remedy, not a guessed spawn.
             Refuse { cause: WorktreeUnobserved { cause }, reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", cause], "") }
-          AttemptWorktreePresent { path: _ } =>
-        match prior.capture {
+          WorktreeStands { path: _, capture, recovery } =>
+        match capture {
           CaptureUnreadable { reason } =>
             Refuse { cause: CaptureStoreUnreadable { reason }, reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
           CaptureAbsent =>
-            continuation_from_absent_capture(prior: prior)
+            continuation_from_absent_capture(prior: prior, recovery: recovery)
           // THE CAPTURE IS OWED -- do NOT continue, and do NOT relabel the obligation as handed-in-nothing.
           // CaptureNotAttempted is produced only when the belt's commit step has not SETTLED this head (no
           // commit record, or one at another head / deferred / failed): every other consumer in the repo
@@ -295,8 +312,8 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
 // gunbc.harness.harness_session_recovery, the one reader (gunbc.rung_drop
 // unobservable_tmux_pane_liveness is unchanged by this: no recovery record is a recovery-NEEDED
 // session, and that record is read directly, never through the pane).
-fn continuation_from_absent_capture(prior: PriorExecutionObservation) -> ContinuationPlan {
-  match prior.recovery {
+fn continuation_from_absent_capture(prior: PriorExecutionObservation, recovery: SessionRecovery) -> ContinuationPlan {
+  match recovery {
     SessionRecoveryNone =>
       continuation_next_attempt(prior: prior, why: "its worker ended without handing in a candidate; the attempt's event stream records how the session ended, and the new attempt starts from the existing branch head so any committed work is kept")
     SessionRecoveryMalformed { mismatch: mismatch } =>

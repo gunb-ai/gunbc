@@ -14,6 +14,7 @@ import gunbc.harness.harness_session_recovery {
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation, ContinuationPlan, Resume, NextAttempt, AlreadyRunning, Refuse, continuation_plan,
+  WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   BranchLive,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
@@ -63,11 +64,11 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
 fn prior_with(recovery: SessionRecovery) -> PriorExecutionObservation {
   PriorExecutionObservation {
     attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    // The worktree is PRESENT and its branch live: these tests drive the capture/recovery partition
-    // (a handed-in-nothing whose session resumes), which the decision only reads when the worktree is here.
-    worktree: AttemptWorktreePresent { path: "/wt" },
-    branch_head: BranchLive,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery,
+    // The worktree STANDS (present): these tests drive the capture/recovery partition (a handed-in-nothing
+    // whose session resumes), which the decision reads only when the tree is here -- so the capture and the
+    // recovery-under-test live in the WorktreeStands arm, where they are genuinely consulted.
+    standing: WorktreeStands { path: "/wt", capture: CaptureAbsent, recovery: recovery },
+    verification: none, review: none, goal_audit: none,
   }
 }
 

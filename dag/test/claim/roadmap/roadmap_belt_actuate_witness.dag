@@ -195,6 +195,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
+  WorktreeStanding, WorktreeStands, WorktreeReaped, WorktreeUnknown,
   continuation_plan,
   BranchLive,
 }
@@ -2851,16 +2852,15 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
     obs: Present { value: PriorExecutionObservation {
       attempt_key: "cd172fe81b806160",
       branch: "dispatch/node-a-acd172fe81b806160",
-      // A LIVE (non-terminal) attempt is running with its worktree present and branch live; the join
-      // decision is taken on worker_terminal before the standing is consulted, so these are inert here.
-      worktree: AttemptWorktreePresent { path: "/wt/fixture" },
-      branch_head: BranchLive,
+      // A LIVE (non-terminal) attempt whose tree stands: the join is taken on worker_terminal BEFORE the
+      // standing's capture/recovery are consulted, so they are inert here -- the decision returns
+      // AlreadyRunning without reading them. They live in the WorktreeStands arm because that is where a
+      // present tree's facts belong.
+      standing: WorktreeStands { path: "/wt/fixture", capture: CaptureAbsent, recovery: SessionRecoveryNone },
       worker_terminal: false,
-      capture: CaptureAbsent,
       verification: none,
       review: none,
       goal_audit: none,
-      recovery: SessionRecoveryNone,
     } },
   )
   live_refusal
