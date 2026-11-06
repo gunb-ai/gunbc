@@ -694,72 +694,6 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
   },
 }
 
-data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = IntegrationConcern {
-  identity: "run_closure_typecheck_exceeds_eval_demand",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
-    requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
-    standing: RequirementUnestablished { decided_by: "a design that names which typecheck obligations an unreached module still owes (its own refusals, its importers' bindings) and shows they can be discharged without typechecking its bodies; until then the requirement is a memory and wall-time observation, not an established obligation" },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
-    tail: [decl_ref(module_path: "v2.compiler.module_acquisition", decl_name: "acquisition_lookup")],
-  },
-  question: "Is the pre-entry typecheck of a gunbc run's whole demand-acquired closure owed, or is it the larger half of the private lanes' memory floor that no model has yet been asked to narrow? Measured at seed e1f753b9 with the private overlay: the private drift entry typechecks 2918 closure modules, the roster entry 3245, and evaluation touches 227-278 of them (about 9.5 percent); the isolated audit_packet_witness entry reaches 12.9 GiB at the end of pre-entry (closure_typecheck 664,822 ms over 2775 files) before evaluation starts. This floor is undesigned and carries no estimate: the whole-pool burst (keyed_module_reads_walk_the_whole_pool) is the named, repairable part, and removing it leaves this floor standing.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired") },
-        tail: [],
-      },
-      account: "Bisect of the private projection-drift regression (2026-11-05) and two isolated srv1 runs (qn-roster-peak40: roster cgroup peak 35.88 GiB; qn-auditpacket-peak40: audit_packet_witness VmHWM 26.84 GiB) put roughly 13-16 GiB of each private lane in pre-entry typecheck and the rest in one whole-pool burst plus per-witness evaluation. The same floor shows up as wall time on small entries: a read-only runner_host_file_observe on srv3 (run 42037046961) spent its whole 15-minute step typechecking v2.compiler modules its entry's closure names and timed out before reading a drop-in. Recorded so a lane blocked on it can cite a named cause rather than an assertion; no fix is designed.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
-
-data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationConcern {
-  identity: "keyed_module_reads_walk_the_whole_pool",
-  kind: SuspectedFork {
-    authorities: DistinctAuthorities {
-      first: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "with_module_path_index"),
-      second: decl_ref(module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_storage_relative"),
-      rest: [decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at")],
-    },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at"),
-    tail: [
-      decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at"),
-      decl_ref(module_path: "v2.lens.module_graph", decl_name: "module_declaration_facts_at_live"),
-    ],
-  },
-  question: "Where is a module found by name? gunbc.source_layout says the name determines the path (DESIGN section 3: a location read out of a file is a second authority, and makes finding one module cost reading all of them), and gunbc run's demand acquisition already finds modules that way through module_storage_relative. The keyed reads module_declaration_fact_at and eval_decl_facts_at instead answer from a whole-pool index built by reading every pool file's declaration, so their first call costs the population read they were written to avoid.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at") }],
-      },
-      account: "Found while choosing the repair for the private audit_packet burst (strategy.audit_packet audit_module_facts, measured +8.3 GiB in 16 s from one module_declaration_facts call over the composed pool of 10164 files). Moving that consumer to either keyed read would move the burst to the first lookup and remove nothing, because module_declaration_fact_at reads through with_module_path_index and eval_decl_facts_at filters decl_facts_for_roots_shared. The repair belongs in the keyed reads: derive the storage path from the name per pool root and read that one file, keeping multiplicity across roots so DeclarationRefAmbiguous still fires.",
-    },
-    tail: [],
-  },
-  disposition: Open,
-}
-
-
-// #15175's synthesized derived-equality bodies bind the std comparison helpers they call by NAME
-// SPELLING, which resolves through the HOLDER module's import set -- so whether a type has a
-// derived == depends on an incidental import in the holder, not on equality. v2.std.symbol_index
-// (imports std.algebra without map_values_eq) versus v2.std.node (imports zip_eq) is that accident
-// on either side of the import list. Interim, filed with the fix that adds the fail-closed
-// synthesis gate equality_helpers_visible: when a helper is not in view the derived is skipped and
-// the holder refuses at its authored comparison, located. The root disposition: the compiler's own
-// construction binds these helpers by DECLARING identity, as the derived equality binds `==`
 // srv13 AND srv15 NAME ONE BOARD (recorded 2026-11-05; the operator keeps srv15, "bobo"). Both slots read
 // ASRock Rack ALTRAD8UD-1L2T board serial BR80S6102300049 with host NIC 9c:6b:00:e7:ca:63. srv13's first
 // contact (2026-10-07) found the controller at 192.168.1.247, MAC 9c:6b:00:e7:c9:83, on BMC 2.07.00, and
@@ -839,6 +773,72 @@ data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
   },
 }
 
+data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = IntegrationConcern {
+  identity: "run_closure_typecheck_exceeds_eval_demand",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
+    requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
+    standing: RequirementUnestablished { decided_by: "a design that names which typecheck obligations an unreached module still owes (its own refusals, its importers' bindings) and shows they can be discharged without typechecking its bodies; until then the requirement is a memory and wall-time observation, not an established obligation" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
+    tail: [decl_ref(module_path: "v2.compiler.module_acquisition", decl_name: "acquisition_lookup")],
+  },
+  question: "Is the pre-entry typecheck of a gunbc run's whole demand-acquired closure owed, or is it the larger half of the private lanes' memory floor that no model has yet been asked to narrow? Measured at seed e1f753b9 with the private overlay: the private drift entry typechecks 2918 closure modules, the roster entry 3245, and evaluation touches 227-278 of them (about 9.5 percent); the isolated audit_packet_witness entry reaches 12.9 GiB at the end of pre-entry (closure_typecheck 664,822 ms over 2775 files) before evaluation starts. This floor is undesigned and carries no estimate: the whole-pool burst (keyed_module_reads_walk_the_whole_pool) is the named, repairable part, and removing it leaves this floor standing.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired") },
+        tail: [],
+      },
+      account: "Bisect of the private projection-drift regression (2026-11-05) and two isolated srv1 runs (qn-roster-peak40: roster cgroup peak 35.88 GiB; qn-auditpacket-peak40: audit_packet_witness VmHWM 26.84 GiB) put roughly 13-16 GiB of each private lane in pre-entry typecheck and the rest in one whole-pool burst plus per-witness evaluation. The same floor shows up as wall time on small entries: a read-only runner_host_file_observe on srv3 (run 42037046961) spent its whole 15-minute step typechecking v2.compiler modules its entry's closure names and timed out before reading a drop-in. Recorded so a lane blocked on it can cite a named cause rather than an assertion; no fix is designed.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationConcern {
+  identity: "keyed_module_reads_walk_the_whole_pool",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "with_module_path_index"),
+      second: decl_ref(module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_storage_relative"),
+      rest: [decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at"),
+    tail: [
+      decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at"),
+      decl_ref(module_path: "v2.lens.module_graph", decl_name: "module_declaration_facts_at_live"),
+    ],
+  },
+  question: "Where is a module found by name? gunbc.source_layout says the name determines the path (DESIGN section 3: a location read out of a file is a second authority, and makes finding one module cost reading all of them), and gunbc run's demand acquisition already finds modules that way through module_storage_relative. The keyed reads module_declaration_fact_at and eval_decl_facts_at instead answer from a whole-pool index built by reading every pool file's declaration, so their first call costs the population read they were written to avoid.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at") }],
+      },
+      account: "Found while choosing the repair for the private audit_packet burst (strategy.audit_packet audit_module_facts, measured +8.3 GiB in 16 s from one module_declaration_facts call over the composed pool of 10164 files). Moving that consumer to either keyed read would move the burst to the first lookup and remove nothing, because module_declaration_fact_at reads through with_module_path_index and eval_decl_facts_at filters decl_facts_for_roots_shared. The repair belongs in the keyed reads: derive the storage path from the name per pool root and read that one file, keeping multiplicity across roots so DeclarationRefAmbiguous still fires.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// #15175's synthesized derived-equality bodies bind the std comparison helpers they call by NAME
+// SPELLING, which resolves through the HOLDER module's import set -- so whether a type has a
+// derived == depends on an incidental import in the holder, not on equality. v2.std.symbol_index
+// (imports std.algebra without map_values_eq) versus v2.std.node (imports zip_eq) is that accident
+// on either side of the import list. Interim, filed with the fix that adds the fail-closed
+// synthesis gate equality_helpers_visible: when a helper is not in view the derived is skipped and
+// the holder refuses at its authored comparison, located. The root disposition: the compiler's own
+// construction binds these helpers by DECLARING identity, as the derived equality binds `==`
+// 
 // itself; when that lands, delete the gate and cover it in self_host_equality_admission_witness.
 data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
   identity: "equality_synthesis_helper_binding_is_import_authority",
@@ -887,21 +887,21 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
       },
       account: "SECOND MODULE ENUMERATED, SAME CLASS, FIX-FORWARD ON MAIN (fixes main-red v2-bootstrap run 42215276019 job 127883604511 at pre-merge PR head 1d2448554aa6 tree 2f828ba5 (NOT at merged 90549a23b6c3 — attribution corrected per review): E0425 'cannot find function equality_derived_evaluation_environment in this scope' at emitted v2_std_runtime.rs:667:194, 3 errors in all, stderr_tail truncated at first_error). v2.std.runtime (src/v2/std/runtime.dag) must now import, for its synthesized equality bodies ONLY: from std.algebra, additionally zip_eq and map_values_eq (hand-written code in the module uses neither). Needed because EvaluationEnvironment { bindings: Map<EnvironmentBindingKey, RuntimeValue> } takes the FOREIGN map_values_eq value step and the compared List fields take zip_eq; without them the one predicate skips those bodies and same-module == nodes lower to the skipped derived calls -- the loud E0425 the interim documents, not a silent wrong answer. Full recorded list for mechanical deletion across both interim modules: v2.std.diagnostic -- std.algebra {zip_eq, map_values_eq}; v2.std.runtime -- std.algebra {zip_eq, map_values_eq} (appended to fold_list). Dissolution trigger unchanged.",
     }, ConcernSighting {
-      revision: "PENDING",
+      revision: "35d5ab5d93ce",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
         tail: [],
       },
       account: "THIRD MODULE ENUMERATED, SAME CLASS, FIX-FORWARD ON MAIN (fixes v2-bootstrap run 42225685321 job 127918456923 at fix-forward head 35d5ab5d93ce: E0425 'cannot find function equality_derived_symbol_index in module crate::v2_std_symbol_index' at emitted v2_compiler_symbol_index_fill.rs:391:34, retained_probe_root on the runner host). v2.std.symbol_index (src/v2/std/symbol_index.dag) must now import, for its synthesized equality bodies ONLY: from std.algebra, additionally zip_eq and map_values_eq (hand-written code in the module uses neither; it already imported fold_list and the map helpers). Needed because SymbolIndex carries Map<QualifiedName, ...> fields whose value steps take the FOREIGN map_values_eq and compared List steps take zip_eq; without them the one predicate skips those bodies and same-module == nodes lower to the skipped derived calls -- loud E0425, never silent. Full recorded list for mechanical deletion across all three interim modules: v2.std.diagnostic -- std.algebra {zip_eq, map_values_eq}; v2.std.runtime -- std.algebra {zip_eq, map_values_eq} (appended to fold_list); v2.std.symbol_index -- std.algebra {zip_eq, map_values_eq} (appended to the existing list). Dissolution trigger unchanged.",
     }, ConcernSighting {
-      revision: "PENDING",
+      revision: "cf31183f8d46",
       evidence: FreeSemigroup {
         head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
         tail: [],
       },
       account: "WHOLE-CLOSURE ENUMERATION APPLIED IN ONE PASS (per manager ruling msg_6ccb1ed4: no one-CI-hour-per-name iteration; superset-biased: a false positive costs one recorded interim import, a false negative costs a CI hour; NOT individually CI-evidenced beyond the three modules above). Method: entries from instrument_targets.dag (self_host_entry src/v2/compiler/source_root_eval.dag; v2_native_cli_entry src/v2/cli/compile_cli.dag); BFS over the import graph (module map v2.->src/v2, v1.->src/v1, else dag/); derived-body needs mirror equality_step_helpers in src/v1/stage0/src/v1_compiler_infer.rs: Map<> field -> std.algebra map_values_eq, List<> -> std.algebra zip_eq, Optional<> -> std.optional optional_eq, recursing through nested declared types; candidate filter: types referenced textually by any closure module containing ==. Fixed point reached: re-run reports zero remaining required imports. Every module below got ONLY the listed foreign helper names (each addition behind the two-line INTERIM comment; all removable mechanically when the predicate reads the declaring module's own symbol table): extdeps.external_authority { zip_eq }; extdeps.languages.json.emit { zip_eq }; extdeps.languages.json.grammar { zip_eq }; extdeps.rust.cargo { zip_eq }; extdeps.uri_path { zip_eq }; extdeps.version.semver { zip_eq }; gunbc.crate_partition { map_values_eq, optional_eq, zip_eq }; gunbc.namespace_cut.ambient_name_home { optional_eq }; gunbc.parse_population_refusals { zip_eq }; std.bit { zip_eq }; std.cache_interface { zip_eq }; std.coercion { zip_eq }; std.effects { zip_eq }; std.graph { map_values_eq, zip_eq }; std.judgment_contract { zip_eq }; std.literal_elaboration { zip_eq }; std.materialization_ladder { zip_eq }; std.occurrence_identity { map_values_eq, zip_eq }; std.operation_argv { zip_eq }; std.operator_realization { zip_eq }; std.pareto { zip_eq }; std.source_annotation { map_values_eq, zip_eq }; std.syntax { map_values_eq, zip_eq }; std.termination { zip_eq }; std.trait_derive_shape { zip_eq }; std.types { zip_eq }; std.workspace_artifact { zip_eq }; v2.cli.if_arm_reader_differential { zip_eq }; v2.cli.parse_verdict_reuse { optional_eq }; v2.cli.population_verbs { map_values_eq, optional_eq, zip_eq }; v2.compiler.body_lowering_fold { map_values_eq, optional_eq, zip_eq }; v2.compiler.dependency_demand { map_values_eq, zip_eq }; v2.compiler.eval { map_values_eq, optional_eq, zip_eq }; v2.compiler.fold_lowering { optional_eq, zip_eq }; v2.compiler.infer { map_values_eq, optional_eq, zip_eq }; v2.compiler.inferred_tree { optional_eq, zip_eq }; v2.compiler.lexical_scope { zip_eq }; v2.compiler.module_acquisition { map_values_eq, zip_eq }; v2.compiler.name_resolve { map_values_eq, optional_eq, zip_eq }; v2.compiler.namespace_graft { map_values_eq, zip_eq }; v2.compiler.native_test_vocabulary { optional_eq }; v2.compiler.normalized_tree { map_values_eq, optional_eq, zip_eq }; v2.compiler.occurrence_resolution_census { map_values_eq, optional_eq, zip_eq }; v2.compiler.occurrence_role { map_values_eq }; v2.compiler.parse { map_values_eq, optional_eq, zip_eq }; v2.compiler.program_assembly { map_values_eq, optional_eq, zip_eq }; v2.compiler.program_partition { optional_eq, zip_eq }; v2.compiler.reference_site_collector { map_values_eq, zip_eq }; v2.compiler.resolution_provenance { zip_eq }; v2.compiler.resolve { map_values_eq, optional_eq, zip_eq }; v2.compiler.self_host.closure_emission { map_values_eq, optional_eq }; v2.compiler.self_host.seed_retention_frontier { zip_eq }; v2.compiler.service_realization { optional_eq, zip_eq }; v2.compiler.source_authority { map_values_eq, optional_eq, zip_eq }; v2.compiler.source_root_eval { map_values_eq, optional_eq, zip_eq }; v2.compiler.symbol_index_fill { map_values_eq, optional_eq, zip_eq }; v2.compiler.target_serialize { zip_eq }; v2.compiler.tokenize { map_values_eq, optional_eq, zip_eq }; v2.compiler.type_declaration_use_census { map_values_eq }; v2.extdeps.languages.c { zip_eq }; v2.extdeps.languages.dag { optional_eq, zip_eq }; v2.extdeps.languages.python { zip_eq }; v2.extdeps.languages.rust { zip_eq }; v2.extdeps.languages.swift { zip_eq }; v2.extdeps.languages.typescript { zip_eq }; v2.extdeps.runtimes.v2_effect_io_pure { map_values_eq }; v2.extdeps.runtimes.v2_evaluator { map_values_eq, zip_eq }; v2.lens.application { zip_eq }; v2.std.anonymous_binder { zip_eq }; v2.std.arrow_signature { map_values_eq, zip_eq }; v2.std.artifact { zip_eq }; v2.std.cardinality { zip_eq }; v2.std.coercion { zip_eq }; v2.std.compilers.body_lowering { zip_eq }; v2.std.compilers.compilation_unit { map_values_eq, zip_eq }; v2.std.compilers.lexing { map_values_eq, optional_eq, zip_eq }; v2.std.compilers.semantic_decl_emission { zip_eq }; v2.std.compilers.sugar { zip_eq }; v2.std.compilers.target_model { map_values_eq, optional_eq, zip_eq }; v2.std.constraints { zip_eq }; v2.std.cross_tree.resolution { map_values_eq }; v2.std.decl_index { zip_eq }; v2.std.declaration_marker { map_values_eq, zip_eq }; v2.std.dependency { zip_eq }; v2.std.find_witness { zip_eq }; v2.std.fold_assembly { zip_eq }; v2.std.grammar { map_values_eq, zip_eq }; v2.std.grounding { map_values_eq, zip_eq }; v2.std.host_transport { zip_eq }; v2.std.inhabitance { optional_eq, zip_eq }; v2.std.integer { zip_eq }; v2.std.kind { map_values_eq, zip_eq }; v2.std.language_model { map_values_eq, zip_eq }; v2.std.map_introduction { map_values_eq, zip_eq }; v2.std.member_declaration_kind { map_values_eq }; v2.std.model_core { map_values_eq, zip_eq }; v2.std.namespace_alias { zip_eq }; v2.std.node_query { map_values_eq, optional_eq, zip_eq }; v2.std.provenance { map_values_eq, optional_eq }; v2.std.qualified_name { zip_eq }; v2.std.symbol_index { map_values_eq, zip_eq }; v2.std.type_binder { optional_eq, zip_eq }; v2.std.witness { zip_eq }; v2.workflow.compile_door_cause_ownership { zip_eq }; v2.workflow.floor_discovery_row { zip_eq }; v2.workflow.floor_discovery_source_authority { optional_eq, zip_eq }; v2.workflow.native_frontier_ratchet { zip_eq }; v2.workflow.native_route_progress_guard { optional_eq, zip_eq }; v2.workflow.source_locus { zip_eq }; v2.workflow.v2_native_route { optional_eq, zip_eq }. Dissolution trigger unchanged.",
     }, ConcernSighting {
-      revision: "PENDING",
+      revision: "4b6cc1c3e102",
       evidence: FreeSemigroup {
         head: CitesArtifact { label: "v2-bootstrap run 42236475532 at fix-forward head cf31183f8d46: V2-NATIVE REFUSAL EmittedCompilerBuildFailed, first_error E0369 binary operation == cannot be applied to Rc<DemandEngine<Rc<NativeDemandValue>>> at emitted v2_compiler_source_root_eval.rs:5142:26", sha256: Sha256Digest { hex: "494c2a6d655d2c775655544186296b3c56257a9c54d539306fdc62d3e095e498" as Sha256DigestHex } },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_applied_arguments_by_target") }],
@@ -913,23 +913,10 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
         head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted") }],
       },
-      account: "ROOT FIX LANDED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND): the question is answered YES. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through declared-module ownership (call_target_for_direct_call) and emitted as crate::<declaring>::::<fn>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared) reads the symbol-index census at the qualified name. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof: v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus; witness cells container_holder_stays_admitted_with_no_helper_import_by_identity, cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity, sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag.",
+      account: "ROOT FIX LANDED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND): the question is answered YES. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through declared-module ownership (call_target_for_direct_call) and emitted as crate::<declaring>::::<fn>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared) reads the symbol-index census at the qualified name. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof REQUIRED before this row may close as Integrated, and none exists at this revision - this sighting records SOURCE INTEGRATION ONLY, per review 91653 and DESIGN sections 5 and 6 (a shorter ledger is not evidence of integration): v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus, with real run IDs and conclusions recorded as RetainedExecutionResults against witness controls container_holder_stays_admitted_with_no_helper_import_by_identity, cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity, sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag. Until then the disposition stays Open.",
     }],
   },
-  disposition: Integrated {
-    evidence: IntegrationEvidence {
-      integrated_at: "4f581cb5f3ca70a97fe31b369d8e82bf17b0437a" as CommitSha,
-      superseded: [],
-      replacement: FreeSemigroup {
-        head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
-        tail: [],
-      },
-      executions: FreeSemigroup {
-        head: RetainedExecutionResult { control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "container_holder_stays_admitted_with_no_helper_import_by_identity"), run: "PENDING: v2-bootstrap at heal-published mirror head of #15992 (exact-head pin recorded on the PR before merge)", conclusion: "pending" },
-        tail: [RetainedExecutionResult { control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity"), run: "PENDING: same run", conclusion: "pending" }],
-      },
-    },
-  },
+  disposition: Open,
 }
 
 // Separate integration obligations by their semantic owners; none grants the whole lifecycle.
@@ -1005,7 +992,43 @@ data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern 
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority]
+data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
+  identity: "equality_synthesis_helper_binding_is_import_authority",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
+    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
+      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
+    ],
+  },
+  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity. (#15972's interim gate equality_helpers_visible and its import-enumeration interim were reverted by #16000 on operator decision; they re-land with #15992 and this row's sightings then resume.)",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
+      },
+      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
+    },
+    tail: [ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
+        tail: [],
+      },
+      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
+    }],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
