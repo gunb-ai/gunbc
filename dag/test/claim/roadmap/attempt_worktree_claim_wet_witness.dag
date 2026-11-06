@@ -7,17 +7,19 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStoreReading, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store, worktree_claim_slots_path }
 import std.types { Bool, String, List, NonEmptyStr, EpochSecs, FilePath }
 import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown, AttemptAdvanced, AttemptTransitionRefused, AttemptLostRace }
-import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive }
+import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
+  LineageStanding, LineageStandingEnded, LineageStandingOpen, LineageStandingUnknown,
   worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
   worktree_claim_read, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_close, worktree_claim_reopen_settled,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent }
+import test.claim.roadmap.session_placement_wet_witness { node_a, key_a, node_b, key_b, host, fresh_dir, stores_at, lifecycle_absent, slot_a, grant_for, reserve_real, opened_ok }
+import gunbc.roadmap.roadmap_session_placement { session_placement_record_write }
 
 // KILL-AT-EACH-TRANSITION CONTROLS for gunbc.roadmap.roadmap_attempt_worktree_claim over a real claim store.
 // A worktree is a marker file in a directory the witness owns; git, the unit manager and the capture record
@@ -88,7 +90,7 @@ fn pass(
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => content,
     remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
-    capture_of: (n, k) => capture)
+    capture_of: (n, k) => capture, ended_of: (n, k) => LineageStandingEnded)
   }
   }
 }
@@ -166,7 +168,7 @@ fn ensure_pass_without_mkdir(dir: String, cd: String, td: String) -> WorktreeCla
             path_of: (n, k) => tree_path(td: td, n: n, k: k),
             loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 5000,
             tree_of: p => ClaimTreeAbsent, content_of: p => ClaimContentPushed,
-            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled)
+            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageStandingEnded)
       }
   }
 }
@@ -294,7 +296,7 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => ClaimContentPushed,
     remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
-    capture_of: (n, k) => ClaimCaptureSettled)
+    capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageStandingEnded)
   }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && ran_only(p: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
@@ -347,4 +349,84 @@ test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation_and_a_
       }
   }
   cleaned(dirs: [cd, td], verdict: opened && verdict)
+}
+
+// ── M3: THE SINGLE LINEAGE-ENDED GATE ON CLAIM RELEASE ──────────────────────────────────────────
+// A worker's UNIT finishing is NOT the lineage ending. The claim pass may release a worktree ONLY for a lineage
+// that has genuinely ENDED; a resumable worker whose unit ended keeps its claim, so its tree is never reclaimed
+// out from under a session that will resume or be restored (operator ruling M3, DESIGN §5 fail-closed). The
+// release reads exactly ONE derivation (LineageStanding, derived by belt_lineage_standing over the single
+// ContinuationPlan). These two controls drive the classifier to the gated arm -- a REAL observed placement
+// (attempt_open slot + a real placement record) with the unit reading Finished -- and flip ONLY that derivation.
+
+// THE OBSERVED PLANTING: reserve the seat, open the attempt slot, and write a real placement record, all in the
+// witness's placement root `dir`, so the wet session_placement_observe_at in the claim pass reads
+// SessionPlacementObserved for node_a/key_a (not Absent). Without this the classifier would never reach the
+// gated arm -- it would read a lingering-finished unit with no placement record as Unknown and keep the tree
+// unconditionally, so the LineageStandingEnded control below could never observe a release (the fail-loud reachability
+// check). Mirrors the proven wet planting in session_placement_wet_witness CONTROL 3.
+fn plant_placement(dir: String) -> Bool {
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: stores } => {
+      let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
+      let rec = slot_a(opened: 1000)
+      let opened = opened_ok(dir: dir, rec: rec)
+      let _wrote = session_placement_record_write(stores: stores, host: host, grant: grant_for(node_id: node_a, attempt_key: key_a, slot: rec), unit_properties: ["MemoryMax=8589934592"])
+      charged && opened
+    }
+  }
+}
+
+// THE ENDDED-PARAMETERISED PASS: byte-identical to `pass` except `ended_of` is the injected lineage standing,
+// so a single fixture can be run twice against the only variable the release gate reads.
+fn pass_gate(
+  dir: String, cd: String, td: String, others: AttemptUnitObservation, content: ClaimContent, capture: ClaimCapture, now: EpochSecs, ended: LineageStanding,
+) -> WorktreeClaimPass {
+  match claims_at(cd: cd) {
+  WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
+  WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+  Present { value: stores } =>
+  worktree_claim_ensure_pass_at(
+    stores: stores, claims: claims, host: host,
+    path_of: (n, k) => tree_path(td: td, n: n, k: k),
+    loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
+    tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
+    content_of: p => content,
+    remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
+    capture_of: (n, k) => capture, ended_of: (n, k) => ended)
+  }
+  }
+}
+
+// THE LINEAGE IS OPEN (resumable): the unit finished, the tree is present, content pushed, capture settled -- and
+// the claim is KEPT (Noop), the tree untouched. THIS IS THE RED CONTROL for M3: if the classifier released on
+// the unit having finished regardless of lineage standing (the pre-M3 behaviour), this pass would remove the
+// tree and is_noop fails. A lineage that has NOT ended must never lose its worker's tree.
+test fn a_finished_unit_keeps_the_claim_while_the_lineage_is_open() -> Bool {
+  let dir = fresh_dir(tag: "m3o")
+  let cd = fresh_dir(tag: "m3oc")
+  let td = fresh_dir(tag: "m3ot")
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let placed = plant_placement(dir: dir)
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let p = pass_gate(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "0" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: LineageStandingOpen)
+  cleaned(dirs: [dir, cd, td], verdict: planted && placed && opened && ran_only(p: p, check: is_noop) && tree_there(td: td, n: node_a, k: key_a))
+}
+
+// THE LINEAGE HAS ENDED: the identical fixture, only the lineage standing flipped to Ended, releases the tree.
+// Together with the control above this proves the release is driven by the one derivation and nothing else --
+// and that the gated arm was genuinely reached (an unobserved/absent placement would read Unknown and keep the
+// tree HERE, failing this is_removed check; never a silent pass on the wrong arm).
+test fn a_finished_unit_releases_the_claim_only_once_the_lineage_has_ended() -> Bool {
+  let dir = fresh_dir(tag: "m3e")
+  let cd = fresh_dir(tag: "m3ec")
+  let td = fresh_dir(tag: "m3et")
+  let planted = plant(td: td, n: node_a, k: key_a)
+  let placed = plant_placement(dir: dir)
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let p = pass_gate(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "0" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: LineageStandingEnded)
+  cleaned(dirs: [dir, cd, td], verdict: planted && placed && opened && ran_only(p: p, check: is_removed) && !tree_there(td: td, n: node_a, k: key_a))
 }

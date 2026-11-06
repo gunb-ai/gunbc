@@ -1,140 +1,347 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import gunbc.roadmap.roadmap_nesting { RoadmapMembership }
+// WHAT HAPPENS NEXT ON A NODE'S ATTEMPT LINEAGE. One decision answers "what happens next on this
+// attempt" for both the operator's CONTINUE verb and the belt's wake, so a node cannot have two
+// answers to one question (gunbc.plans.harness_session_lifecycle, "The decision function"). The
+// operator's CONTINUE and START FRESH are the two idempotent verbs; the operator chooses, so a
+// lineage is NEVER continued against its evidence. Both verbs share ONE decision fn over a
+// PriorExecutionObservation; the only thing the verb changes is the branch the next attempt
+// starts from -- CONTINUE the existing branch's head, START FRESH the base ref behind a fresh
+// lineage generation (ruling gunbc.design_ruling dispatch_is_continue_or_start_fresh).
+//
+// WHAT A RESUME IS, IN ONE PLACE: a session that stopped before finishing its task -- a refused
+// turn, a stream break, a turn that went silent -- is continued by RESUMING ITS OWN SESSION
+// (gunbc.plans.harness_session_lifecycle). This module says WHETHER the prior attempt resumes. It
+// never launches anything: the belt actuator (gunbc.roadmap.roadmap_belt_actuate) is what carries a
+// RESUME into the next attempt's spawn, by the attempt_key the decision names. The session's live
+// tmux pane was NEVER an input to this decision, and its absence says nothing about whether the
+// lineage has work left. That lane is gone with its turn cap, its turn file and its stretch
+// supervisor: a supervised session no longer ends at a round boundary, so whether a lineage
+// continues depends on the work it still owes and nothing else (the 0b cut; the supervisor lane's
+// consumers are named in the PR that lands this design).
+//
+// WHY THE STATES COLLAPSED, AND WHY THERE IS NO FENCE HERE (operator ruling, 2026-11-04): the
+// pre-redesign decision kept a separate Hold for every way an in-flight lineage can present --
+// verification owed, review pending, an auditor running, a session recovery-needed but not yet
+// resumable -- and a separate Ended for every way it stopped short. Those are not different
+// DECISIONS; they are one decision, "nothing to launch right now, the lineage is still in motion",
+// wearing six faces. ContinuationPlan collapses them: a live or in-flight attempt is JOINED
+// (AlreadyRunning -- never doubled by a second attempt beside it), and a lineage that stopped short
+// of an approved candidate is CONTINUED (NextAttempt -- a new attempt from the existing branch head,
+// the work kept), which is exactly what the operator's CONTINUE means -- but ONLY once the prior
+// submission capture is SETTLED; a lineage whose capture is still OWED (the belt's commit step has not
+// run) is refused and waits for it, never continued onto an unread submission (bright-moth-475: 'owed'
+// is not 'handed in nothing'). A fence, a FencedAttempt or a
+// per-attempt skip state stays out: the fence was the supervisor's -- it fenced a lane that no longer
+// exists -- and a lineage whose session is dead has no live attempt to fence, so the live-attempt
+// check IS the double-spawn guard. A session that died is resumed by the decision, not fenced out.
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.types { Bool, String, Int, List }
 import std.algebra { length }
-import gunbc.roadmap.roadmap_model { RoadmapEdge }
+import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_resume_bound }
 import gunbc.roadmap.roadmap_submission {
-  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureNotAttempted, CaptureUnreadable,
-  SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
-}
-import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_resume_bound,
+  SubmissionCaptureObservation, CaptureForHead, CaptureAbsent, CaptureUnreadable, CaptureNotAttempted,
+  WorkerSubmission, SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
-  WorkflowSegment,
-  WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
-  WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
+  WorkflowSegment, WorkflowSegmentState,
+  WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
+  WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
+  WorkflowSegmentKind, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+}
+import gunbc.roadmap.roadmap_workflow_progress {
+  AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
 }
 
-// WHETHER A NODE'S NEXT ATTEMPT MAY START. Every attempt starts from the instance's base ref; there
-// is no second origin. Until gunbc.plans.harness_session_lifecycle slice S1 a terminal attempt was
-// CONTINUED by a new attempt on its branch -- a fresh worker, a fresh conversation, the prior turn's
-// verdict at the top of its brief -- and a worker that spent its round budget was restarted that way
-// every forty turns. A supervised session no longer ends at a round boundary, so that lane is gone
-// with its turn cap, its turn file and its stretch supervisor; a candidate's revision continues the
-// worker's own session once hand-in awaits acceptance (slice S2), never a replacement attempt.
+// THE PRIOR EXECUTION, EXACTLY AS READ -- not what someone wants it to be. Every member is an
+// observation of a past execution the decision is allowed to read, and NOTHING else is. There is no
+// live tmux pane among them and there is no turn counter, by construction: the recovery field is
+// what the engine's own recorded events say (gunbc.harness.harness_session_recovery), which is where
+// the truth about "did that session stop by an unexplained engine refusal, and was it already
+// resumed to its bound" actually lives. The worktree, and whether it is reaped with a live branch
+// still under it, is read by the belt and consumed by its restore path -- the decision names WHAT
+// the next execution is, the belt establishes WHERE it runs.
+//
+// The node's terminality is NOT a member. A retired lineage is refused by the belt through its one
+// node-terminal read (gunbc.roadmap.roadmap_node_terminality belt_node_lineage_terminal_read), for
+// BOTH verbs and every other verb, not by a member any action path can leave unset (ruling
+// gunbc.design_ruling dispatch_is_continue_or_start_fresh).
+// THE WORKTREE STANDING IS THE SHARED ATTEMPT-WORKTREE OBSERVER (AttemptWorktreeObservation, from
+// gunbc.roadmap.roadmap_workflow_progress) -- there is exactly ONE observer of "does this attempt's worktree
+// stand, and is it usable", reused verbatim by the belt's resume arm and by this plan so the two can never
+// disagree about the same directory (review 91395, DESIGN §3 nicknaming: a fork is a correctness concern).
+// The submission capture and the recovery record live INSIDE the worktree; when it is not present they were NOT
+// read, and the plan must not pretend they are 'absent' or 'none' (DESIGN §5: a fabricated default is a hard
+// reject). The observer's three states, read not inferred:
+//   AttemptWorktreePresent    -- present and usable; the decision never consumes the path, so it is ignored.
+//   AttemptWorktreeAbsent     -- its absence is ESTABLISHED from a SUCCEEDED observation (filesystem_io's
+//                                absence-adoption rule: never inferred from a failed read). Genuinely gone
+//                                (reaped); its branch may still hold the committed work, and the branch
+//                                standing decides whether that is a restore.
+//   AttemptWorktreeUnobserved -- presence could NOT be established (indeterminate/disagree/refused). Refused,
+//                                never restored onto -- restoring over a present-but-unreadable worktree would
+//                                clobber or omit uncommitted live work.
 
-// THE FACTS THE DECISION READS, and nothing else: the prior attempt's key and branch, whether its
-// worker has ended, what its submission capture says the end meant, and what verification, review
-// and the goal audit said. The capture is the same head-grain observation the verify gate reads.
-type PriorAttemptFacts {
-  node_id: String
-  attempt_key: String
-  branch: String
-  worker_terminal: Bool
-  capture: SubmissionCaptureObservation
-  verification: WorkflowSegment?
-  review: WorkflowSegment?
-  goal_audit: WorkflowSegment?
-  recovery: SessionRecovery
+// HOW THE PRIOR ATTEMPT'S BRANCH STANDS, AS READ against the shared object store. Consulted only when the
+// worktree is absent: a live branch is a restore target (its head is the durable committed work), a gone
+// branch leaves nothing to restore, and an unreadable branch is never reported as absent -- a failed check
+// is unknown, and unknown is refused. This is what keeps "a failed git command" from being read as "the
+// branch is gone".
+type BranchStanding
+  = BranchLive
+  | BranchGone
+  | BranchUnknown { reason: String }
+
+// HOW THE PRIOR ATTEMPT'S WORKTREE STANDS -- and ONLY the facts that could be read given that standing.
+// This is a SUM, not a flat record, on purpose (DESIGN 5: "stronger than catching a wrong state is making
+// it unwritable -- correctness by construction, not validation"). The submission capture and the recovery
+// record live INSIDE the worktree, so they can be read ONLY while it is present; the durable branch standing
+// is the substitute ONLY once it is reaped. A flat record let the belt pair a reaped worktree with a
+// FABRICATED placeholder capture (DESIGN 5: "a fabricated default ... is a hard reject") and let a consumer
+// read a field it never populated, treating a placeholder as a real reading. Each fact now exists only in the
+// arm that could have read it, so an impossible pairing (a reaped tree WITH a real capture; a present tree
+// WITH a branch standing consulted) is unwritable rather than ruled out by convention and match ORDER alone.
+type WorktreeStanding
+  // The worktree is HERE: the capture and recovery that live inside it WERE read. The branch standing is
+  // deliberately absent here -- while the tree stands there is nothing to restore onto, so it is never consulted.
+  = WorktreeStands { path: String, capture: SubmissionCaptureObservation, recovery: SessionRecovery }
+  // The worktree is GONE -- established by a listing that SUCCEEDED and found it absent (a failed read is
+  // Unobserved below, never this). The capture/recovery that lived inside it were NOT read and have no field
+  // to be faked into; the durable fact is the BRANCH, read against the shared object store that survives
+  // reaping, and THAT is what the decision routes on (lab bug #2: a reaped worktree must not block the decision).
+  | WorktreeReaped { path: String, branch_head: BranchStanding }
+  // Presence could NOT be established -- the root was unlistable, the subject refused, or a live tree's head
+  // could not be read. Neither the capture nor the branch is trusted; the decision refuses, never restores onto
+  // a possibly-live directory (DESIGN 5 filesystem_io: absence is established only by a listing that succeeded).
+  | WorktreeUnknown { path: String, cause: String }
+
+type PriorExecutionObservation = {
+  attempt_key: String,
+  branch: String,
+  worker_terminal: Bool,
+  standing: WorktreeStanding,
+  // THE LEDGER SEGMENTS, read flat -- these survive a worktree reap (they live in the ledger, not the tree),
+  // so they are consulted on BOTH the present and reaped paths and are genuinely independent of the standing.
+  verification: WorkflowSegment?,
+  review: WorkflowSegment?,
+  goal_audit: WorkflowSegment?,
 }
 
-// THE VOCABULARY NAMES WHAT THE BELT MAY DO, and Fresh means exactly one fact (branch review
-// 2026-09-23, blocker 2): SpawnFresh is "it is established that no prior owned lineage exists for
-// this node"; Hold spawns nothing while a verdict or a worker is outstanding; Complete spawns nothing
-// because the lineage is fully approved; Ended spawns nothing because the lineage stopped short of
-// an approved candidate -- its worker stopped, handed in nothing, declared a blocker, or its
-// candidate was judged and found wanting -- and starting over from base would discard committed work
-// silently; Refused is the arm that must not widen: a fact the decision needs that cannot be
-// established refuses with a located reason the dashboard shows, and the operator decides.
-type ContinuationDecision
-  = ContinuationSpawnFresh { reason: String }
-  | ContinuationRefused { reason: String }
-  | ContinuationHold { reason: String }
-  | ContinuationComplete { reason: String }
-  | ContinuationEnded { reason: String }
-  | ContinuationResume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
+// WHAT TO DO WITH THE NODE'S WORK NEXT. The seven variants are a partition of what a prior execution
+// can mean for what comes next; there is deliberately no "wait" variant -- waiting is AlreadyRunning,
+// because an in-flight lineage is joined, not waited on by a fresh spawn. The plan says what the next
+// execution IS; it never launches, never writes the ledger, and never touches a worktree itself.
+//   StartInitial        -- no prior execution at all: this is the first attempt, taken from the base ref.
+//   AlreadyRunning      -- an attempt is live, or the lineage is still in motion (a segment owed,
+//                          pending, active or retried-on-environment): JOIN it; a second attempt is
+//                          never spawned beside it. Nothing launches. Carries the attempt to join.
+//   Resume              -- the prior worker is terminal, handed in nothing, and its session stopped
+//                          by an unexplained engine refusal that it has not yet answered and is within
+//                          the declared resume bound: continue that attempt's OWN session from the
+//                          validated point its ordinal names, in the same worktree and conversation.
+//   NextAttempt         -- the lineage stopped short of an approved candidate (a judged verdict, a
+//                          blocked or needs-context submission, a handed-in nothing with no recovery,
+//                          a session flapped past its bound): CONTINUE by starting a NEW attempt from
+//                          the existing branch's head -- the work is kept, never started over. Carries
+//                          the branch its new attempt starts from.
+//   Restore             -- CONTINUE's recovery of a STILL-RESUMABLE attempt whose worktree was reaped while
+//                          its lineage had NOT ended: rebuild the SAME attempt in place (same attempt key)
+//                          from its live branch and reopen the claim that names it. NOT NextAttempt (which
+//                          mints a NEW key for a lineage that ENDED without a candidate). A live branch is
+//                          required; a gone/unknown branch or an unreadable tree is a Refuse, never a restore.
+//   AlreadyComplete     -- verification green, review approved and goal audit approved: the lineage is
+//                          complete; the operator's CONTINUE is a no-op and NOTHING spawns.
+//   Refuse              -- a fact the decision needs cannot be established at all: the ledger is
+//                          unobservable, a segment sits in a state it does not inhabit, a capture is
+//                          unreadable, a recovery record is malformed. Carries the located reason. A
+//                          refusal is never a fallback into a spawn.
+type ContinuationPlan
+  = StartInitial { reason: String }
+  | AlreadyRunning { reason: String, attempt_key: String }
+  | Resume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
+  | NextAttempt { reason: String, from_branch: String }
+  // Restore -- CONTINUE's recovery of a STILL-RESUMABLE attempt whose worktree was reaped while its
+  // lineage had NOT ended: the belt rebuilds the SAME attempt in place (same attempt key) from its live
+  // branch and reopens the claim that names it (worktree_claim_reopen_settled on the same CAS slot). It is
+  // NOT NextAttempt (which mints a NEW key for a lineage that ENDED without a candidate); a live attempt is
+  // recovered under its own key so its ledger history is kept, never abandoned to an orphan (operator ruling
+  // D3). Its branch must be live: a gone branch is nothing to restore onto (Refuse), an unreadable branch is
+  // unknown and refused, never restored onto. It carries the key it restores and the branch it restores from.
+  | Restore { reason: String, attempt_key: String, from_branch: String }
+  | AlreadyComplete { reason: String }
+  // Refuse carries BOTH a typed cause (so a consumer matches the DISTINCTION without parsing prose -- DESIGN
+  // §4c "belongs in a typed carrier", §5 "fails with a typed, located diagnostic") AND a human-readable reason
+  // (the belt shows it verbatim; it is a rendering, never the discriminator). The cause is the class; the
+  // reason is its sentence. Before this, each cause travelled as an in-band "BranchAbsent: …" text tag inside
+  // a bare String, and witnesses grep'd that prose to recover a distinction the model should have carried
+  // (review 91440; §5 "a check restating a constraint the model already carries is a second representation").
+  | Refuse { cause: RefuseCause, reason: String }
 
-fn continuation_decision(prior: PriorAttemptFacts?) -> ContinuationDecision {
-  match prior {
-    Absent => ContinuationSpawnFresh { reason: "no prior attempt of this node" }
-    Present { value: p } =>
-      if !p.worker_terminal {
-        ContinuationHold { reason: "the prior attempt's worker has not ended; the lineage is active and a second attempt beside it is never spawned" }
+// THE TYPED CAUSE of a Refuse: the distinct reasons the decision already tells apart, each its own variant so
+// the witnesses and the belt match on shape, never on a substring of prose. BranchAbsent is the operator's
+// "typed BranchAbsent refusal"; the detail-carrying variants keep their located diagnostic in-field.
+type RefuseCause
+  = BranchAbsent
+  | BranchUndetermined { reason: String }
+  | WorktreeUnobserved { cause: String }
+  | CaptureStoreUnreadable { reason: String }
+  | CaptureOwed { reason: String }
+  // SegmentDamaged -- a ledger segment sits in WorkflowSegmentStopped, a state that segment does not inhabit
+  // (only the agent segment has a round budget to stop on). The WHICH-SEGMENT distinction is carried by the
+  // REUSED WorkflowSegmentKind coproduct (DESIGN 4c: a closed set belongs in a typed carrier, not a String;
+  // DESIGN 2/3: reuse the existing segment identity rather than mint a parallel SegmentKind).
+  | SegmentDamaged { segment: WorkflowSegmentKind }
+  | LedgerUnobservable { reason: String }
+  // RecoveryRecordMalformed -- the prior attempt's recovery record exists but is unreadable (its recorded
+  // fields do not line up), so neither a resume nor a next attempt is established for a worker that handed
+  // in nothing. Distinct from an unreadable SUBMISSION STORE (CaptureStoreUnreadable): this is the recovery
+  // carrier, read alongside the capture on the present-worktree path.
+  | RecoveryRecordMalformed { mismatch: String }
+
+// THE ONE DECISION FUNCTION, shared by the operator's CONTINUE verb and the belt's wake.
+// It reads ONLY the prior execution observation, never a desired state. No prior at all is the
+// first attempt; otherwise the prior's own facts decide, exactly as below.
+fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
+  match obs {
+    Absent =>
+      StartInitial {
+        reason: "this node has no prior attempt on the ledger, so this is the first attempt, taken from the base ref",
+      }
+    Present { value: prior } =>
+      if !prior.worker_terminal {
+        // A LIVE WORKER IS JOINED -- but only while its worktree is still HERE. A live (not-terminal) worker
+        // whose worktree was REAPED is the accident M3 prevents: its session is resumable, so its claim should
+        // never have been released and its tree reclaimed. When that has already happened, CONTINUE neither
+        // JOINS a session whose tree is gone nor starts a NEW attempt (the lineage has not ENDED); it RESTORES
+        // the SAME attempt in place from its live branch and reopens the claim naming it (operator ruling D3).
+        // The double-spawn guard still holds: no second attempt key is ever minted for a live attempt -- a
+        // present worktree JOINs under its key, a reaped worktree RESTORES the same key, nothing doubles it.
+        match prior.standing {
+          WorktreeStands { path: _, capture: _, recovery: _ } =>
+            AlreadyRunning {
+              reason: join(["the prior attempt ", prior.attempt_key, " is live: its worker is not terminal; its session is JOINED and no second attempt is started beside it"], ""),
+              attempt_key: prior.attempt_key,
+            }
+          WorktreeReaped { path: _, branch_head } =>
+            match branch_head {
+              BranchLive =>
+                Restore {
+                  reason: join(["the prior attempt ", prior.attempt_key, " is live (not terminal) but its worktree was reaped; its session is resumable, so the SAME attempt is restored in place from its live branch ", prior.branch, " and its claim reopened -- no new attempt key is minted"], ""),
+                  attempt_key: prior.attempt_key,
+                  from_branch: prior.branch,
+                }
+              BranchGone =>
+                Refuse { cause: BranchAbsent, reason: join(["the prior attempt ", prior.attempt_key, " is live but its worktree is reaped and its branch ", prior.branch, " is gone, so there is nothing to restore the resumable attempt onto"], "") }
+              BranchUnknown { reason: why } =>
+                Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the live attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present to restore its reaped worktree from; a failed branch check is not an absence (", why, ")"], "") }
+            }
+          WorktreeUnknown { path: _, cause } =>
+            Refuse { cause: WorktreeUnobserved { cause }, reason: join(["the worktree standing of the live attempt ", prior.attempt_key, " could not be established (", cause, "), so it is neither joined nor restored onto a possibly-absent tree"], "") }
+        }
       } else {
-        continuation_from_capture(prior: p)
+        // THE WORKTREE STANDING IS READ FIRST, because the capture and recovery live INSIDE it. When the
+        // worktree is absent they were NOT read, so the plan decides on the BRANCH standing (read against
+        // the shared object store, which survives reaping) instead of pretending the capture is 'absent'.
+        match prior.standing {
+          WorktreeReaped { path: _, branch_head } =>
+            // LAB BUG #2 (a reaped worktree must not block the decision): the worktree is gone -- reaped
+            // after the work was committed -- but the durable fact is the BRANCH. The capture was NOT read
+            // (it lived inside the gone worktree); the decision reads the LEDGER instead, which survives the
+            // reap, and only then considers the branch (review 91383). A live branch is CONTINUE's general
+            // restore target -- but ONLY for a lineage that ended without an approved candidate; a lineage
+            // whose ledger already says complete is AlreadyComplete (its CONTINUE is a no-op, nothing spawns)
+            // and one with a verdict still in motion is JOINED, never doubled by a spawn beside it. A gone
+            // branch leaves nothing; an unreadable branch is unknown, and unknown is refused, never restored
+            // onto (a failed check is not the fact that a branch is gone).
+            match branch_head {
+              BranchLive => continuation_from_segments(prior: prior)
+              BranchGone =>
+                Refuse { cause: BranchAbsent, reason: join(["the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
+              BranchUnknown { reason: why } =>
+                Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
+            }
+          WorktreeUnknown { path: _, cause } =>
+            // PRESENCE COULD NOT BE ESTABLISHED -- the root was unlistable, the subject refused, or the
+            // directory lists but its head could not be read (a git fault on a LIVE worktree). This is not
+            // the reaped case: it must never be restored onto, because a still-present worktree may hold
+            // uncommitted live work that a restore-from-branch would clobber or silently omit. A read that
+            // failed is unknown, and unknown is refused (DESIGN §5: runtime uncertainty -> typed refusal;
+            // filesystem_io: absence is established only by a listing that succeeded). The belt's own
+            // re-observe is the remedy, not a guessed spawn.
+            Refuse { cause: WorktreeUnobserved { cause }, reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", cause], "") }
+          WorktreeStands { path: _, capture, recovery } =>
+        match capture {
+          CaptureUnreadable { reason } =>
+            Refuse { cause: CaptureStoreUnreadable { reason }, reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
+          CaptureAbsent =>
+            continuation_from_absent_capture(prior: prior, recovery: recovery)
+          // THE CAPTURE IS OWED -- do NOT continue, and do NOT relabel the obligation as handed-in-nothing.
+          // CaptureNotAttempted is produced only when the belt's commit step has not SETTLED this head (no
+          // commit record, or one at another head / deferred / failed): every other consumer in the repo
+          // reads it as owed (roadmap_dogfood_route StageOwed, roadmap_belt_actuate ClaimCaptureOwed), and
+          // the recurring-failure-mode record absent_reads_identically_to_never_looked is explicit that no
+          // capture because-it-is-owed and no capture-because-it-was-settled return the same listing -- so
+          // the decision must NOT decide. Starting a new attempt from the branch head here would silently
+          // drop work the prior worker had not yet committed. The bounded, not-forever nature of this wait
+          // is held by the belt's commit lane itself (belt_capture_absence_for_attempt reads the producer's
+          // own commit record and settles it), not by inventing a 'legacy' reading the observation cannot
+          // support: nothing in this observation can tell an owed-now capture from an old one, so the
+          // decision refuses and waits rather than fabricating the distinction (DESIGN §5).
+          CaptureNotAttempted { reason } =>
+            Refuse { cause: CaptureOwed { reason }, reason: join(["the prior attempt ", prior.attempt_key, " has ended but its submission capture is still owed (", reason, "), so whether its branch holds a declared candidate has not been read; the belt's commit lane settles it, and CONTINUE waits for that capture rather than starting a new attempt from a branch head that would omit work the prior worker had not committed"], "") }
+          CaptureForHead { capture: c } =>
+            match c.submission.readiness {
+              SubmissionBlocked =>
+                continuation_next_attempt(prior: prior, why: join(["its worker reported it was blocked: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
+              SubmissionNeedsContext =>
+                continuation_next_attempt(prior: prior, why: join(["its submission declared needs-context: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
+              SubmissionReady =>
+                continuation_from_segments(prior: prior)
+            }
+        }
+        }
       }
   }
 }
 
-// THE CAPTURE IS READ BEFORE THE SEGMENTS. A terminal worker's capture is the binding record of
-// what its end meant: a submission that declares blocked or needs-context, or no capture at all, is
-// a lineage that ended without a candidate, and a capture that cannot be established is refused,
-// never read as either. Only a READY capture falls through to the segment arms: that head is a
-// candidate, and judging it is verification's job.
-fn continuation_from_capture(prior: PriorAttemptFacts) -> ContinuationDecision {
-  match prior.capture {
-    CaptureUnreadable { reason } =>
-      ContinuationRefused {
-        reason: join([
-          "the submission capture for the prior attempt ", prior.attempt_key,
-          " cannot be established: ", reason,
-          ", so whether its branch holds a declared candidate is unknown and the decision does not guess",
-        ], ""),
-      }
-    CaptureNotAttempted { reason } =>
-      ContinuationRefused {
-        reason: join([
-          "the prior attempt ", prior.attempt_key, " has ended but its capture is still owed (", reason,
-          "), so whether its branch holds a declared candidate is not yet read and the decision waits for the capture",
-        ], ""),
-      }
-    CaptureAbsent => continuation_from_absent_capture(prior: prior)
-    CaptureForHead { capture: c } =>
-      match c.submission.readiness {
-        SubmissionReady => continuation_from_segments(prior: prior)
-        SubmissionBlocked =>
-          continuation_ended(prior: prior, why: join(["its submission declared blocked: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
-        SubmissionNeedsContext =>
-          continuation_ended(prior: prior, why: join(["its submission declared needs-context: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
-      }
-  }
-}
-
-// A WORKER THAT HANDED IN NOTHING ENDED THE LINEAGE, UNLESS ITS SESSION STOPPED AT A VALIDATED STATE
-// BY AN UNEXPLAINED ENGINE REFUSAL (gunbc.plans.harness_session_lifecycle S3, requirement 7). The
-// stream records that as a recovery the session has not yet answered, and then the session is
-// RECOVERY-NEEDED, which is not ended: it resumes in the same worktree and conversation, by the
-// belt, under the declared bound. Three outcomes are distinct on purpose. An interrupted tool
-// effect keeps the session recovery-needed but NOT resumable (Hold: the effect's outcome is to be
-// established first). Past the bound the lineage ends and names every recorded cause, so a flapping
-// engine is visible and bounded, never absorbed. No recovery recorded -- a refusal that explained
-// itself, a hosted route, a worker that simply stopped -- is the ending it always was.
-fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDecision {
-  match prior.recovery {
+// THE ONLY PLACE THE DECIDE-WHO-CONTINUES RULE LIVES. A WORKER THAT HANDED IN NOTHING has three
+// distinct outcomes, kept distinct on purpose: (1) its session stopped at a validated state by an
+// unexplained engine refusal it has not yet answered and is within the declared bound -> RESUME its
+// own session from the validated point, whose resume number is `ordinal` (the next resume, bounded at
+// the session's declared bound); (2) the session is recovery-needed but NOT resumable (an interrupted tool call
+// whose effect is not established) -> JOIN, the effect's outcome is to be established first, nothing
+// launches; (3) past the bound -> CONTINUE with a new attempt from the branch head, naming every
+// recorded cause so a flapping engine is visible and bounded, never absorbed. No recovery recorded
+// -- a refusal that explained itself, a hosted route, a worker that simply stopped -- CONTINUES with
+// a new attempt from the existing branch head. The recovery record is read through
+// gunbc.harness.harness_session_recovery, the one reader (gunbc.rung_drop
+// unobservable_tmux_pane_liveness is unchanged by this: no recovery record is a recovery-NEEDED
+// session, and that record is read directly, never through the pane).
+fn continuation_from_absent_capture(prior: PriorExecutionObservation, recovery: SessionRecovery) -> ContinuationPlan {
+  match recovery {
     SessionRecoveryNone =>
-      continuation_ended(prior: prior, why: "its worker ended without handing in a candidate; the attempt's event stream records how the session ended")
+      continuation_next_attempt(prior: prior, why: "its worker ended without handing in a candidate; the attempt's event stream records how the session ended, and the new attempt starts from the existing branch head so any committed work is kept")
     SessionRecoveryMalformed { mismatch: mismatch } =>
-      ContinuationRefused {
-        reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor an ending is established: ", mismatch], ""),
+      Refuse {
+        cause: RecoveryRecordMalformed { mismatch },
+        reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor a next attempt is established: ", mismatch], ""),
       }
     SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: _ } =>
       if length(xs: interrupted) > 0 {
-        ContinuationHold {
+        AlreadyRunning {
           reason: join([
             "the prior attempt ", prior.attempt_key, " is recovery-needed but not resumable: tool calls ", join(interrupted, ", "),
             " have no recorded result, so their effects are not established; the last cause was ", join(causes, " | "),
           ], ""),
+          attempt_key: prior.attempt_key,
         }
       } else if made >= session_resume_bound {
-        continuation_ended(prior: prior, why: join([
+        continuation_next_attempt(prior: prior, why: join([
           "its session was resumed ", to_string(value: made), " times, the bound of ", to_string(value: session_resume_bound),
           ", and was refused again; every recorded cause: ", join(causes, " | "),
         ], ""))
       } else {
-        ContinuationResume {
+        Resume {
           reason: join(["the prior attempt ", prior.attempt_key, " stopped at a validated state and is resumed in its own session, resume ", to_string(value: made + 1), " of ", to_string(value: session_resume_bound), "; cause: ", join(causes, " | ")], ""),
           attempt_key: prior.attempt_key,
           ordinal: made + 1,
@@ -144,17 +351,40 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
   }
 }
 
-fn continuation_ended(prior: PriorAttemptFacts, why: String) -> ContinuationDecision {
-  ContinuationEnded {
+// A LINEAGE THAT STOPPED SHORT OF AN APPROVED CANDIDATE IS CONTINUED, NOT ENDED. The next attempt
+// starts from the EXISTING branch's head so the work the prior attempt committed stays in the new
+// attempt's base -- CONTINUE keeps the work; only START FRESH abandons it behind a new lineage
+// generation. The branch is carried so the witness pins where the new attempt starts, and the
+// reason carries the located judgement that stopped the lineage short.
+fn continuation_next_attempt(prior: PriorExecutionObservation, why: String) -> ContinuationPlan {
+  NextAttempt {
     reason: join([
-      "the lineage ending at attempt ", prior.attempt_key, " (branch ", prior.branch, ") stopped short of an approved candidate: ", why,
-      " -- its work stays on that branch, and no attempt is started over it",
+      "the attempt lineage at ", prior.attempt_key, " stopped short of an approved candidate: ", why,
+      " -- its work stays on branch ", prior.branch, ", and the next attempt starts from that branch's head",
     ], ""),
+    from_branch: prior.branch,
   }
 }
 
+// THE REAPED-MODE TERMINAL of the single shared ledger walk (continuation_from_segments with reaped=true):
+// when the ledger shows the lineage ended WITHOUT an approved candidate -- a failed verdict, or a segment the
+// belt never got to record -- CONTINUE names a fresh attempt that starts from the still-live branch head: the
+// belt re-creates (restores) the reaped worktree from that head (the capture inside the gone worktree was never
+// read; the branch carries the work). LAB BUG #2: after a reap the belt can only act by restoring, so joining
+// forever on an owed segment would itself be the block the bug forbids. The complete / in-flight / damaged
+// outcomes are NOT here -- they are the SHARED cascade arms (AlreadyComplete / AlreadyRunning / Refuse), so a
+// change to segment semantics is made in ONE place (review 91390, DESIGN §6b). THIS IS THE NEXT-ATTEMPT (NEW
+// KEY) REAPED PATH: it mints a fresh attempt off the branch for a lineage that ENDED without a candidate. It is
+// DISTINCT from the same-key ContinuationPlan.Restore, which recovers a STILL-LIVE attempt under its own key.
+fn continuation_reaped_next_attempt(prior: PriorExecutionObservation, why: String) -> ContinuationPlan {
+  continuation_next_attempt(
+    prior: prior,
+    why: join([why, "; its worktree is gone but its branch ", prior.branch, " is still live, so the committed work is the durable record -- a NEW attempt (a fresh key, NOT the same-key Restore which recovers a still-live attempt) is started off that branch's head"], ""),
+  )
+}
+
 // A WORKER-AUTHORED EXPLANATION IS UNBOUNDED TEXT, and it lands in a reason the dashboard shows; the
-// decision carries at most this much of it. The truncation is marked so a cut explanation is never
+// plan carries at most this much of it. The truncation is marked so a cut explanation is never
 // mistaken for a whole one.
 data continuation_verdict_detail_bound: Int = 400
 
@@ -166,51 +396,124 @@ fn continuation_bounded_detail(detail: String) -> String {
   }
 }
 
-fn continuation_from_segments(prior: PriorAttemptFacts) -> ContinuationDecision {
+// THE WORKFLOW DECIDES. The pipeline is the spine, the engine is the exception, and a verdict the
+// worker's own hand did not produce outranks it. A segment that is owed, pending, active, or refused
+// on an environment fact is a lineage still in MOTION: it is JOINED, never doubled by a spawn, and
+// the belt owes the segment itself, not a fresh attempt. A FAILED segment is the located judgement
+// that stopped the lineage short, so it CONTINUES with a new attempt from the branch head -- CONTINUE
+// keeps the work and lets the worker try again on top of it, which is the whole point of the verb.
+// WHAT THE WALK DOES WHEN A SEGMENT IS ABSENT (its belt obligation was never recorded). The branch is read
+// from the standing the caller already matched -- there is NO reaped: Bool to lie with, so a present-worktree
+// caller cannot claim a reap (DESIGN 5: a check restating a constraint the model carries is a second
+// representation of it; here the standing is the ONE source). After a REAP the belt can only act by restoring
+// the worktree from the branch head, so it continues with a fresh attempt off the branch; on a LIVE tree the
+// segment is merely OWED, so the lineage is JOINED and the belt performs the obligation, nothing spawning.
+// WorktreeUnknown cannot reach the walk (presence is refused upstream); it is matched for closedness (4b) and
+// fails typed rather than guessed.
+fn continuation_segment_absent(prior: PriorExecutionObservation, why: String, join_reason: String) -> ContinuationPlan {
+  match prior.standing {
+    WorktreeReaped { path: _, branch_head: _ } =>
+      continuation_reaped_next_attempt(prior: prior, why: why)
+    WorktreeStands { path: _, capture: _, recovery: _ } =>
+      AlreadyRunning { reason: join_reason, attempt_key: prior.attempt_key }
+    WorktreeUnknown { path: _, cause } =>
+      Refuse { cause: WorktreeUnobserved { cause }, reason: "the segment walk is reached only once the worktree's standing is established; an unobservable worktree is refused upstream, so this arm is unreachable and fails typed rather than guessed" }
+  }
+}
+
+// WHAT THE WALK DOES WHEN A SEGMENT FAILED (a red verdict): a REAP restores a fresh attempt from the branch
+// head; a LIVE tree continues the lineage with a new attempt on the branch. Typed on the standing, not a flag.
+fn continuation_segment_failed(prior: PriorExecutionObservation, why: String) -> ContinuationPlan {
+  match prior.standing {
+    WorktreeReaped { path: _, branch_head: _ } =>
+      continuation_reaped_next_attempt(prior: prior, why: why)
+    WorktreeStands { path: _, capture: _, recovery: _ } =>
+      continuation_next_attempt(prior: prior, why: why)
+    WorktreeUnknown { path: _, cause } =>
+      Refuse { cause: WorktreeUnobserved { cause }, reason: "unreachable -- the segment walk is reached only with an established standing; see continuation_segment_absent" }
+  }
+}
+
+fn continuation_from_segments(prior: PriorExecutionObservation) -> ContinuationPlan {
   match prior.verification {
-    Absent => ContinuationHold { reason: "the prior attempt's verification is owed and has no segment yet; the belt owes it, not a spawn" }
+    Absent =>
+      continuation_segment_absent(
+        prior: prior,
+        why: "no verification segment was ever recorded, and after a reap the belt can only act by restoring the worktree",
+        join_reason: join(["the prior attempt ", prior.attempt_key, "'s verification is owed and has no segment yet; the belt owes it, so the lineage is joined and nothing spawns"], ""),
+      )
     Present { value: v } =>
       match v.state {
-        WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["verification failed: ", v.detail], ""))
+        WorkflowSegmentFailed =>
+          continuation_segment_failed(prior: prior, why: join(["verification failed: ", v.detail], ""))
         WorkflowSegmentComplete => continuation_after_green_verification(prior: prior)
-        WorkflowSegmentStopped => ContinuationRefused { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
-        WorkflowSegmentPending => ContinuationHold { reason: "the prior attempt's verification is owed and still pending; the belt owes it, not a spawn" }
-        WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's verification is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: "the prior attempt's verification was refused, an environment fact rather than a verdict: the obligation stays outstanding and the belt retries it when the environment recovers, so no spawn" }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: VerificationWorkflowSegment }, reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
+        WorkflowSegmentPending =>
+          AlreadyRunning {
+            reason: join(["the prior attempt ", prior.attempt_key, "'s verification is owed and still pending; the belt owes it, so the lineage is joined and nothing spawns"], ""),
+            attempt_key: prior.attempt_key,
+          }
+        WorkflowSegmentActive =>
+          AlreadyRunning { reason: "the prior attempt's verification is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
+        WorkflowSegmentRefused =>
+          AlreadyRunning {
+            reason: join(["the prior attempt ", prior.attempt_key, "'s verification was refused, an environment fact rather than a verdict: the obligation stays outstanding and the belt retries it when the environment recovers, so the lineage is joined"], ""),
+            attempt_key: prior.attempt_key,
+          }
       }
   }
 }
 
-// A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW: changes requested end the lineage with the
-// reviewer's located reasons, an approved review hands it to the goal audit, anything else holds.
-fn continuation_after_green_verification(prior: PriorAttemptFacts) -> ContinuationDecision {
+// A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW: changes requested stop the lineage short and
+// CONTINUE with a new attempt on the branch, an approved review hands it to the goal audit, anything
+// else is a lineage still in motion and is joined.
+fn continuation_after_green_verification(prior: PriorExecutionObservation) -> ContinuationPlan {
   match prior.review {
-    Absent => ContinuationHold { reason: "the prior attempt verified green and carries no review segment yet" }
+    Absent =>
+      continuation_segment_absent(
+        prior: prior,
+        why: "its verification was green but it carries no review segment, and after a reap the belt can only act by restoring the worktree",
+        join_reason: join(["the prior attempt ", prior.attempt_key, " verified green and carries no review segment yet; review is owed, so the lineage is joined"], ""),
+      )
     Present { value: r } =>
       match r.state {
-        WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["review requested changes: ", r.detail], ""))
+        WorkflowSegmentFailed =>
+          continuation_segment_failed(prior: prior, why: join(["review requested changes: ", r.detail], ""))
         WorkflowSegmentComplete => continuation_after_approved_review(prior: prior)
-        WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt verified green and awaits review: ", r.detail], "") }
-        WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt verified green and its reviewer is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt verified green and its review refused: ", r.detail], "") }
-        WorkflowSegmentStopped => ContinuationHold { reason: "the prior attempt's review segment is stopped, a state review does not inhabit" }
+        WorkflowSegmentPending =>
+          AlreadyRunning { reason: join(["the prior attempt verified green and awaits review: ", r.detail], ""), attempt_key: prior.attempt_key }
+        WorkflowSegmentActive =>
+          AlreadyRunning { reason: "the prior attempt verified green and its reviewer is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
+        WorkflowSegmentRefused =>
+          AlreadyRunning { reason: join(["the prior attempt verified green and its review refused: ", r.detail], ""), attempt_key: prior.attempt_key }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: ReviewWorkflowSegment }, reason: "the prior attempt's review segment is stopped, a state review does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
 }
 
-// AN APPROVED REVIEW HANDS THE QUESTION TO THE GOAL AUDIT, the same way: changes requested end the
-// lineage with the auditor's reasons, approval completes it, and anything else holds.
-fn continuation_after_approved_review(prior: PriorAttemptFacts) -> ContinuationDecision {
+// AN APPROVED REVIEW HANDS THE QUESTION TO THE GOAL AUDIT, the same way: changes requested stop the
+// lineage short and CONTINUE with a new attempt on the branch, approval COMPLETES it, and anything
+// else is a lineage still in motion and is joined.
+fn continuation_after_approved_review(prior: PriorExecutionObservation) -> ContinuationPlan {
   match prior.goal_audit {
-    Absent => ContinuationHold { reason: "the prior attempt verified green and its review approved, but it carries no goal audit segment yet" }
+    Absent =>
+      continuation_segment_absent(
+        prior: prior,
+        why: "its review approved but it carries no goal-audit segment, and after a reap the belt can only act by restoring the worktree",
+        join_reason: join(["the prior attempt ", prior.attempt_key, " verified green and its review approved, but it carries no goal audit segment yet; the audit is owed, so the lineage is joined"], ""),
+      )
     Present { value: a } =>
       match a.state {
-        WorkflowSegmentFailed => continuation_ended(prior: prior, why: join(["goal audit requested changes: ", a.detail], ""))
-        WorkflowSegmentComplete => ContinuationComplete { reason: "the prior attempt verified green, its review approved and its goal audit approved; the lineage is complete and nothing spawns" }
-        WorkflowSegmentPending => ContinuationHold { reason: join(["the prior attempt awaits its goal audit: ", a.detail], "") }
-        WorkflowSegmentActive => ContinuationHold { reason: "the prior attempt's goal auditor is running" }
-        WorkflowSegmentRefused => ContinuationHold { reason: join(["the prior attempt's goal audit refused: ", a.detail], "") }
-        WorkflowSegmentStopped => ContinuationHold { reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit" }
+        WorkflowSegmentFailed =>
+          continuation_segment_failed(prior: prior, why: join(["goal audit requested changes: ", a.detail], ""))
+        WorkflowSegmentComplete => AlreadyComplete { reason: "the prior attempt verified green, its review approved and its goal audit approved; the lineage is complete and the operator's CONTINUE is a no-op -- nothing spawns" }
+        WorkflowSegmentPending =>
+          AlreadyRunning { reason: join(["the prior attempt awaits its goal audit: ", a.detail], ""), attempt_key: prior.attempt_key }
+        WorkflowSegmentActive =>
+          AlreadyRunning { reason: "the prior attempt's goal auditor is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
+        WorkflowSegmentRefused =>
+          AlreadyRunning { reason: join(["the prior attempt's goal audit refused: ", a.detail], ""), attempt_key: prior.attempt_key }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: GoalAuditWorkflowSegment }, reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
 }
