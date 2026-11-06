@@ -11,7 +11,7 @@ import std.optional { Optional, Present, Absent }
 import product.fabric.work { SourceManifestRef }
 import extdeps.git.object_store { git_null_sha1_object_id }
 import gunbc.compute.work_request {
-  WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_declared_toolchain_requirement,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_toolchain_requirement,
   WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
 }
 import gunbc.fabric.fabric_source_snapshot {
@@ -70,12 +70,18 @@ test fn a_changed_declared_input_changes_the_identity() -> Bool {
 
 // (3) An observed toolchain that differs from the declared requirement refuses; the matching one is admitted.
 test fn an_observed_toolchain_mismatch_refuses() -> Bool {
-  let req = WorkToolchainRequirement { target_triple: "aarch64-unknown-linux-gnu" as NonEmptyStr, rustc_release_prefix: "1.93.0" as NonEmptyStr }
+  let file = "[toolchain]\nchannel = \"1.93.0\"\ncomponents = [\"clippy\"]\n"
   let observed = tc_default(rustc: "rustc 1.93.0 (abc)").observed
   let wrong_release = tc_default(rustc: "rustc 1.90.0 (abc)").observed
-  (match work_toolchain_admit(requirement: req, observed: observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
-    && (match work_toolchain_admit(requirement: req, observed: wrong_release) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
-    && (match work_toolchain_admit(requirement: work_declared_toolchain_requirement, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+  match work_toolchain_requirement(toolchain_file: file) {
+    Absent => false
+    Present { value: req } =>
+      (match work_toolchain_admit(requirement: req, observed: observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
+        && (match work_toolchain_admit(requirement: req, observed: wrong_release) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+        && (req.rustc_release_prefix as String) == "1.93.0"
+        && (match work_toolchain_requirement(toolchain_file: "[toolchain]\nchannel = \"1.90.0\"\n") { Present { value: other } => match work_toolchain_admit(requirement: other, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true }  Absent => false })
+        && (match work_toolchain_requirement(toolchain_file: "[toolchain]\ncomponents = []\n") { Present { value: _ } => false  Absent => true })
+  }
 }
 
 // (4) A new untracked file under a declared root is in the identity; one outside the roots refuses typed.

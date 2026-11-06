@@ -15,6 +15,7 @@ import std.env_binding { EnvBinding }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
+import std.list { first_where }
 import std.measure { byte_size_count }
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_listing_names_entry, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
@@ -134,7 +135,7 @@ import gunbc.materialization_store_budgets { materialization_store_durable_famil
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
 import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
-  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_declared_toolchain_requirement, work_unresolved_subject, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
@@ -291,7 +292,7 @@ fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: Compu
 // THE SUBJECT IS THE COMMIT'S TREE: a caller holds a commit (its committed head) and the identity is
 // the tree that commit names, read from git rather than trusted from the caller.
 type SubjectResolution
-  = SubjectResolved { subject: WorkSubject }
+  = SubjectResolved { subject: WorkSubject, toolchain_file: String }
   | SubjectResolutionRefused { detail: String }
 
 // THE DIRECTORY ADAPTER: ONE CAPTURE OVER A DIRECTORY, whichever way the bytes got there. The clean-tree
@@ -304,7 +305,7 @@ type SubjectResolution
 // bytes): Filesystem reads host text and a leaf body is NonEmptyStr, so an empty or non-text file under
 // a declared root refuses, typed and located, rather than hashing as something it is not.
 type SubjectManifestReading
-  = SubjectManifestRead { manifest: SourceManifestRef, files: Int }
+  = SubjectManifestRead { manifest: SourceManifestRef, files: Int, toolchain_file: String }
   | SubjectManifestRefused { detail: String }
 
 type SubjectFileReading
@@ -354,6 +355,14 @@ fn compute_directory_manifest(instance: HostDashboardInstance, directory: String
   }
 }
 
+// The subject's own rust-toolchain.toml bytes (a declared-source file), "" when it holds none.
+fn compute_toolchain_file_text(readings: List<SubjectFileReading>) -> String {
+  match readings |> flat_map(r => match r { SubjectFileRead { file } => if file.name as String == "rust-toolchain.toml" && file.directory as String == "." { [file.content as String] } else { [] }  SubjectFileRefused { detail: _ } => [] }) |> first_where(keep: t => true) {
+    Present { value: text } => text
+    Absent => ""
+  }
+}
+
 fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectManifestReading {
   let readings = map(paths, p => compute_subject_file(directory: directory, path: p))
   match readings |> filter(r => match r { SubjectFileRefused { detail: _ } => true  SubjectFileRead { file: _ } => false }) |> first() {
@@ -365,7 +374,7 @@ fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectM
         files: readings |> flat_map(r => match r { SubjectFileRead { file } => [file]  SubjectFileRefused { detail: _ } => [] }),
       ) {
         SnapshotIdentityRefused { cause } => SubjectManifestRefused { detail: join(["manifest identity refused: ", snapshot_identity_refusal_detail(cause: cause)], "") }
-        SnapshotIdentified { manifest, files, composition: _ } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files }
+        SnapshotIdentified { manifest, files, composition: _ } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files, toolchain_file: compute_toolchain_file_text(readings: readings) }
       }
   }
 }
@@ -375,7 +384,7 @@ fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectM
 fn compute_resolve_worktree_subject(instance: HostDashboardInstance, worktree: String) -> SubjectResolution {
   match compute_directory_manifest(instance: instance, directory: worktree) {
     SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
-    SubjectManifestRead { manifest, files: _ } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: WorktreeProvenance { path: worktree } } }
+    SubjectManifestRead { manifest, files: _, toolchain_file } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: WorktreeProvenance { path: worktree } } }
   }
 }
 
@@ -403,10 +412,10 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
               let removed = compute_exec(program: git, workdir: instance.repo_root as String, args: ["worktree", "remove", "--force", scratch])
               match reading {
                 SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
-                SubjectManifestRead { manifest, files: _ } =>
+                SubjectManifestRead { manifest, files: _, toolchain_file } =>
                   match removed {
                     ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["the subject scratch checkout could not be removed (git worktree remove exited ", to_string(value: exit_code), "): ", stderr], "") }
-                    ComputeExecOk { stdout: _, stderr: _ } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: GitTreeProvenance { tree: tree } } }
+                    ComputeExecOk { stdout: _, stderr: _ } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: GitTreeProvenance { tree: tree } }, toolchain_file: toolchain_file }
                   }
               }
             }
@@ -2999,31 +3008,41 @@ fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit:
   compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op)
 }
 
+fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation) -> ProvideResult {
+  let outcome = WorkRefusedByInfrastructure { identity: "", cause: cause }
+  ProvideFresh { outcome: outcome, document: work_outcome_wire_unresolved(o: outcome, op: op), host_record: HostRecordWritten }
+}
+
+// The subject is resolved FIRST because the declared release is read from the subject's own
+// rust-toolchain.toml; the observed toolchain is then admitted against that requirement.
 fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  match compute_observe_toolchain(instance: instance) {
-    ToolchainObservationRefused { detail } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: work_unresolved_subject, op: op)
-    ToolchainObserved { toolchain: observed } =>
-      match work_toolchain_admit(requirement: work_declared_toolchain_requirement, observed: observed) {
-        ToolchainMismatch { field, declared, observed: seen } =>
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainMismatchRefused { field: toolchain_mismatch_field_wire(field: field), declared: declared as String, observed: seen as String } }, subject: work_unresolved_subject, op: op)
-        ToolchainAdmitted { admitted: toolchain } =>
-      match compute_resolve_subject(instance: instance, commit: commit) {
-        SubjectResolutionRefused { detail } =>
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: work_unresolved_subject, op: op)
-        SubjectResolved { subject } =>
-          match compute_store(instance: instance) {
-            Absent =>
-              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
-            Present { value: store } =>
-              match op {
-                BuildGunbcBinaries { profile: _, bins: _ } =>
-                  compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-                CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-                RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+  match compute_resolve_subject(instance: instance, commit: commit) {
+    SubjectResolutionRefused { detail } => compute_refuse_unresolved(cause: SubjectUnresolved { detail: detail }, op: op)
+    SubjectResolved { subject, toolchain_file } =>
+      match work_toolchain_requirement(toolchain_file: toolchain_file) {
+        Absent => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: "the subject's rust-toolchain.toml names no channel, or the declared host target has no row in extdeps.rust.target_triple" } }, subject: subject, op: op)
+        Present { value: requirement } =>
+          match compute_observe_toolchain(instance: instance) {
+            ToolchainObservationRefused { detail } =>
+              compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: subject, op: op)
+            ToolchainObserved { toolchain: observed } =>
+              match work_toolchain_admit(requirement: requirement, observed: observed) {
+                ToolchainMismatch { field, declared, observed: seen } =>
+                  compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainMismatchRefused { field: toolchain_mismatch_field_wire(field: field), declared: declared as String, observed: seen as String } }, subject: subject, op: op)
+                ToolchainAdmitted { admitted: toolchain } =>
+                  match compute_store(instance: instance) {
+                    Absent =>
+                      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: MaterializationStoreUndeclared { instance_id: instance.instance_id as String } }, subject: subject, op: op)
+                    Present { value: store } =>
+                      match op {
+                        BuildGunbcBinaries { profile: _, bins: _ } =>
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                        CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                        RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                      }
+                  }
               }
           }
-      }
       }
   }
 }

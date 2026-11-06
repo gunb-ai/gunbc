@@ -1,7 +1,10 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.algebra { trim }
+import std.algebra { trim, split, starts_with, skip, take_prefix, filter, map }
+import std.list { first_where }
+import extdeps.rust.target_triple { render_rust_target_triple }
+import extdeps.toolchain.types { TargetTriple, X86_64, UnknownVendor, Linux, Gnu }
 import std.measure { Kibibyte, kibibyte_count }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.systemd.systemd_run { SystemdRunOptionWordsRefusedCause, systemd_run_option_words_refused_cause_detail }
@@ -100,16 +103,37 @@ data work_declared_source: SourceComposition = DeclaredRootsComposition {
   file_paths: ["Cargo.toml" as NonEmptyStr, "Cargo.lock" as NonEmptyStr, "rust-toolchain.toml" as NonEmptyStr],
 }
 
-// THE DECLARED TOOLCHAIN the fleet asks for: rust-toolchain.toml's channel and the fleet's host triple.
-data work_declared_toolchain_requirement: WorkToolchainRequirement = WorkToolchainRequirement {
-  target_triple: "x86_64-unknown-linux-gnu" as NonEmptyStr,
-  rustc_release_prefix: "1.93.0" as NonEmptyStr,
+// THE DECLARED TOOLCHAIN the fleet asks for. The HOST TARGET is a fact of this row, spelled through
+// extdeps.rust.target_triple (the one table of Rust's published triples), never a literal. The RELEASE
+// is not declared here at all: rust-toolchain.toml is the sole in-repo channel authority and it is part
+// of the declared source, so the release is read from the SUBJECT's own bytes (work_toolchain_requirement).
+data work_declared_target: TargetTriple = TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } }
+
+// `channel = "1.93.0"` in the subject's rust-toolchain.toml. A file naming no channel, or a target with
+// no row in the triple table, has no requirement: the caller refuses, it never defaults.
+fn work_toolchain_requirement(toolchain_file: String) -> WorkToolchainRequirement? {
+  match render_rust_target_triple(triple: work_declared_target) {
+    Absent => none
+    Present { value: spelling } =>
+      match toolchain_file_channel(text: toolchain_file) {
+        Absent => none
+        Present { value: channel } => Present { value: WorkToolchainRequirement { target_triple: spelling, rustc_release_prefix: channel } }
+      }
+  }
 }
 
-// A refusal before any subject exists still has a document; its manifest says so and cannot be a real one.
-data work_unresolved_subject: WorkSubject = WorkSubject {
-  manifest: "unresolved" as SourceManifestRef,
-  provenance: GitTreeProvenance { tree: git_null_sha1_object_id },
+fn toolchain_file_channel(text: String) -> NonEmptyStr? {
+  let lines = split(s: text, delimiter: "\n")
+    |> map(l => trim(s: l))
+    |> filter(l => starts_with(s: l, prefix: "channel"))
+  match first_where(lines, keep: l => true) {
+    Absent => none
+    Present { value: line } =>
+      match first_where(take_prefix(skip(split(s: line, delimiter: "\""), 1), 1), keep: q => q != "") {
+        Absent => none
+        Present { value: channel } => Present { value: channel as NonEmptyStr }
+      }
+  }
 }
 
 type CargoProfile = CargoRelease | CargoDebug
@@ -424,12 +448,21 @@ fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) ->
     GitTreeProvenance { tree } => [json_kv(key: "subject_tree", value: json_string(s: git_object_id_wire_hex(oid: tree) as String))]
     WorktreeProvenance { path } => [json_kv(key: "subject_worktree", value: json_string(s: path))]
   }
+  work_outcome_json_with(o: o, subject_members: concat([json_kv(key: "subject_manifest", value: json_string(s: subject.manifest as String))], provenance), op: op)
+}
+
+// A REFUSAL BEFORE ANY SUBJECT EXISTS has a document with no subject members: absence is stated by
+// absence, never by a placeholder manifest that could be mistaken for one.
+fn work_outcome_json_unresolved(o: WorkOutcome, op: WorkOperation) -> JsonValue {
+  work_outcome_json_with(o: o, subject_members: [], op: op)
+}
+
+fn work_outcome_json_with(o: WorkOutcome, subject_members: List<JsonKeyValue>, op: WorkOperation) -> JsonValue {
   let base = concat([
     json_kv(key: "ending", value: json_string(s: work_outcome_ending(o: o))),
     json_kv(key: "identity", value: json_string(s: work_outcome_identity(o: o))),
-    json_kv(key: "subject_manifest", value: json_string(s: subject.manifest as String)),
     json_kv(key: "operation", value: json_string(s: work_operation_canonical(op: op))),
-  ], provenance)
+  ], subject_members)
   json_object(members: concat(base, match o {
     WorkSucceeded { identity: _, outputs, log_path } => [
       json_kv(key: "outputs", value: json_array(elements: map(outputs, x => work_output_json(o: x)))),
@@ -453,6 +486,10 @@ fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) ->
 
 fn work_outcome_wire(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) -> String {
   serialize_json(v: work_outcome_json(o: o, subject: subject, op: op))
+}
+
+fn work_outcome_wire_unresolved(o: WorkOutcome, op: WorkOperation) -> String {
+  serialize_json(v: work_outcome_json_unresolved(o: o, op: op))
 }
 
 // Reading a stored outcome back: what an attaching caller needs is the ending and the identity, and
