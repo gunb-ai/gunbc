@@ -161,7 +161,7 @@ type RefuseCause
   = BranchAbsent
   | BranchUndetermined { reason: String }
   | WorktreeUnobserved { cause: String }
-  | CaptureUnreadable { reason: String }
+  | CaptureStoreUnreadable { reason: String }
   | CaptureOwed { reason: String }
   | SegmentDamaged { segment: String }
   | LedgerUnobservable { reason: String }
@@ -240,7 +240,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
           AttemptWorktreePresent { path: _ } =>
         match prior.capture {
           CaptureUnreadable { reason } =>
-            Refuse { cause: CaptureUnreadable { reason }, reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
+            Refuse { cause: CaptureStoreUnreadable { reason }, reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
           CaptureAbsent =>
             continuation_from_absent_capture(prior: prior)
           // THE CAPTURE IS OWED -- do NOT continue, and do NOT relabel the obligation as handed-in-nothing.

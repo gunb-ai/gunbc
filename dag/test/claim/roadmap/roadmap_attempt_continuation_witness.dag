@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
-  RefuseCause, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureUnreadable, CaptureOwed, SegmentDamaged,
+  RefuseCause, BranchAbsent, BranchUndetermined, WorktreeUnobserved, CaptureStoreUnreadable, CaptureOwed, SegmentDamaged,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
@@ -268,7 +268,7 @@ test fn a_stopped_segment_is_a_refusal_not_a_fallback() -> Bool {
   let unreadable = pri(capture: CaptureUnreadable { reason: "the capture directory could not be listed" }, verification: none, review: none, goal_audit: none)
   let stopped = pri(capture: ready_capture(), verification: segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentStopped, detail: "stopped"), review: none, goal_audit: none)
   (match continuation_plan(obs: Present { value: unreadable }) {
-    Refuse { cause: CaptureUnreadable { reason: _ }, reason: r } => r.contains("the capture directory could not be listed")
+    Refuse { cause: CaptureStoreUnreadable { reason: _ }, reason: r } => r.contains("the capture directory could not be listed")
     _ => false
   })
     && (match continuation_plan(obs: Present { value: stopped }) {
