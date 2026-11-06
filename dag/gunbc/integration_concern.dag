@@ -907,9 +907,29 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_applied_arguments_by_target") }],
       },
       account: "SAME PREDICATE FAMILY, SECOND DOOR: THE BY-TARGET TABLE AT MEMBER POSITION. #15972's equality_applied_arguments_by_target judged an OCCURRING applied argument by equality_applied_argument_is_structural -- COMPARABILITY -- while the emitted by-target member comparison IS a raw Rust == (equality_synth_binop, the EqualityByTarget arm) and emitted structural data carries no PartialEq (emit_data_def, 05_emit_rust.dag). DemandEngine<NativeDemandValue> as a MEMBER of NativeDemandRun/NativeDemandPlan: the V occurrence sits nested inside an applied member (entries: Map<DemandIdentity, DemandEntry<V>>), the occurs test read only bound TypeVariable leaves, the argument went unjudged, the whole application went by-target, and the synthesized body emitted Rust == on a type no PartialEq covers -- the exact E0369 class the #15175 wall (routed members inside a generic application) exists to prevent; the wall text is even quoted verbatim at this call site. HOTFIX (this commit, per silent-bee-845 msg_ab891e4a, CI judges): equality_type_variable_occurs also reads the authored parameter spelling (n.name == id), and an occurring argument must be BOTH structural AND named true by the by-target table (equality_argument_by_target conjoined). Pre-#15972 behaviour is restored at exactly this position: typed refusal, absorbed as residue-C ModuleUnavailable (f7ded42ed7e3, #15959) -- the comparison is ABSENT from the emitted compiler, never a raw ==. #15972 admissions are kept: type-argument CHILDREN compared by bound spelling (host_effect CreateCause<K>) and phantom-parameter arguments are untouched. DELETION LIST for this sighting when the end-state lands: the equality_argument_by_target conjunct and the n.name == id arm of equality_type_variable_occurs in src/v1/04_infer.dag, replaced by routing the member comparison to the concrete target's derived equality fn -- END-STATE OWNED BY adhoc-a166f310-af0 (silent-bee-845), together with the transitive skipped-body residual above; the paired PRE-REGISTERED RED row nested_structural_argument_equality_end_state_computes in dag/test/claim/self_host_equality_admission_witness.dag marks the boundary: while it fails, the comparison is refusal-absorbed; when it passes with the wall row, routing is real.",
+    }, ConcernSighting {
+      revision: "4f581cb5f3ca70a97fe31b369d8e82bf17b0437a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted") }],
+      },
+      account: "ROOT FIX LANDED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND): the question is answered YES. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through declared-module ownership (call_target_for_direct_call) and emitted as crate::<declaring>::::<fn>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared) reads the symbol-index census at the qualified name. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof: v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus; witness cells container_holder_stays_admitted_with_no_helper_import_by_identity, cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity, sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag.",
     }],
   },
-  disposition: Open,
+  disposition: Integrated {
+    evidence: IntegrationEvidence {
+      integrated_at: "4f581cb5f3ca70a97fe31b369d8e82bf17b0437a" as CommitSha,
+      superseded: [],
+      replacement: FreeSemigroup {
+        head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+        tail: [],
+      },
+      executions: FreeSemigroup {
+        head: RetainedExecutionResult { control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "container_holder_stays_admitted_with_no_helper_import_by_identity"), run: "PENDING: v2-bootstrap at heal-published mirror head of #15992 (exact-head pin recorded on the PR before merge)", conclusion: "pending" },
+        tail: [RetainedExecutionResult { control: decl_ref(module_path: "test.claim.self_host_equality_admission_witness", decl_name: "cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity"), run: "PENDING: same run", conclusion: "pending" }],
+      },
+    },
+  },
 }
 
 // Separate integration obligations by their semantic owners; none grants the whole lifecycle.
