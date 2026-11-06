@@ -418,7 +418,7 @@ fn compute_resolve_worktree_subject(instance: HostDashboardInstance, worktree: S
 }
 
 // THE CLEAN-TREE ADAPTER (option A of the PR 2 ruling): the commit is checked out detached into a
-// throwaway directory keyed by its tree, that directory is hashed by the same capture, and the
+// throwaway directory unique to the call (named for its tree, made by mktemp -d), that directory is hashed by the same capture, and the
 // directory is removed. The identity-keyed checkout the run uses later comes from the same commit, so
 // the bytes hashed are the bytes that run. KNOWN DUPLICATE MATERIALIZATION: the provider checks the
 // commit out twice. Its dissolution trigger is PR 5's executor extraction, which computes identity
@@ -432,8 +432,26 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
       match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
         Absent => SubjectResolutionRefused { detail: join(["git show printed no tree object id for ", commit, ": ", trim(s: stdout)], "") }
         Present { value: tree } => {
-          let scratch = join([compute_root(instance: instance) as String, "/subject/", git_object_id_wire_hex(oid: tree) as String], "")
-          let added = compute_exec(program: git, workdir: instance.repo_root as String, args: shape_git_worktree_add_detached_argv(path: scratch as FilePath, commit: commit as GitRef))
+          let env = env_absolute_program().invocation as String
+          let parent = join([compute_root(instance: instance) as String, "/subject"], "")
+          // A UNIQUE scratch per call (mktemp -d), never keyed by the tree: two callers holding one commit
+          // must not share a checkout, and a crashed call leaves a directory no later call collides with.
+          let made = match compute_exec(program: env, workdir: instance.repo_root as String, args: ["mkdir", "-p", parent]) {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => ComputeExecFailed { exit_code: exit_code, stdout: "", stderr: stderr }
+            ComputeExecOk { stdout: _, stderr: _ } => compute_exec(program: env, workdir: instance.repo_root as String, args: ["mktemp", "-d", join([parent, "/", git_object_id_wire_hex(oid: tree) as String, ".XXXXXX"], "")])
+          }
+          match made {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["subject scratch directory could not be made (exit ", to_string(value: exit_code), "): ", stderr], "") }
+            ComputeExecOk { stdout: made_path, stderr: _ } => compute_resolve_in_scratch(instance: instance, commit: commit, tree: tree, scratch: trim(s: made_path))
+          }
+        }
+      }
+  }
+}
+
+fn compute_resolve_in_scratch(instance: HostDashboardInstance, commit: String, tree: GitObjectId, scratch: String) -> SubjectResolution {
+  let git = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  let added = compute_exec(program: git, workdir: instance.repo_root as String, args: shape_git_worktree_add_detached_argv(path: scratch as FilePath, commit: commit as GitRef))
           match added {
             ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git worktree add (subject scratch) exited ", to_string(value: exit_code), ": ", stderr], "") }
             ComputeExecOk { stdout: _, stderr: _ } => {
@@ -449,8 +467,6 @@ fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> S
               }
             }
           }
-        }
-      }
   }
 }
 
