@@ -6,10 +6,10 @@ import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
 import gunbc.ci.ci_run_step_target {
-  gunbc_ci_tier_o_drift_check_target,
   gunbc_ci_heal_publication_admit_target,
   gunbc_ci_heal_publication_publish_target,
 }
+import extdeps.bazel.label { Label, PackagePath, TargetName }
 // THE FEDERATION IS LEASED, NOT RE-SPELLED (DESIGN 3b): the record of which workload identity provider,
 // which service account and which secret a publisher federates to belongs to this module's neighbour, so
 // the profile row names which federation a publisher uses and never carries those strings itself.
@@ -71,7 +71,8 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 //   is in it. Keeping content out is also what lets the public profile row exist without the public
 //   repository acquiring mirror subjects.
 // - the SUBJECTS that regenerate or publish. Those are DagInvocation rows: an entry path and a function
-//   name, named by the repository that owns them.
+//   name, named by the repository that owns them. THE DRIFT CHECK SUBJECT is the same kind of fact in a
+//   different shape: a LABEL, because the lane runs `gunbc test <label>` (see ProjectionDrift.check).
 
 // AN INVOCATION OF A SUBJECT: which .dag file, which function in it. Carried rather than imported so a
 // profile can name a subject the public repository cannot resolve.
@@ -225,7 +226,15 @@ type ProjectionDrift {
   // (so an infrastructure change is caught by something other than the next commit); Absent for one whose
   // drift is only ever checked at checkout, where the emitter adds no schedule trigger at all.
   cron: Optional<CronSchedule>
-  check: DagInvocation
+  // THE SUBJECT THIS JOB POLICES, as the LABEL the lane runs (`gunbc test <label>`, DESIGN 'Building &
+  // checks': the verdict comes from a binary built from the seed's emission, not from handing the corpus to
+  // the v1 interpreter). Carried as writable-by-construction parts rather than imported from
+  // gunbc.instrument_targets for the same reason DagInvocation is carried: a mirror names subjects the
+  // public repository cannot resolve, and the profile row stays off that registry's closure. The carried
+  // copy is pinned equal to the registry's authority by
+  // test.claim.drift_verdict_route_witness.the_drift_row_names_the_instrument_the_registry_binds, so the
+  // two statements cannot drift apart.
+  check: Label
   seal: Optional<HealSeal>
 }
 
@@ -405,11 +414,14 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
             day_of_week: Wildcard
           }
         },
-        // THE CHECK SUBJECT, read from its authority (gunbc.ci.ci_spec) rather than re-typed: the drift
-        // watch and the CI spec must not hold two copies of which claim polices the generated files.
-        check: DagInvocation {
-          entry: gunbc_ci_tier_o_drift_check_target.entry,
-          function: gunbc_ci_tier_o_drift_check_target.function
+        // THE CHECK SUBJECT: the instrument LABEL, carried by the rule stated at ProjectionDrift.check and
+        // pinned there to the registry's authority by the profile witness. It is no longer a DagInvocation
+        // read off gunbc.ci.ci_spec's run-step target: that pair named a function for the v1 interpreter,
+        // which is the route this lane retires. gunbc.ci.ci_spec still declares that target for the declared-
+        // target census, and nothing here reads it.
+        check: Label {
+          package: PackagePath { segments: ["gunbc", "instruments"] },
+          target: TargetName { name: "tier-o-drift-check" }
         },
         seal: Absent
       }
