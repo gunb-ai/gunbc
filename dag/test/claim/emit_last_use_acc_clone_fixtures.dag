@@ -86,11 +86,17 @@ data retain_capture_source: String = concat(preamble(), fixture_lines(lines: [
 // and the frozen rule (its sole use, on one path, is the move site) does not admit a move. The
 // branch-end admission that folds have (`fold_body_branch_ends_move_acc`) is not re-derived here;
 // this text pins that a two-arm lambda keeps its clone.
+// The String-length spelling is the in-tree precedent, not a guess: `std.types` `string_non_empty`
+// (dag/std/types.dag:329-331) tests `value.length() > 0` on a String — parenthesized `.length()` —
+// and `extdeps.container.oci.reference` `oci_path_component_syntax` (dag/extdeps/container/oci/
+// reference.dag:113-115) spells it the same way. v4's bare FAILs on this fixture's two cells
+// coincided with the earlier, unparenthesized spelling, which was an UNCONFIRMED candidate; the
+// header of the control module records the deduction and its limits.
 data retain_branch_arms_source: String = concat(preamble(), fixture_lines(lines: [
   "",
   "fn join_branch(prefix: String, suffix: String) -> String {",
   "  apply_combine(seed: prefix, sep: suffix, combine: fn(acc, x) {",
-  "    if x.length == 0 { acc } else { concat(acc, x) }",
+  "    if x.length() > 0 { concat(acc, x) } else { acc }",
   "  })",
   "}"
 ]))

@@ -45,6 +45,10 @@ module test.claim.emit_last_use_acc_clone_control
 // ten refusals were this line's absence: a made-up `src/test_claim_lastuse_*.rs` names no module of
 // the compiled closure (the refusal arm in `compile_dag_rust_emit_check_uncached`,
 // src/v1/stage0/src/cli_run/emit_host.rs).
+//
+// THE V4 DEDUCTION, STATED EXACTLY. In `compile_dag_rust_emit_check_uncached` the hard-diagnostics
+// check precedes the read-path lookup, so a bare FAIL with a wrong read path can only be the
+// HardDiagnostics arm; the diagnostic text is unknown; `.length` was an UNCONFIRMED candidate.
 
 import std.types { String }
 import test.claim.emit_last_use_acc_clone_fixtures {
