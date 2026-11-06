@@ -61,7 +61,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties, AttemptUnitAbsent }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.operator_session_lease_release { operator_release_succeeded }
-import gunbc.roadmap.roadmap_session_placement { SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, session_operator_settle_one, session_operator_settle_decide, session_settle_execute, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SettleRetireUncharged, SessionSettlementRetiredUncharged, session_settle_release }
+import gunbc.roadmap.roadmap_session_placement { session_placement_open_for_acquisition, SessionPlacementOpened, SessionPlacementOpenRefused, SessionPlacementGrant, SessionPlacementStores, session_unit_wire, session_attempt_record, session_placement_record_of, session_placement_record_json, session_placement_record_write, session_placement_record_basename, session_placement_release_basename, session_attempt_identity, session_placement_note_basename, SessionPlacementObservation, SessionPlacementObserved, SessionPlacementAbsent, SessionPlacementUnreadable, SessionPlacementForeign, SessionPlacementUnnameable, SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign, SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable, session_placement_observation_of, session_placement_observe_at, SessionAbandonment, session_placement_abandon_at, SessionSettleDecision, SettleTerminateAndRelease, SettleReleaseOnly, SettleKeep, SettleDone, session_settle_decide, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_placement_settle_pass_at, session_placement_settle_pass, session_worker_unit_lifecycle_with_standing, session_operator_settle_one, session_operator_settle_decide, session_settle_execute, SessionHolderEvidence, SessionHolderEvidenceReading, SessionHolderEvidenceRead, SessionHolderEvidenceRefused, SessionSettlement, SessionSettlementReleaseAttempted, SessionSettlementKept, SessionSettlementDone, SessionSettlementRefused, SettleRetireUncharged, SessionSettlementRetiredUncharged, session_settle_release }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemFileObservation, filesystem_listing_observation, filesystem_read_outcome, filesystem_file_observation,
 }
@@ -1584,8 +1584,10 @@ test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_
   let dir = fresh_dir(tag: "cutover-cross")
   match stores_at(dir: dir) {
     Absent => false
-    Present { value: s } => {
-      let record = attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: s.slots)
+    Present { value: s } => match worker_store_at(dir: dir) {
+      Absent => false
+      Present { value: target_store } => {
+      let record = attempt_slots_cutover_pass_for_instance(instance_id: srv1_dashboard_lab_id, target: target_store)
       let outcome = belt_attempt_slots_cutover_record_write(stores: s, record: record)
       let path = attempt_slots_cutover_record_path(stores: s, instance_id: srv1_dashboard_lab_id)
       let read_back = Filesystem.Read(path: path as FilePath)
@@ -1608,6 +1610,7 @@ test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_
         && string_contains(s: read_back.content, pattern: "row-refused")
         && !slot_is_launching(dir: dir)
         && !slot_is_terminal(dir: dir)
+      }
     }
   }
 }
@@ -1620,15 +1623,15 @@ test fn the_cutover_pass_refuses_another_instances_row_and_writes_a_record_that_
 // and the store the pass reads still holds no slot for that reference.
 test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_carry_and_carries_nothing() -> Bool {
   let dir = fresh_dir(tag: "cutover-absent")
-  let stores = stores_at(dir: dir)
+  let stores = worker_store_at(dir: dir)
   let row = moved_row(dir: dir)
   let census = match stores {
     Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
-    Present { value: s } => attempt_slots_census(target: s.slots, moved: row)
+    Present { value: s } => attempt_slots_census(target: s, moved: row)
   }
   let carry = match stores {
     Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "session-wet" as NonEmptyStr }
-    Present { value: s } => attempt_slots_carry(target: s.slots, moved: row)
+    Present { value: s } => attempt_slots_carry(target: s, moved: row)
   }
   let old_root = old_slots_dir(dir: dir)
   (old_root != "")
@@ -1638,7 +1641,7 @@ test fn a_replaced_root_that_was_never_created_is_proven_absent_to_census_and_ca
     && !slot_is_terminal(dir: dir)
     && (match stores {
       Absent => false
-      Present { value: s } => match attempt_slot_keys(store: s.slots.slots) {
+      Present { value: s } => match attempt_slot_keys(store: s.slots) {
         AttemptSlotKeysListed { keys: ks } => length(ks) == 0
         _ => false
       }
