@@ -32,11 +32,11 @@ data stub_loop_value_claims_lose_value_path_at_admission: RungDrop = RungDrop {
       "v2.test.claim.execution.long.loop_eval_by_execution loop_fixture_wrong_value_red_holds",
       "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_executes_holds",
       "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_wrong_value_red_holds",
-      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds",
+      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds (also its emit-vs-eval ROUTE: v2.compiler.emit_host run_test_claim_emit_vs_eval is no longer called by either emit_host_loop claim, so the emitted-host run of a Loop fixture is unexercised here)",
       "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_wrong_fixture_refuses_holds",
       "v2.test.claim.manual.loop_demand_driven_eval loop_demand_driven_eval_keystone_holds",
       "v2.test.claim.execution.long.add_arrow_eval_by_execution add_arrow_eval_lazy_arm_loop_suppression_holds"
     ] } },
-    restoration_trigger: "the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and emit_host_loop_wrong_fixture_refuses_holds claims) regains its wrong-value RED when that capability is executed, not when the driver is merely enrolled."
+    restoration_trigger: "the emit-vs-eval route over a fold-realized Loop is re-entered by the two emit_host_loop claims, and the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and emit_host_loop_wrong_fixture_refuses_holds claims) regains its wrong-value RED when that capability is executed, not when the driver is merely enrolled."
   } }
 }
