@@ -121,7 +121,6 @@ fn workspace_write_admission(
     ServeActionPublishNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionCloseNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
     ServeActionRetireNode => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
-    ServeActionRetireLineage => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "not a workspace action" })
   }
 }
 

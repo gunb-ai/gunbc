@@ -365,7 +365,6 @@ type ServeRouteAction
   // route's only refusals are unknown node, already terminal, unauthenticated, stale revision.
   | ServeActionCloseNode
   | ServeActionRetireNode
-  | ServeActionRetireLineage
 
 fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
   match action {
@@ -381,7 +380,6 @@ fn serve_route_action_label(action: ServeRouteAction) -> NonEmptyStr {
     ServeActionPublishNode => "publish-node" as NonEmptyStr
     ServeActionCloseNode => "close-node" as NonEmptyStr
     ServeActionRetireNode => "retire-node" as NonEmptyStr
-    ServeActionRetireLineage => "retire-lineage" as NonEmptyStr
   }
 }
 
@@ -640,17 +638,6 @@ fn human_action_authorization_decision(
         ServeActionPublishNode => Permit
         ServeActionCloseNode => Permit
         ServeActionRetireNode => Permit
-        ServeActionRetireLineage =>
-          if principal_in_approve_roster(principal: session.principal, roster: policy.approve_roster) {
-            Permit
-          } else {
-            write_refused(
-              route_path: route_path,
-              action: action,
-              security: security,
-              cause: AccessActionNotGranted { action: serve_route_action_label(action: action) as String },
-            )
-          }
         ServeActionCreateAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionReleaseAllocation => write_refused(route_path: route_path, action: action, security: security, cause: AccessActionNotGranted { action: "allocation-specific authorization required" })
         ServeActionApproveDecision =>
