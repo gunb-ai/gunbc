@@ -142,7 +142,6 @@ test fn reaped_unobserved_worktree_not_terminal_refuses_never_joins_or_restores(
 }
 
 fn capture_for(submission: WorkerSubmission) -> CaptureForHead {
-  let commit = capture_for_commit(submission: submission)
   CaptureForHead {
     capture: SubmissionCapture {
       head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

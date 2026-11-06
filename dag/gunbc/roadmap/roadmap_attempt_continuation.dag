@@ -170,6 +170,11 @@ type RefuseCause
   | CaptureOwed { reason: String }
   | SegmentDamaged { segment: String }
   | LedgerUnobservable { reason: String }
+  // RecoveryRecordMalformed -- the prior attempt's recovery record exists but is unreadable (its recorded
+  // fields do not line up), so neither a resume nor a next attempt is established for a worker that handed
+  // in nothing. Distinct from an unreadable SUBMISSION STORE (CaptureStoreUnreadable): this is the recovery
+  // carrier, read alongside the capture on the present-worktree path.
+  | RecoveryRecordMalformed { mismatch: String }
 
 // THE ONE DECISION FUNCTION, shared by the operator's CONTINUE verb and the belt's wake.
 // It reads ONLY the prior execution observation, never a desired state. No prior at all is the
@@ -296,6 +301,7 @@ fn continuation_from_absent_capture(prior: PriorExecutionObservation) -> Continu
       continuation_next_attempt(prior: prior, why: "its worker ended without handing in a candidate; the attempt's event stream records how the session ended, and the new attempt starts from the existing branch head so any committed work is kept")
     SessionRecoveryMalformed { mismatch: mismatch } =>
       Refuse {
+        cause: RecoveryRecordMalformed { mismatch },
         reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor a next attempt is established: ", mismatch], ""),
       }
     SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: _ } =>
