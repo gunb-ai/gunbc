@@ -2022,14 +2022,19 @@ fn metering_persist_record(instance: HostDashboardInstance, node_id: RoadmapNode
   }
 }
 
-// A Final record is never rewritten. An attempt still in the workflow ledger is metered against its
-// open roster (never Final); one that has left it is sealed first, then metered against the seal.
+// A Final record is never rewritten, ONCE: the refusal lives in metering_persist_record's guard over
+// the head and in the commit-time expectation (a commit over a moved head loses the race, and
+// metering_head_verdict names the winner) -- not also in a short-circuit here. This function observes
+// the head and delegates every case; an early MeteringAlreadyFinal answer here was a second
+// representation of the same refusal (DESIGN 2) and was deleted.
+// An attempt still in the workflow ledger is metered against its open roster (never Final); one that
+// has left it is sealed first, then metered against the seal.
 fn metering_persist_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, departed: Bool) -> MeteringPersist {
   if trim(attempt_key) == "" {
     MeteringPersistRefused { cause: "the attempt carries no key, so no attempt-state path names it" }
   } else {
     match metering_observe_for_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-      MeteringObserved { record: _ } => MeteringAlreadyFinal
+      MeteringObserved { record: _ } => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
       MeteringProvisional { record: _ } => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
       MeteringNotYetWritten => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
       MeteringRefused { cause: _ } => metering_persist_current(instance: instance, node_id: node_id, attempt_key: attempt_key, departed: departed)
