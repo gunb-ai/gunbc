@@ -6,7 +6,6 @@ module test.claim.compute.work_source_identity_witness
 // route is the provider's wet run. The pure half is the identity rule both adapters share.
 
 import std.types { String, Bool, NonEmptyStr, List }
-import std.algebra { join }
 import std.optional { Optional, Present, Absent }
 import product.fabric.work { SourceManifestRef }
 import extdeps.git.object_store { git_null_sha1_object_id }
