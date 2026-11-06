@@ -347,6 +347,29 @@ test fn serving_fn_calling_a_test_fn_is_refused_holds() -> Bool {
   ) == "resolve_reason_test_code_referenced"
 }
 
+// RED, THE CREDENTIAL-ACQUISITION WIRE SHAPE (gunbc#15926 line): the fourteen systemd rows in
+// test.claim.dispatch_credential_acquisition_witness are reached by an UNMARKED `fn
+// credential_acquisition_systemd_rows_wire`, the CLI entry the instrument fleet dispatches -- and the
+// instrument roster names that wire as "the only route that executes these rows at all", so the
+// witness runner never enters them. The row `serving_fn_calling_a_test_fn_is_refused_holds` above
+// asserts the reference as an ATOM; this row asserts the shape the wire actually builds -- an
+// unmarked fn whose body is a CALL (wall_call, the constructor normalize emits for `row_x()`, and
+// already inhabited by `inhabitance_module`'s `peer_leaf` member) into a test-marked row. It is the
+// authorable RED that says: the wall still fires on the credential wire edge, so the repair is to
+// demote the rows to ordinary fn (what the wire legitimately consumes), NEVER to loosen this refusal.
+test fn an_unmarked_wire_fn_calling_a_test_row_is_refused_holds() -> Bool {
+  wall_resolve_alone(
+    subject_segment: ^same,
+    subject: wall_tree(
+      root: wall_module_root(leaf_segment: ^same, members: [
+        wall_member(name: ^systemd_row, body: wall_atom(identity: ^dag_token_kw_true)),
+        wall_member(name: ^systemd_rows_wire, body: wall_call(callee: ^systemd_row))
+      ]),
+      marked: [^systemd_row]
+    )
+  ) == "resolve_reason_test_code_referenced"
+}
+
 // RED: serving code calling a test fn another module declares.
 test fn serving_code_calling_another_modules_test_fn_is_refused_holds() -> Bool {
   wall_resolve(
