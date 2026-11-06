@@ -42,7 +42,7 @@ import gunbc.compute.compute_seat_ensure {
   compute_seat_ensure_in,
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRan, SeatDischargeRefused, compute_seat_discharge_all,
   SeatDischargeStanding, SeatDischargePassRefused, seat_discharge_pass_standing,
-  seat_exit_entries_undecodable, seat_outcome_is_refused,
+  seat_exit_entries_undecodable, seat_worker_exit_owners,
 }
 
 // KILL-AT-EACH-TRANSITION CONTROLS FOR THE COMPUTE SEAT (gunbc.recurring_failure_mode
@@ -1005,13 +1005,13 @@ fn absent_of(root: String) -> String {
 }
 
 // AN UNDECODABLE EXIT ENTRY IS NAMED, NOT SWALLOWED. A spool entry whose name resolves to no subject is
-// not "no exit": it proves no seat's ending (seat_worker_exit_owners claims no ended owner from it) and
-// it must not disappear from the record either - silently dropping it is what let a seat whose exit entry
-// could not be decoded look live without end. srv1 carries such an entry from 2026-10-28, written outside
-// systemd's own ExecStopPost expansion with its variables unexpanded. The pass now carries a located
-// refusal for it; the refusal is NOT a death proof and releases nothing, because a seat release needs
-// holder death bound to the holder's identity (the manager that ran the unit, its boot, and the
-// InvocationID where the observer can key one).
+// not "no exit": it proves no seat's ending (seat_worker_exit_owners claims no ended owner from it) and it
+// must not disappear from the record either - silently dropping it is what let a seat whose exit entry could
+// not be decoded look live without end. srv1 carries such an entry from 2026-10-28, written outside
+// systemd's own ExecStopPost expansion with its variables unexpanded. The pass now carries a located refusal
+// for it; that refusal is NOT a death proof and releases nothing, because a release needs holder death bound
+// to the holder's identity (the manager that ran the unit, its boot, and the InvocationID where
+// gunbc.systemd_unit_invocation_liveness can key one).
 test fn an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending() -> Bool {
   let root = fresh_root()
   let ok = an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending_cell(root: root)
@@ -1020,33 +1020,32 @@ test fn an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending() ->
 }
 
 fn an_undecodable_exit_entry_is_named_by_the_pass_and_claims_no_ending_cell(root: String) -> Bool {
-  made(path: lease_dir_at(root: root))
-    && made(path: join([attempt_exit_spool_stage_dir(root: root, stage: AttemptExitRefused), "/node-a+key-a+worker"], ""))
-    && with_leases(root: root, body: fn(l) {
-      let listings = attempt_exit_stage_listings(instance_root: root)
-      match seat_exit_entries_undecodable(listings: listings).first() {
-        Absent => false
-        Present { value: u } =>
-          string_contains(s: u.entry_name, pattern: "node-a+key-a+worker")
-            && string_contains(s: u.reason, pattern: "seven")
-            && (match seat_worker_exit_owners(listings: listings).first() {
-              Absent => match compute_seat_discharge_all(instance: instance_at(root: root), leases: l, subject: subject_at(root: root), appropriation: witness_appropriation(), source: ended()) {
-                SeatDischargeRan { outcomes: os } => match (os |> filter(o => seat_outcome_is_refused(o: o))).first() {
-                  Present { value: _ } => true
-                  Absent => false
-                }
-                SeatDischargeRefused { reason: _ } => false
-                SeatDischargeSkipped { why: _ } => false
-              }
-              Present { value: _ } => false
-            })
-      }
-    })
+  let subject = subject_at(root: root)
+  opened(root: root, reference: "r-und", owner: dispatch_owner())
+    && reserved(subject: subject, reference: "r-und")
+    && launching(root: root, reference: "r-und")
+    && spool_unrecorded(root: root)
+    // The spool's own reader lists stage DIRECTORIES, so an entry is a directory whose NAME is the record -
+    // here a name whose systemd variables were never substituted, which is not a seven-part record.
+    && made(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: AttemptExitRefused), "/node-a+key-a+worker"], ""))
+    && (match seat_exit_entries_undecodable(listings: attempt_exit_stage_listings(instance_root: root)).first() {
+         Present { value: u } => string_contains(s: u.entry_name, pattern: "node-a+key-a+worker") && string_contains(s: u.reason, pattern: "seven")
+         Absent => false
+       })
+    // The pass carries it as a refusal located at the entry, and claims no seat's ending: nothing is released
+    // and the charge stays, with a live unit the pass could otherwise have stopped.
+    && driver_ran(root: root, source: stoppable(), check: os =>
+         any(os, o => match o {
+           SeatEnsureRefused { reference: r, reason: why } => string_contains(s: r, pattern: "exit-entry/node-a+key-a+worker") && string_contains(s: why, pattern: "node-a+key-a+worker")
+           _ => false
+         })
+         && !any(os, o => is_released(o: o)))
+    && committed(subject: subject) == granted_kib
 }
 
 // CONTROL, decodable entry: the same spool read with a well-formed entry name claims the ended owner and
-// reports NOTHING undecodable. Without this row the row above could be satisfied by a reader that simply
-// reports every entry as undecodable.
+// reports NOTHING undecodable. Without this row the row above could be satisfied by a reader that reports
+// every entry as undecodable.
 test fn a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable() -> Bool {
   let root = fresh_root()
   let ok = a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable_cell(root: root)
@@ -1057,10 +1056,10 @@ test fn a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_un
 fn a_decodable_exit_entry_claims_the_ended_owner_and_nothing_is_reported_undecodable_cell(root: String) -> Bool {
   exit_recorded(root: root, key: "key-a")
     && (match seat_exit_entries_undecodable(listings: attempt_exit_stage_listings(instance_root: root)).first() {
-      Absent => match seat_worker_exit_owners(listings: attempt_exit_stage_listings(instance_root: root)).first() {
-        Present { value: o } => o.node_id == "node-a" && o.attempt_key == "key-a"
-        Absent => false
-      }
-      Present { value: u } => false
-    })
+         Present { value: _ } => false
+         Absent => match seat_worker_exit_owners(listings: attempt_exit_stage_listings(instance_root: root)).first() {
+           Present { value: o } => o.node_id == "node-a" && o.attempt_key == "key-a"
+           Absent => false
+         }
+       })
 }
