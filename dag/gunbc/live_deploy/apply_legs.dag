@@ -87,6 +87,7 @@ import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitGrammarRefused,
   approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
   attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
   attempt_unit_spool_answer_mode, publication_spool_request_mode,
@@ -979,6 +980,8 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
     LiveDeployServeUnitOidcReadbackRefused { cause: c } =>
       ApplyPlanRefused { step: "serve-unit", reason: join(["live-deploy apply refused: the serve unit's OIDC readback was refused (", c as String, "), so no unit, reload or restart is applied (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+      ApplyPlanRefused { step: "serve-unit", reason: join(["live-deploy apply refused: the admitted serve binary ", bp as String, " cannot answer the seed CLI grammar the unit spells (", r as String, "); name the source at admission (gunbc.live_deploy.serve_binary.admit_fixed_serve_path) so the emitter knows what it is standing up (DESIGN 5: refuse, never widen)"], "") }
     LiveDeployServeUnitEmitted { file: f } =>
       deploy_apply_chain(
         first: if !plan_writes_unit(plan: plan) { ApplyPlanReady { legs: [] } } else {

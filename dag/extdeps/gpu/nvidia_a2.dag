@@ -11,9 +11,8 @@ import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation, CitedFigureStanding, CitedToAuthority }
-import extdeps.gpu.passive_card_row {
-  CardRow, FromCitedFigure, NeedsReading, CardLength, LengthFromBracketFace, AirflowBidirectional,
-}
+import extdeps.gpu.passive_card_row { CardRow, CardLength, LengthFromBracketFace, AirflowBidirectional }
+import extdeps.cited_field { FromCitedFigure, NeedsReading }
 import extdeps.standards.pcie_cem { CemLowProfile, CemLowProfileBracket, CemFullHeightBracket }
 import extdeps.uri { Uri, Https }
 
