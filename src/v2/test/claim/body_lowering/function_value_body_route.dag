@@ -71,8 +71,8 @@ fn fvb_verdict_in(context: NativeTestContext, module: String) -> FvbVerdict {
     Accepted { value: _, diagnostics: _ } => FvbInferred
     Rejected { diagnostics: d } =>
       FvbRefused {
-        reason: d.head.reason,
-        at_atom: match d.head.at {
+        reason: diagnostics_fatal_reason(d: d),
+        at_atom: match diagnostics_fatal(d: d).at {
           NodeLocus { anchor: a } => node_atom_identity_optional(node: a.at.node)
           _ => optional_absent()
         }
@@ -82,7 +82,7 @@ fn fvb_verdict_in(context: NativeTestContext, module: String) -> FvbVerdict {
 
 fn fvb_outcomes() -> FvbOutcomes {
   match native_test_context_from_ingest(ingest: fvb_ingest) {
-    Rejected { diagnostics: d } => FvbContextRefused { reason: d.head.reason }
+    Rejected { diagnostics: d } => FvbContextRefused { reason: diagnostics_fatal_reason(d: d) }
     Accepted { value: context, diagnostics: _ } =>
       FvbOutcomesDecided {
         direct: fvb_verdict_in(context: context, module: "v2.test.fvb_direct"),
@@ -222,7 +222,7 @@ fn fvb_hiding_outcomes() -> FvbHidingOutcomes {
       tail: Empty
     }
   }) {
-    Rejected { diagnostics: d } => FvbHidingContextRefused { reason: d.head.reason }
+    Rejected { diagnostics: d } => FvbHidingContextRefused { reason: diagnostics_fatal_reason(d: d) }
     Accepted { value: context, diagnostics: _ } =>
       FvbHidingDecided {
         typed_curried: fvb_verdict_in(context: context, module: "v2.test.fvb_typed_curried"),
