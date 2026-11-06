@@ -1,0 +1,72 @@
+module test.claim.runner.runner_qualification_attempt_dispatch_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.actions { DispatchInput, InputString }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_dispatch_inputs, fleet_converge_dispatch_values, fleet_converge_dispatch_value_names, fleet_converge_required_inputs_unsupplied,
+  fleet_converge_expected_revision_input, FleetConvergeDispatchSpec,
+}
+import gunbc.runner.runner_qualification_attempt_dispatch {
+  mtcollins1_qualification_attempt_dispatch, AttemptWaitsOnAnchoredBoot, AttemptWaitsOnQualificationGroup, AttemptWaitsOnOperatorGo,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// LEG G'S DISPATCH SPEC, rendered by the one fleet-converge dispatch builder and admitted against the generated
+// workflow's declared inputs. This is the spec's only executing reader in this change; the dispatch itself is the
+// operator's, on merry-fox-82's go.
+
+fn spec() -> FleetConvergeDispatchSpec {
+  mtcollins1_qualification_attempt_dispatch.dispatch
+}
+
+fn rendered(key: String) -> String {
+  match map_get(fleet_converge_dispatch_values(spec: spec()), key) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+test fn the_spec_renders_the_attempt_mode_on_srv1_acting_on_mtcollins1() -> Bool {
+  rendered(key: "mode") == "qualification_attempt"
+    && rendered(key: "host") == "srv1"
+    && rendered(key: "subject_host") == "mtcollins1"
+    && count(map_keys(fleet_converge_dispatch_values(spec: spec()))) == 3
+}
+
+// The revision is the dispatch's event sha, admitted by the attempt itself; the spec names none.
+test fn the_spec_names_no_revision_and_dispatches_at_the_default_branch() -> Bool {
+  (match map_get(fleet_converge_dispatch_values(spec: spec()), fleet_converge_expected_revision_input.name) {
+    Present { value: _ } => false
+    Absent => true
+  }) && (mtcollins1_qualification_attempt_dispatch.git_ref as String) == "refs/heads/main"
+}
+
+// ADMITTED AGAINST THE GENERATED WORKFLOW: every name it supplies is a declared input, and no required input is missing.
+test fn the_generated_workflow_declares_every_supplied_input_and_requires_nothing_more() -> Bool {
+  let supplied = fleet_converge_dispatch_value_names(spec: spec())
+  (supplied |> all(n => any(fleet_converge_dispatch_inputs, i => i.name == n)))
+    && length(fleet_converge_required_inputs_unsupplied(declared: fleet_converge_dispatch_inputs, supplied: supplied)) == 0
+}
+
+// RED for the admission above: a workflow that also required an input the spec does not carry names it.
+test fn a_required_input_the_spec_does_not_carry_is_named() -> Bool {
+  let extra = DispatchInput { name: "printer", description: Present { value: "a required input no qualification dispatch supplies" }, required: true, default: none, type: InputString }
+  fleet_converge_required_inputs_unsupplied(declared: concat(fleet_converge_dispatch_inputs, [extra]), supplied: fleet_converge_dispatch_value_names(spec: spec())) == ["printer"]
+}
+
+// The mode refuses an executor equal to its subject before any drain; the spec does not ask for that.
+test fn the_executor_is_not_the_subject() -> Bool {
+  rendered(key: "host") != rendered(key: "subject_host")
+    && (mtcollins1_qualification_attempt_dispatch.subject as String) == rendered(key: "subject_host")
+}
+
+test fn the_spec_waits_on_the_anchored_boot_the_qualification_group_and_the_go() -> Bool {
+  let w = mtcollins1_qualification_attempt_dispatch.waits_on
+  length(w) == 3
+    && any(w, x => match x { AttemptWaitsOnAnchoredBoot => true _ => false })
+    && any(w, x => match x { AttemptWaitsOnQualificationGroup => true _ => false })
+    && any(w, x => match x { AttemptWaitsOnOperatorGo => true _ => false })
+}
