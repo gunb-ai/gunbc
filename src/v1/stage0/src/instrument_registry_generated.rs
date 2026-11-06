@@ -82,13 +82,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "required-lane-resolution-census".to_string(),
-            },
-            TargetProducer::RequiredLaneResolutionCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "bare-reference-channel-outcome".to_string(),
             },
             TargetProducer::BareReferenceChannelOutcome,
@@ -269,6 +262,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "derived-equality-routes".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/derived_equality_routes_native.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "compute-dependency-wrong-capture".to_string(),
             },
             TargetProducer::CliWireProgram {
@@ -426,6 +428,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             },
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "native-serve-unix".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_unix_fixture.dag",
             },
         ),
         (
