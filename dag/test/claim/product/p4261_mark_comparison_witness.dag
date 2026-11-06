@@ -1,0 +1,242 @@
+module test.claim.product.p4261_mark_comparison_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.list { first_where }
+import std.optional { Absent, Present }
+import extdeps.electronic_component.types {
+  Complete,
+  ElectronicComponentRow,
+  FixedGlyphs,
+  ListedOnly,
+  MarkDescribedNotStructured,
+  MarkLine,
+  MarkStructured,
+  PublishedMark,
+  VariableField
+}
+import extdeps.electronic_component.mps_mpq8633a { mpq8633agle }
+import extdeps.electronic_component.onsemi_fan65004c { fan65004c }
+import extdeps.electronic_component.microchip_zl40294 { zl40294ldg6 }
+import product.electrical.identification {
+  ComponentIdentification,
+  GlyphSpan,
+  IdentifiedByMarking,
+  MarkingCandidate,
+  MarkingReading,
+  MarkingReadingSet,
+  observation_relied_on,
+  Transcribed
+}
+import product.electrical.mark_comparison {
+  Differs,
+  Matches,
+  MarkComparison,
+  PublishedMarkDescribed,
+  ListedOnlyCannotCertifyWholeMark,
+  ReadingCoversFewerLines,
+  UnreadGlyphAtFixedPosition,
+  Undecidable,
+  compare_reading_to_mark,
+  compare_reading_to_row,
+  identify_by_published_mark
+}
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.e1_board_sightings { e1_board_sightings }
+import product.p4261.e1_design { e1_component }
+
+// ─── THE REAL BOARD'S READINGS (the inhabitance route) ───────────────────────────────────────────
+
+fn e1_entry(designator: NonEmptyStr) -> ComponentIdentification? {
+  match first_where(xs: p4261_e1_layout.components, keep: c => c.component.local_identity == designator) {
+    Absent => Absent
+    Present { value: c } => Present { value: c.identification }
+  }
+}
+
+fn reading_of(i: ComponentIdentification) -> MarkingReading? {
+  match i {
+    IdentifiedByMarking { row: _, observation: o } => Present { value: observation_relied_on(o: o) }
+    MarkingCandidate { row: _, marking: m, discriminator: _ } => Present { value: m }
+    _ => Absent
+  }
+}
+
+// A reading with the supplied glyph text and the real reading's evidence, so a supplied value differs from
+// the real one in the glyphs alone.
+fn with_text(real: MarkingReading, text: NonEmptyStr) -> MarkingReading {
+  MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: Absent }, rest: [], followed_by: "" },
+    evidence: real.evidence
+  }
+}
+
+fn real_u58() -> MarkingReading? {
+  match e1_entry(designator: "U58_P2") {
+    Absent => Absent
+    Present { value: i } => reading_of(i: i)
+  }
+}
+
+fn supplied_against_mpq(text: NonEmptyStr) -> MarkComparison? {
+  match real_u58() {
+    Absent => Absent
+    Present { value: r } => Present { value: compare_reading_to_row(row: mpq8633agle, reading: with_text(real: r, text: text)) }
+  }
+}
+
+fn is_matches(c: MarkComparison?) -> Bool {
+  match c {
+    Present { value: Matches } => true
+    _ => false
+  }
+}
+
+fn is_differs(c: MarkComparison?) -> Bool {
+  match c {
+    Present { value: Differs { place: _ } } => true
+    _ => false
+  }
+}
+
+fn is_unread_undecidable(c: MarkComparison?) -> Bool {
+  match c {
+    Present { value: Undecidable { cause: UnreadGlyphAtFixedPosition } } => true
+    _ => false
+  }
+}
+
+fn is_fewer_undecidable(c: MarkComparison?) -> Bool {
+  match c {
+    Present { value: Undecidable { cause: ReadingCoversFewerLines } } => true
+    _ => false
+  }
+}
+
+fn plain(text: NonEmptyStr) -> MarkingReading? {
+  match real_u58() {
+    Absent => Absent
+    Present { value: r } => Present { value: with_text(real: r, text: text) }
+  }
+}
+
+fn on_mark(mark: PublishedMark, text: NonEmptyStr) -> MarkComparison? {
+  match plain(text: text) {
+    Absent => Absent
+    Present { value: r } => Present { value: compare_reading_to_mark(mark: mark, reading: r) }
+  }
+}
+
+fn fixed(t: NonEmptyStr) -> MarkLine {
+  MarkLine { segments: [FixedGlyphs { text: t }] }
+}
+
+// ─── CONTROLS ────────────────────────────────────────────────────────────────────────────────────
+
+// Known answer 1 (supplied value, real row): the MPQ8633A mark with its variable fields filled.
+test fn mark_1_a_filled_complete_mark_matches() -> Bool {
+  is_matches(c: supplied_against_mpq(text: "MPPO / 8633 / A987 / E"))
+}
+
+// Known answer 2: the same reading with one fixed glyph changed differs.
+test fn mark_2_one_changed_fixed_glyph_differs() -> Bool {
+  is_differs(c: supplied_against_mpq(text: "MPPO / 8634 / A987 / E"))
+}
+
+// '?' at a fixed position is silence: undecidable, not a difference; a '?' beside a real difference stays Differs.
+test fn mark_3_an_unread_fixed_glyph_is_undecidable_and_never_hides_a_difference() -> Bool {
+  is_unread_undecidable(c: supplied_against_mpq(text: "MPPO / 86?3 / A987 / E"))
+    && is_differs(c: supplied_against_mpq(text: "MPPO / 86?4 / A987 / E"))
+}
+
+// A '?' inside a variable field is just a value of that field.
+test fn mark_4_an_unread_glyph_in_a_variable_field_still_matches() -> Bool {
+  is_matches(c: supplied_against_mpq(text: "MP?? / 8633 / A9?7 / E"))
+}
+
+// Q5: fewer lines than a Complete mark is silence (Undecidable); more is a Differs.
+test fn mark_5_line_count_by_direction() -> Bool {
+  is_fewer_undecidable(c: supplied_against_mpq(text: "MPPO / 8633"))
+    && is_differs(c: supplied_against_mpq(text: "MPPO / 8633 / A987 / E / X"))
+}
+
+// A stated width is enforced: LLL is 3 wide, so 2 or 4 glyphs differ.
+test fn mark_6_a_stated_width_is_enforced() -> Bool {
+  is_differs(c: supplied_against_mpq(text: "MPPO / 8633 / A98 / E"))
+    && is_differs(c: supplied_against_mpq(text: "MPPO / 8633 / A9876 / E"))
+}
+
+// An ambiguous split (two ways to place the middle fixed run) still matches; no split at all differs.
+test fn mark_7_unstated_widths_backtrack_and_terminate() -> Bool {
+  let two_splits = MarkStructured {
+    lines: [MarkLine { segments: [FixedGlyphs { text: "A" }, VariableField { legend: "x", width: Absent }, FixedGlyphs { text: "A" }, VariableField { legend: "y", width: Absent }] }],
+    coverage: Complete
+  }
+  let no_split = MarkStructured {
+    lines: [MarkLine { segments: [FixedGlyphs { text: "A" }, VariableField { legend: "x", width: Absent }, FixedGlyphs { text: "A" }] }],
+    coverage: Complete
+  }
+  is_matches(c: on_mark(mark: two_splits, text: "AAAAA")) && is_differs(c: on_mark(mark: no_split, text: "AB"))
+}
+
+// ListedOnly never certifies a whole mark, even when every listed line agrees; the same lines Complete match.
+test fn mark_8_listed_only_agreement_is_undecidable() -> Bool {
+  let listed = MarkStructured { lines: [fixed(t: "AB")], coverage: ListedOnly }
+  let whole = MarkStructured { lines: [fixed(t: "AB")], coverage: Complete }
+  let undecidable = match on_mark(mark: listed, text: "AB") {
+    Present { value: Undecidable { cause: ListedOnlyCannotCertifyWholeMark } } => true
+    _ => false
+  }
+  undecidable && is_matches(c: on_mark(mark: whole, text: "AB"))
+}
+
+test fn mark_9_a_described_mark_is_always_undecidable() -> Bool {
+  let described = MarkDescribedNotStructured { text: "AB", why: "prose" }
+  match on_mark(mark: described, text: "AB") {
+    Present { value: Undecidable { cause: PublishedMarkDescribed { why: _ } } } => true
+    _ => false
+  }
+}
+
+// INHABITANCE through the real route: the board's own U58_P2 entry is built by identify_by_published_mark
+// and is IdentifiedByMarking against the MPQ8633A row; the same route over a corrupted glyph is a candidate.
+test fn mark_10_u58_p2_identifies_through_the_roster_bound_route() -> Bool {
+  let identified = match e1_entry(designator: "U58_P2") {
+    Present { value: IdentifiedByMarking { row: _, observation: _ } } => true
+    _ => false
+  }
+  let corrupted_is_candidate = match real_u58() {
+    Absent => false
+    Present { value: r } => match identify_by_published_mark(
+      roster: e1_board_sightings,
+      row: mpq8633agle,
+      readings: MarkingReadingSet { subject: e1_component(local: "U58_P2"), relied_on: with_text(real: r, text: "MPPO / 8634 / A987 / E"), others: [] },
+      discriminator: "control"
+    ) {
+      MarkingCandidate { row: _, marking: _, discriminator: _ } => true
+      _ => false
+    }
+  }
+  identified && corrupted_is_candidate
+}
+
+// The other two: U1_P3 differs on its 7-glyph third line; U451 is undecidable against a described mark.
+test fn mark_11_u1_p3_differs_and_u451_is_undecidable() -> Bool {
+  let u1 = match e1_entry(designator: "U1_P3") {
+    Absent => false
+    Present { value: i } => match reading_of(i: i) {
+      Absent => false
+      Present { value: r } => is_differs(c: Present { value: compare_reading_to_row(row: fan65004c, reading: r) })
+    }
+  }
+  let u451 = match e1_entry(designator: "U451") {
+    Absent => false
+    Present { value: i } => match reading_of(i: i) {
+      Absent => false
+      Present { value: r } => match compare_reading_to_row(row: zl40294ldg6, reading: r) {
+        Undecidable { cause: PublishedMarkDescribed { why: _ } } => true
+        _ => false
+      }
+    }
+  }
+  u1 && u451
+}
