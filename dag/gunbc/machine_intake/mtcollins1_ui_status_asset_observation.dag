@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references, html_fold_ascii_octet }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
@@ -157,15 +157,6 @@ fn ui_octets_slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
   octets |> skip(at) |> take(n)
 }
 
-// get is nullable at the source index (the shape extdeps.standards.rfc_8949 cbor_octet_at wraps), so
-// it is wrapped once here rather than matched two levels deep at every read.
-fn ui_octet_at(octets: List<Int>, at: Int) -> Int? {
-  match octets |> get(at) {
-    null => none
-    o => Present { value: o }
-  }
-}
-
 // Octets back to text. The two-step spelling is the corpus's own (std.bytes octets_bytes, then
 // std.encoding utf8_decode_bytes); there is no single cast from List<Int> to String and inventing one
 // here would hide what the round trip costs.
@@ -173,38 +164,12 @@ fn ui_octets_text(octets: List<Int>) -> String {
   utf8_decode_bytes(payload: octets_bytes(o: octets))
 }
 
-// ONE PASS, no per-position copy. Two cost-shape defects lived in this scan, and DESIGN.md §6 fixes a
-// proven cost-shape defect regardless of realized n -- "n is small here" is not time-stable, and here n
-// is a bundle the module's own header measures at ~900 KB of minified code. The old shape recomputed
-// count(hay) at EVERY candidate position and copied a needle-length window with skip/take to compare
-// it, so one search cost grew with the square of the asset and ran again on the refusal path (the
-// property_name_present probe). Now each length enters the walk once, and a candidate is compared
-// octet by octet through the same nullable get the rest of this file uses, stopping at the first
-// difference: a non-match costs what it costs to read the octet that differed, not a copy of a window.
-fn ui_octets_match_at(hay: List<Int>, needle: List<Int>, needle_length: Int, at: Int, compared: Int) -> Bool {
-  if compared >= needle_length {
-    true
-  } else {
-    match ui_octet_at(hay, at + compared) {
-      Absent => false
-      Present { value: hay_octet } => match ui_octet_at(needle, compared) {
-        Absent => false
-        Present { value: needle_octet } => if hay_octet == needle_octet {
-          ui_octets_match_at(hay, needle, needle_length, at, compared + 1)
-        } else {
-          false
-        }
-      }
-    }
-  }
-}
-
 fn ui_octets_starts_with(hay: List<Int>, needle: List<Int>) -> Bool {
   let needle_length = count(needle)
   if needle_length == 0 {
     false
   } else {
-    ui_octets_match_at(hay, needle, needle_length, 0, 0)
+    html_octets_match_at(hay, needle, needle_length, 0, 0)
   }
 }
 
@@ -224,7 +189,7 @@ fn ui_octets_index_of(hay: List<Int>, needle: List<Int>) -> Int? {
 fn ui_octets_index_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int) -> Int? {
   if at + needle_length > haystack_length {
     Absent
-  } else if ui_octets_match_at(hay, needle, needle_length, at, 0) {
+  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
     Present { value: at }
   } else {
     ui_octets_index_walk(hay, needle, needle_length, haystack_length, at + 1)
@@ -269,7 +234,7 @@ fn ui_skip_blanks(octets: List<Int>, at: Int) -> Int {
   if at >= length {
     at
   } else {
-    match ui_octet_at(octets, at) {
+    match html_octet_at(octets, at) {
       Absent => at
       Present { value: o } => if o == megarac_ui_space_octets || o == megarac_ui_tab_octets || o == megarac_ui_newline_octets {
         ui_skip_blanks(octets, at + 1)
@@ -286,7 +251,7 @@ fn ui_quoted_value_after(octets: List<Int>, at: Int) -> MegaRacUiQuotedValue {
   if open_at >= length {
     NoOpeningQuote { at: open_at }
   } else {
-    match ui_octet_at(octets, open_at) {
+    match html_octet_at(octets, open_at) {
       Absent => NoOpeningQuote { at: open_at }
       Present { value: o } => if o != megarac_ui_quote_octets {
         NoOpeningQuote { at: open_at }
@@ -302,7 +267,7 @@ fn ui_label_to_closing_quote(octets: List<Int>, at: Int, started_after: Int, acc
   if at >= length {
     UnterminatedQuote { at: started_after }
   } else {
-    match ui_octet_at(octets, at) {
+    match html_octet_at(octets, at) {
       Absent => UnterminatedQuote { at: started_after }
       Present { value: o } => if o == megarac_ui_quote_octets {
         QuotedLabel { label_octets: acc, after: at + 1 }
@@ -588,10 +553,10 @@ fn megarac_ui_zero_key_walk(
 ) -> Int? {
   if at + token_length > window_length {
     Absent
-  } else if ui_octets_match_at(octets, zero_token, token_length, at, 0) && megarac_ui_zero_key_preceded(before) {
+  } else if html_octets_match_at(octets, zero_token, token_length, at, 0) && megarac_ui_zero_key_preceded(before) {
     Present { value: at }
   } else {
-    megarac_ui_zero_key_walk(octets, zero_token, token_length, window_length, at + 1, ui_octet_at(octets, at))
+    megarac_ui_zero_key_walk(octets, zero_token, token_length, window_length, at + 1, html_octet_at(octets, at))
   }
 }
 
@@ -825,7 +790,7 @@ type MegaRacUiPageReading {
 // or attribute value is carried (the body bytes never reach the artifact).
 type MegaRacUiPageShape {
   body_length: ByteSize
-  body_sha256: String
+  body_sha256: Sha256Digest?
   script_tags: Int
   ref_double_quoted: Int
   ref_single_quoted: Int
@@ -850,7 +815,7 @@ fn ui_count_token(folded: List<Int>, folded_length: Int, token: String) -> Int {
 fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, acc: Int) -> Int {
   if needle_length == 0 || at + needle_length > haystack_length {
     acc
-  } else if ui_octets_match_at(hay, needle, needle_length, at, 0) {
+  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
     ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + needle_length, acc + 1)
   } else {
     ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + 1, acc)
@@ -865,10 +830,10 @@ fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
   let orig = ui_octets_of(body)
   let folded = orig |> map(o => html_fold_ascii_octet(o))
   let length = count(folded)
-  let refs = html_attribute_references(orig, [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
+  let refs = html_attribute_references_folded(orig, folded, [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
   MegaRacUiPageShape {
     body_length: byte_size(count: length),
-    body_sha256: sha256_hex_of_text(text: body),
+    body_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)),
     script_tags: ui_count_token(folded, length, "<script"),
     ref_double_quoted: ui_refs_with_style(refs, AttributeValueDoubleQuoted),
     ref_single_quoted: ui_refs_with_style(refs, AttributeValueSingleQuoted),
@@ -890,7 +855,10 @@ fn ui_page_shape_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
   join([
     "page_shape path=", reading.path as String,
     " body_length=", megarac_ui_count_text(byte_size_count(b: shape.body_length)),
-    " body_sha256=", shape.body_sha256,
+    " body_sha256=", match shape.body_sha256 {
+      Absent => "unrenderable"
+      Present { value: d } => megarac_ui_digest_text(d)
+    },
     " script_tags=", megarac_ui_count_text(shape.script_tags),
     " ref_dq=", megarac_ui_count_text(shape.ref_double_quoted),
     " ref_sq=", megarac_ui_count_text(shape.ref_single_quoted),

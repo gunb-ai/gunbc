@@ -62,7 +62,9 @@ data html_octet_equals: Int = 61
 
 data html_octet_greater_than: Int = 62
 
-// get is nullable at the source index, so it is wrapped once here.
+// get is nullable at the source index, so it is wrapped once here. The octet reads and the
+// needle match below are generic (not WHATWG-specific); this is their one home until a std octet
+// module exists, and consumers import them rather than keeping copies.
 fn html_octet_at(octets: List<Int>, at: Int) -> Int? {
   match octets |> get(at) {
     null => none
@@ -222,6 +224,10 @@ fn html_attribute_scan(orig: List<Int>, folded: List<Int>, names: List<List<Int>
 // Every non-empty value of any attribute in `names` (each ASCII-lower-case octets) found in `octets`,
 // in document order. `names` order is the match priority at one position.
 fn html_attribute_references(octets: List<Int>, names: List<List<Int>>) -> List<HtmlAttributeReference> {
-  let folded = octets |> map(o => html_fold_ascii_octet(o))
+  html_attribute_references_folded(octets, octets |> map(o => html_fold_ascii_octet(o)), names)
+}
+
+// The same, for a caller that already holds the ASCII-folded octets (one fold per page).
+fn html_attribute_references_folded(octets: List<Int>, folded: List<Int>, names: List<List<Int>>) -> List<HtmlAttributeReference> {
   html_attribute_scan(octets, folded, names, count(octets), 0, [])
 }
