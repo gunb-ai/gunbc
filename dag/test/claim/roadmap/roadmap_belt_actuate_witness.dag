@@ -217,7 +217,7 @@ import gunbc.roadmap.roadmap_attempt_occurrence {
 import gunbc.roadmap.roadmap_launch_admission { occurrence_census_row }
 
 import gunbc.roadmap.roadmap_belt_actuate {
-  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNextAttempt, SpawnRouteNone, belt_spawn_route_for_decision,
+  BeltSpawnRoute, SpawnRouteWorker, SpawnRouteResume, SpawnRouteNextAttempt, SpawnRouteRestore, SpawnRouteNone, belt_spawn_route_for_decision,
   belt_branch_head_of, BeltBranchHead, BranchHeadPresent, BranchHeadAbsent, BranchHeadUndeterminable,
   VerifyOneReceiptObservation, VerifyOneReceiptAbsent, VerifyOneReceiptRecorded, VerifyOneReceiptUnreadable,
   VerifyOneGate, VerifyOneRun, VerifyOneNoOp, VerifyOneRefuse,
@@ -226,7 +226,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Resume,
+  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -2784,6 +2784,23 @@ test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
       SpawnRouteResume { attempt_key, ordinal } => attempt_key == "a1" && ordinal == 2
       _ => false
     })
+}
+
+// RESTORE ALWAYS RECOVERS THE SAME ATTEMPT, ON EITHER REQUEST. A still-resumable attempt whose worktree was
+// reaped from a live branch is recovered by BOTH the autonomous wake and the operator's CONTINUE (unlike
+// NextAttempt, which the autonomous wake suppresses): losing a live attempt's tree is a defect to repair, not
+// work the operator withheld (operator ruling D3). It carries the SAME key it restores and the branch it
+// restores from -- it is never a fresh-attempt route and never a no-spawn. RED controls: if Restore were
+// routed to NextAttempt the same-key claim fails; if routed to None on the autonomous wake the autonomous arm
+// fails; if it minted a new key the attempt_key check fails.
+test fn restore_always_rebuilds_the_same_attempt_on_either_request() -> Bool {
+  let claim = LaunchForClaim { node: "n1" as RoadmapNodeId, claim: "0000000000000000" as RoadmapEventId }
+  let by_claim = belt_spawn_route_for_decision(decision: Restore { reason: "live, reaped, resumable", attempt_key: "a1", from_branch: "roadmap/n1/a1" }, request: claim)
+  let by_auto = belt_spawn_route_for_decision(decision: Restore { reason: "live, reaped, resumable", attempt_key: "a1", from_branch: "roadmap/n1/a1" }, request: LaunchAutonomous)
+  (match by_claim { SpawnRouteRestore { attempt_key, from_branch } => attempt_key == "a1" && from_branch == "roadmap/n1/a1"  _ => false })
+    && (match by_auto { SpawnRouteRestore { attempt_key, from_branch } => attempt_key == "a1" && from_branch == "roadmap/n1/a1"  _ => false })
+    && !(match by_auto { SpawnRouteNone { step: _, detail: _ } => true  _ => false })
+    && !(match by_claim { SpawnRouteNextAttempt { from_branch: _ } => true  _ => false })
 }
 
 // RED control for the branch-head check: a FAILED git command must never be reported as the fact that the
