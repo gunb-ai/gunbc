@@ -10,6 +10,8 @@ module gunbc.roadmap.ld449_lab_render_probe
 // gives the lab instance a modeled render or deploy route (DeploymentIntent, #15826), or with r2's revert.
 
 import std.types { String, List, NonEmptyStr, CommitSha }
+import std.process { ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, systemd_run_property_assignment,
@@ -35,19 +37,21 @@ fn ld449_section(title: String, body: String) -> String {
   join(["===== ", title, " =====\n", body, "\n"], "")
 }
 
+// `gunbc run --function` prints only a CliWireResponse (a bare String exits 2, "Wrap the result in ExitSuccess"), so each
+// entry answers CliWirePrintable: the rendered bytes with ExitSuccess, or the producer's refusal with a failing exit.
 // The lab serve unit, rendered for the revision the packet built. No clock is read: an instance whose
 // OIDC placement needs the observer clock answers the producer's own refusal, printed as such.
-fn ld449_render_lab_serve_unit(revision: String) -> String {
+fn ld449_render_lab_serve_unit(revision: String) -> CliWireResponse {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
   match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: none) {
-    LiveDeployServeUnitEmitted { file } => ld449_section(title: "serve unit", body: serialize_systemd_unit_file(file: file))
-    LiveDeployServeUnitOidcReadbackRefused { cause } => ld449_section(title: "serve unit REFUSED", body: cause as String)
+    LiveDeployServeUnitEmitted { file } => CliWirePrintable { bytes: serialize_systemd_unit_file(file: file), exit: ExitSuccess }
+    LiveDeployServeUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "serve unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
   }
 }
 
-fn ld449_render_lab_belt_units() -> String {
+fn ld449_render_lab_belt_units() -> CliWireResponse {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  join([
+  CliWirePrintable { exit: ExitSuccess, bytes: join([
     ld449_section(title: "belt service", body: serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec))),
     ld449_section(title: "belt exit drain service", body: serialize_systemd_unit_file(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec))),
     ld449_section(title: "belt discovery service", body: serialize_systemd_unit_file(file: live_deploy_belt_discovery_service_unit_file(spec: spec))),
@@ -55,24 +59,24 @@ fn ld449_render_lab_belt_units() -> String {
     ld449_section(title: "belt answer path", body: serialize_systemd_unit_file(file: live_deploy_belt_answer_path_unit_file(spec: spec))),
     ld449_section(title: "belt credential recovery service", body: serialize_systemd_unit_file(file: live_deploy_belt_credential_recovery_unit_file(spec: spec))),
     ld449_section(title: "belt credential recovery timer", body: serialize_systemd_unit_file(file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec))),
-  ], "")
+  ], "") }
 }
 
 // The reviewer / auditor / supervisor property set (one producer, dispatch_review_unit_properties) for the
 // lab instance at its own memory figure. Working directory, log and review paths are FIXTURE placeholders
 // ("<worktree>", "<log>", "<review-dir>", "<exit-hook>"): the confinement properties are the subject here,
 // and those four are the only per-attempt values in the list.
-fn ld449_render_lab_review_properties() -> String {
+fn ld449_render_lab_review_properties() -> CliWireResponse {
   let inst = srv1_lab_dashboard_instance()
   let props = dispatch_review_unit_properties(
     instance: inst, granted: inst.dispatch_worker_memory_max,
     working_directory: "<worktree>", log_path: "<log>", review_dir: "<review-dir>",
     exit_hook: "<exit-hook>" as NonEmptyStr,
   )
-  ld449_section(title: "reviewer/auditor/supervisor systemd-run properties", body: join(props |> map(p =>
+  CliWirePrintable { exit: ExitSuccess, bytes: ld449_section(title: "reviewer/auditor/supervisor systemd-run properties", body: join(props |> map(p =>
     match systemd_run_property_assignment(property: p) {
       SystemdRunPropertyAssignmentReady { assignment: a } => a
       SystemdRunPropertyAssignmentRefused { cause: _ } => "REFUSED: this property has no systemd-run assignment (see extdeps.systemd.systemd_run SystemdRunOptionWordsRefusedCause)"
     }
-  ), "\n"))
+  ), "\n")) }
 }
