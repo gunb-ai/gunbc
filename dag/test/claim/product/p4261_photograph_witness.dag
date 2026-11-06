@@ -88,6 +88,7 @@ import product.p4261.findings { ImageReadingsJudged }
 import product.p4261.k1_a { p4261_k1_layout }
 
 import product.electrical.identification {
+  observation_relied_on,
   marking_text,
   // The channels, not the rendering: these four rows are checked on what was read as letters and what was
   // recorded as the maker's mark, so the witness projects the spans instead of comparing a rendered string.
@@ -268,7 +269,7 @@ fn e1_marking_at(designator: NonEmptyStr) -> MarkingReading? {
   match e1_installed_at(designator) {
     Absent => Absent
     Present { value: row } => match row.identification {
-      IdentifiedByMarking { row: _, observation } => Present { value: observation.relied_on }
+      IdentifiedByMarking { row: _, observation } => Present { value: observation_relied_on(o: observation) }
       _ => Absent
     }
   }

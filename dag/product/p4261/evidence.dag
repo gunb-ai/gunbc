@@ -41,6 +41,7 @@ import product.electrical.bench_session {
   removals_of,
 }
 import product.electrical.identification {
+  observation_relied_on,
   ComponentIdentification,
   FootprintUnpopulated,
   IdentifiedByMarking,
@@ -410,7 +411,7 @@ fn part_bearing(claim: PopulatedPart, i: ComponentIdentification) -> Observation
 
 fn identification_evidence(i: ComponentIdentification) -> EvidenceRef? {
   match i {
-    IdentifiedByMarking { row: _, observation } => Present { value: observation.relied_on.evidence }
+    IdentifiedByMarking { row: _, observation } => Present { value: observation_relied_on(o: observation).evidence }
     MarkingSharedByMakers { rows: _, marking } => Present { value: marking.evidence }
     MarkingCandidate { row: _, marking, discriminator: _ } => Present { value: marking.evidence }
     RatingPrintedOnBody { rating: _, marking } => Present { value: marking.evidence }

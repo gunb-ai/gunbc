@@ -26,7 +26,8 @@ import std.types { Bool, List, NonEmptyStr }
 import std.optional { Absent, Present }
 import std.algebra { is_empty }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import product.electrical.connectivity { ComponentInstanceIdentity }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq }
+import extdeps.electronic_component.ti_sn74lv165a { sn74lv165a_pw }
 import product.electrical.continuity { OperatorPhotograph }
 import product.electrical.photograph {
   BoardSightings,
@@ -40,7 +41,10 @@ import product.electrical.identification {
   GlyphSpan,
   Glyphs,
   LookedNothingReadable,
-  MarkingObservation,
+  IdentifiedByMarking,
+  identify_by_marking,
+  observation_subject,
+  observation_relied_on,
   MarkingReading,
   MarkingReadingSet,
   MarkingSpan,
@@ -59,7 +63,6 @@ import product.electrical.identification {
   reduced_content,
   Reduced,
   reliance_may_rest_on,
-  reliance_matches_observation,
   same_glyph_text,
 }
 import product.p4261.e1_design { e1_component }
@@ -488,59 +491,42 @@ test fn control_9c_the_second_reading_disputes_nothing() -> Bool {
   )
 }
 
-// CONTROL 10. A witness sealed for one specimen cannot be pasted into another's row. Every field still
-// type-checks, which is exactly why this needs its own test: the mints cannot see the observation they were
-// not given, so only this check catches the paste.
-test fn control_10_a_witness_minted_for_one_specimen_does_not_fit_another() -> Bool {
+// CONTROL 10. An observation is MINTED, and what it reports is what was minted for: the subject and the relied-on
+// reading are read off the sealed standing, so an identification for U49 reports U49 and not U51. A hand-written
+// observation (a standing beside a swapped subject, reading or `others`) is refused by the compiler
+// (`sole_constructor`), recorded in the PR as the refusal lines.
+test fn control_10_a_minted_observation_reports_the_subject_it_was_minted_for() -> Bool {
   let c = boxed_a()
   let good = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
-  let mine = roster_of(who: u49(), c: c)
-  let reliance_for_u49 = only_reading(roster: mine, readings: set_of(who: u49(), relied: good, others: []))
-  match reliance_for_u49 {
-    Present { value: standing } =>
-      // honestly minted for U49 ...
-      reliance_matches_observation(
-        o: MarkingObservation { subject: u49(), relied_on: good, others: [], reliance: standing }
-      )
-      // ... and carried into U51's row, where nothing else complains.
-      && !reliance_matches_observation(
-        o: MarkingObservation { subject: u51(), relied_on: good, others: [], reliance: standing }
-      )
-    Absent => false
+  match identify_by_marking(
+    roster: roster_of(who: u49(), c: c),
+    row: sn74lv165a_pw,
+    readings: set_of(who: u49(), relied: good, others: []),
+    discriminator: "x"
+  ) {
+    IdentifiedByMarking { row: _, observation } =>
+      component_identity_eq(a: observation_subject(o: observation), b: u49())
+      && !component_identity_eq(a: observation_subject(o: observation), b: u51())
+    _ => false
   }
 }
 
-// CONTROL 16. A minted reliance is bound to the EXACT reading it was issued for. Another reading of the same
-// subject cannot be swapped under it, including a reading that REDUCES to the same glyphs: one with different
-// evidence, and one with the same evidence but different span content (a trailing space the reduction drops).
-test fn control_16_a_reliance_is_bound_to_the_reading_it_was_issued_for() -> Bool {
+// CONTROL 16. The relied-on reading an observation reports is the EXACT reading it was minted for, compared whole,
+// including a reading that REDUCES to the same glyphs under other evidence or other span content.
+test fn control_16_a_minted_observation_reports_the_exact_reading_it_was_issued_for() -> Bool {
   let c = boxed_a()
   let issued_for = read_glyphs_on_board_frame(text: "LV165A", c: Present { value: c }, rest: [])
-  let mine = roster_of(who: u49(), c: c)
-  match only_reading(roster: mine, readings: set_of(who: u49(), relied: issued_for, others: [])) {
-    Present { value: standing } =>
-      reliance_matches_observation(
-        o: MarkingObservation { subject: u49(), relied_on: issued_for, others: [], reliance: standing }
-      )
-      // same subject, same reduced glyphs, different evidence
-      && !reliance_matches_observation(
-        o: MarkingObservation {
-          subject: u49(),
-          relied_on: read_glyphs_from(text: "LV165A", citation: boxed_b(), rest: []),
-          others: [],
-          reliance: standing
-        }
-      )
-      // same subject, same evidence, same reduced glyphs, different span content
-      && !reliance_matches_observation(
-        o: MarkingObservation {
-          subject: u49(),
-          relied_on: read_glyphs_on_board_frame(text: "LV165A ", c: Present { value: c }, rest: []),
-          others: [],
-          reliance: standing
-        }
-      )
-    Absent => false
+  match identify_by_marking(
+    roster: roster_of(who: u49(), c: c),
+    row: sn74lv165a_pw,
+    readings: set_of(who: u49(), relied: issued_for, others: []),
+    discriminator: "x"
+  ) {
+    IdentifiedByMarking { row: _, observation } =>
+      observation_relied_on(o: observation) == issued_for
+      && observation_relied_on(o: observation) != read_glyphs_from(text: "LV165A", citation: boxed_b(), rest: [])
+      && observation_relied_on(o: observation) != read_glyphs_on_board_frame(text: "LV165A ", c: Present { value: c }, rest: [])
+    _ => false
   }
 }
 

@@ -794,15 +794,36 @@ type MarkingReliance
   | NoDissent { witness: NoDissentWitness }
   | PreferredUnderDissent { basis: ConflictSelectionBasis }
 
-// The readings of one marking on one specimen, with the standing they may carry. The subject is a field
-// rather than an assumption: a reading is checkable as a reading OF something, and a row that cannot name
-// whose marking it read has no subject to bind its evidence to.
-type MarkingObservation {
-  subject: ComponentInstanceIdentity
-  relied_on: MarkingReading
-  others: List<MarkingReading>
+// The readings of one marking on one specimen, with the standing they may carry. SEALED: the subject and the
+// relied-on reading are NOT stored here -- they are the sealed standing's own (each witness carries the
+// subject and the exact reading it was minted for), so an observation cannot hold a standing beside a
+// different reading or a different subject, and `others` sits inside the same seal so a standing cannot be
+// attached to another set of extra readings. `identify_by_marking` is the only constructor; a consumer that
+// receives an IdentifiedByMarking receives an observation that was minted, and does not revalidate it.
+type MarkingObservation sole_constructor {
   reliance: MarkingReliance
+  others: List<MarkingReading>
 }
+
+fn reliance_subject(r: MarkingReliance) -> ComponentInstanceIdentity {
+  match r {
+    OnlyReading { witness } => witness.subject
+    NoDissent { witness } => witness.subject
+    PreferredUnderDissent { basis } => basis.subject
+  }
+}
+
+fn reliance_relied_on(r: MarkingReliance) -> MarkingReading {
+  match r {
+    OnlyReading { witness } => witness.relied_on
+    NoDissent { witness } => witness.relied_on
+    PreferredUnderDissent { basis } => basis.relied_on
+  }
+}
+
+fn observation_subject(o: MarkingObservation) -> ComponentInstanceIdentity { reliance_subject(r: o.reliance) }
+
+fn observation_relied_on(o: MarkingObservation) -> MarkingReading { reliance_relied_on(r: o.reliance) }
 
 // Whether a reading is CHECKABLE AS A READING OF THIS SUBJECT: the board's own roster attributes this exact
 // citation -- these bytes AND these pixels -- to this specimen. Not "the store has these bytes": an
@@ -946,24 +967,6 @@ fn prefer_checkable(roster: BoardSightings, readings: MarkingReadingSet) -> Mark
   }
 }
 
-// Whether an observation's own witness was minted for its own subject AND for this exact relied-on reading
-// (compared whole, `==`, so a reading that reduces to the same glyphs under other evidence or other span
-// content is a different reading). The seal stops a stranger minting
-// a standing; this catches the subtler paste -- a witness genuinely minted for D2, carried into U49's row,
-// or minted for one reading and paired with another of the same subject, where every field still type-checks. It is a required row of the witness, because the mints cannot see
-// the observation they were not given.
-fn reliance_matches_observation(o: MarkingObservation) -> Bool {
-  match o.reliance {
-    OnlyReading { witness } =>
-      component_identity_eq(a: witness.subject, b: o.subject) && witness.relied_on == o.relied_on
-    NoDissent { witness } =>
-      component_identity_eq(a: witness.subject, b: o.subject) && witness.relied_on == o.relied_on
-    PreferredUnderDissent { basis } =>
-      component_identity_eq(a: basis.subject, b: o.subject) && basis.relied_on == o.relied_on
-  }
-}
-
-
 type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Volt? }
 
 // TWO WAYS A FOOTPRINT SAYS SOMETHING ABOUT WHAT IS IN IT, read off a photograph rather than off a
@@ -1054,10 +1057,8 @@ fn identify_by_marking(
     Present { value: reliance } => IdentifiedByMarking {
       row: row,
       observation: MarkingObservation {
-        subject: readings.subject,
-        relied_on: readings.relied_on,
-        others: readings.others,
-        reliance: reliance
+        reliance: reliance,
+        others: readings.others
       }
     }
     Absent => MarkingCandidate { row: row, marking: readings.relied_on, discriminator: discriminator }
@@ -1328,7 +1329,7 @@ fn render_asides(spans: List<MarkingSpan>) -> String {
 
 fn identification_text(i: ComponentIdentification) -> String? {
   match i {
-    IdentifiedByMarking { row, observation } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking_text(observation.relied_on), "'"], "") }
+    IdentifiedByMarking { row, observation } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking_text(observation_relied_on(o: observation)), "'"], "") }
     MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking_text(marking), "'"], "") }
     MarkingCandidate { row, marking, discriminator } => Present { value: join(["CANDIDATE ", row.vendor.legal_name as String, " ", row.ordering_code as String, " from the marking '", marking_text(marking), "' (not identified: ", discriminator as String, ")"], "") }
     RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking_text(marking), "'"], "") }
