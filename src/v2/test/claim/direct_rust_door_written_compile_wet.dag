@@ -37,5 +37,8 @@ test fn unwritable_workspace_refuses_before_rustc() -> Bool {
 // Prints the missing-rule refusal reason: writes it to target/direct-rust-door-written/refusal-reason.txt,
 // which the wet script cats. Re-walks the same refusing route (cheap: it stops at emission).
 test fn missing_rule_refusal_reason_is_receipted() -> Bool {
-  written_refusal_reason_receipt_written(observation: direct_rust_door_written_missing_rule())
+  let observation = direct_rust_door_written_missing_rule()
+  // Discriminating: green only if the route refused with the missing-rule cause AND the receipt was
+  // written, so a compiled / unwritten / wrong-cause route goes red instead of being receipted green.
+  written_route_refused(observation: observation) && written_refusal_reason_receipt_written(observation: observation)
 }
