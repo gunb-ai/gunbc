@@ -807,7 +807,6 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
         tail: [],
       },
       account: "SECOND MODULE ENUMERATED, SAME CLASS, FIX-FORWARD ON MAIN (fixes main-red v2-bootstrap run 42215276019 job 127883604511 at merged 90549a23b6c3: E0425 'cannot find function equality_derived_evaluation_environment in this scope' at emitted v2_std_runtime.rs:667:194, 3 errors in all, stderr_tail truncated at first_error). v2.std.runtime (src/v2/std/runtime.dag) must now import, for its synthesized equality bodies ONLY: from std.algebra, additionally zip_eq and map_values_eq (hand-written code in the module uses neither). Needed because EvaluationEnvironment { bindings: Map<EnvironmentBindingKey, RuntimeValue> } takes the FOREIGN map_values_eq value step and the compared List fields take zip_eq; without them the one predicate skips those bodies and same-module == nodes lower to the skipped derived calls -- the loud E0425 the interim documents, not a silent wrong answer. Full recorded list for mechanical deletion across both interim modules: v2.std.diagnostic -- std.algebra {zip_eq, map_values_eq}; v2.std.runtime -- std.algebra {zip_eq, map_values_eq} (appended to fold_list). Dissolution trigger unchanged.",
-    }
     }],
   },
   disposition: Open,
