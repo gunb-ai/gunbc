@@ -79,9 +79,9 @@ fn sections_with_digest(install_exit: String, machine: String, tarball_digest: S
   sections_full(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: "0")
 }
 
-data pub_body: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBpinfixture00000000000000000000000000000000 gunbc-runner-host-per-boot
+data pub_body: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL gunbc-runner-host-per-boot
 "
-data fingerprint_body: String = "256 SHA256:pinfixture0000000000000000000000000000000000 gunbc-runner-host-per-boot (ED25519)
+data fingerprint_body: String = "256 SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w gunbc-runner-host-per-boot (ED25519)
 "
 
 fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
