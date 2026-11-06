@@ -3,6 +3,7 @@ module test.claim.node_power_envelope_witness
 import std.types { Bool, Int, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
+  nanosecond,
   ByteSize,
   Bandwidth,
   bandwidth_count,
@@ -23,8 +24,8 @@ import std.measure {
 }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.vendor.amd { amd }
-import extdeps.memory.jedec { ddr4_generation_catalog, ddr4_normal_refresh_band, ddr4_extended_refresh_band }
-import extdeps.cited_field { NeedsReading }
+import extdeps.memory.jedec { ddr4_generation_catalog, ddr4_normal_refresh_band, ddr4_extended_refresh_band, Ddr4RefreshBand }
+import extdeps.cited_field { NeedsReading, FromCitedFigure, RowField }
 import product.breakout_leg_programming { fs_nvidia_eth_leg_coding_standing }
 import extdeps.memory.types {
   DramModuleCatalogRow,
@@ -106,8 +107,11 @@ import product.node_power_envelope {
   DramCaseTemperature,
   refresh_band_for,
   RefreshBandSelected,
+  refresh_band_from_rows,
+  RefreshBandNotRead,
   RefreshBandBeyondSpecification,
   TemperatureBeyondExtendedBand,
+  RefreshBandLimitUnestablished,
   DimmPowerEvidence,
   DimmPowerFromClassBound,
   DimmPowerFromPartCurrents,
@@ -810,7 +814,7 @@ test fn cited_part_evidence_takes_precedence_and_class_bound_covers_its_absence(
 // Past the class bound's extended-temperature ceiling the class bound refuses.
 test fn the_class_bound_refuses_beyond_its_temperature_ceiling() -> Bool {
   match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
-    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _ } } => true
+    DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: _, read_obligation: _ } } => true
     _ => false
   }
 }
@@ -818,7 +822,7 @@ test fn the_class_bound_refuses_beyond_its_temperature_ceiling() -> Bool {
 // The same out-of-specification TCASE refuses on the PART-CURRENT path too (it used to keep a 2x refresh).
 test fn the_part_current_path_refuses_beyond_the_extended_band_too() -> Bool {
   match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
-    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _ } } => true
+    DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: _, read_obligation: _ } } => true
     _ => false
   }
 }
@@ -839,7 +843,7 @@ test fn the_band_edges_come_from_the_canonical_rows() -> Bool {
     _ => false
   }
   let at96 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 96) }) {
-    RefreshBandBeyondSpecification { tcase: _ } => true
+    RefreshBandBeyondSpecification { tcase: _, extended_standing: _ } => true
     _ => false
   }
   at85 && at86 && at95 && at96
@@ -1038,7 +1042,7 @@ test fn a_ddr5_module_refuses_before_any_ddr4_band_is_selected() -> Bool {
 }
 
 // Normal band unread, extended band cited: the extended multiplier needs both rows, so a 90 C reading
-// refuses as unread rather than inheriting the extended row's citation.
+// refuses as unread rather than inheriting the extended row's standing (the real extended row is TranscribedUncited; the point is that an unread NORMAL row is not masked by it).
 test fn an_unread_normal_band_is_not_hidden_by_a_cited_extended_band() -> Bool {
   match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 0, write: 0), normal_row: NeedsReading { read_obligation: "normal row unread" as NonEmptyStr }, extended_row: ddr4_extended_refresh_band) {
     DimmPowerRefused { cause: RefreshBandUnread { read_obligation: _ } } => true
@@ -1076,4 +1080,35 @@ test fn an_observed_activation_standing_reaches_the_result() -> Bool {
       g.activation == Present { value: fs_nvidia_eth_leg_coding_standing() } && g.activation != Present { value: fixture_profile_standing }
     _ => false
   }
+}
+
+data fixture_cited_extended_row: RowField<Ddr4RefreshBand> = FromCitedFigure {
+  value: Ddr4RefreshBand { upper_tcase: celsius(count: 95), refresh_interval: nanosecond(count: 3900) },
+  standing: fixture_profile_standing,
+}
+
+// Beyond a CITED extended edge the refusal is a grounded out-of-specification finding and carries the edge's
+// standing; beyond the real (TranscribedUncited) edge it is RefreshBandLimitUnestablished and the obligation survives.
+test fn the_standing_of_the_extended_edge_decides_what_beyond_it_means() -> Bool {
+  (match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: fixture_cited_extended_row) {
+    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _, extended_band_standing: g } } => !uncited_standing(g: g)
+    _ => false
+  })
+    && (match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band) {
+      DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: _, read_obligation: _ } } => true
+      _ => false
+    })
+}
+
+// The extended row is required only above the normal edge: normal established + extended unread selects the
+// normal band at 40 C (extended_band Absent) and refuses as unread at 90 C.
+test fn the_extended_row_is_required_only_above_the_normal_edge() -> Bool {
+  (match refresh_band_from_rows(case_temperature: DramCaseTemperature { tcase: celsius(count: 40) }, normal_row: ddr4_normal_refresh_band, extended_row: NeedsReading { read_obligation: "extended unread" as NonEmptyStr }) {
+    RefreshBandSelected { band: b } => !b.extended && b.extended_standing == Absent
+    _ => false
+  })
+    && (match refresh_band_from_rows(case_temperature: DramCaseTemperature { tcase: celsius(count: 90) }, normal_row: ddr4_normal_refresh_band, extended_row: NeedsReading { read_obligation: "extended unread" as NonEmptyStr }) {
+      RefreshBandNotRead { read_obligation: _ } => true
+      _ => false
+    })
 }

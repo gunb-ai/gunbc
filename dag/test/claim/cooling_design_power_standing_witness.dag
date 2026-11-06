@@ -53,12 +53,7 @@ fn realization_with(
 
 test fn cited_250w_against_250w_is_compatible_with_cited_standing() -> Bool {
   match cooling_catalog_verdict(realization: realization_with(cooler_power: watt(count: 250), processor: altra_max_m12830_catalog)) {
-    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: g } =>
-      match g {
-        CitedToAuthority { authority: _ } => true
-        TranscribedUncited { read_obligation: _ } => false
-        ObservedByReceipt { observed: _ } => false
-      }
+    CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } => true
     _ => false
   }
 }

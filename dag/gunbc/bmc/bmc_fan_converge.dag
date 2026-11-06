@@ -1787,7 +1787,7 @@ fn bmc_fan_run(
           )
         BmcFanConvergeRequested =>
           match bmc_fan_installed_cooling_verdict(target: target) {
-            CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } =>
+            CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } =>
               bmc_fan_converge_with_credential(
                 target: target,
                 credential: credential,

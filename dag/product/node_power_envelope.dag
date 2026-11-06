@@ -345,7 +345,8 @@ type DimmPowerRefusalCause
   = NoPartEvidenceAndNoClassBound { part_number: NonEmptyStr }
   | AmbiguousPartEvidence { part_number: NonEmptyStr, candidate_count: Nat }
   | TrafficExceedsModulePeak { demanded: Bandwidth, peak: Bandwidth }
-  | TemperatureBeyondExtendedBand { tcase: Celsius }
+  | TemperatureBeyondExtendedBand { tcase: Celsius, extended_band_standing: CitedFigureStanding }
+  | RefreshBandLimitUnestablished { tcase: Celsius, read_obligation: NonEmptyStr }
   | RefreshBandUnread { read_obligation: NonEmptyStr }
   | UnsupportedDramGeneration { part_number: NonEmptyStr }
   | ActivationDutyOutOfRange { duty: Permille }
@@ -399,7 +400,7 @@ fn grounds_of(base: CitedFigureStanding, band: SelectedRefreshBand, activation: 
 
 type RefreshBandReading
   = RefreshBandSelected { band: SelectedRefreshBand }
-  | RefreshBandBeyondSpecification { tcase: Celsius }
+  | RefreshBandBeyondSpecification { tcase: Celsius, extended_standing: CitedFigureStanding }
   | RefreshBandNotRead { read_obligation: NonEmptyStr }
 
 fn refresh_band_for(case_temperature: DramCaseTemperature) -> RefreshBandReading {
@@ -414,23 +415,25 @@ fn refresh_band_from_rows(
   match normal_row {
     NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
     FromCitedFigure { value: normal, standing: ns } =>
-      match extended_row {
-        NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
-        FromCitedFigure { value: extended, standing: es } =>
-          if celsius_count(c: case_temperature.tcase) <= celsius_count(c: normal.upper_tcase) {
-            RefreshBandSelected { band: SelectedRefreshBand { extended: false, multiplier: 1, normal_standing: ns, extended_standing: Absent } }
-          } else if celsius_count(c: case_temperature.tcase) <= celsius_count(c: extended.upper_tcase) {
-            RefreshBandSelected {
-              band: SelectedRefreshBand {
-                extended: true,
-                multiplier: nanosecond_count(n: normal.refresh_interval) / nanosecond_count(n: extended.refresh_interval),
-                normal_standing: ns,
-                extended_standing: Present { value: es },
-              },
+      if celsius_count(c: case_temperature.tcase) <= celsius_count(c: normal.upper_tcase) {
+        RefreshBandSelected { band: SelectedRefreshBand { extended: false, multiplier: 1, normal_standing: ns, extended_standing: Absent } }
+      } else {
+        match extended_row {
+          NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
+          FromCitedFigure { value: extended, standing: es } =>
+            if celsius_count(c: case_temperature.tcase) <= celsius_count(c: extended.upper_tcase) {
+              RefreshBandSelected {
+                band: SelectedRefreshBand {
+                  extended: true,
+                  multiplier: nanosecond_count(n: normal.refresh_interval) / nanosecond_count(n: extended.refresh_interval),
+                  normal_standing: ns,
+                  extended_standing: Present { value: es },
+                },
+              }
+            } else {
+              RefreshBandBeyondSpecification { tcase: case_temperature.tcase, extended_standing: es }
             }
-          } else {
-            RefreshBandBeyondSpecification { tcase: case_temperature.tcase }
-          }
+        }
       }
   }
 }
@@ -567,8 +570,15 @@ fn dimm_power_over_bands(
     }
   } else {
     match refresh_band_from_rows(case_temperature: load.case_temperature, normal_row: normal_row, extended_row: extended_row) {
-      RefreshBandBeyondSpecification { tcase: t } =>
-        DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t } }
+      RefreshBandBeyondSpecification { tcase: t, extended_standing: es } =>
+        match es {
+          CitedToAuthority { authority: _ } =>
+            DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t, extended_band_standing: es } }
+          ObservedByReceipt { observed: _ } =>
+            DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t, extended_band_standing: es } }
+          TranscribedUncited { read_obligation: o } =>
+            DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: t, read_obligation: o } }
+        }
       RefreshBandNotRead { read_obligation: o } =>
         DimmPowerRefused { cause: RefreshBandUnread { read_obligation: o } }
       RefreshBandSelected { band: band } =>
