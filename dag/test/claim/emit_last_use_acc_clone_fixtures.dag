@@ -42,9 +42,30 @@ fn preamble() -> String {
     "}",
     "fn collect_with<T>(xs: List<T>, item: T, append: fn(List<T>, T) -> List<T>) -> List<T> {",
     "  append(xs, item)",
+    "}",
+    "fn apply_one<T, R>(seed: T, f: fn(T) -> R) -> R {",
+    "  f(seed)",
     "}"
   ])
 }
+
+// THE NON-REGISTRY DOT-CALL CASE — the PREDICATE GUARD (manager msg_123de759 (2): built in the
+// SAME shape the widened arm governs — a LITERAL LAMBDA passed to a DECLARED callee, whose parameter's
+// single use is the RECEIVER of a non-registry dot-call, so the caller-side grantor really attaches
+// and the lambda-body proof really reaches the widened arm). `first` is a plain template dot-call
+// (extdeps.languages.rust.emit rust_simple_method_specs template "{recv}.first().cloned()"), NOT an
+// rt_function_registry row: it is in NEITHER projection map. The arm keys on POSITIVE membership in
+// rt_by_value_functions, so this receiver stays a Read and the clone is KEPT. A FAIL (bare `acc`)
+// therefore means exactly: the arm over-applied to a non-registry name — BLOCKS THE LAND. Corpus
+// receiver clone precedent for this template: extdeps_uri_path.rs:172
+// `before_and_rest.clone().first().cloned()`.
+
+// THE LET-BOUND LAMBDA CASE — the ATTACH-NEED DISCRIMINATOR. `join_via_local` binds the tested
+// lambda to a local and passes the LOCAL at its only use, so the caller-side grantor in
+// `emit_typed_call` meets a `Var` argument, not a lambda node. By SOURCE READING the landed shape
+// (caller-side gate restored, no lambda-level attach) keeps the clone here; the cell is NEW and
+// UNEXECUTED and shows nothing until run — the PENDING DISCRIMINATOR for the attach decision
+// (keen-otter msg_72114642 (3)), expectation registered in the control header.
 
 // THE MOVE CASE — the motivating shape. `join_pair` passes a literal lambda whose `acc` is used
 // exactly once, as a by-value argument, to the GENERIC declared callee `apply_combine`: the same
@@ -132,5 +153,20 @@ data by_ref_case_source: String = concat(preamble(), fixture_lines(lines: [
   "",
   "fn ref_check(prefix: String, suffix: String) -> Bool {",
   "  apply_ref_check(seed: prefix, probe: suffix, combine: fn(acc: String, needle: String) -> Bool { string_contains(acc, needle) })",
+  "}"
+]))
+
+data via_preamble_case_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn join_via_local(prefix: String, suffix: String) -> String {",
+  "  let joiner = fn(acc, x) { concat(acc, x) }",
+  "  apply_combine(seed: prefix, sep: suffix, combine: joiner)",
+  "}"
+]))
+
+data retain_non_registry_method_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn first_via(xs: List<String>) -> String? {",
+  "  apply_one(seed: xs, f: fn(acc) { acc.first() })",
   "}"
 ]))

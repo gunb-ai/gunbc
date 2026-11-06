@@ -13072,11 +13072,6 @@ fn emit_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: InferSco
       } else {
         emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
       }
-    // A LITERAL LAMBDA IS ITS OWN GRANTING SUBJECT: the owned-parameter grant for its parameters
-    // is attached here, once, when its body render begins -- the grant travels with the lambda's
-    // own body from this point down, independent of whichever call renders it.
-    ExprLambda =>
-      emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: lambda_body_grant_emit_info(arg: texpr, emit_info: emit_info, si: scope.type_env.source_indices), fuel: fuel)
     _ => emit_typed_expr_shared(texpr: texpr, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: fuel)
   }
 }
@@ -13489,26 +13484,26 @@ fn lambda_argument_scope(arg: Node, scope: InferScope) -> InferScope {
   }
 }
 
-// A LITERAL LAMBDA OWNS ITS PARAMETERS. A closure value is emitted as `impl Fn(A, T) -> R`, so each
-// call hands the closure fresh owned values, and a parameter the body uses once, by value, may be
-// moved there instead of cloned: the accumulator of a fold_list step is the specimen
-// (v1.compiler.ownership PassedByValue says what the clone cost). The function's own proof cannot
-// say this, because it records every name in a lambda body as a capture Read, so the lambda gets its
-// own proof over its own parameters, and its moves join the scope as OCCURRENCES, never as names.
-// Only parameters are admitted: any other name the body reads is a capture, and a capture never
-// moves out of an Fn closure. THE GRANT ATTACHES ONCE, AT THE LAMBDA, when its body render begins
-// (the ExprLambda arm of emit_typed_expr) -- not at a caller-side argument map keyed on the callee
-// being rendered. The caller-side placement it replaces (user_call_lambda_emit_info, gated on
-// `callee != none && !is_rt`, retired at this head) lost the grant on shapes whose body consumer is
-// a runtime primitive (the v5 receipt: the accumulator clone stayed), and the loss link could not be
-// located from source; attaching where the fact is owned makes the consumer's kind irrelevant.
-// Collection and fold lambdas are rendered by their own renderers with their own grants and do not
-// reach this arm; a move is a type error for a `.iter()`-borrowing parameter anyway.
-fn lambda_body_grant_emit_info(arg: Node, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> EmitGraphInfo {
+// A LAMBDA BOUND TO A DECLARED CALLEE'S PARAMETER OWNS ITS ARGUMENTS. That parameter is emitted as
+// `impl Fn(A, T) -> R`, so each call hands the closure fresh owned values, and a parameter the body
+// uses once, by value, may be moved there instead of cloned: the accumulator of a fold_list step is
+// the specimen (v1.compiler.ownership PassedByValue says what the clone cost). The function's own
+// proof cannot say this, because it records every name in a lambda body as a capture Read, so the
+// lambda gets its own proof over its own parameters, and its moves join the scope as OCCURRENCES,
+// never as names. Only parameters are admitted: any other name the body reads is a capture, and a
+// capture never moves out of an Fn closure. This route only, and not the collection lambdas, whose
+// parameters borrow from `.iter()`, where a move is a type error.
+fn user_call_lambda_emit_info(arg: Node, emit_info: EmitGraphInfo, si: Map<String, NewlineIndex>) -> EmitGraphInfo {
   match arg.expr_data {
     ExprLambda =>
       let ps = lambda_param_names_at(texpr: arg, source_indices: si)
-      let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si)
+      // move_positions: true HERE AND ONLY HERE — this is the lambda-parameter proof, the ONE
+      // supported pattern admitted for by-value move recording at an admitted bridge row (an
+      // owned parameter of a literal lambda passed to a declared callee). Function-level proofs
+      // (analyze_ownership: build_moved_argument_index below, v1.compiler.compile) pass false,
+      // so the fn-level index sees exactly the edges it sees on main (keen-otter msg_b08055f2:
+      // freeze the first pattern; parameters and owned locals of functions are NOT in scope).
+      let proof = analyze_ownership_of_names(func_name: "", param_names: ps, body: lambda_body(texpr: arg), si: si, move_positions: true)
       let moved = build_moved_argument_occurrences(proof: proof, param_names: ps |> fold(init: empty_set(), f: (acc, p) => set_insert(acc, p)), locals_admitted: false)
       with(emit_info, { moved_argument_occurrences: set_union(emit_info.moved_argument_occurrences, moved) })
     _ => emit_info
@@ -13845,13 +13840,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
       Present { value: application } => emit_info_with_expected_type(emit_info: emit_info, expected_type: Present { value: application.formal.substitution_basis })
       Absent => emit_info
     }
-    // THE GRANT NO LONGER DEPENDS ON THE CALLEE BEING RENDERED HERE. A literal lambda's
-    // owned-parameter grant attaches once, at the lambda, when its body render begins
-    // (lambda_body_grant_emit_info, applied by the ExprLambda arm of emit_typed_expr), so every
-    // argument render of this call carries the body grant whatever the callee kind is. The former
-    // caller-side gate (user_call_lambda_emit_info, gated on `callee != none && !is_rt`) is retired:
-    // keyed on the call being rendered, it left the grant to chance for runtime-primitive consumers.
-    let arg_emit_info = typed_emit_info
+    let arg_emit_info = if callee != none && !is_rt { user_call_lambda_emit_info(arg: arg_value(n: a), emit_info: typed_emit_info, si: scope.type_env.source_indices) } else { typed_emit_info }
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
       let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
