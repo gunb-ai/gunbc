@@ -766,7 +766,15 @@ data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 // allocation-store plans were given the aux budget when they were added, and run 38090815687 (srv1,
 // 2026-10-10) was killed at 5m while still typechecking the launch-environment closure -- the same
 // class as 35230228049, one step over.
-data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 15
+// RAISED 15 -> 45 ON 2026-11-06, BECAUSE THE CLOSURE TYPECHECK ALONE NOW EXCEEDS 15. Run 42273405215
+// (plan, srv4, main 3c14fdab) was killed at 15m still in pre-entry typecheck, before membership_reconcile
+// evaluated anything; run 42037046961 (runner_host_file_observe, srv3) was killed the same way. The
+// measured pre-entry cost of an entry this size is ~1604 s (gunbc.instruments.generated_artifact_gate
+// main_wet_one at main f6f57e7e, resolve_entry_graph_inclusive, closure 3396 files), so 45 is ~1.7x that
+// reading. This is an envelope for a known undesigned floor, not a measurement of plan's own work: the
+// floor is gunbc.integration_concern run_closure_typecheck_exceeds_eval_demand, and when that concern
+// integrates this budget returns to what the observe needs. A step that exceeds it still fails loudly.
+data gunbc_ci_fleet_converge_plan_step_timeout_minutes: Duration = 45
 
 // THE PLAN'S SERVE-ENTRY VERDICT STEP PAYS THE FOLD THE PLAN OWNS: the cold serve-entry compile
 // measured, in the transaction it replaces, typecheck_files ms=452671 plus
