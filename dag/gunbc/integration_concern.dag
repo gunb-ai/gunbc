@@ -747,6 +747,10 @@ data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationCon
       account: "Found while choosing the repair for the private audit_packet burst (strategy.audit_packet audit_module_facts, measured +8.3 GiB in 16 s from one module_declaration_facts call over the composed pool of 10164 files). Moving that consumer to either keyed read would move the burst to the first lookup and remove nothing, because module_declaration_fact_at reads through with_module_path_index and eval_decl_facts_at filters decl_facts_for_roots_shared. The repair belongs in the keyed reads: derive the storage path from the name per pool root and read that one file, keeping multiplicity across roots so DeclarationRefAmbiguous still fires.",
     },
     tail: [],
+  },
+  disposition: Open,
+}
+
 
 // #15175's synthesized derived-equality bodies bind the std comparison helpers they call by NAME
 // SPELLING, which resolves through the HOLDER module's import set -- so whether a type has a
