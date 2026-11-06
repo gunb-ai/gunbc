@@ -8,8 +8,7 @@ import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_stmt_list_from_nodes,
   bash_build_assign, bash_build_assign_lit, bash_build_word_cmdsubst, bash_build_pipe, bash_build_or_else,
-  bash_build_if, bash_build_if_else, bash_build_negation, bash_build_test_bracket, bash_build_with_redir,
-  bash_build_subshell_from_stmts
+  bash_build_if, bash_build_if_else, bash_build_negation, bash_build_test_bracket, bash_build_with_redir
 }
 
 // THE ROSTER ROW TYPES, AND WHY THEY ARE GUNBC'S RATHER THAN ONE REPOSITORY'S.
@@ -171,19 +170,10 @@ type RosterAggregate {
   fail_banner: NonEmptyStr
 }
 
-fn roster_streamed_run(overlay: OverlayIngest, source_roots: List<String>, name: String, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
-  roster_capture(
-    name: name,
-    body: bash_build_subshell_from_stmts(stmts: [
-      roster_command(words: [roster_word(text: "set"), roster_word(text: "-o"), roster_word(text: "pipefail")]),
-      bash_build_pipe(
-        left: bash_build_with_redir(
-          inner: compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function),
-          redir: ^bash_production_fold_redir_stderr_to_stdout,
-        ),
-        right: roster_command(words: [roster_word(text: "tee"), roster_word(text: "/dev/stderr")])
-      )
-    ])
+fn roster_streamed_run(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
+  bash_build_with_redir(
+    inner: compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function),
+    redir: ^bash_production_fold_redir_stderr_to_stdout,
   )
 }
 
@@ -397,7 +387,7 @@ fn roster_enforced_verdict(aggregate: RosterAggregate, overlay: OverlayIngest, s
     roster_echo(text: "roster aggregate: started (output streams live; exit receipt follows)"),
     roster_command(words: [roster_word(text: "date"), roster_word(text: "-u")]),
     bash_build_if_else(
-      cond: roster_streamed_run(overlay: overlay, source_roots: source_roots, name: "out", entry: aggregate.invocation.entry, function: aggregate.invocation.function),
+      cond: roster_streamed_run(overlay: overlay, source_roots: source_roots, entry: aggregate.invocation.entry, function: aggregate.invocation.function),
       then_body: roster_statements(stmts: [
         roster_echo(text: join(["PASS  ", aggregate.pass_banner, " — ", aggregate.invocation.entry as String], "")),
       ]),
