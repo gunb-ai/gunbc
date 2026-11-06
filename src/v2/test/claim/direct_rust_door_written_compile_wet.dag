@@ -40,5 +40,5 @@ test fn missing_rule_refusal_reason_is_receipted() -> Bool {
   let observation = direct_rust_door_written_missing_rule()
   // Discriminating: green only if the route refused with the missing-rule cause AND the receipt was
   // written, so a compiled / unwritten / wrong-cause route goes red instead of being receipted green.
-  written_route_refused(observation: observation) && written_refusal_reason_receipt_written(observation: observation)
+  written_route_refused(observation: observation) && written_refusal_reason_receipt_written(observation: observation, receipt_dir: "target/direct-rust-door-written")
 }

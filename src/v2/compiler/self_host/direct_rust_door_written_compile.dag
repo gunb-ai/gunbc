@@ -144,7 +144,7 @@ fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
 // run log. The receipt lives beside, never inside, the missing-rule workspace (that directory must
 // stay absent: a refusal writes nothing). The reason is the lexeme of the fatal diagnostic symbol,
 // so a wrong-cause refusal is visible in the log even when the Bool is false.
-data direct_rust_door_refusal_receipt_dir: String = "target/direct-rust-door-written"
+// The receipt directory is a PARAMETER supplied by the claim (review 91505: a reporting location is policy, not production-module data).
 
 fn written_refusal_reason_text(observation: WrittenRustCompileObservation) -> String {
   match observation {
@@ -154,11 +154,11 @@ fn written_refusal_reason_text(observation: WrittenRustCompileObservation) -> St
   }
 }
 
-fn written_refusal_reason_receipt_written(observation: WrittenRustCompileObservation) -> Bool {
-  let made = shell.Mkdir.Parents(path: direct_rust_door_refusal_receipt_dir as FilePath)
+fn written_refusal_reason_receipt_written(observation: WrittenRustCompileObservation, receipt_dir: String) -> Bool {
+  let made = shell.Mkdir.Parents(path: receipt_dir as FilePath)
   if made.success {
     let r = Filesystem.Write(
-      path: concat(direct_rust_door_refusal_receipt_dir, "/refusal-reason.txt") as FilePath,
+      path: concat(receipt_dir, "/refusal-reason.txt") as FilePath,
       content: written_refusal_reason_text(observation: observation)
     )
     r.success
