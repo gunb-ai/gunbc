@@ -265,7 +265,6 @@ pub enum TargetProducer {
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
-    RequiredLaneResolutionCensus,
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     SelfHostFrontier,
@@ -780,11 +779,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             "dag/gunbc/instruments/self_host_behavioral_equivalence_take.dag",
             "take_self_host_behavioral_equivalence_receipt",
         ),
-        TargetProducer::RequiredLaneResolutionCensus => run_cli_wire_census(
-            "required-lane-resolution-census",
-            "dag/gunbc/required_lane_resolution_census_live.dag",
-            "required_lane_resolution_census_exit",
-        ),
     }
 }
 
@@ -796,8 +790,7 @@ fn run_cli_wire_program(entry: &'static str, function: &'static str) -> Invocati
 
 /// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
 /// entry, evaluate the named function, print the wire bytes on every termination, and map the
-/// wire exit to a Termination through the one classifier in `cli_run`. The required-lane
-/// resolution census shares it; a new instrument of that
+/// wire exit to a Termination through the one classifier in `cli_run`. A new instrument of that
 /// shape is a label row plus one arm naming its entry and function, never a second runner.
 fn run_cli_wire_census(
     label: &'static str,
@@ -1678,6 +1671,16 @@ struct NativeServeBindingRead {
     declared: Vec<String>,
 }
 
+/// The unix-socket phase's directory, removed when the run ends by any path, including an early
+/// refusal between its creation and the run.
+struct NativeServeSocketDir(std::path::PathBuf);
+
+impl Drop for NativeServeSocketDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, String> {
     const BINDINGS: &str = "dag/gunbc/instrument_targets.dag";
     let roots = cli_run::default_source_roots();
@@ -1739,6 +1742,7 @@ fn read_native_serve_binding(entry: &str) -> Result<NativeServeBindingRead, Stri
             peer_instance: flag("native_serve_probe_runs_peer")?,
             refused_launch: flag("native_serve_probe_runs_refused_launch")?,
             deadline_exit: flag("native_serve_probe_runs_deadline_exit")?,
+            unix_socket: flag("native_serve_probe_runs_unix_socket")?,
         },
         declared,
     })
@@ -1901,11 +1905,80 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             _ => None,
         }
     };
+    // UNDER THE UNIX-SOCKET PHASE the host chooses the socket's path, in a fresh directory only this
+    // process may enter, under /tmp because a socket path is bounded by sun_path (108 bytes) and a
+    // deep temp root would not fit. The reader renders the argv over that path.
+    let unix_socket_dir = if binding.phases.unix_socket {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::path::PathBuf::from(format!(
+            "/tmp/gunbc-native-serve-unix-{}-{nanos}",
+            std::process::id()
+        ));
+        let created = {
+            use std::os::unix::fs::DirBuilderExt;
+            std::fs::DirBuilder::new().mode(0o700).create(&dir)
+        };
+        if let Err(cause) = created {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!(
+                    "{label_name}: NATIVE-SERVE REFUSAL cause=SocketDirectoryUncreated path={} — {cause}",
+                    dir.display()
+                ),
+            };
+        }
+        Some(NativeServeSocketDir(dir))
+    } else {
+        None
+    };
+    let unix_socket_path = unix_socket_dir
+        .as_ref()
+        .map(|dir| dir.0.join("serve.sock").display().to_string());
     // Every launch's argv is the reader's (gunbc.native_serve_probe_plan native_serve_probe_launch); a
     // phase the row does not declare owes no function.
+    let unix_launch = |path: &str| -> Result<Vec<String>, String> {
+        let value = crate::v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "native_serve_probe_unix_launch_argv",
+            &[(
+                Some("socket_path".to_string()),
+                crate::v1_interpreter::str_value(path),
+            )],
+            true,
+        )
+        .map_err(|cause| {
+            format!("{label_name}: {READER} native_serve_probe_unix_launch_argv failed: {cause}")
+        })?;
+        words(&value).ok_or_else(|| "the unix launch argv is not a List of String".to_string())
+    };
+    // The contended paths, one per way another realization can be found at a path.
+    let unix_contended_paths: Vec<(cli_run::NativeServeContention, String)> = match &unix_socket_dir
+    {
+        Some(dir) => vec![
+            (
+                cli_run::NativeServeContention::LiveListener,
+                dir.0.join("live.sock").display().to_string(),
+            ),
+            (
+                cli_run::NativeServeContention::HeldLock,
+                dir.0.join("locked.sock").display().to_string(),
+            ),
+        ],
+        None => Vec::new(),
+    };
     let plan = (|| -> Result<cli_run::NativeServeLaunches, String> {
-        let subject = words(&read("native_serve_probe_launch_argv")?)
-            .ok_or("the launch argv is not a List of String")?;
+        let subject = match &unix_socket_path {
+            Some(path) => unix_launch(path)?,
+            None => words(&read("native_serve_probe_launch_argv")?)
+                .ok_or("the launch argv is not a List of String")?,
+        };
+        let unix_contended = unix_contended_paths
+            .iter()
+            .map(|(contention, path)| Ok((*contention, path.clone(), unix_launch(path)?)))
+            .collect::<Result<Vec<_>, String>>()?;
         let refused = if binding.phases.refused_launch {
             argvs(&read("native_serve_probe_refused_launches")?)
                 .ok_or("the refused launches are not a List of argv")?
@@ -1920,6 +1993,8 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         };
         Ok(cli_run::NativeServeLaunches {
             subject,
+            unix_socket_path: unix_socket_path.clone(),
+            unix_contended,
             refused,
             deadline,
         })
@@ -1933,14 +2008,15 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             }
         }
     };
-    let run = match cli_run::run_native_serve_program(
+    let run = cli_run::run_native_serve_program(
         &v2_native_cli_source_roots(),
         entry,
         &launches,
         binding.phases,
         &requests_for_peer_port,
         &deadline_requests_for_silent_port,
-    ) {
+    );
+    let run = match run {
         Ok(run) => run,
         Err(cause) => {
             return InvocationOutcome {
@@ -2007,6 +2083,28 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         (
             Some("deadline_exit_statuses".to_string()),
             statuses(&run.deadline_exit_statuses),
+        ),
+        (
+            Some("unix_peer_account".to_string()),
+            crate::v1_interpreter::Value::Str(run.unix_peer_account.clone().into()),
+        ),
+        (
+            Some("unix_contended_statuses".to_string()),
+            statuses(&run.unix_contended_statuses),
+        ),
+        (
+            Some("unix_contended_stderrs".to_string()),
+            texts(&run.unix_contended_stderrs),
+        ),
+        (
+            Some("unix_contended_kept".to_string()),
+            crate::v1_interpreter::Value::List(std::rc::Rc::new(
+                run.unix_contended_kept
+                    .iter()
+                    .map(|k| crate::v1_interpreter::Value::Bool(*k))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
         ),
     ];
     let standing = match crate::v1_interpreter::run_in_context_with_args(

@@ -755,7 +755,7 @@ jobs:
   branch-run-grant-await:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 100
-    if: github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read'
+    if: github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_observe' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_converge' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read'
     permissions:
       contents: read
       actions: read
@@ -904,8 +904,8 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc' }}
-          service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
+          workload_identity_provider: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge') && github.ref != 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc' }}
+          service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_observe' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_converge' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
         if: github.event.inputs.mode == 'fleet_keypair_mint'
@@ -952,7 +952,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build, branch-run-grant-await]
     timeout-minutes: 324
-    if: "!cancelled() && needs.build.result == 'success' && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'service_runner_lost_boot_sweep' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'hetzner_cloud_server_read' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'boot_medium_reader_probe' || github.event.inputs.mode == 'flex_pass' || github.event.inputs.mode == 'flex_template_ensure' || github.event.inputs.mode == 'qualification_attempt')"
+    if: "!cancelled() && needs.build.result == 'success' && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_observe' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_converge' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'launch_environment_plan' || github.event.inputs.mode == 'allocation_store_plan' || github.event.inputs.mode == 'workspace_commissioning_plan' || github.event.inputs.mode == 'workspace_allocation_plan' || github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'org_actions_observe' || github.event.inputs.mode == 'app_control_plane_observe' || github.event.inputs.mode == 'microvm_host_converge' || github.event.inputs.mode == 'microvm_network_observe' || github.event.inputs.mode == 'microvm_network_apply' || github.event.inputs.mode == 'guest_image_observe' || github.event.inputs.mode == 'guest_image_converge' || github.event.inputs.mode == 'microvm_boot_probe' || github.event.inputs.mode == 'spark_grants' || github.event.inputs.mode == 'spark_bootstrap' || github.event.inputs.mode == 'spark_serving_apply' || github.event.inputs.mode == 'spark_native_serving_apply' || github.event.inputs.mode == 'spark_runtime_image_probe' || github.event.inputs.mode == 'spark_wireless_link_converge' || github.event.inputs.mode == 'spark_grants_observe' || github.event.inputs.mode == 'microvm_slot_reserve' || github.event.inputs.mode == 'microvm_slot_start' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'host_memory_observe' || github.event.inputs.mode == 'runner_host_file_converge' || github.event.inputs.mode == 'host_primary_network_observe' || github.event.inputs.mode == 'host_primary_network_converge' || github.event.inputs.mode == 'board_function_converge' || github.event.inputs.mode == 'runner_host_withdraw' || github.event.inputs.mode == 'runner_host_restore' || github.event.inputs.mode == 'site_pxe_edge_observe' || github.event.inputs.mode == 'site_pxe_edge_converge' || github.event.inputs.mode == 'runner_password_session_tool_converge' || github.event.inputs.mode == 'runner_browser_toolchain_converge' || github.event.inputs.mode == 'runner_user_session_converge' || github.event.inputs.mode == 'runner_gpu_container_toolchain_converge' || github.event.inputs.mode == 'r2_mint_preflight' || github.event.inputs.mode == 'r2_object_write_mint' || github.event.inputs.mode == 'org_runner_roster_observe' || github.event.inputs.mode == 'approval_keyring_converge' || github.event.inputs.mode == 'mtcollins1_fan_observe' || github.event.inputs.mode == 'mtcollins1_kvm_observer_observe' || github.event.inputs.mode == 'mtcollins1_census_image_publish' || github.event.inputs.mode == 'mtcollins1_runner_image_publish' || github.event.inputs.mode == 'mtcollins1_census_member_readback' || github.event.inputs.mode == 'mtcollins1_census_qemu_host_observe' || github.event.inputs.mode == 'mtcollins1_census_qemu_toolchain_converge' || github.event.inputs.mode == 'host_credential_custody_converge' || github.event.inputs.mode == 'app_key_version_verify' || github.event.inputs.mode == 'r2_bucket_ensure' || github.event.inputs.mode == 'r2_bucket_admin_mint' || github.event.inputs.mode == 'r2_workspace_object_read_mint' || github.event.inputs.mode == 'r2_workspace_object_write_mint' || github.event.inputs.mode == 'r2_cache_object_read_mint' || github.event.inputs.mode == 'r2_cache_object_write_mint' || github.event.inputs.mode == 'r2_conditional_put_race_probe' || github.event.inputs.mode == 'workspace_source_pack' || github.event.inputs.mode == 'workspace_checkpoint_measure' || github.event.inputs.mode == 'workspace_checkpoint_restore' || github.event.inputs.mode == 'workspace_transcript_rate_observe' || github.event.inputs.mode == 'fabric_writer_identity_observe' || github.event.inputs.mode == 'microvm_runner_group_ensure' || github.event.inputs.mode == 'service_runner_lost_boot_sweep' || github.event.inputs.mode == 'service_runner_lost_boot_sweep_dry_run' || github.event.inputs.mode == 'hetzner_cloud_server_read' || github.event.inputs.mode == 'export_host_reader_converge' || github.event.inputs.mode == 'boot_medium_reader_probe' || github.event.inputs.mode == 'flex_pass' || github.event.inputs.mode == 'flex_template_ensure' || github.event.inputs.mode == 'qualification_attempt')"
     permissions:
       contents: read
       actions: read
@@ -1097,8 +1097,8 @@ jobs:
         id: wif_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc' }}
-          service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
+          workload_identity_provider: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge') && github.ref != 'refs/heads/main' && 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-converge-dispatch/providers/gh-fleet-converge-dispatch-oidc' || 'projects/582015116396/locations/global/workloadIdentityPools/github-fleet-convergence/providers/github-fleet-convergence-oidc' }}
+          service_account: ${{ (github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'apply' || github.event.inputs.mode == 'runner_host_file_observe' || github.event.inputs.mode == 'runner_host_file_converge') && github.ref != 'refs/heads/main' && (github.event.inputs.mode == 'plan' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'apply' && 'fleet-apply-run@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_observe' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || github.event.inputs.mode == 'runner_host_file_converge' && 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com') || 'fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com' }}
           token_format: access_token
           create_credentials_file: false
         if: "!(github.event.inputs.mode == 'hetzner_cloud_server_read') && !(github.event.inputs.mode == 'workspace_image_build' || github.event.inputs.mode == 'revision_job_image_build' || github.event.inputs.mode == 'workspace_allocation_plan')"
@@ -2861,7 +2861,7 @@ jobs:
     needs: [branch-run-grant-await]
     environment: mtcollins1-boot
     timeout-minutes: 199
-    if: "!cancelled() && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'mtcollins1_boot')"
+    if: "!cancelled() && (needs['branch-run-grant-await'].result == 'success' || needs['branch-run-grant-await'].result == 'skipped' && !(github.event.inputs.mode == 'plan' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'apply' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_observe' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'runner_host_file_converge' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'mtcollins1_boot' && github.ref != 'refs/heads/main' || github.event.inputs.mode == 'hetzner_cloud_server_read')) && (github.event.inputs.mode == 'mtcollins1_boot')"
     permissions:
       contents: read
       actions: read
@@ -3243,7 +3243,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 97
+    timeout-minutes: 314
     if: github.event.inputs.mode == 'dashboard_deploy' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3387,7 +3387,7 @@ jobs:
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_2: ${{ inputs.plan_artifact_hash }}
           GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_3: expected_revision
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_3: ${{ inputs.expected_revision }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3487,7 +3487,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 114
+    timeout-minutes: 331
     if: github.event.inputs.mode == 'approval_broker_dark_install' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3612,7 +3612,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3635,7 +3635,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 97
+    timeout-minutes: 314
     if: github.event.inputs.mode == 'approval_ntfy_retire' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3760,7 +3760,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -3799,7 +3799,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         timeout-minutes: 5
-      - name: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean"
+      - name: "Retire ntfy on srv1: stop and disable the unit by name, remove the unit file, the service account, the group the account leaves behind, the two rostered directories and the binary, and take the tailscale front door off 8443; the run reads every roster member absent before it calls the retirement clean"
         id: approval_ntfy_retire
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -3819,7 +3819,7 @@ jobs:
     runs-on: ${{ github.event.inputs.host == 'srv1' && fromJSON('["self-hosted","linux","arm64","srv1","gunbc-deploy"]') || fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 127
+    timeout-minutes: 344
     if: github.event.inputs.mode == 'microvm_controller_install' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3988,7 +3988,7 @@ jobs:
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_0: ${{ inputs.workspace_image_run_id }}
           GUNBC_SRV1_ROOT_MUTATION_SELECT_NAME_1: revision_job_image_run_id
           GUNBC_SRV1_ROOT_MUTATION_SELECT_VALUE_1: ${{ inputs.revision_job_image_run_id }}
-        timeout-minutes: 32
+        timeout-minutes: 249
       - name: Upload the srv1 root-mutation approval receipt
         id: srv1_root_mutation_approval_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
