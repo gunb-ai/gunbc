@@ -89,24 +89,26 @@ type ToolchainFileScan {
 
 // The `channel` of a rust-toolchain.toml, read from the [toolchain] table only. First match wins.
 fn rustup_toolchain_file_channel(text: String) -> NonEmptyStr? {
-  let scan = fold(split(s: text, delimiter: "\n") |> map(l => trim(s: l)), init: ToolchainFileScan { in_table: false, channel: "" }, f: (acc, line) => rustup_toolchain_scan_step(acc: acc, line: line))
+  let scan = fold(split(s: text, delimiter: "\n") |> map(l => trim(s: rustup_first_text(split(s: l, delimiter: "#")))), init: ToolchainFileScan { in_table: false, channel: "" }, f: (acc, line) => rustup_toolchain_scan_step(acc: acc, line: line))
   if scan.channel == "" { none } else { Present { value: scan.channel as NonEmptyStr } }
 }
 
 fn rustup_toolchain_scan_step(acc: ToolchainFileScan, line: String) -> ToolchainFileScan {
   if starts_with(s: line, prefix: "[") {
-    ToolchainFileScan { in_table: line == "[toolchain]", channel: acc.channel }
+    ToolchainFileScan { in_table: line.replace(from: " ", to: "") == "[toolchain]", channel: acc.channel }
   } else if acc.in_table && acc.channel == "" {
-    ToolchainFileScan { in_table: true, channel: rustup_channel_value(line: line) }
+    ToolchainFileScan { in_table: true, channel: rustup_channel_value(line: line, key: "channel") }
+  } else if !acc.in_table && acc.channel == "" {
+    ToolchainFileScan { in_table: false, channel: rustup_channel_value(line: line, key: "toolchain.channel") }
   } else {
     acc
   }
 }
 
-// `channel = "x"` or `channel = 'x'`; the key must be exactly `channel`, followed by `=`.
-fn rustup_channel_value(line: String) -> String {
+// `channel = "x"` or `channel = 'x'` (or the dotted `toolchain.channel` before any table); the key must be exactly `key`, followed by `=`.
+fn rustup_channel_value(line: String, key: String) -> String {
   let parts = split(s: line, delimiter: "=")
-  if count(parts) < 2 || trim(s: rustup_first_text(parts)) != "channel" {
+  if count(parts) < 2 || trim(s: rustup_first_text(parts)) != key {
     ""
   } else {
     let value = trim(s: join(skip(xs: parts, n: 1), "="))

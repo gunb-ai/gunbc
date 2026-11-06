@@ -130,4 +130,6 @@ test fn the_toolchain_file_channel_is_read_by_exact_key_in_its_table() -> Bool {
     && !has("channel = \"1.93.0\"\n")
     && !has("[other]\nchannel = \"1.93.0\"\n[toolchain]\ncomponents = []\n")
     && !has("[toolchain]\nchannel = 1.93.0\n")
+    && has("[toolchain] # pinned\nchannel = \"1.93.0\" # now\n") && has("[ toolchain ]\nchannel = \"1.93.0\"\n")
+    && has("toolchain.channel = \"1.93.0\"\n")
 }
