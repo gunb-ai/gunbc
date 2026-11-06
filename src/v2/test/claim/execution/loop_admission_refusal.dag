@@ -1,0 +1,28 @@
+module v2.test.claim.execution.loop_admission_refusal
+
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme }
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+
+// READS THE REFUSAL REASON A CLAIM'S RUN ENDED IN. The Loop fold-driver admission (v2.compiler.eval
+// eval_loop_admission) runs before the interpreter's step_loop, so a stub-driven Loop claim whose fixture
+// is not a proven fold realization now ends in a typed refusal instead of the stub's value. Those claims'
+// expectation is that refusal (the old value came from a stub bypassing termination and realization,
+// which admission exists to stop), read here from the verdict's actual outcome. ENROLLED, NOT EXECUTED.
+
+fn loop_outcome_reason<T>(o: Outcome<T>) -> String {
+  match o {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+fn loop_verdict_reason<S, A>(v: Verdict<S, A>) -> String {
+  match v {
+    Pass => "pass"
+    SemanticMismatch { actual: a, falsification: _ } => loop_outcome_reason(o: a)
+    BuildFailed { actual: a, diagnostic: _ } => loop_outcome_reason(o: a)
+    RunFailed { actual: a, diagnostic: _ } => loop_outcome_reason(o: a)
+    Deferred { actual: a, diagnostic: _ } => loop_outcome_reason(o: a)
+  }
+}

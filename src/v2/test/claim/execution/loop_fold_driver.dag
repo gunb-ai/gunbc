@@ -1,6 +1,6 @@
 module v2.test.claim.execution.loop_fold_driver
 
-import v2.compiler.eval { eval_loop_admit }
+import v2.compiler.eval { eval_loop_admission }
 import v2.compiler.fold_lowering { fold_family_realization, fold_realization_declaration_path }
 import v2.extdeps.languages.dag { dag_loop_measure_node }
 import v2.extdeps.runtimes.v2_evaluator { v2_eval_terminal_value }
@@ -57,9 +57,9 @@ fn fd_loop_realized(head: Symbol) -> Node {
 }
 
 fn fd_admit_reason(n: Node) -> String {
-  match eval_loop_admit(node: n) {
-    Accepted { value: _, diagnostics: _ } => "executed"
-    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  match eval_loop_admission(node: n) {
+    Absent => "admitted"
+    Present { value: d } => symbol_lexeme(sym: d.reason)
   }
 }
 
@@ -79,10 +79,10 @@ test fn a_proven_fold_node_loop_is_refused_iteration_direction_absent_holds() ->
   fd_admit_reason(n: fd_loop_realized(head: ^fold_node)) == "v2_eval_loop_iteration_direction_absent"
 }
 
-// Admitted-then-deferred: proven, fold-realized (fold_list), directed. Admission passes, so the Loop
-// refuses with the existing semantics_deferred (located at the step arrow).
-test fn a_proven_fold_realized_directed_loop_passes_admission_and_defers_holds() -> Bool {
-  fd_admit_reason(n: fd_loop_realized(head: ^fold_list)) == "v2_eval_semantics_deferred"
+// Admitted: proven, fold-realized (fold_list), directed. Admission passes and the Loop proceeds to the
+// interpreter's step_loop as before (production's step_loop refuses ^v2_eval_semantics_deferred).
+test fn a_proven_fold_realized_directed_loop_passes_admission_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_realized(head: ^fold_list)) == "admitted"
 }
 
 // C5: an Iterate control transfer is not a result; the terminal reader refuses it.

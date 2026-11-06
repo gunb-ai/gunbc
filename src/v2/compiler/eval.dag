@@ -22,7 +22,7 @@ import v2.std.verification { CompilesClaim, DiagnosticClaim, EqualsClaim, RoundT
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional, list_nth }
 import v2.extdeps.languages.dag { dag_round_trip_authorities_ready }
 import v2.extdeps.runtimes.v2_effect_io_pure { EffectIoFixtureStore, EffectIoResourceBackend, effect_io_pure_append_receipt, effect_io_pure_apply_write, effect_io_pure_handler_binding, effect_io_pure_invoke_handler, effect_io_pure_locator_from_args, effect_io_pure_read_request, effect_io_pure_write_request }
-import v2.extdeps.runtimes.v2_evaluator { V4EvaluatorRuntime, v2_eval_is_literal_shaped_node, v2_evaluator_interpretation_structure_witness, v2_evaluator_interpretation, v2_evaluator_runtime, v2_eval_runtime_diagnostic }
+import v2.extdeps.runtimes.v2_evaluator { V4EvaluatorRuntime, v2_eval_is_literal_shaped_node, v2_evaluator_interpretation_structure_witness, v2_evaluator_interpretation, v2_evaluator_runtime }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
@@ -2083,41 +2083,32 @@ fn eval_branch_node(
   )
 }
 
-// THE ADMISSION HALF OF THE FOLD-FIRST LOOP DRIVER. A Loop is run only when (1) its termination is proven
-// (loop_multiplicity), (2) it is a fold realization (its ^loop_realized_declaration_edge names a fold
-// family declaration, fold_realized_member_role) and (3) that realization fixes the order it visits its
-// domain (fold_realized_iteration_direction, derived, never authored). Each refusal is typed and located
-// at the Loop. A Loop that passes all three is not yet executable: iterating the runtime domain and
-// applying the step are a separate capability, so it refuses with the existing
-// ^v2_eval_semantics_deferred, located at the step arrow (the Loop's first positional child), which is
-// honest deferral and names no new reason. The step_loop slot of the interpreter is no longer consulted.
-fn eval_loop_admit(node: Node) -> Outcome<RuntimeValue> {
+// THE ADMISSION HALF OF THE FOLD-FIRST LOOP DRIVER. A Loop is stepped only when (1) its termination is
+// proven (loop_multiplicity), (2) it is a fold realization (its ^loop_realized_declaration_edge names a
+// fold family declaration, fold_realized_member_role) and (3) that realization fixes the order it visits
+// its domain (fold_realized_iteration_direction, derived, never authored). Absent: admitted. Present: the
+// typed refusal, located at the Loop. An admitted Loop proceeds to the interpreter's step_loop exactly as
+// before; iterating the runtime domain and applying the step are a separate capability (PR-2).
+fn eval_loop_admission(node: Node) -> Optional<Diagnostic> {
   match loop_multiplicity(n: node) {
-    Bounded => eval_loop_admit_realization(node: node)
-    ProvenTermination { proof: _ } => eval_loop_admit_realization(node: node)
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^v2_eval_loop_requires_termination_proof, node: node))
+    Bounded => eval_loop_admission_realization(node: node)
+    ProvenTermination { proof: _ } => eval_loop_admission_realization(node: node)
+    _ => optional_present(value: eval_diagnostic(reason: ^v2_eval_loop_requires_termination_proof, node: node))
   }
 }
 
-fn eval_loop_admit_realization(node: Node) -> Outcome<RuntimeValue> {
+fn eval_loop_admission_realization(node: Node) -> Optional<Diagnostic> {
   match loop_realized_declaration_target(children: node.children) {
     Found { target: realized } =>
       match fold_realized_member_role(realized: realized) {
         Present { value: _ } =>
           match fold_realized_iteration_direction(realized: realized) {
-            Present { value: _ } => eval_loop_admitted_deferred(node: node)
-            Absent => outcome_rejected(d: eval_diagnostic(reason: ^v2_eval_loop_iteration_direction_absent, node: node))
+            Present { value: _ } => optional_absent()
+            Absent => optional_present(value: eval_diagnostic(reason: ^v2_eval_loop_iteration_direction_absent, node: node))
           }
-        Absent => outcome_rejected(d: eval_diagnostic(reason: ^v2_eval_loop_bound_not_executable, node: node))
+        Absent => optional_present(value: eval_diagnostic(reason: ^v2_eval_loop_bound_not_executable, node: node))
       }
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^v2_eval_loop_bound_not_executable, node: node))
-  }
-}
-
-fn eval_loop_admitted_deferred(node: Node) -> Outcome<RuntimeValue> {
-  match list_at_optional(xs: positional_child_target_nodes(node: node), index: 0) {
-    Present { value: step } => outcome_rejected(d: v2_eval_runtime_diagnostic(node: step))
-    Absent => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    _ => optional_present(value: eval_diagnostic(reason: ^v2_eval_loop_bound_not_executable, node: node))
   }
 }
 
@@ -2131,8 +2122,22 @@ fn eval_loop_node(
   runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
   match interpreter {
-    LoopRuntimeInterpreter { interpreter: _ } =>
-      eval_loop_admit(node: node)
+    LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
+      match eval_loop_admission(node: node) {
+        Present { value: refusal } => outcome_rejected(d: refusal)
+        Absent =>
+          bind_outcome(
+            o: loop_interpreter.step_loop(node, environment),
+            f: fn(control) {
+              control_transfer_value(
+                control: control,
+                node: node,
+                runtime: runtime,
+                environment: environment
+              )
+            }
+          )
+      }
     ValueRuntimeInterpreter { interpreter: _ } =>
       outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     TransformRuntimeInterpreter { interpreter: _ } =>

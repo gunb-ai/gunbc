@@ -51,6 +51,7 @@ import v2.std.cardinality {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.diagnostic {
+  diagnostics_fatal_reason,
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
@@ -70,7 +71,7 @@ import v2.std.integer {
   integer_int_to_signed_i32_le_bytes,
   integer_signed_i32_le_bytes_to_int
 }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { symbol_lexeme, positional_child_target_nodes,
   Arrow,
   Atom,
   Branch,
@@ -886,9 +887,9 @@ test fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
     interpretation: add_arrow_eval_lazy_arm_loop_interpretation(),
     inputs: inputs_root_only(root: loop_node)
   ) {
-    Accepted { value: v, diagnostics: _ } =>
-      add_arrow_eval_runtime_int_equals(value: v, n: 5)
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) == "v2_eval_loop_requires_termination_proof"
   }
 }
 
