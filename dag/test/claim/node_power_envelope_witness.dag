@@ -100,6 +100,11 @@ import product.node_power_envelope {
   CpuPowerDerived,
   CpuPowerRefused,
   DimmLoad,
+  DramCaseTemperature,
+  refresh_band_for,
+  RefreshBandSelected,
+  RefreshBandBeyondSpecification,
+  TemperatureBeyondExtendedBand,
   DimmPowerEvidence,
   DimmPowerFromClassBound,
   DimmPowerFromPartCurrents,
@@ -111,7 +116,6 @@ import product.node_power_envelope {
   ActivationDutyUnestablished,
   MemoryPowerUnresolved,
   NoPartEvidenceAndNoClassBound,
-  TemperatureBeyondClassBound,
   TrafficExceedsModulePeak,
   cpu_power,
   dimm_power,
@@ -266,7 +270,7 @@ fn node_wall(inputs: NodeElectricalInputs) -> Int {
 
 data idle_normal_load: DimmLoad = DimmLoad {
   traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activation: ActivationEstablished { duty: permille(count: 0), standing: fixture_profile_standing } },
-  temperature: celsius(count: 60),
+  case_temperature: DramCaseTemperature { tcase: celsius(count: 60) },
 }
 
 data class_bound_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
@@ -731,7 +735,7 @@ data fixture_part_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
 fn load_at(temp: Int, read: Int, write: Int) -> DimmLoad {
   DimmLoad {
     traffic: DimmTraffic { read: Bandwidth { count: read }, write: Bandwidth { count: write }, activation: ActivationEstablished { duty: permille(count: 300), standing: fixture_profile_standing } },
-    temperature: celsius(count: temp),
+    case_temperature: DramCaseTemperature { tcase: celsius(count: temp) },
   }
 }
 
@@ -800,7 +804,46 @@ test fn cited_part_evidence_takes_precedence_and_class_bound_covers_its_absence(
 // Past the class bound's extended-temperature ceiling the class bound refuses.
 test fn the_class_bound_refuses_beyond_its_temperature_ceiling() -> Bool {
   match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
-    DimmPowerRefused { cause: TemperatureBeyondClassBound { temperature: _ } } => true
+    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _ } } => true
+    _ => false
+  }
+}
+
+// The same out-of-specification TCASE refuses on the PART-CURRENT path too (it used to keep a 2x refresh).
+test fn the_part_current_path_refuses_beyond_the_extended_band_too() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0)) {
+    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _ } } => true
+    _ => false
+  }
+}
+
+// The band edges are the canonical jedec rows: 85 C is still the normal band, 86 C the extended band
+// with the interval-ratio multiplier, 96 C no band.
+test fn the_band_edges_come_from_the_canonical_rows() -> Bool {
+  let at85 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 85) }) {
+    RefreshBandSelected { band: b } => b.multiplier == 1 && !b.extended
+    _ => false
+  }
+  let at86 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 86) }) {
+    RefreshBandSelected { band: b } => b.multiplier == 2 && b.extended
+    _ => false
+  }
+  let at95 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 95) }) {
+    RefreshBandSelected { band: b } => b.extended
+    _ => false
+  }
+  let at96 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 96) }) {
+    RefreshBandBeyondSpecification { tcase: _ } => true
+    _ => false
+  }
+  at85 && at86 && at95 && at96
+}
+
+// A CITED current profile under the still-uncited band yields an uncited result: the band standing is
+// preserved, not hidden behind the profile's citation.
+test fn a_cited_profile_under_an_uncited_band_is_reported_uncited() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 0, write: 0)) {
+    DimmPowerFromPartCurrents { power: _, standing: g } => uncited_standing(g: g)
     _ => false
   }
 }
@@ -932,7 +975,7 @@ test fn an_unestablished_activation_duty_refuses_the_part_current_reading() -> B
         write: Bandwidth { count: 0 },
         activation: ActivationNotEstablished { read_obligation: "an ACT/PRE counter observation or a cited activation bound" as NonEmptyStr },
       },
-      temperature: celsius(count: 40),
+      case_temperature: DramCaseTemperature { tcase: celsius(count: 40) },
     },
   ) {
     DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: _ } } => true
