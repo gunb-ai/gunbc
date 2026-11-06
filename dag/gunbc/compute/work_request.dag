@@ -47,8 +47,9 @@ type WorkSubject {
 
 // THE DECLARED TOOLCHAIN REQUIREMENT is what the request ASKS for; the WorkToolchainIdentity below is
 // what a host OBSERVED. They are two facts. Observation never rewrites the request: the only way to
-// hold both in one request is AdmittedToolchain, whose sole constructor refuses a mismatch, so a
-// request whose observed host differs from its declared requirement has no representation.
+// hold both in one request is AdmittedToolchain, whose sole constructor refuses a mismatch. The two
+// fixture mints in admit_callers are test-only: they build fixtures whose requirement is stated beside
+// their observation, not requests; no production caller is admitted.
 type WorkToolchainRequirement {
   target_triple: NonEmptyStr
   rustc_release_prefix: NonEmptyStr
@@ -119,28 +120,20 @@ fn work_target_triple(target: WorkTarget, observed: WorkToolchainIdentity) -> No
 }
 
 // `channel = "1.93.0"` in the subject's rust-toolchain.toml. A file absent from the subject, naming no
-// channel, in a form the reader does not cover, has no
-// requirement: the caller refuses with work_toolchain_requirement_refusal's cause, it never defaults.
-fn work_toolchain_requirement(toolchain_file: String?, target_triple: NonEmptyStr) -> WorkToolchainRequirement? {
-  match toolchain_file {
-    Absent => none
-    Present { value: text } =>
-      match rustup_toolchain_file_channel(text: text) {
-        RustupChannelNamed { channel } => Present { value: WorkToolchainRequirement { target_triple: target_triple, rustc_release_prefix: channel } }
-        RustupChannelAbsent => none
-        RustupChannelUnsupportedForm { form: _ } => none
-      }
-  }
-}
+// channel, or in a form the reader does not cover, yields a typed refusal CAUSE; it never defaults.
+// One function answers both, so the cause is carried from the one reading rather than re-derived.
+type WorkToolchainRequired
+  = ToolchainRequired { requirement: WorkToolchainRequirement }
+  | ToolchainRequirementRefused { cause: String }
 
-fn work_toolchain_requirement_refusal(toolchain_file: String?) -> String {
+fn work_toolchain_requirement(toolchain_file: String?, target_triple: NonEmptyStr) -> WorkToolchainRequired {
   match toolchain_file {
-    Absent => "the subject carries no rust-toolchain.toml"
+    Absent => ToolchainRequirementRefused { cause: "the subject carries no rust-toolchain.toml" }
     Present { value: text } =>
       match rustup_toolchain_file_channel(text: text) {
-        RustupChannelNamed { channel: _ } => "a channel is named; no refusal is owed"
-        RustupChannelAbsent => "the subject's rust-toolchain.toml names no channel"
-        RustupChannelUnsupportedForm { form } => join(["the subject's rust-toolchain.toml channel uses a form the reader does not cover: ", form], "")
+        RustupChannelNamed { channel } => ToolchainRequired { requirement: WorkToolchainRequirement { target_triple: target_triple, rustc_release_prefix: channel } }
+        RustupChannelAbsent => ToolchainRequirementRefused { cause: "the subject's rust-toolchain.toml names no channel" }
+        RustupChannelUnsupportedForm { form } => ToolchainRequirementRefused { cause: join(["the subject's rust-toolchain.toml channel uses a form the reader does not cover: ", form], "") }
       }
   }
 }

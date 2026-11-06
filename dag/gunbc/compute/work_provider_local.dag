@@ -137,7 +137,7 @@ import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blo
 import extdeps.rust.target_triple { parse_rust_target_triple, render_rust_target_triple }
 import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
-  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
@@ -3078,8 +3078,8 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
               compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: subject, op: op)
             ToolchainObserved { toolchain: observed } =>
       match work_toolchain_requirement(toolchain_file: toolchain_file, target_triple: work_target_triple(target: target, observed: observed)) {
-        Absent => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: work_toolchain_requirement_refusal(toolchain_file: toolchain_file) } }, subject: subject, op: op)
-        Present { value: requirement } =>
+        ToolchainRequirementRefused { cause } => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: cause } }, subject: subject, op: op)
+        ToolchainRequired { requirement } =>
               match work_toolchain_admit(requirement: requirement, observed: observed) {
                 ToolchainMismatch { field, declared, observed: seen } =>
                   compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainMismatchRefused { field: toolchain_mismatch_field_wire(field: field), declared: declared as String, observed: seen as String } }, subject: subject, op: op)

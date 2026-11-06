@@ -12,7 +12,7 @@ import std.optional { Optional, Present, Absent }
 import product.fabric.work { SourceManifestRef }
 import extdeps.git.object_store { git_null_sha1_object_id }
 import gunbc.compute.work_request {
-  WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused,
   WorkToolchainRequirement, WorkToolchainIdentity, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
 }
 import gunbc.fabric.fabric_source_snapshot {
@@ -104,14 +104,14 @@ test fn an_observed_toolchain_mismatch_refuses() -> Bool {
   let wrong_release = x86_host_observed(rustc: "rustc 1.90.0 (abc)")
   let wrong_arch = tc_default(rustc: "rustc 1.93.0 (abc)").observed
   match work_toolchain_requirement(toolchain_file: Present { value: file }, target_triple: x86_triple()) {
-    Absent => false
-    Present { value: req } =>
+    ToolchainRequirementRefused { cause: _ } => false
+    ToolchainRequired { requirement: req } =>
       (match work_toolchain_admit(requirement: req, observed: observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
         && (match work_toolchain_admit(requirement: req, observed: wrong_release) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
         && (match work_toolchain_admit(requirement: req, observed: wrong_arch) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
         && (req.rustc_release_prefix as String) == "1.93.0"
-        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\nchannel = \"1.90.0\"\n" }, target_triple: x86_triple()) { Present { value: other } => match work_toolchain_admit(requirement: other, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true }  Absent => false })
-        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\ncomponents = []\n" }, target_triple: x86_triple()) { Present { value: _ } => false  Absent => true })
+        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\nchannel = \"1.90.0\"\n" }, target_triple: x86_triple()) { ToolchainRequired { requirement: other } => match work_toolchain_admit(requirement: other, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true }  ToolchainRequirementRefused { cause: _ } => false })
+        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\ncomponents = []\n" }, target_triple: x86_triple()) { ToolchainRequired { requirement: _ } => false  ToolchainRequirementRefused { cause: _ } => true })
   }
 }
 
@@ -124,14 +124,14 @@ test fn the_declared_target_is_the_requests_own() -> Bool {
   let x86_observed = x86_host_observed(rustc: "rustc 1.93.0 (abc)")
   let x86_old = x86_host_observed(rustc: "rustc 1.90.0 (abc)")
   match work_toolchain_requirement(toolchain_file: file, target_triple: arm_triple()) {
-    Absent => false
-    Present { value: arm_req } =>
+    ToolchainRequirementRefused { cause: _ } => false
+    ToolchainRequired { requirement: arm_req } =>
       (match work_toolchain_admit(requirement: arm_req, observed: arm_observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
         && (match work_toolchain_admit(requirement: arm_req, observed: x86_observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
         && (match work_toolchain_requirement(toolchain_file: file, target_triple: work_target_triple(target: TargetIsExecutingHost, observed: x86_observed)) {
-              Present { value: host_req } => (match work_toolchain_admit(requirement: host_req, observed: x86_observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
+              ToolchainRequired { requirement: host_req } => (match work_toolchain_admit(requirement: host_req, observed: x86_observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
                 && (match work_toolchain_admit(requirement: host_req, observed: x86_old) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
-              Absent => false })
+              ToolchainRequirementRefused { cause: _ } => false })
         && (work_target_triple(target: TargetDeclared { triple: arm_triple() }, observed: x86_observed) as String) == "aarch64-unknown-linux-gnu"
   }
 }
@@ -156,8 +156,15 @@ test fn binary_and_empty_files_are_digest_members_of_the_identity() -> Bool {
     && identity_key(s: git_subject(manifest: m)) != identity_key(s: git_subject(manifest: manifest_of(files: flipped)))
 }
 
+fn toolchain_refusal_cause_has(file: String?, pattern: String) -> Bool {
+  match work_toolchain_requirement(toolchain_file: file, target_triple: x86_triple()) {
+    ToolchainRequired { requirement: _ } => false
+    ToolchainRequirementRefused { cause } => string_contains(s: cause, pattern: pattern)
+  }
+}
+
 fn toolchain_file_names_requirement(t: String) -> Bool {
-  match work_toolchain_requirement(toolchain_file: Present { value: t }, target_triple: x86_triple()) { Present { value: _ } => true  Absent => false }
+  match work_toolchain_requirement(toolchain_file: Present { value: t }, target_triple: x86_triple()) { ToolchainRequired { requirement: _ } => true  ToolchainRequirementRefused { cause: _ } => false }
 }
 
 // (6) The toolchain-file channel reader (extdeps.rust.rustup): exact key, [toolchain] table, both quote
@@ -170,9 +177,9 @@ test fn the_toolchain_file_channel_is_read_by_exact_key_in_its_table() -> Bool {
     && !toolchain_file_names_requirement("[toolchain]\nchannel = 1.93.0\n")
     && toolchain_file_names_requirement("[toolchain] # pinned\nchannel = \"1.93.0\" # now\n") && toolchain_file_names_requirement("[ toolchain ]\nchannel = \"1.93.0\"\n")
     && toolchain_file_names_requirement("[toolchain]\nchannel = \"nightly#x\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"a\\\"b\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"\"\"x\"\"\"\n")
-    && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"a\\\"b\"\n" }), pattern: "escape sequence")
-    && (match work_toolchain_requirement(toolchain_file: none, target_triple: x86_triple()) { Present { value: _ } => false  Absent => true })
+    && toolchain_refusal_cause_has(file: Present { value: "[toolchain]\nchannel = \"a\\\"b\"\n" }, pattern: "escape sequence")
+    && (match work_toolchain_requirement(toolchain_file: none, target_triple: x86_triple()) { ToolchainRequired { requirement: _ } => false  ToolchainRequirementRefused { cause: _ } => true })
     && toolchain_file_names_requirement("toolchain.channel = \"1.93.0\"\n")
     && !toolchain_file_names_requirement("[foo]\ntoolchain.channel = \"nightly\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"nightly\n")
-    && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"nightly\n" }), pattern: "unterminated")
+    && toolchain_refusal_cause_has(file: Present { value: "[toolchain]\nchannel = \"nightly\n" }, pattern: "unterminated")
 }
