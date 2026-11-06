@@ -1,7 +1,7 @@
 module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
-import std.algebra { trim, split, starts_with, skip, take_prefix, filter, map }
+import std.algebra { trim, skip, take_prefix }
 import std.list { first_where }
 import extdeps.rust.target_triple { render_rust_target_triple }
 import extdeps.toolchain.types { TargetTriple, X86_64, UnknownVendor, Linux, Gnu }
