@@ -3474,7 +3474,8 @@ test fn nvidia_revision_rows_are_supported_only_by_their_own_board() -> Bool {
 // attribute to its part (the unboxed readings, the prose-boxed readings, K1's empty roster) is a MarkingCandidate.
 // A test of what an IDENTIFIED part does (a bound, a switch, a pin role, a decode) takes the board with those
 // same rows identified through the one constructor -- same subjects, rows, seen and terminals, identification
-// the only difference -- and the tests that follow the promoted ones state what the REAL board now says.
+// the only difference. E1: exactly the 8 rows measured as demoted (the_eight_demoted_rows_are_exactly_the_candidates);
+// the other 31 are identified on the real board and are not touched. K1: all four, its roster being empty. And the tests that follow the promoted ones state what the REAL board now says.
 fn promoted(c: InstalledComponent, ids: List<NonEmptyStr>, vars: List<ComponentInstanceIdentity>) -> InstalledComponent {
   match c.identification {
     MarkingCandidate { row: row, marking: marking, discriminator: _ } =>
@@ -3487,7 +3488,7 @@ fn promoted(c: InstalledComponent, ids: List<NonEmptyStr>, vars: List<ComponentI
 
 data e1_promoted: CarrierLayoutObservation = layout_with(
   base: p4261_e1_layout,
-  components: map(p4261_e1_layout.components, c => promoted(c: c, ids: ["U522", "U21", "U53", "U69", "U10", "U12", "U13", "U15", "U19", "U27", "U102", "U106", "U510", "U511", "U816", "U1_P1", "U48", "U86", "U66", "U67", "U520", "U521", "U11", "U535", "U536", "U41", "U22"], vars: [e1_c10, e1_c12, e1_q21, e1_q22, e1_u49, e1_u51, e1_u4, e1_rw251_bga, e1_u1_p5, e1_u5_2, e1_u3_2, e1_u2_2])),
+  components: map(p4261_e1_layout.components, c => promoted(c: c, ids: [], vars: [e1_c10, e1_c12, e1_q21, e1_q22, e1_u49, e1_u51, e1_u4, e1_rw251_bga])),
   measured: p4261_e1_layout.measured,
   input: p4261_e1_layout.input)
 
