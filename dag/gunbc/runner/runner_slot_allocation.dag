@@ -1031,7 +1031,7 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
           }
         MemoryDenominatorEstablished =>
-          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max(host: f.host)) == 0 {
+          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host))) == 0 {
             RunnerWidthUnresolved {
               cause: WidthSlotShapeInadmissible {
                 reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
