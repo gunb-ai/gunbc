@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.onsemi { onsemi }
 import std.measure { millivolt, ampere }
-import extdeps.electronic_component.types { ,
+import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs, VariableField,
   ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
   BiasSupply, BootstrapSupply, BootstrapSwitchReturn, CompensationOutput, CurrentLimitSet, CurrentSense, EnableInput, FeedbackInput, FrequencySet, LowSideGateDrive, RegulatorModeSelect, RegulatorNoConnection, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, SoftStartProgram, SwitchNode, SynchronizationPort,
 }

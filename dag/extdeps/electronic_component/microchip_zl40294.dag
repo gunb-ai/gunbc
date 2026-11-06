@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.microchip_technology { microchip_technology }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { , ClockFanoutSpec, ClockFanoutSpecification, ElectronicComponentRow, MillivoltRange }
+import extdeps.electronic_component.types { MarkDescribedNotStructured, ClockFanoutSpec, ClockFanoutSpecification, ElectronicComponentRow, MillivoltRange }
 
 // Microchip's ZL40294, "20-Output PCIe Gen 6 Clock Fanout Buffer (DB2000QL)", Document DS20006768B
 // (2023), read 2026-11-05 from the Internet Archive snapshot of 2025-11-16 of Microchip's own URL (the live
