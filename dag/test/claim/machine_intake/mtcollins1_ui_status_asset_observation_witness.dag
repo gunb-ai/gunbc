@@ -1375,5 +1375,10 @@ test fn w_an_attribute_is_read_only_on_a_start_tag() -> Bool {
     count(ui_asset_refs_of_page(page_text: "<script>document.write('<script src=\"/ui/inner.js\">');</script>")) == 0 &&
     count(ui_asset_refs_of_page(page_text: "<!-- <script src=\"/ui/evil.js\"></script> -->")) == 0 &&
     count(ui_asset_refs_of_page(page_text: "<p>write src=\"/ui/evil.js\" here</p>")) == 0 &&
-    count(ui_asset_refs_of_page(page_text: "</script src=\"/ui/evil.js\">")) == 0
+    count(ui_asset_refs_of_page(page_text: "</script src=\"/ui/evil.js\">")) == 0 &&
+    witness_single_ref(page: "<script src=\"/ui/good.js\"></script><script src=\"/ui/fake.js\"") == "/ui/good.js" &&
+    count(ui_asset_refs_of_page(page_text: "<script src=\"/ui/fake.js\"")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<script> x=\"</scripture><img src='/ui/fake.js'>\" </script>")) == 0 &&
+    witness_single_ref(page: "<script> x=1 </script><img src=\"/ui/real.js\">") == "/ui/real.js" &&
+    witness_single_ref(page: "<script> x=\"</scripture>\" </SCRIPT ><img src=\"/ui/real.js\">") == "/ui/real.js"
 }

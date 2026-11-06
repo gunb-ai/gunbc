@@ -191,7 +191,7 @@ data html_text_content_element_names: List<List<Int>> = [
 
 type HtmlStartTagReading
   = HtmlStartTagRead { after: Int, references: List<HtmlAttributeReference> }
-  | HtmlStartTagTruncated { references: List<HtmlAttributeReference> }
+  | HtmlStartTagTruncated
 
 // Index of the first occurrence of `needle` at or after `from`, or Absent. An empty needle is Absent, not
 // a match at every position. One pass: each length enters once.
@@ -277,7 +277,7 @@ fn html_skip_attribute_separators(octets: List<Int>, at: Int) -> Int {
 fn html_tag_attributes(orig: List<Int>, folded: List<Int>, names: List<List<Int>>, at: Int, acc: List<HtmlAttributeReference>) -> HtmlStartTagReading {
   let p = html_skip_attribute_separators(folded, at)
   match html_octet_at(folded, p) {
-    Absent => HtmlStartTagTruncated { references: acc }
+    Absent => HtmlStartTagTruncated
     Present { value: o } => if o == html_octet_greater_than {
       HtmlStartTagRead { after: p + 1, references: acc }
     } else {
@@ -285,7 +285,7 @@ fn html_tag_attributes(orig: List<Int>, folded: List<Int>, names: List<List<Int>
       let listed = html_name_listed(folded, names, p, name_end - p, 0)
       let equals_at = html_skip_whitespace(folded, name_end)
       match html_octet_at(folded, equals_at) {
-        Absent => HtmlStartTagTruncated { references: acc }
+        Absent => HtmlStartTagTruncated
         Present { value: e } => if e == html_octet_equals {
           let value_at = html_skip_whitespace(folded, equals_at + 1)
           match html_attribute_value_at(orig, value_at) {
@@ -294,17 +294,33 @@ fn html_tag_attributes(orig: List<Int>, folded: List<Int>, names: List<List<Int>
               if listed && count(r.value) > 0 { list_push(acc, r) } else { acc },
             )
             AttributeValueAbsent => match html_octet_at(folded, value_at) {
-              Absent => HtmlStartTagTruncated { references: acc }
+              Absent => HtmlStartTagTruncated
               Present { value: g } => if g == html_octet_greater_than {
                 html_tag_attributes(orig, folded, names, value_at, acc)
               } else {
-                HtmlStartTagTruncated { references: acc }
+                HtmlStartTagTruncated
               }
             }
           }
         } else {
           html_tag_attributes(orig, folded, names, name_end, acc)
         }
+      }
+    }
+  }
+}
+
+// Raw text / RCDATA end tag (13.2.5.13-): "</name" only ends the body when followed by whitespace, "/" or ">";
+// a longer name such as "</scripture>" is body text, so the search continues past it.
+fn html_raw_text_end(folded: List<Int>, closer: List<Int>, from: Int) -> Int? {
+  match html_octets_index_from(folded, closer, from) {
+    Absent => none
+    Present { value: at } => match html_octet_at(folded, at + count(closer)) {
+      Absent => html_raw_text_end(folded, closer, at + 1)
+      Present { value: o } => if html_octet_is_whitespace(o) || o == html_octet_solidus || o == html_octet_greater_than {
+        Present { value: at }
+      } else {
+        html_raw_text_end(folded, closer, at + 1)
       }
     }
   }
@@ -344,9 +360,9 @@ fn html_markup_at(orig: List<Int>, folded: List<Int>, names: List<List<Int>>, lt
     } else if next >= 97 && next <= 122 {
       let name_end = html_tag_name_end(folded, lt + 2)
       match html_tag_attributes(orig, folded, names, name_end, acc) {
-        HtmlStartTagTruncated { references: r } => r
+        HtmlStartTagTruncated => acc
         HtmlStartTagRead { after: a, references: r } => if html_name_listed(folded, html_text_content_element_names, lt + 1, name_end - lt - 1, 0) {
-          match html_octets_index_from(folded, concat([60, 47], html_octets_slice(folded, lt + 1, name_end - lt - 1)), a) {
+          match html_raw_text_end(folded, concat([60, 47], html_octets_slice(folded, lt + 1, name_end - lt - 1)), a) {
             Absent => r
             Present { value: end_at } => html_markup_scan(orig, folded, names, end_at, r)
           }
