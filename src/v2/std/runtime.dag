@@ -17,7 +17,13 @@ import v2.std.diagnostic {
   node_locus,
   outcome_rejected
 }
-import std.algebra { fold_list }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here uses neither name.
+// zip_eq: List<Byte>/List<RuntimeFieldValue> element steps; map_values_eq: EvaluationEnvironment's
+// Map<EnvironmentBindingKey, RuntimeValue> value step. Dissolution trigger: synthesized bodies bind
+// helpers by the declaring module's path (std.algebra), not through the consumer's import scope;
+// then delete zip_eq, map_values_eq from this import verbatim.
+import std.algebra { fold_list, zip_eq, map_values_eq }
 import v2.std.machine { Byte }
 import v2.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
 import v2.std.node { node_equal_ignoring_provenance,
