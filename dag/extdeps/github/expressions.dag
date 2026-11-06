@@ -927,38 +927,57 @@ fn ingest_expression(src: String) -> Expression? {
   ingest_expression_with(src: src, sp: default_expression_spellings)
 }
 
-fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
-  let parts = split(s: src, delimiter: sp.interp_open)
+// Index of the closing delimiter at or after j that lies outside every string literal, so a
+// `}}` inside a quoted string does not close the interpolation. No close: Absent.
+fn find_interpolation_close(s: String, j: Int, n: Int, close: String, q: String) -> Int? {
+  if j >= n {
+    none
+  } else {
+    let rest = substring(s: s, start: j, end: n)
+    if starts_with(s: rest, prefix: q) {
+      match scan_string_body(s: s, j: j + string_length(s: q), n: n, q: q, acc: "") {
+        Absent => none
+        Present { value: scan } => find_interpolation_close(s: s, j: scan.next, n: n, close: close, q: q)
+      }
+    } else if starts_with(s: rest, prefix: close) {
+      Present { value: j }
+    } else {
+      find_interpolation_close(s: s, j: j + 1, n: n, close: close, q: q)
+    }
+  }
+}
+
+fn literal_segments(text: String) -> List<TemplateSegment> {
+  if text == "" { [] } else { [ LiteralText { text: text } ] }
+}
+
+// The delimiters are upstream's bare `${{` and `}}`: the spaces a writer puts inside them are
+// whitespace the tokenizer skips, not part of the delimiter. A `${{` with no close is Absent.
+fn ingest_segments_from(s: String, i: Int, n: Int, sp: ExpressionSpellings, open: String, close: String, acc: List<TemplateSegment>) -> List<TemplateSegment>? {
+  let parts = split(s: substring(s: s, start: i, end: n), delimiter: open)
   let lead = match parts.first() {
     Present { value: l } => l
     Absent => ""
   }
-  let lead_segs = if lead == "" { [] } else { [ LiteralText { text: lead } ] }
-  let built = fold(parts.skip(n: 1), init: Present { value: lead_segs }, f: (acc, part) => match acc {
-    Absent => none
-    Present { value: sofar } => {
-      let halves = split(s: part, delimiter: sp.interp_close)
-      if halves.length() < 2 {
-        none
-      } else {
-        let trailing = join(halves.skip(n: 1), sp.interp_close)
-        let head_expression = match halves.first() {
+  if parts.length() < 2 {
+    Present { value: concat(acc, literal_segments(text: lead)) }
+  } else {
+    let body_start = i + string_length(s: lead) + string_length(s: open)
+    match find_interpolation_close(s: s, j: body_start, n: n, close: close, q: sp.string_quote) {
+      Absent => none
+      Present { value: c } =>
+        match parse_expression_with(s: substring(s: s, start: body_start, end: c), sp: sp) {
           Absent => none
-          Present { value: head } => parse_expression_with(s: head, sp: sp)
+          Present { value: e } =>
+            ingest_segments_from(s: s, i: c + string_length(s: close), n: n, sp: sp, open: open, close: close,
+              acc: concat(concat(acc, literal_segments(text: lead)), [ Interpolation { expression: e } ]))
         }
-        match head_expression {
-          Absent => none
-          Present { value: e } => {
-            let with_interp = concat(sofar, [ Interpolation { expression: e } ])
-            Present {
-              value: if trailing == "" { with_interp } else { concat(with_interp, [ LiteralText { text: trailing } ]) },
-            }
-          }
-        }
-      }
     }
-  })
-  match built {
+  }
+}
+
+fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
+  match ingest_segments_from(s: src, i: 0, n: string_length(s: src), sp: sp, open: trim(s: sp.interp_open), close: trim(s: sp.interp_close), acc: []) {
     Absent => none
     Present { value: segs } => Present { value: ExpressionTemplate { segments: segs } }
   }
