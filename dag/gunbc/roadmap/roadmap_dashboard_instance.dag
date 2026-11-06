@@ -3213,12 +3213,34 @@ fn dashboard_instance_root_directory(instance: HostDashboardInstance) -> List<Ow
   }
 }
 
+// THE SERVE BINARY'S DIRECTORY, DECLARED where the instance owns it (loyal-deer-449's srv1 run: a root-owned bin/ left by an
+// earlier hand install made the unprivileged install leg fail with a bare `cp: Permission denied`). It is the parent of
+// instance.serve_binary and is demanded only when that binary lives under the instance root; a binary in a cargo release dir
+// (the macbook) is not this deploy's directory. Service-user owned, 0755, ForeignOwnershipRefuses: the unprivileged apply
+// cannot adopt a root-owned directory, so it refuses with the owned-directory provider's located cause BEFORE the install runs.
+fn dashboard_instance_serve_binary_directory(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  if dashboard_path_is_under(path: instance.serve_binary, root: instance.instance_root) {
+    let parts = split(s: instance.serve_binary as String, delimiter: "/")
+    [
+      OwnedDirectoryDeclared {
+        member: "serve-binary-directory" as NonEmptyStr,
+        path: join(take(parts, count(parts) - 1), "/") as FilePath,
+        owner: instance.directory_owner,
+        mode: DirectoryOwnerAllEveryoneTraverse,
+        group_adoption: ForeignOwnershipRefuses,
+      },
+    ]
+  } else {
+    []
+  }
+}
+
 fn dashboard_instance_own_directory_demands(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
   concat(concat(dashboard_instance_provision_parent_directory(instance: instance), dashboard_instance_root_directory(instance: instance)), concat([
     dashboard_instance_dispatch_worktree_directory(instance: instance),
     dashboard_instance_dispatch_attempt_state_directory(instance: instance),
     dashboard_instance_provider_state_directory(instance: instance),
-  ], concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance))))
+  ], concat(dashboard_instance_serve_binary_directory(instance: instance), concat(dashboard_instance_worker_git_directories(instance: instance), dashboard_instance_inbox_directories(instance: instance)))))
 }
 fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [

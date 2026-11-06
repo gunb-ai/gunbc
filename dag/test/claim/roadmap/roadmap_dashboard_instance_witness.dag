@@ -34,6 +34,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_own_directory_demands, macbook_local_dashboard_instance,
   dashboard_instance_converged_ref,
   DashboardServeBinaryOrigin,
   DeclaredBuiltBinary,
@@ -1302,4 +1303,13 @@ test fn the_convergence_seeded_lab_is_not_retractable_by_the_isolated_instance_r
     DashboardInstanceRetractPlan { plan: _ } => false
     DashboardInstanceRetractRefused { reason: _ } => true
   }
+}
+
+// The lab instance owns its serve binary's directory (loyal-deer-449's srv1 run: a root-owned bin/ failed the install with a bare
+// cp error): the demand is the parent of instance.serve_binary, and the macbook's cargo-dir binary demands none.
+test fn the_lab_instance_declares_its_serve_binary_directory_and_the_macbook_does_not() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_paths = map(dashboard_instance_own_directory_demands(instance: lab), t => owned_directory_path(t: t) as String)
+  contains(lab_paths, join([lab.instance_root as String, "/bin"], ""))
+    && !any(map(dashboard_instance_own_directory_demands(instance: macbook_local_dashboard_instance()), t => owned_directory_path(t: t) as String), p => string_contains(s: p, pattern: "/release"))
 }
