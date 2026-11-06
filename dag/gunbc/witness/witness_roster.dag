@@ -171,10 +171,6 @@ type RosterAggregate {
   fail_banner: NonEmptyStr
 }
 
-// THE SUBJECT RUN, ASKED OF THE COMPOSITION MODULE. Which compiler over which corpus is
-// gunbc.ci.repository_compose_overlay's fact (compose_gunbc_run_command), not this module's: a second
-// spelling of the launcher is how a gate ends up judging a corpus other than the one it composed. What
-// this module owns is what to DO with the run - whose verdict, whose causes, whose refusal.
 fn roster_streamed_run(overlay: OverlayIngest, source_roots: List<String>, name: String, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
   roster_capture(
     name: name,
@@ -191,6 +187,10 @@ fn roster_streamed_run(overlay: OverlayIngest, source_roots: List<String>, name:
   )
 }
 
+// THE SUBJECT RUN, ASKED OF THE COMPOSITION MODULE. Which compiler over which corpus is
+// gunbc.ci.repository_compose_overlay's fact (compose_gunbc_run_command), not this module's: a second
+// spelling of the launcher is how a gate ends up judging a corpus other than the one it composed. What
+// this module owns is what to DO with the run - whose verdict, whose causes, whose refusal.
 fn roster_capture_run(overlay: OverlayIngest, source_roots: List<String>, name: String, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
   roster_capture(
     name: name,
