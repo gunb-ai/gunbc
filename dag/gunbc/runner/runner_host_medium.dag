@@ -7,7 +7,7 @@ import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Present, Absent }
 import extdeps.toolchain.types { Architecture, Aarch64, architecture_diagnostic_name }
-import extdeps.exec.command { shell_command_render }
+import extdeps.exec.command { ArgvCommand, shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_command, cat_command, nproc_command, ls_one_per_line_command }
 import extdeps.linux.procfs { ProcMeminfo, procfs_path_literal }
 import extdeps.systemd.udevd { udev_disk_by_label_dir }
@@ -160,16 +160,30 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 // fleet public key is seeded and a route consumes the pin.
 data runner_host_key_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key"
 data runner_host_key_public_file: NonEmptyStr = "/run/gunbc_ssh_host_ed25519_key.pub"
+// The three key commands are built over the key file as a PARAMETER and the stages render them over the declared
+// path, so the inhabitance claim runs the SAME commands the image runs against a scratch path (DESIGN section 3).
+fn runner_host_key_gen_argv(key_file: String) -> ArgvCommand {
+  ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: key_file, comment: "gunbc-runner-host-per-boot")
+}
+
+fn runner_host_key_pub_argv(public_key_file: String) -> ArgvCommand {
+  cat_command(path: public_key_file)
+}
+
+fn runner_host_key_fingerprint_argv(public_key_file: String) -> ArgvCommand {
+  ssh_keygen_fingerprint_command(key_file: public_key_file)
+}
+
 fn runner_host_key_gen_command() -> String {
-  shell_command_render(command: ssh_keygen_generate_command(key_type: ssh_keygen_ed25519_type, key_file: runner_host_key_file as String, comment: "gunbc-runner-host-per-boot"))
+  shell_command_render(command: runner_host_key_gen_argv(key_file: runner_host_key_file as String))
 }
 
 fn runner_host_key_pub_command() -> String {
-  shell_command_render(command: cat_command(path: runner_host_key_public_file as String))
+  shell_command_render(command: runner_host_key_pub_argv(public_key_file: runner_host_key_public_file as String))
 }
 
 fn runner_host_key_fingerprint_command() -> String {
-  shell_command_render(command: ssh_keygen_fingerprint_command(key_file: runner_host_key_public_file as String))
+  shell_command_render(command: runner_host_key_fingerprint_argv(public_key_file: runner_host_key_public_file as String))
 }
 
 // THE ROSTER. The slot unit is a transient systemd unit started per attempt

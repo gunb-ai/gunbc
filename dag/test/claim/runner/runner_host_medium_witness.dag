@@ -10,7 +10,7 @@ import gunbc.host.smpro_platform_capability {
   SmproNotTaken
 }
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { seed_artifact_readback_holds }
@@ -470,4 +470,21 @@ test fn the_runner_account_stage_is_ensure_system_account_without_sudo() -> Bool
         string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: posix_single_quote(spelling: as_root))
       _ => false
     })
+}
+
+// THE ROSTER CARRIES THE KEY STAGES (the roster half of the inhabitance claim, whose executing half is
+// test.claim.runner.runner_host_key_stage_real_execution_witness): the image's seed carries exactly the rendering of
+// the commands that witness runs, so deleting or rewiring a stage fails here while the real run fails there.
+fn image_carries_stage(command: String) -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } =>
+      string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: posix_single_quote(spelling: command))
+    _ => false
+  }
+}
+
+test fn the_image_carries_the_three_host_key_stages_as_rendered() -> Bool {
+  image_carries_stage(command: runner_host_key_gen_command())
+    && image_carries_stage(command: runner_host_key_pub_command())
+    && image_carries_stage(command: runner_host_key_fingerprint_command())
 }
