@@ -1,6 +1,6 @@
 module gunbc.auth.managed_host_boot_federation_provision
 
-import std.types { list_length }
+import std.algebra { length }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_provision_with_supplied_token, StandingPoolImpersonation }
 import gunbc.auth.managed_host_boot_federation {
@@ -38,7 +38,7 @@ fn boot_dedicated_federation(f: ManagedHostBootFederation) -> DedicatedFederatio
 // An empty population refuses: a provisioner that provisioned nothing must not report success.
 fn managed_host_boot_federation_provision_with_supplied_token() -> ProcessExit {
   let feds = provisioned_boot_federations()
-  if list_length(feds) == 0 {
+  if length(feds) == 0 {
     exit_failure(reason: "REFUSED gunbc.auth.managed_host_boot_federation_provision: no managed host has a provisioned boot federation (gunbc.auth.managed_host_boot_federation admit_boot_federation), so there is nothing to provision")
   } else {
     fold(feds, init: ExitSuccess, f: (acc, fed) =>

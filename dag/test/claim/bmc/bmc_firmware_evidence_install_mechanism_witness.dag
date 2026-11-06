@@ -48,7 +48,7 @@ import gunbc.fleet.fleet_boot_delivery_solution {
 }
 import gunbc.machine_intake.access { AccessContextProfileLookupNotRun }
 import extdeps.bmc.endpoint { BmcEndpoint, OpenBmc, Redfish }
-import std.types { Bool, List, list_length }
+import std.types { Bool, List }
 import extdeps.firmware.types { firmware_semantic_version }
 import gunbc.fleet.fleet_bmc_firmware_evidence { fleet_bmc_firmware_catalog }
 

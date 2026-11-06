@@ -13,9 +13,9 @@ module test.claim.bmc.redfish_account_service_witness
 // ManagerAccount RESOURCE bodies below are the witness's own inputs (no resource body is captured), and
 // the tests say so by what they assert: an absent property is read as absent, never as a value.
 
-import std.types { Bool, String, list_length }
+import std.types { Bool, String }
 import std.optional { Present, Absent }
-import std.algebra { list_head }
+import std.algebra { list_head, length }
 import extdeps.bmc.types { AccountRoleAdministrator }
 import extdeps.languages.json.parse {
   parse_json_document, json_field_string, JsonDocumentParsed, JsonDocumentUnreadable, FieldRead, FieldAbsent, FieldMalformed,
@@ -50,7 +50,7 @@ data base_1_16_0_message_id: String = "Base.1.16.0.PasswordChangeRequired"
 test fn the_committed_collection_reads_as_one_root_member() -> Bool {
   match redfish_manager_account_collection_from_json(body: srv13_accounts_collection) {
     RedfishAccountCollection { member_odata_ids: members, members_odata_count: count } =>
-      let one_member = list_length(items: members) == 1
+      let one_member = length(xs: members) == 1
       let is_root = match list_head(xs: members) {
         Present { value: first } => first == root_odata_id
         Absent => false

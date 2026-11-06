@@ -82,6 +82,7 @@ pub struct TypeEnv {
     pub module_path: String,
     pub unit_variant_index: Rc<HashMap<String, Rc<HashMap<String, Rc<UnitVariantContribution>>>>>,
     pub unit_variant_index_observed: bool,
+    pub equality_by_target: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -402,6 +403,7 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
             Rc<HashMap<String, Rc<UnitVariantContribution>>>,
         >(),
         unit_variant_index_observed: false,
+        equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
     })
 }
 
@@ -2619,6 +2621,30 @@ pub fn inductive_fields_list_to_map(
     }
 }
 
+pub fn type_env_with_equality_by_target(
+    env: Rc<TypeEnv>,
+    by_target: Rc<HashMap<String, bool>>,
+) -> Rc<TypeEnv> {
+    Rc::new(TypeEnv {
+        module_path: env.module_path.clone(),
+        bindings: env.bindings.clone(),
+        str_bindings: env.str_bindings.clone(),
+        ancestry_str_bindings: env.ancestry_str_bindings.clone(),
+        parents: env.parents.clone(),
+        recursive_types: env.recursive_types.clone(),
+        recursive_type_set: env.recursive_type_set.clone(),
+        inductive_fields: env.inductive_fields.clone(),
+        source_indices: env.source_indices.clone(),
+        intern_table: env.intern_table.clone(),
+        source_visible_names: env.source_visible_names.clone(),
+        authored_import_names: env.authored_import_names.clone(),
+        symbol_index: env.symbol_index.clone(),
+        unit_variant_index: env.unit_variant_index.clone(),
+        unit_variant_index_observed: env.unit_variant_index_observed.clone(),
+        equality_by_target: by_target.clone(),
+    })
+}
+
 pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
     tp_names
         .iter()
@@ -2696,6 +2722,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 symbol_index: e.symbol_index.clone(),
                 unit_variant_index: updated_index.clone(),
                 unit_variant_index_observed: e.unit_variant_index_observed.clone(),
+                equality_by_target: e.equality_by_target.clone(),
             })
         })
 }
@@ -2726,6 +2753,7 @@ pub fn census_declaration_type_env(
                 Rc<HashMap<String, Rc<UnitVariantContribution>>>,
             >(),
             unit_variant_index_observed: false,
+            equality_by_target: v1_rt::rc_empty_map::<String, bool>(),
         });
         env_with_type_variable_bindings(base, tp_names)
     }

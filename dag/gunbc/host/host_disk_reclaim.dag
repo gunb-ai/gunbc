@@ -2,6 +2,7 @@ module gunbc.host.host_disk_reclaim
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count, Second, second, seconds_per_day }
+import std.algebra { fold_list }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
 // THE FLEET'S DISK CAPACITY MECHANISM, SUBSUMED. This module models what ctrl-runner-reclaim.timer

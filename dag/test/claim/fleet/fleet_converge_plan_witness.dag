@@ -3,7 +3,7 @@ module test.claim.fleet.fleet_converge_plan_witness
 import test.claim.fleet.fleet_host_grant_fixture { witness_grants_rendered }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricExecutionCellsOnly, FabricAllocationStoreOnly, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, LiveDeploy }
 
-import std.types { Bool, String, NonEmptyStr, Int, List, list_length }
+import std.types { Bool, String, NonEmptyStr, Int, List }
 import std.optional { Absent, Present }
 import gunbc.fleet.fleet_posix_accounts {
   ci_runner_sudo_binary_path, ci_runner_sudo_binary_probe, ci_runner_sudo_binaries,
@@ -22,7 +22,7 @@ import gunbc.runner.runner_slot_provision {
   SlotUnregistered,
 }
 import std.content_hash { serialize_content_hash }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import gunbc.fleet.fleet_converge_plan {
   fleet_converge_member_set_drift_text,
   fleet_converge_retirement_drift_text,
@@ -1120,7 +1120,7 @@ test fn ci_runner_grants_derive_from_the_closed_vocabulary() -> Bool {
     && all(grants, g => any(xs: ci_runner_sudo_binaries, predicate: fn(b) {
       g.command_path == ci_runner_sudo_binary_path(b: b)
     }))
-    && list_length(items: grants) == list_length(items: ci_runner_sudo_binaries)
+    && length(xs: grants) == length(xs: ci_runner_sudo_binaries)
 }
 
 
@@ -1432,8 +1432,8 @@ test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_empty(),
   )
-  list_length(items: refused_lines) == 1
-    && list_length(items: empty_lines) == list_length(items: fabric_cell_desired_members(host: operator_host_srv3)) + 1
+  length(xs: refused_lines) == 1
+    && length(xs: empty_lines) == length(xs: fabric_cell_desired_members(host: operator_host_srv3)) + 1
     && fleet_converge_fabric_cell_refusal_count(
         host: "srv3" as NonEmptyStr,
         observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
@@ -1480,7 +1480,7 @@ test fn witness_fabric_cell_plan_and_apply_project_the_same_effects() -> Bool {
 // A CONVERGED CELL PRODUCES NO ACTION. Without this row the family could be answering "add
 // everything" unconditionally and every other row here would still pass.
 test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
-  list_length(
+  length(
     items: fleet_converge_fabric_cell_lines(
       host: "srv3" as NonEmptyStr,
       observed_fabric_cells: fabric_cells_observed_converged(),
@@ -1537,7 +1537,7 @@ test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconcil
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: fabric_cells_observed_on_srv4(),
   )
-  list_length(items: lines) == 1
+  length(xs: lines) == 1
     && count == 1
     && fabric_fingerprint_with(population: fabric_cells_observed_on_srv4())
         != fabric_fingerprint_with(population: fabric_cells_observed_empty())
@@ -1638,7 +1638,7 @@ fn fabric_refusal_lines(entries: List<FabricCellReadback>) -> String {
 }
 
 fn fabric_refusal_count_of(entries: List<FabricCellReadback>) -> Int {
-  list_length(items: fabric_refusals_of(entries: entries))
+  length(xs: fabric_refusals_of(entries: entries))
 }
 
 test fn witness_fabric_cell_refusal_wording_is_not_the_member_set_identity() -> Bool {
@@ -1718,7 +1718,7 @@ fn fabric_boundary_realize_line() -> String {
     "REALIZE fabric-cell ensure-slice ",
     fabric_cell_slice_name(slot: fabric_witness_slot()),
     " directives=",
-    to_string(value: list_length(items: fabric_cell_slice_desired_directives_for_slot(
+    to_string(value: length(xs: fabric_cell_slice_desired_directives_for_slot(
       slot: fabric_witness_slot(),
       quota: gunbc_runner_slot_desired().cpu_quota,
     ))),
@@ -1730,7 +1730,7 @@ test fn witness_fabric_cell_drifted_address_plans_change_and_never_add() -> Bool
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_drifted()),
   )
-  list_length(items: lines) == 2
+  length(xs: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
         target: "REFUSED-REALIZATION fabric-cell resource-boundary change has no admitted resource transition (gunbc.change_realization)",
@@ -1755,7 +1755,7 @@ test fn witness_fabric_cell_absent_address_plans_add_and_never_change() -> Bool 
     host: "srv3" as NonEmptyStr,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_probe_boundary_absent()),
   )
-  list_length(items: lines) == 2
+  length(xs: lines) == 2
     && fabric_cell_line_occurrences(
         lines: lines,
         target: fabric_boundary_realize_line(),
@@ -1818,12 +1818,12 @@ test fn witness_fabric_cell_kernel_conserves_every_expected_ref() -> Bool {
     [0, 1, 2, 21],
     init: true,
     f: (acc, n) => acc && (
-      list_length(
+      length(
         items: classify_fabric_cell_host(
           expected_slots: synthetic_fabric_slots(count: n),
           readback: synthetic_host_readback(slots: synthetic_fabric_slots(count: n)),
         ).standings
-      ) == n * list_length(items: fabric_cell_resource_addresses())
+      ) == n * length(xs: fabric_cell_resource_addresses())
     ),
   )
 }
@@ -1840,8 +1840,8 @@ test fn witness_fabric_cell_kernel_conserves_unexpected_supplied_evidence() -> B
     expected_slots: expected,
     readback: synthetic_host_readback(slots: supplied),
   )
-  list_length(items: classification.standings) == 21 * list_length(items: fabric_cell_resource_addresses())
-    && list_length(items: classification.unexpected) == 1
+  length(xs: classification.standings) == 21 * length(xs: fabric_cell_resource_addresses())
+    && length(xs: classification.unexpected) == 1
     && fold(
         classification.unexpected,
         init: true,
@@ -1853,7 +1853,7 @@ test fn witness_fabric_cell_kernel_conserves_unexpected_supplied_evidence() -> B
 // kernel that reported every supplied readback as unexpected.
 test fn witness_fabric_cell_kernel_exact_roster_has_no_unexpected_evidence() -> Bool {
   let slots = synthetic_fabric_slots(count: 21)
-  list_length(
+  length(
     items: classify_fabric_cell_host(
       expected_slots: slots,
       readback: synthetic_host_readback(slots: slots),
@@ -2039,10 +2039,10 @@ test fn witness_fabric_cell_kernel_partitions_a_foreign_expected_slot_exactly_on
       cell_readbacks: [synthetic_absent_readback_for(slot: foreign)],
     },
   )
-  list_length(items: classification.standings) == 0
-    && list_length(items: classification.unexpected) == 0
-    && list_length(items: classification.host_mismatched) == 1
-    && list_length(items: classification.roster_mismatched) == 1
+  length(xs: classification.standings) == 0
+    && length(xs: classification.unexpected) == 0
+    && length(xs: classification.host_mismatched) == 1
+    && length(xs: classification.roster_mismatched) == 1
 }
 
 // AND THE MIS-SCOPED SLOT IS REFUSED AS ITS OWN SUBJECT, NOT FILTERED AND NOT FOLDED INTO THE
@@ -2065,8 +2065,8 @@ test fn witness_fabric_cell_foreign_expected_slot_is_its_own_refusal_subject() -
     classification.host_mismatched,
     m => fabric_cell_observation_refusal_identity(refusal: ReadbackHostMismatch { mismatch: m }),
   )
-  list_length(items: roster_ids) == 1
-    && list_length(items: readback_ids) == 1
+  length(xs: roster_ids) == 1
+    && length(xs: readback_ids) == 1
     && !fold(roster_ids, init: false, f: (acc, a) =>
          acc || fold(readback_ids, init: false, f: (seen, b) => seen || a == b))
 }
@@ -2178,17 +2178,17 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
   )
   join(filter(full_lines, l => !line_is_a_scope_row(l: l) && !line_is_a_units_row(l: l) && !line_is_a_retirement_row(l: l) && !line_is_a_host_grant_row(l: l)), "\n")
     == join(filter(fabric_lines, l => !line_is_a_scope_row(l: l)), "\n")
-    && list_length(items: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
-    && list_length(items: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
-    && list_length(items: filter(full_lines, l => l == "scope:full-host")) == 1
-    && list_length(items: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
-    && list_length(items: filter(full_lines, l => l == "host:srv3")) == 1
-    && list_length(items: filter(full_lines, l => line_is_a_units_row(l: l))) == 1
-    && list_length(items: filter(fabric_lines, l => line_is_a_units_row(l: l))) == 0
-    && list_length(items: filter(full_lines, l => line_is_a_retirement_row(l: l))) > 0
-    && list_length(items: filter(fabric_lines, l => line_is_a_retirement_row(l: l))) == 0
-    && list_length(items: filter(full_lines, l => line_is_a_host_grant_row(l: l))) > 0
-    && list_length(items: filter(fabric_lines, l => line_is_a_host_grant_row(l: l))) == 0
+    && length(xs: filter(full_lines, l => line_is_a_scope_row(l: l))) == 1
+    && length(xs: filter(fabric_lines, l => line_is_a_scope_row(l: l))) == 1
+    && length(xs: filter(full_lines, l => l == "scope:full-host")) == 1
+    && length(xs: filter(fabric_lines, l => l == "scope:fabric-execution-cells-only")) == 1
+    && length(xs: filter(full_lines, l => l == "host:srv3")) == 1
+    && length(xs: filter(full_lines, l => line_is_a_units_row(l: l))) == 1
+    && length(xs: filter(fabric_lines, l => line_is_a_units_row(l: l))) == 0
+    && length(xs: filter(full_lines, l => line_is_a_retirement_row(l: l))) > 0
+    && length(xs: filter(fabric_lines, l => line_is_a_retirement_row(l: l))) == 0
+    && length(xs: filter(full_lines, l => line_is_a_host_grant_row(l: l))) > 0
+    && length(xs: filter(fabric_lines, l => line_is_a_host_grant_row(l: l))) == 0
 }
 
 // The host-grant family is a premise family a full-host baseline carries and the fabric-only one does
@@ -2573,7 +2573,7 @@ fn witness_open_transition_delta_is_a_required_retiree() -> Bool {
   match required_retirees_for_host(host: operator_host_srv1) {
     RetireesKnown { units: us } =>
       any(us, u => (u as String) == (witness_open_transition_delta_unit(offset: 0) as String))
-        && list_length(items: us) > 0
+        && length(xs: us) > 0
         && !interruption_authorization_covers(
           auth: srv1_transition_interruption_authorization,
           unit: witness_open_transition_delta_unit(offset: 0) as String,

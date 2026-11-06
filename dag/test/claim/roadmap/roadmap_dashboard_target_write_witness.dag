@@ -51,7 +51,7 @@ fn local_instance_with_workdir(root: String) -> HostDashboardInstance {
     listen_port: i.listen_port,
     tmux_server: i.tmux_server,
     actuation: i.actuation,
-    provision_transport: i.provision_transport,
+    actuator_host: i.actuator_host,
     source_seed: i.source_seed,
     admitted_revision: i.admitted_revision,
     toolchain: i.toolchain,

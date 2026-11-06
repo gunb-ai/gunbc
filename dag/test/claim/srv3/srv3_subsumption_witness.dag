@@ -1,5 +1,7 @@
 module test.claim.srv3.srv3_subsumption_witness
 
+import std.algebra { length }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Consolidated green-by-execution proofs for the gunbc-layer srv3 subsumption facts — the reach
@@ -24,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_reach_is_single_hop_proxy_jump() -> Bool {
   match srv3_reach {
-    ProxyJump { jumps: js, target: _ } => list_length(items: js) == 1
+    ProxyJump { jumps: js, target: _ } => length(xs: js) == 1
     DirectLan { host: _ } => false
     FabricTunnel { target: _ } => false
   }
