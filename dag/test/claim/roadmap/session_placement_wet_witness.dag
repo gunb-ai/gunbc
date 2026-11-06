@@ -15,13 +15,14 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsSlotReading, SlotRead, SlotAbsent, SlotUnreadable,
   AttemptSlotsPayloadRelation, PayloadsIdentical, PayloadsDifferent, PayloadRelationUndecided,
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_schema,
+  attempt_slots_cutover_record_mint,
   AttemptSlotsCutoverPassRecord, attempt_slots_census_record_kind, attempt_slots_carry_record_kind,
   AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverRecordUnwritten,
   AttemptSlotsCensusRowRefused,
 }
 // The executing route's record write, so the row that witnesses the record exercises the SAME function the
 // belt tick calls -- a witness that wrote the file itself would witness a different act.
-import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write }
+import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write, belt_slots_cutover_pass_outcome, BeltPassRecorded }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir, attempt_exit_refused_dir }
@@ -1241,6 +1242,109 @@ test fn a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_re
   && !ledger_still_holds(dir: dir)
 }
 
+// THE SECOND TICK IS THE ONE PRODUCTION RUNS MOST. The pass is bound unconditionally in the belt tick --
+// roadmap_belt_actuate binds belt_attempt_slots_cutover_pass before the match on
+// belt_tick_wholesale_of(standing) that decides TickPassesWithheld versus TickPassesRun, and the outcome is
+// carried into the receipt in both arms -- so from the first deploy onward EVERY tick censuses and carries.
+// The first tick moves the slot; every tick after it must be a no-op that still leaves the tick Recorded.
+// This row drives the belt's own record-write function twice over the same declared row and asks for the
+// five facts that claim needs: the first pass carries, the second reports already-carried and carries
+// nothing, the census still buckets the two copies as identical (so the second pass wrote no slot), the
+// standing the receipt reads -- through belt_slots_cutover_pass_outcome, the mapper the tick itself uses --
+// is Recorded on both passes, never Deferred and never Refused, and the GENERATION the first carry reported
+// is still the generation the store holds after the second, which is the only one of the five that can see
+// a write at all.
+test fn a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_stays_recorded() -> Bool {
+  let dir = fresh_dir(tag: "cutover-twice")
+  let seeded = orphan_launched(dir: dir)
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: s } => {
+      let census_first = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
+      let carry_first = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
+      let outcome_first = belt_attempt_slots_cutover_record_write(
+        stores: s,
+        record: attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_first, carry: carry_first),
+      )
+      let census_second = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
+      let carry_second = attempt_slots_carry(target: s.slots, moved: moved_row(dir: dir))
+      let record_second = attempt_slots_cutover_record_mint(instance_id: "session-wet" as NonEmptyStr, census: census_second, carry: carry_second)
+      let outcome_second = belt_attempt_slots_cutover_record_write(stores: s, record: record_second)
+      // The census the NEXT tick will see, taken after the second pass. The two censuses above are the
+      // inputs each pass read; this one is the state the second pass left behind, and it is the only one
+      // that can answer "did the second pass write anything".
+      let census_after_two = attempt_slots_census(target: s.slots, moved: moved_row(dir: dir))
+      let path = attempt_slots_cutover_record_path(stores: s, instance_id: "session-wet" as NonEmptyStr)
+      let read_back = Filesystem.Read(path: path as FilePath)
+      seeded
+      // First tick: the abandoned slot moves into the store the settle pass enumerates.
+      && carried(c: carry_first, reference: unit_a())
+      && !already_carried(c: carry_first, reference: unit_a())
+      && slot_is_launching(dir: dir)
+      && (match outcome_first {
+           AttemptSlotsCutoverRecorded { path: p, record: r } => (p == path) && (r.carry == carry_first)
+           _ => false
+         })
+      && (match belt_slots_cutover_pass_outcome(outcome: outcome_first) { BeltPassRecorded => true  _ => false })
+      // Second tick: the same reference answers already-carried, and nothing is carried.
+      && already_carried(c: carry_second, reference: unit_a())
+      && !carried(c: carry_second, reference: unit_a())
+      // LABELS CANNOT SEE A WRITE. The two lines above are what the carry SAYS; this is what the store
+      // KNOWS. The generation the FIRST carry reported it wrote must still be the generation the live
+      // store holds after the SECOND pass, and the second report must claim no move at all. Without this,
+      // an already-carried arm that re-published the payload "to record that the re-run happened" would
+      // report identical labels and every assertion below would stay green.
+      // THE MUTATION THIS EXISTS TO CATCH: in attempt_slots_carry_one, let the same-identity arm commit the
+      // payload again under ExpectSlotGeneration at the generation it just read, then answer AlreadyCarried
+      // exactly as it does now. Labels unchanged, generation up, only this row red -- and
+      // a_slot_left_behind_by_a_moved_root_is_carried_into_the_store_the_pass_reads stays green beside it.
+      // The number is read out of the first carry's own outcome and back out of the store through the
+      // census, never typed in by the fixture.
+      // PLACEMENT IS THE WHOLE POINT, AND IT WAS LEARNED THE HARD WAY: a first version asked the PRE-carry
+      // census whether it held that generation. It never can -- the target side does not exist until a
+      // carry writes it -- so the clause was UNSATISFIABLE and this row went red at 31b3fa305bbb on a
+      // fixture error rather than on the pass's behaviour. A clause that can never be true witnesses no
+      // more than one that is always true; both are the same defect seen from opposite ends.
+      && (carry_carried_arms(c: carry_second) == 0)
+      && census_only_old_holds(c: census_first, reference: unit_a())
+      && (match carry_report_of(c: carry_first) {
+           Absent => false
+           Present { value: report } => any(report.outcomes, o => match o {
+             AttemptSlotsCarried { reference: r, source_generation: _, target_generation: g } =>
+               ((r as String) == unit_a())
+               // the copy the first carry CLAIMS it wrote is in the store, at the generation it named
+               && census_target_held_at(c: census_second, reference: unit_a(), generation: g)
+               // and it is STILL at that generation after the second pass: no new generation was written
+               && census_target_held_at(c: census_after_two, reference: unit_a(), generation: g)
+             _ => false
+           })
+         })
+      // No slot was written by the second pass: read the state IT left behind, and both sides still bucket
+      // as identical bytes, with nothing unreadable and nothing newly only-in-the-old-root.
+      && (match census_counts(c: census_after_two) {
+           Present { value: k } => (k.total == 1) && (k.only_in_old == 0) && (k.in_both_identical == 1) && (k.in_both_different == 0) && (k.either_side_unreadable == 0)
+           Absent => false
+         })
+      && census_buckets_add_up(c: census_after_two)
+      // The tick's standing on the second pass is Recorded, not Deferred or Refused; the record now on disk
+      // is the SECOND pass's reading, and it renders as listed plus reported.
+      && (match belt_slots_cutover_pass_outcome(outcome: outcome_second) { BeltPassRecorded => true  _ => false })
+      && (match outcome_second {
+           AttemptSlotsCutoverRecorded { path: p2, record: r2 } =>
+             (p2 == path)
+             && (r2.carry == carry_second)
+             && (r2.census == census_second)
+             && (attempt_slots_carry_record_kind(carry: r2.carry) == "reported")
+             && (attempt_slots_census_record_kind(census: r2.census) == "listed")
+           _ => false
+         })
+      && read_back.success
+      && string_contains(s: read_back.content, pattern: attempt_slots_cutover_record_schema)
+      && string_contains(s: read_back.content, pattern: "already-carried")
+    }
+  }
+}
+
 // THE CENSUS IS WHAT THE OPERATOR READS BEFORE A CARRY. A slot it cannot read must appear as a slot it
 // cannot read -- not as generation 0, not as "absent", and not as "the two payloads differ". The counts
 // are typed data the census computed, so the operator's question ("how much is only in the old root?")
@@ -1860,4 +1964,130 @@ test fn an_operator_settle_of_a_slot_with_no_ledger_seat_closes_the_slot_and_suc
     let s = operator_settle(dir: dir)
     operator_release_succeeded(s: s) && slot_is_terminal(dir: dir) && (released_unit(s: s) == "")
   }
+}
+
+// ============================================================================================
+// TWO THINGS THE ROWS ABOVE CANNOT SEE, both from the operator's requirement that a carry over a
+// replaced root be safe to run at all on a host with more than one slot in it:
+//   (a) what a carry does when some references in the abandoned root cannot be read -- does it stop,
+//       skip them in silence, or carry the rest and NAME each one it refused;
+//   (b) whether a re-run WROTE anything, as opposed to reporting the labels it would report whether or
+//       not it wrote. Labels cannot see a write; a generation number can.
+// (b) is folded into a_second_cutover_pass_over_the_same_root_carries_nothing_and_the_tick_stays_recorded
+// below, which is the row the belt tick actually executes: keeping two re-run rows over the same root
+// would put one fact in two places. The generation anchor and the two-orphan shape are sharp-otter-429's
+// design from gunbc#15739, carried here; #15739 closes as superseded.
+// ============================================================================================
+
+data node_c: String = "g5-node-c"
+data key_c: String = "000000000000000c"
+data node_d: String = "g5-node-d"
+data key_d: String = "000000000000000d"
+
+fn unit_c() -> String {
+  match session_unit_wire(node_id: node_c, attempt_key: key_c) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn unit_d() -> String {
+  match session_unit_wire(node_id: node_d, attempt_key: key_d) {
+    Present { value: u } => u as String
+    Absent => ""
+  }
+}
+
+fn slot_b(opened: EpochSecs) -> AttemptRecord {
+  session_attempt_record(node_id: node_b, attempt_key: key_b, unit: unit_b() as NonEmptyStr, granted: kibibyte(count: 8388608), now: opened)
+}
+
+// THE SECOND ORPHAN, under its own reference and its own attempt, in the root the re-root abandoned.
+// Seeded the way the host has it: the attempt's own transitions write the bytes, generation 1 opened,
+// generation 2 Launching -- the only writer whose bytes the reader accepts.
+fn orphan_launched_b(dir: String) -> Bool {
+  match old_store(dir: dir) {
+    Absent => false
+    Present { value: old } =>
+      match attempt_open(store: old, record: slot_b(opened: 99999999998)) {
+        AttemptAdvanced { state: _, generation: g } =>
+          match attempt_begin_launch(store: old, reference: unit_b() as NonEmptyStr, expected: g) {
+            AttemptAdvanced { state: _, generation: _ } => true
+            AttemptLostRace { expected: _, observed: _ } => false
+            AttemptTransitionRefused { detail: _ } => false
+          }
+        AttemptLostRace { expected: _, observed: _ } => false
+        AttemptTransitionRefused { detail: _ } => false
+      }
+  }
+}
+
+// HOW MANY REFERENCES THE CARRY CLAIMS IT MOVED. A re-run that moves nothing reports none -- whatever
+// its per-reference labels say. The count is over the arms, not over names.
+fn carry_carried_arms(c: AttemptSlotsCarry) -> Int {
+  match carry_report_of(c: c) {
+    Absent => 0
+    Present { value: report } => count(filter(report.outcomes, o => match o { AttemptSlotsCarried { reference: _, source_generation: _, target_generation: _ } => true  _ => false }))
+  }
+}
+
+// THE LIVE STORE HOLDS THIS REFERENCE AT EXACTLY THIS GENERATION, and at no other. The number is the
+// store's own, read back through the census the cutover computed -- never one the fixture typed in.
+fn census_target_held_at(c: AttemptSlotsCensus, reference: String, generation: Int) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference) && match e.target { SlotRead { generation: g, state: _, payload: _ } => g == generation  _ => false })) == 1
+}
+
+// THE OLD ROOT HOLDS IT (readable or not) AND THE LIVE STORE DOES NOT: the refused reference is left
+// exactly where it was. This is the difference between a carry that stopped at a problem, which is a
+// fact an operator can act on, and a carry that deleted the problem, which is data loss.
+fn census_only_old_holds(c: AttemptSlotsCensus, reference: String) -> Bool {
+  count(filter(census_entries(c: c), e => ((e.reference as String) == reference)
+    && match e.source { SlotAbsent => false  SlotRead { generation: _, state: _, payload: _ } => true  SlotUnreadable { detail: _ } => true }
+    && match e.target { SlotAbsent => true  SlotRead { generation: _, state: _, payload: _ } => false  SlotUnreadable { detail: _ } => false })) == 1
+}
+
+// BOTH SIDES HOLD THE SAME BYTES: the carry copied the slot and rewrote nothing.
+fn census_relation_is_identical(c: AttemptSlotsCensus, reference: String) -> Bool {
+  any(census_entries(c: c), e => (e.reference as String) == reference && match e.payload_relation { PayloadsIdentical => true  PayloadsDifferent => false  PayloadRelationUndecided => false })
+}
+
+test fn a_carry_that_refuses_one_reference_still_carries_the_others_and_names_the_refusal() -> Bool {
+  let dir = fresh_dir(tag: "cutoverpartial")
+  let seeded_a = orphan_launched(dir: dir)
+  let seeded_b = orphan_launched_b(dir: dir)
+  let planted_c = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_c())
+  let planted_d = plant_undecodable_slot(root: old_slots_dir(dir: dir), reference: unit_d())
+  let carry = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCarryNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_carry(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  let census = match stores_at(dir: dir) {
+    Absent => AttemptSlotsCensusNoDeclaredRow { instance_id: "no-store" as NonEmptyStr }
+    Present { value: stores } => attempt_slots_census(target: stores.slots, moved: moved_row(dir: dir))
+  }
+  seeded_a
+  && seeded_b
+  && planted_c
+  && planted_d
+  // One outcome per reference the old root listed: four, not three, not two, not one.
+  && match carry_report_of(c: carry) { Present { value: report } => count(report.outcomes) == 4  Absent => false }
+  && carried(c: carry, reference: unit_a())
+  && carried(c: carry, reference: unit_b())
+  && carry_refused_at(c: carry, reference: unit_c())
+  && carry_refused_at(c: carry, reference: unit_d())
+  && !carried(c: carry, reference: unit_c())
+  && !carried(c: carry, reference: unit_d())
+  // The two readable references now sit in BOTH stores with the same bytes. Each unreadable one sits in
+  // the old root only -- unreadable, not absent: the carry neither deleted it nor carried a guess.
+  && census_relation_is_identical(c: census, reference: unit_a())
+  && census_relation_is_identical(c: census, reference: unit_b())
+  && census_source_is_unreadable(c: census, reference: unit_c())
+  && census_source_is_unreadable(c: census, reference: unit_d())
+  && census_only_old_holds(c: census, reference: unit_c())
+  && census_only_old_holds(c: census, reference: unit_d())
+  && census_buckets_add_up(c: census)
+  && match census_counts(c: census) {
+      Present { value: k } => (k.total == 4) && (k.in_both_identical == 2) && (k.in_both_different == 0) && (k.either_side_unreadable == 2)
+      Absent => false
+    }
 }
