@@ -1,0 +1,87 @@
+// dag/test/claim/service_endpoint_supply_module_resolve.dag — THE RUNG THIS CUT WAS MISSING.
+//
+// `test.claim.service_endpoint_supply_fixture_parse_test` reads fixture declarations back after a
+// real parse, and `test.claim.service_endpoint_supply_emit_control` compiles fixture SOURCE
+// TEXT through the emit check. Neither path DEMANDS a module that declares a parameter-bound endpoint
+// as one of its own items, and that demand is the only place where `config { endpoint: <name> }` is
+// resolved at all: resolution walks the service's minted `svc_endpoint` property, and with the
+// admission removed the endpoint expression falls back to an ordinary module-scope name and this entry
+// refuses with `error: undefined variable 'request_url'` at the authored position. So the assertion of
+// this file is that its own entry resolves, and the boolean below is the reachable read-back that says
+// WHY it resolved: the endpoint is still the authored variable, an `ExprVar` named `request_url`, not a
+// literal the front end quietly substituted for it (DESIGN §5: no plausible output is fabricated).
+//
+// REVERSE CHECK, registered in the PR body: take the admission away from
+// `v1.compiler.infer_service.service_endpoint_supply` and this entry stops resolving -- the refusal is
+// the one above. The red half is already measured against the old rule: the pinned pre-change seed
+// (`c469966f`) refuses exactly this spelling, at `endpoint: request_url`, while the same module with a
+// module-level `data request_url: String` resolves -- which is what makes the binding, and not a
+// module-scope lookup, the thing under test.
+//
+// The service below is written twice on purpose and the pairing is said, not assumed: as real module
+// ITEMS (what makes the entry demand resolution), and as `parameter_endpoint_source` from the shared
+// fixtures module (what the read-back parses). They are the same declaration, and
+// `test.claim.service_endpoint_supply_fixtures` is the single home of that text; a drift between the
+// two shows up as the read-back disagreeing with what this file's own items had to be in order to
+// resolve at all.
+//
+// Run:
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --claim-run \
+//     --entry dag/test/claim/service_endpoint_supply_module_resolve.dag \
+//     --function the_parameter_bound_endpoint_is_still_the_authored_variable_holds
+module test.claim.service_endpoint_supply_module_resolve
+
+
+
+import std.types { String, NonEmptyStr, Bool }
+
+
+import extdeps.ietf.http_semantics { POST }
+
+
+import test.claim.service_endpoint_supply_fixture_parse_test { endpoint_shape }
+
+
+import test.claim.service_endpoint_supply_fixtures { parameter_endpoint_source }
+
+// THE SERVICE AS A REAL ITEM OF THIS MODULE. Two operations, each declaring `request_url: String`, so
+// the whole-service quantifier in `service_endpoint_supply` is satisfied. If the admission is removed,
+// this declaration is what refuses -- before any cell in this file runs, and at the authored position
+// of `endpoint: request_url`.
+service module_resolve_bound {
+  config {
+    endpoint: request_url
+  }
+
+  operation GetToken {
+    input {
+      audience: NonEmptyStr
+      request_url: String
+    }
+    output {
+      access_token: String
+    }
+    transport rest { method: POST, path: "/v1/token" }
+  }
+
+  operation GetAssertion {
+    input {
+      subject: NonEmptyStr
+      request_url: String
+    }
+    output {
+      assertion: String
+    }
+    transport rest { method: POST, path: "/v1/assertion" }
+  }
+}
+
+test fn the_parameter_bound_endpoint_is_still_the_authored_variable_holds() -> Bool {
+  // The entry's own resolution is the assertion that matters (the header says why); this read-back is
+  // the reachable half that says WHAT resolved: the endpoint is still the authored variable
+  // `request_url`, an `ExprVar` -- not a literal the front end substituted for it. Read from the shared
+  // fixtures text, which is the single home of that declaration; this file's items above are the same
+  // declaration as real module items, which is what makes the entry demand it.
+  endpoint_shape(source: parameter_endpoint_source) == "identifier:request_url"
+}

@@ -1,9 +1,0 @@
-module stlc.shared_word
-
-type Word64 {
-  items: List<Int>
-}
-
-fn hold_shared() -> Word64 {
-  Word64 { items: [1] }
-}

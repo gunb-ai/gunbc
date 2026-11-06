@@ -109,21 +109,14 @@ pub use native_lane_runner::{
     run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_native_cli,
     run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
     NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
-    NativeServeLaunches, NativeServePhases, NativeServeProgramRun, PreparationCause,
-    PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
+    NativeServeContention, NativeServeLaunches, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
 };
-pub(crate) use native_lane_runner::{native_compile_entry, v2_native_cli_entry};
 pub(crate) use required_floor_runner::*;
 mod entry_resolve;
 pub mod pre_entry_phase;
-mod required_lane_resolution_census;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
-pub use required_lane_resolution_census::{
-    entry_closure_module_identities, module_admission,
-    required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
-    ModuleAdmission, ModuleIdentityPopulation,
-};
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
@@ -14668,6 +14661,7 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+    let mut equality_by_target: Rc<HashMap<String, bool>> = v1_rt::rc_empty_map();
     // S2a move 2 (resolver-graph-major-design (deleted) §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -14894,6 +14888,7 @@ fn reconcile_with_typed_cache(
                                     intern_table.clone(),
                                     module_symbol_index,
                                     module_variant_base,
+                                    equality_by_target.clone(),
                                 );
                                 // Per-module attribution for the typecheck-dominant resolves measured
                                 // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
@@ -14949,6 +14944,11 @@ fn reconcile_with_typed_cache(
                 );
                 variant_surfaces =
                     v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
+                equality_by_target = v1_compiler_infer::equality_table_with_module(
+                    equality_by_target,
+                    typed.clone(),
+                    source_indices.clone(),
+                );
                 module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                 dispatched[slot] = Some((parent_diags, tc_result));
                 resolve_stage_slot_add(|s| {
@@ -31211,6 +31211,7 @@ mod peel_alias_fixpoint_termination {
                 symbol_index,
                 unit_variant_index: crate::v1_rt::rc_empty_map(),
                 unit_variant_index_observed: false,
+                equality_by_target: crate::v1_rt::rc_empty_map(),
             });
             // The pre-fix firing set: the old peel called this same resolver,
             // projected `.resolved`, and discarded these diagnostics. The fix
