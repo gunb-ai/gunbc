@@ -600,6 +600,7 @@ fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: 
       target_dir: serve_binary_build_target_dir_under(instance_root: instance.instance_root as String),
       install_path: path as String,
       source_identity: BuildFromGitCheckout,
+      cargo_path: instance.toolchain.cargo as String,
     }
     let head = dashboard_target_exec(instance: instance, program: "/usr/bin/git" as FilePath, args: serve_binary_head_argv(build: build))
     if !head.success {
@@ -609,7 +610,7 @@ fn dashboard_build_serve_binary_in_place(instance: HostDashboardInstance, path: 
     } else {
       let ran = dashboard_target_exec(instance: instance, program: "/usr/bin/systemd-run" as FilePath, args: serve_binary_build_argv(build: build))
       let head_after = dashboard_target_exec(instance: instance, program: "/usr/bin/git" as FilePath, args: serve_binary_head_argv(build: build))
-      match serve_binary_pre_install_verdict(build: build, head_before: head.stdout, build_succeeded: ran.success, head_after: head_after.stdout) {
+      match serve_binary_pre_install_verdict(build: build, head_before: head.stdout, build_succeeded: ran.success, build_stderr: ran.stderr, head_after: head_after.stdout) {
         ServeBinaryReadyToInstall => dashboard_install_built_serve_binary(instance: instance, build: build)
         refused => dashboard_exec_refused(detail: serve_binary_refusal_detail(verdict: refused))
       }
