@@ -2303,10 +2303,11 @@ fn dashboard_git_worker_subtree_confined_children(child: NonEmptyStr) -> List<St
 // packed-refs-free history for no benefit, and a bounded one has a receipt that can be read in full.
 data dashboard_git_worker_subtree_walk_depth: Nat = 32
 
-fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, pruned: List<String>) -> ArgvCommand {
+fn dashboard_git_worker_subtree_chgrp_command(target: String, group: NonEmptyStr, owner: String, pruned: List<String>) -> ArgvCommand {
   find_subtree_regroup_command(
     target: target,
     group: group as String,
+    owner: owner,
     pruned: pruned,
     depth: dashboard_git_worker_subtree_walk_depth
   )
@@ -2404,12 +2405,14 @@ fn dashboard_git_worker_subtree_chmod_command(
   pruned: List<String>,
   sticky: Bool,
   files_group_writable: Bool,
+  owner: String,
 ) -> ArgvCommand {
   find_subtree_group_writable_command(
     target: target,
     pruned: pruned,
     sticky: sticky,
     files_group_writable: files_group_writable,
+    owner: owner,
     depth: dashboard_git_worker_subtree_walk_depth
   )
 }
@@ -2447,6 +2450,7 @@ fn dashboard_git_worker_subtree_child_migration(
     dashboard_git_worker_subtree_chgrp_command(
       target: dashboard_git_worker_subtree_path(instance: instance, child: child),
       group: group,
+      owner: instance.directory_owner.user as String,
       pruned: dashboard_git_worker_subtree_confined_children(child: child),
     ),
     dashboard_git_worker_subtree_chmod_command(
@@ -2454,6 +2458,7 @@ fn dashboard_git_worker_subtree_child_migration(
       pruned: dashboard_git_worker_subtree_confined_children(child: child),
       sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
       files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+      owner: instance.directory_owner.user as String,
     ),
   ]
 }
@@ -2475,6 +2480,7 @@ fn dashboard_instance_worker_git_subtree_migration(
         child => dashboard_git_worker_subtree_chgrp_command(
           target: dashboard_git_worker_subtree_path(instance: instance, child: child),
           group: group,
+          owner: instance.directory_owner.user as String,
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
         ),
       ),
@@ -2485,6 +2491,7 @@ fn dashboard_instance_worker_git_subtree_migration(
           pruned: dashboard_git_worker_subtree_confined_children(child: child),
           sticky: dashboard_git_worker_subtree_needs_sticky(child: child),
           files_group_writable: dashboard_git_worker_subtree_writes_files_in_place(child: child),
+          owner: instance.directory_owner.user as String,
         ),
       ),
     )
