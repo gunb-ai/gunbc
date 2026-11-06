@@ -36,7 +36,7 @@ import gunbc.live_deploy.serve_binary_build {
 }
 import extdeps.tools.findutils { find_subtree_mode_readback_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty, parse_systemd_unit_load_state, parse_systemd_unit_active_state }
+import extdeps.systemd { LoadState, ActiveState, FragmentPathProperty, ExecStartProperty, parse_systemd_unit_load_state, parse_systemd_unit_active_state }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated }
 import extdeps.access.posix { file_mode_of_octal_text }
@@ -1212,7 +1212,7 @@ fn dashboard_apply_provision_op(
       if drift != "" {
         dashboard_exec_refused(detail: join([drift, "; the new dispatcher must not be activated"], ""))
       } else {
-        dashboard_exec_ok(stdout: "every declared legacy writer is stopped and masked at activation")
+        dashboard_exec_ok(stdout: join(["no unit runs the legacy flat-entry writer at activation; the successor serve unit is installed and started by the declared operator step live_deploy_apply_desired_operator_local_wet --arg instance_id=", instance.instance_id as String, " (gunbc.live_deploy.desired, one emitter)"], ""))
       }
     }
     DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
@@ -1412,7 +1412,7 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
 // (unprivileged: show reads the manager). A failed read, or a state word extdeps.systemd does not declare,
 // is the typed LegacyWriterUnitUnreadable, which is never excluded.
 fn dashboard_legacy_writer_reading(instance: HostDashboardInstance, systemctl: NonEmptyStr, unit: NonEmptyStr) -> LegacyWriterUnitReading {
-  let cmd = systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState, FragmentPathProperty])
+  let cmd = systemctl_show_properties_command(unit: unit, properties: [LoadState, ActiveState, FragmentPathProperty, ExecStartProperty])
   let r = dashboard_target_exec(instance: instance, program: systemctl as FilePath, args: cmd.arguments)
   if r.success {
     let load_raw = dashboard_show_word(text: r.stdout, key: "LoadState")
@@ -1420,7 +1420,7 @@ fn dashboard_legacy_writer_reading(instance: HostDashboardInstance, systemctl: N
     match parse_systemd_unit_load_state(raw: load_raw) {
       Present { value: l } =>
         match parse_systemd_unit_active_state(raw: active_raw) {
-          Present { value: a } => LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath") }
+          Present { value: a } => LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: dashboard_show_word(text: r.stdout, key: "FragmentPath"), exec_start: dashboard_show_word(text: r.stdout, key: "ExecStart") }
           Absent => LegacyWriterUnitUnreadable { detail: join(["ActiveState '", active_raw, "' is not a state extdeps.systemd declares"], "") }
         }
       Absent => LegacyWriterUnitUnreadable { detail: join(["LoadState '", load_raw, "' is not a state extdeps.systemd declares"], "") }
@@ -1517,6 +1517,12 @@ type DashboardApplyFold {
 
 // Apply-after-preflight still threads the admitted source revision through observation, not
 // through this fold: service launch is gunbc.live_deploy.emit over the systemd ServiceProcess member.
+// An operation by name for a refusal: its kind and target, from the one row projection.
+fn dashboard_provision_op_label(op: DashboardInstanceProvisionOp) -> String {
+  let row = dashboard_instance_provision_op_row(op: op)
+  join([row.kind as String, "@", row.target as String], "")
+}
+
 fn dashboard_apply_plan(
   instance: HostDashboardInstance,
   plan: List<DashboardInstanceProvisionOp>,
@@ -2823,8 +2829,10 @@ fn dashboard_instance_apply_after_preflight(
                     instance: instance,
                     step: "readback-incomplete",
                     detail: join([
-                      "post-apply observation did not converge; remaining desired operations=",
+                      "post-apply observation did not converge; remaining desired operations (",
                       to_string(count(remaining)),
+                      ")=",
+                      join(map(remaining, op => dashboard_provision_op_label(op: op)), ", "),
                     ], ""),
                     receipts: applied.receipts,
                   )

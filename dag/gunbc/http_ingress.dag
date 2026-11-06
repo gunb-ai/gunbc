@@ -416,9 +416,19 @@ fn http_ingress_wire_head(o: NativeServeOutgoing, body_octets: Int) -> String {
 // receives them alone, because its constructor was fixed at emission (std.compiler_entry
 // NativeIngressDriver), and it refuses any selector (http_ingress_native_argv). A budget that is not
 // set is not rendered, and the constructor then refuses the missing argument.
+// The argument key the release rides under, rendered by http_ingress_binding_arguments and nowhere else.
+data http_ingress_release_argument_prefix: String = "release_revision="
+
+// Whether an ExecStart text (a rendered unit line or the ExecStart property `systemctl show` reads back) runs an
+// ingress binding: it carries the release argument that http_ingress_binding_arguments renders, which no
+// pre-binding unit (a flat `serve` entry) carries.
+fn http_ingress_execstart_runs_binding(execstart: String) -> Bool {
+  string_contains(s: execstart, pattern: concat(" --arg ", http_ingress_release_argument_prefix))
+}
+
 fn http_ingress_binding_arguments(handler: String, listener: HttpIngressListener, release_revision: String, cpu_limit_ms: Int?, wall_limit_ms: Int?) -> List<String> {
   concat(http_ingress_binding_identity_arguments(handler: handler, listener: listener),
-    concat(["--arg", concat("release_revision=", release_revision)],
+    concat(["--arg", concat(http_ingress_release_argument_prefix, release_revision)],
       http_ingress_binding_limit_arguments(cpu_limit_ms: cpu_limit_ms, wall_limit_ms: wall_limit_ms)))
 }
 
