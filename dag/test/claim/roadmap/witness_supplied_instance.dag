@@ -27,7 +27,7 @@ import gunbc.live_deploy.release_locus {
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus }
 import extdeps.tools.gnu_coreutils {
-  mktemp_directory_command, whoami_command, basename_argv, basename_program_invocation,
+  mktemp_directory_command, whoami_command,
   install_file_mode_command, mkdir_parents_command,
 }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
@@ -110,16 +110,35 @@ data witness_scratch_leaf_template: NonEmptyStr = "gunbc-wet-witness-XXXXXX" as 
 // THE CLAIM'S OWN LEAF, AS THE HOST NAMED IT. `mktemp -d` chose it, so nobody writing a claim can guess
 // or reuse it -- which is why it is the token a probe puts inside a systemd unit name: two runs of the
 // same claim cannot name the same unit, and no production attempt key can look like this. It is NOT a
-// fourth copy of a `path_basename` helper (gunbc/live_deploy/member_observe.dag:163,
-// gunbc/url_file_acquisition.dag:69, gunbc/gitignore_emit.dag:177 each carry one for path RENDERING,
-// where an empty input or a trailing separator is a thing to tolerate); a witness leaf is a host-chosen
-// name that must exist, so an unnameable leaf is returned as Absent and the claim that asked for it
-// refuses.
+// fourth copy of a `path_basename` helper -- `gunbc.live_deploy.member_observe` `path_basename`,
+// `gunbc.url_file_acquisition` `path_basename` and `gunbc.gitignore_emit` `path_basename` each carry one
+// for path RENDERING, where an empty input or a trailing separator is a thing to tolerate; a witness leaf
+// is a host-chosen name that MUST exist, so an unnameable leaf is returned as Absent and the claim that
+// asked for it refuses.
+//
+// WHY THAT IS THE ANSWER AND NOT A NEW DUPLICATION (DESIGN 6b, on the carrier). The three production
+// copies TOLERATE the empty answer -- they fold to "" and their callers read that as "no basename" --
+// while this one must REFUSE, which is a different function wearing the same name. Folding the three
+// into one shared row is a genuine 6b root generalization and is NOT taken here: they live under three
+// modules this lane has no authority over, and their tolerance of "" is exactly what their own callers
+// depend on. TRIGGER: a fourth production caller needing the same tolerance -- then the shared row
+// belongs beside the path type and all four fold through it.
 fn witness_claim_leaf(path: String) -> String? {
-  let leaf = wet_argv_out(program: basename_program_invocation, arguments: basename_argv(path: path))
-  // THE REFUSALS ARE THE POINT: an empty read, or the root itself (`basename /` prints `/`), is not a
-  // leaf, and a claim that cannot name its own leaf must not go on to name a systemd unit.
-  if leaf == "" || leaf == "/" || string_contains(s: leaf, pattern: "/") {
+  // PURE `.dag`, NO HOST PROCESS. A process was the wrong instrument here for the reason review 91550
+  // gave: on a host where `basename` is not on PATH, or where a different coreutils answers, a claim
+  // would have refused for a fact about the HOST TOOL and not about the sandbox -- and every unit-name
+  // derivation paid a process start. The `basename` rows in `extdeps.tools.gnu_coreutils` are deleted
+  // with this change; their only consumer was this line, and an extdeps row whose sole consumer is
+  // semantics that need no executable is a dependency admitted by nothing (DESIGN 3c).
+  //
+  // The fold deliberately matches `basename(1)`, which strips trailing slashes: `basename /a/b/` is `b`,
+  // not "", so empty segments are skipped. The separator cannot survive the split, so there is no
+  // "result still contains a slash" arm to write -- an arm restating what the split already guarantees is
+  // a guard that guards nothing.
+  let leaf = fold(split(s: path, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+  // THE REFUSALS ARE THE POINT: an empty read, or the filesystem root itself (what `basename /` prints),
+  // is not a leaf, and a claim root is a `mktemp -d` leaf with a name under it.
+  if leaf == "" {
     Absent
   } else {
     Present { value: leaf }
@@ -161,8 +180,8 @@ fn wet_ok(command: ArgvCommand) -> Bool {
 }
 
 // THE WORD-LIST SIBLINGS OF wet / wet_ok / wet_out. A host operation modeled as an argv TAIL (the
-// `_argv` rows in the extdeps modules: systemctl_stop_user_argv,
-// basename_argv) carries no argv[0]; the caller names the program, and shell.Exec.RunArgv is the seam the
+// `_argv` rows in the extdeps modules: systemctl_stop_user_argv and
+// systemctl_reset_failed_user_argv) carries no argv[0]; the caller names the program, and shell.Exec.RunArgv is the seam the
 // whole fleet already uses for that shape. They exist here rather than in extdeps.exec.command because
 // sealing the same words into an ArgvCommand needs a caller roster that project does not grow.
 fn wet_argv_ok(program: NonEmptyStr, arguments: List<String>) -> Bool {

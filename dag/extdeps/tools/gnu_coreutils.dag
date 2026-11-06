@@ -319,25 +319,6 @@ fn pwd_command() -> ArgvCommand {
   argv_command(program: pwd_program(), arguments: [])
 }
 
-// THE HOST'S OWN BASENAME, for the one thing a witness must not do to a path it did not name: take it
-// apart with a hand-rolled scan of its own. GNU coreutils 9.7 `basename` prints the final component of
-// its argument after stripping trailing slashes
-// (<https://www.gnu.org/software/coreutils/manual/html_node/basename-invocation.html>). Measured on 9.7:
-// `basename /tmp/x-AB12cd` writes `x-AB12cd` and exits 0, while `basename /` writes `/` -- the one
-// output a caller of `witness_claim_leaf` must refuse, because a claim root is a `mktemp -d` leaf and a
-// root with no final segment is a broken claim, not a nameable thing.
-// The argv[0] the caller hands shell.Exec.RunArgv. Deliberately NOT a ProgramIdentity row: minting one
-// goes through `uncataloged_program`, whose callers are enumerated in extdeps.exec.program, and this
-// project does not grow that roster (operator ruling: no allowlists as architecture). PATH-resolved and
-// bare, exactly as `systemctl_binary_name` is for systemctl above; a host where the seam cannot exec it
-// refuses the claim rather than defaulting.
-data basename_program_invocation: NonEmptyStr = "basename" as NonEmptyStr
-
-// An argv TAIL (argv[0] comes from `basename_program_invocation`), for the reason given there.
-fn basename_argv(path: String) -> List<String> {
-  [path]
-}
-
 // tee WITHOUT -a OVERWRITES the named file; WITH -a it opens it for APPEND, so bytes written by
 // anyone else before tee opens the file are preserved and a concurrent append cannot be erased by
 // a whole-file rewrite (tee(1), GNU coreutils). The payload arrives on STDIN -- never argv -- so

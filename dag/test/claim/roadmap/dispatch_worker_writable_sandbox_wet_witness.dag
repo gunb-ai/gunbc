@@ -2684,6 +2684,93 @@ test fn an_answer_for_another_request_is_reported_as_a_mismatch_not_as_a_wait() 
   }
 }
 
+// THE LEAF IS WHAT MAKES A PROBE UNIT NAME UNREUSABLE, so it is now a pure `.dag` fold and must be
+// tested as one. Review 91550 asked why a claim was starting a `basename` process to split a string it
+// already held; the honest answer is that it should not, and it no longer does -- the fold lives in
+// `witness_supplied_instance` `witness_claim_leaf` and the `basename` extdeps rows are deleted with it.
+// What the fold owes the rest of the witness is two things, and both are decided here without a host tool,
+// a systemd, or root:
+//   (1) it answers the way `basename(1)` answers, including the trailing-slash case the fold has to
+//       handle by skipping empty segments -- a leaf that differed from what the host's own naming would
+//       have produced would put a name on a unit that no host tool would have spelled;
+//   (2) the leaf is what makes two runs, or two claims, unable to name the same unit. That is the
+//       property the srv2 runs cannot afford to lose: a unit name shared between a leftover and a live
+//       launch is exactly the false red that reads as a sandbox refusal. The names come from production
+//       (`dispatch_attempt_unit_stem` through `systemd_service_unit_name`), so this is a check that the
+//       leaf reaches that naming -- not a re-implementation of it.
+test fn the_claim_leaf_is_the_host_segment_and_two_roots_never_name_one_unit() -> Bool {
+  let shapes = (
+    match witness_claim_leaf(path: "/tmp/gunbc-sandbox-A1b2C3") {
+      Present { value: leaf } => leaf == "gunbc-sandbox-A1b2C3"
+      Absent => false
+    }
+  )
+    // THE TRAILING SLASH, which is why the fold skips empty segments rather than taking the last
+    // position: `basename /a/b/` is `b`, and a fold that answered "" here would refuse a real root.
+    && (match witness_claim_leaf(path: "/tmp/gunbc-sandbox-A1b2C3/") {
+      Present { value: leaf } => leaf == "gunbc-sandbox-A1b2C3"
+      Absent => false
+    })
+    // AN EMPTY SEGMENT IN THE MIDDLE is not part of the name either.
+    && (match witness_claim_leaf(path: "/tmp/a//b") {
+      Present { value: leaf } => leaf == "b"
+      Absent => false
+    })
+    // THE THREE SHAPES THAT ARE NOT LEAVES: the filesystem root (what `basename /` prints), nothing at
+    // all, and a path made only of separators. Each must refuse, because `wet_attempt_key` hands the
+    // empty string to production's own guard when the leaf is Absent -- a silent "" there would name a
+    // unit after no claim at all.
+    && (match witness_claim_leaf(path: "/") {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match witness_claim_leaf(path: "") {
+      Absent => true
+      Present { value: _ } => false
+    })
+    && (match witness_claim_leaf(path: "///") {
+      Absent => true
+      Present { value: _ } => false
+    })
+  let root_a = wet_claim_root(tag: "leaf-a" as NonEmptyStr)
+  let root_b = wet_claim_root(tag: "leaf-b" as NonEmptyStr)
+  // TWO ROOTS, ONE LABEL: the label is the part a claim chooses, and it is the same here on purpose. If
+  // the names came out equal, the label alone was naming the unit and the leaf was decoration.
+  let distinct = (
+    match wet_unit_name_for(root: root_a as NonEmptyStr, label: "shared-label") {
+      Present { value: name_a } =>
+        match wet_unit_name_for(root: root_b as NonEmptyStr, label: "shared-label") {
+          Present { value: name_b } =>
+            (name_a as String) != (name_b as String)
+              // THE LEAF MUST BE IN THE NAME, not merely distinguishing it: the name is built by
+              // production from `leaf + "-" + label`, so a name that differs but does not carry the
+              // leaf is naming something else -- and `wet_retire_unit`, which derives the name again
+              // instead of remembering it, would be retiring that something else.
+              && (match witness_claim_leaf(path: root_a as String) {
+                Present { value: leaf } => string_contains(s: name_a as String, pattern: leaf as String)
+                Absent => false
+              })
+          Absent => false
+        }
+      Absent => false
+    }
+  )
+  // THE SAME ROOT AND LABEL TWICE MUST NAME THE SAME UNIT, or retirement could never match the launch it
+  // belongs to: `wet_retire_unit` derives the name again rather than remembering it.
+  let stable = (
+    match wet_unit_name_for(root: root_a as NonEmptyStr, label: "shared-label") {
+      Present { value: again } =>
+        match wet_unit_name_for(root: root_a as NonEmptyStr, label: "shared-label") {
+          Present { value: once } => (again as String) == (once as String)
+          Absent => false
+        }
+      Absent => false
+    }
+  )
+  wet_claim_verdict_with_root_readback(verdict: shapes && distinct && stable, root: root_a as NonEmptyStr)
+    && wet_claim_verdict_with_root_readback(verdict: true, root: root_b as NonEmptyStr)
+}
+
 // RESIDUAL: a unit that fails in exec setup (EXIT_* range, e.g. 226 NAMESPACE for a missing ReadWritePaths
 // entry) still scores as refused here, since the status is nonzero and the path absent. The same-shape
 // allowed cells catch a shape-wide failure, not a per-cell one. The exit-status classification is modelled
