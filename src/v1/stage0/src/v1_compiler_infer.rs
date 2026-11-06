@@ -6165,21 +6165,41 @@ pub fn equality_resolved_declaration_structure(
     at_root: bool,
 ) -> Rc<EqualityWalk> {
     {
+        let si = scope.type_env.source_indices.clone();
+        let applied = equality_reference_applies_arguments(peeled.clone());
+        let parameter_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in rt.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(si.clone(), p.clone()));
+            }
+            __result
+        });
+        let basis = if (applied.clone() && ((parameter_names.clone().len() as i64) > 0)) {
+            crate::v1_compiler_infer_env::declaration_substitution_basis(
+                rt.clone(),
+                scope.type_env.clone(),
+                parameter_names.clone(),
+            )
+        } else {
+            rt.clone()
+        };
         let w = equality_resolved_declaration_structure_core(
-            rt,
+            basis.clone(),
             peeled.clone(),
             name.clone(),
             identity,
             scope.clone(),
-            visited,
+            visited.clone(),
             depth.clone(),
             at_root,
         );
-        if (((w.refusal.clone() != std::option::Option::None)
-            || !equality_reference_applies_arguments(peeled.clone()))
-            || equality_arguments_by_target(
+        if (((w.refusal.clone() != std::option::Option::None) || !applied.clone())
+            || equality_applied_arguments_by_target(
+                basis.clone(),
+                parameter_names.clone(),
                 peeled.children.clone(),
                 scope.clone(),
+                visited.clone(),
                 v1_rt::int_add(depth.clone(), 1),
             ))
         {
@@ -6187,6 +6207,179 @@ pub fn equality_resolved_declaration_structure(
         } else {
             equality_walk_refused(equality_refused(name.clone(), "a routed member inside a generic application whose shape the equality plan does not model".to_string(), false))
         }
+    }
+}
+
+pub fn equality_applied_arguments_by_target(
+    basis: Rc<Node>,
+    parameter_names: Rc<Vec<String>>,
+    arguments: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match parameter_names.clone().first().cloned() {
+            std::option::Option::None => ((arguments.clone().len() as i64) == 0),
+            Some(pn) => match arguments.clone().first().cloned() {
+                std::option::Option::None => false,
+                Some(a) => {
+                    ((!equality_type_variable_occurs(basis.clone(), pn.clone())
+                        || equality_applied_argument_is_structural(
+                            a.clone(),
+                            scope.clone(),
+                            visited.clone(),
+                            depth.clone(),
+                        ))
+                        && equality_applied_arguments_by_target(
+                            basis.clone(),
+                            Rc::new(v1_rt::list_skip(&parameter_names.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&arguments.clone(), 1)),
+                            scope.clone(),
+                            visited.clone(),
+                            depth.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn equality_type_variable_occurs(n: Rc<Node>, id: String) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        (match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: v, .. }) => (v.clone() == id.clone()),
+            _ => false,
+        } || {
+            let mut __found = false;
+            for ch in n.children.clone().iter().cloned() {
+                if equality_type_variable_occurs(ch.clone(), id.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+    })
+}
+
+pub fn equality_applied_argument_is_structural(
+    n: Rc<Node>,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> bool {
+    if (depth.clone() > 64) {
+        false
+    } else {
+        if (equality_operand_is_type_variable(n.clone(), scope.clone())
+            || equality_operand_is_type_variable(
+                crate::v1_compiler_infer_types::child_type_node(n.clone()),
+                scope.clone(),
+            ))
+        {
+            true
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+                let si = scope.type_env.source_indices.clone();
+                let identity = type_reference_identity(peeled.clone(), si.clone());
+                match equality_route_for(identity) {
+                    Some(_) => false,
+                    std::option::Option::None => {
+                        if (peeled.connective.clone() == Connective::Arrow) {
+                            false
+                        } else {
+                            if crate::v1_compiler_coercion::provenance_realizes_natively(
+                                crate::v1_std_core::type_reference_provenance(peeled.clone()),
+                            ) {
+                                false
+                            } else {
+                                if (crate::std_types::is_kernel_type(
+                                    crate::v1_std_core::qualified_last_segment(
+                                        crate::v1_std_core::authored_name_at(
+                                            si.clone(),
+                                            peeled.clone(),
+                                        ),
+                                    ),
+                                ) && ((peeled.children.clone().len() as i64) == 0))
+                                {
+                                    true
+                                } else {
+                                    {
+                                        let w = equality_operand_walk(
+                                            n.clone(),
+                                            scope.clone(),
+                                            visited,
+                                            v1_rt::int_add(depth.clone(), 1),
+                                            false,
+                                        );
+                                        (w.refusal.clone() == std::option::Option::None)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn equality_table_arguments_by_target(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    arguments: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        n,
+        source_indices.clone(),
+        scope.type_env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
+        } => match crate::v1_compiler_infer_env::declaration_node_of_ref(
+            d.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(decl) => {
+                let parameter_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for pp in decl.params.clone().iter().cloned() {
+                        __result.push(crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            pp.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let basis = if ((parameter_names.clone().len() as i64) > 0) {
+                    crate::v1_compiler_infer_env::declaration_substitution_basis(
+                        decl.clone(),
+                        scope.type_env.clone(),
+                        parameter_names.clone(),
+                    )
+                } else {
+                    decl.clone()
+                };
+                equality_applied_arguments_by_target(
+                    basis,
+                    parameter_names.clone(),
+                    arguments.clone(),
+                    scope.clone(),
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    depth.clone(),
+                )
+            }
+            std::option::Option::None => {
+                equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone())
+            }
+        },
+        _ => equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone()),
     }
 }
 
@@ -6258,7 +6451,9 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
                                             (declaration_by_target.clone()
                                                 && (!equality_reference_applies_arguments(
                                                     peeled.clone(),
-                                                ) || equality_arguments_by_target(
+                                                ) || equality_table_arguments_by_target(
+                                                    peeled.clone(),
+                                                    source_indices.clone(),
                                                     peeled.children.clone(),
                                                     scope.clone(),
                                                     v1_rt::int_add(depth.clone(), 1),
@@ -7109,6 +7304,155 @@ pub fn equality_plan_synthesizable(plan: Rc<EqualityPlan>) -> bool {
             }
         }
         __all
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EqualitySynthHelper {
+    pub module_path: String,
+    pub fn_name: String,
+}
+
+pub fn equality_step_helpers(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
+        EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
+            Rc::new(vec![Rc::new(EqualitySynthHelper {
+                module_path: "std.optional".to_string(),
+                fn_name: "optional_eq".to_string(),
+            })]),
+            equality_step_helpers(i.clone()),
+        ),
+        EqualityStep::EqualityElements { element: e, .. } => v1_rt::concat(
+            Rc::new(vec![Rc::new(EqualitySynthHelper {
+                module_path: "std.algebra".to_string(),
+                fn_name: "zip_eq".to_string(),
+            })]),
+            equality_step_helpers(e.clone()),
+        ),
+        EqualityStep::EqualityMapValues { value: v, .. } => v1_rt::concat(
+            Rc::new(vec![Rc::new(EqualitySynthHelper {
+                module_path: "std.algebra".to_string(),
+                fn_name: "map_values_eq".to_string(),
+            })]),
+            equality_step_helpers(v.clone()),
+        ),
+        EqualityStep::EqualityRouted { function: _, .. } => Rc::new(vec![]),
+        EqualityStep::EqualityThroughPlan { declaration: _, .. } => Rc::new(vec![]),
+        EqualityStep::EqualityByTarget => Rc::new(vec![]),
+    })
+}
+
+pub fn equality_structure_helpers(
+    structure: Rc<EqualityStructure>,
+) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
+    match (*structure.clone()).clone() {
+        EqualityStructure::ProductPlan { fields: fs, .. } => Rc::new({
+            let mut __result = Vec::new();
+            for f in fs.iter().cloned() {
+                __result.extend((*equality_step_helpers(f.step.clone())).iter().cloned());
+            }
+            __result
+        }),
+        EqualityStructure::CoproductPlan {
+            first: f, rest: r, ..
+        } => v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for fd in f.fields.clone().iter().cloned() {
+                    __result.extend((*equality_step_helpers(fd.step.clone())).iter().cloned());
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for arm in r.iter().cloned() {
+                    __result.extend(
+                        (*Rc::new({
+                            let mut __result = Vec::new();
+                            for fd in arm.fields.clone().iter().cloned() {
+                                __result.extend(
+                                    (*equality_step_helpers(fd.step.clone())).iter().cloned(),
+                                );
+                            }
+                            __result
+                        }))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        ),
+    }
+}
+
+pub fn equality_plan_helpers(plan: Rc<EqualityPlan>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for d in plan.declarations.clone().iter().cloned() {
+            __result.extend(
+                (*equality_structure_helpers(d.structure.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    })
+}
+
+pub fn equality_helper_visible(
+    imp: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    helper: Rc<EqualitySynthHelper>,
+) -> bool {
+    ((import_module_path_at(imp.clone(), source_indices.clone()) == helper.module_path.clone())
+        && (crate::v1_std_core::import_is_all(imp.clone())
+            || ((Rc::new({
+                let mut __result = Vec::new();
+                for nm in crate::v1_std_core::import_specific_names_at(
+                    imp.clone(),
+                    source_indices.clone(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if (nm.clone() == helper.fn_name.clone()) {
+                        __result.push(nm);
+                    }
+                }
+                __result
+            })
+            .len() as i64)
+                > 0)))
+}
+
+pub fn equality_body_helpers_visible(
+    structure: Rc<EqualityStructure>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let missing = Rc::new({
+            let mut __result = Vec::new();
+            for h in equality_structure_helpers(structure).iter().cloned() {
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for imp in imports.iter().cloned() {
+                        if equality_helper_visible(imp.clone(), source_indices.clone(), h.clone()) {
+                            __result.push(imp);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    == 0)
+                {
+                    __result.push(h);
+                }
+            }
+            __result
+        });
+        ((missing.clone().len() as i64) == 0)
     }
 }
 
@@ -37651,6 +37995,7 @@ pub fn equality_synthesized_items(
     items: Rc<Vec<Rc<Node>>>,
     module_name: String,
     env: Rc<TypeEnv>,
+    imports: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let scope = equality_synthesis_scope(env, module_name);
@@ -37658,7 +38003,7 @@ pub fn equality_synthesized_items(
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
                 __result.extend(
-                    (*equality_synthesized_for(item.clone(), scope.clone()))
+                    (*equality_synthesized_for(item.clone(), scope.clone(), imports.clone()))
                         .iter()
                         .cloned(),
                 );
@@ -37689,7 +38034,11 @@ pub fn equality_synthesis_scope(env: Rc<TypeEnv>, module_name: String) -> Rc<Inf
     })
 }
 
-pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec<Rc<Node>>> {
+pub fn equality_synthesized_for(
+    item: Rc<Node>,
+    scope: Rc<InferScope>,
+    imports: Rc<Vec<Rc<Node>>>,
+) -> Rc<Vec<Rc<Node>>> {
     {
         let is_type_decl = (((item.connective.clone() == Connective::Conj)
             || (item.connective.clone() == Connective::Disj))
@@ -37736,11 +38085,21 @@ pub fn equality_synthesized_for(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<Vec
                                 .cloned()
                                 {
                                     std::option::Option::None => Rc::new(vec![]),
-                                    Some(dp) => Rc::new(vec![equality_derived_declaration(
-                                        scope.module_name.clone(),
-                                        name.clone(),
-                                        dp.clone(),
-                                    )]),
+                                    Some(dp) => {
+                                        if !equality_body_helpers_visible(
+                                            dp.structure.clone(),
+                                            imports,
+                                            si.clone(),
+                                        ) {
+                                            Rc::new(vec![])
+                                        } else {
+                                            Rc::new(vec![equality_derived_declaration(
+                                                scope.module_name.clone(),
+                                                name.clone(),
+                                                dp.clone(),
+                                            )])
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -38320,6 +38679,7 @@ pub fn typecheck_module(
             crate::v1_std_core::module_items(resolved.module.clone()),
             resolved_module_name.clone(),
             env.clone(),
+            crate::v1_std_core::module_imports(resolved.module.clone()),
         );
         let contributions = Rc::new({
             let mut __result = Vec::new();

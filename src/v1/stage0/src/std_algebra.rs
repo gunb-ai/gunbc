@@ -2804,11 +2804,12 @@ pub fn list_sort_by_key<T: Clone, K: Clone>(
     )
 }
 
-pub fn empty_map_primitive_delegate<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+pub fn empty_map_primitive_delegate<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+) -> Rc<HashMap<K, V>> {
     v1_rt::rc_empty_map()
 }
 
-pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+pub fn empty_map<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>() -> Rc<HashMap<K, V>> {
     v1_rt::rc_empty_map()
 }
 
