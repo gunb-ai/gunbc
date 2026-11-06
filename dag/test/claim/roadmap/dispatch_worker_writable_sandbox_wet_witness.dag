@@ -1194,6 +1194,27 @@ fn wet_claim_verdict_with_root_readback(verdict: Bool, root: NonEmptyStr) -> Boo
   verdict && gone
 }
 
+// A CLAIM THAT PLANTS MORE THAN ONE ROOT PUTS EVERY ONE OF THEM AWAY, whether or not an earlier one
+// already failed. The single-root readback is joined by its callers with `&&`, and `&&` short-circuits:
+// chaining two of them left the second root under /tmp on exactly the runs that went RED -- measured here,
+// where a RED run of either multi-root claim left its `leaf-b` / `confined-only` root behind. A leftover is
+// not cosmetic: it is a tree in /tmp the next run can collide with, and it makes a script's own leftover
+// count stop meaning anything. The accumulator is a counter rather than a conjunction on purpose:
+// `acc + (…)` evaluates its right operand for every root, where an `acc && (…)` accumulator would stop
+// removing at the first root that failed to go and reproduce the very leak this exists to close. Each root
+// keeps the single-root helper's two stage names, so "the verdict is false" and "a probe left a directory
+// in /tmp" remain two faults with two remedies; the returned value carries the claim's verdict and every
+// root's absence together, so no root can be reported away while another one of the same claim's remains.
+fn wet_claim_verdicts_with_root_readbacks(verdict: Bool, roots: List<NonEmptyStr>) -> Bool {
+  let roots_not_gone = fold(
+    roots,
+    init: 0,
+    f: (acc, root) =>
+      acc + (if wet_claim_verdict_with_root_readback(verdict: true, root: root) { 0 } else { 1 })
+  )
+  verdict && roots_not_gone == 0
+}
+
 // THE FILESYSTEM ANSWERS, NOT rm: the claim asks the same `test -e` its sibling readback uses about
 // its own root. Present means the claim failed, whatever any removal command reported on the way.
 fn wet_claim_root_is_absent(root: NonEmptyStr) -> Bool {
@@ -2767,8 +2788,12 @@ test fn the_claim_leaf_is_the_host_segment_and_two_roots_never_name_one_unit() -
       Absent => false
     }
   )
-  wet_claim_verdict_with_root_readback(verdict: shapes && distinct && stable, root: root_a as NonEmptyStr)
-    && wet_claim_verdict_with_root_readback(verdict: true, root: root_b as NonEmptyStr)
+  // BOTH ROOTS, ALWAYS. `leaf-a` carries the verdict; `leaf-b` exists to be a second root with the same
+  // label, and it must not survive the claim whether or not the verdict held -- see the list readback.
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: shapes && distinct && stable,
+    roots: [root_a as NonEmptyStr, root_b as NonEmptyStr]
+  )
 }
 
 // RESIDUAL: a unit that fails in exec setup (EXIT_* range, e.g. 226 NAMESPACE for a missing ReadWritePaths
@@ -3487,8 +3512,12 @@ test fn the_supplied_source_is_a_real_repository() -> Bool {
     && wet_path_exists(path: join([confined_only_repo, "/src/v2"], ""))
     && witness_guest_tree_revision(instance: confined_only_inst) != ""
 
-  wet_claim_verdict_with_root_readback(verdict: verdict && confined_only, root: root)
-    && wet_claim_verdict_with_root_readback(verdict: confined_only, root: confined_only_root)
+  // BOTH ROOTS, ALWAYS: the ordinary plant and the confined-only plant are two claims' worth of trees in
+  // one run, and the second must not survive a RED in the first.
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: verdict && confined_only,
+    roots: [root, confined_only_root]
+  )
 }
 
 test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused() -> Bool {
