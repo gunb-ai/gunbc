@@ -9,7 +9,8 @@ import std.measure {
 }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import std.process { ExitSuccess }
-import extdeps.gpu.passive_card_row { row_field_value, AirflowBidirectional, AirflowBracketToFarEnd, AirflowFarEndToBracket }
+import extdeps.gpu.passive_card_row { AirflowBidirectional, AirflowBracketToFarEnd, AirflowFarEndToBracket }
+import extdeps.cited_field { row_field_value }
 import extdeps.fans.types { FanCatalogRow, FreeAirFlowPublished, FreeAirFlowUnread }
 import extdeps.fans.noctua { noctua_nf_a9_pwm_catalog, noctua_nf_a9_hs_pwm_catalog }
 import extdeps.fans.arctic { arctic_p8_pwm_pst_catalog, arctic_p12_pro_reverse_catalog }

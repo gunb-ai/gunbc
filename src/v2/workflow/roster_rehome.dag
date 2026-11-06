@@ -1016,6 +1016,7 @@ fn rehome_controls_report() -> String {
         + rehome_control_pair_inhabited(prepared: prepared, lex: lex)
         + rehome_control_contracts(prepared: prepared, lex: lex)
         + rehome_control_stage_located(prepared: prepared, lex: lex)
+        + rehome_control_normalize_located(prepared: prepared, lex: lex)
     }
   }
 }
@@ -1084,6 +1085,25 @@ fn rehome_control_stage_located(prepared: PreparedGrammar, lex: PreparedLexRules
       let staged = starts_with(s: t, prefix: "tokenize-refused reason=") || starts_with(s: t, prefix: "parse-refused reason=")
       if staged && string_contains(s: t, pattern: " file=control/user.dag bytes=") && !string_contains(s: t, pattern: "bytes=unlocated") { "" } else { "CONTROL-FAIL rehome stage-located: refused as " + t + "\n" }
     _ => "CONTROL-FAIL rehome stage-located: not refused\n"
+  }
+}
+
+// The normalize sibling: a refusal with no extent (the duplicate variant's DeclarationLocus) names why it is unlocated.
+fn rehome_control_normalize_located(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match rehome_text(path: "control/user.dag", text: "module c.user\n\ntype T = A | A\n", prepared: prepared, lex: lex, row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeRefused { reason: r } =>
+      let t = rehome_refusal_text(r: r)
+      if t == "normalize-refused reason=sugar_reason_duplicate_variant_name file=none bytes=unlocated why=declaration" { "" } else { "CONTROL-FAIL rehome normalize-unlocated-names-why: refused as " + t + "\n" }
+    _ => "CONTROL-FAIL rehome normalize-unlocated-names-why: not refused\n"
+  }
+}
+
+fn rehome_normalize_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "rehome-normalize-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = rehome_control_normalize_located(prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "rehome-normalize-red HELD" } else { "rehome-normalize-red FAIL " + f }
   }
 }
 

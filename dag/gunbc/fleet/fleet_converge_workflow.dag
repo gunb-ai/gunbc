@@ -118,6 +118,8 @@ import gunbc.workflow_capability_closure {
 }
 import std.algebra { list_map, empty_map, map_insert, length, string_contains }
 import std.list { distinct_by_key }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
 import product.host_identity { HostIdentity }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
@@ -7370,16 +7372,39 @@ type FleetConvergeDispatchSpec {
   inputs: List<DispatchInputValue>
 }
 
-fn fleet_converge_dispatch_values(spec: FleetConvergeDispatchSpec) -> Map<String, String> {
-  fold(
-    spec.inputs,
-    init: map_insert(
-      m: map_insert(m: empty_map(), key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: spec.mode)),
-      key: fleet_converge_host_input.name,
-      value: spec.executor as String,
-    ),
-    f: (m, iv) => map_insert(m: m, key: iv.input.name, value: iv.value),
+// ONE VALUE PER INPUT NAME, OR A TYPED REFUSAL. The mode and executor are typed fields and every other input is a
+// caller's row, so a caller row naming `mode` or `host`, or two caller rows naming one input, would otherwise reach
+// one map key twice, and a map insert keeps the last: the dispatch would silently select another mode or pin another
+// host than the spec's typed fields say. The rows are built through std.keyed_roster keyed_roster_build, the one
+// fold that refuses a repeated key before a second value can exist, so a repeated name is a located refusal naming
+// the input and both values, never a choice between them.
+type FleetConvergeDispatchValues
+  = FleetConvergeDispatchValuesRendered { values: Map<String, String> }
+  | FleetConvergeDispatchInputRepeated { name: String, first_value: String, repeated_value: String }
+
+fn fleet_converge_dispatch_name_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fleet_converge_dispatch_rows(spec: FleetConvergeDispatchSpec) -> List<KeyedRow<String, String>> {
+  concat(
+    [
+      KeyedRow { row_key: fleet_converge_mode_input.name, value: fleet_converge_workflow_mode_wire(mode: spec.mode) },
+      KeyedRow { row_key: fleet_converge_host_input.name, value: spec.executor as String },
+    ],
+    map(spec.inputs, iv => KeyedRow { row_key: iv.input.name, value: iv.value }),
   )
+}
+
+fn fleet_converge_dispatch_values(spec: FleetConvergeDispatchSpec) -> FleetConvergeDispatchValues {
+  match keyed_roster_build(incomings: fleet_converge_dispatch_rows(spec: spec), key_eq: fleet_converge_dispatch_name_eq) {
+    KeyedRosterBuilt { rows: rows } =>
+      FleetConvergeDispatchValuesRendered {
+        values: fold(rows, init: empty_map(), f: (m, r) => map_insert(m: m, key: r.row_key, value: r.value)),
+      }
+    KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
+      FleetConvergeDispatchInputRepeated { name: k, first_value: f.value, repeated_value: d.value }
+  }
 }
 
 // THE NAMES A DISPATCH SUPPLIES, read from the inputs alone, so an admission can ask before any value exists.
