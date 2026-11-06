@@ -175,7 +175,7 @@ fn legacy_writer_exclusion(unit: String, reading: LegacyWriterUnitReading) -> Le
     LegacyWriterUnitUnreadable { detail: d } =>
       LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " could not be read (", d, ")"], "") }
     LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: _, exec_start: x } =>
-      if http_ingress_execstart_runs_binding(execstart: x) {
+      if !http_ingress_execstart_runs_binding(execstart: x) {
         // THE FENCE FACT IS "NO UNIT RUNS THE FLAT-ENTRY WRITER", read from what the unit RUNS, never its name:
         // the successor is installed under the legacy unit's own name (gunbc.live_deploy.spec derived_deployment_names)
         // and its handler is the same function, so only the ingress binding's release argument discriminates.
