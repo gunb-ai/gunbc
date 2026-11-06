@@ -563,7 +563,7 @@ import gunbc.roadmap.roadmap_publish_admission { PublishAdmission, PublishAdmitt
 import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuator_selection_process_fingerprint, dispatch_worker_attempt_identity }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
-  ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Resume,
+  ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
@@ -626,6 +626,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
+  LineageStanding, LineageEnded, LineageOpen, LineageUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -1759,6 +1760,10 @@ fn belt_worktree_claim_ensure(instance: HostDashboardInstance, stores: SessionPl
             content_of: p => belt_claim_content_of(instance: instance, worktree: p),
             remove_tree: p => belt_claim_remove_tree(instance: instance, repo_workdir: instance.repo_root as String, path: p),
             capture_of: (n, k) => belt_claim_capture_of(instance: instance, node_id: n, attempt_key: k),
+            // THE SINGLE 'is this lineage ended' derivation, read from the ONE ContinuationPlan (never a second
+            // rule here): the release may only end a claim when the lineage has genuinely ended; open/unknown
+            // keeps it (operator ruling M3).
+            ended_of: (n, k) => belt_lineage_standing(instance: instance, node_id: n as RoadmapNodeId, attempt_key: k),
           ) {
             WorktreeClaimPassRan { outcomes } =>
               if any(outcomes, o => worktree_claim_outcome_is_red(o: o)) {
@@ -2466,7 +2471,7 @@ fn belt_actuate_spawn_for_instance(
   request: AttemptLaunchRequest,
   executor: DispatchExecutorRequest,
 ) -> BeltSpawnOutcome {
-  let decision = belt_continuation_decision_for_instance(instance: instance, node: node)
+  let decision = belt_continuation_decision_for_instance(instance: instance, node_id: node.node)
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
       SpawnFailed {
@@ -2762,27 +2767,27 @@ fn belt_actuate_spawn_exec_modeled(
 // dashboard shows; an unobservable ledger refuses here as it does there, because a spawn that cannot
 // tell whether committed work exists must not start over on top of it. The capture observation is
 // the same head-grain read the verify gate makes.
-fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node: RoadmapNode) -> ContinuationPlan {
+fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> ContinuationPlan {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
       Refuse { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
-      let mine = attempts |> filter(p => p.node_id == node.node as String)
+      let mine = attempts |> filter(p => p.node_id == node_id as String)
       match mine.first() {
         Absent => continuation_plan(obs: none)
-        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node: node, progress: p)
+        Present { value: p } => belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p)
       }
     }
   }
 }
 
 // THE DECISION OVER ONE ATTEMPT'S OWN FACTS, built from one progress row.
-fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node: RoadmapNode, progress: WorkflowAttemptProgress) -> ContinuationPlan {
+fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node_id: RoadmapNodeId, progress: WorkflowAttemptProgress) -> ContinuationPlan {
   // THE WORKTREE AND BRANCH STANDING ARE READ, AS IS -- neither is inferred from what the caller wants to do
   // next (DESIGN §5). The capture and recovery below are still read honestly; when the worktree is absent the
   // decision ignores them (it routes on the read BRANCH standing instead), so no 'absent'/'none' default is
   // ever fabricated over a read that did not happen.
-  let worktree = belt_attempt_worktree_observe(instance: instance, node_id: node.node, attempt_key: progress.attempt_key)
+  let worktree = belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: progress.attempt_key)
   let branch_head = belt_branch_standing(instance: instance, branch: progress.branch)
   continuation_plan(
     obs: Present { value: PriorExecutionObservation {
@@ -2791,7 +2796,7 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       worktree: worktree,
       branch_head: branch_head,
       worker_terminal: belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process),
-      capture: belt_prior_attempt_capture(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      capture: belt_prior_attempt_capture(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
       verification: workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment),
       review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
       goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
@@ -2801,9 +2806,42 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
       // decision does not consult recovery at all (it routes on the branch standing, so it can never Resume
       // into a directory that no longer exists); when the worktree is present a session that stopped at a
       // validated state resumes in place exactly as before.
-      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node.node, attempt_key: progress.attempt_key),
+      recovery: belt_prior_attempt_recovery(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
     } },
   )
+}
+
+// THE ONE 'IS THIS ATTEMPT'S LINEAGE ENDED' DERIVATION, read by the claim release (operator ruling M3). It is
+// derived in EXACTLY this one place, over the single ContinuationPlan (belt_continuation_decision_for_progress)
+// -- never a second rule (DESIGN §2, one derivation). A claim may be released ONLY when this reads LineageEnded
+// (plan AlreadyComplete, or NextAttempt: the lineage ENDED without a candidate and the operator chose a fresh
+// attempt). Every other standing -- a live attempt (AlreadyRunning), a resumable session (Resume), a
+// reaped-but-resumable attempt (Restore), a fresh lineage (StartInitial) -- reads LineageOpen, so its claim is
+// KEPT even after its UNIT finishes: a unit ending is NOT a lineage ending, and releasing it would reclaim a
+// resumable worker's tree (the defect M3 forbids). A ledger that cannot be read, a missing attempt row, or an
+// undecidable plan (Refuse) reads LineageUnknown -- which the release ALSO keeps, with a typed reason, never
+// fabricating an ending over uncertainty (DESIGN §5, fail closed).
+fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> LineageStanding {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      LineageUnknown { detail: join(["the attempts ledger is unobservable, so lineage-endedness cannot be established; the claim is kept (", reason, ")"], "") }
+    WorkflowAttemptsObserved { attempts } => {
+      let mine = attempts |> filter(p => p.node_id == node_id as String && p.attempt_key == attempt_key)
+      match mine.first() {
+        Absent => LineageUnknown { detail: join(["no attempt row for ", attempt_key, " was observed on this node, so its lineage-endedness is unknown; the claim is kept"], "") }
+        Present { value: p } =>
+          match belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p) {
+            AlreadyComplete { reason: _ } => LineageEnded
+            NextAttempt { reason: _, from_branch: _ } => LineageEnded
+            StartInitial { reason: _ } => LineageOpen
+            AlreadyRunning { reason: _, attempt_key: _ } => LineageOpen
+            Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageOpen
+            Restore { reason: _, attempt_key: _, from_branch: _ } => LineageOpen
+            Refuse { reason } => LineageUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
+          }
+      }
+    }
+  }
 }
 
 // THE PRIOR SESSION'S RECOVERY STANDING, read from its own event stream (the stream a harness worker
@@ -3379,7 +3417,7 @@ fn belt_actuate_spawn_exec(
     request: LaunchAutonomous,
     decision: belt_continuation_decision_for_instance(
       instance: prepared_attempt(prepared: prepared).instance,
-      node: prepared_attempt(prepared: prepared).node,
+      node_id: prepared_attempt(prepared: prepared).node.node,
     ),
   )
 }

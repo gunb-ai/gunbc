@@ -11,6 +11,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, Attempt
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
+  LineageStanding, LineageEnded, LineageOpen, LineageUnknown,
   worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
   worktree_claim_read, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_close, worktree_claim_reopen_settled,
@@ -88,7 +89,7 @@ fn pass(
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => content,
     remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
-    capture_of: (n, k) => capture)
+    capture_of: (n, k) => capture, ended_of: (n, k) => LineageEnded)
   }
   }
 }
@@ -166,7 +167,7 @@ fn ensure_pass_without_mkdir(dir: String, cd: String, td: String) -> WorktreeCla
             path_of: (n, k) => tree_path(td: td, n: n, k: k),
             loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 5000,
             tree_of: p => ClaimTreeAbsent, content_of: p => ClaimContentPushed,
-            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled)
+            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageEnded)
       }
   }
 }
@@ -294,7 +295,7 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => ClaimContentPushed,
     remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
-    capture_of: (n, k) => ClaimCaptureSettled)
+    capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageEnded)
   }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && ran_only(p: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))

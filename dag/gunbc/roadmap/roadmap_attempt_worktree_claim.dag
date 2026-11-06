@@ -278,13 +278,37 @@ type ClaimCapture
   | ClaimCaptureOwed { detail: String }
   | ClaimCaptureUnknown { detail: String }
 
+// THE SINGLE LINEAGE-ENDED DERIVATION, AS SEEN BY THE CLAIM RELEASE. The claim pass may release/close a
+// record ONLY for a lineage that has genuinely ENDED. A worker's UNIT merely finishing (or its session
+// release settling, or the unit lifecycle reading ended) is NOT lineage-end: a resumable worker whose unit
+// ended keeps its claim, so its tree is never reclaimed out from under a session that will resume or be
+// restored (operator ruling M3: losing a resumable worker's tree is a defect). This coproduct is deliberately
+// THREE-VALUED so an unreadable ledger or a missing attempt row reads as UNKNOWN -- which the release treats
+// as KEPT with a typed reason, never as 'ended' (DESIGN §5: fail closed, never fabricate an ending). It is
+// derived in exactly one place (belt_lineage_standing over the single ContinuationPlan), and the release reads
+// ONLY this -- no second 'is it ended' rule lives in the claim classifier.
+type LineageStanding
+  = LineageEnded
+  | LineageOpen
+  | LineageUnknown { detail: String }
+
 fn worktree_claim_worker_standing(
   observation: SessionPlacementObservation,
   loaded: AttemptUnitObservation,
   lifecycle: UnitLifecycle,
   now: EpochSecs,
   deadline: EpochSecs,
+  standing: LineageStanding,
 ) -> ClaimWorker {
+  // THE SINGLE GATE: a unit's end only ENDS the claim when the ONE lineage-ended derivation agrees. When the
+  // lineage is open (resumable, awaiting resume/restore) the unit having finished is NOT an ended claim -- it
+  // is in flight (kept); when the lineage is UNKNOWN (unreadable ledger / missing row) the claim is kept with
+  // a typed reason, never released on a guess (operator ruling M3).
+  let ended_gate = match standing {
+    LineageEnded => ClaimWorkerEnded
+    LineageOpen => ClaimWorkerInFlight
+    LineageUnknown { detail } => ClaimWorkerUnknown { detail: detail }
+  }
   match observation {
     SessionPlacementUnreadable { unit: _, detail } => ClaimWorkerUnknown { detail: detail }
     SessionPlacementForeign { unit: _, detail } => ClaimWorkerUnknown { detail: detail }
@@ -300,10 +324,10 @@ fn worktree_claim_worker_standing(
       match loaded {
         AttemptUnitActive => ClaimWorkerLive
         AttemptUnitUnreadable { reason } => ClaimWorkerUnknown { detail: reason }
-        AttemptUnitFinished { exit_status: _ } => ClaimWorkerEnded
+        AttemptUnitFinished { exit_status: _ } => ended_gate
         AttemptUnitAbsent =>
           if session_release_settled(r: returned) || unit_lifecycle_ended(u: lifecycle) {
-            ClaimWorkerEnded
+            ended_gate
           } else {
             match lifecycle {
               UnitStillRunning { detail: _ } => ClaimWorkerLive
@@ -453,6 +477,7 @@ fn worktree_claim_ensure_one(
   content_of: fn(String) -> ClaimContent,
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
+  ended_of: fn(String, String) -> LineageStanding,
 ) -> WorktreeClaimOutcome {
   let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key)
   let reading = worktree_claim_read(claims: claims, reference: reference as NonEmptyStr)
@@ -460,7 +485,7 @@ fn worktree_claim_ensure_one(
   let classified = worktree_claim_classify(
     reading: reading, derived_path: derived_path, node_id: node_id, attempt_key: attempt_key,
     tree: tree_of(derived_path),
-    worker: worktree_claim_worker_standing(observation: observation, loaded: loaded, lifecycle: lifecycle, now: now, deadline: deadline),
+    worker: worktree_claim_worker_standing(observation: observation, loaded: loaded, lifecycle: lifecycle, now: now, deadline: deadline, standing: ended_of(node_id, attempt_key)),
     content: content_of(derived_path),
     capture: capture_of(node_id, attempt_key))
   match classified.decision {
@@ -514,6 +539,7 @@ fn worktree_claim_ensure_pass_at(
   content_of: fn(String) -> ClaimContent,
   remove_tree: fn(String) -> ClaimRemoval,
   capture_of: fn(String, String) -> ClaimCapture,
+  ended_of: fn(String, String) -> LineageStanding,
 ) -> WorktreeClaimPass {
   match attempt_slot_keys(store: claims.slots) {
     AttemptSlotKeysListed { keys } =>
@@ -529,7 +555,7 @@ fn worktree_claim_ensure_pass_at(
                     derived_path: path_of(c.node_id, c.attempt_key),
                     observation: session_placement_observe_at(stores: stores, host: host, node_id: c.node_id, attempt_key: c.attempt_key),
                     loaded: loaded_of(unit), lifecycle: lifecycle_of(unit), now: now,
-                    tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of)
+                    tree_of: tree_of, content_of: content_of, remove_tree: remove_tree, capture_of: capture_of, ended_of: ended_of)
               }
             WorktreeClaimAbsent => WorktreeClaimNoop { subject: k as String, why: "no claim is held" }
             WorktreeClaimUnreadable { detail } => WorktreeClaimKept { subject: k as String, reason: detail }
