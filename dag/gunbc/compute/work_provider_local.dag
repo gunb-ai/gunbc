@@ -136,7 +136,7 @@ import gunbc.materialization_store_budgets { materialization_store_durable_famil
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
 import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
-  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
@@ -293,7 +293,7 @@ fn compute_toolchain_decide(rustc: ComputeExec, cargo: ComputeExec, cache: Compu
 // THE SUBJECT IS THE COMMIT'S TREE: a caller holds a commit (its committed head) and the identity is
 // the tree that commit names, read from git rather than trusted from the caller.
 type SubjectResolution
-  = SubjectResolved { subject: WorkSubject, toolchain_file: String }
+  = SubjectResolved { subject: WorkSubject, toolchain_file: String? }
   | SubjectResolutionRefused { detail: String }
 
 // THE DIRECTORY ADAPTER: ONE CAPTURE OVER A DIRECTORY, whichever way the bytes got there. The clean-tree
@@ -306,7 +306,7 @@ type SubjectResolution
 // refuses. LIMIT: the identity NAMES bytes by digest and does not carry them; moving bytes to an
 // executor is PRs 5 and 7 (gunbc.plans.durable_work_program_boundaries).
 type SubjectManifestReading
-  = SubjectManifestRead { manifest: SourceManifestRef, files: Int, toolchain_file: String }
+  = SubjectManifestRead { manifest: SourceManifestRef, files: Int, toolchain_file: String? }
   | SubjectManifestRefused { detail: String }
 
 type SubjectDigestsReading
@@ -381,18 +381,18 @@ fn compute_directory_manifest(instance: HostDashboardInstance, directory: String
 }
 
 // The subject's own rust-toolchain.toml text (a declared-source file), read for the REQUIREMENT
-// separately from the digest that puts the file in the identity. Absent from the listing is "" (the
-// requirement then names no channel); a listed file that cannot be read is its OWN typed refusal.
+// separately from the digest that puts the file in the identity. Absent from the listing is Absent (the
+// requirement then refuses as carrying no file); a listed file that cannot be read is its OWN typed refusal.
 type SubjectToolchainFile
-  = SubjectToolchainText { text: String }
+  = SubjectToolchainText { text: String? }
   | SubjectToolchainUnread { detail: String }
 
 fn compute_toolchain_file_text(directory: String, paths: List<String>) -> SubjectToolchainFile {
   if any(paths, p => p == "rust-toolchain.toml") {
     let read = Filesystem.Read(path: join([directory, "/rust-toolchain.toml"], ""))
-    if read.success { SubjectToolchainText { text: read.content } } else { SubjectToolchainUnread { detail: join(["declared source file rust-toolchain.toml is unreadable: ", read.error], "") } }
+    if read.success { SubjectToolchainText { text: Present { value: read.content } } } else { SubjectToolchainUnread { detail: join(["declared source file rust-toolchain.toml is unreadable: ", read.error], "") } }
   } else {
-    SubjectToolchainText { text: "" }
+    SubjectToolchainText { text: none }
   }
 }
 
@@ -3073,7 +3073,7 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
     SubjectResolutionRefused { detail } => compute_refuse_unresolved(cause: SubjectUnresolved { detail: detail }, op: op)
     SubjectResolved { subject, toolchain_file } =>
       match work_toolchain_requirement(toolchain_file: toolchain_file) {
-        Absent => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: "the subject's rust-toolchain.toml names no channel, or the declared host target has no row in extdeps.rust.target_triple" } }, subject: subject, op: op)
+        Absent => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: work_toolchain_requirement_refusal(toolchain_file: toolchain_file) } }, subject: subject, op: op)
         Present { value: requirement } =>
           match compute_observe_toolchain(instance: instance) {
             ToolchainObservationRefused { detail } =>

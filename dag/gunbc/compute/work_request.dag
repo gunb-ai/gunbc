@@ -2,7 +2,7 @@ module gunbc.compute.work_request
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
-import extdeps.rust.rustup { rustup_toolchain_file_channel }
+import extdeps.rust.rustup { rustup_toolchain_file_channel, RustupChannelReading, RustupChannelNamed, RustupChannelAbsent, RustupChannelUnsupportedForm }
 import extdeps.rust.target_triple { render_rust_target_triple }
 import extdeps.toolchain.types { TargetTriple, X86_64, UnknownVendor, Linux, Gnu }
 import std.measure { Kibibyte, kibibyte_count }
@@ -109,15 +109,33 @@ data work_declared_source: SourceComposition = DeclaredRootsComposition {
 // of the declared source, so the release is read from the SUBJECT's own bytes (work_toolchain_requirement).
 data work_declared_target: TargetTriple = TargetTriple { arch: X86_64, vendor: UnknownVendor, os: Linux, env: Present { value: Gnu } }
 
-// `channel = "1.93.0"` in the subject's rust-toolchain.toml. A file naming no channel, or a target with
-// no row in the triple table, has no requirement: the caller refuses, it never defaults.
-fn work_toolchain_requirement(toolchain_file: String) -> WorkToolchainRequirement? {
+// `channel = "1.93.0"` in the subject's rust-toolchain.toml. A file absent from the subject, naming no
+// channel, in a form the reader does not cover, or a target with no row in the triple table, has no
+// requirement: the caller refuses with work_toolchain_requirement_refusal's cause, it never defaults.
+fn work_toolchain_requirement(toolchain_file: String?) -> WorkToolchainRequirement? {
   match render_rust_target_triple(triple: work_declared_target) {
     Absent => none
     Present { value: spelling } =>
-      match rustup_toolchain_file_channel(text: toolchain_file) {
+      match toolchain_file {
         Absent => none
-        Present { value: channel } => Present { value: WorkToolchainRequirement { target_triple: spelling, rustc_release_prefix: channel } }
+        Present { value: text } =>
+          match rustup_toolchain_file_channel(text: text) {
+            RustupChannelNamed { channel } => Present { value: WorkToolchainRequirement { target_triple: spelling, rustc_release_prefix: channel } }
+            RustupChannelAbsent => none
+            RustupChannelUnsupportedForm { form: _ } => none
+          }
+      }
+  }
+}
+
+fn work_toolchain_requirement_refusal(toolchain_file: String?) -> String {
+  match toolchain_file {
+    Absent => "the subject carries no rust-toolchain.toml"
+    Present { value: text } =>
+      match rustup_toolchain_file_channel(text: text) {
+        RustupChannelNamed { channel: _ } => "the declared host target has no row in extdeps.rust.target_triple"
+        RustupChannelAbsent => "the subject's rust-toolchain.toml names no channel"
+        RustupChannelUnsupportedForm { form } => join(["the subject's rust-toolchain.toml channel uses a form the reader does not cover: ", form], "")
       }
   }
 }

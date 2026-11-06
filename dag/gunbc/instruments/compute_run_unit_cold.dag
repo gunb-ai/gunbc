@@ -50,7 +50,7 @@ import std.materialization_store_grant { materialization_store_root_path }
 import std.materialization_provider { ComputeWorkRequest }
 import extdeps.tools.env { env_absolute_program, env_prefixed_args }
 import gunbc.compute.host_capacity { compute_root }
-import gunbc.compute.work_request { work_toolchain_admit, work_toolchain_requirement, ToolchainAdmitted, ToolchainMismatch, work_default_build, work_declared_outputs, WorkSucceeded, work_outcome_wire }
+import gunbc.compute.work_request { work_toolchain_admit, work_toolchain_requirement, work_toolchain_requirement_refusal, ToolchainAdmitted, ToolchainMismatch, work_default_build, work_declared_outputs, WorkSucceeded, work_outcome_wire }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
 import extdeps.git { shape_git_worktree_add_detached_argv, git_worktree_remove_force_command }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
@@ -217,7 +217,7 @@ fn cold_commit_and_attach(instance: HostDashboardInstance, layout: ComputeLayout
           SubjectResolutionRefused { detail } => join(["subject unresolved: ", detail], "")
           SubjectResolved { subject, toolchain_file } =>
           match work_toolchain_requirement(toolchain_file: toolchain_file) {
-          Absent => "the subject's rust-toolchain.toml names no channel"
+          Absent => work_toolchain_requirement_refusal(toolchain_file: toolchain_file)
           Present { value: requirement } =>
           match work_toolchain_admit(requirement: requirement, observed: observed) {
             ToolchainMismatch { field: _, declared: wanted, observed: seen } => join(["toolchain mismatch: declared ", wanted, ", observed ", seen], "")

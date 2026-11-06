@@ -910,7 +910,7 @@ data toolchain_file_read_without_toml_ingest: IntegrationConcern = IntegrationCo
     standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") } },
   },
   affected: FreeSemigroup { head: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel"), tail: [decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement")] },
-  question: "TOML has an emit side only; the toolchain file's one field is read by a bounded line scanner that covers comments, header whitespace and the dotted form but not escapes or multi-line values. A TOML ingest grammar (rows in extdeps/languages/toml) would replace it; a file the scanner misreads refuses typed as naming no channel.",
+  question: "TOML has an emit side only; the toolchain file's one field is read by a bounded line scanner that covers comments, header whitespace and the dotted form, and refuses typed (naming the form) on escapes and multi-line values. A TOML ingest grammar (rows in extdeps/languages/toml) would replace it; a file the scanner misreads refuses typed as naming no channel.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
