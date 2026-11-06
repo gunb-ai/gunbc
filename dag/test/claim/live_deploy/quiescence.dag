@@ -10,9 +10,9 @@ module test.claim.live_deploy.quiescence
 // family and are inhabited end-to-end by the STAGE apply (the receipted CI deploy is their
 // trigger). That is the same split repository_convergence_readback_wet's witnesses already use.
 
-import std.types { Bool, String, Int, NonEmptyStr, List, Cons, Empty }
+import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.process { ExitFailure }
-import std.algebra { string_contains }
+import std.algebra { Cons, Empty, string_contains }
 import std.optional { Absent }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,

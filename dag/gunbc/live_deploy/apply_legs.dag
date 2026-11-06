@@ -983,6 +983,15 @@ fn deploy_apply_srv1_serving_engine_plan(spec: DeploymentSpec) -> DeployApplyPla
 // then_readback), because any other order lets the identity check pass or fail by accident rather
 // than by construction: without the drain start between mark and readback no invocation can ever
 // change, and with the readback before the stop it would certify a serve that was still up.
+//
+// TWO PRECONDITIONS ARE ESTABLISHED BY THE ROSTER, NOT HOPE (review 91526): the mark and readback
+// run the INSTALLED binary and write into the receipts dir, and this step is SystemdUnit -- third in
+// the roster, immediately after ServeBinary and GunbcSourceTree (deployment_steps_apply_order,
+// gunbc/live_deploy/spec.dag; pinned by deployed_tree_remote_witness_test
+// .the_remote_converges_after_its_inputs_and_before_the_belt and by live_deploy_apply_plan_witness).
+// By the time these legs run, the fixed binary was installed by step one and the instance receipts
+// dir was created by step two; the only absence allowed here is the SERVE's, and the readback admits
+// it only as an observed LoadState=not-found.
 fn deploy_apply_quiescence_plan(spec: DeploymentSpec, serve_unit: NonEmptyStr, source_root: String) -> DeployApplyPlan {
   let mark_file = live_deploy_quiescence_mark_path(instance_root: spec.service.instance_root as String)
   let drain_unit = deployment_attempt_unit_drain_service_unit_name(names: spec.names)
