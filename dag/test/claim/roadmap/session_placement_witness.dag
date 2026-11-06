@@ -2,7 +2,7 @@ module test.claim.roadmap.session_placement_witness
 
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import std.types { Bool, String, Int, List, NonEmptyStr, EpochSecs }
-import std.measure { kibibyte, kibibyte_count }
+import std.measure { kibibyte, kibibyte_count, kibibyte_from_byte_size_floor }
 import std.optional { Present, Absent }
 import std.integer { nat_to_int }
 import std.durable_compare_and_set { CasGeneration, cas_generation, cas_generation_first, cas_generation_count }
@@ -172,13 +172,12 @@ test fn the_session_pool_is_the_instance_belt_width_and_the_appropriation_follow
     && lab_slots == nat_to_int(n: srv1_lab_belt_max_concurrent)
     && live_slots != lab_slots
     && live_approp != lab_approp
-    // THE APPROPRIATION IS EACH INSTANCE'S OWN SESSION SEAT CEILING TIMES ITS OWN SLOTS. The old
-    // premise (appropriation proportional to slots, one shared ceiling) held only while the worker cap
-    // and the compute ceiling were one field; with the cap split (the lab's worker cap is 8 GiB, live's
-    // 22 GiB) the ceilings differ per instance, so proportionality is no longer true and the lab pool is
-    // now the smaller appropriation. Literals: live 23068672 KiB x 3, lab 8388608 KiB x 6.
-    && live_approp == 23068672 * live_slots
-    && lab_approp == 8388608 * lab_slots
+    // THE APPROPRIATION IS EACH INSTANCE'S OWN WORKER CAP TIMES ITS OWN SLOTS, read from the instance's
+    // dispatch_worker_memory_max (the authority), not a copied figure: a policy edit moves both sides.
+    // Granting against the compute ceiling instead fails for the lab (8 GiB cap vs the 22 GiB ceiling).
+    // The old proportional-to-slots premise held only while one field was both ceilings.
+    && live_approp == nat_to_int(n: kibibyte_count(k: kibibyte_from_byte_size_floor(b: live.dispatch_worker_memory_max))) * live_slots
+    && lab_approp == nat_to_int(n: kibibyte_count(k: kibibyte_from_byte_size_floor(b: lab.dispatch_worker_memory_max))) * lab_slots
 }
 
 // POSITIVE CONTROL AND INHABITANCE: the real encoder's record, released against the same grant and
