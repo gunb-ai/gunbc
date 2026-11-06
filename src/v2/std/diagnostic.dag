@@ -1,8 +1,17 @@
 module v2.std.diagnostic
 
 import std.types { List }
-import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
+import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape, zip_eq, map_values_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): the FOREIGN helpers the
+// compiler's synthesized equality bodies call (zip_eq for List fields, map_values_eq for Map fields)
+// must arrive through this module's named imports — hand-written code here uses neither name: an
+// authoring leak, FOREIGN helpers only. A module's OWN declarations are visible to its own bodies by
+// definition (the one predicate answers from the module's own symbol table plus its imports), and a
+// module importing itself is an import-graph self-loop the acyclicity law forbids. Dissolution
+// trigger: a synthesized equality body references its helpers by the declaring module's path
+// (std.algebra), not through the consumer's import scope; at that point delete zip_eq, map_values_eq
+// from the std.algebra import verbatim.
 import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
 
 type Extent
