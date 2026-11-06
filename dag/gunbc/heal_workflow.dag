@@ -33,7 +33,25 @@ import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
 import gunbc.ci.repository_ci_profile { HealWorkflowPolicy, RepositoryCiProfile, repository_ci_profile_refusal }
-import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.repo.repo_self_build { repo_self_build_command, repo_self_build_env_preamble }
+import v2.std.node { Node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import gunbc.shell_command_text { shell_command_text_refused_with_cause }
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_command_from_lits,
+  bash_build_command_with_words,
+  bash_build_exit,
+  bash_build_or_else,
+  bash_build_pipe,
+  bash_build_subshell_from_stmts,
+  bash_build_test_bracket,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.ci.ci_spec {
   gunbc_ci_stage0_round_invoke,
@@ -302,6 +320,154 @@ fn heal_candidate_upload_step() -> Step {
   }
 }
 
+// THE ROUND-2 SEED: the `gunbc` the three steps after convergence run. Convergence rebuilds ONLY
+// target/release/claim_executor, in place (required_regen_host seed_cargo_build, `--bin
+// claim_executor`), and re-executes it; it never builds `gunbc`. The `gunbc` the regenerator step built
+// BEFORE convergence therefore carries the committed mirrors, which lack the very repairs the round
+// converged, so the overlap refusal compiled the repaired corpus with the unrepaired typechecker and
+// refused before any candidate was uploaded (gunbc#15612, heal run 42150981431). This step deletes that
+// binary, rebuilds it from the CONVERGED tree and refuses on any identity that does not hold; the
+// invokers of the three later steps are unchanged, and an absent or refused binary fails them.
+//
+// THE REFUSALS, EACH A LOCATED ::error: the round receipt must exist, be newer than the pre-convergence
+// `gunbc` this same job built (so a file from another run cannot pass), and carry the drift line and the
+// execution-identity line; the converged tracked diff (sha256) must be identical before and after the
+// build; the rebuilt binary's `--version` (the baked GUNBC_BUILD_IDENTITY) must name HEAD (`<head>-dirty`)
+// or, when the converged tree is tracked-clean and the preamble pins it, HEAD's tree. The printed line
+// binds head, base, the converged-diff sha256 and the binary's sha256. THE IDENTITY IS NOT CARRIED BY THE
+// SEALED CANDIDATE (gunbc.integration_concern round_two_seed_identity_not_carried_by_candidate).
+data heal_round_receipt_path: String = "target/stage0-regen-round-cost.txt"
+
+fn heal_round_two_refusal(code: String, why: String) -> Node {
+  bash_build_subshell_from_stmts(stmts: [
+    bash_build_command_from_lits(lits: ["echo", join(["::error title=healRoundTwoSeed ", code, "::", why], "")]),
+    bash_build_exit(code: "1"),
+  ])
+}
+
+fn heal_round_two_converged_diff_sha256() -> Node {
+  bash_build_word_cmdsubst(
+    body: bash_build_pipe(
+      left: bash_build_pipe(
+        left: bash_build_command_from_lits(lits: ["git", "diff", "HEAD", "--binary"]),
+        right: bash_build_command_from_lits(lits: ["sha256sum"])
+      ),
+      right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f1"])
+    )
+  )
+}
+
+fn heal_round_two_requires(test: Node, code: String, why: String) -> Node {
+  bash_build_or_else(left: test, right: heal_round_two_refusal(code: code, why: why))
+}
+
+fn heal_round_two_before_build_stmts() -> List<Node> {
+  [
+    heal_round_two_requires(
+      test: bash_build_test_bracket(words: [bash_build_word_lit(text: heal_round_receipt_path), bash_build_word_lit(text: "-nt"), bash_build_word_lit(text: "target/release/gunbc")]),
+      code: "ReceiptStaleOrAbsent",
+      why: "the stage0 round receipt is absent or not newer than this job's pre-convergence gunbc build, so convergence did not run in this job; refusing to rebuild the seed"
+    ),
+    heal_round_two_requires(
+      test: bash_build_command_from_lits(lits: ["grep", "-q", "changed_paths=", heal_round_receipt_path]),
+      code: "ReceiptWithoutDriftLine",
+      why: "the stage0 round receipt carries no changed_paths line, so the round did not finish; refusing to rebuild the seed"
+    ),
+    heal_round_two_requires(
+      test: bash_build_command_from_lits(lits: ["grep", "-q", "execution-identity", heal_round_receipt_path]),
+      code: "ReceiptWithoutExecutionIdentity",
+      why: "the stage0 round receipt carries no execution-identity line, so no round-two executable was admitted; refusing to rebuild the seed"
+    ),
+    bash_build_assign(name: "GUNBC_ROUND_TWO_HEAD", value: bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"]))),
+    bash_build_assign(name: "GUNBC_ROUND_TWO_DIFF_BEFORE", value: heal_round_two_converged_diff_sha256()),
+    bash_build_command_from_lits(lits: ["rm", "-f", "target/release/gunbc"]),
+  ]
+}
+
+fn heal_round_two_after_build_stmts() -> List<Node> {
+  [
+    heal_round_two_requires(
+      test: bash_build_test_bracket(words: [bash_build_word_lit(text: "-x"), bash_build_word_lit(text: "target/release/gunbc")]),
+      code: "BinaryAbsent",
+      why: "the rebuilt gunbc is absent after the build; no later step may run an older binary"
+    ),
+    bash_build_assign(name: "GUNBC_ROUND_TWO_DIFF_AFTER", value: heal_round_two_converged_diff_sha256()),
+    heal_round_two_requires(
+      test: bash_build_test_bracket(words: [bash_build_word_var(name: "GUNBC_ROUND_TWO_DIFF_BEFORE"), bash_build_word_lit(text: "="), bash_build_word_var(name: "GUNBC_ROUND_TWO_DIFF_AFTER")]),
+      code: "TreeMovedDuringBuild",
+      why: "the converged tracked diff changed between convergence and the end of the seed build, so the binary was not built from the tree convergence left"
+    ),
+    bash_build_assign(name: "GUNBC_ROUND_TWO_VERSION", value: bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["target/release/gunbc", "--version"]))),
+    bash_build_assign(name: "GUNBC_ROUND_TWO_TREE", value: bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD^\{tree\}"]))),
+    heal_round_two_requires(
+      test: bash_build_or_else(
+        left: bash_build_pipe(
+          left: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s"), bash_build_word_var(name: "GUNBC_ROUND_TWO_VERSION")]),
+          right: bash_build_command_with_words(words: [bash_build_word_lit(text: "grep"), bash_build_word_lit(text: "-qF"), bash_build_word_var(name: "GUNBC_ROUND_TWO_HEAD")])
+        ),
+        right: bash_build_pipe(
+          left: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s"), bash_build_word_var(name: "GUNBC_ROUND_TWO_VERSION")]),
+          right: bash_build_command_with_words(words: [bash_build_word_lit(text: "grep"), bash_build_word_lit(text: "-qF"), bash_build_word_var(name: "GUNBC_ROUND_TWO_TREE")])
+        )
+      ),
+      code: "WrongIdentity",
+      why: "the rebuilt gunbc does not report the HEAD it was built from, so it is not a seed of this checkout"
+    ),
+    bash_build_assign(name: "GUNBC_ROUND_TWO_BINARY_SHA256", value: bash_build_word_cmdsubst(
+      body: bash_build_pipe(
+        left: bash_build_command_from_lits(lits: ["sha256sum", "target/release/gunbc"]),
+        right: bash_build_command_from_lits(lits: ["cut", "-d", " ", "-f1"])
+      )
+    )),
+    bash_build_command_with_words(words: [
+      bash_build_word_lit(text: "echo"),
+      bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_lit(text: "heal-round-two-seed: head="),
+        bash_build_word_var(name: "GUNBC_ROUND_TWO_HEAD"),
+        bash_build_word_lit(text: " base="),
+        bash_build_word_var(name: "HEAL_BASE_MIRROR_COMMIT"),
+        bash_build_word_lit(text: " converged_diff_sha256="),
+        bash_build_word_var(name: "GUNBC_ROUND_TWO_DIFF_AFTER"),
+        bash_build_word_lit(text: " version="),
+        bash_build_word_var(name: "GUNBC_ROUND_TWO_VERSION"),
+        bash_build_word_lit(text: " gunbc_sha256="),
+        bash_build_word_var(name: "GUNBC_ROUND_TWO_BINARY_SHA256"),
+      ]),
+    ]),
+  ]
+}
+
+fn heal_round_two_stmts_text(stmts: List<Node>) -> String {
+  match bash_emit_stmts(statements: stmts, set_e: false) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: ds } => shell_command_text_refused_with_cause(diagnostics: ds)
+  }
+}
+
+fn heal_round_two_seed_step() -> Step {
+  RunStep {
+    name: Present { value: "Rebuild the seed from the converged tree and bind its identity" },
+    id: none,
+    run: join([
+      heal_round_two_stmts_text(stmts: heal_round_two_before_build_stmts()),
+      repo_self_build_env_preamble(),
+      repo_self_build_command(bins: ["gunbc"]),
+      heal_round_two_stmts_text(stmts: heal_round_two_after_build_stmts()),
+      ""
+    ], "\n"),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: heal_round_base_mirror_env as String, value: yaml_string(s: heal_base_sha_read))
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 type HealBoundStep {
   step: Step
   role: StepCapabilityRole
@@ -339,6 +505,11 @@ fn heal_workflow_bound_steps() -> List<HealBoundStep> {
       step: heal_stage0_round_step(),
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Converge the stage0 mirrors to the seed's own fixed point",
+    },
+    HealBoundStep {
+      step: heal_round_two_seed_step(),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: "Rebuild the seed from the converged tree and bind its identity",
     },
     HealBoundStep {
       step: heal_stage0_overlap_step(),
