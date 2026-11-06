@@ -35,7 +35,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitInbox, AttemptExitQueued, AttemptExitRunning, AttemptExitDone, AttemptExitRefused,
   attempt_exit_spool_stage_dir, attempt_exit_stage_listings,
 }
-import gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_lease_slots, compute_producer_leases, compute_producer_lease_acquire, compute_producer_lease_standing }
+import gunbc.compute.compute_producer_lease { ComputeProducerLeases, ComputeProducerLeaseAcquired, ComputeProducerLeaseOccupied, ComputeProducerLeaseRefused, ComputeProducerLeaseHeldBy, ComputeProducerLeaseNotHeld, ComputeProducerLeaseUnreadable, ComputeProducerLeasesReading, ComputeProducerLeasesReady, ComputeProducerLeasesUnready, compute_lease_slots, compute_producer_leases, compute_producer_lease_acquire, compute_producer_lease_standing , ComputeProducerLeaseReleased, ComputeProducerLeaseKept, compute_producer_lease_release_current }
 import gunbc.compute.compute_seat_ensure {
   SeatEnsureOutcome, SeatEnsureNoop, SeatEnsureReleased, SeatEnsureRefused, SeatEnsureRed, SeatEnsureLeaseDropped,
   SeatOwnerStanding, SeatOwnerEnded, SeatOwnerLive,
@@ -246,6 +246,18 @@ fn lease_acquired(root: String, owner: String) -> Bool {
       ComputeProducerLeaseAcquired => true
       ComputeProducerLeaseOccupied { holder: _ } => false
       ComputeProducerLeaseRefused { detail: _ } => false
+    }
+  })
+}
+
+// THE PRODUCER'S OWN DROP of that lease, the same entry point the provider uses when it lets a seat go
+// (gunbc.compute.work_provider_local calls compute_producer_lease_release_current for layout.identity_hex), not a
+// hand-written unlink. True only when the release COMMITTED: a Kept answer is the lease still being held.
+fn lease_released(root: String) -> Bool {
+  with_leases(root: root, body: fn(l) {
+    match compute_producer_lease_release_current(leases: l, identity: "feedfacefeedface") {
+      ComputeProducerLeaseReleased => true
+      ComputeProducerLeaseKept { detail: _ } => false
     }
   })
 }
@@ -837,13 +849,21 @@ fn the_lease_mint_is_ready_once_the_operator_removes_the_legacy_lease_cell(root:
     && lease_listed(root: root)
 }
 
-// A HOLD-SHAPED DIRECTORY IS NOT LEGACY: a lease taken and released leaves <identity>.<generation> files, and the
-// mint stays Ready over them.
+// A RELEASED HOLD IS NOT LEGACY, AND THE RELEASE IS ASSERTED RATHER THAN ASSUMED. Releasing through the
+// producer's own drop leaves the hold library's free slot "<identity>.<generation>", which the legacy screen
+// accepts (cas_key_of_slot_name parses it), so the mint stays Ready - and the standing says NotHeld, which is what
+// stops the Ready reading from being vacuous over a slot that is still held. A release that kept the lease, or one
+// that left an entry the slot grammar rejects, turns this row red.
 test fn a_released_hold_does_not_refuse_the_lease_mint() -> Bool {
   let root = fresh_root()
   let ok = lease_acquired(root: root, owner: "holder x\nabc 1\n")
+    && lease_released(root: root)
     && match leases_reading_at(root: root) {
-      ComputeProducerLeasesReady { leases: _ } => true
+      ComputeProducerLeasesReady { leases: l } => match compute_producer_lease_standing(leases: l, identity: "feedfacefeedface") {
+        ComputeProducerLeaseNotHeld => true
+        ComputeProducerLeaseHeldBy { owner: _ } => false
+        ComputeProducerLeaseUnreadable { detail: _ } => false
+      }
       ComputeProducerLeasesUnready { detail: _ } => false
     }
   let removed = shell.Remove.RecursiveForce(path: root)
