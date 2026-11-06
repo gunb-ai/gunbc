@@ -4455,7 +4455,16 @@ fn equality_derived_body_emitted(structure: EqualityStructure, declaring_module:
     Absent => empty_map()
     Present { value: m } => m
   }
+  // A helper the declaring module declares by hand (zip_eq inside std.algebra, optional_eq inside
+  // std.optional) is visible in that module by definition - the module's own symbol table, not its
+  // imports, is the authority there (silent-bee-845 ruling; import self-loops are forbidden by the
+  // acyclicity law main enforces). Foreign helpers must arrive as named imports from the helper's
+  // module, as before. Only FOREIGN helpers can be missing here: nested structural comparisons
+  // compile inline (the EqualityThroughPlan step emits Eq directly), so no body names a sibling's
+  // derived helper - the one call site a derived helper ever has is an authored `==`, and that door
+  // asks THIS predicate the same question before emitting the call.
   let missing = equality_structure_helpers(structure: structure) |> filter(h =>
+    h.module_path != declaring_module &&
     match map_get(named, h.fn_name) {
       Present { value: origin } => origin != h.module_path
       Absent => true
