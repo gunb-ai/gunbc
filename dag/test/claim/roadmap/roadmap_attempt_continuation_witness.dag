@@ -10,7 +10,7 @@ import std.types { Bool, String, Int }
 import gunbc.roadmap.roadmap_model {  RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
-  ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, AlreadyComplete, Refuse,
+  ContinuationPlan, StartInitial, AlreadyRunning, Resume, NextAttempt, Restore, AlreadyComplete, Refuse,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
@@ -71,7 +71,77 @@ fn pri_reaped(branch_head: BranchStanding) -> PriorExecutionObservation {
   }
 }
 
+fn pri_reaped_not_terminal(worktree: AttemptWorktreeObservation, branch_head: BranchStanding) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    worktree: worktree,
+    branch_head: branch_head,
+    worker_terminal: false,
+    capture: CaptureUnreadable { reason: "the worktree is not present; the submission capture was not read" },
+    verification: none,
+    review: none,
+    goal_audit: none,
+    recovery: SessionRecoveryNone,
+  }
+}
+
+// THE D3 FAMILY: A STILL-RESUMABLE (NOT-TERMINAL) ATTEMPT WHOSE WORKTREE WAS REAPED. The tree is gone but
+// the lineage has NOT ended, so CONTINUE must RESTORE the SAME attempt in place from its live branch and
+// reopen its claim -- never JOIN a session whose tree is gone, and never mint a NextAttempt (the lineage has
+// not ENDED). RED CONTROLS each discriminate the confusable direction: a restore is not a NextAttempt (which
+// would orphan the live attempt's ledger under a new key) and not an AlreadyRunning join (which would claim
+// a session beside a missing tree); a gone/unreadable branch is refused, never restored onto a fiction.
+test fn reaped_live_branch_not_terminal_restores_same_key_never_next_attempt() -> Bool {
+  let o = pri_reaped_not_terminal(worktree: AttemptWorktreeAbsent { path: "/wt" }, branch_head: BranchLive)
+  (match continuation_plan(obs: Present { value: o }) {
+    Restore { reason, attempt_key, from_branch } =>
+      attempt_key == "a1"
+        && from_branch == "roadmap/n1/a1"
+        && reason.contains("live (not terminal)")
+        && reason.contains("restored in place")
+        && reason.contains("claim reopened")
+    _ => false
+  })
+    // RED: it must NOT be a next attempt (which mints a new key and abandons the live attempt's history).
+    && !(match continuation_plan(obs: Present { value: o }) { NextAttempt { reason: _, from_branch: _ } => true, _ => false })
+    // RED: it must NOT be an AlreadyRunning join (there is no live tree to join beside).
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
+test fn reaped_gone_branch_not_terminal_refuses_never_restores() -> Bool {
+  let o = pri_reaped_not_terminal(worktree: AttemptWorktreeAbsent { path: "/wt" }, branch_head: BranchGone)
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { reason } => reason.contains("BranchAbsent") && reason.contains("nothing to restore")
+    _ => false
+  })
+    && !(match continuation_plan(obs: Present { value: o }) { Restore { reason: _, attempt_key: _, from_branch: _ } => true, _ => false })
+}
+
+test fn reaped_unknown_branch_not_terminal_refuses_never_restores() -> Bool {
+  let o = pri_reaped_not_terminal(worktree: AttemptWorktreeAbsent { path: "/wt" }, branch_head: BranchUnknown { reason: "git rev-parse exit 128: lock file exists" })
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { reason } => reason.contains("failed branch check is not an absence")
+    _ => false
+  })
+    && !(match continuation_plan(obs: Present { value: o }) { Restore { reason: _, attempt_key: _, from_branch: _ } => true, _ => false })
+}
+
+test fn reaped_unobserved_worktree_not_terminal_refuses_never_joins_or_restores() -> Bool {
+  let o = pri_reaped_not_terminal(
+    worktree: AttemptWorktreeUnobserved { path: "/wt", cause: "the dispatch worktree root could not be listed" },
+    branch_head: BranchLive,
+  )
+  (match continuation_plan(obs: Present { value: o }) {
+    Refuse { reason } => reason.contains("could not be established")
+    _ => false
+  })
+    && !(match continuation_plan(obs: Present { value: o }) { Restore { reason: _, attempt_key: _, from_branch: _ } => true, _ => false })
+    && !(match continuation_plan(obs: Present { value: o }) { AlreadyRunning { reason: _, attempt_key: _ } => true, _ => false })
+}
+
 fn capture_for(submission: WorkerSubmission) -> CaptureForHead {
+  let commit = capture_for_commit(submission: submission)
   CaptureForHead {
     capture: SubmissionCapture {
       head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
