@@ -52,6 +52,9 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_asset_path_admission,
   ui_asset_path_shape_refusal,
   ui_asset_refs_of_page,
+  ui_page_shape_of,
+  ui_page_shape_line,
+  ui_no_reference_conclusion,
   ui_refusal_receipt_text,
   ui_octets_index_of,
   ui_string_ends_with,
@@ -203,6 +206,7 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     transport_ok: transport_ok,
     why: "witness fixture page" as NonEmptyStr,
     asset_refs: ui_asset_refs_of_page(page_text: body),
+    shape: ui_page_shape_of(body: body),
   }
 }
 
@@ -536,6 +540,84 @@ test fn w_the_page_names_its_scripts_and_only_its_scripts() -> Bool {
   let page = "<html><head><script src=\"/ui/source.min.js\"></script><link href=\"/ui/style.css\"><div data-src=\"/ui/planted.js\"></div>"
   let refs = ui_asset_refs_of_page(page_text: page)
   count(refs) == 2 && witness_ref_at(refs: refs, at: 0) == "/ui/source.min.js" && witness_ref_at(refs: refs, at: 1) == "/ui/style.css"
+}
+
+// EVERY HTML ATTRIBUTE FORM THE EXTRACTOR MUST READ, ONE PAGE EACH. The first extractor took only a
+// space and a double quote, so each of these printed refs=0 and the receipt called the page script-free.
+// Each is its own claim, so reverting any one arm of the scan fails exactly one test; the double-quoted
+// page is the positive control that the fixture shape itself is read at all.
+fn witness_single_ref(page: String) -> String {
+  let refs = ui_asset_refs_of_page(page_text: page)
+  if count(refs) == 1 { witness_ref_at(refs: refs, at: 0) } else { "" }
+}
+
+test fn w_a_double_quoted_src_is_read() -> Bool {
+  witness_single_ref(page: "<script src=\"/ui/a.js\"></script>") == "/ui/a.js"
+}
+
+test fn w_a_single_quoted_src_is_read() -> Bool {
+  witness_single_ref(page: "<script src='/ui/a.js'></script>") == "/ui/a.js"
+}
+
+test fn w_an_unquoted_src_is_read_up_to_whitespace_or_the_tag_end() -> Bool {
+  witness_single_ref(page: "<script src=/ui/a.js></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<script src=/ui/b.js defer></script>") == "/ui/b.js"
+}
+
+test fn w_an_uppercase_attribute_name_is_read_and_the_value_keeps_its_case() -> Bool {
+  witness_single_ref(page: "<SCRIPT SRC=\"/ui/Mixed.JS\"></SCRIPT>") == "/ui/Mixed.JS"
+}
+
+test fn w_a_newline_or_tab_before_the_attribute_is_read() -> Bool {
+  witness_single_ref(page: "<script\nsrc=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<script type=\"text/javascript\"\n  src = \"/ui/c.js\"></script>") == "/ui/c.js"
+}
+
+// The leading-whitespace rule is still the thing that keeps a longer attribute name from being read as
+// src, and an opening quote never closed is no value at all.
+test fn w_a_longer_attribute_name_and_an_unterminated_quote_are_not_references() -> Bool {
+  count(ui_asset_refs_of_page(page_text: "<div data-src='/ui/planted.js'></div><i xsrc=/ui/x.js>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<script src=\"/ui/cut.js")) == 0
+}
+
+// THE SHAPE LINE: counts, never bytes. The page below carries a credential-looking value in an attribute
+// the extractor does not read and a password input; the line must count them and print none of it.
+fn witness_shape_page() -> String {
+  "<html><meta http-equiv=\"refresh\"><form><input type=password value=\"sess_tok_Zq81\"></form><SCRIPT type=module>import('./x')</SCRIPT><script data-main=\"/ui/main\" src='/ui/r.js'></script><noscript></noscript><iframe></iframe></html>"
+}
+
+test fn w_the_page_shape_counts_what_distinguishes_a_stub_from_a_loader_page() -> Bool {
+  let shape = ui_page_shape_of(body: witness_shape_page())
+  shape.script_tags == 2 && shape.ref_single_quoted == 1 && shape.ref_double_quoted == 0 &&
+    shape.refresh_markers == 1 && shape.forms == 1 && shape.password_markers == 1 &&
+    shape.module_markers == 1 && shape.data_main_markers == 1 && shape.frames == 1 && shape.noscript_tags == 1
+}
+
+test fn w_the_page_shape_line_carries_counts_and_a_digest_and_none_of_the_body() -> Bool {
+  let line = ui_page_shape_line(reading: witness_page_transport(
+    path: "/" as NonEmptyStr, status: 200, body: witness_shape_page(), transport_ok: true,
+  )) as String
+  string_contains(s: line, pattern: concat(" body_sha256=", sha256_hex_of_text(text: witness_shape_page()))) &&
+    string_contains(s: line, pattern: " script_tags=2 ") &&
+    string_contains(s: line, pattern: " ref_sq=1 ") &&
+    !string_contains(s: line, pattern: "sess_tok_Zq81") &&
+    !string_contains(s: line, pattern: "/ui/r.js") &&
+    !string_contains(s: line, pattern: "<")
+}
+
+// The typed refusal: a 200 page that carries script tags but derives no reference is NOT reported as a
+// page that named no script. The same body with no <script at all is, and that control keeps the first
+// claim from passing because both conclusions read alike.
+test fn w_script_tags_without_a_derived_reference_are_not_called_an_empty_page() -> Bool {
+  let loader = witness_page_transport(
+    path: "/" as NonEmptyStr, status: 200, body: "<script>boot()</script>", transport_ok: true,
+  )
+  let plain = witness_page_transport(
+    path: "/" as NonEmptyStr, status: 200, body: "<html>login</html>", transport_ok: true,
+  )
+  string_contains(s: ui_no_reference_conclusion(pages: [loader]) as String, pattern: "carries script tags") &&
+    !string_contains(s: ui_no_reference_conclusion(pages: [plain]) as String, pattern: "carries script tags") &&
+    string_contains(s: ui_no_reference_conclusion(pages: [plain]) as String, pattern: "no page answered 200 while naming a script")
 }
 
 // The reviewer's case: an ordinary-looking path that no page named. It is refused for NOT BEING READ,

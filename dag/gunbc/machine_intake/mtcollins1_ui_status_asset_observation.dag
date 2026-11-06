@@ -45,7 +45,6 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_encode_lower }
 import std.optional { Absent, Present }
-import extdeps.languages.html { canonical_html_spellings }
 
 import extdeps.bmc.megarac
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -321,65 +320,180 @@ fn ui_octets_are_ascii(octets: List<Int>) -> Bool {
 
 // ---------------------------------------------------------------------------------------------
 // THE PAGE → ASSET PATHS. Purely syntactic, and deliberately not a JavaScript or HTML model: it
-// collects the values of src="…" and href="…" attributes by splitting on the quote character the
-// HTML grammar already spells (extdeps.languages.html canonical_html_spellings.attr_quote), and
-// keeps a value only when the text before it ends in `src=` or `href=` with the grammar's own
-// `=`. That is a derivation, not a guess: an invented path is not in the list, and the admission
-// above is what refuses it.
+// collects the values of `src` and `href` attributes, and keeps a value only when an attribute NAME
+// (ASCII case-folded) follows ASCII whitespace and is itself followed by `=`. The attribute spellings
+// are the WHATWG HTML tokenizer's (HTML Living Standard 13.2.5, the attribute-name and attribute-value
+// states): whitespace is TAB, LF, FF, CR or SPACE; the value is double-quoted, single-quoted, or
+// unquoted up to whitespace or `>`; whitespace may surround `=`. The first version took only the
+// canonical writer spelling (a space, a double quote), so a script written with single quotes, an
+// unquoted value, an uppercase SRC or a newline before the attribute produced `refs=0`, which the
+// receipt then rendered as "no page named a script" -- a statement about the page that was a statement
+// about the parser (gunbc.recurring_failure_mode an_asset_reference_extractor_narrower_than_the_html_it_reads).
+// The leading whitespace is still load-bearing: `data-src="a.js"` is not a `src` attribute. One form
+// remains unread and is recorded: `<script/src=...>` (a solidus as the separator); the page_shape line
+// counts `<script` tags, so a page that carries them while deriving no reference is reported as exactly
+// that rather than as an empty page. A derived value is a CANDIDATE: the admission below still refuses
+// every path the page did not name and every shape the guard rejects.
 // ---------------------------------------------------------------------------------------------
 
-// The leading space is part of the key, and it is load-bearing: without it `data-src="a.js"` reads as
-// a script reference, and a page could then be read as naming an asset it never named. Two limits
-// follow from choosing the double-quoted, space-separated spelling (the one
-// extdeps.languages.html canonical_html_spellings writes) and are recorded rather than hidden: a
-// script written with single quotes or with a newline before the attribute is NOT collected, and the
-// honest result of such a page is "no page answered 200 while naming a script" -- an empty receipt,
-// never a guessed asset.
-fn ui_attr_key(name: NonEmptyStr) -> NonEmptyStr {
-  join([" ", name as String, canonical_html_spellings.attr_assign as String], "") as NonEmptyStr
+type MegaRacUiQuoteStyle
+  = DoubleQuoted
+  | SingleQuoted
+  | Unquoted
+
+type MegaRacUiAttrRef {
+  value: List<Int>
+  style: MegaRacUiQuoteStyle
 }
 
-data megarac_ui_src_key: NonEmptyStr = ui_attr_key(name: "src" as NonEmptyStr)
+type MegaRacUiAttrValue
+  = AttrValueRead { reference: MegaRacUiAttrRef, after: Int }
+  | AttrValueAbsent
 
-data megarac_ui_href_key: NonEmptyStr = ui_attr_key(name: "href" as NonEmptyStr)
+data megarac_ui_single_quote_octets: Int = 39
 
-fn ui_ref_key_before(before: String) -> Bool {
-  ui_string_ends_with(before, megarac_ui_src_key) || ui_string_ends_with(before, megarac_ui_href_key)
+data megarac_ui_equals_octets: Int = 61
+
+data megarac_ui_greater_than_octets: Int = 62
+
+data megarac_ui_form_feed_octets: Int = 12
+
+data megarac_ui_carriage_return_octets: Int = 13
+
+data megarac_ui_src_name_octets: List<Int> = ui_octets_of("src")
+
+data megarac_ui_href_name_octets: List<Int> = ui_octets_of("href")
+
+fn ui_fold_ascii_octet(o: Int) -> Int {
+  if o >= 65 && o <= 90 { o + 32 } else { o }
 }
 
-fn ui_segment_at(segments: List<String>, at: Int) -> String? {
-  match segments |> get(at) {
-    null => none
-    segment => if at < 0 { none } else { Present { value: segment } }
+fn ui_octet_is_html_space(o: Int) -> Bool {
+  o == megarac_ui_space_octets || o == megarac_ui_tab_octets || o == megarac_ui_newline_octets
+    || o == megarac_ui_form_feed_octets || o == megarac_ui_carriage_return_octets
+}
+
+fn ui_skip_html_space(octets: List<Int>, at: Int) -> Int {
+  match ui_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if ui_octet_is_html_space(o) { ui_skip_html_space(octets, at + 1) } else { at }
   }
 }
 
-fn ui_refs_of_quote_segments(segments: List<String>, at: Int, acc: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  let length = count(segments)
-  if at >= length {
-    acc
-  } else {
-    match ui_segment_at(segments: segments, at: at) {
-      Absent => acc
-      Present { value: segment } => match ui_segment_at(segments: segments, at: at - 1) {
-        // The value of an attribute is the segment AFTER the one that ends in the key. Nothing before
-        // it is a key, so an odd-index segment with no key before it is skipped -- and the walk moves
-        // two at a time because every pair of segments is one quoted value.
-        Absent => ui_refs_of_quote_segments(segments, at + 2, acc)
-        Present { value: before } => if ui_ref_key_before(before) && string_non_empty(segment) {
-          ui_refs_of_quote_segments(segments, at + 2, list_push(acc, segment as NonEmptyStr))
-        } else {
-          ui_refs_of_quote_segments(segments, at + 2, acc)
-        }
+// Index of the first octet equal to `target` at or after `at`, or Absent.
+fn ui_index_of_octet(octets: List<Int>, target: Int, at: Int) -> Int? {
+  match ui_octet_at(octets, at) {
+    Absent => none
+    Present { value: o } => if o == target { Present { value: at } } else { ui_index_of_octet(octets, target, at + 1) }
+  }
+}
+
+// End (exclusive) of an unquoted value: the first whitespace or `>`, or the end of the page.
+fn ui_unquoted_value_end(octets: List<Int>, at: Int) -> Int {
+  match ui_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if ui_octet_is_html_space(o) || o == megarac_ui_greater_than_octets {
+      at
+    } else {
+      ui_unquoted_value_end(octets, at + 1)
+    }
+  }
+}
+
+// The value starting at `at` (already past `=` and whitespace). An opening quote never closed is
+// AttrValueAbsent: a truncated page must not be read as "the value is the rest of the page".
+fn ui_attr_value_at(octets: List<Int>, at: Int) -> MegaRacUiAttrValue {
+  match ui_octet_at(octets, at) {
+    Absent => AttrValueAbsent
+    Present { value: o } => if o == megarac_ui_quote_octets {
+      ui_quoted_attr_value(octets, at, DoubleQuoted, o)
+    } else if o == megarac_ui_single_quote_octets {
+      ui_quoted_attr_value(octets, at, SingleQuoted, o)
+    } else if o == megarac_ui_greater_than_octets {
+      AttrValueAbsent
+    } else {
+      let end = ui_unquoted_value_end(octets, at)
+      AttrValueRead {
+        reference: MegaRacUiAttrRef { value: ui_octets_slice(octets, at, end - at), style: Unquoted },
+        after: end,
       }
     }
   }
 }
 
+fn ui_quoted_attr_value(octets: List<Int>, open_at: Int, style: MegaRacUiQuoteStyle, quote: Int) -> MegaRacUiAttrValue {
+  match ui_index_of_octet(octets, quote, open_at + 1) {
+    Absent => AttrValueAbsent
+    Present { value: close_at } => AttrValueRead {
+      reference: MegaRacUiAttrRef { value: ui_octets_slice(octets, open_at + 1, close_at - open_at - 1), style: style },
+      after: close_at + 1,
+    }
+  }
+}
+
+// `name` (already folded) at `at` in the folded page, then optional whitespace, `=`, optional
+// whitespace: the index where the value begins, or Absent. The value itself is read from the
+// ORIGINAL octets, so its case is kept; only the NAME is case-insensitive.
+fn ui_value_start_after_name(folded: List<Int>, name: List<Int>, at: Int) -> Int? {
+  let name_length = count(name)
+  if !ui_octets_match_at(folded, name, name_length, at, 0) {
+    none
+  } else {
+    let equals_at = ui_skip_html_space(folded, at + name_length)
+    match ui_octet_at(folded, equals_at) {
+      Absent => none
+      Present { value: o } => if o == megarac_ui_equals_octets {
+        Present { value: ui_skip_html_space(folded, equals_at + 1) }
+      } else {
+        none
+      }
+    }
+  }
+}
+
+fn ui_attr_value_of_name(orig: List<Int>, folded: List<Int>, name: List<Int>, at: Int) -> MegaRacUiAttrValue {
+  match ui_value_start_after_name(folded, name, at) {
+    Absent => AttrValueAbsent
+    Present { value: start } => ui_attr_value_at(orig, start)
+  }
+}
+
+fn ui_ref_attr_at(orig: List<Int>, folded: List<Int>, at: Int) -> MegaRacUiAttrValue {
+  match ui_attr_value_of_name(orig, folded, megarac_ui_src_name_octets, at) {
+    AttrValueRead { reference: r, after: a } => AttrValueRead { reference: r, after: a }
+    AttrValueAbsent => ui_attr_value_of_name(orig, folded, megarac_ui_href_name_octets, at)
+  }
+}
+
+fn ui_attr_refs_scan(orig: List<Int>, folded: List<Int>, length: Int, at: Int, acc: List<MegaRacUiAttrRef>) -> List<MegaRacUiAttrRef> {
+  if at >= length {
+    acc
+  } else {
+    match ui_octet_at(folded, at) {
+      Absent => acc
+      Present { value: o } => if ui_octet_is_html_space(o) {
+        match ui_ref_attr_at(orig, folded, at + 1) {
+          AttrValueRead { reference: r, after: a } => ui_attr_refs_scan(
+            orig, folded, length, a,
+            if count(r.value) > 0 { list_push(acc, r) } else { acc },
+          )
+          AttrValueAbsent => ui_attr_refs_scan(orig, folded, length, at + 1, acc)
+        }
+      } else {
+        ui_attr_refs_scan(orig, folded, length, at + 1, acc)
+      }
+    }
+  }
+}
+
+fn ui_attr_refs_of_page(page_text: String) -> List<MegaRacUiAttrRef> {
+  let orig = ui_octets_of(page_text)
+  let folded = orig |> map(o => ui_fold_ascii_octet(o))
+  ui_attr_refs_scan(orig, folded, count(orig), 0, [])
+}
+
 fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
-  let quote = canonical_html_spellings.attr_quote
-  let segments = split(s: page_text, delimiter: quote)
-  ui_refs_of_quote_segments(segments, 1, [])
+  ui_attr_refs_of_page(page_text) |> map(r => ui_octets_text(r.value) as NonEmptyStr)
 }
 
 // The guard a caller's path must pass. Shape first (each failure names itself), then membership in
@@ -846,6 +960,113 @@ type MegaRacUiPageReading {
   transport_ok: Bool
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
+  shape: MegaRacUiPageShape
+}
+
+// THE SHAPE OF A PAGE BODY, COUNTS ONLY. `refs=0` alone cannot say why a page named no asset: a login or
+// redirect stub, a page that loads its scripts through a loader or inline code, a reference form the
+// extractor does not read, and a landing page with no script at all all print the same. This is what
+// tells them apart without publishing a vendor byte: a length, a digest (the handle that lets a later
+// committed capture be re-checked), and the number of times each of a CLOSED set of ASCII tokens occurs
+// in the case-folded body. No token's text is a vendor string, no count is a slice, and no URL, header
+// or attribute value is carried (the body bytes never reach the artifact).
+type MegaRacUiPageShape {
+  body_length: Int
+  body_sha256: String
+  script_tags: Int
+  ref_double_quoted: Int
+  ref_single_quoted: Int
+  ref_unquoted: Int
+  js_substrings: Int
+  refresh_markers: Int
+  frames: Int
+  noscript_tags: Int
+  forms: Int
+  password_markers: Int
+  module_markers: Int
+  data_main_markers: Int
+  require_markers: Int
+}
+
+fn ui_count_token(folded: List<Int>, folded_length: Int, token: String) -> Int {
+  let needle = ui_octets_of(token)
+  ui_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0)
+}
+
+// Non-overlapping occurrences. `at` only increases, so no input loops.
+fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, acc: Int) -> Int {
+  if needle_length == 0 || at + needle_length > haystack_length {
+    acc
+  } else if ui_octets_match_at(hay, needle, needle_length, at, 0) {
+    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + needle_length, acc + 1)
+  } else {
+    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + 1, acc)
+  }
+}
+
+fn ui_refs_with_style(refs: List<MegaRacUiAttrRef>, style: MegaRacUiQuoteStyle) -> Int {
+  count(refs |> filter(r => r.style == style))
+}
+
+fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
+  let orig = ui_octets_of(body)
+  let folded = orig |> map(o => ui_fold_ascii_octet(o))
+  let length = count(folded)
+  let refs = ui_attr_refs_scan(orig, folded, length, 0, [])
+  MegaRacUiPageShape {
+    body_length: length,
+    body_sha256: sha256_hex_of_text(text: body),
+    script_tags: ui_count_token(folded, length, "<script"),
+    ref_double_quoted: ui_refs_with_style(refs, DoubleQuoted),
+    ref_single_quoted: ui_refs_with_style(refs, SingleQuoted),
+    ref_unquoted: ui_refs_with_style(refs, Unquoted),
+    js_substrings: ui_count_token(folded, length, ".js"),
+    refresh_markers: ui_count_token(folded, length, "refresh"),
+    frames: ui_count_token(folded, length, "<frame") + ui_count_token(folded, length, "<iframe"),
+    noscript_tags: ui_count_token(folded, length, "<noscript"),
+    forms: ui_count_token(folded, length, "<form"),
+    password_markers: ui_count_token(folded, length, "password"),
+    module_markers: ui_count_token(folded, length, "module"),
+    data_main_markers: ui_count_token(folded, length, "data-main"),
+    require_markers: ui_count_token(folded, length, "require"),
+  }
+}
+
+fn ui_page_shape_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
+  let shape = reading.shape
+  join([
+    "page_shape path=", reading.path as String,
+    " body_length=", megarac_ui_count_text(shape.body_length),
+    " body_sha256=", shape.body_sha256,
+    " script_tags=", megarac_ui_count_text(shape.script_tags),
+    " ref_dq=", megarac_ui_count_text(shape.ref_double_quoted),
+    " ref_sq=", megarac_ui_count_text(shape.ref_single_quoted),
+    " ref_bare=", megarac_ui_count_text(shape.ref_unquoted),
+    " js_substrings=", megarac_ui_count_text(shape.js_substrings),
+    " refresh=", megarac_ui_count_text(shape.refresh_markers),
+    " frames=", megarac_ui_count_text(shape.frames),
+    " noscript=", megarac_ui_count_text(shape.noscript_tags),
+    " forms=", megarac_ui_count_text(shape.forms),
+    " password=", megarac_ui_count_text(shape.password_markers),
+    " module=", megarac_ui_count_text(shape.module_markers),
+    " data_main=", megarac_ui_count_text(shape.data_main_markers),
+    " require=", megarac_ui_count_text(shape.require_markers),
+  ], "") as NonEmptyStr
+}
+
+// A page that answered 200 and carries <script> tags while deriving no reference is a different
+// finding from a page that carries none: the first is a deficit of this extractor or a loader the
+// extractor does not model, the second is a fact about the controller.
+fn ui_page_carries_scripts_without_a_reference(reading: MegaRacUiPageReading) -> Bool {
+  reading.transport_ok && reading.http_status == 200 && reading.shape.script_tags > 0 && count(reading.asset_refs) == 0
+}
+
+fn ui_no_reference_conclusion(pages: List<MegaRacUiPageReading>) -> NonEmptyStr {
+  if any(pages, p => ui_page_carries_scripts_without_a_reference(reading: p)) {
+    "a page answered 200 and carries script tags but no reference was derived from it (see page_shape above: this is an extractor or loader deficit, not an empty page); no asset was fetched" as NonEmptyStr
+  } else {
+    "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
+  }
 }
 
 // A page is a page when the controller answered it with 200 AND it names at least one script. A 200
@@ -858,6 +1079,7 @@ fn ui_page_reading_of(candidate: MegaRacUiPageCandidate, response: MegaRacUiHttp
     transport_ok: response.transport_ok,
     why: candidate.why,
     asset_refs: ui_asset_refs_of_page(response.body),
+    shape: ui_page_shape_of(body: response.body),
   }
 }
 
@@ -1251,7 +1473,7 @@ fn megarac_ui_asset_observation_run(
             )
             MegaRacUiRunOutcome {
               lines: ui_pages_lines(pages: pages, at: 0, acc: []) |> list_push(
-                "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
+                ui_no_reference_conclusion(pages: pages)
               ),
               attempts: [],
               session_closed: closed.success,
@@ -1306,7 +1528,7 @@ fn ui_pages_lines(pages: List<MegaRacUiPageReading>, at: Int, acc: List<NonEmpty
   } else {
     match pages |> get(at) {
       null => acc
-      page => ui_pages_lines(pages: pages, at: at + 1, acc: list_push(acc, ui_page_line(reading: page)))
+      page => ui_pages_lines(pages: pages, at: at + 1, acc: list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)))
     }
   }
 }

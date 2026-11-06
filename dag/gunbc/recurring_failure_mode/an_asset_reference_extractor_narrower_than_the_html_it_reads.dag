@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.an_asset_reference_extractor_narrower_than_the_html_it_reads
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data an_asset_reference_extractor_narrower_than_the_html_it_reads: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_asset_reference_extractor_narrower_than_the_html_it_reads" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "**a reader of a vendor page accepted only the spelling this repository's HTML WRITER emits (a space, then `src=`, then a double quote), so every other valid attribute form produced an empty result that the receipt then rendered as a fact about the page** (INVALID STATE: `refs=0` meaning 'the parser did not recognise it' while the line and the conclusion read 'no page named a script'. HARM: the read the whole mtcollins1 status-label chain depends on returned nothing, and the empty receipt could not distinguish a login or redirect stub, a loader page, a single-quoted, unquoted, uppercase or newline-led reference, and a script-free landing page; the next step was a guess about the controller when the deficit was in this module). DISTINGUISHING FACTS: the first extractor's own comment recorded the limit ('a script written with single quotes or with a newline before the attribute is NOT collected') and declared the empty receipt honest; it was not, because the empty case and the unread case printed identically.",
+
+  "RECEIPT 2026-11-06, fleet-converge run 42042565485 (mtcollins1_fan_observe, srv1, main d232a85d): both candidate pages answered 200 with `refs=0`, no asset was fetched, no excerpt exists. Whether the pages carry scripts in an unread form is UNMEASURED at the time of filing; the page_shape line added with the fix is what answers it on the next read. The finding stands without that answer: an extractor narrower than the grammar it reads, whose empty output is reported as a property of the input, is a defect whatever the page turns out to contain.",
+
+  "RUNG FOUND AT: OUTSIDE THE LADDER for the unread forms (the result was wrong-by-omission and reported as true). CEILING: a decidable class. The attribute forms are the WHATWG HTML tokenizer's (HTML Living Standard 13.2.5), which is fully specified, so the reader can be total over them; the residual is the solidus-separated form `<script/src=...>`, recorded in the extractor's comment and made visible by the `script_tags` count. The fix reads whitespace-led, ASCII-case-folded `src` and `href` with double-quoted, single-quoted and unquoted values, and when a 200 page carries `<script` tags while no reference was derived the conclusion says so instead of 'no page named a script'. Executed evidence: one witness per attribute form plus a longer-name and unterminated-quote negative, in test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness. NEXT-RUNG TRIGGER: an HTML tokenizer model in extdeps.languages.html that READS (it presently only writes canonical spellings), at which point this reader dissolves into it and the witnesses stay as regression controls (DESIGN 4b(4)).",
+  ],
+
+  evidence: [],
+}
