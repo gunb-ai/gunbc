@@ -8,7 +8,7 @@ import extdeps.external_authority { CitedFigureStanding }
 import extdeps.boards.types { BoardExpansionSlot, BoardExpansionSlots }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_expansion_slots }
 import extdeps.standards.pcie_cem { cem_slot_width }
-import extdeps.gpu.passive_card_row { row_field_value }
+import extdeps.cited_field { row_field_value }
 import product.printed_chassis.duct_card_catalog { DuctCard, a16_duct_card, a2_duct_card }
 
 // ═══ WHICH CARDS ARE INSTALLED, WHERE, AND WHICH OF THEM SHARE COOLING ═══

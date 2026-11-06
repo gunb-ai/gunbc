@@ -57,10 +57,10 @@ pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_i
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, item_kind, item_is_effectful_callee, ItemKind};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
 pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position};
-pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
+pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name, service_endpoint_supply, service_endpoint_answer, service_operation_items, service_data_values, ServiceEndpointSupply};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
 pub use crate::v1_compiler_infer_types::{is_leaf_type, resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, type_is_ordered_element_run, is_product_type, is_coproduct_type, is_unit_like};
-pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
+pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, ServiceFieldTemplates, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
 pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
@@ -119,6 +119,7 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{TypeReferenc
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
+use crate::v1_compiler_infer_service::ServiceEndpointSupply::{EndpointOperationParameter, EndpointLiteral, EndpointModuleDataLiteral, EndpointModuleExpression, EndpointParameterNameUnbound};
 use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
@@ -16127,7 +16128,7 @@ pub fn emit_typed_item(
                                 emit_info.clone(),
                                 wire_contract_item,
                                 data_items,
-                                module_items,
+                                module_items.clone(),
                                 imports.clone(),
                             ),
                         }
@@ -16514,6 +16515,12 @@ pub fn emit_typed_item(
                         shared_types.clone(),
                         env.clone(),
                         emit_info.clone(),
+                        crate::v1_compiler_infer_service::service_data_values(module_items.clone()),
+                        service_imported_data_values(
+                            module_name.clone(),
+                            module_index.clone(),
+                            env.source_indices.clone(),
+                        ),
                     )
                 }
             }
@@ -25896,6 +25903,10 @@ pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool
     )
 }
 
+pub fn rust_by_ref_bridge_argument(base: String) -> String {
+    v1_rt::concat("&".to_string(), base.clone())
+}
+
 pub fn rust_runtime_bridge_name(function_name: String) -> String {
     match v1_rt::map_get(
         &crate::extdeps_languages_rust_emit::rt_bridge_function_names(),
@@ -28789,7 +28800,7 @@ pub fn emit_typed_call(
                                 shared_types.clone(),
                                 arg_emit_info.clone(),
                             );
-                            v1_rt::concat("&".to_string(), base.clone())
+                            rust_by_ref_bridge_argument(base.clone())
                         }
                     } else {
                         {
@@ -31390,17 +31401,14 @@ pub fn emit_rust_generic_method_call(
                 {
                     let recv_str =
                         if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
-                            v1_rt::concat(
-                                "&".to_string(),
-                                emit_typed_expr_base(
-                                    receiver.clone(),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                ),
-                            )
+                            rust_by_ref_bridge_argument(emit_typed_expr_base(
+                                receiver.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            ))
                         } else {
                             emit_cloned_arg(
                                 receiver.clone(),
@@ -40596,19 +40604,105 @@ pub fn emit_typed_tco_reassign(
     }
 }
 
+pub fn service_import_brought_data_values(
+    item: Rc<Node>,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    {
+        let path = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for c in item.children.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    c.clone(),
+                ));
+            }
+            __result
+        });
+        match v1_rt::map_get(&module_index.by_name.clone(), path.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(src) => {
+                if (item.body.clone() != std::option::Option::None) {
+                    crate::v1_compiler_infer_service::service_data_values(src.items.clone())
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for d in
+                            crate::v1_compiler_infer_service::service_data_values(src.items.clone())
+                                .iter()
+                                .cloned()
+                        {
+                            if {
+                                let mut __found = false;
+                                for nm in names.iter().cloned() {
+                                    if (nm.clone()
+                                        == crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            d.clone(),
+                                        ))
+                                    {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                __result.push(d);
+                            }
+                        }
+                        __result
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn service_imported_data_values(
+    module_name: String,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(&module_index.by_name.clone(), module_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(tm) => Rc::new({
+            let mut __result = Vec::new();
+            for imp in crate::v1_std_core::module_imports(tm.module.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend(
+                    (*service_import_brought_data_values(
+                        imp.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
 pub fn emit_service_def(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let safe_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
         );
         let fallback_transport = crate::v1_compiler_emit::service_fallback_transport(item.clone());
-        let op_children = item.children.clone();
+        let op_children = crate::v1_compiler_infer_service::service_operation_items(item.clone());
         let struct_def = emit_service_struct(
             safe_name.clone(),
             fallback_transport.clone(),
@@ -40625,6 +40719,8 @@ pub fn emit_service_def(
             env.clone(),
             item.clone(),
             emit_info,
+            data_values,
+            imported_data_values,
         );
         v1_rt::concat(
             v1_rt::concat(struct_def.clone(), "\n\n".to_string()),
@@ -40742,15 +40838,25 @@ pub fn emit_service_impl(
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let depth = 0;
+        let endpoint_answer = crate::v1_compiler_infer_service::service_endpoint_answer(
+            service_item.clone(),
+            op_children.clone(),
+            data_values,
+            imported_data_values,
+            env.source_indices.clone(),
+        );
         let new_method = emit_service_new_method(
             name.clone(),
             transport.clone(),
             op_children.clone(),
             service_item.clone(),
             env.source_indices.clone(),
+            endpoint_answer.clone(),
         );
         let method_strs = Rc::new({
             let mut __result = Vec::new();
@@ -40765,6 +40871,7 @@ pub fn emit_service_impl(
                     env.clone(),
                     service_item.clone(),
                     emit_info.clone(),
+                    endpoint_answer.clone(),
                 ));
             }
             __result
@@ -40796,6 +40903,7 @@ pub fn emit_service_new_method(
     op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
@@ -40820,73 +40928,77 @@ pub fn emit_service_new_method(
         } else {
             fs.clone()
         };
-        let from_config = match crate::v1_std_core::service_config_endpoint(
-            service_item.clone(),
-            source_indices.clone(),
-        ) {
-            Some(ep) => match (*ep.expr_data.clone()).clone() {
-                ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-                {
-                    let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                        unreachable!()
-                    };
-                    s.clone()
-                }
-                _ => "".to_string(),
-            },
-            std::option::Option::None => "".to_string(),
-        };
-        let base_url_default = if (from_config.clone() != "".to_string()) {
-            from_config.clone()
-        } else {
-            if fs.has_rest.clone() {
-                {
-                    let fallback_is_rest = crate::v1_std_core::is_rest_transport(
-                        fallback_transport.clone(),
-                        source_indices.clone(),
-                    );
-                    let from_fallback = if fallback_is_rest.clone() {
-                        match crate::v1_std_core::transport_base_url(
+        let base_url_default = match (*endpoint_answer.clone()).clone() {
+            ServiceEndpointSupply::EndpointLiteral { value: value, .. } => value.clone(),
+            ServiceEndpointSupply::EndpointOperationParameter { .. } => "".to_string(),
+            ServiceEndpointSupply::EndpointModuleDataLiteral { value, .. } => value.clone(),
+            ServiceEndpointSupply::EndpointNotDeclared => {
+                if fs.has_rest.clone() {
+                    {
+                        let fallback_is_rest = crate::v1_std_core::is_rest_transport(
                             fallback_transport.clone(),
                             source_indices.clone(),
-                        ) {
-                            Some(bu) => match (*bu.expr_data.clone()).clone() {
-                                ExprData::ExprLiteral { ref value, .. }
-                                    if matches!(
-                                        value.as_ref(),
-                                        LiteralValue::LitStr { value: _, .. }
-                                    ) =>
-                                {
-                                    let LiteralValue::LitStr { value: s, .. } = value.as_ref()
-                                    else {
-                                        unreachable!()
-                                    };
-                                    s.clone()
-                                }
-                                _ => "".to_string(),
-                            },
-                            std::option::Option::None => "".to_string(),
+                        );
+                        let from_fallback = if fallback_is_rest.clone() {
+                            match crate::v1_std_core::transport_base_url(
+                                fallback_transport.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(bu) => match (*bu.expr_data.clone()).clone() {
+                                    ExprData::ExprLiteral { ref value, .. }
+                                        if matches!(
+                                            value.as_ref(),
+                                            LiteralValue::LitStr { value: _, .. }
+                                        ) =>
+                                    {
+                                        let LiteralValue::LitStr { value: s, .. } = value.as_ref()
+                                        else {
+                                            unreachable!()
+                                        };
+                                        s.clone()
+                                    }
+                                    _ => "".to_string(),
+                                },
+                                std::option::Option::None => "".to_string(),
+                            }
+                        } else {
+                            "".to_string()
+                        };
+                        if (from_fallback.clone() != "".to_string()) {
+                            from_fallback.clone()
+                        } else {
+                            "http://localhost".to_string()
                         }
-                    } else {
-                        "".to_string()
-                    };
-                    if (from_fallback.clone() != "".to_string()) {
-                        from_fallback.clone()
-                    } else {
-                        "http://localhost".to_string()
                     }
+                } else {
+                    "".to_string()
                 }
-            } else {
-                "".to_string()
             }
+            _ => "".to_string(),
         };
-        let ctors = crate::v1_compiler_emit::service_field_ctors(
-            fs.clone(),
-            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
-                .service_fields
-                .clone(),
-        );
+        let refuses_endpoint = match (*endpoint_answer.clone()).clone() {
+            ServiceEndpointSupply::EndpointModuleExpression => true,
+            ServiceEndpointSupply::EndpointParameterNameUnbound => true,
+            _ => false,
+        };
+        let t = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
+            .service_fields
+            .clone();
+        let t_eff = if refuses_endpoint.clone() {
+            Rc::new(ServiceFieldTemplates {
+    rest_decl: t.rest_decl.clone(),
+    auth_decl: t.auth_decl.clone(),
+    shell_decl: t.shell_decl.clone(),
+    file_decl: t.file_decl.clone(),
+    rest_ctor: v1_rt::concat(v1_rt::concat("        base_url: ".to_string(), emit_rust_item_refusal(name.clone(), "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote".to_string())), ",\n".to_string()),
+    auth_ctor: t.auth_ctor.clone(),
+    shell_ctor: t.shell_ctor.clone(),
+    file_ctor: t.file_ctor.clone(),
+})
+        } else {
+            t.clone()
+        };
+        let ctors = crate::v1_compiler_emit::service_field_ctors(fs.clone(), t_eff);
         let ctors = Rc::new({
             let mut __result = Vec::new();
             for c in ctors.iter().cloned() {
@@ -40994,6 +41106,7 @@ pub fn emit_operation_method(
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let op_text = crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone());
@@ -41072,6 +41185,7 @@ pub fn emit_operation_method(
             shared_types.clone(),
             env.clone(),
             emit_info.clone(),
+            endpoint_answer,
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
@@ -41301,6 +41415,7 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
@@ -41313,6 +41428,7 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
+            endpoint_answer,
         ),
         BoundOperation::ShellBound {
             transport: t,
@@ -41370,6 +41486,7 @@ pub fn emit_rest_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let has_config_auth = match crate::v1_std_core::service_config_auth(
@@ -41391,8 +41508,12 @@ pub fn emit_rest_call(
         } else {
             {
                 let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
-                let url_line =
-                    emit_rest_url_line(transport.clone(), op_name, source_indices.clone());
+                let url_line = emit_rest_url_line(
+                    transport.clone(),
+                    op_name,
+                    emit_rest_url_base(endpoint_answer),
+                    source_indices.clone(),
+                );
                 let http_method = emit_rest_http_method(transport.clone(), source_indices.clone());
                 let auth_line = emit_rest_auth_line(
                     transport.clone(),
@@ -41613,110 +41734,106 @@ pub fn emit_rest_http_method(
     }
 }
 
+pub fn emit_rest_url_base(endpoint_answer: Rc<ServiceEndpointSupply>) -> String {
+    match (*endpoint_answer.clone()).clone() {
+        ServiceEndpointSupply::EndpointOperationParameter { name, .. } => {
+            crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)
+        }
+        _ => "self.base_url".to_string(),
+    }
+}
+
 pub fn emit_rest_url_line(
     transport: Rc<Node>,
     op_name: String,
+    base: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match crate::v1_std_core::transport_path_template(transport, source_indices.clone()) {
-        Some(path_node) => match (*path_node.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr {
-                    value: path_str, ..
-                } = value.as_ref()
-                else {
-                    unreachable!()
-                };
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "let url = format!(\"{}".to_string(),
-                        crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                            path_str.clone(),
-                        ),
-                    ),
-                    "\", self.base_url);".to_string(),
-                )
-            }
-            ExprData::ExprStringInterp => {
-                let parts = Rc::new({
-                    let mut __result = Vec::new();
-                    for child in path_node.children.clone().iter().cloned() {
-                        __result.push(match (*child.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitStr { value: _, .. }
-                                ) =>
-                            {
-                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
-                                else {
-                                    unreachable!()
-                                };
-                                Rc::new(StringPart::Text {
-                                    value: text.clone(),
-                                })
-                            }
-                            _ => Rc::new(StringPart::Interpolation {
-                                expr: crate::v1_std_core::arg_value(child.clone()),
-                            }),
-                        });
-                    }
-                    __result
-                });
-                let fmt_segments = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parts.iter().cloned() {
-                        __result.push(match (*p.clone()).clone() {
-                            StringPart::Text { value: v, .. } => {
-                                crate::v1_compiler_emit::escape_rust_interp_text(v.clone())
-                            }
-                            StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
-                        });
-                    }
-                    __result
-                });
-                let fmt_str = fmt_segments.clone().join(&"".to_string());
-                let args = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parts.iter().cloned() {
-                        __result.extend(
-                            (*match (*p.clone()).clone() {
-                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
-                                StringPart::Interpolation { expr: e, .. } => {
-                                    let var_name = crate::v1_compiler_emit::emit_ident(
-                                        crate::v1_std_core::expr_var_name_at(
-                                            e.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                        RenderTarget::Rust,
-                                    );
-                                    let is_opt = is_optional_typed_expr(e.clone());
-                                    if is_opt.clone() {
-                                        Rc::new(vec![v1_rt::concat(
-                                            var_name.clone(),
-                                            ".as_deref().unwrap_or(\"\")".to_string(),
-                                        )])
-                                    } else {
-                                        Rc::new(vec![var_name.clone()])
-                                    }
+        Some(path_node) => {
+            match (*path_node.expr_data.clone()).clone() {
+                ExprData::ExprLiteral { ref value, .. }
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                {
+                    let LiteralValue::LitStr {
+                        value: path_str, ..
+                    } = value.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let url = format!(\"{}".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(path_str.clone())), "\", ".to_string()), base.clone()), ");".to_string())
+                }
+                ExprData::ExprStringInterp => {
+                    let parts = Rc::new({
+                        let mut __result = Vec::new();
+                        for child in path_node.children.clone().iter().cloned() {
+                            __result.push(match (*child.expr_data.clone()).clone() {
+                                ExprData::ExprLiteral { ref value, .. }
+                                    if matches!(
+                                        value.as_ref(),
+                                        LiteralValue::LitStr { value: _, .. }
+                                    ) =>
+                                {
+                                    let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                    else {
+                                        unreachable!()
+                                    };
+                                    Rc::new(StringPart::Text {
+                                        value: text.clone(),
+                                    })
                                 }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                });
-                if ((args.clone().len() as i64) == 0) {
-                    v1_rt::concat(
-                        v1_rt::concat("let url = format!(\"{}".to_string(), fmt_str.clone()),
-                        "\", self.base_url);".to_string(),
-                    )
-                } else {
-                    {
-                        let args_str = args.clone().join(&", ".to_string());
+                                _ => Rc::new(StringPart::Interpolation {
+                                    expr: crate::v1_std_core::arg_value(child.clone()),
+                                }),
+                            });
+                        }
+                        __result
+                    });
+                    let fmt_segments = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in parts.iter().cloned() {
+                            __result.push(match (*p.clone()).clone() {
+                                StringPart::Text { value: v, .. } => {
+                                    crate::v1_compiler_emit::escape_rust_interp_text(v.clone())
+                                }
+                                StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
+                            });
+                        }
+                        __result
+                    });
+                    let fmt_str = fmt_segments.clone().join(&"".to_string());
+                    let args = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in parts.iter().cloned() {
+                            __result.extend(
+                                (*match (*p.clone()).clone() {
+                                    StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                    StringPart::Interpolation { expr: e, .. } => {
+                                        let var_name = crate::v1_compiler_emit::emit_ident(
+                                            crate::v1_std_core::expr_var_name_at(
+                                                e.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                            RenderTarget::Rust,
+                                        );
+                                        let is_opt = is_optional_typed_expr(e.clone());
+                                        if is_opt.clone() {
+                                            Rc::new(vec![v1_rt::concat(
+                                                var_name.clone(),
+                                                ".as_deref().unwrap_or(\"\")".to_string(),
+                                            )])
+                                        } else {
+                                            Rc::new(vec![var_name.clone()])
+                                        }
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    });
+                    if ((args.clone().len() as i64) == 0) {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -41724,21 +41841,49 @@ pub fn emit_rest_url_line(
                                         "let url = format!(\"{}".to_string(),
                                         fmt_str.clone(),
                                     ),
-                                    "\", self.base_url, ".to_string(),
+                                    "\", ".to_string(),
                                 ),
-                                args_str.clone(),
+                                base.clone(),
                             ),
                             ");".to_string(),
                         )
+                    } else {
+                        {
+                            let args_str = args.clone().join(&", ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "let url = format!(\"{}".to_string(),
+                                                    fmt_str.clone(),
+                                                ),
+                                                "\", ".to_string(),
+                                            ),
+                                            base.clone(),
+                                        ),
+                                        ", ".to_string(),
+                                    ),
+                                    args_str.clone(),
+                                ),
+                                ");".to_string(),
+                            )
+                        }
                     }
                 }
+                _ => {
+                    "compile_error!(\"transport path must be a string literal or interpolation\");"
+                        .to_string()
+                }
             }
-            _ => "compile_error!(\"transport path must be a string literal or interpolation\");"
-                .to_string(),
-        },
+        }
         std::option::Option::None => v1_rt::concat(
             v1_rt::concat(
-                "let url = format!(\"{}/{}\", self.base_url, \"".to_string(),
+                v1_rt::concat(
+                    v1_rt::concat("let url = format!(\"{}/{}\", ".to_string(), base.clone()),
+                    ", \"".to_string(),
+                ),
                 crate::v1_compiler_emit::emit_ident(op_name, RenderTarget::Rust),
             ),
             "\");".to_string(),
