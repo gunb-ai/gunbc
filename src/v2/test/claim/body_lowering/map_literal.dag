@@ -341,17 +341,23 @@ test fn ml_the_duplicate_refusal_is_located_at_the_second_key_holds() -> Bool {
        }
 }
 
-// Control 2d: the reason control 2 names is EXACT, observed. Every other reason this resolve arm can
-// emit is asserted ABSENT for the same outcome, so a refusal carrying a different reason cannot be
-// read as the duplicate refusal -- the named-reason helper is a discriminator, not a name that
-// matches whatever the fixture refuses for.
+// Control 2d: the reason control 2 names is a DISCRIMINATOR, observed. ml_refuses_with answers with
+// one fatal reason per outcome, so asking it about ONE outcome five ways could never fail: distinct
+// symbols are never equal, and a check whose forbidden state is expressible nowhere it runs is a
+// decoration, green by construction (DESIGN.md §4b). The forbidden state IS writable here, by asking
+// the same question of outcomes that refuse for a DIFFERENT reason or for none. Each negated row has
+// a way to turn red that the first conjunct cannot shield: if the helper ever stopped comparing the
+// reason, the key-kind and name-key refusals would answer true and fail here; if it answered true for
+// any outcome at all, the accepted fixtures would fail here; if it never matched, control 2's own row
+// fails. The refusals and the acceptances are each claimed elsewhere under their own reason:
+// ml_a_key_of_the_wrong_kind_refuses_holds, ml_a_name_keyed_brace_under_a_map_refuses_holds,
+// ml_distinct_keys_are_accepted_holds and ml_infer_refuses_an_elaborated_value_mismatch_holds.
 test fn ml_the_duplicate_refusal_is_not_another_reason_holds() -> Bool {
   ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_duplicate_key)
-    && !ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_key_kind_mismatch)
-    && !ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_name_key)
-    && !ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_entry_malformed)
-    && !ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_expected_type_not_closed)
-    && !ml_refuses_with(o: ml_resolved_duplicate(), reason: ^resolve_anonymous_map_no_expected_type)
+    && !ml_refuses_with(o: ml_resolved_key_kind(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_name_key(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_distinct(), reason: ^resolve_anonymous_map_duplicate_key)
+    && !ml_refuses_with(o: ml_resolved_value_mismatch(), reason: ^resolve_anonymous_map_duplicate_key)
 }
 
 // Control 3: distinct keys are accepted and elaborate.
