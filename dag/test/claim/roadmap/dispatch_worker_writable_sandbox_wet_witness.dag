@@ -118,6 +118,7 @@ import gunbc.roadmap.attempt_system_unit_launch {
   AttemptSystemUnitAnswerFound, AttemptSystemUnitAnswerMissing, AttemptSystemUnitAnswerUnreadable,
   AttemptSystemUnitStarted, AttemptSystemUnitRefusedAnswer,
   attempt_system_unit_request_body_path, attempt_system_unit_request_path,
+  attempt_system_unit_answer_path, attempt_system_unit_answer_body_separator,
   attempt_system_unit_request_entry_name, attempt_system_unit_read_claimed_body,
   AttemptSystemUnitClaimedBodyRead, AttemptSystemUnitClaimedBodyRefused,
   attempt_system_unit_launch_entry, attempt_system_unit_launch_function,
@@ -605,7 +606,20 @@ fn wet_plant_confined_tree(instance: HostDashboardInstance) -> Bool {
     // two answers, because two routes prepared it. One route now: the production commit sequence
     // (git init -q, git add -A -f, git commit with the host-said principal's identity and
     // --allow-empty), which creates hooks/ and objects/ itself.
-    && wet_make_source_repository(instance: instance)
+    //
+    // AND IT IS THE SAME ROUTE THE OTHER LEGS USE, NOT A SHORTER SIBLING OF IT. srv2's S1 at
+    // 4ffbdfcc (stern) showed the half-repair: delegating to the commit sequence left this route
+    // making an EMPTY repository, while `wet_plant_guest_sources` -- which copies `dag/` and
+    // `src/v2/` out of the runner's own checkout and THEN commits -- was the route the other eight
+    // legs used. So the two legs that plant only here (`writes_to_the_deployed_binary_and_tree_fail_
+    // inside_the_worker_sandbox`, `the_worker_worktree_is_writable_inside_the_same_sandbox`) were
+    // asserting over `<root>/source/dag` -- through `find`, and through the `--source-root` the inner
+    // argv is built with -- a path this claim had never created: `find: .../source/dag: No such file
+    // or directory`, exit 1, and the worker control probe never written. A leg must not assert over
+    // a tree it did not populate, and a second, thinner plant route is how that stays invisible: the
+    // legs that use it go red on a fixture gap while the legs that do not go green. Delegating here
+    // removes the thinner route instead of teaching the two legs to call both.
+    && wet_plant_guest_sources(instance: instance)
     && wet_plant_unit_credential(instance: instance)
 }
 
@@ -668,13 +682,21 @@ fn wet_attempt_unit_spool_dirs(instance_root: String) -> List<String> {
 }
 
 fn wet_prepare_attempt_unit_spool(instance: HostDashboardInstance) -> Bool {
+  wet_prepare_attempt_unit_spool_at(instance_root: instance.instance_root as String)
+}
+
+// THE SPOOL TREE AT A RAW `instance_root`. The row-taking entry above delegates here, so there is still
+// one route and one mode; the split exists because a claim that tests the answer CHANNEL (the wait's own
+// discriminator) must be able to build a spool without minting a whole supplied row to get one -- and a
+// claim that mints a row to test a channel cannot tell a channel fault from a row fault.
+fn wet_prepare_attempt_unit_spool_at(instance_root: String) -> Bool {
   // install -d in ONE step with the final mode and ownership, over the same builder the production
   // attempt-exit spool uses (roadmap_attempt_exit_spool:149) and the same declared mode the drain's own
   // `mkdir -m 00700` means: DirectoryOwnerOnly. Owner and group are the INVOKING principal's own names,
   // read from the host, which is the one spelling install(1) accepts without privilege.
   let principal = wet_principal()
   fold(
-    wet_attempt_unit_spool_dirs(instance_root: instance.instance_root as String),
+    wet_attempt_unit_spool_dirs(instance_root: instance_root),
     init: true,
     f: (ok, dir) =>
       ok
@@ -2004,18 +2026,31 @@ fn launcher_inner_start(instance: HostDashboardInstance, unit_key: String, inner
             // each conjunct reports which one failed.
             if wet_root_drain_elevated(instance: instance, root: root, unit_key: unit_key, entry_name: entry)
               && wet_stage(stage: join(["unit-retired:", unit_key], ""), ok: wet_retire_unit(root: root, label: launcher_probe_key(unit_key: unit_key)))
-              && wet_stage(
-                stage: join(["answer-arrived:", unit_key], ""),
-                ok: wet_drain_started(instance_root: instance.instance_root as String, entry: entry, request_body: body),
+              && wet_drain_started(
+                instance_root: instance.instance_root as String,
+                entry: entry,
+                request_body: body,
+                stage_label: join(["answer-arrived:", unit_key], ""),
               ) {
-              wet_stage_of(
-                stage: join(["unit-exit-observed:", unit_key], ""),
-                ok: match wet_inner_exit_status(instance_root: instance.instance_root as String, unit_key: unit_key, before: before) {
-                  SandboxTouchUnrunnable => false
-                  SandboxTouchRan { exit_code: _ } => true
-                },
-                value: wet_inner_exit_status(instance_root: instance.instance_root as String, unit_key: unit_key, before: before),
-              )
+                // THE RECORD IS OBSERVED ONCE. `wet_stage_of` takes `ok:` and `value:` by value, so spelling
+                // the wait twice spelled the POLL twice -- two full 240-beat waits over the same attempt
+                // stages inside one leg. Binding it is not a style point: srv2's S1 at 4ffbdfcc (stern) put
+                // 570 s of CPU and 36.6M eval steps into this leg, and each beat is not free -- it re-lists
+                // inbox, queued, running, done and refused and filters the names against a snapshot, and
+                // `done/` is retained across runs on purpose (the belt's evidence).
+                let exit_status = wet_inner_exit_status(
+                  instance_root: instance.instance_root as String,
+                  unit_key: unit_key,
+                  before: before,
+                )
+                wet_stage_of(
+                  stage: join(["unit-exit-observed:", unit_key], ""),
+                  ok: match exit_status {
+                    SandboxTouchUnrunnable => false
+                    SandboxTouchRan { exit_code: _ } => true
+                  },
+                  value: exit_status,
+                )
             } else {
               SandboxTouchUnrunnable
             }
@@ -2238,9 +2273,11 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
       AttemptSystemUnitEnqueued { entry: entry, body: body } =>
         wet_root_drain_elevated(instance: inst, root: root, unit_key: "roothook", entry_name: entry)
           && wet_stage(stage: "unit-retired:roothook", ok: wet_retire_unit(root: root, label: launcher_probe_key(unit_key: "roothook")))
-          && wet_stage(
-            stage: "answer-arrived:roothook",
-            ok: wet_drain_answer_arrives(instance_root: inst.instance_root as String, entry: entry, request_body: body),
+          && wet_drain_answer_arrives(
+            instance_root: inst.instance_root as String,
+            entry: entry,
+            request_body: body,
+            stage_label: "answer-arrived:roothook",
           )
           && launcher_run_refused(instance: inst, entry: entry, request_body: body) && launcher_marker_absent()
       AttemptSystemUnitEnqueueOccupied { entry: _ } => false
@@ -2256,21 +2293,170 @@ test fn a_wide_request_naming_a_root_exit_hook_is_refused_by_the_launcher() -> B
 // oneshot), so a wet claim writes its request and then OBSERVES the answer the root helper leaves; it
 // no longer runs the helper itself and holds no sudo grant. The wait is this witness's own bound, not
 // the serve handler's: the handler never waits.
-fn wet_drain_answer_arrives(instance_root: String, entry: String, request_body: String) -> Bool {
-  wet_drain_answer_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: 240)
+// THE WAIT'S OWN BOUND, NAMED ONCE. 240 one-second beats, the number this witness has always used; it is
+// a data so a reader can see the bound without counting literals, and so a change is a deliberate edit on
+// one line rather than a tune applied to whichever leg is currently red.
+data wet_answer_wait_beats: Int = 240
+
+type WetAnswerWait
+  = WetAnswerArrived { verdict: String }
+  | WetAnswerEchoMismatch { path: String, echoed_chars: Int, wanted_chars: Int }
+  | WetAnswerNeverArrived { path: String, beats: Int }
+  | WetAnswerUnreadable { path: String, detail: String }
+
+// AN ANSWER THAT IS NOT THIS REQUEST'S IS NOT AN ANSWER THAT HAS NOT ARRIVED, and a waiter that cannot
+// tell the two apart can only ever report "it did not happen". `attempt_system_unit_decode_answer`
+// answers "is this the answer to MY request" by comparing the body the root side echoed with the body the
+// claim holds, and when they differ it returns the SAME arm as "nothing has been written yet"
+// (AttemptSystemUnitAnswerMissing) -- correctly, for a reader: answers/<entry> is keyed by node and
+// attempt key only and outlives the request, so an answer left by an earlier run must not be read as this
+// run's outcome. Fatal, for a waiter: srv2's S1 at 4ffbdfcc (stern) ran the launcher leg through
+// `claim-locus-installed`, `served-image-answers-the-route`, `spool-tree-prepared`,
+// `elevated-drain-ran` and `unit-retired` -- all ok -- then `answer-arrived FAILED` after 1,656 s wall /
+// 570 s CPU / 36.6M eval steps with NOTHING on the trail about what it looked for or what it found. A
+// drain that ran and retired its unit, followed by an answer that never "arrives", is exactly what an
+// echo mismatch looks like from here, and it is also what a genuinely absent answer looks like.
+//
+// So the bound is kept EXACTLY as it was -- 240 one-second beats, the same beat, the same route -- with no
+// widening and no bigger timeout (DESIGN 5: a stop that is not reached becomes a false claim, and a
+// timeout raised to make a leg green is a tune, not a finding). What changes is that the wait now returns
+// WHY it stopped, read at the bound from the file itself through the same declared effect site the reader
+// uses, so the next run answers its own question instead of needing a bespoke read on the host:
+//   never-arrived   nothing exists at the answer path (the root side never wrote)
+//   echo-mismatch   the answer path EXISTS, so the root side did answer, but to another request body
+//   unreadable      the path holds something that is not an answer at all
+fn wet_answer_wait(instance_root: String, entry: String, request_body: String) -> WetAnswerWait {
+  wet_answer_wait_poll(
+    instance_root: instance_root,
+    entry: entry,
+    request_body: request_body,
+    remaining: wet_answer_wait_beats,
+    waited: 0,
+  )
 }
 
-fn wet_drain_answer_poll(instance_root: String, entry: String, request_body: String, remaining: Int) -> Bool {
+// `waited` is carried, not inferred from the bound: a zero-beat probe (which is what makes these outcomes
+// testable here, and what the discriminator claim uses) must not report that it waited the whole bound.
+// The refusal names how long it ACTUALLY waited.
+fn wet_answer_wait_poll(
+  instance_root: String,
+  entry: String,
+  request_body: String,
+  remaining: Int,
+  waited: Int,
+) -> WetAnswerWait {
   match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry, request_body: request_body) {
-    AttemptSystemUnitAnswerFound { answer: _ } => true
-    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => WetAnswerArrived { verdict: "started" }
+    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: reason } } =>
+      WetAnswerArrived { verdict: join(["refused: ", reason], "") }
+    AttemptSystemUnitAnswerUnreadable { detail: detail } =>
+      WetAnswerUnreadable {
+        path: attempt_system_unit_answer_path(instance_root: instance_root, entry: entry),
+        detail: detail,
+      }
     AttemptSystemUnitAnswerMissing =>
       if remaining <= 0 {
-        false
+        wet_answer_wait_at_bound(
+          instance_root: instance_root,
+          entry: entry,
+          request_body: request_body,
+          beats: waited,
+        )
       } else {
         let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-        wet_drain_answer_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: remaining - 1)
+        wet_answer_wait_poll(
+          instance_root: instance_root,
+          entry: entry,
+          request_body: request_body,
+          remaining: remaining - 1,
+          waited: waited + 1,
+        )
       }
+  }
+}
+
+// THE DISTINCTION IS MADE ONCE, AT THE BOUND, BY THE FILE -- not by waiting longer. A read that fails is
+// "never arrived"; a read that succeeds but carries no separator is "unreadable"; a read that succeeds and
+// carries the separator is an answer the reader refused for THIS request, which is the echo mismatch. The
+// sizes are reported rather than the bodies: the bodies are the claim's own serialized request and the
+// root side's echo of it, and the difference is a fact about their shape, not something to leak into a
+// trail that stern pastes into a report.
+fn wet_answer_wait_at_bound(
+  instance_root: String,
+  entry: String,
+  request_body: String,
+  beats: Int,
+) -> WetAnswerWait {
+  let path = attempt_system_unit_answer_path(instance_root: instance_root, entry: entry)
+  let raw = Filesystem.Read(path: path)
+  if !raw.success {
+    WetAnswerNeverArrived { path: path, beats: beats }
+  } else {
+    let parts = split(s: raw.content, delimiter: attempt_system_unit_answer_body_separator)
+    match parts.first() {
+      Absent => WetAnswerUnreadable { path: path, detail: "the answer is empty" }
+      Present { value: echoed } =>
+        match parts[1] {
+          Absent => WetAnswerUnreadable { path: path, detail: "the answer carries no request body echo" }
+          Present { value: _ } =>
+            WetAnswerEchoMismatch {
+              path: path,
+              echoed_chars: string_length(echoed),
+              wanted_chars: string_length(request_body),
+            }
+        }
+    }
+  }
+}
+
+// ONE SPELLING OF THE OUTCOME FOR THE TRAIL, so every wait in this witness reports in the same words and a
+// grep on srv2 can tell the three apart without reading the code.
+fn wet_answer_wait_text(wait: WetAnswerWait) -> String {
+  match wait {
+    WetAnswerArrived { verdict: verdict } => join(["arrived ", verdict], "")
+    WetAnswerNeverArrived { path: path, beats: beats } =>
+      join(["never-arrived after ", to_string(value: beats), " beats at ", path], "")
+    WetAnswerEchoMismatch { path: path, echoed_chars: echoed_chars, wanted_chars: wanted_chars } =>
+      join([
+        "echo-mismatch: an answer EXISTS at ", path,
+        " but echoes ", to_string(value: echoed_chars), " chars against this request's ",
+        to_string(value: wanted_chars), " -- the root side answered another request",
+      ], "")
+    WetAnswerUnreadable { path: path, detail: detail } =>
+      join(["unreadable at ", path, ": ", detail], "")
+  }
+}
+
+fn wet_answer_wait_arrived(wait: WetAnswerWait) -> Bool {
+  match wait {
+    WetAnswerArrived { verdict: _ } => true
+    _ => false
+  }
+}
+
+fn wet_answer_wait_started(wait: WetAnswerWait) -> Bool {
+  match wait {
+    WetAnswerArrived { verdict: verdict } => verdict == "started"
+    _ => false
+  }
+}
+
+// THE WAIT REPORTS ITSELF. Each leg used to wrap the Bool in its own `wet_stage`, which meant the only
+// thing the trail could ever carry was "answer-arrived:bin false"; the cause the wait knew (or did not
+// know) never appeared. The wrapper now owns the stage line, keeping the leg's label as the prefix so the
+// greps already written against `answer-arrived:<unit>` still hit.
+fn wet_drain_answer_arrives(
+  instance_root: String,
+  entry: String,
+  request_body: String,
+  stage_label: String,
+) -> Bool {
+  let wait = wet_answer_wait(instance_root: instance_root, entry: entry, request_body: request_body)
+  let arrived = wet_answer_wait_arrived(wait: wait)
+  if wet_stage(stage: join([stage_label, " ", wet_answer_wait_text(wait: wait)], ""), ok: arrived) {
+    arrived
+  } else {
+    false
   }
 }
 
@@ -2283,22 +2469,18 @@ fn wet_drain_answer_poll(instance_root: String, entry: String, request_body: Str
 // answers, a record that never lands, and a signalled end are all SandboxTouchUnrunnable: the claim is
 // false, never counted as refused. attempt_exit_record_observe reads inbox, queued, running, done and
 // refused, so the belt-exit drain moving the record between stages cannot hide it.
-fn wet_drain_started(instance_root: String, entry: String, request_body: String) -> Bool {
-  wet_drain_started_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: 240)
-}
-
-fn wet_drain_started_poll(instance_root: String, entry: String, request_body: String, remaining: Int) -> Bool {
-  match attempt_system_unit_read_answer(instance_root: instance_root, entry: entry, request_body: request_body) {
-    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitStarted } => true
-    AttemptSystemUnitAnswerFound { answer: AttemptSystemUnitRefusedAnswer { reason: _ } } => false
-    AttemptSystemUnitAnswerUnreadable { detail: _ } => false
-    AttemptSystemUnitAnswerMissing =>
-      if remaining <= 0 {
-        false
-      } else {
-        let _ = shell.Exec.RunArgv(program: "/usr/bin/sleep", arguments: ["1"])
-        wet_drain_started_poll(instance_root: instance_root, entry: entry, request_body: request_body, remaining: remaining - 1)
-      }
+fn wet_drain_started(
+  instance_root: String,
+  entry: String,
+  request_body: String,
+  stage_label: String,
+) -> Bool {
+  let wait = wet_answer_wait(instance_root: instance_root, entry: entry, request_body: request_body)
+  let started = wet_answer_wait_started(wait: wait)
+  if wet_stage(stage: join([stage_label, " ", wet_answer_wait_text(wait: wait)], ""), ok: started) {
+    started
+  } else {
+    false
   }
 }
 
@@ -2400,6 +2582,105 @@ test fn a_prior_run_record_for_the_key_is_not_read_as_this_runs() -> Bool {
               SandboxTouchRan { exit_code } => exit_code == 0
             })
       }
+  }
+}
+
+// THE WAIT'S FOUR OUTCOMES ARE DISTINGUISHABLE HERE, WITHOUT SYSTEMD, WITHOUT ROOT, AND WITHOUT WAITING.
+// All four are decided by what is standing at the answer path when the bound expires, so a claim-local
+// spool can put each shape there and ask the wait, at zero beats, which it reports. This is exactly the
+// discriminator the srv2 S1 run at 4ffbdfcc lacked: the launcher leg printed `answer-arrived FAILED` after
+// 1,656 s wall / 570 s CPU and could not say whether the root side had written NOTHING or had written an
+// answer to ANOTHER request body -- and those two states want opposite fixes (the first is a launch that
+// never reached the drain, the second is a request/answer disagreement). With the typed wait reverted this
+// claim is RED at the second conjunct, because an answer for another body was answered with the same words
+// an empty spool gets. The scratch dir is `mktemp -d` output, not under the witness root prefix, so it is
+// not one of the roots the run's leftover readback counts; like its sibling above, it plants into a fresh
+// temporary tree and leaves the host's own tmp cleanup to the host.
+test fn an_answer_for_another_request_is_reported_as_a_mismatch_not_as_a_wait() -> Bool {
+  let tmp = shell.Mktemp.Dir()
+  if !tmp.success {
+    false
+  } else {
+    let root = tmp.path as String
+    let mine = "the body this claim asked for"
+    let other = "the body a different request carried, longer on purpose"
+    // ONE SPOOL, FOUR ENTRIES. Each arm gets its own entry, because an answer is a FILE and four
+    // questions asked of one path would make the last arm's verdict depend on whether the writer
+    // truncated or appended -- a fact about Filesystem.Write, not about the wait. The spool tree comes
+    // from the witness's own preparer, the route the launcher legs use, so the claim tests the channel
+    // rather than a spool I hand-made to pass.
+    wet_prepare_attempt_unit_spool_at(instance_root: root)
+      // NOTHING AT THE PATH: never arrived, naming the path and the zero beats it actually waited.
+      && (
+        match wet_answer_wait_poll(
+          instance_root: root,
+          entry: "keen-shape-absent",
+          request_body: mine,
+          remaining: 0,
+          waited: 0,
+        ) {
+          WetAnswerNeverArrived { path: path, beats: beats } =>
+            beats == 0 && string_contains(path, "/answers/keen-shape-absent")
+          _ => false
+        }
+      )
+      // AN ANSWER FOR ANOTHER BODY: a mismatch, not a wait -- the state srv2's launcher leg was in and
+      // could not name. It names the file to read and the size of each side.
+      && attempt_system_unit_write_answer(
+        instance_root: root,
+        entry: "keen-shape-other",
+        body: other,
+        answer: AttemptSystemUnitStarted,
+      )
+      && (
+        match wet_answer_wait_poll(
+          instance_root: root,
+          entry: "keen-shape-other",
+          request_body: mine,
+          remaining: 0,
+          waited: 0,
+        ) {
+          WetAnswerEchoMismatch { path: path, echoed_chars: echoed_chars, wanted_chars: wanted_chars } =>
+            string_contains(path, "/answers/keen-shape-other")
+              && echoed_chars == string_length(other)
+              && wanted_chars == string_length(mine)
+          _ => false
+        }
+      )
+      // THE ANSWER TO THIS BODY: arrived on the first look, no beat spent.
+      && attempt_system_unit_write_answer(
+        instance_root: root,
+        entry: "keen-shape-mine",
+        body: mine,
+        answer: AttemptSystemUnitStarted,
+      )
+      && wet_answer_wait_started(
+        wait: wet_answer_wait_poll(
+          instance_root: root,
+          entry: "keen-shape-mine",
+          request_body: mine,
+          remaining: 0,
+          waited: 0,
+        ),
+      )
+      // SOMETHING THAT IS NOT AN ANSWER AT ALL: unreadable, and it says so rather than waiting.
+      && Filesystem.Write(
+        path: attempt_system_unit_answer_path(instance_root: root, entry: "keen-shape-garbage"),
+        content: "a file that carries no request body separator",
+      ).success
+      && (
+        match wet_answer_wait_poll(
+          instance_root: root,
+          entry: "keen-shape-garbage",
+          request_body: mine,
+          remaining: 0,
+          waited: 0,
+        ) {
+          WetAnswerUnreadable { path: path, detail: _ } =>
+            string_contains(path, "/answers/keen-shape-garbage")
+          _ => false
+        }
+      )
   }
 }
 
@@ -3100,7 +3381,27 @@ test fn the_supplied_source_is_a_real_repository() -> Bool {
   // defect showed up in this file's own BROKEN run, where a claim that was already FAIL left
   // /tmp/gunbc-sandbox-gitrepo-... on disk. The verdict is bound first, then the root is
   // taken away, and a root still on disk reddens the claim.
-  wet_claim_verdict_with_root_readback(verdict: verdict, root: root)
+  // AND THE CONFINED ROUTE ALONE, IN A ROOT NOTHING ELSE TOUCHES. Asking that second question in the
+  // SAME root as the first would be vacuous: `wet_plant_guest_sources` has already copied `dag/` and
+  // `src/v2/` there, so "does the confined route leave a `dag/`?" could only ever be answered by the other
+  // route's work -- which is how the half-repair at 74683828 stayed green here while srv2's S1 at 4ffbdfcc
+  // went red two legs away. The two sandbox-touch claims
+  // (`writes_to_the_deployed_binary_and_tree_fail_inside_the_worker_sandbox`,
+  // `the_worker_worktree_is_writable_inside_the_same_sandbox`) plant ONLY through the confined route, and
+  // their assertions -- and the `--source-root` of the inner argv they launch -- address
+  // `<root>/source/dag`, which that route had never produced. This is the local half of that fault: red
+  // with the delegation reverted, for the same reason srv2 saw it, and green without a root launcher.
+  let confined_only_root = wet_claim_root(tag: "confined-only" as NonEmptyStr)
+  let confined_only_inst = wet_supplied_lab_instance(scratch_parent: confined_only_root)
+  let confined_only_repo = confined_only_inst.repo_root as String
+  let confined_only = wet_claim_is_confined(instance: confined_only_inst, root: confined_only_root)
+    && wet_plant_confined_tree(instance: confined_only_inst)
+    && wet_path_exists(path: join([confined_only_repo, "/dag"], ""))
+    && wet_path_exists(path: join([confined_only_repo, "/src/v2"], ""))
+    && witness_guest_tree_revision(instance: confined_only_inst) != ""
+
+  wet_claim_verdict_with_root_readback(verdict: verdict && confined_only, root: root)
+    && wet_claim_verdict_with_root_readback(verdict: confined_only, root: confined_only_root)
 }
 
 test fn the_supplied_unit_credential_is_under_the_root_and_the_live_credstore_is_refused() -> Bool {
