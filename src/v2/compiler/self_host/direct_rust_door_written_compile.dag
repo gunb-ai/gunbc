@@ -1,7 +1,10 @@
 module v2.compiler.self_host.direct_rust_door_written_compile
 
 import extdeps.rust.rustc
-import std.types { Bool, Int }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import v2.std.node { symbol_lexeme }
+import std.types { Bool, FilePath, Int }
 import v2.compiler.self_host.candidate_generation {
   RustWorkspaceWriteReceipt,
   WrittenProvenancedRustArtifact,
@@ -134,4 +137,30 @@ fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
     WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
     WrittenFileNotWritten { write: _ } => false
   }
+}
+
+// PRINTS THE REFUSAL REASON (closes limit 3 of #15933): a claim returns Bool, so the reason the
+// missing-rule route refused with is written to a RECEIPT FILE that the wet script `cat`s into the
+// run log. The receipt lives beside, never inside, the missing-rule workspace (that directory must
+// stay absent: a refusal writes nothing). The reason is the lexeme of the fatal diagnostic symbol,
+// so a wrong-cause refusal is visible in the log even when the Bool is false.
+data direct_rust_door_refusal_receipt_dir: String = "target/direct-rust-door-written"
+
+fn written_refusal_reason_text(observation: WrittenRustCompileObservation) -> String {
+  match observation {
+    WrittenRouteRefused { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => "NOT-REFUSED:compiled"
+    WrittenFileNotWritten { write: _ } => "NOT-REFUSED:file-not-written"
+  }
+}
+
+fn written_refusal_reason_receipt_written(observation: WrittenRustCompileObservation) -> Bool {
+  let made = shell.Mkdir.Parents(path: direct_rust_door_refusal_receipt_dir as FilePath)
+  if made.success {
+    let r = Filesystem.Write(
+      path: concat(direct_rust_door_refusal_receipt_dir, "/refusal-reason.txt") as FilePath,
+      content: written_refusal_reason_text(observation: observation)
+    )
+    r.success
+  } else { false }
 }

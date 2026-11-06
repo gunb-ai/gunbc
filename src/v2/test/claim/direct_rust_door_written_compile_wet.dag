@@ -6,6 +6,7 @@ import v2.compiler.self_host.direct_rust_door_written_compile {
   direct_rust_door_written_missing_rule,
   direct_rust_door_written_production,
   direct_rust_door_written_unwritable,
+  written_refusal_reason_receipt_written,
   written_file_not_written,
   written_compile_holds,
   written_route_refused
@@ -31,4 +32,10 @@ test fn missing_rule_refuses_on_the_written_route() -> Bool {
 // rustc verdict (the 3927f5b1 srv1 run read ENOENT as a bare FAIL because nothing checked the write).
 test fn unwritable_workspace_refuses_before_rustc() -> Bool {
   written_file_not_written(observation: direct_rust_door_written_unwritable())
+}
+
+// Prints the missing-rule refusal reason: writes it to target/direct-rust-door-written/refusal-reason.txt,
+// which the wet script cats. Re-walks the same refusing route (cheap: it stops at emission).
+test fn missing_rule_refusal_reason_is_receipted() -> Bool {
+  written_refusal_reason_receipt_written(observation: direct_rust_door_written_missing_rule())
 }
