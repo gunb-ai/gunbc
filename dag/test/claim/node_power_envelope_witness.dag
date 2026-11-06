@@ -23,13 +23,16 @@ import std.measure {
 }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.vendor.amd { amd }
-import extdeps.memory.jedec { ddr4_generation_catalog }
+import extdeps.memory.jedec { ddr4_generation_catalog, ddr4_normal_refresh_band, ddr4_extended_refresh_band }
+import extdeps.cited_field { NeedsReading }
+import product.breakout_leg_programming { fs_nvidia_eth_leg_coding_standing }
 import extdeps.memory.types {
   DramModuleCatalogRow,
   Registered,
   Unbuffered,
   bit_width,
   dram_generation_ddr4,
+  dram_generation_ddr5,
   dram_module_is_realizable,
   dram_module_required_die_density,
   MonolithicDie,
@@ -114,6 +117,9 @@ import product.node_power_envelope {
   ActivationEstablished,
   ActivationNotEstablished,
   ActivationDutyUnestablished,
+  ActivationDutyOutOfRange,
+  UnsupportedDramGeneration,
+  dimm_power_over_bands,
   MemoryPowerUnresolved,
   NoPartEvidenceAndNoClassBound,
   TrafficExceedsModulePeak,
@@ -444,7 +450,7 @@ test fn the_populated_depth_is_read_from_the_population() -> Bool {
 // the 64-bit data word.
 test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
   (match memory_power(population: eight_module_population, evidence: class_bound_only_evidence, load: idle_normal_load) {
-    MemoryPowerDerived { power: p, standing: _ } => watt_count(w: p) == 64
+    MemoryPowerDerived { power: p, grounds: _ } => watt_count(w: p) == 64
     MemoryPowerRefused { cause: _ } => false
   })
     && node_wall(inputs: q8030_node) == 283
@@ -741,8 +747,8 @@ fn load_at(temp: Int, read: Int, write: Int) -> DimmLoad {
 
 fn part_milliwatts(evidence: DimmPowerEvidence, load: DimmLoad) -> Int {
   match dimm_power(module: mod_2rx4_32g, evidence: evidence, load: load) {
-    DimmPowerFromPartCurrents { power: p, standing: _ } => milliwatt_count(w: p)
-    DimmPowerFromClassBound { power: _, standing: _ } => 0 - 1
+    DimmPowerFromPartCurrents { power: p, grounds: _ } => milliwatt_count(w: p)
+    DimmPowerFromClassBound { power: _, grounds: _ } => 0 - 1
     DimmPowerRefused { cause: _ } => 0 - 2
   }
 }
@@ -792,11 +798,11 @@ test fn an_unknown_dimm_with_no_class_bound_refuses() -> Bool {
 // A part with cited-shaped evidence takes the part path; a part without it falls to the class bound.
 test fn cited_part_evidence_takes_precedence_and_class_bound_covers_its_absence() -> Bool {
   (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: idle_normal_load) {
-    DimmPowerFromPartCurrents { power: _, standing: _ } => true
+    DimmPowerFromPartCurrents { power: _, grounds: _ } => true
     _ => false
   })
     && (match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: idle_normal_load) {
-      DimmPowerFromClassBound { power: p, standing: _ } => milliwatt_count(w: p) == 8000
+      DimmPowerFromClassBound { power: p, grounds: _ } => milliwatt_count(w: p) == 8000
       _ => false
     })
 }
@@ -843,7 +849,7 @@ test fn the_band_edges_come_from_the_canonical_rows() -> Bool {
 // preserved, not hidden behind the profile's citation.
 test fn a_cited_profile_under_an_uncited_band_is_reported_uncited() -> Bool {
   match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 60, read: 0, write: 0)) {
-    DimmPowerFromPartCurrents { power: _, standing: g } => uncited_standing(g: g)
+    DimmPowerFromPartCurrents { power: _, grounds: g } => !uncited_standing(g: g.profile_or_class) && uncited_standing(g: g.normal_band) && g.extended_band == Absent
     _ => false
   }
 }
@@ -879,7 +885,7 @@ fn uncited_standing(g: CitedFigureStanding) -> Bool {
 test fn the_node_draw_carries_every_term_standing_as_a_bet() -> Bool {
   match node_draw(inputs: q8030_node) {
     NodeDrawDerived { dc_load: _, wall_draw: _, standings: s } =>
-      uncited_standing(g: s.cpu) && uncited_standing(g: s.memory) && uncited_standing(g: s.board_idle) && uncited_standing(g: s.psu_efficiency)
+      uncited_standing(g: s.cpu) && uncited_standing(g: s.memory.profile_or_class) && uncited_standing(g: s.memory.normal_band) && uncited_standing(g: s.board_idle) && uncited_standing(g: s.psu_efficiency)
     NodeDrawRefused { cause: _ } => false
   }
 }
@@ -902,7 +908,7 @@ test fn psu_adequacy_and_wall_power_carry_the_standings_to_the_consumer() -> Boo
 // An uncited part profile is a bet and cannot lower the conservative class ceiling.
 test fn uncited_part_evidence_cannot_lower_the_class_bound() -> Bool {
   (match dimm_power(module: mod_2rx4_32g, evidence: fixture_uncited_part_with_class_bound_evidence, load: idle_normal_load) {
-    DimmPowerFromClassBound { power: p, standing: _ } => milliwatt_count(w: p) == 8000
+    DimmPowerFromClassBound { power: p, grounds: _ } => milliwatt_count(w: p) == 8000
     _ => false
   })
     && (match dimm_power(module: mod_2rx4_32g, evidence: fixture_uncited_part_only_evidence, load: idle_normal_load) {
@@ -955,7 +961,7 @@ data foreign_vendor_same_part_module: DramModuleCatalogRow = DramModuleCatalogRo
 
 test fn evidence_for_one_vendor_does_not_match_another_vendors_same_part_number() -> Bool {
   (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: idle_normal_load) {
-    DimmPowerFromPartCurrents { power: _, standing: _ } => true
+    DimmPowerFromPartCurrents { power: _, grounds: _ } => true
     _ => false
   })
     && (match dimm_power(module: foreign_vendor_same_part_module, evidence: fixture_part_only_evidence, load: idle_normal_load) {
@@ -979,6 +985,95 @@ test fn an_unestablished_activation_duty_refuses_the_part_current_reading() -> B
     },
   ) {
     DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+fn load_with_duty(duty: Int, standing: CitedFigureStanding) -> DimmLoad {
+  DimmLoad {
+    traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activation: ActivationEstablished { duty: permille(count: duty), standing: standing } },
+    case_temperature: DramCaseTemperature { tcase: celsius(count: 40) },
+  }
+}
+
+fn duty_verdict(duty: Int, standing: CitedFigureStanding) -> Int {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_with_duty(duty: duty, standing: standing)) {
+    DimmPowerFromPartCurrents { power: _, grounds: _ } => 1
+    DimmPowerRefused { cause: ActivationDutyOutOfRange { duty: _ } } => 2
+    DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: _ } } => 3
+    _ => 0
+  }
+}
+
+// The duty is a fraction of time: 0 and 1000 permille are admitted, 1001 refuses, and an uncited in-range
+// duty still refuses as unestablished.
+test fn the_activation_duty_is_bounded_to_zero_through_one_thousand() -> Bool {
+  duty_verdict(duty: 0, standing: fixture_profile_standing) == 1
+    && duty_verdict(duty: 1000, standing: fixture_profile_standing) == 1
+    && duty_verdict(duty: 1001, standing: fixture_profile_standing) == 2
+    && duty_verdict(duty: 500, standing: fixture_uncited_profile_standing) == 3
+}
+
+data mod_2rx4_32g_ddr5: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: mod_2rx4_32g.part_number,
+  manufacturer: mod_2rx4_32g.manufacturer,
+  generation: dram_generation_ddr5,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
+  rank_count: 2,
+}
+
+// Control: same part number and manufacturer, so part evidence for the DDR4 twin also names this module's
+// identity apart from generation. The DDR5 module refuses on generation BEFORE any band is selected,
+// shown by an unread normal band that would otherwise surface as RefreshBandUnread.
+test fn a_ddr5_module_refuses_before_any_ddr4_band_is_selected() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g_ddr5, evidence: fixture_part_only_evidence, load: idle_normal_load, normal_row: NeedsReading { read_obligation: "unread" as NonEmptyStr }, extended_row: ddr4_extended_refresh_band) {
+    DimmPowerRefused { cause: UnsupportedDramGeneration { part_number: _ } } => true
+    _ => false
+  }
+}
+
+// Normal band unread, extended band cited: the extended multiplier needs both rows, so a 90 C reading
+// refuses as unread rather than inheriting the extended row's citation.
+test fn an_unread_normal_band_is_not_hidden_by_a_cited_extended_band() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 0, write: 0), normal_row: NeedsReading { read_obligation: "normal row unread" as NonEmptyStr }, extended_row: ddr4_extended_refresh_band) {
+    DimmPowerRefused { cause: RefreshBandUnread { read_obligation: _ } } => true
+    _ => false
+  }
+}
+
+// Two distinct uncited obligations survive together: the class bound's own and the normal band's.
+// The extended band is selected too (90 C) and carries its own standing beside them.
+test fn two_distinct_uncited_obligations_survive_together() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 40, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band) {
+    DimmPowerFromClassBound { power: _, grounds: g } =>
+      uncited_standing(g: g.profile_or_class) && uncited_standing(g: g.normal_band) && g.activation == Absent
+        && g.profile_or_class != g.normal_band
+    _ => false
+  }
+}
+
+test fn the_extended_multiplier_carries_the_normal_bands_standing_too() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 90, read: 0, write: 0)) {
+    DimmPowerFromPartCurrents { power: _, grounds: g } =>
+      uncited_standing(g: g.normal_band) && (match g.extended_band {
+        Present { value: e } => uncited_standing(g: e)
+        Absent => false
+      })
+    _ => false
+  }
+}
+
+// Otherwise cited inputs with an OBSERVED activation: the activation ground reaches the result as the
+// observed standing, distinct from the profile's citation.
+test fn an_observed_activation_standing_reaches_the_result() -> Bool {
+  match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_with_duty(duty: 300, standing: fs_nvidia_eth_leg_coding_standing())) {
+    DimmPowerFromPartCurrents { power: _, grounds: g } =>
+      g.activation == Present { value: fs_nvidia_eth_leg_coding_standing() } && g.activation != Present { value: fixture_profile_standing }
     _ => false
   }
 }

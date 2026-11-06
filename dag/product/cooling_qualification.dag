@@ -128,14 +128,6 @@ fn cooler_design_power_covers_processor_tdp(
   measure_le(a: processor_tdp, b: cooler_max_design_power)
 }
 
-fn design_power_is_cited(standing: CitedFigureStanding) -> Bool {
-  match standing {
-    CitedToAuthority { authority: _ } => true
-    TranscribedUncited { read_obligation: _ } => false
-    ObservedByReceipt { observed: _ } => false
-  }
-}
-
 fn cooling_catalog_verdict(
   realization: InstalledCoolingRealization,
 ) -> CoolingCatalogVerdict {
@@ -160,27 +152,31 @@ fn cooling_catalog_verdict(
         baseboard_model: realization.baseboard_model,
       },
     }
-  } else if !design_power_is_cited(standing: realization.processor.tdp_standing) {
-    CoolingDesignPowerUnestablished {
-      host: realization.host,
-      standing: realization.processor.tdp_standing,
-    }
-  } else if !cooler_design_power_covers_processor_tdp(
-    cooler_max_design_power: realization.cooler.max_design_power,
-    processor_tdp: realization.processor.tdp_watts,
-  ) {
-    CoolingCatalogRefused {
-      host: realization.host,
-      cause: CoolerDesignPowerBelowProcessorTdp {
-        cooler_max_design_power: realization.cooler.max_design_power,
-        processor_tdp: realization.processor.tdp_watts,
-      },
-    }
   } else {
-    CoolingCatalogCompatible {
-      host: realization.host,
-      cooler_asset: realization.cooler_asset,
-      design_power_standing: realization.processor.tdp_standing,
+    match realization.processor.tdp_standing {
+      CitedToAuthority { authority: _ } =>
+        if !cooler_design_power_covers_processor_tdp(
+          cooler_max_design_power: realization.cooler.max_design_power,
+          processor_tdp: realization.processor.tdp_watts,
+        ) {
+          CoolingCatalogRefused {
+            host: realization.host,
+            cause: CoolerDesignPowerBelowProcessorTdp {
+              cooler_max_design_power: realization.cooler.max_design_power,
+              processor_tdp: realization.processor.tdp_watts,
+            },
+          }
+        } else {
+          CoolingCatalogCompatible {
+            host: realization.host,
+            cooler_asset: realization.cooler_asset,
+            design_power_standing: realization.processor.tdp_standing,
+          }
+        }
+      TranscribedUncited { read_obligation: _ } =>
+        CoolingDesignPowerUnestablished { host: realization.host, standing: realization.processor.tdp_standing }
+      ObservedByReceipt { observed: _ } =>
+        CoolingDesignPowerUnestablished { host: realization.host, standing: realization.processor.tdp_standing }
     }
   }
 }
