@@ -789,6 +789,13 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
         tail: [],
       },
       account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
+    }, ConcernSighting {
+      revision: "ae95c5e073e7",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.diagnostic", decl_name: "NonEmptyDiagnostics") },
+        tail: [],
+      },
+      account: "AUTHORING LEAK, STATED AS AN INTERIM, LIST RECORDED FOR MECHANICAL DELETION. The emitted module v2.std.diagnostic (src/v2/std/diagnostic.dag) must import, for the compiler's synthesized equality bodies ONLY (hand-written code in the module uses none of these names): from std.algebra: zip_eq, map_values_eq; from itself (v2.std.diagnostic): equality_derived_extent, equality_derived_locus, equality_derived_no_correction_reason, equality_derived_correction, equality_derived_diagnostic, equality_derived_non_empty_diagnostics, equality_derived_diagnostics, equality_derived_diagnostic_accumulation, equality_derived_stage_diagnostic_policy, equality_derived_diagnostic_severity, equality_derived_emit_directive. A module is made to import names that only the compiler's synthesized body uses. Dissolution trigger: a synthesized equality body references its helpers by the declaring module's path (std.algebra), not through the consumer's import scope -- at that point the enumerated imports are deleted exactly as listed here. Observed when CI v2-bootstrap at 334f4ed refused the emitted build with E0425 'cannot find function equality_derived_non_empty_diagnostics in this scope' at the emitted v2_std_diagnostic.rs: a sibling derived body calling a helper whose definition the import gate had skipped.",
     }],
   },
   disposition: Open,
