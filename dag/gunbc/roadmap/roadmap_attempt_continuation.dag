@@ -146,7 +146,25 @@ type ContinuationPlan
   // unknown and refused, never restored onto. It carries the key it restores and the branch it restores from.
   | Restore { reason: String, attempt_key: String, from_branch: String }
   | AlreadyComplete { reason: String }
-  | Refuse { reason: String }
+  // Refuse carries BOTH a typed cause (so a consumer matches the DISTINCTION without parsing prose -- DESIGN
+  // §4c "belongs in a typed carrier", §5 "fails with a typed, located diagnostic") AND a human-readable reason
+  // (the belt shows it verbatim; it is a rendering, never the discriminator). The cause is the class; the
+  // reason is its sentence. Before this, each cause travelled as an in-band "BranchAbsent: …" text tag inside
+  // a bare String, and witnesses grep'd that prose to recover a distinction the model should have carried
+  // (review 91440; §5 "a check restating a constraint the model already carries is a second representation").
+  | Refuse { cause: RefuseCause, reason: String }
+
+// THE TYPED CAUSE of a Refuse: the distinct reasons the decision already tells apart, each its own variant so
+// the witnesses and the belt match on shape, never on a substring of prose. BranchAbsent is the operator's
+// "typed BranchAbsent refusal"; the detail-carrying variants keep their located diagnostic in-field.
+type RefuseCause
+  = BranchAbsent
+  | BranchUndetermined { reason: String }
+  | WorktreeUnobserved { cause: String }
+  | CaptureUnreadable { reason: String }
+  | CaptureOwed { reason: String }
+  | SegmentDamaged { segment: String }
+  | LedgerUnobservable { reason: String }
 
 // THE ONE DECISION FUNCTION, shared by the operator's CONTINUE verb and the belt's wake.
 // It reads ONLY the prior execution observation, never a desired state. No prior at all is the
@@ -181,12 +199,12 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
                   from_branch: prior.branch,
                 }
               BranchGone =>
-                Refuse { reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, " is live but its worktree is reaped and its branch ", prior.branch, " is gone, so there is nothing to restore the resumable attempt onto"], "") }
+                Refuse { cause: BranchAbsent, reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, " is live but its worktree is reaped and its branch ", prior.branch, " is gone, so there is nothing to restore the resumable attempt onto"], "") }
               BranchUnknown { reason: why } =>
-                Refuse { reason: join(["could not determine whether the live attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present to restore its reaped worktree from; a failed branch check is not an absence (", why, ")"], "") }
+                Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the live attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present to restore its reaped worktree from; a failed branch check is not an absence (", why, ")"], "") }
             }
           AttemptWorktreeUnobserved { path: _, cause } =>
-            Refuse { reason: join(["the worktree standing of the live attempt ", prior.attempt_key, " could not be established (", cause, "), so it is neither joined nor restored onto a possibly-absent tree"], "") }
+            Refuse { cause: WorktreeUnobserved { cause }, reason: join(["the worktree standing of the live attempt ", prior.attempt_key, " could not be established (", cause, "), so it is neither joined nor restored onto a possibly-absent tree"], "") }
         }
       } else {
         // THE WORKTREE STANDING IS READ FIRST, because the capture and recovery live INSIDE it. When the
@@ -206,9 +224,9 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             match prior.branch_head {
               BranchLive => continuation_from_segments(prior: prior, reaped: true)
               BranchGone =>
-                Refuse { reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
+                Refuse { cause: BranchAbsent, reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
               BranchUnknown { reason: why } =>
-                Refuse { reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
+                Refuse { cause: BranchUndetermined { reason: why }, reason: join(["could not determine whether the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present; a failed branch check is not an absent branch and is never restored onto: ", why], "") }
             }
           AttemptWorktreeUnobserved { path: _, cause } =>
             // PRESENCE COULD NOT BE ESTABLISHED -- the root was unlistable, the subject refused, or the
@@ -218,11 +236,11 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             // failed is unknown, and unknown is refused (DESIGN §5: runtime uncertainty -> typed refusal;
             // filesystem_io: absence is established only by a listing that succeeded). The belt's own
             // re-observe is the remedy, not a guessed spawn.
-            Refuse { reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", cause], "") }
+            Refuse { cause: WorktreeUnobserved { cause }, reason: join(["could not establish how the prior attempt ", prior.attempt_key, "'s worktree stands, so the lineage decides nothing rather than restoring onto a possibly-live directory: ", cause], "") }
           AttemptWorktreePresent { path: _ } =>
         match prior.capture {
           CaptureUnreadable { reason } =>
-            Refuse { reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
+            Refuse { cause: CaptureUnreadable { reason }, reason: join(["the prior attempt ", prior.attempt_key, "'s submission store is unreadable, so what it holds is unknown and the lineage decides nothing: ", reason], "") }
           CaptureAbsent =>
             continuation_from_absent_capture(prior: prior)
           // THE CAPTURE IS OWED -- do NOT continue, and do NOT relabel the obligation as handed-in-nothing.
@@ -238,7 +256,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
           // support: nothing in this observation can tell an owed-now capture from an old one, so the
           // decision refuses and waits rather than fabricating the distinction (DESIGN §5).
           CaptureNotAttempted { reason } =>
-            Refuse { reason: join(["the prior attempt ", prior.attempt_key, " has ended but its submission capture is still owed (", reason, "), so whether its branch holds a declared candidate has not been read; the belt's commit lane settles it, and CONTINUE waits for that capture rather than starting a new attempt from a branch head that would omit work the prior worker had not committed"], "") }
+            Refuse { cause: CaptureOwed { reason }, reason: join(["the prior attempt ", prior.attempt_key, " has ended but its submission capture is still owed (", reason, "), so whether its branch holds a declared candidate has not been read; the belt's commit lane settles it, and CONTINUE waits for that capture rather than starting a new attempt from a branch head that would omit work the prior worker had not committed"], "") }
           CaptureForHead { capture: c } =>
             match c.submission.readiness {
               SubmissionBlocked =>
@@ -371,7 +389,7 @@ fn continuation_from_segments(prior: PriorExecutionObservation, reaped: Bool) ->
             continuation_next_attempt(prior: prior, why: join(["verification failed: ", v.detail], ""))
           }
         WorkflowSegmentComplete => continuation_after_green_verification(prior: prior, reaped: reaped)
-        WorkflowSegmentStopped => Refuse { reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: "verification" }, reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
         WorkflowSegmentPending =>
           AlreadyRunning {
             reason: join(["the prior attempt ", prior.attempt_key, "'s verification is owed and still pending; the belt owes it, so the lineage is joined and nothing spawns"], ""),
@@ -417,7 +435,7 @@ fn continuation_after_green_verification(prior: PriorExecutionObservation, reape
           AlreadyRunning { reason: "the prior attempt verified green and its reviewer is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
         WorkflowSegmentRefused =>
           AlreadyRunning { reason: join(["the prior attempt verified green and its review refused: ", r.detail], ""), attempt_key: prior.attempt_key }
-        WorkflowSegmentStopped => Refuse { reason: "the prior attempt's review segment is stopped, a state review does not inhabit -- the segment record is damaged and the operator decides" }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: "review" }, reason: "the prior attempt's review segment is stopped, a state review does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
 }
@@ -451,7 +469,7 @@ fn continuation_after_approved_review(prior: PriorExecutionObservation, reaped: 
           AlreadyRunning { reason: "the prior attempt's goal auditor is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
         WorkflowSegmentRefused =>
           AlreadyRunning { reason: join(["the prior attempt's goal audit refused: ", a.detail], ""), attempt_key: prior.attempt_key }
-        WorkflowSegmentStopped => Refuse { reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit -- the segment record is damaged and the operator decides" }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: "goal_audit" }, reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
 }

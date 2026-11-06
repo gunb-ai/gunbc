@@ -226,7 +226,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   IntegrationCoreIntegrated, IntegrationCoreDeferred, IntegrationCoreBlocked, IntegrationCoreUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
+  StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume, BranchAbsent,
 }
 import gunbc.roadmap.roadmap_belt_tick_cli {
   belt_verify_one_result_json, belt_integrate_one_result_json,
@@ -2765,7 +2765,7 @@ test fn the_per_item_receipts_render_their_own_statuses() -> Bool {
 test fn no_spawn_command_is_reachable_from_an_unresolved_lineage() -> Bool {
   let joined = belt_spawn_route_for_decision(decision: AlreadyRunning { reason: "the prior attempt is live", attempt_key: "a1" }, request: LaunchAutonomous)
   let complete = belt_spawn_route_for_decision(decision: AlreadyComplete { reason: "the lineage is complete" }, request: LaunchAutonomous)
-  let refused = belt_spawn_route_for_decision(decision: Refuse { reason: "x" }, request: LaunchAutonomous)
+  let refused = belt_spawn_route_for_decision(decision: Refuse { cause: BranchAbsent, reason: "x" }, request: LaunchAutonomous)
   // CONTINUE (NextAttempt) is discriminated by WHO REQUESTED the launch, which is the control that keeps
   // the autonomous wake from flapping: the operator's claim starts the next attempt from the branch head;
   // the belt's own autonomous wake must NOT (DESIGN §5: a flapping engine is bounded; the operator chooses,

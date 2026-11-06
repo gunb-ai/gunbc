@@ -564,6 +564,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { host_exec_argv, dispatch_actuat
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorExecutionObservation,
   ContinuationPlan, StartInitial, AlreadyRunning, Refuse, AlreadyComplete, NextAttempt, Restore, Resume,
+  RefuseCause, LedgerUnobservable,
   continuation_plan,
   BranchStanding, BranchLive, BranchGone, BranchUnknown,
 }
@@ -2450,7 +2451,7 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
     Restore { reason: _, attempt_key, from_branch: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
     StartInitial { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     NextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    Refuse { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
+    Refuse { cause: _, reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     AlreadyRunning { reason: _, attempt_key: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     AlreadyComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
@@ -2641,7 +2642,7 @@ fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLau
     // from the branch and reopens the claim (worktree_claim_reopen_settled), exactly as the general restore does.
     Restore { reason: _, attempt_key, from_branch } =>
       SpawnRouteRestore { attempt_key: attempt_key, from_branch: from_branch }
-    Refuse { reason } => SpawnRouteNone { step: "continuation", detail: reason }
+    Refuse { cause: _, reason } => SpawnRouteNone { step: "continuation", detail: reason }
     AlreadyRunning { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-already-running", detail: reason }
     AlreadyComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
   }
@@ -2770,7 +2771,7 @@ fn belt_actuate_spawn_exec_modeled(
 fn belt_continuation_decision_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId) -> ContinuationPlan {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
-      Refuse { reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
+      Refuse { cause: LedgerUnobservable { reason }, reason: join(["the attempts ledger is unobservable, so whether this node has committed work to continue cannot be decided: ", reason], "") }
     WorkflowAttemptsObserved { attempts } => {
       let mine = attempts |> filter(p => p.node_id == node_id as String)
       match mine.first() {
@@ -2837,7 +2838,7 @@ fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId
             AlreadyRunning { reason: _, attempt_key: _ } => LineageOpen
             Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageOpen
             Restore { reason: _, attempt_key: _, from_branch: _ } => LineageOpen
-            Refuse { reason } => LineageUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
+            Refuse { cause: _, reason } => LineageUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
           }
       }
     }
