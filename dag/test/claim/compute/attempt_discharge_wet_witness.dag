@@ -849,14 +849,17 @@ fn the_lease_mint_is_ready_once_the_operator_removes_the_legacy_lease_cell(root:
     && lease_listed(root: root)
 }
 
-// A RELEASED HOLD IS NOT LEGACY, AND THE RELEASE IS ASSERTED RATHER THAN ASSUMED. Releasing through the
-// producer's own drop leaves the hold library's free slot "<identity>.<generation>", which the legacy screen
-// accepts (cas_key_of_slot_name parses it), so the mint stays Ready - and the standing says NotHeld, which is what
-// stops the Ready reading from being vacuous over a slot that is still held. A release that kept the lease, or one
-// that left an entry the slot grammar rejects, turns this row red.
+// A RELEASED HOLD IS NOT LEGACY, AND THE RELEASE IS ASSERTED RATHER THAN ASSUMED. lease_listed first: the standing
+// is the holder, so the release below is a real transition and not a no-op over an empty directory, and that read
+// goes through with_leases, which is the held-slot reading the old body had and which this row must keep. Then the
+// producer's own drop, which leaves the hold library's free slot "<identity>.<generation>" - the legacy screen
+// accepts it (cas_key_of_slot_name parses it), so the mint stays Ready - and the standing says NotHeld, which is
+// what stops that Ready from being vacuous over a slot that is still held. A release that kept the lease, a mint
+// that refused a held slot, or a standing still naming a holder turns this row red.
 test fn a_released_hold_does_not_refuse_the_lease_mint() -> Bool {
   let root = fresh_root()
   let ok = lease_acquired(root: root, owner: "holder x\nabc 1\n")
+    && lease_listed(root: root)
     && lease_released(root: root)
     && match leases_reading_at(root: root) {
       ComputeProducerLeasesReady { leases: l } => match compute_producer_lease_standing(leases: l, identity: "feedfacefeedface") {
