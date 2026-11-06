@@ -82,13 +82,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "required-lane-resolution-census".to_string(),
-            },
-            TargetProducer::RequiredLaneResolutionCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "bare-reference-channel-outcome".to_string(),
             },
             TargetProducer::BareReferenceChannelOutcome,
