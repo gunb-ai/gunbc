@@ -4,9 +4,11 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
+import extdeps.github.expressions { ingest_expression, serialize_expression }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_job, fleet_converge_fleet_identity_auth_condition, fleet_converge_fleet_identity_reader_candidates,
   fleet_identity_readers, fleet_identity_mint_condition, fleet_identity_reader_mint_condition, step_reads_fleet_identity,
+  fleet_identity_unreadable_text,
   fleet_converge_mode_step_if, fleet_converge_fleet_ssh_key_step_if,
   FleetConvergeWorkflowMode, HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart,
   MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve,
@@ -43,10 +45,22 @@ fn uses_step_with(value: String, condition: String) -> Step {
 
 data compound_condition: String = "github.event.inputs.mode == 'plan' && github.ref == 'refs/heads/main'"
 
+fn reparsed(c: String) -> String {
+  match ingest_expression(src: c) {
+    Present { value: e } => serialize_expression(expression: e)
+    Absent => "UNPARSED"
+  }
+}
+
+fn reads(text: String) -> Bool {
+  step_reads_fleet_identity(step: run_step(run: text, condition: compound_condition))
+}
+
 // FIXTURES OF THE DERIVATION ITSELF. A reader is found in any field of its emitted YAML, not by one
 // spelling: the token read in a `run:` script and in a `with:` input both count, under a compound
-// condition. RED: a derivation that scanned only `env` (the shape every reader happens to have today)
-// finds neither, and the mint would not cover them.
+// condition, and the mint is the disjunction of the readers' conditions as the grammar reads them.
+// RED: a derivation that scanned only `env` (the shape every reader happens to have today) finds
+// neither, and the mint would not cover them.
 test fn a_reader_in_run_or_with_under_a_compound_condition_widens_the_mint() -> Bool {
   let in_run = run_step(run: "curl -H \"Authorization: Bearer ${{ steps.wif_auth.outputs.access_token }}\" https://example.invalid", condition: compound_condition)
   let in_with = uses_step_with(value: "${{ steps['wif_auth'].outputs.access_token }}", condition: fleet_converge_mode_step_if(mode: OrgActionsObserve))
@@ -54,8 +68,44 @@ test fn a_reader_in_run_or_with_under_a_compound_condition_widens_the_mint() -> 
   step_reads_fleet_identity(step: in_run)
     && step_reads_fleet_identity(step: in_with)
     && !step_reads_fleet_identity(step: other)
+    && fleet_identity_reader_mint_condition(step: in_run) == reparsed(c: compound_condition)
     && fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: [in_run, other, in_with]))
-      == concat(concat(concat("(", compound_condition), ") || ("), concat(fleet_converge_mode_step_if(mode: OrgActionsObserve), ")"))
+      == concat(concat(concat("(", reparsed(c: compound_condition)), ") || ("), concat(reparsed(c: fleet_converge_mode_step_if(mode: OrgActionsObserve)), ")"))
+}
+
+// EVERY SPELLING THE GRAMMAR ADMITS IS A READER (review 91535): bracket spacing, case, a star filter
+// over steps, a whole-context read, and an interpolation written without inner spaces. RED: the
+// substring scan this replaced found none of these and the mint shrank without a refusal.
+test fn every_spelling_of_a_read_of_the_identity_outputs_is_a_reader() -> Bool {
+  reads(text: "echo ${{ steps[ 'wif_auth' ].outputs.access_token }}")
+    && reads(text: "echo ${{ steps.WIF_AUTH['outputs'].access_token }}")
+    && reads(text: "echo ${{ toJSON(steps.*.outputs) }}")
+    && reads(text: "echo ${{ toJSON(steps) }}")
+    && reads(text: "echo ${{ steps.wif_auth }}")
+    && reads(text: "echo ${\{steps.wif_auth.outputs.access_token}}")
+}
+
+// AND NOTHING ELSE IS: another property of the identity step, another step's outputs, a star filter
+// over another property, and the reference spelled inside a string literal.
+test fn near_misses_are_not_readers() -> Bool {
+  !reads(text: "echo ${{ steps.wif_auth.conclusion }}")
+    && !reads(text: "echo ${{ steps.release_bins.outputs.sha }}")
+    && !reads(text: "echo ${{ toJSON(steps.*.conclusion) }}")
+    && !reads(text: "echo ${{ 'steps.wif_auth.outputs' }}")
+    && !reads(text: "echo steps.wif_auth.outputs is plain text, not an expression")
+}
+
+// TEXT THE GRAMMAR CANNOT READ REFUSES: an unterminated interpolation is reported, never read as
+// literal text and never as a reader; the real job carries none, so it is emitted.
+test fn unreadable_step_text_refuses_and_the_real_job_has_none() -> Bool {
+  let broken = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token", condition: compound_condition)
+  match fleet_identity_unreadable_text(candidates: [broken]) {
+    Present { value: _ } => true
+    Absent => false
+  } && match fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates()) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 // A condition the mint cannot decide before the reader runs (another step's outcome, a status
@@ -66,6 +116,8 @@ test fn an_undecidable_reader_condition_mints_and_no_reader_never_does() -> Bool
   let status = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "failure() && github.event.inputs.mode == 'plan'")
   fleet_identity_reader_mint_condition(step: late) == "true"
     && fleet_identity_reader_mint_condition(step: status) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "always()")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: "echo ${{ steps.wif_auth.outputs.access_token }}", condition: "github.event.inputs.mode == 'plan' && steps.prior.outcome != 'failure'")) == "true"
     && fleet_identity_mint_condition(readers: []) == "false"
 }
 

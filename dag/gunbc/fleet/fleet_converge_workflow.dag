@@ -41,7 +41,13 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression }
+import extdeps.github.expressions {
+  Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression,
+  FilteredContextAccess, FilterSegment, FilterKey, FilterAll, BoolLiteral, NullLiteral, NumberLiteral,
+  LessThan, LessOrEqual, GreaterThan, GreaterOrEqual, Success, Failure, Always, Contains, StartsWith, EndsWith, Format, Join, ToJSON, FromJSON, HashFiles,
+  ExpressionTemplate, Interpolation, LiteralText, ingest_template, ingest_expression, context_name,
+}
+import std.unicode.scalar { ascii_lowercase }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -116,7 +122,7 @@ import gunbc.workflow_capability_closure {
   workflow_job_capability_closure,
   capability_closure_is_closed,
 }
-import std.algebra { list_map, empty_map, map_insert, length, string_contains }
+import std.algebra { list_map, empty_map, map_insert, length }
 import std.list { distinct_by_key }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { keyed_roster_build, KeyedRosterBuilt, KeyedRosterBuildDuplicateKey }
@@ -990,28 +996,131 @@ data fleet_converge_fleet_ssh_key_step_if: String = fleet_converge_any_mode_step
 //
 // A reader's condition is evaluated at the MINT, before the reader runs, so a condition that reads
 // what only exists later -- another step's outcome or output, or the job status functions success(),
-// failure() and cancelled(), which at the mint describe the steps before it -- cannot be decided
-// there. Such a reader contributes `true`: the mint over-approximates rather than strand a reader
-// whose condition would have held (DESIGN section 5: an over-approximation computed as the answer,
-// stated). An absent condition is `true` for the same reason. At f08a6ae4e44 none of the 35 readers
-// is of either kind.
-data fleet_identity_output_reference: String = "steps.wif_auth.outputs"
+// failure(), cancelled() and always(), which at the mint describe the steps before it -- cannot be
+// decided there. Such a reader contributes `true`: the mint over-approximates rather than strand a
+// reader whose condition would have held (DESIGN section 5: an over-approximation computed as the
+// answer, stated). An absent condition is `true` for the same reason.
+//
+// BOTH READINGS GO THROUGH THE TYPED GRAMMAR, extdeps.github.expressions, never a second spelling of
+// it (DESIGN section 3; review 91535). A reference is a ContextAccess or FilteredContextAccess of
+// the `steps` context, compared case-insensitively as upstream compares context properties, so
+// `steps[ 'wif_auth' ].outputs`, `steps.WIF_AUTH['outputs']`, `steps.*.outputs` and a whole-context
+// read such as `toJSON(steps)` are all readers. Text the grammar cannot read is not guessed at: a
+// step field, or a reader's condition, that does not parse refuses the whole workflow
+// (fleet_identity_unreadable_text, consumed by fleet_converge_yml_after_toolchain_admission), so a
+// reader can be neither missed nor silently assumed.
+data fleet_identity_step_id: String = "wif_auth"
 
-data fleet_identity_output_reference_bracketed: String = "steps['wif_auth'].outputs"
+data fleet_identity_output_property: String = "outputs"
 
-fn yaml_value_mentions(v: YamlValue, pattern: String) -> Bool {
-  match v {
-    YamlString { value: t } => string_contains(s: t, pattern: pattern)
-    YamlSequence { elements: els } => any(els, e => yaml_value_mentions(v: e, pattern: pattern))
-    YamlMapping { entries: ents } => any(ents, e => string_contains(s: e.key, pattern: pattern) || yaml_value_mentions(v: e.value, pattern: pattern))
-    _ => false
+fn property_is(segment: String, name: String) -> Bool {
+  ascii_lowercase(s: segment) == name
+}
+
+// Does a read of `steps` at this path include the identity step's outputs? The whole context, the
+// whole step object, or its outputs (any sub-path) do; another step, or another property of this
+// one (`steps.wif_auth.conclusion`), does not.
+fn steps_path_reads_fleet_identity(path: List<String>) -> Bool {
+  match path.first() {
+    Absent => true
+    Present { value: head } =>
+      property_is(segment: head, name: fleet_identity_step_id) && match path.skip(n: 1).first() {
+        Absent => true
+        Present { value: p } => property_is(segment: p, name: fleet_identity_output_property)
+      }
   }
 }
 
-fn step_reads_fleet_identity(step: Step) -> Bool {
-  let y = step_yaml(step: step)
-  yaml_value_mentions(v: y, pattern: fleet_identity_output_reference)
-    || yaml_value_mentions(v: y, pattern: fleet_identity_output_reference_bracketed)
+fn filter_segment_admits(segment: FilterSegment, name: String) -> Bool {
+  match segment {
+    FilterAll => true
+    FilterKey { name: n } => property_is(segment: n, name: name)
+  }
+}
+
+fn steps_filter_path_reads_fleet_identity(path: List<FilterSegment>) -> Bool {
+  match path.first() {
+    Absent => true
+    Present { value: head } =>
+      filter_segment_admits(segment: head, name: fleet_identity_step_id) && match path.skip(n: 1).first() {
+        Absent => true
+        Present { value: p } => filter_segment_admits(segment: p, name: fleet_identity_output_property)
+      }
+  }
+}
+
+fn expression_reads_fleet_identity(e: Expression) -> Bool {
+  match e {
+    ContextAccess { context: c, path: p } => context_name(context: c) == context_name(context: Steps) && steps_path_reads_fleet_identity(path: p)
+    FilteredContextAccess { context: c, path: p } => context_name(context: c) == context_name(context: Steps) && steps_filter_path_reads_fleet_identity(path: p)
+    FunctionCall { function: _, args: a } => any(a, x => expression_reads_fleet_identity(e: x))
+    StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
+    LogicalOr { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LogicalAnd { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    Equals { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    NotEquals { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LessThan { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LessOrEqual { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    GreaterThan { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    GreaterOrEqual { left: l, right: r } => expression_reads_fleet_identity(e: l) || expression_reads_fleet_identity(e: r)
+    LogicalNot { operand: o } => expression_reads_fleet_identity(e: o)
+  }
+}
+
+// An expression that reads what exists only after the mint: the `steps` context at any path, or a
+// job status function.
+fn expression_undecidable_at_the_mint(e: Expression) -> Bool {
+  match e {
+    ContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: Steps)
+    FilteredContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: Steps)
+    FunctionCall { function: f, args: a } => match f {
+      Success => true
+      Failure => true
+      Cancelled => true
+      Always => true
+      Contains => false
+      StartsWith => false
+      EndsWith => false
+      Format => false
+      Join => false
+      ToJSON => false
+      FromJSON => false
+      HashFiles => false
+    } || any(a, x => expression_undecidable_at_the_mint(e: x))
+    StringLiteral { value: _ } => false
+    BoolLiteral { value: _ } => false
+    NullLiteral => false
+    NumberLiteral { text: _ } => false
+    LogicalOr { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LogicalAnd { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    Equals { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    NotEquals { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LessThan { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LessOrEqual { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    GreaterThan { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    GreaterOrEqual { left: l, right: r } => expression_undecidable_at_the_mint(e: l) || expression_undecidable_at_the_mint(e: r)
+    LogicalNot { operand: o } => expression_undecidable_at_the_mint(e: o)
+  }
+}
+
+// Every string a step emits, keys included: run, with, env, if, name, in any position.
+fn yaml_value_strings(v: YamlValue) -> List<String> {
+  match v {
+    YamlString { value: t } => [t]
+    YamlSequence { elements: els } => flat_map(els, e => yaml_value_strings(v: e))
+    YamlMapping { entries: ents } => flat_map(ents, e => concat([e.key], yaml_value_strings(v: e.value)))
+    _ => []
+  }
+}
+
+fn template_expressions(t: ExpressionTemplate) -> List<Expression> {
+  flat_map(t.segments, seg => match seg {
+    Interpolation { expression: e } => [e]
+    LiteralText { text: _ } => []
+  })
 }
 
 fn step_condition_text(step: Step) -> String {
@@ -1021,18 +1130,77 @@ fn step_condition_text(step: Step) -> String {
   }
 }
 
-fn condition_decidable_at_the_mint(c: String) -> Bool {
-  c != ""
-    && !string_contains(s: c, pattern: "steps.")
-    && !string_contains(s: c, pattern: "steps[")
-    && !string_contains(s: c, pattern: "success()")
-    && !string_contains(s: c, pattern: "failure()")
-    && !string_contains(s: c, pattern: "cancelled()")
+// A step `if:` is an expression whether or not it is wrapped in an interpolation; a wrapped one is
+// exactly one interpolation with no literal text around it.
+fn condition_expression(c: String) -> Expression? {
+  match ingest_template(src: c) {
+    Absent => none
+    Present { value: t } =>
+      if t.segments.length() == 1 {
+        match t.segments.first() {
+          Present { value: Interpolation { expression: e } } => Present { value: e }
+          _ => ingest_expression(src: c)
+        }
+      } else if template_expressions(t: t).length() == 0 {
+        ingest_expression(src: c)
+      } else {
+        none
+      }
+  }
+}
+
+// THE READING OF ONE STEP, or the first text in it the grammar cannot read.
+type FleetIdentityStepReading
+  = FleetIdentityStepRead { reads: Bool }
+  | FleetIdentityStepUnreadable { text: String }
+
+fn step_fleet_identity_reading(step: Step) -> FleetIdentityStepReading {
+  fold(yaml_value_strings(v: step_yaml(step: step)), init: FleetIdentityStepRead { reads: false }, f: (acc, t) => match acc {
+    FleetIdentityStepUnreadable { text: _ } => acc
+    FleetIdentityStepRead { reads: r } => match ingest_template(src: t) {
+      Absent => FleetIdentityStepUnreadable { text: t }
+      Present { value: tpl } => FleetIdentityStepRead { reads: r || any(template_expressions(t: tpl), e => expression_reads_fleet_identity(e: e)) }
+    }
+  })
+}
+
+fn step_reads_fleet_identity(step: Step) -> Bool {
+  match step_fleet_identity_reading(step: step) {
+    FleetIdentityStepRead { reads: r } => r
+    FleetIdentityStepUnreadable { text: _ } => false
+  }
 }
 
 fn fleet_identity_reader_mint_condition(step: Step) -> String {
   let c = step_condition_text(step: step)
-  if condition_decidable_at_the_mint(c: c) { c } else { "true" }
+  if c == "" {
+    "true"
+  } else {
+    match condition_expression(c: c) {
+      Absent => "true"
+      Present { value: e } => if expression_undecidable_at_the_mint(e: e) { "true" } else { serialize_expression(expression: e) }
+    }
+  }
+}
+
+// The first text among the candidates that the grammar cannot read -- any step field, or a
+// reader's condition -- which refuses the workflow. Absent when every candidate was read.
+fn fleet_identity_unreadable_text(candidates: List<Step>) -> String? {
+  fold(candidates, init: none, f: (acc, s) => match acc {
+    Present { value: _ } => acc
+    Absent => match step_fleet_identity_reading(step: s) {
+      FleetIdentityStepUnreadable { text: t } => Present { value: t }
+      FleetIdentityStepRead { reads: r } =>
+        if r && step_condition_text(step: s) != "" {
+          match condition_expression(c: step_condition_text(step: s)) {
+            Absent => Present { value: step_condition_text(step: s) }
+            Present { value: _ } => none
+          }
+        } else {
+          none
+        }
+    }
+  })
 }
 
 fn fleet_identity_readers(candidates: List<Step>) -> List<Step> {
@@ -5712,6 +5880,25 @@ fn fleet_converge_fleet_identity_reader_candidates() -> List<Step> {
   concat(fleet_converge_post_mint_credential_steps(), fleet_converge_job_work_steps())
 }
 
+fn fleet_converge_fleet_identity_unreadable_text() -> String? {
+  fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates())
+}
+
+fn fleet_converge_fleet_identity_text_unreadable() -> Bool {
+  match fleet_converge_fleet_identity_unreadable_text() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn fleet_converge_fleet_identity_unreadable_refusal() -> String {
+  match fleet_converge_fleet_identity_unreadable_text() {
+    Present { value: t } =>
+      join(["REFUSED gunbc.fleet.fleet_converge_workflow: a step after the fleet identity mint carries text extdeps.github.expressions cannot read, so whether it reads steps.wif_auth.outputs (and when) is undecided; no workflow is emitted rather than a mint that might strand or over-admit it. Text: ", t], "")
+    Absent => "REFUSED gunbc.fleet.fleet_converge_workflow: unreachable -- the fleet identity reader scan reported no unreadable text"
+  }
+}
+
 // The run-scoped exclusion (a granted-account mode never mints the fleet identity) conjoined with the
 // readers' conditions.
 fn fleet_converge_fleet_identity_auth_condition() -> String {
@@ -7546,6 +7733,8 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet.fleet_converge_workflow: the reset observer assignment admitted no pairing at all, so the reset_observer choice input would carry zero options -- a mode nobody can select. gunbc.host.host_reset_return reset_dispatch_pairings is supposed to refuse both routes to this state (an empty subject roster, and a subject with no admissible peer); reaching here means a third route exists and it is silent.",
         }
+      } else if fleet_converge_fleet_identity_text_unreadable() {
+        FleetConvergeYamlGenerationRefused { reason: fleet_converge_fleet_identity_unreadable_refusal() }
       } else if !fleet_converge_boot_federation_admitted() {
         FleetConvergeYamlGenerationRefused { reason: fleet_converge_boot_federation_unprovisioned_refusal }
       } else if !fleet_converge_gcp_iam_refusal_script_admitted() {
