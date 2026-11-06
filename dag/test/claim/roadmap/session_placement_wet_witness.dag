@@ -16,12 +16,12 @@ import gunbc.roadmap.roadmap_session_attempt_slots_cutover {
   AttemptSlotsPayloadRelation, PayloadsIdentical, PayloadsDifferent, PayloadRelationUndecided,
   attempt_slots_cutover_pass_for_instance, attempt_slots_cutover_record_path, attempt_slots_cutover_record_schema,
   AttemptSlotsCutoverPassRecord, attempt_slots_census_record_kind, attempt_slots_carry_record_kind,
-  AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverRecordUnwritten,
+  AttemptSlotsCutoverPassOutcome, AttemptSlotsCutoverRecorded, AttemptSlotsCutoverRecordUnwritten, AttemptSlotsCutoverNotRun,
   AttemptSlotsCensusRowRefused,
 }
 // The executing route's record write, so the row that witnesses the record exercises the SAME function the
 // belt tick calls -- a witness that wrote the file itself would witness a different act.
-import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write }
+import gunbc.roadmap.roadmap_belt_actuate { belt_attempt_slots_cutover_record_write, belt_tick_slots_cutover }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout, attempt_exit_inbox_dir, attempt_exit_refused_dir }
@@ -2013,5 +2013,28 @@ test fn an_operator_settle_of_a_slot_with_no_ledger_seat_closes_the_slot_and_suc
   if !launched_without_a_ledger_seat(dir: dir) { false } else {
     let s = operator_settle(dir: dir)
     operator_release_succeeded(s: s) && slot_is_terminal(dir: dir) && (released_unit(s: s) == "")
+  }
+}
+
+// THE LAB TICK DOES NOT RUN THE ATTEMPT-SLOTS CUTOVER (srv1 lab candidate ld449-lab-r2; LAB-ONLY, never main or
+// integration). The binding the tick calls, belt_tick_slots_cutover, is called over a COMPLETE fixture instance
+// rooted in the witness's own mktemp directory (its stores resolve, so a running pass would write its record
+// there), and it must answer the typed not-run arm and leave no cutover record behind. RED: at the revision
+// where the binding still calls belt_attempt_slots_cutover_pass (the extraction commit, behaviourally
+// 45575d0fac0), the pass runs, answers Recorded or StoresUnresolved, never NotRun, and this row fails.
+// Nothing outside the fixture directory is read or written: the instance is "session-wet", which no
+// replaced-root row names, so even the RED run touches no live slot root.
+test fn the_lab_tick_binds_the_slots_cutover_as_not_run_and_writes_no_record() -> Bool {
+  let dir = fresh_dir(tag: "cutover-off")
+  match stores_at(dir: dir) {
+    Absent => false
+    Present { value: s } => {
+      let outcome = belt_tick_slots_cutover(instance: instance_at(dir: dir))
+      let path = attempt_slots_cutover_record_path(stores: s, instance_id: "session-wet" as NonEmptyStr)
+      (match outcome { AttemptSlotsCutoverNotRun { reason: _ } => true  _ => false })
+        && !Filesystem.Read(path: path as FilePath).success
+        && !slot_is_launching(dir: dir)
+        && !slot_is_terminal(dir: dir)
+    }
   }
 }

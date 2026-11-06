@@ -1,0 +1,82 @@
+module gunbc.roadmap.ld449_lab_render_probe
+
+// LAB-ONLY RENDER PROBE -- srv1 lab candidate ld449-lab-r2. NEVER to main, NEVER to an integration branch.
+// Purpose: print, BEFORE anything is installed, the exact unit configuration the r2 build would produce for
+// the srv1 lab, so the restoration packet can show it for authorization (r2 proposal item 8; keen-otter
+// msg_7bd18224). Every function here is a pure render over the model's own producers: it reads no host
+// state, writes nothing, and starts nothing. The probe adds no unit shape of its own; each line printed is
+// the producer's output, serialized by the producer's serializer.
+// Lifetime: the srv1 lab builds cut from r2's line. Removal: delete this file in the same change that
+// gives the lab instance a modeled render or deploy route (DeploymentIntent, #15826), or with r2's revert.
+
+import std.types { String, List, NonEmptyStr, CommitSha }
+import std.process { ExitSuccess, exit_failure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
+import extdeps.systemd.systemd_run {
+  SystemdRunProperty, systemd_run_property_assignment,
+  SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
+}
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.emit {
+  LiveDeployServeUnitEmission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  live_deploy_serve_unit_emission,
+  live_deploy_belt_service_unit_file,
+  live_deploy_belt_exit_drain_service_unit_file,
+  live_deploy_belt_discovery_service_unit_file,
+  live_deploy_belt_exit_path_unit_file,
+  live_deploy_belt_answer_path_unit_file,
+  live_deploy_belt_credential_recovery_unit_file,
+  live_deploy_belt_credential_recovery_timer_unit_file,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
+
+fn ld449_section(title: String, body: String) -> String {
+  join(["===== ", title, " =====\n", body, "\n"], "")
+}
+
+// `gunbc run --function` prints only a CliWireResponse (a bare String exits 2, "Wrap the result in ExitSuccess"), so each
+// entry answers CliWirePrintable: the rendered bytes with ExitSuccess, or the producer's refusal with a failing exit.
+// The lab serve unit, rendered for the revision the packet built. No clock is read: an instance whose
+// OIDC placement needs the observer clock answers the producer's own refusal, printed as such.
+fn ld449_render_lab_serve_unit(revision: String) -> CliWireResponse {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: none) {
+    LiveDeployServeUnitEmitted { file } => CliWirePrintable { bytes: serialize_systemd_unit_file(file: file), exit: ExitSuccess }
+    LiveDeployServeUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "serve unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
+  }
+}
+
+fn ld449_render_lab_belt_units() -> CliWireResponse {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  CliWirePrintable { exit: ExitSuccess, bytes: join([
+    ld449_section(title: "belt service", body: serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec))),
+    ld449_section(title: "belt exit drain service", body: serialize_systemd_unit_file(file: live_deploy_belt_exit_drain_service_unit_file(spec: spec))),
+    ld449_section(title: "belt discovery service", body: serialize_systemd_unit_file(file: live_deploy_belt_discovery_service_unit_file(spec: spec))),
+    ld449_section(title: "belt exit path", body: serialize_systemd_unit_file(file: live_deploy_belt_exit_path_unit_file(spec: spec))),
+    ld449_section(title: "belt answer path", body: serialize_systemd_unit_file(file: live_deploy_belt_answer_path_unit_file(spec: spec))),
+    ld449_section(title: "belt credential recovery service", body: serialize_systemd_unit_file(file: live_deploy_belt_credential_recovery_unit_file(spec: spec))),
+    ld449_section(title: "belt credential recovery timer", body: serialize_systemd_unit_file(file: live_deploy_belt_credential_recovery_timer_unit_file(spec: spec))),
+  ], "") }
+}
+
+// The reviewer / auditor / supervisor property set (one producer, dispatch_review_unit_properties) for the
+// lab instance at its own memory figure. Working directory, log and review paths are FIXTURE placeholders
+// ("<worktree>", "<log>", "<review-dir>", "<exit-hook>"): the confinement properties are the subject here,
+// and those four are the only per-attempt values in the list.
+fn ld449_render_lab_review_properties() -> CliWireResponse {
+  let inst = srv1_lab_dashboard_instance()
+  let props = dispatch_review_unit_properties(
+    instance: inst, granted: inst.dispatch_worker_memory_max,
+    working_directory: "<worktree>", log_path: "<log>", review_dir: "<review-dir>",
+    exit_hook: "<exit-hook>" as NonEmptyStr,
+  )
+  CliWirePrintable { exit: ExitSuccess, bytes: ld449_section(title: "reviewer/auditor/supervisor systemd-run properties", body: join(props |> map(p =>
+    match systemd_run_property_assignment(property: p) {
+      SystemdRunPropertyAssignmentReady { assignment: a } => a
+      SystemdRunPropertyAssignmentRefused { cause: _ } => "REFUSED: this property has no systemd-run assignment (see extdeps.systemd.systemd_run SystemdRunOptionWordsRefusedCause)"
+    }
+  ), "\n")) }
+}

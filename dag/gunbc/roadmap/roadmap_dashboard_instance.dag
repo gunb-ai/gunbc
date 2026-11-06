@@ -1463,6 +1463,10 @@ fn isolated_dashboard_instance_admitting(
 // `unavailable`). The store's scope root IS the instance root (gunbc.persistent_instance_roots), declared
 // once. The dedicated worker is kept out by compute admission refusing it by principal
 // (gunbc.compute.work_provider_local compute_principal_refusal), not by this declaration's absence.
+// ld449-lab-r2 (LAB-ONLY): the exclusive work dir of the r2 restoration packet's build (ld449-r2work), whose
+// claim_batch and gunbc are the binaries every packet witness ran. See the deviation note at serve_binary_origin.
+data srv1_lab_r2_witnessed_serve_binary: FilePath = "/home/briansrls/runs/ld449-r2work/target/release/gunbc" as FilePath
+
 data srv1_lab_admitted_revision_source: DashboardAdmittedRevisionSource = DashboardAdmittedRevisionSource {
   remote: ".",
   ref_name: "refs/gunbc/srv1-lab-admitted" as GitRef,
@@ -1490,8 +1494,15 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // shared remote-tracking ref held two meanings across two checkouts (§3). The serve anchor, the
     // dispatch fork base, and the convergence writer's target are now THE SAME ref the operator
     // advances: refs/gunbc/srv1-lab-admitted.
+    // LAB-ONLY TEMPORARY DEVIATION -- srv1 lab candidate ld449-lab-r2 (4/4). NEVER to main, NEVER to an integration branch.
+    // The served artifact IS the witnessed binary (keen-otter msg_04dd735a): the lab's restoration packet builds and
+    // witnesses ONE binary in its exclusive work dir, and the apply copies exactly that file (DeclaredBuiltBinary:
+    // "copies, never builds") instead of a second, separately built binary of the same source. The packet checks the
+    // installed bytes' sha256 against the witnessed build's and reads back --version; this arm itself does neither.
+    // Removal: revert this commit (restoring BuildInPlaceFromAdmittedRevision) with r2's revert, or when the lab's
+    // binary source becomes a modeled deploy input (DeploymentIntent, #15826).
     source_seed: DashboardSeededByConvergence {
-      serve_binary_origin: BuildInPlaceFromAdmittedRevision,
+      serve_binary_origin: DeclaredBuiltBinary { path: srv1_lab_r2_witnessed_serve_binary },
       apply_workdir: dashboard_apply_neutral_workdir,
     },
     actuation: DashboardActuating,
