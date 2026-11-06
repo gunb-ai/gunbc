@@ -319,7 +319,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   observe_worktree_repository_binding,
 }
 import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
-import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json }
+import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
   SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
@@ -623,6 +623,7 @@ import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensu
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_store, WorktreeClaimStoreReady, WorktreeClaimStoreUnready }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimWritten, WorktreeClaimRecorded, WorktreeClaimNotRecorded, worktree_claim_new, worktree_claim_record_before_add,
+  worktree_claim_read, worktree_claim_reference, worktree_claim_reopen_settled, WorktreeClaimAbsent, WorktreeClaimHeld, WorktreeClaimUnreadable,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimTreeUnobserved,
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
@@ -1663,6 +1664,47 @@ fn belt_worktree_claim_before_add(instance: HostDashboardInstance, node_id: Stri
               node_id: node_id, attempt_key: attempt_key,
               worktree_path: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key),
               opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds))
+      }
+  }
+}
+
+// THE RESTORE'S DURABLE CLAIM HALF (D3, operator ruling: a reaped worktree with a live branch rebuilds the SAME
+// attempt in place AND reopens its claim). A first spawn CREATES the write-before-acquire claim, but a restore
+// rebuilds an attempt whose claim already occupies the slot: a plain create would lose the race to that record and
+// SpawnFail the rebuild (orphaning the tree), so the restore reopens the prior attempt's own claim on its CAS slot
+// at the next generation -- the general restore's primitive (worktree_claim_reopen_settled, admitted only on a
+// terminal record). The three durable states each get their own treatment, and none of them is a silent skip:
+//   * absent    -> create write-before-acquire (a legacy attempt whose claim was swept before the primitive existed);
+//   * unreadable-> a typed refusal, never create-over-an-unreadable-slot and never read as absent (DESIGN §5);
+//   * held      -> reopen at the observed generation: a terminal (wrongly-released) claim advances so the rebuilt
+//                  tree is claimed live; a live claim REFUSES the reopen -- it already names this attempt and needs
+//                  no reopen, which the restore accepts as already-claimed (the tree, not the claim, was reaped).
+// A lost race is a concurrent change to the slot: refuse with a located diagnostic, the next belt pass retries.
+fn belt_worktree_claim_for_restore(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> WorktreeClaimWritten {
+  match now_epoch_seconds() {
+    Absent => WorktreeClaimNotRecorded { detail: "the host clock could not be read, so the reopened worktree claim has no launch deadline" }
+    Present { value: now } =>
+      match worktree_claim_store(instance: instance) {
+        WorktreeClaimStoreUnready { detail } => WorktreeClaimNotRecorded { detail: detail }
+        WorktreeClaimStoreReady { store: claims } => {
+          let reference = worktree_claim_reference(node_id: node_id, attempt_key: attempt_key) as NonEmptyStr
+          let path = dispatch_worktree_path_for_instance(instance: instance, node_id: node_id as RoadmapNodeId, attempt_key: attempt_key)
+          let reopened = worktree_claim_new(
+            node_id: node_id, attempt_key: attempt_key, worktree_path: path,
+            opened_at: now, launch_deadline: now + compute_pre_launch_ceiling_seconds)
+          match worktree_claim_read(claims: claims, reference: reference) {
+            WorktreeClaimAbsent =>
+              worktree_claim_record_before_add(claims: claims, claim: reopened)
+            WorktreeClaimUnreadable { detail } =>
+              WorktreeClaimNotRecorded { detail: join(["the restored attempt's claim slot is unreadable, so it can be neither reopened nor safely created: ", detail], "") }
+            WorktreeClaimHeld { claim: _, generation: g } =>
+              match worktree_claim_reopen_settled(claims: claims, reference: reference, expected: g, claim: reopened) {
+                AttemptAdvanced { state: _, generation: _ } => WorktreeClaimRecorded
+                AttemptTransitionRefused { detail: _ } => WorktreeClaimRecorded
+                AttemptLostRace { expected: _, observed: _ } => WorktreeClaimNotRecorded { detail: "the restored attempt's claim slot moved under the reopen (a concurrent change); the restore will retry next belt pass" }
+              }
+          }
+        }
       }
   }
 }
@@ -3240,7 +3282,17 @@ fn belt_spawn_stage(
     DispatchWorkerContinuedFrom { branch: _ } => true
   }
   if run_adds_worktree {
-    match belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key) {
+    // The claim step is BY KIND (D3): a FIRST attempt has no prior claim, so it is created write-before-acquire;
+    // a RESTORE (DispatchWorkerContinuedFrom -- the same-key rebuild of a reaped attempt) REOPENS the prior
+    // attempt's own claim on its CAS slot (belt_worktree_claim_for_restore -> worktree_claim_reopen_settled) rather
+    // than a fresh create, which would lose the race to the still-present record and fail the rebuild, orphaning the
+    // tree. Resumed never adds a worktree, so its arm is unreachable here but is named for closed-variant elimination.
+    let claim_written = match run {
+      DispatchWorkerContinuedFrom { branch: _ } => belt_worktree_claim_for_restore(instance: instance, node_id: node.node as String, attempt_key: attempt_key)
+      DispatchWorkerFirst => belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key)
+      DispatchWorkerResumed { ordinal: _ } => belt_worktree_claim_before_add(instance: instance, node_id: node.node as String, attempt_key: attempt_key)
+    }
+    match claim_written {
       WorktreeClaimNotRecorded { detail } => Present { value: SpawnFailed { node_id: node.node as String, step: "worktree-claim", detail: detail, provider: provider_wire_label, launch: launch } }
       WorktreeClaimRecorded =>
         match belt_exec_steps(
