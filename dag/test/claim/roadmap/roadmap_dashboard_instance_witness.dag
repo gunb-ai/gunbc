@@ -282,7 +282,9 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   // by name, so a rename or a silently dropped op cannot hide behind either.
   // TEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
   // stage, local origin) are gone, and the one source op resets to the dispatch base ref.
-  count(plan) == 10
+  // ELEVEN with DashboardRetireLegacyWriters, the new FIRST op: the lab's legacy writer is retired (stop, rename
+  // into the rollback store, daemon-reload) before anything the writer could clobber.
+  count(plan) == 11
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
@@ -703,7 +705,8 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 12
+  // THIRTEEN: the same DashboardRetireLegacyWriters op, first in the plan.
+  count(plan) == 13
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
