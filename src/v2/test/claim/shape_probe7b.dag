@@ -1,0 +1,52 @@
+module v2.test.claim.shape_probe7b
+
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.reference_site_collector { collect_scoped_module_reference_sites }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.process { ExitFailure, ProcessExit }
+import std.types { String, Bool, Int, List }
+import std.algebra { length, list_map }
+import std.integer { int_to_decimal_string }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn p7b_verdict(path: String, stage: Int) -> String {
+  let read = Filesystem.Read(path: path)
+  let text = read.content
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "P7B code=-1 stage=grammar"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
+        Rejected { diagnostics: _ } => "P7B code=-2 stage=tokenize"
+        Accepted { value: stream, diagnostics: _ } =>
+          if stage == 1 { "P7B code=1 stage=accepted-tokenize" } else {
+            match parse_module_prepared(tokens: stream, prepared: prepared) {
+              Rejected { diagnostics: _ } => "P7B code=-3 stage=parse"
+              Accepted { value: artifact, diagnostics: _ } =>
+                if stage == 2 { "P7B code=1 stage=accepted-parse" } else {
+                  match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+                    Rejected { diagnostics: _ } => "P7B code=-4 stage=normalize"
+                    Accepted { value: scoped, diagnostics: _ } =>
+                      if stage == 3 { "P7B code=1 stage=accepted-normalize" } else {
+                        let sites = collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites
+                        "P7B code=1 stage=accepted-collect sites=" + int_to_decimal_string(value: length(xs: sites))
+                      }
+                  }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn p7b_report(stage: Int) -> ProcessExit {
+  ExitFailure { code: 3, reason: p7b_verdict(path: "dag/extdeps/bmc/ipmi.dag", stage: stage) }
+}
+
+test fn IPMI_s1() -> ProcessExit { p7b_report(stage: 1) }
+test fn IPMI_s2() -> ProcessExit { p7b_report(stage: 2) }
+test fn IPMI_s3() -> ProcessExit { p7b_report(stage: 3) }
+test fn IPMI_s4() -> ProcessExit { p7b_report(stage: 4) }
