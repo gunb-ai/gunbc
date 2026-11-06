@@ -25,14 +25,20 @@ import std.types { String }
 fn fixture_lines(lines: List<String>) -> String { lines |> join(separator: "\n") }
 
 // THE SHARED PREAMBLE: the generic higher-order callee (the `join_separated` shape: a by-value
-// `fn(T, T) -> T` parameter), the non-uniform collector for the non-text accumulator case, and the
-// `concat`/`list_push` the bodies call. Every case below appends exactly one tested function.
+// `fn(T, T) -> T` parameter), its Bool-returning sibling for the by-ref consumer case, the
+// non-uniform collector for the non-text accumulator case, and the `concat`/`list_push`/
+// `string_contains` the bodies call. Every case below appends exactly one tested function.
 fn preamble() -> String {
   fixture_lines(lines: [
     "module probe.lastuse",
     "import std.algebra { list_push }",
+    "import std.algebra { string_contains }",
+    "import std.types { Bool }",
     "fn apply_combine<T>(seed: T, sep: T, combine: fn(T, T) -> T) -> T {",
     "  combine(combine(seed, sep), sep)",
+    "}",
+    "fn apply_ref_check<T>(seed: T, probe: T, combine: fn(T, T) -> Bool) -> Bool {",
+    "  combine(seed, probe)",
     "}",
     "fn collect_with<T>(xs: List<T>, item: T, append: fn(List<T>, T) -> List<T>) -> List<T> {",
     "  append(xs, item)",
@@ -112,5 +118,19 @@ data retain_shadowed_source: String = concat(preamble(), fixture_lines(lines: [
   "    let acc = concat(\"s\", x)",
   "    concat(acc, x)",
   "  })",
+  "}"
+]))
+
+// CONTROL, BY-REF CONSUMER: the last-use parameter is consumed by a runtime primitive whose
+// registry row passes its first parameter by reference (rt_function_registry passes_by_ref rows,
+// realized through rt_ref_map_functions; the specimen is `string_contains`, whose corpus emission
+// is `v1_rt::string_contains(&head, ...)` — e.g. v1_tests_claim_carrier_realization_census.rs:871).
+// The grant may drop the clone at that occurrence; it must NOT change the borrow form: the `&` is
+// prefixed after the argument render (rust_by_ref_bridge_argument), so the expected emission is
+// `&acc` — never a bare `acc` behind the bridge and never `&acc.clone()`.
+data by_ref_case_source: String = concat(preamble(), fixture_lines(lines: [
+  "",
+  "fn ref_check(prefix: String, suffix: String) -> Bool {",
+  "  apply_ref_check(seed: prefix, probe: suffix, combine: fn(acc: String, needle: String) -> Bool { string_contains(acc, needle) })",
   "}"
 ]))

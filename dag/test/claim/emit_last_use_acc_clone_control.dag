@@ -1,9 +1,10 @@
 // dag/test/claim/emit_last_use_acc_clone_control.dag — THE LAST-USE-BY-VALUE-ARGUMENT MOVE,
 // GREEN OR RED BY EXECUTION.
 //
-// WHAT THIS POOLS. `v1.compiler.ownership` `build_moved_argument_occurrences` grants, for a literal
-// lambda bound to a declared callee, that a parameter whose ONLY use is a by-value call argument is
-// MOVED at that occurrence; `emit_rust_expr_var` in v1.compiler.emit_rust consumes the grant and
+// WHAT THIS POOLS. For a literal lambda, `v1.compiler.ownership` `build_moved_argument_occurrences`
+// (invoked once, AT THE LAMBDA, by `lambda_body_grant_emit_info` in v1.compiler.emit_rust when its
+// body render begins) grants that a parameter whose ONLY use is a by-value call argument is MOVED at
+// that occurrence; `emit_rust_expr_var` in v1.compiler.emit_rust consumes the grant and
 // `emit_var_ref` then omits the language's clone template for that one emission. The corpus state
 // that opened this slice: `std_algebra` `string_concat_join` still emits
 // `|acc, field| v1_rt::concat(acc.clone(), field.clone())` although each parameter is used exactly
@@ -27,21 +28,26 @@
 // therefore evidence at the head where the mirror matches the seed, which is the head that lands
 // because the candidate mirror bytes ride in the PR.
 //
-// EXPECTED AT OPENING (this is the probe, so the readings are predictions): the two MOVE cells are
-// RED — the corpus shows both motivating spellings still cloned — while every RETAIN cell is green
-// for the honest reason: the clone is correct there. `the_shadowed_parameter_keeps_its_clone` is
-// the falsifiable one for the frozen pattern's shadow clause: it is green today only because the
-// route may be silent altogether, and it pins the guard a repair must carry.
+// FROZEN EXPECTATIONS (pre-registered at this repair head BEFORE any run; the v5 receipt is the
+// last executed record of the PRE-repair emitter). 14 cells, each behaviour cell paired with its
+// marker: the 7 MARKER cells all Pass; `the_last_use_by_value_parameter_emits_bare_holds` Passes
+// after the repair (v5 receipt: FAIL — the clone stayed, at the pre-repair emitter);
+// `the_last_use_vec_accumulator_emits_bare_holds` is a REGRESSION FLOOR and Passes (v5 receipt:
+// PASS — `rc_list_push(acc, x)` was already bare; the repair must keep it bare);
+// `the_by_ref_primitive_takes_the_borrow_form_holds` Passes (NEW cell — no pre-repair receipt; a
+// red reads against its marker and is reported, never folded); the four RETAIN cells Pass (v5
+// receipts: PASS x4 — the clone is correct there). A cell red outside this table is reported with
+// its exact reading; a marker red is a refusal reading, never evidence about the move.
 module test.claim.emit_last_use_acc_clone_control
 
 // THE READ PATH, DERIVED NOT BY PATTERN. Every fixture module declares `module probe.lastuse`
-// (the shared preamble all six data strings extend), and the emitter names a module's file by
+// (the shared preamble all seven data strings extend), and the emitter names a module's file by
 // `v1.compiler.emit_rust` `rust_module_emit_path` (src/v1/05_emit_rust.dag:4049), which concatenates
 // `rust_source_root()` with `gunbc.rust_emitted_edge` `rust_module_emit_filename`
 // (dag/gunbc/rust_emitted_edge.dag:59-62) — `module_to_filename` (:55-57),
 // `name |> split(delimiter: ".") |> join(separator: "_")`, the `"main" -> "main_mod"` exception not
 // reached — plus `rust_source_ext()`. `probe.lastuse` therefore emits exactly
-// `src/probe_lastuse.rs`; that is the single read path for all twelve cells below. The v4 attempt's
+// `src/probe_lastuse.rs`; that is the single read path for all fourteen cells below. The v4 attempt's
 // ten refusals were this line's absence: a made-up `src/test_claim_lastuse_*.rs` names no module of
 // the compiled closure (the refusal arm in `compile_dag_rust_emit_check_uncached`,
 // src/v1/stage0/src/cli_run/emit_host.rs).
@@ -57,7 +63,8 @@ import test.claim.emit_last_use_acc_clone_fixtures {
   move_vec_accumulator_source,
   retain_capture_source,
   retain_branch_arms_source,
-  retain_shadowed_source
+  retain_shadowed_source,
+  by_ref_case_source
 }
 
 // THE MARKER PAIRS (amendment 5, paired one-to-one below). Each asserts ONLY that the fixture's
@@ -113,10 +120,11 @@ test fn the_second_use_keeps_its_clone_holds() -> Bool {
   )
 }
 
-// THE RULE IS NOT TEXT-ONLY: a non-Copy owned accumulator (`List<String>`, emitted as an `Rc<Vec<_>>`)
-// used exactly once by value takes the same answer as String — the already-moved `rc_list_push(xs,
-// item)` corpus case says this shape CAN move, so a red here while `join_pair` moves would show the
-// repair keyed on the type instead of on the use.
+// REGRESSION FLOOR, RECLASSIFIED AT THIS HEAD (the v5 receipt): the non-Copy owned accumulator
+// (`List<String>`, emitted as an `Rc<Vec<_>>`) used exactly once by value was ALREADY bare —
+// `rc_list_push(acc, x)` — under the pre-repair emitter. It moves to a floor: the existing route's
+// answer for this shape must survive the repair byte-for-byte. A red here while `join_pair` moves
+// would show the repair keyed on the type instead of on the use.
 test fn the_last_use_vec_accumulator_emits_bare_holds() -> Bool {
   compile_dag_rust_emit_check(
     move_vec_accumulator_source,
@@ -160,5 +168,25 @@ test fn the_shadowed_parameter_keeps_its_clone_holds() -> Bool {
     "src/probe_lastuse.rs",
     ["fn join_shadowed(", "acc.clone()"],
     []
+  )
+}
+
+// THE BY-REF PAIR (frozen expectation table above). Marker first: the fixture must emit.
+test fn the_ref_check_module_emits_holds() -> Bool {
+  compile_dag_rust_emit_check(by_ref_case_source, "src/probe_lastuse.rs", ["fn ref_check("], [])
+}
+
+// THE BORROW FORM SURVIVES THE MOVE. `ref_check`'s lambda passes `acc` exactly once, by value, to
+// `string_contains` — a runtime primitive whose registry row passes the first parameter by
+// reference. The grant may drop the clone; the `&` is prefixed after the argument render
+// (rust_by_ref_bridge_argument), so the emission must read `v1_rt::string_contains(&acc,`: a bare
+// `v1_rt::string_contains(acc,` would mean the arm lost the borrow, and `&acc.clone()` would mean
+// the grant did not reach the occurrence. Both forbidden spellings are asserted absent.
+test fn the_by_ref_primitive_takes_the_borrow_form_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    by_ref_case_source,
+    "src/probe_lastuse.rs",
+    ["fn ref_check(", "v1_rt::string_contains(&acc,"],
+    ["v1_rt::string_contains(acc,", "&acc.clone()"]
   )
 }

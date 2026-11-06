@@ -1,0 +1,40 @@
+module gunbc.recurring_failure_mode.a_grant_keyed_on_the_rendered_call_drops_the_grant_silently
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+// A GRANT COMPUTED FROM ONE NODE'S OWN FACTS LOSES NOTHING AT THE CALL THAT RENDERS IT -- until a
+// gate keyed on that CALL decides whether to ask. The answer then depends on the subject the grant
+// never spoke about (here, the callee kind of whatever call happened to be rendering), and when the
+// key is false the grant is simply never attached. Nothing can refuse, because the un-granted
+// emission is still a correct program: the defect is the clone that stays, a cost, never a
+// diagnostic. The repair is placement, not policy: attach where the fact is owned (DESIGN section
+// 3), once, at the node whose facts it is.
+data a_grant_keyed_on_the_rendered_call_drops_the_grant_silently: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_grant_keyed_on_the_rendered_call_drops_the_grant_silently" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "TWO CAPABILITIES, NAMED SEPARATELY BECAUSE THEY CLOSE DIFFERENT GAPS. (1) AN EXECUTED RECEIPT: the 14-cell control pool dag/test/claim/emit_last_use_acc_clone_control.dag run through the manager-owned hardened claim_batch frame at the exact repair head of PR #15988, against its FROZEN expectations table (control header): the moved spelling for both consumer kinds (runtime-primitive `concat` and declared `list_push`), the borrow form held at `&acc` for the by-ref primitive, the four retains kept. (2) A LOCATED CAUSE, FROM SOURCE, for why the retired caller-side placement lost the grant on exactly the runtime-primitive-consumer shape: a static read of the retired branch inputs (typed_emit_info built by field-copy from the render's own emit_info; the grantor's non-lambda arm returning its input unchanged) predicted BOTH cells bare, and the v5 packet falsified that (String cell FAIL -- the clone stayed; vec cell PASS -- already bare). Until the cause is located, this row states placement and behaviour only, never a cause -- DESIGN section 4d: do not assert as deduced what is only inferred."
+    }
+  },
+  receipts: [
+    "A GRANT KEYED ON THE WRONG SUBJECT SILENTLY DROPS IT. `v1.compiler.emit_rust` `user_call_lambda_emit_info` computed, from a lambda's OWN parameters and body, that a parameter whose single use is a by-value call argument may move at that occurrence -- and was invoked from ONE caller-side site, `emit_typed_call`'s argument map, under the predicate `callee != none && !is_rt`: the kind of the callee of the call being RENDERED, a subject the grant says nothing about. Where the predicate held, the lambda body rendered move-aware; where it did not, the grant was never computed, and the emission kept its clone. No diagnostic exists for the difference: both emissions are correct Rust.",
+
+    "SPECIMEN, 2026-11-06 (PR #15988, crisp-bee-97). Two fixtures in one probe module, one difference -- the consumer inside the tested lambda. `join_pair` (String accumulator consumed by `concat`, a runtime primitive) emitted `v1_rt::concat(acc.clone(), x.clone())`; `collect_one` (List accumulator consumed by declared `list_push`) emitted `rc_list_push(acc, x)` bare. The v5 packet (manager-owned hardened frame over `claim_batch --functions` 12 cells, exit 1, 12/12 bare outcome lines) recorded FAIL and PASS respectively. THE LOSS LINK IS UNLOCATED FROM SOURCE, and this row says so as its central honesty: a static read of the two retired branch inputs -- `typed_emit_info` built only from the render's own `emit_info` via `emit_info_with_expected_type` (field-copy rebuild, `v1.compiler.infer_emit_info`), and the grantor's `_ => emit_info` returning its input unchanged -- predicts BOTH cells bare; the packet falsified the prediction for the String cell. The only mid-render replacement of the moved-occurrence set found in the render path is the per-function-item rebuild at `emit_typed_expr`-adjacent fn context (`moved_argument_occurrences := map_get(moved_argument_index, qualified_name)`, built per declared function); every lambda-body descent link read threads its `emit_info` verbatim. Which link carried a set that never included the lambda-body occurrence, source does not say at this head.",
+
+    "THE REPAIR IS PLACEMENT. At PR #15988's head the same grantor -- `v1.compiler.ownership` `build_moved_argument_occurrences`, unchanged, one authority -- is invoked ONCE, AT THE LAMBDA, by `lambda_body_grant_emit_info` from the ExprLambda arm of `emit_typed_expr` when its body render begins; the caller-side gate is retired in the same change; one consumer (`emit_rust_expr_var`) and one clone producer (`emit_var_ref`) are unchanged. The consumer kind of the body's use stops mattering because the grant travels with the lambda's own body. The motivating population: the 19 `v1_rt::concat(acc.clone(), ...)` sites censused at c2ae07a9 over src/v1/stage0/src (PR #15988's body lists all 19 by module and function). THE CENSUS COUNTED THE CONSUMER'S NAME, NOT THE USE COUNT -- and the per-site read says: of the 19, EXACTLY ONE is a true last use, `std_algebra` `string_concat_join`'s combine lambda `fn(acc, field) { concat(acc, field) }`, whose emission is the motivating text; the other 18 use the accumulator again on some path (a condition plus an arm, two match arms, a nested-fold seed, a match binder, a loop-carried or fn-parameter position outside the frozen pattern) and their clones are CORRECT and stay. The loud guard against over-application is the build: a moved multi-use accumulator is E0382, and the heal build covers every mirror; the per-site mirror-diff review at the heal is the quiet one.",
+
+    "CLAIM HONESTY. This row's repair claims are NOT executed at the head it is filed at: no lane under `.github/workflows` evaluates the claim pool, so the 14 control cells run only through an authorized frozen packet (trigger capability (1)); the v5 receipts above are of the PRE-repair emitter. What is stated is what source shows: the placement, the predicate shape, the frozen expectations, and the fact that the prediction failed. What is not stated is why."
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "lambda_body_grant_emit_info", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_typed_expr", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emit_last_use_acc_clone_control", decl_name: "the_last_use_by_value_parameter_emits_bare_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.emit_last_use_acc_clone_control", decl_name: "the_by_ref_primitive_takes_the_borrow_form_holds", field: WholeDeclaration },
+  ],
+}
