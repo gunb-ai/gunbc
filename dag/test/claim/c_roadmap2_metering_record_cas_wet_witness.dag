@@ -32,7 +32,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   metered_role_seat_owner, metering_record_head, metering_record_slot_key, metering_launch_entry_name,
   metering_roster_admit, metering_roster_digest,
   metering_roster_for_attempt, metering_roster_seal,
-  metering_attempt_index_admit,
+  metering_attempt_index_admit, metering_commit_at_head,
 }
 
 // THE METERING RECORD IS COMPARE-AND-SET, AND THESE CLAIMS RUN THE REAL ROUTE IN AN ISOLATED INSTANCE UNDER
@@ -480,4 +480,32 @@ test fn the_departed_metering_pass_adopts_a_plain_record_before_sealing_it() -> 
            }
          }
   }
+}
+
+// ROUTE B -- THE COMMIT-TIME VERDICT, ONCE. The Final refusal has two reachable routes that are not each
+// other: (A) the caller-side guard in metering_persist_record that judges the head BEFORE the commit (the
+// second-persist claim above turns that arm red), and (B) the lost-race verdict in metering_head_verdict,
+// which names the winner's Final head to the loser AFTER the commit is refused. Each arm carries its own
+// mutant and its own RED: breaking arm (B)'s MeteringObserved answer turns THIS claim red, which is the
+// evidence for "each arm keeps a mutant per route" in the review 91575 exchange.
+test fn a_lost_race_whose_winner_record_is_final_answers_already_final() -> Bool {
+  let dir = fx_root("verdict")
+  let instance = fx_instance("verdict", dir)
+  let key = fx_key("verdict")
+  let launches = [MeteredWorker {}]
+  let digest = metering_roster_digest(launches: launches)
+  fx_sealed_attempt(instance: instance, key: key)
+    && match metering_persist_for_attempt(instance: instance, node_id: fx_node(), attempt_key: key, departed: true) {
+        MeteringPersisted { path: _, standing: _ } => match fx_store(instance: instance, key: key) {
+          Absent => false
+          Present { value: store } => match metering_commit_at_head(
+            store: store, node_id: fx_node(), attempt_key: key,
+            record: fx_final_record(key: key, digest: digest),
+            launches: launches, seal: Present { value: digest }, expected: ExpectSlotAbsent) {
+            MeteringAlreadyFinal => true
+            _ => false
+          }
+        }
+        _ => false
+      }
 }

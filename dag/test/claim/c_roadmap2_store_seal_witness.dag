@@ -148,11 +148,7 @@ fn retired_writer_row_count() -> Int {
 }
 
 test fn the_retired_credential_recovery_writer_row_is_gone() -> ProcessExit {
-  if retired_writer_row_count() == 0 {
-    exit_success()
-  } else {
-    exit_failure(reason: "the retired credential-acquisition-recovery.json writer row is back in the realization census")
-  }
+  census_exit(verdict: census_verdict(census: retired_writer_row_count(), holds: fn(n) { n == 0 }))
 }
 
 // ── the lawful routes are admitted ─────────────────────────────────────────────────────────────────────
