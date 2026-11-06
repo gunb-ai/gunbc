@@ -10,6 +10,7 @@ import std.optional { Present, Absent }
 import std.resources { Network }
 import extdeps.cloud.gcp.sts
 import extdeps.cloud.gcp.iam
+import extdeps.cloud.gcp.iam { token_lifetime_wire }
 import extdeps.github.actions { github_actions_runtime }
 import gunbc.auth.heal_publisher_federation {
   heal_publisher_assertion_audience,
@@ -644,7 +645,7 @@ fn heal_publisher_cloud_credential() -> PublisherCloudCredential uses net: Netwo
                   match gcp.IAM.GenerateAccessToken(
                     access_token: federated.access_token,
                     target_sa: heal_publisher_service_account,
-                    lifetime: heal_publisher_cloud_token_lifetime,
+                    lifetime: token_lifetime_wire(s: heal_publisher_cloud_token_lifetime),
                   ) {
                     RestRefused { refusal } =>
                       PublisherCloudCredentialNotMinted { cause: concat("HealPublisherImpersonationRefused: iamcredentials refused the publisher service account: ", rest_refusal_text(o: refusal)) }
