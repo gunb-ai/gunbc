@@ -49,14 +49,34 @@ data harness_transport_retry_policy_now: HarnessTransportRetryPolicy = HarnessTr
 }
 
 // THE GAP BEFORE THE NEXT RE-DELIVERY, before its offset: first_delay doubled once per re-delivery
-// already made, never past max_delay. The count moves the instant; it never ends the request.
+// already made, never past max_delay. The count moves the instant; it never ends the request. The work
+// is bounded by the doublings that fit under the cap (about log2(max_delay / first_delay)), NOT by the
+// request's age: the walk stops the moment the gap reaches the cap, because every later gap is the cap,
+// and a gap that cannot grow (first_delay of zero or less) stops at once for the same reason. A request
+// ten days or a hundred days old costs the same handful of steps per belt sweep.
 fn transport_retry_delay_seconds(policy: HarnessTransportRetryPolicy, re_deliveries: Int) -> Int {
-  if re_deliveries <= 0 {
-    second_count(s: policy.first_delay) as Int
+  transport_retry_gap_after(
+    gap: second_count(s: policy.first_delay) as Int,
+    cap: second_count(s: policy.max_delay) as Int,
+    doublings_left: re_deliveries,
+  )
+}
+
+// One forward walk: double the gap while doublings remain and it is still below the cap.
+fn transport_retry_gap_after(gap: Int, cap: Int, doublings_left: Int) -> Int {
+  if doublings_left <= 0 {
+    gap
+  } else if gap <= 0 {
+    gap
+  } else if gap >= cap {
+    cap
   } else {
-    let doubled = 2 * transport_retry_delay_seconds(policy: policy, re_deliveries: re_deliveries - 1)
-    let cap = second_count(s: policy.max_delay) as Int
-    if doubled > cap { cap } else { doubled }
+    let doubled = 2 * gap
+    transport_retry_gap_after(
+      gap: if doubled > cap { cap } else { doubled },
+      cap: cap,
+      doublings_left: doublings_left - 1,
+    )
   }
 }
 

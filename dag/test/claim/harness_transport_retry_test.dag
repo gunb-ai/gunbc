@@ -43,3 +43,14 @@ test fn a_different_policy_changes_the_schedule() -> Bool {
     && transport_retry_offset_seconds(policy: patient, session_key: "anything") == 0
     && transport_retry_next_delivery_at(policy: patient, last_delivery_at: 0, re_deliveries: 1, session_key: "anything") == 120
 }
+
+// THE GAP'S COST DOES NOT GROW WITH THE REQUEST'S AGE (review 91537): the walk stops at the cap, so a
+// count no recursion-per-re-delivery could ever finish (a billion) still names the cap at once, and a
+// gap that cannot grow (first_delay of zero) stops at once too. The previous recursion once per
+// re-delivery never returns on this input, so reintroducing it makes this claim not finish.
+test fn the_gap_walk_is_bounded_by_the_cap_not_by_the_requests_age() -> Bool {
+  let p = harness_transport_retry_policy_now
+  let flat = HarnessTransportRetryPolicy { first_delay: second(count: 0), max_delay: second(count: 300), offset_spread: 7 }
+  transport_retry_delay_seconds(policy: p, re_deliveries: 1000000000) == 300
+    && transport_retry_delay_seconds(policy: flat, re_deliveries: 1000000000) == 0
+}
