@@ -83,6 +83,7 @@ import v2.compiler.occurrence_resolution_census {
 import v2.compiler.name_resolve {
   resolution_context_namespace,
   resolution_context_with_blocked_members,
+  BlockedMember,
   closure_declarations_demand,
   Admission,
   ResolutionSubject,
@@ -653,6 +654,7 @@ type NativeTestContextFoldState {
   roots: FreeMonoid<NormalizedTree>
   index: SourceRootIndex
   file_refusals: FreeMonoid<NativeTestFileRefusal>
+  blocked: FreeMonoid<BlockedMember>
   accepted_file_advisories: FreeMonoid<NativeTestFileAdvisories>
   alloc: OccurrenceIdAllocator
   positions: NativeCensusPositionTable
@@ -698,7 +700,7 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: Sour
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match node_authored_span_optional(node: a.at, index: spans) {
+      match node_authored_span_optional(node: a.at.node, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
@@ -841,7 +843,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match native_census_owner_key(node: a.at) {
+      match native_census_owner_key(node: a.at.node) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: id } =>
           match native_census_owner_of(positions: positions, id: id) {
@@ -922,6 +924,7 @@ fn native_test_context_absorb(
           xs: state.file_refusals,
           item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
         ),
+        blocked: native_test_blocked_absorb(blocked: state.blocked, module: native_refused_file_module(content: read.source.carried), d: d),
         accepted_file_advisories: state.accepted_file_advisories,
         alloc: alloc,
         positions: state.positions
@@ -936,6 +939,7 @@ fn native_test_context_absorb(
               xs: state.file_refusals,
               item: native_test_file_refusal(path: read.compilation_unit, module: native_refused_file_module(content: read.source.carried), d: d, spans: spans, text: read.source.carried)
             ),
+            blocked: native_test_blocked_absorb(blocked: state.blocked, module: native_refused_file_module(content: read.source.carried), d: d),
             accepted_file_advisories: state.accepted_file_advisories,
             alloc: alloc,
             positions: state.positions
@@ -945,6 +949,7 @@ fn native_test_context_absorb(
             roots: list_snoc_item(xs: state.roots, item: root),
             index: source_root_index_insert(index: state.index, module: qn, root: read.source_root),
             file_refusals: state.file_refusals,
+            blocked: state.blocked,
             accepted_file_advisories: native_test_accepted_advisories_absorb(
               rows: state.accepted_file_advisories,
               path: read.compilation_unit,
@@ -1032,29 +1037,30 @@ fn native_test_context_state_empty() -> NativeTestContextFoldState {
     roots: Empty,
     index: source_root_index_empty(),
     file_refusals: Empty,
+    blocked: Empty,
     accepted_file_advisories: Empty,
     alloc: occurrence_id_allocator_initial(),
     positions: native_census_position_table_empty()
   }
 }
 
-// The members this ingest READ AND THEN REFUSED, as the typed names a requester can be pointed at.
-// `native_test_context_absorb` already records one row per read whose front end refused, with the module
-// that read declared (parsed once, from the header the lane's own scan reads); a row with no declared
-// module names nothing and is skipped. This is the same authority that refusal row is, re-read -- not a
-// second pass over the ingest -- so the blocked member's own row keeps the cause and this yields only the
-// identity `validated_module_root_for_name` needs to refuse an import with the right reason.
-fn native_test_context_blocked_members(rows: FreeMonoid<NativeTestFileRefusal>) -> FreeMonoid<QualifiedName> {
-  fold_list(
-    xs: rows,
-    empty: Empty,
-    cons: fn(acc, row) {
-      match row.module {
-        Present { value: qn } => list_snoc_item(xs: acc, item: qn)
-        Absent => acc
-      }
-    }
-  )
+// The members this ingest READ AND THEN REFUSED, each with the refusal the front end returned for it.
+// Minted at the same arm, from the same `d`, as that file's NativeTestFileRefusal: the refusal row is the
+// positioned report, this is the typed refusal resolution publishes as the member's ModuleUnavailable
+// (v2.compiler.name_resolve BlockedMember). A refused file whose header names no module mints NO
+// BlockedMember: nothing can import it by name, so it stays a file refusal only.
+// The diagnostics keep the front end's loci. Their occurrence ids do not collide across files, because
+// this fold threads ONE allocator and the refusing arm advances it too (`alloc`, above); the spans of a
+// refused file are not merged into `positions`, so such a locus is unpositioned there, never mispositioned.
+fn native_test_blocked_absorb(
+  blocked: FreeMonoid<BlockedMember>,
+  module: Optional<QualifiedName>,
+  d: NonEmptyDiagnostics
+) -> FreeMonoid<BlockedMember> {
+  match module {
+    Present { value: qn } => list_snoc_item(xs: blocked, item: BlockedMember { module: qn, refusal: d })
+    Absent => blocked
+  }
 }
 
 fn native_test_context_finish(
@@ -1069,7 +1075,7 @@ fn native_test_context_finish(
       index: state.index,
       active_roots: source_root_set_from_ingest(ingest: ingest),
       policy: v2.std.resolution_policy.default_name_resolution_policy(),
-      blocked_members: native_test_context_blocked_members(rows: state.file_refusals)
+      blocked_members: state.blocked
     ),
     file_refusals: state.file_refusals,
     accepted_file_advisories: state.accepted_file_advisories,
@@ -2795,12 +2801,12 @@ fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
 fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensusPositionTable) -> Optional<Diagnostic> {
   match d.at {
     NodeLocus { anchor: a } =>
-      match native_node_authored_locus(node: a.at, positions: positions) {
+      match native_node_authored_locus(node: a.at.node, positions: positions) {
         Absent => optional_absent()
         Present { value: locus } =>
           optional_present(value: Diagnostic {
             reason: d.reason,
-            at: native_locus_naming_atom(locus: locus, node: a.at),
+            at: native_locus_naming_atom(locus: locus, node: a.at.node),
             correction: d.correction
           })
       }
@@ -3236,7 +3242,7 @@ type NativeCensusUnbound {
 fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
   match at {
     NodeLocus { anchor: a } =>
-      match a.at.kind {
+      match a.at.node.kind {
         TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
         _ => optional_absent()
       }
@@ -6007,7 +6013,7 @@ fn census_obligation_row(module: String, stage: NativeCensusCauseStage, outcome:
 
 fn census_occurrence_from_locus(at: Locus) -> Optional<OccurrenceId> {
   match at {
-    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.occurrence_id)
+    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.node.occurrence_id)
     _ => optional_absent()
   }
 }

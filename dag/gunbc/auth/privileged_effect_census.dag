@@ -1268,7 +1268,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.fleet.approval_ntfy_retirement", decl_name: "approval_ntfy_retire_wet"),
-    effect: srv1_host_root_effect(subject: "retire the approval ntfy server on srv1: stop and disable its unit BY NAME, remove the unit file, its service account, its config directory and its state root, its hand-installed binary, and its tailscale front door on 8443, then read every one of them absent (the operator's GO of 2026-10-30, work item adhoc-7b7b9aef)" as NonEmptyStr, required: approval_ntfy_retire_root_scopes),
+    effect: srv1_host_root_effect(subject: "retire the approval ntfy server on srv1: stop and disable its unit BY NAME, remove the unit file, its service account, the group that survives the account, its config directory and its state root, its hand-installed binary, and its tailscale front door on 8443, then read every one of them absent (the operator's GO of 2026-10-30, work item adhoc-7b7b9aef)" as NonEmptyStr, required: approval_ntfy_retire_root_scopes),
     realized: RealizedUnderApprovedConvergence,
     divergence_reason: none,
   },
@@ -1411,7 +1411,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
+    site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_keyed"),
     effect: PrivilegedEffect {
       subject: "in the qualification_attempt fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token the qualification route's own sites then use (the JIT mint, the ref pin, the floor dispatch, the deregistration and the unpin, each rowed at its own site); the key is removed on every arm; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
       frequency: EveryProvision,

@@ -41,7 +41,7 @@ fn is_clearance(a: PrintableAssembly, id: String) -> Bool {
 test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
   match selected(root: ResidentialCassette) {
     Present { value: a } =>
-      length(list: a.required_keepouts) == length(list: rear_socket_bolt_clearances())
+      length(xs: a.required_keepouts) == length(xs: rear_socket_bolt_clearances())
         && all(rear_socket_bolt_clearances(), k => any(a.required_keepouts, r => r == k.id))
         && all(a.required_keepouts, k => is_clearance(a: a, id: k))
     Absent => false
@@ -51,9 +51,9 @@ test fn w_residential_cassette_keeps_its_socket_keepouts() -> Bool {
 fn a16_selects(root: PrintedAssemblyRoot, printed: String, with_fan: Bool) -> Bool {
   match selected(root: root) {
     Present { value: a } =>
-      length(list: a.parts) == (if with_fan { 4 } else { 3 })
+      length(xs: a.parts) == (if with_fan { 4 } else { 3 })
         && all(concat([printed, "CARD", "POWER-KEEPOUT"], if with_fan { ["FAN"] } else { [] }), i => any(ids(a: a), x => x == i))
-        && length(list: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
+        && length(xs: a.required_keepouts) == 1 && any(a.required_keepouts, k => k == "POWER-KEEPOUT")
         && is_clearance(a: a, id: "POWER-KEEPOUT")
         && !any(a.assembly_members, m => m == "POWER-KEEPOUT")
         && a.package == printed_assembly_root_wire(root: root)

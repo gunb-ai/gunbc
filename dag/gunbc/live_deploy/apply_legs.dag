@@ -87,6 +87,7 @@ import std.measure { Second }
 import gunbc.live_deploy.member_identity { plan_reloads_manager, plan_restarts_process }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission, LiveDeployServeUnitEmitted, LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitGrammarRefused,
   approval_broker_slice_unit_file, live_deploy_approval_broker_unit_file_on,
   attempt_worker_slice_unit_file, AttemptWorkerSliceUnitFileReady, AttemptWorkerSliceUnitFileRefused,
   attempt_unit_spool_answer_mode, publication_spool_request_mode,
@@ -99,6 +100,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
+import gunbc.live_deploy.intent { DeploymentIntent }
 import gunbc.roadmap.attempt_system_unit_launch {
   attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus,
   attempt_system_unit_launch_argv_refused_detail,
@@ -195,7 +197,13 @@ type DeployApplyLeg
 // retired after them, so the two halves are separate legs of one effect.
 type HelperSnapshotAction
   = HelperSnapshotInstall
+  // THE 127-FIVE-HOURS ARM (prod gap 1, S1). The lab's hand deploys enabled the attempt-unit drain
+  // while nothing had installed the revision the drain unit's ExecStart names -- workers failed with
+  // 127 for hours because the question "does /opt/gunbc/attempt-system-unit-helpers/<instance>/<rev>/
+  // exist, with its members" was asked by NO link of the chain. The drain plan now asks it, at apply
+  // time, BEFORE the enable/restart legs, and refuses by path.
   | HelperSnapshotRetireSuperseded
+  | HelperSnapshotVerify
 
 type DeployApplyPlan
   = ApplyPlanReady { legs: List<DeployApplyLeg> }
@@ -215,6 +223,7 @@ fn deploy_apply_leg_step(leg: DeployApplyLeg) -> String {
     ApplyLegRootHelperSnapshot { locus: l, spine: _, revision: _, action: a } => match a {
       HelperSnapshotInstall => join([l.step_stem as String, "-helper-snapshot"], "")
       HelperSnapshotRetireSuperseded => join([l.step_stem as String, "-helper-snapshot-retire"], "")
+      HelperSnapshotVerify => join([l.step_stem as String, "-helper-snapshot-verify"], "")
     }
     ApplyLegBrokerTree { revision: _ } => "approval-broker-tree"
     ApplyLegRetract { step: st, leg: _ } => st
@@ -743,12 +752,47 @@ fn deploy_apply_attempt_launcher_plan(spec: DeploymentSpec, revision: ReleaseRev
 // THE DRAIN: a system oneshot service and the path unit that starts it when the request directory is
 // non-empty, then the retire of the superseded snapshots. The retire is the LAST leg: the units that name
 // the new snapshot are installed and the path unit restarted before the old release is removed.
+// THE FIRST CONSUMER OF gunbc.live_deploy.intent DeploymentIntent: the attempt-unit drain's
+// helper closure. The intent says WHICH instance's revision the act owes; this is the plan's ONE
+// resolution of that instance — it refuses no roster row, and for a resolved instance it carries
+// both the verify leg and the instance whose locus the retire leg will name. The verify leg asks,
+// at apply time and BEFORE any enable, that the snapshot the drain unit names exists with its
+// declared members ({gunbc, dag, src/v2} -- the same three attempt_system_unit_launch copies) and
+// that the locus tree and its ancestors are root-owned with no untrusted entry (the same readback
+// the install arm runs, so verify and install cannot disagree about what "installed" means). This
+// turns the lab's 127-falling-five-hours drain -- a drain unit enabled while nothing had installed
+// its snapshot -- into one refused apply step that names the missing path.
+
+type AttemptHelperClosure {
+  instance: HostDashboardInstance,
+  verify: DeployApplyLeg,
+}
+
+fn attempt_helper_snapshot_closure(intent: DeploymentIntent) -> Optional<AttemptHelperClosure> {
+  match dashboard_instance_for_id(instance_id: intent.instance_id) {
+    DashboardInstanceForId { instance: instance } => Present {
+      value: AttemptHelperClosure {
+        instance: instance,
+        verify: ApplyLegRootHelperSnapshot {
+          locus: attempt_system_unit_launcher_locus(instance: instance),
+          spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
+          revision: intent.revision,
+          action: HelperSnapshotVerify,
+        },
+      },
+    }
+    DashboardInstanceIdUnknown { instance_id: _ } => Absent
+  }
+}
+
 fn deploy_apply_attempt_drain_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
-  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
-    DashboardInstanceIdUnknown { instance_id: id } =>
-      ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit drain has no HostDashboardInstance for instance ", id], "") }
-    DashboardInstanceForId { instance: instance } =>
-      match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: instance, revision: revision) {
+  match attempt_helper_snapshot_closure(
+    intent: DeploymentIntent { instance_id: spec.instance_id as String, revision: revision },
+  ) {
+    Absent =>
+      ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit drain has no HostDashboardInstance for instance ", spec.instance_id as String, " -- no roster row, so no locus to verify; enabling a drain unit whose snapshot cannot be witnessed is the 127-after-enable this plan exists to refuse"], "") }
+    Present { value: closure } =>
+      match live_deploy_attempt_unit_drain_service_unit_file(spec: spec, instance: closure.instance, revision: revision) {
         AttemptUnitDrainServiceRefused { cause: c } =>
           ApplyPlanRefused { step: "attempt-unit-drain", reason: join(["live-deploy apply refused: the attempt-unit launch argument was refused, so it will not pin a false argv: ", attempt_system_unit_launch_argv_refused_detail(cause: c)], "") }
         AttemptUnitDrainServiceReady { file: service } =>
@@ -756,10 +800,11 @@ fn deploy_apply_attempt_drain_plan(spec: DeploymentSpec, revision: ReleaseRevisi
             apply_staged_leg(step: "attempt-unit-drain-service-unit", dest: deployment_attempt_unit_drain_service_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: service))),
             apply_staged_leg(step: "attempt-unit-drain-path-unit", dest: deployment_attempt_unit_drain_path_unit_path(names: spec.names) as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: live_deploy_attempt_unit_drain_path_unit_file(spec: spec)))),
             apply_root_leg(step: "attempt-unit-drain-reload", argv: systemctl_daemon_reload_argv()),
+            closure.verify,
           ], apply_enable_restart_legs(step: "attempt-unit-drain", unit: deployment_attempt_unit_drain_path_unit_name(names: spec.names))), [
             ApplyLegRootHelperSnapshot {
-              locus: attempt_system_unit_launcher_locus(instance: instance),
-              spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: instance).base],
+              locus: attempt_system_unit_launcher_locus(instance: closure.instance),
+              spine: [attempt_system_unit_launcher_helpers_root, attempt_system_unit_launcher_locus(instance: closure.instance).base],
               revision: revision,
               action: HelperSnapshotRetireSuperseded,
             },
@@ -935,6 +980,8 @@ fn deploy_apply_unit_plan(spec: DeploymentSpec, plan: ReleaseEffectPlan, oidc_no
   match live_deploy_serve_unit_emission(spec: spec, revision: revision, now_epoch: oidc_now) {
     LiveDeployServeUnitOidcReadbackRefused { cause: c } =>
       ApplyPlanRefused { step: "serve-unit", reason: join(["live-deploy apply refused: the serve unit's OIDC readback was refused (", c as String, "), so no unit, reload or restart is applied (DESIGN 5: refuse, never widen)"], "") }
+    LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+      ApplyPlanRefused { step: "serve-unit", reason: join(["live-deploy apply refused: the admitted serve binary ", bp as String, " cannot answer the seed CLI grammar the unit spells (", r as String, "); name the source at admission (gunbc.live_deploy.serve_binary.admit_fixed_serve_path) so the emitter knows what it is standing up (DESIGN 5: refuse, never widen)"], "") }
     LiveDeployServeUnitEmitted { file: f } =>
       deploy_apply_chain(
         first: if !plan_writes_unit(plan: plan) { ApplyPlanReady { legs: [] } } else {

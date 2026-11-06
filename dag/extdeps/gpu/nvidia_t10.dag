@@ -9,7 +9,8 @@ import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.pci.identity { PciDeviceId }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
-import extdeps.gpu.passive_card_row { CardRow, NeedsReading }
+import extdeps.gpu.passive_card_row { CardRow }
+import extdeps.cited_field { NeedsReading }
 import extdeps.uri { Uri, Https }
 import extdeps.nvidia.linux_driver_supported_chips { NvidiaSupportedChipRow, nvidia_linux_driver_580_95_05_supported_chips, nvidia_supported_chip_rows_for_device }
 

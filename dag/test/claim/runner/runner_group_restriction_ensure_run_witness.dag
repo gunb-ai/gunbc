@@ -1,0 +1,62 @@
+module test.claim.runner.runner_group_restriction_ensure_run_witness
+
+// THE RUNNER-GROUP APPROVAL'S TWO WAIT FACTS, PINNED. Added on the review of gunbc#15901 (review
+// 91180), which found this module holding a second local implementation of the approval wait: the
+// operator's ruling of 2026-11-05 ("the approval window must not lapse in 30 minutes") lives in
+// gunbc.auth.approval_gate approval_request_window, and a runner-group request that expired on its own
+// poll arithmetic would lapse the way the retirement request did on run 41972155901, with nobody able
+// to reach the phone in time. The filing now reads the row; the per-dispatch wait stays local, because
+// four groups waited for one after another in one step cannot fit one job — and that constraint is a
+// CHECKED fact here rather than a paragraph, so raising the wait without restructuring goes red.
+//
+// Discriminating inputs: drop approval_request_window from microvm_runner_group_approval_request_window
+// and the first claim goes red on both its halves; raise the wait past the row, or change it so it is no
+// longer ticks x cadence, and the first claim goes red; raise the wait toward four hours (970-minute
+// step) and the second claim goes red on the bound it violates.
+
+import std.types { Bool }
+import std.measure { second_count, minute_count }
+import std.integer { nat_to_int }
+import gunbc.auth.approval_gate { approval_request_window }
+import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
+import gunbc.runner.runner_group_restriction_ensure_run {
+  microvm_runner_group_approval_request_window, microvm_runner_group_poll_wait,
+  microvm_runner_group_step_timeout_minutes, microvm_runner_group_poll_tick_budget,
+  microvm_runner_group_poll_cadence,
+}
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_fleet_job_backstop_timeout_minutes }
+import extdeps.github.actions { max_job_timeout_minutes }
+
+// The request's decidability is the model's row; the wait a dispatch sits through is a separate,
+// shorter, step-budget fact. Both halves matter: making the wait the row would put a 970-minute step in
+// one job (the second claim), and keeping the OLD filing would let a request die at 15 minutes while a
+// human was still finding their phone (the first half).
+// WHY NO STAMPED INSTANT IS ASKED FOR. The expiry the filing carries is produced by
+// approval_expires_at, which folds through Clock.TimestampAdd -- an operation with no arm on the
+// hermetic route, so a claim reaching it comes back UNOBSERVED instead of red, and an unobserved claim
+// proves nothing. DESIGN 3: discriminate at ONE interface and supply the rest as values. What a
+// divergence would actually look like is this module holding its own window instead of the row's, and
+// that is exactly what the seconds comparison below refuses.
+test fn the_filed_runner_group_request_is_decidable_for_the_models_row() -> Bool {
+  let row_seconds = nat_to_int(n: second_count(s: approval_request_window))
+  let request_seconds = nat_to_int(n: second_count(s: microvm_runner_group_approval_request_window()))
+  let wait_seconds = nat_to_int(n: second_count(s: microvm_runner_group_poll_wait()))
+  let cadence_seconds = nat_to_int(n: second_count(s: microvm_runner_group_poll_cadence))
+  // One value, from the row: a request filed by this module is decidable as long as any approval is.
+  request_seconds == row_seconds
+    && request_seconds > 0
+    && wait_seconds > 0
+    && wait_seconds < row_seconds
+    && wait_seconds == microvm_runner_group_poll_tick_budget * cadence_seconds
+}
+
+// A step that cannot finish inside its own job never reports a verdict, which is the class of failure
+// that killed the retirement's gate step at the runner level. Both bounds are read from the rows that
+// own them, never copied as numbers.
+test fn the_runner_group_step_timeout_stays_inside_both_bounds() -> Bool {
+  let step_minutes = nat_to_int(n: minute_count(m: microvm_runner_group_step_timeout_minutes()))
+  step_minutes > 0
+    && step_minutes <= max_job_timeout_minutes
+    && step_minutes <= gunbc_ci_fleet_job_backstop_timeout_minutes()
+    && count(restricted_runner_groups()) > 0
+}

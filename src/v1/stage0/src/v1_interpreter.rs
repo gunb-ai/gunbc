@@ -1350,6 +1350,32 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
     }
 }
 
+// A PLANNED `==` IS ONE CALL of the declared function the checker named for it (the ExprBinOp's
+// `derived`): the operand type's synthesized derived equality, or the routed function itself
+// (v1.compiler.infer equality_derived_target). Every per-member decision lives in that declaration's
+// ordinary body, which this interpreter runs like any other function.
+fn derived_equality_call(
+    ctx: &InterpContext,
+    function: &crate::std_decl_ref::DeclarationRef,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    let qualified = format!("{}.{}", function.module_path, function.decl_name);
+    let fn_node = ctx
+        .lookup_fn(&qualified)
+        .cloned()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' is not declared in this frame"),
+        })?;
+    let env = Env::empty();
+    match call_function(ctx, &fn_node, &[(None, a.clone()), (None, b.clone())], &env)? {
+        Value::Bool(v) => Ok(v),
+        other => Err(InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' returned a non-Bool ({other:?})"),
+        }),
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         value_depth_guarded(|| {
@@ -8698,7 +8724,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         // `match a { False => False  True => b }`, so the right operand is demanded only under one
         // left value, and the interpreter was the arm disagreeing with the corpus's own logic
         // authority.
-        ExprData::ExprBinOp { op, .. } => {
+        ExprData::ExprBinOp { op, derived, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             match &*crate::std_operator_realization::operand_demand(op.clone()) {
                 crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
@@ -8716,7 +8742,13 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-                    eval_binop(&op, left, right, ctx)
+                    match (op, derived.as_deref()) {
+                        (BinOp::Eq | BinOp::Ne, Some(function)) => {
+                            let equal = derived_equality_call(ctx, function, &left, &right)?;
+                            Ok(Value::Bool(if matches!(op, BinOp::Eq) { equal } else { !equal }))
+                        }
+                        _ => eval_binop(&op, left, right, ctx),
+                    }
                 }
             }
         }
@@ -17111,30 +17143,6 @@ fn resolved_call_edge_census_value(
     }
 }
 
-/// `gunbc.required_lane_resolution_census` `ModuleIdentityPopulation`, lifted from the host's
-/// carrier. Two arms and nothing else: an observed identity list, or the typed cause the
-/// population could not be established -- never an empty list standing for a refusal.
-fn module_identity_population_value(
-    population: crate::cli_run::ModuleIdentityPopulation,
-    ctx: &InterpContext,
-) -> Value {
-    match population {
-        crate::cli_run::ModuleIdentityPopulation::Refused { cause } => Value::Variant {
-            type_name: ctx.sym("ModuleIdentityPopulation"),
-            variant_name: ctx.sym("ModuleIdentityPopulationRefused"),
-            fields: Rc::new(sorted_fields(vec![(ctx.sym("cause"), str_value(cause))])),
-        },
-        crate::cli_run::ModuleIdentityPopulation::Observed { modules } => Value::Variant {
-            type_name: ctx.sym("ModuleIdentityPopulation"),
-            variant_name: ctx.sym("ModuleIdentityPopulationObserved"),
-            fields: Rc::new(sorted_fields(vec![(
-                ctx.sym("modules"),
-                list_value(modules.into_iter().map(str_value).collect::<Vec<_>>()),
-            )])),
-        },
-    }
-}
-
 fn evaluation_store_address_production_coverage_value(
     coverage: crate::cli_run::EvaluationStoreAddressProductionCoverage,
     ctx: &InterpContext,
@@ -25197,31 +25205,6 @@ macro_rules! v1_builtin_arms {
                     ))),
                     Err(msg) => Err(InterpError::TypeError { msg }),
                 }
-            },
-
-            arm "free_call.source_root_ingest_module_identities" { "source_root_ingest_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::source_root_ingest_module_identities(&source_roots),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.required_floor_nominal_subject_module_identities" { "required_floor_nominal_subject_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::required_floor_nominal_subject_module_identities(&source_roots),
-                    $ctx,
-                )))
-            },
-
-            arm "free_call.entry_closure_module_identities" { "entry_closure_module_identities" } => {
-                let source_roots = expect_str_list($positional.first().copied(), $name)?;
-                let entry_path = expect_str($positional.get(1).copied(), $name)?;
-                Ok(Some(module_identity_population_value(
-                    crate::cli_run::entry_closure_module_identities(&source_roots, &entry_path),
-                    $ctx,
-                )))
             },
 
             arm "free_call.compile_dag_call_form_leaf_guard" { "compile_dag_call_form_leaf_guard" } => {

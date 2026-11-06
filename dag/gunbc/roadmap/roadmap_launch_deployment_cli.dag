@@ -73,6 +73,7 @@ import gunbc.live_deploy.emit {
   live_deploy_serve_unit_emission,
   LiveDeployServeUnitEmitted,
   LiveDeployServeUnitOidcReadbackRefused,
+  LiveDeployServeUnitGrammarRefused,
   live_deploy_belt_service_unit_file,
   live_deploy_belt_exit_path_unit_file,
   live_deploy_belt_answer_path_unit_file,
@@ -409,6 +410,13 @@ fn unit_standing_fact(spec: DeploymentSpec, revision: String) -> LaunchUnitStand
           property: "oidc-readback",
           expected: "LiveDeployServeUnitEmitted",
           observed: cause as String,
+        }
+      LiveDeployServeUnitGrammarRefused { binary_path: bp, reason: r } =>
+        DashboardServiceRefused {
+          unit: spec.names.unit_name as String,
+          property: "serve-binary-grammar",
+          expected: "LiveDeployServeUnitEmitted",
+          observed: join([bp as String, ": ", r as String], ""),
         }
     },
     exit_path: observe_belt_event_path_standing(
