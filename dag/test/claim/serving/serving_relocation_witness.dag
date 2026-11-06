@@ -23,7 +23,7 @@ import gunbc.serving.serving_relocation {
   Move, Stay, DeferredDemandNotReady, AwaitingPerson, AwaitingTool, Evacuate, ReconciliationRequired,
   Prepared, Interrupted, Committed, SentOnce, DispatchAfterCommitRefused,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
-  HandoffRecord, HandoffPhase, Dispatched, ConversationId, ReconstructFromCompleteRequest,
+  HandoffRecord, HandoffPhase, ReconstructionEvidence, RestoreCompatibleSavedState, Dispatched, ConversationId, ReconstructFromCompleteRequest,
   IntentPayload, NoIntent, NotEstablished,
   rloc_subject, rloc_unread_assessment, rloc_decision_region, id_subject, id_term, id_var, id_constraints, id_parameter,
 }
@@ -153,22 +153,22 @@ test fn drain_right_after_a_move_evacuates() -> Bool {
 
 // 7. A retry, tool return, or controller crash mid-handoff -> the recorded attempt is RECOVERED, never
 //    blindly re-sent elsewhere; a Prepared handoff with no recorded attempt sends exactly once; a
-//    committed handoff is never dispatched again. MUTATION: drop the phase/dispatch_count guard (always
-//    SentOnce) -> the interrupted retry and the post-commit dispatch are counted as new sends -> red.
-fn w_handoff(phase: HandoffPhase, dispatch_count: Int) -> HandoffRecord {
+//    committed handoff is never dispatched again. MUTATION: drop the phase guard (always SentOnce) ->
+//    the interrupted retry and the post-commit dispatch are counted as new sends -> red.
+fn w_handoff(phase: HandoffPhase) -> HandoffRecord {
   HandoffRecord {
     conversation: "conv-1" as ConversationId, revision: 3,
     source_seat: SeatRef { partition: "p" as PartitionId, reservation: "r-a" as ReservationRef },
     destination_seat: SeatRef { partition: "p" as PartitionId, reservation: "r-b" as ReservationRef },
-    phase: phase, method: ReconstructFromCompleteRequest, dispatch_count: dispatch_count,
+    phase: phase, method: ReconstructFromCompleteRequest,
   }
 }
 
 test fn a_retry_or_crash_mid_handoff_recovers_the_recorded_attempt() -> Bool {
-  let retried = match attempt_dispatch(record: w_handoff(phase: Dispatched, dispatch_count: 1)) { RecoveredRecordedAttempt => true  _ => false }
-  let interrupted = match attempt_dispatch(record: w_handoff(phase: Interrupted, dispatch_count: 1)) { RecoveredRecordedAttempt => true  _ => false }
-  let first = match attempt_dispatch(record: w_handoff(phase: Prepared, dispatch_count: 0)) { SentOnce { dispatch_count: n } => n == 1  _ => false }
-  let after_commit = match attempt_dispatch(record: w_handoff(phase: Committed, dispatch_count: 1)) { DispatchAfterCommitRefused => true  _ => false }
+  let retried = match attempt_dispatch(record: w_handoff(phase: Dispatched)) { RecoveredRecordedAttempt => true  _ => false }
+  let interrupted = match attempt_dispatch(record: w_handoff(phase: Interrupted)) { RecoveredRecordedAttempt => true  _ => false }
+  let first = match attempt_dispatch(record: w_handoff(phase: Prepared)) { SentOnce => true  _ => false }
+  let after_commit = match attempt_dispatch(record: w_handoff(phase: Committed)) { DispatchAfterCommitRefused => true  _ => false }
   retried && interrupted && first && after_commit
 }
 
@@ -198,6 +198,16 @@ test fn a_source_over_its_retain_promise_is_an_obligation_not_free() -> Bool {
   }
 }
 
+// A request that carries everything needed to continue, on a destination meeting the model and quality
+// contract (fixture, supplied at this boundary).
+fn complete_evidence() -> ReconstructionEvidence {
+  ReconstructionEvidence {
+    carries_history: true, carries_tool_definitions: true, carries_tool_results: true,
+    carries_reasoning_and_template_settings: true, carries_referenced_inputs: true,
+    destination_meets_model_contract: true, destination_meets_quality_contract: true,
+  }
+}
+
 // The plan's first ResourceBudgetPolicy trial: one bounded reconstruction plus one handoff's overlap.
 fn trial_allowance() -> TransitionAllowance { TransitionAllowance { reconstructions: 1, overlapping_handoffs: 1 } }
 
@@ -214,6 +224,7 @@ test fn render_move_intent_emits_the_router_payload_from_a_real_decision() -> Bo
     authorization: "trial-allowance-1" as NonEmptyStr,
     allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest,
+    evidence: complete_evidence(),
     field: [stay_candidate(net: -50), move],
     assessment: fixture_assessment(),
   ) {
@@ -242,6 +253,7 @@ test fn render_move_intent_emits_no_intent_when_the_model_stays() -> Bool {
     authorization: "trial-allowance-1" as NonEmptyStr,
     allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest,
+    evidence: complete_evidence(),
     field: [stay_candidate(net: -5), move],
     assessment: fixture_assessment(),
   ) {
@@ -267,8 +279,40 @@ test fn the_unread_production_assessment_establishes_no_move() -> Bool {
     authorization: "trial-allowance-1" as NonEmptyStr,
     allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest,
+    evidence: complete_evidence(),
     field: [stay_candidate(net: -50), move],
     assessment: rloc_unread_assessment(),
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { intent: _, payload: _ } => false
+  }
+}
+
+// 13. THE INTENT CARRIES ONLY AN ADMITTED METHOD. Under a decision that DOES move (fixture evidence, a
+//     dominating destination), a restore (no admitted case) renders no intent, and neither does a
+//     reconstruct whose request is incomplete (tool results missing). MUTATION: copy the caller's
+//     method into the intent without admit_state_method -> a "restore" intent is emitted -> red.
+test fn an_unadmitted_state_establishment_method_renders_no_intent() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "free-engine" as NonEmptyStr, net: 90, service_class: 0)
+  let incomplete = ReconstructionEvidence {
+    carries_history: true, carries_tool_definitions: true, carries_tool_results: false,
+    carries_reasoning_and_template_settings: true, carries_referenced_inputs: true,
+    destination_meets_model_contract: true, destination_meets_quality_contract: true,
+  }
+  let restore = match render_move_intent(
+    conversation: "conv-13" as ConversationId, from_launch: "srv3" as NonEmptyStr, current_revision: 1,
+    authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
+    method: RestoreCompatibleSavedState, evidence: complete_evidence(),
+    field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
+  ) {
+    NoIntent { reason: _ } => true
+    IntentPayload { intent: _, payload: _ } => false
+  }
+  restore && match render_move_intent(
+    conversation: "conv-13" as ConversationId, from_launch: "srv3" as NonEmptyStr, current_revision: 1,
+    authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
+    method: ReconstructFromCompleteRequest, evidence: incomplete,
+    field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
   ) {
     NoIntent { reason: _ } => true
     IntentPayload { intent: _, payload: _ } => false

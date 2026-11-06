@@ -336,6 +336,28 @@ fn render_move_intent(
   authorization: NonEmptyStr,
   allowance: TransitionAllowance,
   method: StateEstablishmentMethod,
+  evidence: ReconstructionEvidence,
+  field: List<ParetoEntry>,
+  assessment: DecisionAssessment,
+) -> RenderedIntent {
+  // FAIL CLOSED ON THE METHOD: the intent carries only a method admit_state_method admitted on the
+  // evidence supplied. A restore (no admitted case) or an incomplete request renders NO intent.
+  match admit_state_method(method: method, evidence: evidence) {
+    MethodNotAdmitted { reason: why } => NoIntent { reason: why }
+    MethodAdmitted { method: admitted } => render_admitted_move_intent(
+      conversation: conversation, from_launch: from_launch, current_revision: current_revision,
+      authorization: authorization, allowance: allowance, method: admitted, field: field, assessment: assessment,
+    )
+  }
+}
+
+fn render_admitted_move_intent(
+  conversation: ConversationId,
+  from_launch: NonEmptyStr,
+  current_revision: PlacementRevision,
+  authorization: NonEmptyStr,
+  allowance: TransitionAllowance,
+  method: StateEstablishmentMethod,
   field: List<ParetoEntry>,
   assessment: DecisionAssessment,
 ) -> RenderedIntent {
@@ -401,7 +423,6 @@ type HandoffRecord {
   destination_seat: SeatRef
   phase: HandoffPhase
   method: StateEstablishmentMethod
-  dispatch_count: Int
 }
 
 // The move is claimed on the durable spine so a retried command cannot move a session twice: a stale
@@ -444,12 +465,14 @@ fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, ho
 // Execute: send the next real request ONCE, and only from a Prepared handoff. A recorded attempt
 // (already dispatched, or interrupted mid-dispatch) is RECOVERED rather than blindly sent elsewhere; a
 // committed or retired handoff is never dispatched again; an unprepared or refused one never dispatches.
+// The phase alone says whether a dispatch is on record (Dispatched/Interrupted and after), so there is
+// no separate count that could disagree with it (correctness by construction, DESIGN 5).
 // There is no speculative warm-up.
-type DispatchOutcome = SentOnce { dispatch_count: Int } | RecoveredRecordedAttempt | DispatchNotPrepared | DispatchAfterCommitRefused
+type DispatchOutcome = SentOnce | RecoveredRecordedAttempt | DispatchNotPrepared | DispatchAfterCommitRefused
 
 fn attempt_dispatch(record: HandoffRecord) -> DispatchOutcome {
   match record.phase {
-    Prepared => if record.dispatch_count > 0 { RecoveredRecordedAttempt } else { SentOnce { dispatch_count: 1 } }
+    Prepared => SentOnce
     Dispatched => RecoveredRecordedAttempt
     Interrupted => RecoveredRecordedAttempt
     Selecting => DispatchNotPrepared
