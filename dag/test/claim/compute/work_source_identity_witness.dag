@@ -13,7 +13,7 @@ import product.fabric.work { SourceManifestRef }
 import extdeps.git.object_store { git_null_sha1_object_id }
 import gunbc.compute.work_request {
   WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal,
-  WorkToolchainRequirement, WorkToolchainIdentity, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
+  WorkToolchainRequirement, WorkToolchainIdentity, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
 }
 import gunbc.fabric.fabric_source_snapshot {
   SnapshotSourceFile, SnapshotIdentity, SnapshotIdentified, SnapshotIdentityRefused, snapshot_manifest_identity, source_manifest_ref,
@@ -85,6 +85,14 @@ test fn a_changed_declared_input_changes_the_identity() -> Bool {
     && manifest_of(files: clean_files()) != manifest_of(files: concat(clean_files(), [file(directory: ".", name: "rust-toolchain.toml", content: "x")]))
 }
 
+fn x86_triple() -> NonEmptyStr {
+  "x86_64-unknown-linux-gnu" as NonEmptyStr
+}
+
+fn arm_triple() -> NonEmptyStr {
+  "aarch64-unknown-linux-gnu" as NonEmptyStr
+}
+
 fn x86_host_observed(rustc: String) -> WorkToolchainIdentity {
   tc(rustc: rustc, triple: "x86_64-unknown-linux-gnu", cargo: "cargo 1.93.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").observed
 }
@@ -95,15 +103,36 @@ test fn an_observed_toolchain_mismatch_refuses() -> Bool {
   let observed = x86_host_observed(rustc: "rustc 1.93.0 (abc)")
   let wrong_release = x86_host_observed(rustc: "rustc 1.90.0 (abc)")
   let wrong_arch = tc_default(rustc: "rustc 1.93.0 (abc)").observed
-  match work_toolchain_requirement(toolchain_file: Present { value: file }) {
+  match work_toolchain_requirement(toolchain_file: Present { value: file }, target_triple: x86_triple()) {
     Absent => false
     Present { value: req } =>
       (match work_toolchain_admit(requirement: req, observed: observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
         && (match work_toolchain_admit(requirement: req, observed: wrong_release) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
         && (match work_toolchain_admit(requirement: req, observed: wrong_arch) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
         && (req.rustc_release_prefix as String) == "1.93.0"
-        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\nchannel = \"1.90.0\"\n" }) { Present { value: other } => match work_toolchain_admit(requirement: other, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true }  Absent => false })
-        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\ncomponents = []\n" }) { Present { value: _ } => false  Absent => true })
+        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\nchannel = \"1.90.0\"\n" }, target_triple: x86_triple()) { Present { value: other } => match work_toolchain_admit(requirement: other, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true }  Absent => false })
+        && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\ncomponents = []\n" }, target_triple: x86_triple()) { Present { value: _ } => false  Absent => true })
+  }
+}
+
+// (3b) The declared target is the REQUEST'S, not a constant: an aarch64-declared requirement admits an
+// aarch64 observation and refuses an x86_64 one; TargetIsExecutingHost takes the observed host's own
+// triple (so the same file admits on either architecture) while the release is still checked.
+test fn the_declared_target_is_the_requests_own() -> Bool {
+  let file = Present { value: "[toolchain]\nchannel = \"1.93.0\"\n" }
+  let arm_observed = tc_default(rustc: "rustc 1.93.0 (abc)").observed
+  let x86_observed = x86_host_observed(rustc: "rustc 1.93.0 (abc)")
+  let x86_old = x86_host_observed(rustc: "rustc 1.90.0 (abc)")
+  match work_toolchain_requirement(toolchain_file: file, target_triple: arm_triple()) {
+    Absent => false
+    Present { value: arm_req } =>
+      (match work_toolchain_admit(requirement: arm_req, observed: arm_observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
+        && (match work_toolchain_admit(requirement: arm_req, observed: x86_observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+        && (match work_toolchain_requirement(toolchain_file: file, target_triple: work_target_triple(target: TargetIsExecutingHost, observed: x86_observed)) {
+              Present { value: host_req } => (match work_toolchain_admit(requirement: host_req, observed: x86_observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
+                && (match work_toolchain_admit(requirement: host_req, observed: x86_old) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+              Absent => false })
+        && (work_target_triple(target: TargetDeclared { triple: arm_triple() }, observed: x86_observed) as String) == "aarch64-unknown-linux-gnu"
   }
 }
 
@@ -128,7 +157,7 @@ test fn binary_and_empty_files_are_digest_members_of_the_identity() -> Bool {
 }
 
 fn toolchain_file_names_requirement(t: String) -> Bool {
-  match work_toolchain_requirement(toolchain_file: Present { value: t }) { Present { value: _ } => true  Absent => false }
+  match work_toolchain_requirement(toolchain_file: Present { value: t }, target_triple: x86_triple()) { Present { value: _ } => true  Absent => false }
 }
 
 // (6) The toolchain-file channel reader (extdeps.rust.rustup): exact key, [toolchain] table, both quote
@@ -142,7 +171,7 @@ test fn the_toolchain_file_channel_is_read_by_exact_key_in_its_table() -> Bool {
     && toolchain_file_names_requirement("[toolchain] # pinned\nchannel = \"1.93.0\" # now\n") && toolchain_file_names_requirement("[ toolchain ]\nchannel = \"1.93.0\"\n")
     && toolchain_file_names_requirement("[toolchain]\nchannel = \"nightly#x\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"a\\\"b\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"\"\"x\"\"\"\n")
     && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"a\\\"b\"\n" }), pattern: "escape sequence")
-    && (match work_toolchain_requirement(toolchain_file: none) { Present { value: _ } => false  Absent => true })
+    && (match work_toolchain_requirement(toolchain_file: none, target_triple: x86_triple()) { Present { value: _ } => false  Absent => true })
     && toolchain_file_names_requirement("toolchain.channel = \"1.93.0\"\n")
     && !toolchain_file_names_requirement("[foo]\ntoolchain.channel = \"nightly\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"nightly\n")
     && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"nightly\n" }), pattern: "unterminated")

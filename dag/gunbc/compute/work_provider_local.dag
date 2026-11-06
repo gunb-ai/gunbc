@@ -134,9 +134,10 @@ import extdeps.realization.materialization_store_local {
 import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets
 }
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
+import extdeps.rust.target_triple { parse_rust_target_triple, render_rust_target_triple }
 import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
-  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
@@ -3057,8 +3058,8 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
 // claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
 // occurrence, never reads the store and is never committed, so it is served here rather than refused.
-fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op)
+fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
+  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op, target: target)
 }
 
 fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation) -> ProvideResult {
@@ -3068,17 +3069,17 @@ fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation
 
 // The subject is resolved FIRST because the declared release is read from the subject's own
 // rust-toolchain.toml; the observed toolchain is then admitted against that requirement.
-fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
+fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
   match compute_resolve_subject(instance: instance, commit: commit) {
     SubjectResolutionRefused { detail } => compute_refuse_unresolved(cause: SubjectUnresolved { detail: detail }, op: op)
     SubjectResolved { subject, toolchain_file } =>
-      match work_toolchain_requirement(toolchain_file: toolchain_file) {
-        Absent => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: work_toolchain_requirement_refusal(toolchain_file: toolchain_file) } }, subject: subject, op: op)
-        Present { value: requirement } =>
           match compute_observe_toolchain(instance: instance) {
             ToolchainObservationRefused { detail } =>
               compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: subject, op: op)
             ToolchainObserved { toolchain: observed } =>
+      match work_toolchain_requirement(toolchain_file: toolchain_file, target_triple: work_target_triple(target: target, observed: observed)) {
+        Absent => compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: work_toolchain_requirement_refusal(toolchain_file: toolchain_file) } }, subject: subject, op: op)
+        Present { value: requirement } =>
               match work_toolchain_admit(requirement: requirement, observed: observed) {
                 ToolchainMismatch { field, declared, observed: seen } =>
                   compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainMismatchRefused { field: toolchain_mismatch_field_wire(field: field), declared: declared as String, observed: seen as String } }, subject: subject, op: op)
@@ -3135,14 +3136,19 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
 //   entry     = the .dag entry (compile, claims); ignored for build
 //   functions = comma-joined claim functions (claims); ignored otherwise
 //   hermetic  = "true" | "false" (claims)
-fn compute_request_cli(repo_root: String, commit: String, operation: String, entry: String, functions: String, hermetic: String, receipt_path: String) -> ProcessExit {
+//   target    = "host" (the executing host's own triple) | a Rust target triple the work is declared for; no default,
+//               an unpublished spelling refuses (compute_parse_target)
+fn compute_request_cli(repo_root: String, commit: String, operation: String, entry: String, functions: String, hermetic: String, receipt_path: String, target: String) -> ProcessExit {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: r } => ExitFailure { code: 2, reason: join(["compute: no dashboard instance is rooted at ", r], "") }
     DashboardInstanceResolved { instance } =>
+      match compute_parse_target(target: target) {
+        Absent => ExitFailure { code: 2, reason: join(["compute: target must be host or a Rust target triple extdeps.rust.target_triple publishes; got ", target], "") }
+        Present { value: declared_target } =>
       match compute_parse_operation(operation: operation, entry: entry, functions: functions, hermetic: hermetic) {
         Absent => ExitFailure { code: 2, reason: join(["compute: operation must be build, compile or claims (compile and claims need entry; claims needs functions and hermetic=true|false); got ", operation], "") }
         Present { value: op } => {
-          let result = compute_provide(instance: instance, owner: DirectInvocation { why: "compute_request_cli: an operator or worker invoked the provider directly" }, commit: commit, op: op)
+          let result = compute_provide(instance: instance, owner: DirectInvocation { why: "compute_request_cli: an operator or worker invoked the provider directly" }, commit: commit, op: op, target: declared_target)
           let record = provide_result_host_record(r: result)
           let receipt = Filesystem.Write(path: receipt_path, content: join([provide_result_document(r: result), "\n"], ""))
           let record_note = compute_write_host_record_note(receipt_path: receipt_path, record: record)
@@ -3164,6 +3170,24 @@ fn compute_request_cli(repo_root: String, commit: String, operation: String, ent
           }
         }
       }
+  }
+  }
+}
+
+// THE REQUEST'S DECLARED TARGET FROM ITS CLI WORD: `host` names the executing host's own triple; anything else must be a
+// triple extdeps.rust.target_triple publishes (the one table of Rust's spellings), else no target and the CLI refuses.
+fn compute_parse_target(target: String) -> WorkTarget? {
+  if target == "host" {
+    Present { value: TargetIsExecutingHost }
+  } else {
+    match parse_rust_target_triple(spelling: target) {
+      Absent => none
+      Present { value: triple } =>
+        match render_rust_target_triple(triple: triple) {
+          Absent => none
+          Present { value: spelling } => Present { value: TargetDeclared { triple: spelling } }
+        }
+    }
   }
 }
 
