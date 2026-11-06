@@ -2440,6 +2440,9 @@ type BeltSpawnKey
 fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, probed_at: String, decision: ContinuationPlan) -> BeltSpawnKey {
   match decision {
     Resume { reason: _, attempt_key, ordinal: _, causes: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
+    // RESTORE rebuilds the SAME attempt in place, so it addresses the prior attempt's OWN key -- never a
+    // freshly minted one (that would orphan the live attempt's ledger history, the operator's D3 ruling).
+    Restore { reason: _, attempt_key, from_branch: _ } => BeltSpawnKeyOf { attempt_key: attempt_key }
     StartInitial { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     NextAttempt { reason: _, from_branch: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     Refuse { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
@@ -2602,6 +2605,7 @@ type BeltSpawnRoute
   = SpawnRouteWorker
   | SpawnRouteResume { attempt_key: String, ordinal: Int }
   | SpawnRouteNextAttempt { from_branch: String }
+  | SpawnRouteRestore { attempt_key: String, from_branch: String }
   | SpawnRouteNone { step: String, detail: String }
 
 fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLaunchRequest) -> BeltSpawnRoute {
@@ -2624,6 +2628,14 @@ fn belt_spawn_route_for_decision(decision: ContinuationPlan, request: AttemptLau
         }
         LaunchForClaim { node: _, claim: _ } => SpawnRouteNextAttempt { from_branch: from_branch }
       }
+    // RESTORE recovers a STILL-RESUMABLE attempt whose worktree was reaped while its lineage had NOT ended
+    // (operator ruling D3): the belt rebuilds the SAME attempt (same key, held below) from its live branch
+    // and reopens the claim naming it. Unlike NextAttempt it is NOT a fresh attempt against adverse evidence,
+    // so the autonomous wake MAY recover it -- losing a resumable worker's tree is a defect to repair, not
+    // work the operator withheld -- and so does the operator's CONTINUE. The dispatch re-adds the worktree
+    // from the branch and reopens the claim (worktree_claim_reopen_settled), exactly as the general restore does.
+    Restore { reason: _, attempt_key, from_branch } =>
+      SpawnRouteRestore { attempt_key: attempt_key, from_branch: from_branch }
     Refuse { reason } => SpawnRouteNone { step: "continuation", detail: reason }
     AlreadyRunning { reason, attempt_key: _ } => SpawnRouteNone { step: "continuation-already-running", detail: reason }
     AlreadyComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
@@ -2718,6 +2730,30 @@ fn belt_actuate_spawn_exec_modeled(
         request: request,
         run: DispatchWorkerContinuedFrom { branch: from_branch },
       )
+    // RESTORE the SAME attempt whose worktree was reaped (operator ruling D3). Guard the key the way a
+    // resume does: a restore rebuilds the prior attempt's OWN worktree and never another attempt's. Then
+    // re-add the worktree from the live branch through the same add the general restore uses (a worktree-add
+    // off the branch head via dispatch_worker_run_start_ref, which claims the worktree before adding); the
+    // claim is reopened to name the rebuilt tree on the add path (worktree_claim_reopen_settled on the same
+    // CAS slot), so the restored tree is never an unclaimed orphan.
+    SpawnRouteRestore { attempt_key, from_branch } =>
+      if attempt_key != addressing.attempt_key {
+        SpawnFailed {
+          node_id: node.node as String,
+          step: "restore-attempt",
+          detail: join(["the decision restores attempt ", attempt_key, " but the prepared launch addresses attempt ", addressing.attempt_key, "; a restore rebuilds the prior attempt's own worktree and never another"], ""),
+          provider: provider_wire_label,
+          launch: launch,
+        }
+      } else {
+        belt_actuate_spawn_with_origin(
+          workdir: workdir, admission_receipt: admission_receipt,
+          provider_wire_label: provider_wire_label, launch: launch, probed_at: probed_at,
+          prepared: prepared,
+          request: request,
+          run: DispatchWorkerContinuedFrom { branch: from_branch },
+        )
+      }
   }
 }
 
