@@ -929,7 +929,7 @@ fn serve_issue_detail_response_over(
             current_revision_hex: served_current_revision_hex(launch: launch)),
           events: envelopes,
           viewer: authenticated_viewer_label(evidence: request.security.authentication), recents: recents, command_context: context,
-          profiles: serve_profiles_for_instance(instance: instance),
+          profiles: serve_profiles_for_instance(instance: instance))
         let response = serve_page_response_with_status(page: page, status: 200)
         response
       }
