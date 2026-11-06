@@ -190,7 +190,7 @@ fn v2_native_cli_label() -> Label {
 }
 
 // THE ENTRY EACH OF THE TWO SELF-HOST INSTRUMENTS EMITS, AS THE INSTRUMENT'S OWN FACT. Every
-// reader of these entries -- the required-lane resolution census, and the seed's native lane runner
+// reader of these entries -- the seed's native lane runner
 // whose constants test.claim.compiler_gate_emit_build_lane_witness holds against these rows --
 // takes them from here, so a moved subject cannot leave a stale closure reported as covered.
 fn self_host_entry() -> String {
@@ -533,18 +533,6 @@ fn evaluation_store_address_exact_head_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "evaluation-store-address-exact-head" } }
 }
 
-// THE REQUIRED-LANE RESOLUTION CENSUS: for every module under the source roots, does at least
-// one required lane RESOLVE it -- hand its source to compile_to_resolved under the Strict gate?
-// The unreached population, by identity, is the printed product; the exit says whether it is
-// empty. This is DESIGN section 3's "a product-layer dependent can stop resolving, stay broken,
-// and let every required lane report SUCCESS" measured rather than warned about, after
-// gunbc.fleet.site_pxe_edge_converge did exactly that on 2026-09-20 (gunbc#11607). The lane roster it
-// classifies is read from gunbc.witness.compiler_gate_workflow, the authority that emits witnesses.yml.
-// `gunbc test //gunbc/instruments:required-lane-resolution-census`.
-fn required_lane_resolution_census_label() -> Label {
-  Label { package: instruments_package() target: TargetName { name: "required-lane-resolution-census" } }
-}
-
 // THE BARE-REFERENCE CHANNEL'S OUTCOME OVER THE FOUR HERMETIC ENTRIES at
 // `fixtures/bare_reference_channel`, one per condition, asserting per entry whether the bare half
 // RAN and which modules it PULLED. The fixture set landed in gunbc#11943 as a set a reader
@@ -652,9 +640,6 @@ fn evaluation_store_address_exact_head_target() -> BuildTarget {
   instrument_test_target(label: evaluation_store_address_exact_head_label())
 }
 
-fn required_lane_resolution_census_target() -> BuildTarget {
-  instrument_test_target(label: required_lane_resolution_census_label())
-}
 
 fn self_host_behavioral_equivalence_binding() -> TargetBinding {
   TargetBinding { target: self_host_behavioral_equivalence_label() producer: SelfHostBehavioralEquivalenceProducer {} }
@@ -1117,9 +1102,6 @@ fn typed_graph_exclusive_bytes_floor_subject_binding() -> TargetBinding {
   }
 }
 
-fn required_lane_resolution_census_binding() -> TargetBinding {
-  TargetBinding { target: required_lane_resolution_census_label() producer: RequiredLaneResolutionCensusProducer {} }
-}
 
 fn bare_reference_channel_outcome_binding() -> TargetBinding {
   TargetBinding { target: bare_reference_channel_outcome_label() producer: BareReferenceChannelOutcomeProducer {} }
@@ -1220,7 +1202,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     behavioral_receipt_census_binding(), behavioral_receipt_selftest_binding(),
     self_host_binding(), v2_native_cli_binding(), v2_native_frontier_binding(),
     evaluation_store_address_exact_head_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
-    required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
+    bare_reference_channel_outcome_binding(),
     self_host_behavioral_equivalence_binding(), self_host_frontier_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
