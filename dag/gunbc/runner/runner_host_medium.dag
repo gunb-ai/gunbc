@@ -502,7 +502,8 @@ fn runner_host_up_readback_of(capture: String, machine: NonEmptyStr, label: NonE
 // carried. Bound to the machine first (host_capture_bind: one begin, its matching end, never a search over the
 // stream), so the pin cannot be assembled from another run; the expected boot id is that envelope's own run identity,
 // the kernel boot id the markers carry. The pin is composed from the host-key-pub and host-key-fingerprint sections only when
-// every host-key section EXITED 0 -- a key the daemon was never started with is not a pin.
+// every host-key section EXITED 0 -- those sections show the key was generated and read back on this boot,
+// not that any daemon serves it (none is started here).
 // An open envelope observes nothing (the program's END is its own statement that it wrote everything), and a
 // section that printed none, or a malformed one, is not observed. The pin is built here from the
 // producers' own outputs through checked_host_key (the console grammar is not composed and re-parsed).

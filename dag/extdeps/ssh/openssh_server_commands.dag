@@ -19,16 +19,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// START THE DAEMON WITH ONE NAMED HOST KEY. -h: "Specifies a file from which a host key is read"; sshd
-// daemonizes unless -D is given, so the invoking program RETURNS and the daemon stays up. The caller owns
-// that the file exists and that the privilege-separation directory (/run/sshd) does.
-// PATH-resolved, for the reason at extdeps.exec.command program_spelling_is_an_observation_claim.
-fn sshd_program() -> ProgramIdentity = uncataloged_program(invocation: "sshd")
-
-fn sshd_with_host_key_command(host_key_file: NonEmptyStr) -> ArgvCommand {
-  argv_command(program: sshd_program(), arguments: ["-h", host_key_file as String])
-}
-
 fn sshd_test_config_argv() -> List<String> {
   ["sshd", "-t"]
 }
