@@ -555,14 +555,14 @@ test fn a_twin_deployment_on_one_host_collides_with_nothing() -> Bool {
     && count(deployment_fabric_storage_steps(holding: HoldsNoRoleSingleton, names: twin.names)) == 0
     && count(deployment_approval_broker_front_door_steps(holding: HoldsNoRoleSingleton)) == 0
     && count(deployment_tailnet_door_steps(names: twin.names)) == 0
-    && count(deployment_oidc_config_steps(instance: live_instance)) == 0
+    && count(deployment_oidc_config_steps(instance: live_instance)) == count(deployment_oidc_config_steps(instance: lab_instance))
     && count(deployment_oidc_config_steps(instance: lab_instance)) > 0
     && count(deployment_agent_door_steps(instance: live_instance, names: live.names)) == 0
     && count(deployment_agent_door_steps(instance: lab_instance, names: twin.names)) > 0
     && all(twin_paths, t => !any(live_paths, l => l == t))
 }
 
-data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file is the converse: tracker_web_oidc_serve_placement is ServeReady only for the lab instance assigned the realized TEST environment, so the twin carries that member and production none. The agent door is the same kind of member: it is decided by the deployment's write policy (deployment_admits_agent_peer, read through the instance's deployment), so the twin carries it and production does not. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
+data placement_scoped_members_note: String = "THE TWIN MIRRORS PRODUCTION ONE-FOR-ONE EXCEPT FOR THE PLACEMENT'S OWN MEMBERS. The fabric DB endpoint -- its serve unit and its tailscale route -- is a host singleton owned by the one instance that holds the fabric DB placement (gunbc.fabric.fabric_storage_placement fabric_storage_placed_on), so production carries exactly those members more than the twin, and the twin none. Production's tailnet door is the same: it exists because production's serve route targets a socket. The OIDC config file MOVED from converse to common member: since the 2026-11-04 Stage OAuth delivery (per-environment client rows; srv1 live bound as STAGE, the lab row TEST), tracker_web_oidc_serve_placement -- the single decider (gunbc.auth.tracker_web_oauth_client tracker_web_instance_login_rows) -- is ServeReady for BOTH instances, so each carries exactly one OIDC member and the claim pins the mirror plus the lab's non-degeneracy; no member difference is asserted there any more. The agent door is the same kind of member: it is decided by the deployment's write policy (deployment_admits_agent_peer, read through the instance's deployment), so the twin carries it and production does not. The relation stays between two live rosters: the difference is named by the function that decides it, not typed as a number."
 
 data non_degeneracy_without_transcription_note: String = "THE COUNTS ABOVE STOPPED BEING LITERALS (review, 2026-07-30 — the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464). Five was read off the live owned roster, so authoring a correct sixth member reds a claim that has nothing to say about members, and the reviewer's habit becomes editing the number until the day the number is wrong for a real reason. #7478 adds exactly such a member.\\n\\nDeleting the conjunct outright would have been the wrong fix, which is why this is a replacement rather than a removal: `all` over an empty list is vacuously true, so without a non-degeneracy guard a twin whose owned set collapsed to nothing would satisfy the disjointness claim perfectly. The literal was doing real work in a way its shape disguised.\\n\\nWhat replaces it says the same thing without reading the roster's size into the test: the production set is non-empty, and the twin mirrors it one-for-one. Both survive a member being added — the relation is between two live rosters rather than between one roster and a number a human typed — and the second is strictly stronger than the literal pair, since it would also catch a twin that gained or lost a member production did not."
 
@@ -1143,91 +1143,19 @@ test fn the_untouched_lab_twin_collides_with_nothing_under_the_law() -> Bool {
       a_owned: spec_owned_identities(spec: live), b_owned: spec_owned_identities(spec: twin)))
 }
 
-// THE TWIN PREMISE, MEASURED SURFACE BY SURFACE. The twin claim above fails today (a named main
-// gap since the per-release-binary slices); its chain has nineteen conjuncts, so "it is red" names
-// nothing. The conjuncts are therefore ALSO stated individually, one claim each, so the failing
-// surface is named by the claim that goes red and the fix is decided by the measurement rather than
-// by editing the premise. Shared derivation lives in the twin_probe_* helpers below.
-fn twin_probe_live() -> DeploymentSpec { deployment_spec_srv1() }
-fn twin_probe_twin() -> DeploymentSpec { srv1_twin_spec() }
-fn twin_probe_live_paths() -> List<String> { spec_owned_paths(spec: twin_probe_live()) }
-fn twin_probe_twin_paths() -> List<String> { spec_owned_paths(spec: twin_probe_twin()) }
-fn twin_probe_live_scoped() -> List<String> {
-  placement_scoped_paths(spec: twin_probe_live(), instance: srv1_live_dashboard_instance())
-}
-fn twin_probe_twin_scoped() -> List<String> {
-  placement_scoped_paths(spec: twin_probe_twin(), instance: srv1_lab_dashboard_instance())
-}
+// MEASURED, INSTRUMENT RETIRED (DESIGN section 2). The nineteen conjuncts of the twin claim were each
+// lifted into their own claim to find the false one; exactly one measured red -- the OIDC member,
+// legitimately changed by the 2026-11-04 Stage OAuth delivery -- and its permanent control stays
+// below; the rest duplicated the law and are gone.
 
-test fn twin_probe_host_identity_is_shared() -> Bool {
-  deployment_plan_host_identity(spec: twin_probe_live()) == deployment_plan_host_identity(spec: twin_probe_twin())
+// PERMANENT CONTROL for the conjunct that measured red (the twin's OIDC non-mirror): the 2026-11-04
+// Stage OAuth delivery made tracker_web_oidc_serve_placement ServeReady for BOTH srv1 instances, so
+// each carries exactly one OIDC config member. If a client row silently unbinds, the instance loses
+// its OIDC config at deploy time -- a real failure this claim reddens, not a transcription habit.
+test fn the_srv1_instances_carry_their_oidc_config_members() -> Bool {
+  count(deployment_oidc_config_steps(instance: srv1_live_dashboard_instance())) == 1
+    && count(deployment_oidc_config_steps(instance: srv1_lab_dashboard_instance())) == 1
 }
-test fn twin_probe_listen_ports_are_distinct() -> Bool {
-  !(deployment_plan_listen_port(spec: twin_probe_live()) == deployment_plan_listen_port(spec: twin_probe_twin()))
-}
-test fn twin_probe_unit_names_are_distinct() -> Bool {
-  !(twin_probe_live().service.unit_name == twin_probe_twin().service.unit_name)
-}
-test fn twin_probe_repo_roots_are_distinct() -> Bool {
-  !(twin_probe_live().service.repo_root == twin_probe_twin().service.repo_root)
-}
-test fn twin_probe_serve_binary_paths_are_distinct() -> Bool {
-  !(fixed_serve_binary_path(binary: twin_probe_live().service.serve_binary)
-    == fixed_serve_binary_path(binary: twin_probe_twin().service.serve_binary))
-}
-test fn twin_probe_live_owns_its_instance_root() -> Bool {
-  any(twin_probe_live_paths(), l => (l as String) == (srv1_live_dashboard_instance().root as String))
-}
-test fn twin_probe_live_does_not_own_the_shared_bin_dir() -> Bool {
-  !any(twin_probe_live_paths(), l => (l as String) == "/opt/gunbc/bin")
-}
-test fn twin_probe_twin_does_not_own_the_shared_bin_dir() -> Bool {
-  !any(twin_probe_twin_paths(), t => (t as String) == "/opt/gunbc/bin")
-}
-test fn twin_probe_owned_paths_are_disjoint() -> Bool {
-  all(twin_probe_twin_paths(), t => !any(twin_probe_live_paths(), l => l == t))
-}
-test fn twin_probe_live_scoped_paths_are_owned() -> Bool {
-  all(twin_probe_live_scoped(), h => any(twin_probe_live_paths(), l => l == h))
-}
-test fn twin_probe_twin_scoped_paths_are_owned() -> Bool {
-  all(twin_probe_twin_scoped(), h => any(twin_probe_twin_paths(), t => t == h))
-}
-test fn twin_probe_live_has_retracts_outside_the_scoped_set() -> Bool {
-  count(filter(deployment_owned_steps_retract_order(spec: twin_probe_live()),
-    l => !any(twin_probe_live_scoped(), h => h == (l.path as String)))) > 0
-}
-test fn twin_probe_twin_has_retracts_outside_the_scoped_set() -> Bool {
-  count(filter(deployment_owned_steps_retract_order(spec: twin_probe_twin()),
-    t => !any(twin_probe_twin_scoped(), h => h == (t.path as String)))) > 0
-}
-test fn twin_probe_live_installs_git() -> Bool {
-  any(twin_probe_live().steps, st => pipeline_step_text(step: st) == "apt-install git")
-}
-test fn twin_probe_twin_installs_git() -> Bool {
-  any(twin_probe_twin().steps, st => pipeline_step_text(step: st) == "apt-install git")
-}
-test fn twin_probe_live_has_the_scoped_dir_modes() -> Bool {
-  any(twin_probe_live().steps, st =>
-    string_contains(s: pipeline_step_text(step: st), pattern: "mkdir ")
-      && string_contains(s: pipeline_step_text(step: st), pattern: " mode=755"))
-    && any(twin_probe_live().steps, st =>
-      string_contains(s: pipeline_step_text(step: st), pattern: "mkdir ")
-        && string_contains(s: pipeline_step_text(step: st), pattern: " mode=750"))
-}
-test fn twin_probe_twin_has_the_scoped_dir_modes() -> Bool {
-  any(twin_probe_twin().steps, st =>
-    string_contains(s: pipeline_step_text(step: st), pattern: "mkdir ")
-      && string_contains(s: pipeline_step_text(step: st), pattern: " mode=755"))
-    && any(twin_probe_twin().steps, st =>
-      string_contains(s: pipeline_step_text(step: st), pattern: "mkdir ")
-        && string_contains(s: pipeline_step_text(step: st), pattern: " mode=750"))
-}
-test fn twin_probe_serves_the_belt_from_both_units() -> Bool {
-  any(twin_probe_live().steps, st => pipeline_step_text(step: st) == "apt-install git")
-    && any(twin_probe_twin().steps, st => pipeline_step_text(step: st) == "apt-install git")
-}
-
 // PER-CLAUSE WITNESSES FOR THE SAME-HOST COLLISION LAW. The law is a nine-way disjunction. Each
 // claim below starts from a twin mutated away from live on EVERY surface (the all-distinct control
 // says such a pair collides with nothing) and restores EXACTLY ONE surface to live's own value --
@@ -1256,7 +1184,7 @@ fn law_pair_live() -> DeploymentSpec { deployment_spec_srv1() }
 // happens to coincide.
 fn law_pair_witness_endpoint() -> TailscaleServeEndpoint {
   TailscaleServeEndpoint {
-    https_port: 14478 as Port,
+    https_port: 14478,
     mount: ServeSetPath { path: "/law-witness" as NonEmptyStr },
     backend: "law-witness" as NonEmptyStr,
   }
@@ -1273,7 +1201,7 @@ test fn the_listen_port_clause_alone_collides() -> Bool {
   let live = law_pair_live()
   let twin = spec_overriding_surfaces(base: law_pair_distinct_twin(),
     unit_name: "law-witness-gonit-unit" as NonEmptyStr,
-    listen_port: deployment_plan_listen_port(spec: live),
+    listen_port: live.service.listen.port,
     repo_root: "/law-witness/gonit/repo" as NonEmptyStr,
     serve_function: "law_witness_gonit_serve" as NonEmptyStr,
     tree_sync_unit_name: "law-witness-gonit-tree-sync" as NonEmptyStr,

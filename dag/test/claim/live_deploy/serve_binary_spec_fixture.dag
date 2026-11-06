@@ -41,7 +41,7 @@ fn spec_with_serve_binary(base: DeploymentSpec, binary: AdmittedFixedServeBinary
 fn spec_overriding_surfaces(
   base: DeploymentSpec,
   unit_name: NonEmptyStr,
-  listen_port: Int,
+  listen_port: Port,
   repo_root: NonEmptyStr,
   serve_function: NonEmptyStr,
   tree_sync_unit_name: NonEmptyStr,
@@ -74,7 +74,7 @@ fn spec_overriding_surfaces(
                       unit_name: unit_name, serve_binary: b, serve_entry: se, serve_function: serve_function,
                       provider_state_root: ps, instance_root: ir, repo_root: repo_root,
                       service_user: su, service_uid: uid,
-                      listen: HttpServerListenConfig { host: h, port: listen_port as Port },
+                      listen: HttpServerListenConfig { host: h, port: listen_port },
                       serve_cpu_limit: cpu, serve_wall_limit: wall,
                     }
                   }
