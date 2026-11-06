@@ -7,7 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_observa
 import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, DirectoryOwnerAllEveryoneTraverse, DeclaredDirectoryMode }
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
 import gunbc.fleet.fleet_posix_accounts { fleet_automation_user }
-import gunbc.host_state_root { HostStateTree, host_state_tree_path }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_tree_root }
 
 // The runtime writer, CI display and workflow uploader share one receipt path.
 data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
@@ -135,7 +135,9 @@ fn printer_state_directory(member: String, path: NonEmptyStr, mode: DeclaredDire
 
 // THE PARENT, OWNED BY NO ACCOUNT. printer-starts hosts a privileged install -d for every member below it,
 // so -- per gunbc.host_state_root host_state_tree_root's ruling for a directory that hosts privileged
-// installs -- it is root:root and DirectoryOwnerAllEveryoneTraverse (0755): root owns its CONTENTS (it runs
+// installs -- it reads its owner from host_state_tree_root.owner (DESIGN §3: the root identity lives in
+// exactly one place, the same fact /var/lib/gunbc's own target uses) and is DirectoryOwnerAllEveryoneTraverse
+// (0755): root owns its CONTENTS (it runs
 // the installs) and everyone may traverse it, but no group class grants write, so the de-privileged job user
 // (a member of gunbc-fleet, which owns the MEMBERS) cannot plant a symlink in it that a privileged install
 // would follow. The members themselves stay fleet-owned group-writable via printer_state_directory above.
@@ -143,7 +145,7 @@ fn printer_state_parent_directory(member: NonEmptyStr, path: NonEmptyStr, mode: 
   OwnedDirectoryDeclared {
     member: member,
     path: path as String as FilePath,
-    owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr },
+    owner: host_state_tree_root.owner,
     mode: mode,
     group_adoption: ForeignOwnershipRefuses,
   }
