@@ -1,6 +1,7 @@
 module gunbc.instruments.e0599_probe_census
 
-import std.types { Bool, Int, String, list_length }
+import std.types { Bool, Int, String }
+import std.algebra { length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -180,7 +181,7 @@ fn e0599_root_family_label_for_row(shape_str: String, method: String, receiver: 
 
 fn e0599_root_family_label_for_tuple_line(line: String) -> Result<String, E0599LogShapeParseError> {
   let parts = line |> split(delimiter: "\t")
-  let field_count = list_length(items: parts)
+  let field_count = length(xs: parts)
   if field_count != 3 {
     Err { value: MalformedTupleLine { line: line, field_count: field_count } }
   } else {

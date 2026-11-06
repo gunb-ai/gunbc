@@ -645,42 +645,6 @@ fn app_key_supply_intervention(identity: GitHubAppDeclaredIdentity) -> HumanInte
   }
 }
 
-// THE THREE HUMAN STEPS AS FRONTIER ROWS, so the dissolution census can see them. A bare
-// DissolutionCondition beside an intervention is a promise nothing counts; a row enrolled in
-// gunbc.census_closure_frontier is one the census reports until its trigger fires. The third row is
-// deliberately a PERMANENT entry rather than an omission: a step no capability retires still belongs
-// in the roster, because leaving it out reads as "no human step here".
-data github_app_human_step_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_submit_intervention"),
-    reason: "SUBMIT is irreducibly human today: GitHub requires the account or organization owner to submit the manifest form and exposes no API that creates an App, so no credential this fleet could hold substitutes for it. What is human is now ONLY the submission -- the form, its action URL, its state binding and the manifest it carries are produced by census_app_registration_instruction and written to disk by the acquire entry point",
-    dissolution: unbound_dissolution(
-      description: "dissolves when browser automation opens the document census_app_registration_instruction produces under an owner session and submits its form, so the converge performs the submission and census_app_registration_instruction stops producing an instruction. A Playwright dependency being modeled does not fire this; the form being submitted end to end does"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_installation_consent_intervention"),
-    reason: "CONSENT is irreducibly human today and is a DIFFERENT act from SUBMIT, which is why it is a second row rather than a sentence inside the first: an App can be registered and never installed, and in that state it holds no access and lifts no rate limit. GitHub exposes no API that installs an App on an account -- the account holder chooses the repositories on the App's public install page",
-    dissolution: unbound_dissolution(
-      description: "dissolves when browser automation opens the App install page under an account-holder session, selects the declared repositories and grants the installation, so census_app_installation_instruction stops producing an instruction and the converge performs the consent. Reading the installation id back afterwards is ALREADY automated and does not fire this row"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_registration_capture_intervention"),
-    reason: "CAPTURE is a DECLARED CHOICE and not a constraint, and it is rostered so it is not mistaken for one: the operator copies code and state out of the address bar only because census_app_redirect_url points at a host this fleet does not serve. A redirect catcher, a localhost listener included, takes both values today with no browser automation and no capability this repository lacks",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a redirect catcher receives GitHub's redirect and writes the code and state where the acquire entry point reads them, so the operator never touches the address bar. It needs no browser automation, which is why this row is a choice rather than a limit; it retires when census_app_redirect_url points at something this fleet serves"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.github_app_acquisition", decl_name: "app_key_supply_intervention"),
-    reason: "SUPPLY is PERMANENT under the modeled world and is rostered as such rather than omitted. GitHub returns an App private key once at creation and exposes no endpoint that reissues it, so once those bytes are not held no capability retrieves them -- browser automation included, because there is nothing to click. The row is deliberately NOT scoped to an App created outside this converge: the step is reached from next_acquisition_step whenever custody is the missing fact, and an App this converge registered whose key was never stored or was later removed is in exactly the same unrecoverable position",
-    dissolution: unbound_dissolution(
-      description: "does NOT dissolve with browser automation and is not awaiting one. The only thing that ends it is generating a NEW key in the App's settings, which is itself the human act this row names, so the row retires only if GitHub begins reissuing existing private keys -- an upstream change, not a capability this fleet can build"
-    )
-  )
-]
-
 // THE CENSUS APP'S OWN SUBMIT STEP, NAMED ONCE SO NOTHING RE-CONSTRUCTS IT. The privileged-effect
 // census embeds this step AND reports the effect's frequency beside it, and authoring those two
 // independently is how one effect came to carry two frequencies in one row (review 69472). A caller
@@ -1222,7 +1186,6 @@ fn census_app_read_address(record: GitHubAppAcquisitionRecord) -> CensusAppReadA
   }
 }
 
-
 // ── FACT 3: CALLBACK CAPTURE ───────────────────────────────────────────────────────────────────
 // THE CAPTURE IS A MODEL FACT AND ITS FILE READS ARE NOT, so the classification lives here and the
 // reads stay in the acquire entry point. It moved from that entry point in this change rather than
@@ -1293,7 +1256,6 @@ fn admit_manifest_code(
       }
   }
 }
-
 
 // ── THE FOUR FACTS, FOLDED, WITH NO FACT IMPLIED BY ANOTHER ────────────────────────────────────
 // WHAT THIS EXISTS TO PREVENT. Before this fold, "the census App" was one word covering four

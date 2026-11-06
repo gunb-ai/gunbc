@@ -8,6 +8,7 @@ pub use crate::std_compiler_entry::CompilerEntryDriver;
 use crate::std_compiler_entry::CompilerEntryDriver::RetainedHostCliKernel;
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_generated_provider::GeneratedProviderDemand;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
@@ -120,13 +121,13 @@ pub struct SourceFile {
     pub content: String,
 }
 
-pub fn compiler_pipeline_entry() -> CompilerEntryDriver {
+pub fn compiler_pipeline_entry() -> Rc<CompilerEntryDriver> {
     thread_local! {
-        static CACHED: CompilerEntryDriver = {
-            CompilerEntryDriver::RetainedHostCliKernel
+        static CACHED: Rc<CompilerEntryDriver> = {
+            Rc::new(CompilerEntryDriver::RetainedHostCliKernel)
         };
     }
-    CACHED.with(|c: &CompilerEntryDriver| c.clone())
+    CACHED.with(|c: &Rc<CompilerEntryDriver>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

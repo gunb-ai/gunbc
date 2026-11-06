@@ -59,7 +59,8 @@ import std.state_durability {
   state_durability_evidence_refusal,
   state_durability_verdict,
 }
-import std.types { Bool, List, NonEmptyStr, list_length, brand }
+import std.types { Bool, List, NonEmptyStr, brand }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -381,7 +382,7 @@ test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
       realization == fixture_realization
         && capability == fixture_capability_version
         && count == 6
-        && list_length(assertions) == 6
+        && length(assertions) == 6
     _ => false
   }
 }
@@ -583,7 +584,7 @@ test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
     evidence: [matching_evidence()],
   ) {
     StateDurabilityEvidenceAccepted { evidence: accepted } =>
-      list_length(accepted) == 1
+      length(accepted) == 1
     StateDurabilityEvidenceRefused { cause: _ } => false
   }
 }

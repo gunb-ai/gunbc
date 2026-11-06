@@ -11,10 +11,11 @@ import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
 import gunbc.workspace_allocation_operations { workspace_launch_operations }
 import gunbc.runner.runner_slot_allocation { workspace_execution_slot_identities }
 import gunbc.fleet.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, executor_bootstrap_principal }
-import std.types { String, NonEmptyStr, List, FilePath, list_length }
+import std.types { String, NonEmptyStr, List, FilePath }
+import std.algebra { length }
 import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
+import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors, OwnedDirectoryTarget }
 import gunbc.fleet.printer_workflow_artifact { printer_state_group }
 import gunbc.fleet.printer_state_layout { printer_state_directories }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
@@ -36,10 +37,10 @@ import gunbc.executor_privileged_operation {
   ExecutorPrivilegedProvisioningPlan,
   OwnedDirectoryPlanRefusal,
   executor_privileged_owned_directory_plans,
-  executor_privileged_empty_provisioning_plan,
   executor_privileged_plan_with_rows,
   executor_privileged_plan_merge,
   executor_privileged_plan_rows,
+  executor_privileged_writable_parent_refusals,
   runner_slot_privileged_operations,
   runner_slot_install_operations,
 }
@@ -250,7 +251,7 @@ fn fabric_cell_host_slots(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> 
 
 fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let slots = fabric_cell_host_slots(deploy: deploy)
-  if list_length(items: slots) == 0 {
+  if length(xs: slots) == 0 {
     []
   } else {
     concat(
@@ -286,7 +287,7 @@ fn fabric_allocation_store_effect_operations(
 }
 
 fn fabric_allocation_store_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
-  if list_length(items: fabric_cell_host_slots(deploy: deploy)) == 0 {
+  if length(xs: fabric_cell_host_slots(deploy: deploy)) == 0 {
     []
   } else {
     fabric_allocation_store_effect_operations(
@@ -388,8 +389,29 @@ fn runner_host_wide_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioning
 // THE HOST-WIDE-ONLY ACCESSOR IS DELETED WITH IT. Its only remaining caller was this function; the
 // census and the gate were its consumers and both now come here, so a second exported refusal population
 // -- one a consumer could pick by mistake -- no longer exists to pick.
+//
+// EVERY DECLARED OWNED-DIRECTORY TARGET THIS HOST RENDERS A PRIVILEGED INSTALL FOR -- the union of the
+// three store-site plans' targets (host-wide tree root + unit-holds + boot-attempts, install media, printer
+// state), built from the SAME target expressions the plans fold (they call these *_targets helpers), so the
+// parent ruling run over it covers exactly the rows that are rendered -- no second source to drift.
+fn runner_host_declared_directory_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
+  unit_hold_store_targets(spec: spec) + install_media_store_targets(spec: spec) + printer_state_store_targets(spec: spec)
+}
+
+// THE PARENT RULING RUNS AT EXACTLY ONE SITE (quick-newt-573 review, msg_eb68902c + review 91167). The two
+// plan arms below carry ONLY their install decision's own refusals (an unresolvable mode); the fold does NOT
+// apply the parent ruling. The ruling is applied ONCE here, host-wide, over runner_host_declared_directory_targets
+// -- the union of every target the host renders. Running it in the fold too (its earlier shape) refused a
+// within-plan offender twice -- once from the fold arm, once from this union term -- which breaks the
+// countability DESIGN 5 demands. Host-wide is the natural single site because a host's sudoers is the UNION of
+// several plans' rows: a group-writable parent declared by one plan with a privileged install beneath it
+// declared by another is the same escalation, and only the union sees across plans. For the corrected model it
+// adds NOTHING (every privileged-install parent is root-owned) -- a shape check that makes the ruling host-
+// scoped, not a change in what a real host emits. One offender therefore yields exactly one refusal.
 fn runner_host_provisioning_plan_refusals(spec: RunnerHostSpec) -> List<OwnedDirectoryPlanRefusal> {
-  runner_host_wide_plan(spec: spec).refusals + printer_state_store_plan(spec: spec).refusals
+  runner_host_wide_plan(spec: spec).refusals
+    + printer_state_store_plan(spec: spec).refusals
+    + executor_privileged_writable_parent_refusals(targets: runner_host_declared_directory_targets(spec: spec))
 }
 
 // THE INSTALL MEDIA ARTIFACTS ROOT LIVES ONLY WHERE THE FETCH IT FILLS RUNS: the actuator host, and
@@ -408,13 +430,17 @@ fn runner_host_provisioning_plan_refusals(spec: RunnerHostSpec) -> List<OwnedDir
 // target (install_media_store_directory), projected through the shared OwnedDirectoryTarget accessors
 // like the two sibling rows and printer_state_privileged_operations. ForeignOwnershipRefuses: a served
 // store's root left by another principal is a foreign subtree and is never adopted.
-fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+fn install_media_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
   if (spec.host_label as String) == (operator_host_srv1 as String) && srv3_os_install_actuator_host_is_derived_srv1() {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    executor_privileged_owned_directory_plans(targets: [install_media_store_directory(tree: host_state_tree(), owner: owner)])
+    [install_media_store_directory(tree: host_state_tree(), owner: owner)]
   } else {
-    executor_privileged_empty_provisioning_plan()
+    []
   }
+}
+
+fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plans(targets: install_media_store_targets(spec: spec))
 }
 
 // THE UNIT HOLD STORE LIVES ONLY WHERE A MANAGED HOST'S HOLD NAMES IT. gunbc.host.managed_host_unit_hold
@@ -437,13 +463,17 @@ fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvision
 // The owner is the job user, because the boot and the operator's session both write slots as that
 // account; the executor's managed mode is the very same DirectoryOwnerAllEveryoneTraverse both stores
 // declare, asserted equal by the provision witness.
-fn unit_hold_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+fn unit_hold_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
   if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    executor_privileged_owned_directory_plans(targets: [host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)])
+    [host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)]
   } else {
-    executor_privileged_empty_provisioning_plan()
+    []
   }
+}
+
+fn unit_hold_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plans(targets: unit_hold_store_targets(spec: spec))
 }
 
 // No designated workspace slot means no workspace launch or credential publication grant.
@@ -765,10 +795,14 @@ fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<Executo
 // THE PRINTER-STATE DIRECTORIES AS THE ONE PROVISIONING PLAN, so a refused target stops the host's
 // sudoers artifact through the same gate as the unit-hold and install-media directories rather than
 // contributing no row (the arm this replaces).
-fn printer_state_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+fn printer_state_store_targets(spec: RunnerHostSpec) -> List<OwnedDirectoryTarget> {
   if (spec.host_label as String) != (printer_lan_host_identity() as String) {
-    executor_privileged_empty_provisioning_plan()
+    []
   } else {
-    executor_privileged_owned_directory_plans(targets: printer_state_directories(tree: host_state_tree()))
+    printer_state_directories(tree: host_state_tree())
   }
+}
+
+fn printer_state_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plans(targets: printer_state_store_targets(spec: spec))
 }
