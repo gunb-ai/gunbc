@@ -2084,7 +2084,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       let subst = fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
                         let slot = authored_name_at(source_indices: si, node: pair.second)
                         match exp.children |> skip(pair.first) |> first {
-                          Present { value: arg } => map_insert(acc, slot, child_type_node(ch: arg))
+                          Present { value: arg } => map_insert(acc, slot, equality_member_type_node(ch: arg))
                           Absent => acc
                         }
                       )

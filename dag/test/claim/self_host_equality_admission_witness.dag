@@ -772,3 +772,18 @@ data field_of_own_param_through_application_source: String = "module field_param
 test fn field_typed_by_its_own_parameter_reads_the_argument_through_an_application() -> Bool {
   eq_admitted(source: field_of_own_param_through_application_source)
 }
+
+// A GENERIC RECORD FIELD GIVEN AN EMPTY-LIST LITERAL WHERE THE TYPE PARAMETER IS NOT YET SOLVED. fold_list's `empty:` value
+// determines the accumulator type, so the expected application Box<A> carries an unsolved argument when `Box { value: [] }`
+// is checked. record_lit_instantiated_fields built its substitution with child_type_node(arg), the total accessor that
+// collapses an unsolved argument to the nameless error type (RFM a_total_accessor_maps_a_type_variable_to_error_type), and
+// once the substitution reached a field's Resolved type (#15612) `[]` was checked against that error type and refused as
+// "expected type is not a collection" (heal run 42133433823, src/v2/compiler/infer.dag infer_entries_instantiate_at). The
+// slot is now bound by equality_member_type_node, which hands a TypeVariable argument on as itself.
+// STANDING: this claim is RED at f2d36144 BY REASONING ONLY, not by execution; clever-crane-830 executes it in the arms
+// diagnostic. The real-route discriminator is the heal step that resolves dag/gunbc/heal_candidate_stage0.dag.
+data generic_field_empty_list_unsolved_argument_source: String = "module box_probe\ntype Box<T> {\n  value: T\n}\nfn collect(xs: List<Int>) -> Box<List<Int>> {\n  fold_list(xs: xs, empty: Box { value: [] }, cons: fn(acc, x) { Box { value: list_snoc_item(xs: acc.value, item: x) } })\n}\n"
+
+test fn a_generic_field_given_an_empty_list_with_an_unsolved_argument_is_admitted() -> Bool {
+  eq_admitted(source: generic_field_empty_list_unsolved_argument_source)
+}
