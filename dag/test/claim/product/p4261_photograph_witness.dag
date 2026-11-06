@@ -268,7 +268,7 @@ fn e1_marking_at(designator: NonEmptyStr) -> MarkingReading? {
   match e1_installed_at(designator) {
     Absent => Absent
     Present { value: row } => match row.identification {
-      IdentifiedByMarking { row: _, marking } => Present { value: marking }
+      IdentifiedByMarking { row: _, observation } => Present { value: observation.relied_on }
       _ => Absent
     }
   }

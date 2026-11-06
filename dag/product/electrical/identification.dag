@@ -975,7 +975,7 @@ type PrintedRating = PrintedFuseRating { current: Ampere, interrupt_voltage: Vol
 // the session that nobody saw, and its observed_presence is PresenceUnobserved, so folding "we saw a
 // body" into it would make "we saw a part" and "we never looked" one state.
 type ComponentIdentification
-  = IdentifiedByMarking { row: ElectronicComponentRow, marking: MarkingReading }
+  = IdentifiedByMarking { row: ElectronicComponentRow, observation: MarkingObservation }
   | MarkingSharedByMakers { rows: List<ElectronicComponentRow>, marking: MarkingReading }
   | MarkingCandidate { row: ElectronicComponentRow, marking: MarkingReading, discriminator: NonEmptyStr }
   | RatingPrintedOnBody { rating: PrintedRating, marking: MarkingReading }
@@ -1028,6 +1028,42 @@ type ObservedProbedPosition {
   evidence: EvidenceRef
 }
 
+// THE ONE CONSTRUCTOR OF AN IDENTIFICATION BY MARKING. An identification is the reliance a mint produced,
+// bound to the exact reading it was minted for; a row cannot write the arm, it asks here. The three mints
+// run in the order their strengths run: a lone reading, agreement among several, a checkable reading
+// preferred over uncheckable dissent. If none mints, the same row is a MarkingCandidate carrying the
+// discriminator the author states -- what would settle it -- so a reading that cannot be relied on stays a
+// candidate however well it reads, and the failure to rely is visible in the arm rather than in a count.
+fn mint_marking_reliance(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingReliance? {
+  match only_reading(roster: roster, readings: readings) {
+    Present { value: r } => Present { value: r }
+    Absent => match no_dissent(roster: roster, readings: readings) {
+      Present { value: r } => Present { value: r }
+      Absent => prefer_checkable(roster: roster, readings: readings)
+    }
+  }
+}
+
+fn identify_by_marking(
+  roster: BoardSightings,
+  row: ElectronicComponentRow,
+  readings: MarkingReadingSet,
+  discriminator: NonEmptyStr
+) -> ComponentIdentification {
+  match mint_marking_reliance(roster: roster, readings: readings) {
+    Present { value: reliance } => IdentifiedByMarking {
+      row: row,
+      observation: MarkingObservation {
+        subject: readings.subject,
+        relied_on: readings.relied_on,
+        others: readings.others,
+        reliance: reliance
+      }
+    }
+    Absent => MarkingCandidate { row: row, marking: readings.relied_on, discriminator: discriminator }
+  }
+}
+
 // WHAT AN OBSERVATION ESTABLISHES ABOUT PRESENCE. A part read in any way -- a matched, shared,
 // candidate or unresolved marking, a printed rating, a resistance code -- was seen on the board; an
 // empty footprint was seen without one. An entry with no marking read and no other reading records a
@@ -1040,7 +1076,7 @@ type ObservedPresence
 
 fn observed_presence(i: ComponentIdentification) -> ObservedPresence {
   match i {
-    IdentifiedByMarking { row: _, marking: _ } => PartPresent
+    IdentifiedByMarking { row: _, observation: _ } => PartPresent
     MarkingSharedByMakers { rows: _, marking: _ } => PartPresent
     MarkingCandidate { row: _, marking: _, discriminator: _ } => PartPresent
     RatingPrintedOnBody { rating: _, marking: _ } => PartPresent
@@ -1101,7 +1137,7 @@ fn shared_withstand(rows: List<ElectronicComponentRow>) -> VoltageWithstand? {
 
 fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
   match i {
-    IdentifiedByMarking { row, marking: _ } => voltage_withstand(spec: row.specification)
+    IdentifiedByMarking { row, observation: _ } => voltage_withstand(spec: row.specification)
     MarkingSharedByMakers { rows, marking: _ } => shared_withstand(rows: rows)
     MarkingCandidate { row: _, marking: _, discriminator: _ } => Absent
     RatingPrintedOnBody { rating, marking: _ } => match rating {
@@ -1126,7 +1162,7 @@ fn identified_withstand(i: ComponentIdentification) -> VoltageWithstand? {
 // readable marking identify nothing.
 fn identification_established(i: ComponentIdentification) -> Bool {
   match i {
-    IdentifiedByMarking { row: _, marking: _ } => true
+    IdentifiedByMarking { row: _, observation: _ } => true
     MarkingSharedByMakers { rows: _, marking: _ } => true
     MarkingCandidate { row: _, marking: _, discriminator: _ } => false
     RatingPrintedOnBody { rating: _, marking: _ } => true
@@ -1292,7 +1328,7 @@ fn render_asides(spans: List<MarkingSpan>) -> String {
 
 fn identification_text(i: ComponentIdentification) -> String? {
   match i {
-    IdentifiedByMarking { row, marking } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking_text(marking), "'"], "") }
+    IdentifiedByMarking { row, observation } => Present { value: join([row.vendor.legal_name as String, " ", row.ordering_code as String, ", from the marking '", marking_text(observation.relied_on), "'"], "") }
     MarkingSharedByMakers { rows, marking } => Present { value: join(["one of ", join(map(rows, r => join([r.vendor.legal_name as String, " ", r.ordering_code as String], "")), " or "), " (maker not identified), from the marking '", marking_text(marking), "'"], "") }
     MarkingCandidate { row, marking, discriminator } => Present { value: join(["CANDIDATE ", row.vendor.legal_name as String, " ", row.ordering_code as String, " from the marking '", marking_text(marking), "' (not identified: ", discriminator as String, ")"], "") }
     RatingPrintedOnBody { rating: _, marking } => Present { value: join(["rating printed on the body: '", marking_text(marking), "'"], "") }

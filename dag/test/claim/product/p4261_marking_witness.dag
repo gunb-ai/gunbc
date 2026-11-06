@@ -62,7 +62,7 @@ import product.electrical.identification {
   reliance_matches_observation,
   same_glyph_text,
 }
-import product.p4261.e1_b { e1_component }
+import product.p4261.e1_design { e1_component }
 import product.p4261.e1_photographs { e1_photo_b4_02, e1_photo_b4_01 }
 
 // ─── FIXTURES ────────────────────────────────────────────────────────────────────────────────────

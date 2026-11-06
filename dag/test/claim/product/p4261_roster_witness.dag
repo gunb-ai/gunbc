@@ -1,0 +1,97 @@
+module test.claim.product.p4261_roster_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.list { first_where }
+import product.electrical.connectivity { component_identity_eq }
+import product.electrical.identification {
+  ComponentIdentification,
+  IdentifiedByMarking,
+  MarkingCandidate,
+  InstalledComponent,
+  MarkingReadingSet,
+  identify_by_marking
+}
+import product.electrical.photograph { BoardSightings }
+import product.electrical.connectivity { ComponentInstanceIdentity }
+import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
+import product.p4261.e1_b { e1_designator_readings, p4261_e1_layout }
+import product.p4261.k1_a { p4261_k1_layout }
+import product.p4261.e1_board_sightings { e1_board_sighting_rows }
+import test.claim.product.p4261_identified_fixture { fixture_citation, fixture_reading, fixture_roster, identified_fixture }
+import product.p4261.e1_design { e1_component }
+
+// WHAT THIS WITNESS HOLDS. The roster (product.p4261.e1_board_sightings) is generated from atlas receipts and
+// attributes a designator to a specimen through the board's own DesignatorReading rows. The generator checks
+// that when it writes the module; this witness checks it again over the compiled rows, because the module
+// cannot import the board (the board hands the roster to the mints), so agreement is audited here, by a file
+// that imports both. Runs locally; the required job does not evaluate witnesses.
+
+fn is_identified(i: ComponentIdentification) -> Bool {
+  match i {
+    IdentifiedByMarking { row: _, observation: _ } => true
+    _ => false
+  }
+}
+
+fn is_candidate(i: ComponentIdentification) -> Bool {
+  match i {
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => true
+    _ => false
+  }
+}
+
+fn e1_part(d: NonEmptyStr) -> ComponentIdentification? {
+  match first_where(xs: p4261_e1_layout.components, keep: c => c.component.local_identity == d) {
+    Absent => Absent
+    Present { value: c } => Present { value: c.identification }
+  }
+}
+
+fn demoted_e1(d: NonEmptyStr) -> Bool {
+  match e1_part(d: d) {
+    Present { value: i } => is_candidate(i: i)
+    Absent => false
+  }
+}
+
+// Every roster row's designator is the one the board's DesignatorReading rows give that specimen, exactly once
+// in each direction.
+test fn every_roster_row_agrees_with_the_designator_readings() -> Bool {
+  count(filter(e1_board_sighting_rows, r =>
+    count(filter(e1_designator_readings, d => component_identity_eq(a: d.specimen, b: r.specimen) && d.designator == r.designator)) != 1
+      || count(filter(e1_designator_readings, d => component_identity_eq(a: d.specimen, b: r.specimen))) != 1)) == 0
+}
+
+// The population the roster decides: 35 E1 rows identified (31 attributed literal rows + the 4 fsv rows),
+// the 8 unboxed E1 rows demoted, and no K1 row identified (K1's roster is empty).
+test fn the_e1_identified_population_is_the_attributed_rows() -> Bool {
+  count(filter(p4261_e1_layout.components, c => is_identified(i: c.identification))) == 35
+}
+
+test fn the_unboxed_e1_rows_are_candidates() -> Bool {
+  all(["C10_P5", "C12_P5", "Q21_P5", "Q22_P5", "U49", "U51", "U4"], d => demoted_e1(d: d))
+}
+
+test fn no_k1_row_is_identified_by_marking() -> Bool {
+  count(filter(p4261_k1_layout.components, c => is_identified(i: c.identification))) == 0
+}
+
+// RED with its positive control: the same reading under a roster that attributes it identifies; under a roster
+// that attributes it to nobody it is a candidate.
+fn fixture_subject() -> ComponentInstanceIdentity {
+  e1_component(local: "U-roster-fixture")
+}
+
+test fn a_reading_identifies_under_a_roster_that_attributes_it() -> Bool {
+  is_identified(i: identified_fixture(subject: fixture_subject(), row: lm5066i_pwp, text: "FIXT"))
+}
+
+test fn the_same_reading_is_a_candidate_under_a_roster_that_attributes_it_to_nobody() -> Bool {
+  is_candidate(i: identify_by_marking(
+    roster: BoardSightings { rows: [] },
+    row: lm5066i_pwp,
+    readings: MarkingReadingSet { subject: fixture_subject(), relied_on: fixture_reading(text: "FIXT"), others: [] },
+    discriminator: "no roster row attributes this frame and box to this part"
+  ))
+}

@@ -1062,7 +1062,7 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
 // A part identified as a temperature sensor renders its bus pins as trace targets, from its typed roles.
 fn sensor_trace_text(c: InstalledComponent) -> List<String> {
   match c.identification {
-    IdentifiedByMarking { row, marking } => sensor_pins_text(c: c, row: row, marking: marking)
+    IdentifiedByMarking { row, observation } => sensor_pins_text(c: c, row: row, marking: observation.relied_on)
     MarkingSharedByMakers { rows: _, marking: _ } => []
     MarkingCandidate { row: _, marking: _, discriminator: _ } => []
     RatingPrintedOnBody { rating: _, marking: _ } => []
