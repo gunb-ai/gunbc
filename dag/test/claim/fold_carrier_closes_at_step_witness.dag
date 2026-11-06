@@ -5,55 +5,100 @@ import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: an open fold carrier (`init: []`) closes at the type the step produces, in BOTH fold forms,
-// so the emitted step closure types its accumulator and never renders `|acc: _, ..|` (rustc E0282).
+// SUBJECT: an open fold carrier (`init: []`) closes at the type the step produces, in BOTH fold forms, so the
+// emitted step closure types its accumulator and never renders `|acc: _, ..|` (rustc E0282).
 // ROUTE: compile_dag_rust_emit_check runs the seed's real compile and checks the emitted text.
-// The positive include ("Vec<i64>") makes an empty or failed emission fail: absence of `acc: _` alone is vacuous.
-// The exact closure-param spelling is not asserted because it has not been observed; leg 2 reads it.
-// RED (expected at main, to be measured on a host, not in-container): the declared-generic call
-// `list_push(acc, x)` as the step of a `fold(init: [], ..)`. Positive controls: a closed init (unchanged)
-// and the FreeMonoid `Empty` init (fold_accumulator_is_unapplied_generic).
+// EACH CASE IS TWO CLAIMS SO A FAILURE IS ATTRIBUTABLE: `<case>_emits` asserts the emission succeeded and carries
+// the fold (positive: "fn gather" and "Vec<i64>"); `<case>_carrier_closed` asserts "acc: _" is absent.
+// Expected at main (to be measured on a host): every `_emits` PASS; `_carrier_closed` FAIL for free_call_fold,
+// method_call_fold, empty_init; PASS for closed_init. Expected at the fix head: all PASS. An `_emits` FAIL is no
+// observation for its case. The exact closure-param spelling is not asserted because it has not been observed.
 
-fn w_free_call_fold_closes_open_carrier() -> Bool {
+fn w_free_call_fold_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.free\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_free.rs",
+    "src/foldcarrier_free_emits.rs",
     ["fn gather", "Vec<i64>"],
+    []
+  )
+}
+
+test fn free_call_fold_emits() -> Bool { w_free_call_fold_emits() }
+
+fn w_free_call_fold_carrier_closed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.free\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_free_carrier_closed.rs",
+    ["fn gather"],
     ["acc: _"]
   )
 }
 
-fn w_method_call_fold_closes_open_carrier() -> Bool {
+test fn free_call_fold_carrier_closed() -> Bool { w_free_call_fold_carrier_closed() }
+
+fn w_method_call_fold_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.method\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { xs.fold(init: [], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_method.rs",
+    "src/foldcarrier_method_emits.rs",
     ["fn gather", "Vec<i64>"],
+    []
+  )
+}
+
+test fn method_call_fold_emits() -> Bool { w_method_call_fold_emits() }
+
+fn w_method_call_fold_carrier_closed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.method\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { xs.fold(init: [], f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_method_carrier_closed.rs",
+    ["fn gather"],
     ["acc: _"]
   )
 }
 
-fn w_closed_init_is_unchanged() -> Bool {
+test fn method_call_fold_carrier_closed() -> Bool { w_method_call_fold_carrier_closed() }
+
+fn w_closed_init_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.closed\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [0], f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_closed.rs",
+    "src/foldcarrier_closed_emits.rs",
     ["fn gather", "Vec<i64>"],
+    []
+  )
+}
+
+test fn closed_init_emits() -> Bool { w_closed_init_emits() }
+
+fn w_closed_init_carrier_closed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.closed\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [0], f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_closed_carrier_closed.rs",
+    ["fn gather"],
     ["acc: _"]
   )
 }
 
-fn w_empty_init_unapplied_generic_closes() -> Bool {
+test fn closed_init_carrier_closed() -> Bool { w_closed_init_carrier_closed() }
+
+fn w_empty_init_emits() -> Bool {
   compile_dag_rust_emit_check(
     "module foldcarrier.empty\n\nimport std.algebra { Empty, FreeMonoid, list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> FreeMonoid<Int> { fold(xs, init: Empty, f: (acc, x) => list_push(acc, x)) }\n",
-    "src/foldcarrier_empty.rs",
+    "src/foldcarrier_empty_emits.rs",
     ["fn gather", "Vec<i64>"],
+    []
+  )
+}
+
+test fn empty_init_emits() -> Bool { w_empty_init_emits() }
+
+fn w_empty_init_carrier_closed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.empty\n\nimport std.algebra { Empty, FreeMonoid, list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> FreeMonoid<Int> { fold(xs, init: Empty, f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_empty_carrier_closed.rs",
+    ["fn gather"],
     ["acc: _"]
   )
 }
 
-test fn empty_init_unapplied_generic_carrier_closes_at_the_step() -> Bool { w_empty_init_unapplied_generic_closes() }
+test fn empty_init_carrier_closed() -> Bool { w_empty_init_carrier_closed() }
 
-test fn free_call_fold_closes_open_carrier_at_the_step() -> Bool { w_free_call_fold_closes_open_carrier() }
-
-test fn method_call_fold_closes_open_carrier_at_the_step() -> Bool { w_method_call_fold_closes_open_carrier() }
-
-test fn closed_init_carrier_is_unchanged() -> Bool { w_closed_init_is_unchanged() }
