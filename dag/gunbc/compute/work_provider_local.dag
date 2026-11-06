@@ -475,7 +475,6 @@ fn compute_resolve_in_scratch(instance: HostDashboardInstance, commit: String, t
                   }
               }
             }
-          }
   }
 }
 
