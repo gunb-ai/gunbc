@@ -262,29 +262,75 @@ type SeatStandingObservation<Q, S>
   | SeatStandingUnobserved { step: String, reason: String }
   | SeatStandingStoreRefused { cause: EventLogRefusal }
 
-fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation<Q, S> {
+// ONE READ, SHARED BY BOTH STANDING ANSWERS (review 91468, DESIGN §6b): walking the partition,
+// folding the pool and taking the windowed reading is ONE law with one home; what varies between
+// the two answers is only which face of the reading the caller reports -- headroom for placement,
+// committed for the class ledger. A change to the window law must land here and nowhere else.
+type SeatReadingObservation<Q, S>
+  = SeatReadingOk {
+      committed: Measure<Q, S, Nat>,
+      ceiling: Measure<Q, S, Nat>,
+      headroom: Measure<Q, S, Nat>,
+      over_committed: Bool,
+      generation: Nat,
+    }
+  | SeatReadingUnobserved { step: String, reason: String }
+  | SeatReadingStoreRefused { cause: EventLogRefusal }
+
+fn fabric_seat_reading<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatReadingObservation<Q, S> {
   match event_log_read_partition(store: store, partition: partition, budget: budget) {
-    PartitionReadRefused { cause: c } => SeatStandingStoreRefused { cause: c }
+    PartitionReadRefused { cause: c } => SeatReadingStoreRefused { cause: c }
     PartitionReadOk { head: _, walk: walk } =>
       match walk {
         ChainIncomplete { missing: m, newest_first_so_far: _ } =>
-          SeatStandingUnobserved { step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
+          SeatReadingUnobserved { step: "chain", reason: join(["partition chain is missing event ", m as String], "") }
         ChainBudgetExhausted { at: a } =>
-          SeatStandingUnobserved { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
+          SeatReadingUnobserved { step: "chain", reason: join(["partition chain exceeded the read budget at ", a as String], "") }
         ChainWalked { oldest_first: xs } =>
           match pool_fold(root: root, oldest_first: xs) {
             PoolFoldRefused { at_event: e, wire: w } =>
-              SeatStandingUnobserved { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") }
+              SeatReadingUnobserved { step: "fold", reason: join(["event ", e as String, " refused: ", w], "") }
             PoolFolded { pool: p, generation: g } =>
               match pool_reading_at(pool: p, at: at) {
                 PoolReadingRefused { at: t, anchor: a } =>
-                  SeatStandingUnobserved { step: "reading", reason: join(["instant ", to_string(t), " precedes the pool anchor ", to_string(a)], "") }
-                PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } =>
-                  if h.count > 0 { SeatRoomObserved { headroom: h, generation: g } }
-                  else { SeatFullObserved { generation: g } }
+                  SeatReadingUnobserved { step: "reading", reason: join(["instant ", to_string(t), " precedes the pool anchor ", to_string(a)], "") }
+                PoolRead { committed: c, ceiling: ce, headroom: h, over_committed: o } =>
+                  SeatReadingOk { committed: c, ceiling: ce, headroom: h, over_committed: o, generation: g }
               }
           }
       }
+  }
+}
+
+fn fabric_seat_observe<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatStandingObservation<Q, S> {
+  match fabric_seat_reading(store: store, partition: partition, root: root, at: at, budget: budget) {
+    SeatReadingStoreRefused { cause: c } => SeatStandingStoreRefused { cause: c }
+    SeatReadingUnobserved { step: st, reason: r } => SeatStandingUnobserved { step: st, reason: r }
+    SeatReadingOk { committed: _, ceiling: _, headroom: h, over_committed: _, generation: g } =>
+      if h.count > 0 { SeatRoomObserved { headroom: h, generation: g } }
+      else { SeatFullObserved { generation: g } }
+  }
+}
+
+// THE COMMITTED STANDING, EXACTLY (still-hawk-558, 2026-10-28). fabric_seat_observe answers "is
+// there room for a seat"; the reviewer slice leg needs "how much is committed" -- including when
+// there is NO room, the one state whose committed figure is most load-bearing. Deriving it as
+// ceiling-minus-headroom would be a re-derivation with a blind spot: a pool whose ceiling was
+// REDUCED between folds (the reviewer ceiling is min(appropriation, MemAvailable), and MemAvailable
+// moves) reports headroom zero, and zero is also the figure of an empty pool -- the committed truth
+// is what the slice must be charged, not a reconstruction from its absence. Same read, same fold,
+// same window law; the committed total, not an inference.
+type SeatCommittedObservation<Q, S>
+  = SeatCommitted { committed: Measure<Q, S, Nat>, generation: Nat }
+  | SeatCommittedUnobserved { step: String, reason: String }
+  | SeatCommittedStoreRefused { cause: EventLogRefusal }
+
+fn fabric_seat_committed<Q, S>(store: FabricStorageBinding, partition: PartitionId, root: Pool<Q, S>, at: EpochSecs, budget: Nat) -> SeatCommittedObservation<Q, S> {
+  match fabric_seat_reading(store: store, partition: partition, root: root, at: at, budget: budget) {
+    SeatReadingStoreRefused { cause: c } => SeatCommittedStoreRefused { cause: c }
+    SeatReadingUnobserved { step: st, reason: r } => SeatCommittedUnobserved { step: st, reason: r }
+    SeatReadingOk { committed: c, ceiling: _, headroom: _, over_committed: _, generation: g } =>
+      SeatCommitted { committed: c, generation: g }
   }
 }
 

@@ -28,6 +28,7 @@ import gunbc.roadmap.roadmap_session_placement {
   SessionSettlementRetiredUncharged,
   session_settlement_wire,
 }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slot_store_handle }
 
 // ONE ACTIVATION IDENTITY FOR A SESSION CONTAINER: THE ATTEMPT'S OWN RECORD
 // (gunbc.recurring_failure_mode an_attempt_crashed_between_state_init_and_container_start_is_unrecoverable).
@@ -303,11 +304,11 @@ fn session_activation_ensure_pass_at(
   reset_failed: fn(NonEmptyStr) -> Bool,
   now: EpochSecs,
 ) -> ActivationPass {
-  match attempt_slot_keys(store: stores.slots.slots) {
+  match attempt_slot_keys(store: session_attempt_slot_store_handle(ref: stores.slots)) {
     AttemptSlotKeysListed { keys } =>
       ActivationPassRan {
         outcomes: map(keys, k =>
-          match attempt_slot_read(store: stores.slots.slots, reference: k) {
+          match attempt_slot_read(store: session_attempt_slot_store_handle(ref: stores.slots), reference: k) {
             AttemptSlotHeld { record: rec, generation: _ } =>
               match session_attempt_name_of(identity: rec.identity) {
                 Present { value: n } => session_activation_ensure_one(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, loaded_of: loaded_of, lifecycle_of: lifecycle_of, reset_failed: reset_failed, now: now)
