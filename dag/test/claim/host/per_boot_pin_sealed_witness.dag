@@ -12,7 +12,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// A PerBootHostPin is sole_constructor: per_boot_pin_from_console_line is its only mint, and it builds the anchor
+// A PerBootHostPin is sole_constructor: per_boot_pin_from_checked_key is its only mint, and it builds the anchor
 // with ConsolePerBoot provenance carrying the pin's own boot id. These REDs hand the compiler the forged shapes
 // (fixture source, because the sealed state is unwritable in the accepted corpus) and expect the wall to refuse.
 // The positive control is a_per_boot_pin_binds_the_key_printed_at_that_boot in
@@ -38,11 +38,11 @@ test fn a_pin_whose_outer_boot_id_differs_from_its_anchors_cannot_be_constructed
   violation_count(source: forged_split_boot_source) >= 1
 }
 
-// the checked line is sealed too: a HostKeyConsoleLine whose fingerprint was never derived from its blob cannot be
+// the checked line is sealed too: a CheckedHostKey whose fingerprint was never derived from its blob cannot be
 // written, so no reader can reach a pin through an unverified line (positive control: the 29-claim
-// anchored_host_transport_witness pins through host_key_console_line_checked via per_boot_pin_from_console_line).
-data forged_unchecked_line_source: String = "module forge_unchecked_line\nimport std.types { NonEmptyStr, String }\nimport gunbc.host.per_boot_console_pin { HostKeyConsoleLine }\nfn forged(boot: NonEmptyStr, blob: String, fingerprint: String) -> HostKeyConsoleLine { HostKeyConsoleLine { boot_id: boot, key_type: \"ssh-ed25519\", public_key_base64: blob, sha256_fingerprint: fingerprint } }\n"
+// anchored_host_transport_witness pins through checked_host_key via per_boot_pin_from_checked_key).
+data forged_unchecked_key_source: String = "module forge_unchecked_key\nimport std.types { NonEmptyStr, String }\nimport gunbc.host.per_boot_console_pin { CheckedHostKey }\nfn forged(boot: NonEmptyStr, blob: String, fingerprint: String) -> CheckedHostKey { CheckedHostKey { boot_id: boot, key_type: \"ssh-ed25519\", public_key_base64: blob, sha256_fingerprint: fingerprint } }\n"
 
-test fn a_console_line_that_was_never_checked_cannot_be_constructed() -> Bool {
-  violation_count(source: forged_unchecked_line_source) >= 1
+test fn a_host_key_that_was_never_checked_cannot_be_constructed() -> Bool {
+  violation_count(source: forged_unchecked_key_source) >= 1
 }

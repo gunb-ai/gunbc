@@ -48,7 +48,6 @@ import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, checke
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 import extdeps.tools.shadow_utils { useradd_system_nologin_command }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
-import extdeps.ssh.openssh_server_commands { sshd_with_host_key_command }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -149,9 +148,9 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
 ]
 
 // THE PER-BOOT HOST KEY (S4(c), a PROPOSAL pending the operator's route pick; gunbc.host.anchored_host_transport
-// anchored_host_transport_per_boot is the fleet's side). The image is stateless, so its sshd's host key is generated
+// anchored_host_transport_per_boot is the fleet's side). The image is stateless, so its host key is generated
 // at EVERY boot into tmpfs (/run, fresh per boot: ssh-keygen refuses an existing file, so a stale key fails loudly),
-// and sshd is started with exactly that HostKey. The PUBLIC half and its fingerprint are each the output of ONE
+// The PUBLIC half and its fingerprint are each the output of ONE
 // structured command stage (cat, ssh-keygen -l), carried inside the capture envelope on the serial console; the
 // fleet-side reader (runner_host_key_observation) splits them in .dag and takes the boot id from the envelope, so no
 // stage composes text in shell. Nothing private leaves the host and nothing is stored: the key dies with the boot. The
