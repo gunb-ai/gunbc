@@ -21,8 +21,8 @@
 # usage: acceptance_r4r5_selfcheck_v3.sh [repo-with-pinned-commits]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-P45="$HERE/acceptance_r4_r5_claim_run_v3.sh"
-P6="$HERE/acceptance_r6_live_read_claim_run_v3.sh"
+P45="$HERE/acceptance_r4_r5_claim_run_v4.sh"
+P6="$HERE/acceptance_r6_live_read_claim_run_v4.sh"
 REPO="${1:-}"
 [ -f "$P45" ] && [ -f "$P6" ] || { echo "packets not found next to the self-check" >&2; exit 1; }
 g() { git "$@" < /dev/null; }
@@ -50,7 +50,7 @@ S4="$SB/fake/wt-r4/target/release/claim_batch"; S5="$SB/fake/wt-r5/target/releas
 # the packets' own constants, read out by NAME (an open-ended assignment grep would also pick up runtime
 # lines like `O=$OUT/receipt.txt`, which is not a constant and would explode here)
 csv() { local s; s=$(printf '%s,' $1); printf '%s' "${s%,}"; }
-CONSTS='J|U|H|H4|H5|T|T4|T5|E4A|E4B|E5|E6|B4A|B4B|B5|B6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|BOOKED|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG'
+CONSTS='J|U|H|H4|H5|T|T4|T5|E4A|E4B|E5|E6|B4A|B4B|B5|B6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|BOOKED|RUNTIME_S|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG'
 eval "$(cat "$P45" "$P6" | grep -E "^($CONSTS)=")"
 export BOOKED   # a bash -c probe must see the booked string the packet freezes
 load_cmds() { eval "$(grep -E "^CMD_[A-Z0-9_]+=" "$1")"; }
@@ -182,18 +182,19 @@ sg two-cgroup-lines "$(printf '0::/x/y.scope\n1::/z')" y
 echo "== the launcher frame (item 1): argv, ledger rows, units, and no bare systemd-run"
 for f in "$P45" "$P6"; do
   b=$(basename "$f")
-  grep_in "$b names the calmcrab-udrv v4 launcher" "$f" "calmcrab-udrv v4"
-  grep_in "$b states the full argv tuple" "$f" "<JOB> <RUNTIME> <MEMMAX> <MEMHIGH> <TASKS> <CPUQ> <STAGED> <SHA> <OUT>"
+  grep_in "$b names the calmcrab-udrv.sh launcher" "$f" "calmcrab-udrv.sh"
+  grep_in "$b states the full argv tuple" "$f" "<JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%> <STAGED_SCRIPT> <SCRIPT_SHA> OUT"
   grep_in "$b states the -res ledger row" "$f" "-res"
   grep_in "$b states the -drv ledger row" "$f" "-drv"
   grep_in "$b states the driver unit" "$f" "calmcrab-drv-"
   grep_in "$b states the scope unit" "$f" ".scope"
   grep_not "$b does not launch with bare systemd-run" "$f" "systemd-run --"
   grep_not "$b does not book anything itself" "$f" "systemctl "
-  grep_in "$b states the full argv tuple" "$f" "<JOB> <RUNTIME> <MEMMAX> <MEMHIGH> <TASKS> <CPUQ> <STAGED> <SHA> <OUT>"
+  grep_in "$b states the row ledger row by name" "$f" "$(grep -m1 '^J=' "$f" | cut -d= -f2)       cap 0"
   grep_in "$b states the reservation ledger row" "$f" "$(grep -m1 '^J=' "$f" | cut -d= -f2)-res"
   grep_in "$b states the driver ledger row" "$f" "$(grep -m1 '^J=' "$f" | cut -d= -f2)-drv"
-  grep_in "$b states the row ledger row" "$f" "$(grep -m1 '^J=' "$f" | cut -d= -f2)              cap"
+  grep_in "$b books the R row in GiB, not bytes" "$f" "-res   cap 32 (GiB"
+  grep_not "$b does not book the R row in bytes" "$f" "-res            cap ="
   grep_in "$b states the driver unit" "$f" "calmcrab-drv-$(grep -m1 "^J=" "$f" | cut -d= -f2).service"
 done
 check "the R4/R5 job token is the row name" 0 bash -c "[ \"\$(grep -m1 '^J=' '$P45' | cut -d= -f2)\" = fierce-wren-19-r4r5-db56530f ]"
@@ -236,6 +237,23 @@ for f in "$P45" "$P6"; do
     hits=$(grep -n -- "$badtok" "$f" | grep -vE '^[0-9]+:[[:space:]]*#' | wc -l | tr -d ' ')
     [ "$hits" = 0 ] && ok || bad "$b uses '$badtok' in $hits executable lines"
   done
+done
+echo "== the booked bounds are the launcher's numbers, in the launcher's units (v4 blocker 1)"
+for f in "$P45" "$P6"; do
+  b=$(basename "$f")
+  eval "$(grep -E '^(RUNTIME_S|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|BOOKED)=' "$f")"
+  want="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)) memory.swap.max=0 pids.max=$TASKS_MAX cpu.max=$((CPU_PCT*1000))_100000"
+  [ "$BOOKED" = "$want" ] && ok || bad "$b freezes bounds ($BOOKED) that are not the GiB/pids/cpu booking it states ($want)"
+  grep_in "$b passes RUNTIME in seconds" "$f" "calmcrab-udrv.sh $(grep -m1 '^J=' "$f" | cut -d= -f2) $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT>"
+  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v4 packet sha256> OUT"
+done
+for f in "$P45" "$P6"; do
+  b=$(basename "$f")
+  eval "$(grep -E '^(RUNTIME_S|T_SETUP_|T_BUILD|T_LEG)=' "$f")"
+  grep -Fq "scope_RuntimeMaxSec=$RUNTIME_S" "$f" && ok || bad "$b's launcher RUNTIME_S ($RUNTIME_S) is not the scope wall it states"
+  sum=$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG ))
+  [ "$f" = "$P6" ] && sum=$(( T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT + T_BUILD + T_LEG ))
+  [ "$RUNTIME_S" -ge "$sum" ] && ok || bad "$b's launcher wall $RUNTIME_S is below its capped step sum $sum"
 done
 check "the R6 header states the launcher's full argv and its own ledger rows" 0 bash -c "grep -q 'fierce-wren-19-r6-dff57af7-res' '$P6' && grep -q 'fierce-wren-19-r6-dff57af7-drv' '$P6'"
 check "the R4/R5 header's stated capped sum equals its timeouts" 0 bash -c "source <(grep -E '^T_(SETUP|BUILD|LEG)' '$P45'); [ 8940 = \$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG )) ]"
@@ -479,6 +497,53 @@ grep_in "the R6 header states a refusal of the subject is a finding" "$P6" "fail
 grep_in "both packets record the row exit as an observation, not a tool status" "$P45" "VERDICT="
 
 # ---------------------------------------------------------------- negative controls: mutate a copy, expect failure
+echo "== the completion record (v4 blocker 2) and the verdict rules (v4 blocker 3), on the shipped helpers"
+PPREAL_B64='W3Byb2Nlc3MtcGFydGl0aW9uXSB0b3RhbF9tcz0zNDAxODggcHJlX3J1bl9tcz0wIGFyZ3NfbXM9MjIgaW5kZXhfYnVpbGRfbXM9MTU0MzYyIGVkZ2VfaW5kZXhfd2FybV9tcz0zNTYxNyBvdXRwdXRfcG9saWN5X21zPTEyNTA5IHJvc3Rlcl9tcz0wIHB1Ymxpc2hlZF9tb2NrX3ByZWNvbXB1dGVfbXM9MTc2MSBlbnRyaWVzX21zPTEzNTkxMSByZXBvcnRpbmdfbXM9MiBlbnRyaWVzX3Jlc29sdmVfbXM9MTEzOTU1IGVudHJpZXNfd2l0bmVzc19tcz0yMDYyMg=='
+PPREAL=$(printf '%s' "$PPREAL_B64" | base64 -d)
+[ "$(printf '%s' "$PPREAL" | wc -c | tr -d ' ')" = 259 ] && ok || bad "this self-test's copy of the real completion record is not 259 bytes"
+[ "$(printf '%s' "$PPREAL" | sha256sum | cut -d' ' -f1)" = 7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2 ] && ok || bad "…and not the pinned digest 7ac24cf2…"
+for f in "$P45" "$P6"; do
+  b=$(basename "$f")
+  same=$(bash -c "source <(sed -n '/^  PP_REAL=/,/^  PP_REAL_SHA=/p' '$f' | sed 's/^  //'); printf '%s' \"\$PP_REAL\" | sha256sum | cut -d' ' -f1")
+  [ "$same" = 7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2 ] && ok || bad "$b freezes a completion-record fixture whose bytes are not the pinned 259-byte record"
+  grep_in "$b states the two-stage gate (prefix count, then shape)" "$f" "count lines with the PREFIX"
+  grep_in "$b warns that whole-line anchoring spent an earlier attempt" "$f" "#15695"
+  grep_in "$b excludes the [process-partition-exit] neighbour" "$f" "hence the "
+done
+printf '%s\n' "$PPREAL" > "$SB/pp_ok.txt"
+printf '%s\n%s\n' "$PPREAL" "$PPREAL" > "$SB/pp_dup.txt"
+printf '%s\n[process-partition] total_ms=zz entries_resolve_ms=1\n' "$PPREAL" > "$SB/pp_valid_bad.txt"
+printf '[process-partition] total_ms=zz entries_resolve_ms=1\n' > "$SB/pp_bad.txt"
+printf 'PASS w_x\n' > "$SB/pp_none.txt"
+printf '%s\n[process-partition-exit] run_returned_ms=340188 main_end_ms=340188\n' "$PPREAL" > "$SB/pp_neighbour.txt"
+printf '[process-partition-exit] run_returned_ms=1 main_end_ms=1\n' > "$SB/pp_neighbour_only.txt"
+check_out "the shipped gate accepts the real 259-byte record" 0 "accepted" bash -c "source '$H'; pp_check '$SB/pp_ok.txt' > /dev/null && echo accepted"
+check_out "the shipped gate refuses a duplicate record" 0 "refused" bash -c "source '$H'; pp_check '$SB/pp_dup.txt' | grep -q 'exactly 1 is required' && echo refused"
+check_out "the shipped gate refuses one valid plus one malformed" 0 "refused" bash -c "source '$H'; pp_check '$SB/pp_valid_bad.txt' | grep -q 'exactly 1 is required' && echo refused"
+check_out "the shipped gate refuses a malformed record" 0 "refused" bash -c "source '$H'; pp_check '$SB/pp_bad.txt' | grep -q malformed && echo refused"
+check_out "the shipped gate refuses a missing record" 0 "refused" bash -c "source '$H'; pp_check '$SB/pp_none.txt' | grep -q '0 matched the prefix' && echo refused"
+check_out "the [process-partition-exit] neighbour does not count as a record" 0 "refused" bash -c "source '$H'; pp_check '$SB/pp_neighbour_only.txt' | grep -q '0 matched the prefix' && echo refused"
+check_out "the neighbour line beside a real record does not cause a false refusal" 0 "accepted" bash -c "source '$H'; pp_check '$SB/pp_neighbour.txt' > /dev/null && echo accepted"
+check_out "whole-line anchoring would have rejected the real record (the #15695 mistake)" 0 "0" bash -c "printf '%s\\n' \"$PPREAL\" | grep -cE '^[[]process-partition[]] total_ms=[0-9]+\$' || true"
+printf 'FAIL w_x (returned ProcessExit::ExitFailure, code 1: boom)\n' > "$SB/v_q.txt"
+printf 'PASS w_x\nPASS w_x\n' > "$SB/v_two.txt"
+printf 'PASS w_x\nFAIL w_x\n' > "$SB/v_both.txt"
+printf 'UNOBSERVED w_x (no receipt)\n' > "$SB/v_unobs.txt"
+printf 'PANICKED w_x (panic)\n' > "$SB/v_panic.txt"
+printf 'no verdict here\n' > "$SB/v_none.txt"
+printf 'PASS w_xy\n' > "$SB/v_prefix.txt"
+check_out "a qualified FAIL is NO_OBSERVATION, never a falsification" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_q.txt' 1 w_x"
+check_out "two outcome lines for one name is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_two.txt' 0 w_x"
+check_out "contradictory outcome lines are NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_both.txt' 1 w_x"
+printf 'PASS w_x\nFAIL w_x (runtime error: boom)\n' > "$SB/v_bare_q.txt"
+check_out "a bare PASS beside a qualified FAIL is NO_OBSERVATION (only the exactness rule sees this)" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_bare_q.txt' 0 w_x"
+check_out "UNOBSERVED is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_unobs.txt' 2 w_x"
+check_out "PANICKED is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_panic.txt' 1 w_x"
+check_out "no outcome line for the name is NO_OBSERVATION" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_none.txt' 0 w_x"
+check_out "a longer name's line is not counted for a shorter name" 0 "NO_OBSERVATION" bash -c "source '$H'; claim_classify '$SB/v_prefix.txt' 0 w_x"
+check_out "a bare PASS with rc 0 still holds" 0 "HELD" bash -c "source '$H'; printf 'PASS w_x\\n' > '$SB/v_held.txt'; claim_classify '$SB/v_held.txt' 0 w_x"
+check_out "a bare FAIL with rc 1 is still a falsification" 0 "FAILED" bash -c "source '$H'; printf 'FAIL w_x\\n' > '$SB/v_fals.txt'; claim_classify '$SB/v_fals.txt' 1 w_x"
+
 echo "== negative controls (a mutated packet must FAIL, or the checks are decorative)"
 negctl() { # negctl <label> <base packet> <mutation script>: the mutated copy must fail its OWN fixtures
   local label=$1 base=$2 mut=$3
@@ -544,6 +609,34 @@ new = "CMD_LEG_R6='\"$BIN6\" claim_batch --source-root"
 assert old in s
 open(p,"w").write(s.replace(old,new,1))
 PY7
+cat > "$SB/mut8.py" <<'PY8'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'pc=$(pp_check "$OUT/$L.out")'
+assert old in s
+open(p,"w").write(s.replace(old,'pc="OK skipped by the mutation"',1))
+PY8
+cat > "$SB/mut9.py" <<'PY9'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = '[ "$any" = 1 ] || { echo NO_OBSERVATION; return; }'
+assert old in s
+open(p,"w").write(s.replace(old,':',1))
+PY9
+cat > "$SB/mut10.py" <<'PY10'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'q=$(grep -c "^FAIL $n\\$" "$f" 2>/dev/null)'
+assert old in s
+open(p,"w").write(s.replace(old,'q=$(grep -c "^FAIL $n" "$f" 2>/dev/null)',1))
+PY10
+cat > "$SB/mut11.py" <<'PY11'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = '[ "$n" = 1 ] || { echo "completion records:'
+assert old in s
+open(p,"w").write(s.replace(old,'[ "$n" -ge 1 ] || { echo "completion records:',1))
+PY11
 negctl "defect (1) reintroduced: a literal claim_batch token after the binary" "$P45" "$SB/mut1.py"
 negctl "defect (2) reintroduced: a space-separated name in the CSV" "$P45" "$SB/mut2.py"
 negctl "the booked-bounds gate deleted from the run path (item 2)" "$P45" "$SB/mut3.py"
@@ -551,6 +644,10 @@ negctl "noclobber removed from the OOM publication (item 3)" "$P45" "$SB/mut4.py
 negctl "the no-observation refusal switched to a fourth exit code (item 4)" "$P45" "$SB/mut5.py"
 negctl "the last-leg OOM pair faked as unchanged (item 3)" "$P45" "$SB/mut6.py"
 negctl "defect (1) in the R6 packet as well" "$P6" "$SB/mut7.py"
+negctl "the completion-record gate removed from a leg (v4 blocker 2)" "$P45" "$SB/mut8.py"
+negctl "the one-outcome-line-per-name rule neutered (v4 blocker 3)" "$P45" "$SB/mut9.py"
+negctl "a qualified FAIL accepted as a falsification (v4 blocker 3)" "$P45" "$SB/mut10.py"
+negctl "the completion prefix count relaxed from exactly-one to at-least-one (v4 blocker 2)" "$P45" "$SB/mut11.py"
 # mut3 and mut5 change the run path rather than a helper; the packet's self-structure section is what
 # notices, so they are exercised as fixture controls too. The greps below are a second, independent signal.
 cp "$P45" "$SB/neg3.sh"; python3 "$SB/mut3.py" "$SB/neg3.sh" && ok || bad "bounds-gate mutation did not apply"

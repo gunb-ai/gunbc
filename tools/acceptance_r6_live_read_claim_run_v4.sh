@@ -8,6 +8,14 @@
 # THE ONE CLAIM (row R6):
 #   dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag
 #     witness_inbox_on_authority_projects_on_live_corpus
+# WHAT v4 ADDS (sleek-owl's three blockers on v3 176234a92458c5a6, verified by sunny-bee-153):
+#   (1) the launcher argv is calmcrab-udrv.sh <JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%>
+#       <STAGED_SCRIPT> <SCRIPT_SHA> OUT — seconds, GiB, %, the PACKET's own sha, literal OUT — and the R
+#       ledger row is booked in GiB (keen-otter msg_c9d1df56); the bounds gate DERIVES its byte values from
+#       those same GiB constants so the argv, the manifest and the gate cannot disagree.
+#   (2) a completion-record gate on the leg (see COMPLETION RECORD in the classifier section).
+#   (3) verdict exactness per name (see VERDICT RULES). R6 stays HELD: without a cleared execution-grant
+#       reference the packet refuses with exit 2 before creating anything.#
 # Expected: a bare PASS. A refusal is a FINDING for the grant set, not a runner failure: this claim fails
 # closed on an unreadable tail, on history that will not replay, and on a refused placement.
 #
@@ -54,35 +62,32 @@
 #   than adapting to them.
 #
 # BOOKED BOUNDS (identical to the R4/R5 row: the same -j 32 build of the same crate on the same host):
-BOOKED="memory.max=34359738368 memory.high=30064771072 memory.swap.max=0 pids.max=4096 cpu.max=3200000_100000"
+# Bounds are booked in the LAUNCHER'S units (GiB, seconds, CPU %, tasks) and the byte values the cgroup
+# files carry are DERIVED from them here, so the launcher argv, the manifest and the gate cannot drift.
+# cpu.max's period is the default 100000 us, so the quota is CPU_PCT/100 * 100000 = CPU_PCT*1000 us.
+RUNTIME_S=4800; MEMMAX_G=32; MEMHIGH_G=28; TASKS_MAX=4096; CPU_PCT=3200
+BOOKED="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)) memory.swap.max=0 pids.max=$TASKS_MAX cpu.max=$((CPU_PCT*1000))_100000"
 #
 # (The BOOKED string is the same as the R4/R5 row's: memory.max 32G, memory.high 28G UNMEASURED,
 #  memory.swap.max 0, pids.max 4096 (threads), cpu.max "3200000 100000" paired with -j 32.)
 #
-# LAUNCHER (calmcrab-udrv v4) — no bare systemd-run. Full argv, in the launcher's order:
-#   calmcrab-udrv <JOB> <RUNTIME> <MEMMAX> <MEMHIGH> <TASKS> <CPUQ> <STAGED> <SHA> <OUT>
-# with, for this row:
-#   JOB     fierce-wren-19-r6-dff57af7                       = basename(dirname(OUT))
-#   RUNTIME $HOME/runs/fierce-wren-19-r6-dff57af7
-#   MEMMAX  34359738368                                      (MemoryMax; the -res ledger row's cap)
-#   MEMHIGH 30064771072                                      (MemoryHigh)
-#   TASKS   4096                                             (TasksMax = pids.max)
-#   CPUQ    3200                                             (CPUQuota; cpu.max "3200000 100000" at the
-#                                                           default 100 ms period, PAIRED with -j 32)
-#   STAGED  the staged copy of THIS file, whose sha256 is published in tools/acceptance_r4r5_v3_manifest.md
-#           (the packet prints script_sha256= of $0 at start; a file cannot gate its own hash, so staging is
-#           RECORDED here and compared by the launcher and by the acceptance check)
-#   SHA     dff57af790f923066d61721e89ff751a91021278
-#   OUT     $HOME/runs/fierce-wren-19-r6-dff57af7/out        = the one positional argument this script takes
+# LAUNCHER (calmcrab-udrv.sh, v4 form) — no bare systemd-run. Full argv, in the launcher's order:
+#   calmcrab-udrv.sh <JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%> <STAGED_SCRIPT> <SCRIPT_SHA> OUT
+# For THIS row the call is literally:
+#   calmcrab-udrv.sh fierce-wren-19-r6-dff57af7 4800 32 28 4096 3200% <STAGED_SCRIPT> <v4 packet sha256> OUT
+# Units are the launcher's: RUNTIME in SECONDS (the scope's wall, sized from the capped per-step timeouts
+# below), memory in GiB, CPU with the %% sign, SCRIPT_SHA is the PACKET'S OWN sha256 (NOT the source commit),
+# and OUT is passed LITERALLY — the script derives JOB as basename(dirname(OUT)), so OUT must be
+# $HOME/runs/fierce-wren-19-r6-dff57af7/out. MEMMAX_G/MEMHIGH_G/TASKS/CPU%% are the same numbers the bounds gate below re-derives.
 # LEDGER ROWS (R/S/D), three of them, named by the launcher's convention:
-#   fierce-wren-19-r6-dff57af7-res            cap = MEMMAX = 34359738368 bytes   (the reservation row)
-#   fierce-wren-19-r6-dff57af7-drv           cap 1                              (the driver row)
-#   fierce-wren-19-r6-dff57af7              cap 0                              (the row itself)
-# UNITS: fierce-wren-19-r6-dff57af7.scope (the row's own scope; the scope gate requires this process's cgroup
-#   path to END in "/<JOB>.scope") and calmcrab-drv-fierce-wren-19-r6-dff57af7.service (the driver service).
-#   R is written before the scope starts; S starts the scope and the driver service under those bookings; D
-#   writes the row's exit code back to the ledger. This script books nothing and writes no ledger: it REFUSES
-#   (2) when the environment it was started in does not match the booking.
+#   fierce-wren-19-r6-dff57af7-res   cap 32 (GiB — the R row is booked in GiB, not bytes, per keen-otter msg_c9d1df56)
+#   fierce-wren-19-r6-dff57af7-drv   cap 1
+#   fierce-wren-19-r6-dff57af7       cap 0
+# UNITS: fierce-wren-19-r6-dff57af7.scope (the row's own scope; the scope gate requires this process's cgroup path to END in
+#   "/fierce-wren-19-r6-dff57af7.scope") and calmcrab-drv-fierce-wren-19-r6-dff57af7.service (the driver service). R is written before the scope
+#   starts; S starts the scope and the driver service under those bookings; D writes the row's exit code
+#   back to the ledger. This script books nothing and writes no ledger: it REFUSES (2) when the environment
+#   it was started in does not match the booking.
 #
 # EXIT CONTRACT (v3 item 4, identical to the R4/R5 packet plus the hold). THREE codes, no others:
 #   0  the claim printed a bare PASS and the runner's own exit agreed (expectation held)
@@ -150,16 +155,49 @@ oom_snap() { # $1=event file $2=tag; publishes the raw bytes by exclusive create
     if ( set -C; printf '%s\n' "$t" > "$f" ) 2>/dev/null; then echo "$(oom_parse "$t" oom_kill)/$(oom_parse "$t" oom)"
     else echo UNKNOWN/UNKNOWN; fi
   else ( set -C; : > "$f.unreadable" ) 2>/dev/null; echo UNKNOWN/UNKNOWN; fi; }
-# CLAIM CLASSIFIER: bare lines only, one per expected name, plus the runner's own exit code checked apart.
+# CLAIM CLASSIFIER (v4; the contract is identical to the R4/R5 packet):
+#   VERDICT RULES (v4, sleek-owl blocker 3). Only a BARE `^PASS <name>$` counts as held and only a BARE
+#   `^FAIL <name>$` counts as falsified. Each expected name must also have EXACTLY ONE outcome line of ANY
+#   keyword -- PASS/FAIL/UNOBSERVED/PANICKED, bare or qualified: zero outcome lines for a name, or two, is
+#   NO_OBSERVATION, and a QUALIFIED line (`FAIL <fn> (reason)`) is NO_OBSERVATION, never a falsification.
+#   Anything else is also NO_OBSERVATION: a contradiction, an indented line, a name that is not one of this
+#   row's, an empty or missing log, or a timeout (rc 124).
+# COMPLETION RECORD (v4, sleek-owl blocker 2, keen-otter msg_a9e94d36). The runner's exit 1 ALSO covers
+#   setup/resolve refusals, so bare verdict lines alone cannot prove a leg completed. claim_batch's
+#   ProcessPartition::render emits EXACTLY ONE `[process-partition] total_ms=...` record per process, on the
+#   Ok path only. Per leg the gate therefore does TWO stages: (a) count lines with the PREFIX
+#   `^[process-partition] total_ms` and require exactly one -- a single-stage filter-and-count cannot see a
+#   malformed competitor sitting next to a good one; (b) test the SHAPE `^\[process-partition\] total_ms=[0-9]+( |$)`
+#   on that one line. Zero, two, or one valid plus one malformed is NO_OBSERVATION. Whole-line anchoring
+#   (`...total_ms=[0-9]+$`) is WRONG: render pushes the span fields unconditionally, and that exact mistake
+#   is what spent #15695's G1 attempt (15/15 bare PASS and still NO_OBSERVATION). The neighbour line
+#   `[process-partition-exit] run_returned_ms=... main_end_ms=...` does NOT start with `[process-partition]`
+#   and must not be counted -- hence the `]` in the prefix.
 claim_classify() { # $1=output file $2=rc $3=name -> HELD | FAILED | NO_OBSERVATION
   local f=$1 rc=$2 n=$3 p q
   [ -f "$f" ] || { echo NO_OBSERVATION; return; }
   [ "$rc" = 124 ] && { echo NO_OBSERVATION; return; }
   case "$rc" in ''|missing|*[!0-9]*) echo NO_OBSERVATION; return;; esac
+  # exactly one outcome line for this name, of ANY keyword (bare or qualified); zero or two -> no observation
+  any=$(grep -cE "^(PASS|FAIL|UNOBSERVED|PANICKED) $n( |$)" "$f" 2>/dev/null)
+  [ "$any" = 1 ] || { echo NO_OBSERVATION; return; }
   p=$(grep -c "^PASS $n\$" "$f" 2>/dev/null); q=$(grep -c "^FAIL $n\$" "$f" 2>/dev/null)
   if [ "$p" = 1 ] && [ "$q" = 0 ] && [ "$rc" = 0 ]; then echo HELD; return; fi
   if [ "$p" = 0 ] && [ "$q" = 1 ] && [ "$rc" = 1 ]; then echo FAILED; return; fi
+  # a qualified FAIL, an UNOBSERVED or a PANICKED line, or a bare line whose process exit disagrees, is not
+  # an observation at all: the claim was attempted but its outcome was not reported in a countable form.
   echo NO_OBSERVATION; }
+# COMPLETION RECORD GATE: two stages on purpose (see the header). Prefix count first, then shape on that one.
+PP_PREFIX='^[[]process-partition[]] total_ms'
+PP_SHAPE='^[[]process-partition[]] total_ms=[0-9]+( |$)'
+pp_check() { # $1=output file -> "OK <the record>" or the reason it is not an observation
+  local f=$1 n line
+  [ -r "$f" ] || { echo "unreadable leg output"; return; }
+  n=$(grep -c "$PP_PREFIX" "$f" 2>/dev/null)
+  [ "$n" = 1 ] || { echo "completion records: $n matched the prefix, exactly 1 is required"; return; }
+  line=$(grep -m1 "$PP_PREFIX" "$f" 2>/dev/null)
+  printf '%s\n' "$line" | grep -qE "$PP_SHAPE" || { echo "the single completion record is malformed: $line"; return; }
+  echo "OK $line"; }
 leg_state() { # $1=classes file ("name CLASS" lines) $2=name list; AS_EXPECTED | FALSIFIED | NOOBS
   local n c
   for n in $2; do
@@ -375,10 +413,73 @@ oom 0' oom)"
   inv 'timeout "$T_LE' 'G"' 'a leg runs under its own capped timeout' 1
   inv 'timeout "$T_BUIL' 'D"' 'the build runs under its own capped timeout' 1
   inv 'timeout "$T_SETUP_FETC' 'H"' 'the fetch runs under its own capped timeout' 1
+  inv 'pc=$(pp_che' 'ck' 'the completion-record gate runs on every leg' 1
+  inv 'pp_check() ' '{' 'the completion-record gate is defined' 1
+  inv 'PP_PRE' "FIX='^[[]process-partition" 'the completion prefix keeps the closing bracket (the -exit neighbour must not count)' 1
+  inv 'any=$(grep -cE "' '^(PASS|FAIL' 'each expected name needs exactly one outcome line of any keyword' 1
+  inv 'MEMMAX_G*' '1073741824' 'the booked byte bounds are derived from the launcher GiB values' 1
   inv 'grant_gate "$GRA' 'NT"' 'the held-row grant gate is on the run path' 1
   ln_b=$(grep -nF -- 'BM=$(bounds_che'ck "$0" | tail -1 | cut -d: -f1)
   nf1='T_SETUP_FETC'; nf2='H"'; ln_f=$(grep -nF -- "$nf1$nf2" "$0" | head -1 | cut -d: -f1)
   ck bounds-precedes-fetch ok "$([ -n "$ln_b" ] && [ -n "$ln_f" ] && [ "$ln_b" -lt "$ln_f" ] && echo ok || echo out-of-order)"
+
+  # -------- completion-record gate (v4 blocker 2). The REAL record, byte for byte, from the pinned
+  # producer: calm-crab-645's srv1 run, ~/runs/cc1-15695-495d-v16/out/claims-cpr.log (log sha256
+  # a0e1f1f63669ca4ea0b06d903c144c9fdc3f9f0e95dfab2485ad03752af6ed38), line 66 of 78, the only line
+  # beginning '[process-partition] total_ms'. 259 bytes, no CR, no leading/trailing space. The pinned
+  # digest is over those 259 bytes WITHOUT a trailing LF; the fixture re-verifies it on every call, so a
+  # fixture whose bytes drift refuses the run.
+  PP_REAL='[process-partition] total_ms=340188 pre_run_ms=0 args_ms=22 index_build_ms=154362 edge_index_warm_ms=35617 output_policy_ms=12509 roster_ms=0 published_mock_precompute_ms=1761 entries_ms=135911 reporting_ms=2 entries_resolve_ms=113955 entries_witness_ms=20622'
+  PP_REAL_SHA=7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2
+  PP_SECOND='[process-partition] total_ms=67069 pre_run_ms=0 args_ms=2 index_build_ms=41481 edge_index_warm_ms=17633 output_policy_ms=3805 roster_ms=0 published_mock_precompute_ms=1393 entries_ms=2752 reporting_ms=0 entries_resolve_ms=1837 entries_witness_ms=908'
+
+  # fixture inputs for the completion-record and verdict rules (written under the scratch dir only)
+  printf '%s' "$PP_REAL" > "$T/pp_real.txt"; printf '\n' >> "$T/pp_real.txt"
+  printf '%s\n' "$PP_SECOND" > "$T/pp_second.txt"
+  printf '[process-partition] total_ms=123\n' > "$T/pp_bare.txt"
+  printf '%s\n%s\n' "$PP_REAL" "$PP_SECOND" > "$T/pp_dup.txt"
+  printf '%s\n[process-partition] total_ms=zz entries_witness_ms=1\n' "$PP_REAL" > "$T/pp_valid_bad.txt"
+  printf '[process-partition] total_ms=abc entries_resolve_ms=1\n' > "$T/pp_bad.txt"
+  printf 'PASS w_x\n' > "$T/pp_none.txt"
+  printf '%s\n[process-partition-exit] run_returned_ms=340188 main_end_ms=340188\n' "$PP_REAL" > "$T/pp_neighbour.txt"
+  printf '[process-partition-exit] run_returned_ms=1 main_end_ms=1\n' > "$T/pp_neighbour_only.txt"
+  printf 'PASS w_x\n' > "$T/v_pass.txt"; printf 'FAIL w_x\n' > "$T/v_fail.txt"
+  printf 'FAIL w_x (returned ProcessExit::ExitFailure, code 1: boom)\n' > "$T/v_qfail.txt"
+  printf 'UNOBSERVED w_x (no receipt)\n' > "$T/v_unobs.txt"
+  printf 'PANICKED w_x (runtime panic)\n' > "$T/v_panic.txt"
+  printf 'PASS w_x\nPASS w_x\n' > "$T/v_two.txt"
+  printf 'PASS w_x\nFAIL w_x\n' > "$T/v_both.txt"
+  printf 'PASS w_x\nFAIL w_x (runtime error: boom)\n' > "$T/v_bare_plus_q.txt"
+  printf 'total_ms=1\n' > "$T/v_none.txt"
+  printf 'PASS w_xy\n' > "$T/v_other.txt"
+  ck completion-real-bytes 259 "$(printf '%s' "$PP_REAL" | wc -c | tr -d ' ')"
+  ck completion-real-sha "$PP_REAL_SHA" "$(printf '%s' "$PP_REAL" | sha256sum | cut -d' ' -f1)"
+  ck completion-gate-reverifies-sha OK "$(pp_check "$T/pp_real.txt" | cut -d" " -f1)"
+  ck completion-second-sample OK "$(pp_check "$T/pp_second.txt" | cut -d" " -f1)"
+  ck completion-predicate-shape-only OK "$(pp_check "$T/pp_bare.txt" | cut -d" " -f1)"
+  ck completion-duplicate "completion records: 2 matched the prefix, exactly 1 is required" "$(pp_check "$T/pp_dup.txt")"
+  ck completion-valid-plus-malformed "completion records: 2 matched the prefix, exactly 1 is required" "$(pp_check "$T/pp_valid_bad.txt")"
+  ck completion-malformed-only "the single completion record is malformed: [process-partition] total_ms=abc entries_resolve_ms=1" "$(pp_check "$T/pp_bad.txt")"
+  ck completion-none "completion records: 0 matched the prefix, exactly 1 is required" "$(pp_check "$T/pp_none.txt")"
+  ck completion-neighbour-not-counted OK "$(pp_check "$T/pp_neighbour.txt" | cut -d" " -f1)"
+  ck completion-neighbour-only "completion records: 0 matched the prefix, exactly 1 is required" "$(pp_check "$T/pp_neighbour_only.txt")"
+  ck completion-unreadable "unreadable leg output" "$(pp_check "$T/pp_missing.txt")"
+  ck completion-wholeline-anchor-is-wrong 0 "$(printf '%s\n' "$PP_REAL" | grep -cE '^[[]process-partition[]] total_ms=[0-9]+$')"
+  ck completion-shape-accepts-real 1 "$(printf '%s\n' "$PP_REAL" | grep -cE "$PP_SHAPE")"
+  # -------- verdict rules (v4 blocker 3): bare lines count, one outcome line per name, qualified refuses
+  ck verdict-bare-pass-rc0 HELD "$(claim_classify "$T/v_pass.txt" 0 w_x)"
+  ck verdict-bare-fail-rc1 FAILED "$(claim_classify "$T/v_fail.txt" 1 w_x)"
+  ck verdict-qualified-fail-is-not-falsified NO_OBSERVATION "$(claim_classify "$T/v_qfail.txt" 1 w_x)"
+  ck verdict-qualified-fail-rc0 NO_OBSERVATION "$(claim_classify "$T/v_qfail.txt" 0 w_x)"
+  ck verdict-unobserved NO_OBSERVATION "$(claim_classify "$T/v_unobs.txt" 2 w_x)"
+  ck verdict-panicked NO_OBSERVATION "$(claim_classify "$T/v_panic.txt" 1 w_x)"
+  ck verdict-two-outcome-lines NO_OBSERVATION "$(claim_classify "$T/v_two.txt" 0 w_x)"
+  ck verdict-pass-and-fail NO_OBSERVATION "$(claim_classify "$T/v_both.txt" 1 w_x)"
+  ck verdict-bare-pass-plus-qualified-fail NO_OBSERVATION "$(claim_classify "$T/v_bare_plus_q.txt" 0 w_x)"
+  ck verdict-no-outcome-line NO_OBSERVATION "$(claim_classify "$T/v_none.txt" 0 w_x)"
+  ck verdict-bare-pass-rc1-cost-partition NO_OBSERVATION "$(claim_classify "$T/v_pass.txt" 1 w_x)"
+  ck verdict-bare-pass-rc124 NO_OBSERVATION "$(claim_classify "$T/v_pass.txt" 124 w_x)"
+  ck verdict-prefix-name-not-matched NO_OBSERVATION "$(claim_classify "$T/v_other.txt" 0 w_x)"
 
   echo "FIXTURES pass=$okn fail=$badn"; [ $badn -eq 0 ]; exit $?
 fi
@@ -394,6 +495,11 @@ if [ "${1:-}" = "--predict-only" ]; then
   echo "pin=$H tree=$T"
   printf 'blob %s %s\n' "$E6" "$B6"
   echo "bounds=$BOOKED"
+  echo "launcher_units runtime_s=$RUNTIME_S memmax_gib=$MEMMAX_G memhigh_gib=$MEMHIGH_G tasks=$TASKS_MAX cpu=$CPU_PCT%"
+  echo "launcher_call=calmcrab-udrv.sh $J $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT> <this packet sha256> OUT"
+  echo "ledger_rows=$J-res(cap ${MEMMAX_G}GiB) $J-drv(cap 1) $J(cap 0)"
+  echo "completion_record_gate=exactly-one-prefix-count-then-shape sha_pinned=7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2"
+  echo "verdict_rules=bare_only;one_outcome_line_per_name_any_keyword;qualified_is_NO_OBSERVATION"
   echo "timeouts_s setup_clone=$T_SETUP_CLONE setup_fetch=$T_SETUP_FETCH setup_checkout=$T_SETUP_CHECKOUT build=$T_BUILD leg=$T_LEG"
   echo "wall_capped_sum_s=$(( T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT + T_BUILD + T_LEG )) scope_RuntimeMaxSec=4800 driver_RuntimeMaxSec=5400"
   echo "claims_r6=$(printf '%s' "$C6" | awk -F',' '{print NF}')"
@@ -490,6 +596,11 @@ leg() { # $1=leg name $2=CMD variable name $3=name list
     nox "leg $L is not exactly bare verdict lines: $sv" classifier
   fi
   : > "$OUT/$L.classes"
+  pc=$(pp_check "$OUT/$L.out")
+  echo "== $L completion_record: $pc" >> "$O"
+  # a leg without exactly one well-formed completion record never finished the producer's reporting path,
+  # so its verdict lines are not an observation; leg_state reads this line and the leg becomes NOOBS (exit 2).
+  [ "${pc%% *}" = OK ] || echo "completion NO_OBSERVATION" >> "$OUT/$L.classes"
   for cl in $3; do echo "$cl $(claim_classify "$OUT/$L.out" "$rc" "$cl")" >> "$OUT/$L.classes"; done
   cat "$OUT/$L.classes" | sed 's/^/  /' >> "$O"
   st=$(leg_state "$OUT/$L.classes" "$3")
