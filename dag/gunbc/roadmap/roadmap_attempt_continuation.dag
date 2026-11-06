@@ -109,8 +109,8 @@ type PriorExecutionObservation = {
   recovery: SessionRecovery,
 }
 
-// WHAT TO DO WITH THE NODE'S WORK NEXT. The six variants are a partition of what a prior execution
-// can mean for what comes next; there is deliberately no seventh "wait" -- waiting is AlreadyRunning,
+// WHAT TO DO WITH THE NODE'S WORK NEXT. The seven variants are a partition of what a prior execution
+// can mean for what comes next; there is deliberately no "wait" variant -- waiting is AlreadyRunning,
 // because an in-flight lineage is joined, not waited on by a fresh spawn. The plan says what the next
 // execution IS; it never launches, never writes the ledger, and never touches a worktree itself.
 //   StartInitial        -- no prior execution at all: this is the first attempt, taken from the base ref.
@@ -126,6 +126,11 @@ type PriorExecutionObservation = {
 //                          a session flapped past its bound): CONTINUE by starting a NEW attempt from
 //                          the existing branch's head -- the work is kept, never started over. Carries
 //                          the branch its new attempt starts from.
+//   Restore             -- CONTINUE's recovery of a STILL-RESUMABLE attempt whose worktree was reaped while
+//                          its lineage had NOT ended: rebuild the SAME attempt in place (same attempt key)
+//                          from its live branch and reopen the claim that names it. NOT NextAttempt (which
+//                          mints a NEW key for a lineage that ENDED without a candidate). A live branch is
+//                          required; a gone/unknown branch or an unreadable tree is a Refuse, never a restore.
 //   AlreadyComplete     -- verification green, review approved and goal audit approved: the lineage is
 //                          complete; the operator's CONTINUE is a no-op and NOTHING spawns.
 //   Refuse              -- a fact the decision needs cannot be established at all: the ledger is
