@@ -218,7 +218,7 @@ type GlyphReduction
 // never called the failing function at all.
 //
 // The defect is filed: gunbc.recurring_failure_mode.a_generated_crossing_call_is_labelled_from_source_text_not_the_callee_parameter.
-// These bindings are REQUIRED for v1-interpreted evaluation of this product code because of that row; a v1 fix
+// These bindings are REQUIRED at the recursive-frame sites that call this helper, for v1-interpreted evaluation, because of that row (the non-recursive sites span_carries_mark and scalar_of cast inline: a run without their bindings passed); a v1 fix
 // was judged not admissible under v1_maintenance_standing (no v2 self-host caller exists). Restoration trigger,
 // the row's own: a v1 fix, or witness evaluation moving to the native compiler; then these bindings go.
 fn shown_text(t: NonEmptyStr) -> String {
@@ -226,8 +226,7 @@ fn shown_text(t: NonEmptyStr) -> String {
 }
 
 fn scalar_of(one: NonEmptyStr) -> Char? {
-  let one_text = shown_text(t: one)
-  match string_head(s: one_text) {
+  match string_head(s: one as String) {
     CharFound { value: c } => Present { value: c }
     CharAbsent => Absent
   }
@@ -470,8 +469,7 @@ fn any_glyph_unread(spans: List<GlyphSpan>) -> Bool {
 // without the recursive tail) are both green. So the coercion is bound in a function that never calls itself,
 // and the walk below binds nothing at all.
 fn span_carries_mark(s: GlyphSpan, mark: Char) -> Bool {
-  let host = shown_text(t: s.span)
-  string_contains_char(s: host, c: mark)
+  string_contains_char(s: s.span as String, c: mark)
 }
 
 fn any_span_carries_mark(spans: List<GlyphSpan>, mark: Char) -> Bool {
