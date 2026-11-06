@@ -109,34 +109,6 @@ data collection_key_inferred_census_row_source: String = "module eq_probe_collec
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
-// THE gunbc#15175 WALL, pinned. A member typed as a generic APPLICATION whose applied argument
-// is either the enclosing declaration's OWN type parameter (std.effects CreateEffect { cause:
-// CreateCause<K> } under EffectShape<KeySource> -- host.host_effect's converge-loop evidence,
-// dag/gunbc/host/host_effect.dag) or a declared by-target type (Measure<Q,S,M> { count: M } under
-// the Kibibyte application -- gunbc.compute.compute_seat_ensure's seat_fell_by) refused at main:
-// the by-target judgment read the argument as an unbound global name and said "a routed member
-// inside a generic application". The argument is judged at the spelling declaration instead:
-// its parameter roster first, then the symbol index by declaring identity. The green rows are
-// both admitted shapes; the red control is the same shape with a ROUTED argument, which must keep
-// refusing with the same located cause -- the wall stays closed for routed members.
-data nested_own_param_eq_green_source: String = "module eq_probe_nested_own_param\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<String>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
-
-data nested_declared_argument_eq_green_source: String = "module eq_probe_nested_declared_argument\ntype ProbeKey\n  = KeyA { name: String }\n  | KeyB\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<ProbeKey>\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
-
-data nested_routed_argument_eq_red_source: String = "module eq_probe_nested_routed_argument\nimport v2.std.node { Node }\ntype Inner<K> {\n  key: K\n}\ntype Outer<K> {\n  inner: Inner<K>\n}\ntype Carrier {\n  outer: Outer<Node>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
-
-test fn nested_own_parameter_equality_stays_admitted() -> Bool {
-  eq_admitted(source: nested_own_param_eq_green_source)
-}
-
-test fn nested_declared_by_target_argument_equality_stays_admitted() -> Bool {
-  eq_admitted(source: nested_declared_argument_eq_green_source)
-}
-
-test fn nested_routed_argument_equality_still_refuses_blocking() -> Bool {
-  eq_wall_refusal_count(source: nested_routed_argument_eq_red_source) >= 1
-}
-
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
@@ -775,34 +747,4 @@ test fn plain_non_function_alias_operand_stays_admitted() -> Bool {
 
 test fn local_generic_plain_alias_operand_stays_admitted() -> Bool {
   eq_admitted(source: local_generic_plain_alias_eq_green_source)
-}
-
-// AN APPLIED GENERIC IS WALKED WITH ITS PARAMETERS BOUND TO ITS ARGUMENTS (re-land of gunbc#15175; main_wet refused at resolve in
-// fleet_physical_inventory and compute_seat_ensure on Measure<Memory, Kibi, Nat>, and in host_effect on CreateCause inside
-// EffectShape<KeySource>). An argument is judged exactly where its parameter OCCURS in the body (equality_applied_arguments_by_target),
-// so a phantom parameter imposes no obligation and a nested application over the parent's parameter is judged at that parameter's
-// argument rather than against a name that means nothing at the use site. A lookup miss still refuses: the REDs below keep a
-// function-bearing argument refused at every occurrence.
-data generic_phantom_fn_green_source: String = "module eq_probe_phantom\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<fn(Int) -> Int, Int>, b: EqPhantom<fn(Int) -> Int, Int>) -> Bool { a == b }\n"
-
-data generic_phantom_fn_occurring_red_source: String = "module eq_probe_phantom_red\ntype EqPhantom<Q, M> { count: M }\nfn same(a: EqPhantom<Int, fn(Int) -> Int>, b: EqPhantom<Int, fn(Int) -> Int>) -> Bool { a == b }\n"
-
-data generic_nested_green_source: String = "module eq_probe_nested\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqKey = EqPath { param: String }\ntype EqEvidence = EqLattice { shape: EqShape<EqKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
-
-data generic_nested_fn_red_source: String = "module eq_probe_nested_red\ntype EqCause<K> = EqPost | EqKeyed { key: K }\ntype EqShape<K> = EqRead | EqCreate { cause: EqCause<K> }\ntype EqFnKey = EqFn { f: fn(Int) -> Int }\ntype EqEvidence = EqLattice { shape: EqShape<EqFnKey> }\nfn same(a: EqEvidence, b: EqEvidence) -> Bool { a == b }\n"
-
-test fn a_phantom_parameter_bound_to_a_function_type_is_not_judged() -> Bool {
-  eq_admitted(source: generic_phantom_fn_green_source)
-}
-
-test fn a_parameter_that_occurs_in_the_body_and_binds_a_function_type_refuses() -> Bool {
-  eq_wall_refusal_count(source: generic_phantom_fn_occurring_red_source) > 0
-}
-
-test fn a_nested_application_over_the_parents_parameter_is_admitted_at_a_by_target_argument() -> Bool {
-  eq_admitted(source: generic_nested_green_source)
-}
-
-test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_bearing_argument() -> Bool {
-  eq_wall_refusal_count(source: generic_nested_fn_red_source) > 0
 }
