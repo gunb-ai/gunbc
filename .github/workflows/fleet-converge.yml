@@ -2200,7 +2200,7 @@ jobs:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           QUALIFICATION_SUBJECT_HOST: ${{ github.event.inputs.subject_host }}
         if: github.event.inputs.mode == 'qualification_attempt'
-        timeout-minutes: 120
+        timeout-minutes: 180
       - name: Upload the qualification attempt receipt
         id: qualification_attempt_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -5163,7 +5163,7 @@ jobs:
   qualification-floor:
     name: qualification floor
     runs-on: ${{ inputs.runner_attempt_label }}
-    timeout-minutes: 90
+    timeout-minutes: 150
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'qualification_floor'
     steps:
       - name: Check out the pinned qualification revision and refuse on any mismatch

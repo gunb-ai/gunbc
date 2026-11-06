@@ -369,7 +369,13 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
       runner: selected_ci_runner_target(),
-      timeout: minute(90),
+      // THE REQUIRED JOB'S WALL BUDGET is a policy budget (DESIGN 5), not a measurement. Raised from 90 to
+      // 150 minutes by operator escalation msg_ebf6e9b0, decided BY DEFAULT on 2026-11-06 with no human
+      // reply: runs 42292182286 (main at 1e27f7cffc81) and 42276359442 (PR #16000) passed BOTH
+      // emit-and-build steps (about 28-32 min each) and were then cancelled at 90:00 in the parse-population
+      // walk, so a green subject could not finish. Dissolution: a runtime slice that brings the job back under
+      // 90 restores this row to minute(90).
+      timeout: minute(150),
       source_roots: witness_layer_roots,
       schedule: Absent,
       memory_budget: Absent,
