@@ -1,0 +1,108 @@
+module gunbc.runner.runner_qualification_revision_admission
+
+import std.types { String, NonEmptyStr, FilePath, GitRef, CommitSha }
+import std.resources { Network }
+import std.optional { Present }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.git.plumbing { GitWorktreeAt }
+import extdeps.github.workflow_runs { WorkflowRunList }
+import extdeps.transports.rest {
+  RestResult, RestAnswered, RestRefused, RestReadExchange, classify_rest_refusal, RestExchangeRefusal, rest_exchange_refusal_text,
+}
+import gunbc.fleet.fleet_revision_acceptance {
+  AcceptedFleetRevision, admit_fleet_revision, FleetRevisionAccepted, RequiredCiAndDefaultBranchRevisionMismatch,
+  accept_required_ci_merge_group_runs, RequiredCiAdmitted, RequiredCiRefused, RequiredCiRefusal, required_ci_refusal_message,
+  observe_default_branch_landed, DefaultBranchAdmitted, DefaultBranchRefused, DefaultBranchRefusal, default_branch_refusal_message,
+}
+import gunbc.fleet.origin_main_revision_observe { LandedOnAdmittedStanding, TreeLandedOnAdmitted, landed_on_admitted_standing }
+import gunbc.fleet.fleet_main_revision { fleet_landed_main_ref_name }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, observe_required_ci_epoch_at_commit }
+import gunbc.repository { gunbc_repository }
+import gunbc.github_effect_perform { ControllerInstallationToken, read_merge_group_runs_with }
+
+// THE REVISION A QUALIFICATION ATTEMPT MAY QUALIFY (gunbc.plans.mtcollins1_ci_service_legs: "push a
+// fleet_revision_acceptance-admitted release"). A dispatch's revision is its event sha (operator, 2026-10-10;
+// gunbc.actions_run_binding admit_optional_expected_revision_given), and before anything is held, minted or launched
+// for it, it must be an AcceptedFleetRevision: the required floor succeeded on the merge queue for exactly that
+// revision, and the default branch contains it. The attempt's unit hold takes the accepted carrier, so no route
+// reaches the hold with a revision this fold did not admit (gunbc.runner.runner_qualification_attempt_run).
+//
+// Both propositions come from gunbc.fleet.fleet_revision_acceptance's own providers: the merge-group binding of the
+// CI proposition, and the landed binding of the SCM proposition (a dispatch has no push event to read). This module
+// only joins three readings through them; it judges nothing of its own.
+
+type QualificationRevisionRefusal
+  = QualificationRevisionUndecodable { observed: String }
+  | QualificationMergeGroupRunsUnread { refusal: RestExchangeRefusal }
+  | QualificationRequiredCiRefused { cause: RequiredCiRefusal }
+  | QualificationDefaultBranchRefused { cause: DefaultBranchRefusal }
+  | QualificationRevisionsDisagree { required_ci_revision: GitObjectId, default_branch_revision: GitObjectId }
+
+type QualificationRevisionAdmission
+  = QualificationRevisionAccepted { accepted: AcceptedFleetRevision<NonEmptyStr, NonEmptyStr> }
+  | QualificationRevisionRefused { refusal: QualificationRevisionRefusal }
+
+fn landed_evidence(landed: LandedOnAdmittedStanding) -> NonEmptyStr {
+  match landed {
+    TreeLandedOnAdmitted { local: _, admitted: h } =>
+      concat("contained in the default branch at ", git_object_id_wire_hex(oid: h) as String) as NonEmptyStr
+    _ => "default-branch containment, not established" as NonEmptyStr
+  }
+}
+
+// THE JOIN, PURE: every reading is an input, so each refusal arm is authorable from a supplied value.
+fn admit_qualification_revision(
+  revision: GitObjectId,
+  runs: RestResult<WorkflowRunList>,
+  epoch: RequiredCiEpochObservation,
+  landed: LandedOnAdmittedStanding,
+) -> QualificationRevisionAdmission {
+  match runs {
+    RestRefused { refusal: r } =>
+      QualificationRevisionRefused { refusal: QualificationMergeGroupRunsUnread { refusal: classify_rest_refusal(standing: RestReadExchange { refusal: r }) } }
+    RestAnswered { answer: list } =>
+      match accept_required_ci_merge_group_runs(revision: revision, runs: list, observed_epoch: epoch) {
+        RequiredCiRefused { cause: c } => QualificationRevisionRefused { refusal: QualificationRequiredCiRefused { cause: c } }
+        RequiredCiAdmitted { succeeded: ci } =>
+          match observe_default_branch_landed(revision: revision, standing: landed, evidence: landed_evidence(landed: landed)) {
+            DefaultBranchRefused { cause: c } => QualificationRevisionRefused { refusal: QualificationDefaultBranchRefused { cause: c } }
+            DefaultBranchAdmitted { observed: branch } =>
+              match admit_fleet_revision(required_ci: ci, default_branch: branch) {
+                FleetRevisionAccepted { accepted: a } => QualificationRevisionAccepted { accepted: a }
+                RequiredCiAndDefaultBranchRevisionMismatch { required_ci_revision: c, default_branch_revision: d } =>
+                  QualificationRevisionRefused { refusal: QualificationRevisionsDisagree { required_ci_revision: c, default_branch_revision: d } }
+              }
+          }
+      }
+  }
+}
+
+// THE THREE READINGS, ALL READS: the merge-queue runs of the revision (GitHub REST, the attempt's installation token),
+// the required contract's epoch in the revision's own floor workflow, and the revision's containment in the
+// advertised default branch. The repository is the run's full checkout (the fleet-converge job fetches at depth 0).
+fn observe_qualification_revision(revision_text: String, repo: FilePath, token: ControllerInstallationToken) -> QualificationRevisionAdmission
+  uses net: Network
+{
+  match git_object_id_from_untagged_hex(hex: revision_text) {
+    Present { value: oid } =>
+      admit_qualification_revision(
+        revision: oid,
+        runs: read_merge_group_runs_with(token: token, owner: gunbc_repository.owner as NonEmptyStr, repo: gunbc_repository.name as NonEmptyStr, revision: revision_text as CommitSha).runs,
+        epoch: observe_required_ci_epoch_at_commit(address: GitWorktreeAt { path: repo }, head_sha: revision_text as GitRef),
+        landed: landed_on_admitted_standing(repo: repo, remote: "origin", ref_name: fleet_landed_main_ref_name as GitRef, local: oid),
+      )
+    _ => QualificationRevisionRefused { refusal: QualificationRevisionUndecodable { observed: revision_text } }
+  }
+}
+
+fn qualification_revision_refusal_message(refusal: QualificationRevisionRefusal) -> String {
+  match refusal {
+    QualificationRevisionUndecodable { observed: o } => concat("the run's revision is not a decodable object id: ", o)
+    QualificationMergeGroupRunsUnread { refusal: r } =>
+      concat("the merge-queue runs of the revision were not read, so required CI is unproven: ", rest_exchange_refusal_text(refusal: r))
+    QualificationRequiredCiRefused { cause: c } => required_ci_refusal_message(cause: c)
+    QualificationDefaultBranchRefused { cause: c } => default_branch_refusal_message(cause: c)
+    QualificationRevisionsDisagree { required_ci_revision: c, default_branch_revision: d } =>
+      join(["required CI proved ", git_object_id_wire_hex(oid: c) as String, " but the default branch reading is of ", git_object_id_wire_hex(oid: d) as String], "")
+  }
+}
