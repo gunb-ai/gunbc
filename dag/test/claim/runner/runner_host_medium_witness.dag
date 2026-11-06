@@ -414,7 +414,7 @@ fn observed_boot(capture: String) -> String {
 }
 
 fn keyed_capture(key_exit: String, pub: String, fp: String) -> String {
-  concat(begin_line, concat(sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: key_exit, sshd_exit: sshd_exit, pub_body: pub, fingerprint_body: fp), end_line))
+  concat(begin_line, concat(sections_keyed(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "0", key_exit: key_exit, pub_body: pub, fingerprint_body: fp), end_line))
 }
 
 test fn the_sol_reader_takes_the_pin_and_the_boot_id_from_the_bound_closed_envelope() -> Bool {
