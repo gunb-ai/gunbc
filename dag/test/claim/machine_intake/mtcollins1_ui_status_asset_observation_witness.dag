@@ -55,6 +55,9 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_page_shape_of,
   ui_page_shape_line,
   ui_no_reference_conclusion,
+  MegaRacUiNoReferenceConclusion,
+  ScriptTagsWithoutDerivedReference,
+  NoPageNamingAScript,
   ui_refusal_receipt_text,
   ui_octets_index_of,
   ui_string_ends_with,
@@ -605,6 +608,13 @@ test fn w_the_page_shape_line_carries_counts_and_a_digest_and_none_of_the_body()
     !string_contains(s: line, pattern: "<")
 }
 
+fn witness_conclusion_is_scripts_without_reference(conclusion: MegaRacUiNoReferenceConclusion) -> Bool {
+  match conclusion {
+    ScriptTagsWithoutDerivedReference => true
+    NoPageNamingAScript => false
+  }
+}
+
 // The typed refusal: a 200 page that carries script tags but derives no reference is NOT reported as a
 // page that named no script. The same body with no <script at all is, and that control keeps the first
 // claim from passing because both conclusions read alike.
@@ -615,9 +625,8 @@ test fn w_script_tags_without_a_derived_reference_are_not_called_an_empty_page()
   let plain = witness_page_transport(
     path: "/" as NonEmptyStr, status: 200, body: "<html>login</html>", transport_ok: true,
   )
-  string_contains(s: ui_no_reference_conclusion(pages: [loader]) as String, pattern: "carries script tags") &&
-    !string_contains(s: ui_no_reference_conclusion(pages: [plain]) as String, pattern: "carries script tags") &&
-    string_contains(s: ui_no_reference_conclusion(pages: [plain]) as String, pattern: "no page answered 200 while naming a script")
+  witness_conclusion_is_scripts_without_reference(conclusion: ui_no_reference_conclusion(pages: [loader])) &&
+    !witness_conclusion_is_scripts_without_reference(conclusion: ui_no_reference_conclusion(pages: [plain]))
 }
 
 // The reviewer's case: an ordinary-looking path that no page named. It is refused for NOT BEING READ,
@@ -1352,4 +1361,19 @@ test fn w_a_page_read_over_a_broken_transport_is_never_the_evidence_page() -> Bo
     Present { value: _ } => false
   }
   fixture_is_a_200_with_references && picks_the_sound_page && no_evidence_page_when_only_the_broken_one_arrived
+}
+
+// TAG CONTEXT. The same `src="..."` is a reference only on a real start tag. Positive control first:
+// the real tag is read, and a real tag AFTER each non-tag context is still read, so the negatives
+// cannot pass by the scanner giving up at the first `<`.
+test fn w_an_attribute_is_read_only_on_a_start_tag() -> Bool {
+  witness_single_ref(page: "<script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<script>var t = ' src=\"/ui/evil.js\" ';</script><script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<!-- <script src=\"/ui/evil.js\"></script> --><script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    witness_single_ref(page: "<p>write src=\"/ui/evil.js\" here</p><script src=\"/ui/a.js\"></script>") == "/ui/a.js" &&
+    count(ui_asset_refs_of_page(page_text: "<script>var t = ' src=\"/ui/evil.js\" ';</script>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<script>document.write('<script src=\"/ui/inner.js\">');</script>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<!-- <script src=\"/ui/evil.js\"></script> -->")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "<p>write src=\"/ui/evil.js\" here</p>")) == 0 &&
+    count(ui_asset_refs_of_page(page_text: "</script src=\"/ui/evil.js\">")) == 0
 }

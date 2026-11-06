@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
@@ -177,23 +177,7 @@ fn ui_octets_starts_with(hay: List<Int>, needle: List<Int>) -> Bool {
 // haystack length computed once, so no input loops. An empty needle is Absent rather than a match at
 // every position -- it is not a finding, and treating it as one would answer "found" for anything.
 fn ui_octets_index_of(hay: List<Int>, needle: List<Int>) -> Int? {
-  let needle_length = count(needle)
-  let haystack_length = count(hay)
-  if needle_length == 0 || needle_length > haystack_length {
-    Absent
-  } else {
-    ui_octets_index_walk(hay, needle, needle_length, haystack_length, 0)
-  }
-}
-
-fn ui_octets_index_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int) -> Int? {
-  if at + needle_length > haystack_length {
-    Absent
-  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
-    Present { value: at }
-  } else {
-    ui_octets_index_walk(hay, needle, needle_length, haystack_length, at + 1)
-  }
+  html_octets_index_from(hay, needle, 0)
 }
 
 fn ui_string_ends_with(text: String, suffix: String) -> Bool {
@@ -285,21 +269,19 @@ fn ui_octets_are_ascii(octets: List<Int>) -> Bool {
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE PAGE → ASSET PATHS. Purely syntactic, and deliberately not a JavaScript or HTML model: it
-// collects the values of `src` and `href` attributes, and keeps a value only when an attribute NAME
-// (ASCII case-folded) follows ASCII whitespace and is itself followed by `=`. The reading is
-// extdeps.whatwg.html_attribute_tokenization (HTML Living Standard 13.2.5, the attribute-name and
-// attribute-value states); this module supplies only the names it asks for. Whitespace is TAB, LF, FF, CR or SPACE; the value is double-quoted, single-quoted, or
-// unquoted up to whitespace or `>`; whitespace may surround `=`. The first version took only the
-// canonical writer spelling (a space, a double quote), so a script written with single quotes, an
-// unquoted value, an uppercase SRC or a newline before the attribute produced `refs=0`, which the
-// receipt then rendered as "no page named a script" -- a statement about the page that was a statement
-// about the parser (gunbc.recurring_failure_mode an_asset_reference_extractor_narrower_than_the_html_it_reads).
-// The leading whitespace is still load-bearing: `data-src="a.js"` is not a `src` attribute. One form
-// remains unread and is recorded: `<script/src=...>` (a solidus as the separator); the page_shape line
-// counts `<script` tags, so a page that carries them while deriving no reference is reported as exactly
-// that rather than as an empty page. A derived value is a CANDIDATE: the admission below still refuses
-// every path the page did not name and every shape the guard rejects.
+// THE PAGE → ASSET PATHS. Deliberately not a JavaScript model: it collects the values of `src` and
+// `href` attributes of START TAGS, read by extdeps.whatwg.html_attribute_tokenization (HTML Living
+// Standard 13.2.5; this module supplies only the two names). Text, comments, end tags and the body of
+// script/style are not tags, so the same `src="..."` written there is NOT a reference: text must not
+// become authority to make a network request. The first version took only the canonical writer spelling
+// (a space, a double quote), so a single-quoted, unquoted, uppercase or newline-led reference produced
+// `refs=0`, which the receipt rendered as "no page named a script" -- a statement about the page that
+// was a statement about the parser (gunbc.recurring_failure_mode
+// an_asset_reference_extractor_narrower_than_the_html_it_reads). The page_shape line counts `<script`
+// tags lexically, so a page that carries them while deriving no reference is reported as exactly that
+// (the typed ScriptTagsWithoutDerivedReference) rather than as an empty page. A derived value is a
+// CANDIDATE: the admission below still refuses every path the page did not name and every shape the
+// guard rejects.
 // ---------------------------------------------------------------------------------------------
 
 data megarac_ui_src_name_octets: List<Int> = ui_octets_of("src")
@@ -882,11 +864,23 @@ fn ui_page_carries_scripts_without_a_reference(reading: MegaRacUiPageReading) ->
   reading.transport_ok && reading.http_status == 200 && reading.shape.script_tags > 0 && count(reading.asset_refs) == 0
 }
 
-fn ui_no_reference_conclusion(pages: List<MegaRacUiPageReading>) -> NonEmptyStr {
+type MegaRacUiNoReferenceConclusion
+  = ScriptTagsWithoutDerivedReference
+  | NoPageNamingAScript
+
+fn ui_no_reference_conclusion(pages: List<MegaRacUiPageReading>) -> MegaRacUiNoReferenceConclusion {
   if any(pages, p => ui_page_carries_scripts_without_a_reference(reading: p)) {
-    "a page answered 200 and carries script tags but no reference was derived from it (see page_shape above: this is an extractor or loader deficit, not an empty page); no asset was fetched" as NonEmptyStr
+    ScriptTagsWithoutDerivedReference
   } else {
-    "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
+    NoPageNamingAScript
+  }
+}
+
+// Rendered at the receipt boundary only; the typed arm is what a consumer matches.
+fn ui_no_reference_conclusion_text(conclusion: MegaRacUiNoReferenceConclusion) -> NonEmptyStr {
+  match conclusion {
+    ScriptTagsWithoutDerivedReference => "a page answered 200 and carries script tags but no reference was derived from it (see page_shape above: this is an extractor or loader deficit, not an empty page); no asset was fetched" as NonEmptyStr
+    NoPageNamingAScript => "no page answered 200 while naming a script; the controller's own statuses are above, and no asset was fetched" as NonEmptyStr
   }
 }
 
@@ -1294,7 +1288,7 @@ fn megarac_ui_asset_observation_run(
             )
             MegaRacUiRunOutcome {
               lines: ui_pages_lines(pages: pages, at: 0, acc: []) |> list_push(
-                ui_no_reference_conclusion(pages: pages)
+                ui_no_reference_conclusion_text(conclusion: ui_no_reference_conclusion(pages: pages))
               ),
               attempts: [],
               session_closed: closed.success,
