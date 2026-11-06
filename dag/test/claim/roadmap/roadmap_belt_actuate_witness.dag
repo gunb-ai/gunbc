@@ -143,6 +143,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_session_uuid,
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
+  belt_verify_terminal_attempt,
   belt_workflow_attempt_presentation_json,
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
@@ -1330,9 +1331,10 @@ test fn attempt_wire_carries_decided_activity() -> Bool {
 }
 
 test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool {
-  match belt_verify_attempt_for_instance(
+  match belt_verify_terminal_attempt(
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
+    lookup: NodeMissing,
   ) {
     VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
