@@ -9,7 +9,7 @@ module product.node_power_envelope
 // atomically. See gunbc.host.memory_change_evaluation.memory_change_consumer_frontiers.
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div, nat_ceil_div_by_succ, nat_saturating_sub }
 import std.measure {
   Bandwidth,
   Celsius,
@@ -353,6 +353,7 @@ type DimmPowerRefusalCause
   | RefreshBandUnread { read_obligation: NonEmptyStr }
   | UnsupportedDramGeneration { part_number: NonEmptyStr }
   | ActivationDutyOutOfRange { duty: Permille }
+  | ModulePeakBandwidthZero { part_number: NonEmptyStr }
   | AmbiguousClassBound { part_number: NonEmptyStr, candidate_count: Nat }
   | UncitedPartEvidenceAndNoClassBound { part_number: NonEmptyStr, read_obligation: NonEmptyStr }
   | ActivationDutyUnestablished { read_obligation: NonEmptyStr }
@@ -361,14 +362,6 @@ type DimmPowerReading
   = DimmPowerFromPartCurrents { power: Milliwatt, grounds: DimmPowerGrounds }
   | DimmPowerFromClassBound { power: Milliwatt, grounds: DimmPowerGrounds }
   | DimmPowerRefused { cause: DimmPowerRefusalCause }
-
-fn div_ceil(a: Nat, b: Nat) -> Nat {
-  (a + b - 1) / b
-}
-
-fn nat_sub_floor(a: Nat, b: Nat) -> Nat {
-  if a > b { a - b } else { 0 }
-}
 
 // THE REFRESH BAND IS READ FROM extdeps.memory.jedec, NOT RESTATED: its upper TCASE edges and tREFI
 // intervals are the canonical rows, and the refresh multiplier is their interval ratio. The band's own
@@ -445,36 +438,55 @@ fn module_peak_bandwidth(module: DramModuleCatalogRow) -> Bandwidth {
   Bandwidth { count: module.data_rate_mts * mega_factor() * byte_size_count(b: dram_channel_bus_bytes()) }
 }
 
+// A zero module peak has no per-mille share to divide into, so the arithmetic is absent rather than
+// answered; the caller refuses with ModulePeakBandwidthZero.
 fn dimm_power_from_currents(
   module: DramModuleCatalogRow,
   profile: DramCurrentProfile,
   traffic: DimmTraffic,
   activate_duty: Permille,
   refresh_multiplier: Nat,
-) -> Milliwatt {
+) -> Milliwatt? {
   let peak = bandwidth_count(b: module_peak_bandwidth(module: module))
-  let read_pm = div_ceil(a: bandwidth_count(b: traffic.read) * 1000, b: peak)
-  let write_pm = div_ceil(a: bandwidth_count(b: traffic.write) * 1000, b: peak)
+  match nat_ceil_div(a: bandwidth_count(b: traffic.read) * 1000, b: peak) {
+    Absent => Absent
+    Present { value: read_pm } =>
+      match nat_ceil_div(a: bandwidth_count(b: traffic.write) * 1000, b: peak) {
+        Absent => Absent
+        Present { value: write_pm } => Present { value: dimm_power_over_shares(module: module, profile: profile, activate_duty: activate_duty, refresh_multiplier: refresh_multiplier, read_pm: read_pm, write_pm: write_pm) }
+      }
+  }
+}
+
+fn dimm_power_over_shares(
+  module: DramModuleCatalogRow,
+  profile: DramCurrentProfile,
+  activate_duty: Permille,
+  refresh_multiplier: Nat,
+  read_pm: Nat,
+  write_pm: Nat,
+) -> Milliwatt {
   let active_dies = dram_chips_per_rank(module: module)
   let all_dies = active_dies * module.rank_count
   let idd3n = milliampere_count(i: profile.idd3n)
   let background = all_dies * idd3n
-  let activate = div_ceil(
-    a: active_dies * nat_sub_floor(a: milliampere_count(i: profile.idd0), b: idd3n) * permille_count(p: activate_duty),
-    b: 1000,
-  )
-  let read = div_ceil(a: active_dies * nat_sub_floor(a: milliampere_count(i: profile.idd4r), b: idd3n) * read_pm, b: 1000)
-  let write = div_ceil(a: active_dies * nat_sub_floor(a: milliampere_count(i: profile.idd4w), b: idd3n) * write_pm, b: 1000)
-  let refresh = div_ceil(
-    a: all_dies * nat_sub_floor(a: milliampere_count(i: profile.idd5b), b: idd3n)
+  let activate = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd0), b: idd3n) * permille_count(p: activate_duty))
+  let read = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4r), b: idd3n) * read_pm)
+  let write = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4w), b: idd3n) * write_pm)
+  let refresh = per_mille_ceil(
+    a: all_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd5b), b: idd3n)
       * permille_count(p: profile.refresh_duty) * refresh_multiplier,
-    b: 1000,
   )
   let total_ma = background + activate + read + write + refresh
   milliwatt(
-    count: div_ceil(a: total_ma * millivolt_count(v: profile.supply), b: 1000)
+    count: per_mille_ceil(a: total_ma * millivolt_count(v: profile.supply))
       + milliwatt_count(w: profile.buffer_overhead),
   )
+}
+
+// Division by 1000 (per-mille and milli- scaling): a literal divisor, nonzero by construction.
+fn per_mille_ceil(a: Nat) -> Nat {
+  nat_ceil_div_by_succ(a: a, divisor_prev: 999)
 }
 
 fn dimm_power_from_class_bound(bound: DramClassPowerBound, band: SelectedRefreshBand) -> DimmPowerReading {
@@ -525,16 +537,28 @@ fn dimm_power_from_part(
         TranscribedUncited { read_obligation: o } =>
           DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: o } }
         CitedToAuthority { authority: _ } =>
-          DimmPowerFromPartCurrents {
-            power: dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: d, refresh_multiplier: band.multiplier),
-            grounds: grounds_of(base: part.standing, band: band, activation: Present { value: g }),
-          }
+          part_currents_reading(module: module, part: part, load: load, band: band, duty: d, activation: g)
         ObservedByReceipt { observed: _ } =>
-          DimmPowerFromPartCurrents {
-            power: dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: d, refresh_multiplier: band.multiplier),
-            grounds: grounds_of(base: part.standing, band: band, activation: Present { value: g }),
-          }
+          part_currents_reading(module: module, part: part, load: load, band: band, duty: d, activation: g)
       }
+      }
+  }
+}
+
+fn part_currents_reading(
+  module: DramModuleCatalogRow,
+  part: DramPartCurrentEvidence,
+  load: DimmLoad,
+  band: SelectedRefreshBand,
+  duty: Permille,
+  activation: CitedFigureStanding,
+) -> DimmPowerReading {
+  match dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: duty, refresh_multiplier: band.multiplier) {
+    Absent => DimmPowerRefused { cause: ModulePeakBandwidthZero { part_number: module.part_number } }
+    Present { value: power } =>
+      DimmPowerFromPartCurrents {
+        power: power,
+        grounds: grounds_of(base: part.standing, band: band, activation: Present { value: activation }),
       }
   }
 }
@@ -616,12 +640,12 @@ fn memory_power(
     DimmPowerRefused { cause: c } => MemoryPowerRefused { cause: c }
     DimmPowerFromPartCurrents { power: p, grounds: g } =>
       MemoryPowerDerived {
-        power: watt(count: div_ceil(a: milliwatt_count(w: p) * population.dimm_count, b: 1000)),
+        power: watt(count: per_mille_ceil(a: milliwatt_count(w: p) * population.dimm_count)),
         grounds: g,
       }
     DimmPowerFromClassBound { power: p, grounds: g } =>
       MemoryPowerDerived {
-        power: watt(count: div_ceil(a: milliwatt_count(w: p) * population.dimm_count, b: 1000)),
+        power: watt(count: per_mille_ceil(a: milliwatt_count(w: p) * population.dimm_count)),
         grounds: g,
       }
   }

@@ -18,7 +18,7 @@ import std.measure {
   byte_size_count,
   money_rate_micros,
 }
-import std.nat { Nat, nat_max, nat_min, nat_ceil_div }
+import std.nat { Nat, nat_min, nat_ceil_div, nat_saturating_sub }
 import std.types { Bool, List, NonEmptyStr }
 import std.algebra { length }
 
@@ -252,11 +252,6 @@ fn cited_egress_basis(row: ObjectStorageEgressRow) -> ByteBasis {
 // own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the
 // workload's actual volume.
 
-// Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
-fn saturating_sub(a: Nat, b: Nat) -> Nat {
-  nat_max(a: a, b: b) - b
-}
-
 type RateTier {
   lower_bound_units: Nat
   rate_micros: Nat
@@ -275,7 +270,7 @@ fn progressive_cost(units: Nat, tiers: List<RateTier>) -> Nat {
       TierFoldAcc { started: true, prev_lower: tier.lower_bound_units, prev_rate: tier.rate_micros, total_micros: 0 }
     } else {
       let cap = nat_min(a: units, b: tier.lower_bound_units)
-      let slice = saturating_sub(a: cap, b: a.prev_lower)
+      let slice = nat_saturating_sub(a: cap, b: a.prev_lower)
       TierFoldAcc {
         started: true,
         prev_lower: tier.lower_bound_units,
@@ -284,7 +279,7 @@ fn progressive_cost(units: Nat, tiers: List<RateTier>) -> Nat {
       }
     }
   })
-  let tail_slice = saturating_sub(a: units, b: acc.prev_lower)
+  let tail_slice = nat_saturating_sub(a: units, b: acc.prev_lower)
   acc.total_micros + (tail_slice * acc.prev_rate)
 }
 

@@ -107,12 +107,24 @@ fn nat_div_rem_by_succ(a: Nat, divisor_prev: Nat) -> NatQuotient {
 // which a Nat is closed under. A zero divisor has no quotient, so it is absent rather than
 // answered: each caller says what a zero divisor means in its own domain.
 fn nat_ceil_div(a: Nat, b: Nat) -> Nat? {
-  if b == 0 {
-    none
-  } else {
-    let carry = if a % b == 0 { 0 } else { 1 }
-    Present { value: a / b + carry }
+  match b {
+    Zero => none
+    Succ { prev: divisor_prev } => Present { value: nat_ceil_div_by_succ(a: a, divisor_prev: divisor_prev) }
   }
+}
+
+// The TOTAL form for a divisor nonzero by construction (the caller supplies its predecessor, as in
+// nat_div_rem_by_succ): a caller dividing by a nonzero literal has no zero-divisor arm to handle.
+fn nat_ceil_div_by_succ(a: Nat, divisor_prev: Nat) -> Nat {
+  let divisor = Succ { prev: divisor_prev }
+  let carry = if a % divisor == 0 { 0 } else { 1 }
+  a / divisor + carry
+}
+
+// SUBTRACTION FLOORED AT ZERO, staying in the naturals: `a - b` is an Int, so the clamp is written as
+// max(a, b) - b, whose minuend can never be below the subtrahend.
+fn nat_saturating_sub(a: Nat, b: Nat) -> Nat {
+  nat_max(a: a, b: b) - b
 }
 
 // THE SEMIRING IS INHABITANCE. These two values are the witnesses that the naturals inhabit the
