@@ -262,7 +262,7 @@ test fn a_stopped_segment_is_a_refusal_not_a_fallback() -> Bool {
     _ => false
   })
     && (match continuation_plan(obs: Present { value: stopped }) {
-      Refuse { cause: SegmentDamaged { segment: _ }, reason: r } => r.contains("does not inhabit")
+      Refuse { cause: SegmentDamaged { segment: VerificationWorkflowSegment }, reason: r } => r.contains("does not inhabit")
       _ => false
     })
     // RED CONTROL: a refusal is never a spawn.
@@ -307,7 +307,8 @@ test fn segments_in_motion_join_and_stopped_refuses() -> Bool {
       _ => false
     })
     && (match continuation_plan(obs: Present { value: stopped }) {
-      Refuse { cause: _, reason: _ } => true
+      // The STOPPED segment must surface specifically as the verification SegmentDamaged refusal, not any Refuse.
+      Refuse { cause: SegmentDamaged { segment: VerificationWorkflowSegment }, reason: _ } => true
       _ => false
     })
 }

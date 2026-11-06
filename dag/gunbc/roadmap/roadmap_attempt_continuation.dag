@@ -47,6 +47,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment, WorkflowSegmentState,
   WorkflowSegmentFailed, WorkflowSegmentComplete, WorkflowSegmentPending,
   WorkflowSegmentActive, WorkflowSegmentRefused, WorkflowSegmentStopped,
+  WorkflowSegmentKind, VerificationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
 }
 import gunbc.roadmap.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved,
@@ -185,7 +186,11 @@ type RefuseCause
   | WorktreeUnobserved { cause: String }
   | CaptureStoreUnreadable { reason: String }
   | CaptureOwed { reason: String }
-  | SegmentDamaged { segment: String }
+  // SegmentDamaged -- a ledger segment sits in WorkflowSegmentStopped, a state that segment does not inhabit
+  // (only the agent segment has a round budget to stop on). The WHICH-SEGMENT distinction is carried by the
+  // REUSED WorkflowSegmentKind coproduct (DESIGN 4c: a closed set belongs in a typed carrier, not a String;
+  // DESIGN 2/3: reuse the existing segment identity rather than mint a parallel SegmentKind).
+  | SegmentDamaged { segment: WorkflowSegmentKind }
   | LedgerUnobservable { reason: String }
   // RecoveryRecordMalformed -- the prior attempt's recovery record exists but is unreadable (its recorded
   // fields do not line up), so neither a resume nor a next attempt is established for a worker that handed
@@ -249,7 +254,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
             // branch leaves nothing; an unreadable branch is unknown, and unknown is refused, never restored
             // onto (a failed check is not the fact that a branch is gone).
             match branch_head {
-              BranchLive => continuation_from_segments(prior: prior, reaped: true)
+              BranchLive => continuation_from_segments(prior: prior)
               BranchGone =>
                 Refuse { cause: BranchAbsent, reason: join(["the prior attempt ", prior.attempt_key, "'s branch ", prior.branch, " is gone and its worktree is not present, so there is no committed work to continue and nothing to restore onto"], "") }
               BranchUnknown { reason: why } =>
@@ -291,7 +296,7 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
               SubmissionNeedsContext =>
                 continuation_next_attempt(prior: prior, why: join(["its submission declared needs-context: ", continuation_bounded_detail(detail: c.submission.explanation)], ""))
               SubmissionReady =>
-                continuation_from_segments(prior: prior, reaped: false)
+                continuation_from_segments(prior: prior)
             }
         }
         }
@@ -397,27 +402,52 @@ fn continuation_bounded_detail(detail: String) -> String {
 // the belt owes the segment itself, not a fresh attempt. A FAILED segment is the located judgement
 // that stopped the lineage short, so it CONTINUES with a new attempt from the branch head -- CONTINUE
 // keeps the work and lets the worker try again on top of it, which is the whole point of the verb.
-fn continuation_from_segments(prior: PriorExecutionObservation, reaped: Bool) -> ContinuationPlan {
+// WHAT THE WALK DOES WHEN A SEGMENT IS ABSENT (its belt obligation was never recorded). The branch is read
+// from the standing the caller already matched -- there is NO reaped: Bool to lie with, so a present-worktree
+// caller cannot claim a reap (DESIGN 5: a check restating a constraint the model carries is a second
+// representation of it; here the standing is the ONE source). After a REAP the belt can only act by restoring
+// the worktree from the branch head, so it continues with a fresh attempt off the branch; on a LIVE tree the
+// segment is merely OWED, so the lineage is JOINED and the belt performs the obligation, nothing spawning.
+// WorktreeUnknown cannot reach the walk (presence is refused upstream); it is matched for closedness (4b) and
+// fails typed rather than guessed.
+fn continuation_segment_absent(prior: PriorExecutionObservation, why: String, join_reason: String) -> ContinuationPlan {
+  match prior.standing {
+    WorktreeReaped { path: _, branch_head: _ } =>
+      continuation_reaped_next_attempt(prior: prior, why: why)
+    WorktreeStands { path: _, capture: _, recovery: _ } =>
+      AlreadyRunning { reason: join_reason, attempt_key: prior.attempt_key }
+    WorktreeUnknown { path: _, cause } =>
+      Refuse { cause: WorktreeUnobserved { cause }, reason: "the segment walk is reached only once the worktree's standing is established; an unobservable worktree is refused upstream, so this arm is unreachable and fails typed rather than guessed" }
+  }
+}
+
+// WHAT THE WALK DOES WHEN A SEGMENT FAILED (a red verdict): a REAP restores a fresh attempt from the branch
+// head; a LIVE tree continues the lineage with a new attempt on the branch. Typed on the standing, not a flag.
+fn continuation_segment_failed(prior: PriorExecutionObservation, why: String) -> ContinuationPlan {
+  match prior.standing {
+    WorktreeReaped { path: _, branch_head: _ } =>
+      continuation_reaped_next_attempt(prior: prior, why: why)
+    WorktreeStands { path: _, capture: _, recovery: _ } =>
+      continuation_next_attempt(prior: prior, why: why)
+    WorktreeUnknown { path: _, cause } =>
+      Refuse { cause: WorktreeUnobserved { cause }, reason: "unreachable -- the segment walk is reached only with an established standing; see continuation_segment_absent" }
+  }
+}
+
+fn continuation_from_segments(prior: PriorExecutionObservation) -> ContinuationPlan {
   match prior.verification {
     Absent =>
-      if reaped {
-        continuation_reaped_next_attempt(prior: prior, why: "no verification segment was ever recorded, and after a reap the belt can only act by restoring the worktree")
-      } else {
-        AlreadyRunning {
-          reason: join(["the prior attempt ", prior.attempt_key, "'s verification is owed and has no segment yet; the belt owes it, so the lineage is joined and nothing spawns"], ""),
-          attempt_key: prior.attempt_key,
-        }
-      }
+      continuation_segment_absent(
+        prior: prior,
+        why: "no verification segment was ever recorded, and after a reap the belt can only act by restoring the worktree",
+        join_reason: join(["the prior attempt ", prior.attempt_key, "'s verification is owed and has no segment yet; the belt owes it, so the lineage is joined and nothing spawns"], ""),
+      )
     Present { value: v } =>
       match v.state {
         WorkflowSegmentFailed =>
-          if reaped {
-            continuation_reaped_next_attempt(prior: prior, why: join(["verification failed: ", v.detail], ""))
-          } else {
-            continuation_next_attempt(prior: prior, why: join(["verification failed: ", v.detail], ""))
-          }
-        WorkflowSegmentComplete => continuation_after_green_verification(prior: prior, reaped: reaped)
-        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: "verification" }, reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
+          continuation_segment_failed(prior: prior, why: join(["verification failed: ", v.detail], ""))
+        WorkflowSegmentComplete => continuation_after_green_verification(prior: prior)
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: VerificationWorkflowSegment }, reason: "the prior attempt's verification segment is stopped, a state verification does not inhabit -- the segment record is damaged and the operator decides" }
         WorkflowSegmentPending =>
           AlreadyRunning {
             reason: join(["the prior attempt ", prior.attempt_key, "'s verification is owed and still pending; the belt owes it, so the lineage is joined and nothing spawns"], ""),
@@ -437,33 +467,26 @@ fn continuation_from_segments(prior: PriorExecutionObservation, reaped: Bool) ->
 // A GREEN VERIFICATION HANDS THE QUESTION TO THE REVIEW: changes requested stop the lineage short and
 // CONTINUE with a new attempt on the branch, an approved review hands it to the goal audit, anything
 // else is a lineage still in motion and is joined.
-fn continuation_after_green_verification(prior: PriorExecutionObservation, reaped: Bool) -> ContinuationPlan {
+fn continuation_after_green_verification(prior: PriorExecutionObservation) -> ContinuationPlan {
   match prior.review {
     Absent =>
-      if reaped {
-        continuation_reaped_next_attempt(prior: prior, why: "its verification was green but it carries no review segment, and after a reap the belt can only act by restoring the worktree")
-      } else {
-        AlreadyRunning {
-          reason: join(["the prior attempt ", prior.attempt_key, " verified green and carries no review segment yet; review is owed, so the lineage is joined"], ""),
-          attempt_key: prior.attempt_key,
-        }
-      }
+      continuation_segment_absent(
+        prior: prior,
+        why: "its verification was green but it carries no review segment, and after a reap the belt can only act by restoring the worktree",
+        join_reason: join(["the prior attempt ", prior.attempt_key, " verified green and carries no review segment yet; review is owed, so the lineage is joined"], ""),
+      )
     Present { value: r } =>
       match r.state {
         WorkflowSegmentFailed =>
-          if reaped {
-            continuation_reaped_next_attempt(prior: prior, why: join(["review requested changes: ", r.detail], ""))
-          } else {
-            continuation_next_attempt(prior: prior, why: join(["review requested changes: ", r.detail], ""))
-          }
-        WorkflowSegmentComplete => continuation_after_approved_review(prior: prior, reaped: reaped)
+          continuation_segment_failed(prior: prior, why: join(["review requested changes: ", r.detail], ""))
+        WorkflowSegmentComplete => continuation_after_approved_review(prior: prior)
         WorkflowSegmentPending =>
           AlreadyRunning { reason: join(["the prior attempt verified green and awaits review: ", r.detail], ""), attempt_key: prior.attempt_key }
         WorkflowSegmentActive =>
           AlreadyRunning { reason: "the prior attempt verified green and its reviewer is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
         WorkflowSegmentRefused =>
           AlreadyRunning { reason: join(["the prior attempt verified green and its review refused: ", r.detail], ""), attempt_key: prior.attempt_key }
-        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: "review" }, reason: "the prior attempt's review segment is stopped, a state review does not inhabit -- the segment record is damaged and the operator decides" }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: ReviewWorkflowSegment }, reason: "the prior attempt's review segment is stopped, a state review does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
 }
@@ -471,25 +494,18 @@ fn continuation_after_green_verification(prior: PriorExecutionObservation, reape
 // AN APPROVED REVIEW HANDS THE QUESTION TO THE GOAL AUDIT, the same way: changes requested stop the
 // lineage short and CONTINUE with a new attempt on the branch, approval COMPLETES it, and anything
 // else is a lineage still in motion and is joined.
-fn continuation_after_approved_review(prior: PriorExecutionObservation, reaped: Bool) -> ContinuationPlan {
+fn continuation_after_approved_review(prior: PriorExecutionObservation) -> ContinuationPlan {
   match prior.goal_audit {
     Absent =>
-      if reaped {
-        continuation_reaped_next_attempt(prior: prior, why: "its review approved but it carries no goal-audit segment, and after a reap the belt can only act by restoring the worktree")
-      } else {
-        AlreadyRunning {
-          reason: join(["the prior attempt ", prior.attempt_key, " verified green and its review approved, but it carries no goal audit segment yet; the audit is owed, so the lineage is joined"], ""),
-          attempt_key: prior.attempt_key,
-        }
-      }
+      continuation_segment_absent(
+        prior: prior,
+        why: "its review approved but it carries no goal-audit segment, and after a reap the belt can only act by restoring the worktree",
+        join_reason: join(["the prior attempt ", prior.attempt_key, " verified green and its review approved, but it carries no goal audit segment yet; the audit is owed, so the lineage is joined"], ""),
+      )
     Present { value: a } =>
       match a.state {
         WorkflowSegmentFailed =>
-          if reaped {
-            continuation_reaped_next_attempt(prior: prior, why: join(["goal audit requested changes: ", a.detail], ""))
-          } else {
-            continuation_next_attempt(prior: prior, why: join(["goal audit requested changes: ", a.detail], ""))
-          }
+          continuation_segment_failed(prior: prior, why: join(["goal audit requested changes: ", a.detail], ""))
         WorkflowSegmentComplete => AlreadyComplete { reason: "the prior attempt verified green, its review approved and its goal audit approved; the lineage is complete and the operator's CONTINUE is a no-op -- nothing spawns" }
         WorkflowSegmentPending =>
           AlreadyRunning { reason: join(["the prior attempt awaits its goal audit: ", a.detail], ""), attempt_key: prior.attempt_key }
@@ -497,7 +513,7 @@ fn continuation_after_approved_review(prior: PriorExecutionObservation, reaped: 
           AlreadyRunning { reason: "the prior attempt's goal auditor is running; its result is awaited, and no attempt spawns beside it", attempt_key: prior.attempt_key }
         WorkflowSegmentRefused =>
           AlreadyRunning { reason: join(["the prior attempt's goal audit refused: ", a.detail], ""), attempt_key: prior.attempt_key }
-        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: "goal_audit" }, reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit -- the segment record is damaged and the operator decides" }
+        WorkflowSegmentStopped => Refuse { cause: SegmentDamaged { segment: GoalAuditWorkflowSegment }, reason: "the prior attempt's goal audit segment is stopped, a state the audit does not inhabit -- the segment record is damaged and the operator decides" }
       }
   }
 }
