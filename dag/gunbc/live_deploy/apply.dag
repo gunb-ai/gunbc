@@ -116,7 +116,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target, observe_deploy_slot_host_reading_on_the_slot }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted, srv1_deploy_slot }
+import gunbc.runner.runner_slot_job_role { srv1_deploy_route_switch_admitted }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, deploy_slot_selected_workflow, DeploySlotReading, deploy_slot_host_reading_line }
 import gunbc.fleet.org_actions_inspection { read_org_runner_groups, org_actions_organization }
 import gunbc.runner.runner_group_restriction_observation {
@@ -171,7 +171,7 @@ import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
   microvm_slot_unit_instance_name, microvm_slot_reserve_unit_name,
 }
-import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.runner.runner_slot_allocation { srv1_microvm_shakedown_slot, srv1_deploy_slot }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import extdeps.systemd { systemd_unit_property_wire, LoadState }
 import std.algebra { trim }

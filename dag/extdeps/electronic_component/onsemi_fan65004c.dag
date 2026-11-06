@@ -1,0 +1,91 @@
+module extdeps.electronic_component.onsemi_fan65004c
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.onsemi { onsemi }
+import std.measure { millivolt, ampere }
+import extdeps.electronic_component.types {
+  ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
+  BiasSupply, BootstrapSupply, BootstrapSwitchReturn, CompensationOutput, CurrentLimitSet, CurrentSense, EnableInput, FeedbackInput, FrequencySet, LowSideGateDrive, RegulatorModeSelect, RegulatorNoConnection, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, SoftStartProgram, SwitchNode, SynchronizationPort,
+}
+
+// onsemi's FAN65004C, "Voltage Mode, 65 V, 6 A" synchronous buck regulator, datasheet FAN65004C/D Rev. 3,
+// May 2022, read 2026-11-05; the PDF's SHA-256 is
+// d68d7dcb63c02018531ed5334f66372c48ab30b253106f3fe9ea7e24e5d3b9ba. Cited: page 1 (features: 4.5 V to
+// 65 V input, 6 A continuous output, PQFN35 6x6 mm CASE 483BE, and the marking diagram "FAN / 65004C /
+// AWLYYWWG" with A assembly location, WL wafer lot, YY year, WW work week, G Pb-free), Table 2 on page 5
+// (pins) and Table 4 on page 6 (VIN 4.5 V to 65 V); the ordering table is Table 9 on page 23.
+//
+// DECLARED FRONTIER CONSUMER: the post-marking-PR identification join in product.electrical.identification,
+// which compares a board MarkingReading with `top_marking`. Nothing reads this row today.
+//
+// DISCREPANCY TO REPORT, NOT FORCED: the published third line has eight glyphs (AWLYYWWG); the board
+// reading for U1_P3 has seven. Whether a trailing G is present is an operator photo question.
+//
+// PINS: every numbered pin of Table 2 (pins 1-35; the VIN and PGND pads carry no number and stay out).
+// Switching frequency (100 kHz to 1 MHz set by RT) is not modeled: no consumer reads it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.onsemi.com/pdf/datasheet/fan65004c-d.pdf" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.electronic_component.onsemi_fan65004c",
+      decl_name: "fan65004c",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data fan65004c: ElectronicComponentRow = ElectronicComponentRow {
+  vendor: onsemi,
+  ordering_code: "FAN65004C",
+  package: "PQFN35 6 mm x 6 mm, CASE 483BE",
+  top_marking: Present { value: "FAN / 65004C / AWLYYWWG" },
+  specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
+    pins: [
+      RegulatorPin { number: 1, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 2, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 3, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 4, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 5, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 6, name: "PGND", role: PowerGround },
+      RegulatorPin { number: 7, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 8, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 9, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 10, name: "SW", role: SwitchNode },
+      RegulatorPin { number: 11, name: "NC", role: RegulatorNoConnection },
+      RegulatorPin { number: 12, name: "LG", role: LowSideGateDrive },
+      RegulatorPin { number: 13, name: "MODE", role: RegulatorModeSelect },
+      RegulatorPin { number: 14, name: "ILIM", role: CurrentLimitSet },
+      RegulatorPin { number: 15, name: "FB", role: FeedbackInput },
+      RegulatorPin { number: 16, name: "COMP", role: CompensationOutput },
+      RegulatorPin { number: 17, name: "SS", role: SoftStartProgram },
+      RegulatorPin { number: 18, name: "GND", role: RegulatorGround },
+      RegulatorPin { number: 19, name: "RT", role: FrequencySet },
+      RegulatorPin { number: 20, name: "PGOOD", role: PowerGoodOpenDrain },
+      RegulatorPin { number: 21, name: "SYNC", role: SynchronizationPort },
+      RegulatorPin { number: 22, name: "EN/UVLO", role: EnableInput },
+      RegulatorPin { number: 23, name: "VCC", role: BiasSupply },
+      RegulatorPin { number: 24, name: "PVCC", role: BiasSupply },
+      RegulatorPin { number: 25, name: "GND", role: RegulatorGround },
+      RegulatorPin { number: 26, name: "EXTBIAS", role: BiasSupply },
+      RegulatorPin { number: 27, name: "HVBIAS", role: BiasSupply },
+      RegulatorPin { number: 28, name: "VINMON", role: CurrentSense },
+      RegulatorPin { number: 29, name: "BOOT", role: BootstrapSupply },
+      RegulatorPin { number: 30, name: "PH", role: BootstrapSwitchReturn },
+      RegulatorPin { number: 31, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 32, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 33, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 34, name: "VIN", role: RegulatorSupplyInput },
+      RegulatorPin { number: 35, name: "VIN", role: RegulatorSupplyInput },
+    ],
+    input: MillivoltRange { minimum: millivolt(count: 4500), maximum: millivolt(count: 65000) },
+    continuous_output_current: ampere(count: 6),
+  } },
+  vendor_application_statements: [],
+}

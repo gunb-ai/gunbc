@@ -50,23 +50,23 @@ pub use crate::v1_compiler_compiler_tests_rust::{compiler_tests_source};
 pub use crate::v1_compiler_dag_collect_support::{connective_name};
 pub use crate::v1_compiler_emit::{render_target_name, BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern, emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type, emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding, emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr, emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr, emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text, empty_emit_scope, module_emit_scope, scope_after_expr, lookup_item_by_identity, has_nested_records_node, emit_data_value_json, emit_declared_optional_row_json, EmitterOutcome, is_null_coalesce, has_service_items, order_typed_call_args_from_semantics, is_tco_eligible, is_self_recursive, emit_shared_tco_expr, tco_reassign_core, shared_tco_reassign, tco_loop_slot_name, tco_loop_iteration_lets, service_fallback_transport, effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls, service_field_ctors, extract_modifier_names, seed_bindings, emit_typed_if_shared, emit_typed_let_shared, child_from_key, BoundOperation, ShellResultField, ShellResultChannel, shell_emission_refusal_fact, shell_result_channel_key, shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy, bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal, NativeEffectRealizationAdmission, NativeEffectDeclSite, native_effect_resolution, admit_native_service_effect, admit_native_resource_effect, native_effect_admission_refusal, FileVerb, FileResultField, FileResultChannel, ShellEmissionRefusal, NativeEffectContract, NativeEffectHandler};
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection, escape_json_string, module_filename_collision_diagnostics, emitted_symbol_collision_diagnostics, make_indent, to_snake, to_screaming_snake, is_upper, sanitize_service_name, capitalize_first, service_var_name, to_pascal, escape_string_literal_body, unique_strings, to_string, to_string_helper, test_function_name, apply_type_template1, apply_type_template2, apply_type_template3, apply_named_template, language_spec, is_type_alias_return_node, is_type_def_item, is_type_alias_item, is_type_decl_item, is_leaf_type_item, has_mock_prefix, extract_test_projections};
-pub use crate::v1_compiler_infer::{is_lambda_expr, param_is_generic_decl, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
+pub use crate::v1_compiler_infer::{is_lambda_expr, InferScope, build_params_scope, extend_scope, build_emit_graph_info, declared_return_type_node, match_unguarded_absent_arm_index, optional_match_arm_sees_present_value, expr_span, resolved_type_name, expand_type_for_field_access, is_where_refinement_type, call_args_by_name, caller_resource_requirements, established_resource_binding};
 pub use crate::v1_compiler_infer_emit_info::{TypeDeclOccurrenceBinding};
-pub use crate::v1_compiler_infer_emit_info::{declaring_span_key, type_decl_occurrence_binding, type_decl_resolution_at_identity, EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, emit_info_names_callee_type_arguments, emit_info_callee_type_arguments_spent, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, DataVariantWireSpelling, TypeDeclResolution};
+pub use crate::v1_compiler_infer_emit_info::{declaring_span_key, type_decl_occurrence_binding, type_decl_resolution_at_identity, EmitGraphInfo, TypeSummary, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryQuestion, type_summary_lookup, type_summary_values, type_summary_of_reference, type_summary_answer, type_summary_decided, summary_is_enum_with_variant, type_summary_keys_of_leaf, lookup_emit_type_summary, empty_emit_graph_info, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf, resolve_type_decl_reference, emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type, is_enum_in_summaries, find_variant_parent, is_known_variant, variant_belongs_to_enum, variant_summary_key, collect_type_node_import_surface_names, collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence, TypeRepr, DataVariantWireSpelling, TypeDeclResolution};
 pub use crate::v1_compiler_infer_env::{is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, type_reference_declaration_reading, TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup, UnitVariantPhantomLookup, TypeReferenceDeclarationReading};
 pub use crate::v1_compiler_infer_items::{ItemLookup, ResolvedGraph, TypedModule, ItemInfo, item_kind, item_is_effectful_callee, ItemKind};
 pub use crate::v1_compiler_infer_method::{infer_builtin_call_type};
 pub use crate::v1_compiler_infer_resolve::{resolve_node, is_width_nat_type_literal, applied_arg_is_width_resolution_position};
-pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name};
+pub use crate::v1_compiler_infer_service::{is_typed_service_call_receiver, extract_typed_service_name, service_endpoint_supply, service_endpoint_answer, service_operation_items, service_data_values, ServiceEndpointSupply};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv};
-pub use crate::v1_compiler_infer_types::{is_leaf_type, resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, type_is_ordered_element_run, is_product_type, is_coproduct_type, is_unit_like, is_fully_resolved};
-pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
+pub use crate::v1_compiler_infer_types::{is_leaf_type, resolved_type, normalize_access_type_node, for_each_element_type_node, child_type_node, emit_map_has, node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection, type_is_ordered_element_run, is_product_type, is_coproduct_type, is_unit_like};
+pub use crate::v1_compiler_languages::{scaffold_for_target, serialization_for_target, TestConventions, ItemKeywords, test_conventions_for_target, visibility_for_target, sharing_for_target, is_string_like, ServiceFieldTemplates, wrap_shared_type, sharing_wrap_ctor_for_target, sharing_wrap_ctor_open_for_target, sharing_wrap_ctor_close_for_target, sharing_type_is_wrapped_for_target, VisibilitySpec};
 pub use crate::v1_compiler_ownership::{OwnershipProof, analyze_ownership, analyze_ownership_of_names, analyze_single_fold, build_movable_set, build_moved_argument_occurrences, build_read_only_params, collect_callable_refs, analyze_dying_base_sites};
 pub use crate::v1_compiler_resolve::{get_exported_names};
 pub use crate::v1_compiler_runtime_rust::{rust_runtime_source, rust_runtime_cargo_features};
 pub use crate::v1_compiler_trait_bound_witness::{v1_rc_match_scrutinee_clone_bound_param_names, v1_union_bound_param_names, v1_call_forwarding_bound_wrapper_param_names, v1_equality_bound_param_name};
 pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls, v1_fn_signature_set_element_param_names, v1_set_element_bound_spellings, v1_generic_params_needing_clone_bound, v1_emit_type_params_with_clone_bounds, v1_emit_type_params_with_bounds, v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head, v1_item_wf_propagated_clone_bounded_param_names, v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement, v1_map_key_head_names_in_type_expr, v1_wf_child_type_node, v1_type_expr_wf_needs_clone_param, v1_map_key_nested_names_in_type_expr, v1_map_key_bounded_type_params, v1_item_map_key_bounded_param_names, v1_emit_type_params_with_map_key_bounds, v1_clone_impl_required_type_params, v1_trait_derive_refuse, v1_type_exprs_ambiguous_declared_head, v1_ambiguous_declared_head_refusal, trait_derive_emit_fn_clone_bound_keyed_carrier_module, rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible};
-pub use crate::v1_std_core::{expr_literal_string_optional, item_generic_param_names, type_variable_binder_name, expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, render_span_location, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
+pub use crate::v1_std_core::{expr_literal_string_optional, item_generic_param_names, expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, render_span_location, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer, CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel};
 use crate::gunbc_cli_dispatch_surface::CliBootstrapExecutionClass::{BootstrapSuccessorOperation};
 use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeated, CliRequired};
@@ -119,6 +119,7 @@ use crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::{TypeReferenc
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, TypeItem, OtherItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
+use crate::v1_compiler_infer_service::ServiceEndpointSupply::{EndpointOperationParameter, EndpointLiteral, EndpointModuleDataLiteral, EndpointModuleExpression, EndpointParameterNameUnbound};
 use crate::v1_compiler_languages::VisibilitySpec::{KeywordVisibility};
 use crate::v1_std_core::CallSemantics::{PlainCallSemantics, ResolvedDirectCallSemantics, LookupCallSemantics, FunctionValueCallSemantics};
 use crate::v1_std_core::CallTargetIdentity::{RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall};
@@ -135,7 +136,7 @@ use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics};
 use crate::v1_std_core::ParsedModuleItemKind::{ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue, ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem};
 use crate::v1_std_core::StringPart::{Text, Interpolation};
-use crate::v1_std_core::UnaryOpKind::{Neg};
+use crate::v1_std_core::UnaryOpKind::{Not, Neg};
 use crate::v1_std_core::VarBindingKind::{LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding};
 use self::WitnessCtorPathVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
@@ -154,6 +155,8 @@ use self::NativeIngressRefReading::*;
 use self::NativeIngressSiteReading::*;
 use self::NativeIngressArgumentKind::*;
 use self::NativeIngressParameterReading::*;
+use self::NativeIngressRequestShape::*;
+use self::NativeIngressRequestParameterReading::*;
 use self::NativeIngressResolution::*;
 use self::NativeIngressStartupReading::*;
 
@@ -6720,7 +6723,6 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
             trmc_out: false,
-            names_callee_type_arguments: false,
             dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         });
         let registry = typed.item_registry.clone();
@@ -8042,7 +8044,6 @@ pub fn emit_module(
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
             trmc_out: false,
-            names_callee_type_arguments: false,
             dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         });
         let shared_types = emit_info.shared_types.clone();
@@ -10669,7 +10670,6 @@ pub fn emit_module_full(
             tco_cursor_params: emit_info.tco_cursor_params.clone(),
             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
             trmc_out: emit_info.trmc_out.clone(),
-            names_callee_type_arguments: emit_info.names_callee_type_arguments.clone(),
             dying_base_sites: emit_info.dying_base_sites.clone(),
         });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -16128,7 +16128,7 @@ pub fn emit_typed_item(
                                 emit_info.clone(),
                                 wire_contract_item,
                                 data_items,
-                                module_items,
+                                module_items.clone(),
                                 imports.clone(),
                             ),
                         }
@@ -16433,7 +16433,6 @@ pub fn emit_typed_item(
                         tco_cursor_params: emit_info.tco_cursor_params.clone(),
                         tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                         trmc_out: false,
-                        names_callee_type_arguments: false,
                         dying_base_sites: fn_dying_base_sites.clone(),
                     });
                     let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
@@ -16516,6 +16515,12 @@ pub fn emit_typed_item(
                         shared_types.clone(),
                         env.clone(),
                         emit_info.clone(),
+                        crate::v1_compiler_infer_service::service_data_values(module_items.clone()),
+                        service_imported_data_values(
+                            module_name.clone(),
+                            module_index.clone(),
+                            env.source_indices.clone(),
+                        ),
                     )
                 }
             }
@@ -25891,339 +25896,6 @@ pub fn type_needs_rc_seen(
     }
 }
 
-pub fn rust_by_ref_bridge_argument(base: String) -> String {
-    v1_rt::concat("&".to_string(), base.clone())
-}
-
-pub fn rust_by_ref_bridge_expression_is_call(texpr: Rc<Node>) -> bool {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => true,
-        _ => false,
-    }
-}
-
-pub fn rust_by_ref_bridge_grant(
-    emit_info_in: Rc<EmitGraphInfo>,
-    borrowed: Rc<Node>,
-) -> Rc<EmitGraphInfo> {
-    if rust_by_ref_bridge_expression_is_call(borrowed) {
-        crate::v1_compiler_infer_emit_info::emit_info_names_callee_type_arguments(emit_info_in)
-    } else {
-        emit_info_in.clone()
-    }
-}
-
-pub fn rust_call_type_argument_witnesses(
-    plan: Rc<Vec<Rc<ResolvedCallFormal>>>,
-) -> Rc<Vec<Rc<CallTypeArgumentWitness>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for entry in plan.iter().cloned() {
-            __result.extend(
-                (*rust_type_argument_witness_pairs(
-                    entry.formal.substitution_basis.clone(),
-                    entry.formal.declared_type.clone(),
-                    Rc::new(vec![]),
-                ))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CallTypeArgumentWitness {
-    pub name: String,
-    pub witness: Rc<Node>,
-}
-
-pub fn rust_type_argument_witness_pairs(
-    basis: Rc<Node>,
-    site: Rc<Node>,
-    acc: Rc<Vec<Rc<CallTypeArgumentWitness>>>,
-) -> Rc<Vec<Rc<CallTypeArgumentWitness>>> {
-    match crate::v1_std_core::type_variable_binder_name(basis.clone()) {
-        Some(binder) => v1_rt::concat(
-            acc.clone(),
-            Rc::new(vec![Rc::new(CallTypeArgumentWitness {
-                name: binder.clone(),
-                witness: site.clone(),
-            })]),
-        ),
-        std::option::Option::None => rust_type_argument_witness_pair_lists(
-            basis.children.clone(),
-            site.children.clone(),
-            acc.clone(),
-        ),
-    }
-}
-
-pub fn rust_type_argument_witness_pair_lists(
-    mut __tco_loop_basis_children: Rc<Vec<Rc<Node>>>,
-    mut __tco_loop_site_children: Rc<Vec<Rc<Node>>>,
-    mut __tco_loop_acc: Rc<Vec<Rc<CallTypeArgumentWitness>>>,
-) -> Rc<Vec<Rc<CallTypeArgumentWitness>>> {
-    {
-        loop {
-            #[allow(unused_mut)]
-            let mut basis_children = __tco_loop_basis_children;
-            #[allow(unused_mut)]
-            let mut site_children = __tco_loop_site_children;
-            #[allow(unused_mut)]
-            let mut acc = __tco_loop_acc;
-            match basis_children.clone().first().cloned() {
-                std::option::Option::None => {
-                    break acc.clone();
-                }
-                Some(b) => match site_children.clone().first().cloned() {
-                    std::option::Option::None => {
-                        break acc.clone();
-                    }
-                    Some(s) => {
-                        let __tco_0 = Rc::new(v1_rt::list_skip(&basis_children, 1));
-                        let __tco_1 = Rc::new(v1_rt::list_skip(&site_children, 1));
-                        let __tco_2 = rust_type_argument_witness_pairs(b.clone(), s.clone(), acc);
-                        __tco_loop_basis_children = __tco_0;
-                        __tco_loop_site_children = __tco_1;
-                        __tco_loop_acc = __tco_2;
-                        continue;
-                    }
-                },
-            }
-        }
-    }
-}
-
-pub fn rust_call_type_argument_annotation(
-    callee_declaration: Option<Rc<Node>>,
-    plan: Rc<Vec<Rc<ResolvedCallFormal>>>,
-    callee_name: String,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    match callee_declaration.clone() {
-        std::option::Option::None => emit_rust_compile_error_expr(v1_rt::concat(
-            v1_rt::concat(
-                "by-ref bridge argument: the declaration of ".to_string(),
-                callee_name.clone(),
-            ),
-            " is not established, so its type arguments cannot be named".to_string(),
-        )),
-        Some(item) => {
-            let type_param_names = Rc::new({
-                let mut __result = Vec::new();
-                for p in Rc::new({
-                    let mut __result = Vec::new();
-                    for p in item.params.clone().iter().cloned() {
-                        if crate::v1_compiler_infer::param_is_generic_decl(
-                            p.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __result.push(p);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(crate::v1_std_core::param_node_name_at(
-                        p.clone(),
-                        source_indices.clone(),
-                    ));
-                }
-                __result
-            });
-            let witnesses = rust_call_type_argument_witnesses(plan);
-            let refusals = Rc::new({
-                let mut __result = Vec::new();
-                for m in Rc::new({
-                    let mut __result = Vec::new();
-                    for name in type_param_names.iter().cloned() {
-                        __result.push(rust_type_argument_refusal_message(
-                            witnesses.clone(),
-                            name.clone(),
-                            callee_name.clone(),
-                            shared_types.clone(),
-                            source_indices.clone(),
-                            emit_info.clone(),
-                        ));
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    if (m.clone() != "".to_string()) {
-                        __result.push(m);
-                    }
-                }
-                __result
-            });
-            if (((type_param_names.clone().len() as i64) == 0)
-                || ((refusals.clone().len() as i64) > 0))
-            {
-                match refusals.clone().first().cloned() {
-                    Some(message) => emit_rust_compile_error_expr(message.clone()),
-                    std::option::Option::None => "".to_string(),
-                }
-            } else {
-                v1_rt::concat(
-                    "::".to_string(),
-                    v1_rt::concat(
-                        "<".to_string(),
-                        v1_rt::concat(
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for name in type_param_names.iter().cloned() {
-                                    __result.push(rust_type_argument_spelling(
-                                        witnesses.clone(),
-                                        name.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                        emit_info.clone(),
-                                    ));
-                                }
-                                __result
-                            })
-                            .join(&", ".to_string()),
-                            ">".to_string(),
-                        ),
-                    ),
-                )
-            }
-        }
-    }
-}
-
-pub fn rust_type_argument_refusal_message(
-    witnesses: Rc<Vec<Rc<CallTypeArgumentWitness>>>,
-    name: String,
-    callee_name: String,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    {
-        let prefix = v1_rt::concat("by-ref bridge argument: ".to_string(), callee_name.clone());
-        let for_name = Rc::new({
-            let mut __result = Vec::new();
-            for w in witnesses.iter().cloned() {
-                if (w.name.clone() == name.clone()) {
-                    __result.push(w);
-                }
-            }
-            __result
-        });
-        let spellings = Rc::new({
-            let mut __result = Vec::new();
-            for w in for_name.iter().cloned() {
-                __result.push(render_rust_type(
-                    w.witness.clone(),
-                    shared_types.clone(),
-                    source_indices.clone(),
-                    emit_info.clone(),
-                ));
-            }
-            __result
-        });
-        match spellings.clone().first().cloned() {
-            std::option::Option::None => v1_rt::concat(
-                v1_rt::concat(prefix.clone(), " names no type argument for ".to_string()),
-                name.clone(),
-            ),
-            Some(spelling) => {
-                if !{
-                    let mut __all = true;
-                    for other in spellings.iter().cloned() {
-                        if !(other.clone() == spelling.clone()) {
-                            __all = false;
-                            break;
-                        }
-                    }
-                    __all
-                } {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            prefix.clone(),
-                            " names two different type arguments for ".to_string(),
-                        ),
-                        name.clone(),
-                    )
-                } else {
-                    if !{
-                        let mut __all = true;
-                        for w in for_name.iter().cloned() {
-                            if !(crate::v1_compiler_infer_types::is_fully_resolved(
-                                w.witness.clone(),
-                                source_indices.clone(),
-                            )) {
-                                __all = false;
-                                break;
-                            }
-                        }
-                        __all
-                    } {
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    prefix.clone(),
-                                    " leaves the type argument for ".to_string(),
-                                ),
-                                name.clone(),
-                            ),
-                            " unresolved".to_string(),
-                        )
-                    } else {
-                        "".to_string()
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn rust_type_argument_spelling(
-    witnesses: Rc<Vec<Rc<CallTypeArgumentWitness>>>,
-    name: String,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    match Rc::new({
-        let mut __result = Vec::new();
-        for w in Rc::new({
-            let mut __result = Vec::new();
-            for w in witnesses.iter().cloned() {
-                if (w.name.clone() == name.clone()) {
-                    __result.push(w);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.push(render_rust_type(
-                w.witness.clone(),
-                shared_types.clone(),
-                source_indices.clone(),
-                emit_info.clone(),
-            ));
-        }
-        __result
-    })
-    .first()
-    .cloned()
-    {
-        Some(spelling) => spelling.clone(),
-        std::option::Option::None => "".to_string(),
-    }
-}
-
 pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool {
     v1_rt::map_contains_key(
         &crate::extdeps_languages_rust_emit::rt_ref_map_functions(),
@@ -27302,11 +26974,13 @@ pub fn emit_rust_expr_bin_op(
             op,
             algebra_field: algebra,
             operand: od,
+            derived: eqp,
             ..
         } => emit_typed_bin_op(
             op.clone(),
             algebra.clone(),
             od.clone(),
+            eqp.clone(),
             crate::v1_std_core::binop_left(expr.clone()),
             crate::v1_std_core::binop_right(expr.clone()),
             registry,
@@ -28733,13 +28407,9 @@ pub fn emit_typed_call(
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
-    emit_info_in: Rc<EmitGraphInfo>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let names_callee_arguments = emit_info_in.names_callee_type_arguments.clone();
-        let emit_info = crate::v1_compiler_infer_emit_info::emit_info_callee_type_arguments_spent(
-            emit_info_in.clone(),
-        );
         if callee_is_function_value.clone() {
             return emit_typed_function_value_call(
                 func.clone(),
@@ -29124,12 +28794,9 @@ pub fn emit_typed_call(
                                 arg_scope.clone(),
                                 depth.clone(),
                                 shared_types.clone(),
-                                rust_by_ref_bridge_grant(
-                                    arg_emit_info.clone(),
-                                    crate::v1_std_core::arg_value(a.clone()),
-                                ),
+                                arg_emit_info.clone(),
                             );
-                            rust_by_ref_bridge_argument(base.clone())
+                            v1_rt::concat("&".to_string(), base.clone())
                         }
                     } else {
                         {
@@ -29334,31 +29001,6 @@ pub fn emit_typed_call(
         } else {
             func_ident.clone()
         };
-        let callee_type_argument_annotation = if names_callee_arguments.clone() {
-            match (*call_target.clone()).clone() {
-                CallTargetIdentity::SourceDeclarationCall {
-                    owner_module_path: owner,
-                    decl_name: decl,
-                    ..
-                } => rust_call_type_argument_annotation(
-                    v1_rt::map_get(
-                        &emit_info_in.fn_decl_identity_items.clone(),
-                        crate::v1_compiler_infer_emit_info::type_decl_identity(
-                            owner.clone(),
-                            decl.clone(),
-                        ),
-                    ),
-                    application_plan.clone(),
-                    func.clone(),
-                    shared_types.clone(),
-                    si.clone(),
-                    emit_info.clone(),
-                ),
-                _ => "".to_string(),
-            }
-        } else {
-            "".to_string()
-        };
         let call_str = if unrealized_primitive_call.clone() {
             {
                 let seam_type = match inferred.clone().as_deref().cloned() {
@@ -29379,14 +29021,11 @@ pub fn emit_typed_call(
                 emit_nested_rt_concat(all_args.clone(), "".to_string(), shared_types.clone())
             } else {
                 v1_rt::concat(
-                    func_name.clone(),
                     v1_rt::concat(
-                        callee_type_argument_annotation.clone(),
-                        v1_rt::concat(
-                            v1_rt::concat("(".to_string(), args_str.clone()),
-                            ")".to_string(),
-                        ),
+                        v1_rt::concat(func_name.clone(), "(".to_string()),
+                        args_str.clone(),
                     ),
+                    ")".to_string(),
                 )
             }
         };
@@ -30522,7 +30161,6 @@ pub fn emit_rust_fold_method_call(
                             tco_cursor_params: emit_info.tco_cursor_params.clone(),
                             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                             trmc_out: emit_info.trmc_out.clone(),
-                            names_callee_type_arguments: false,
                             dying_base_sites: emit_info.dying_base_sites.clone(),
                         }),
                         std::option::Option::None => emit_info.clone(),
@@ -30588,7 +30226,6 @@ pub fn emit_rust_fold_method_call(
                                 tco_cursor_params: emit_info.tco_cursor_params.clone(),
                                 tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
                                 trmc_out: emit_info.trmc_out.clone(),
-                                names_callee_type_arguments: false,
                                 dying_base_sites: emit_info.dying_base_sites.clone(),
                             }),
                             std::option::Option::None => emit_info.clone(),
@@ -31760,14 +31397,17 @@ pub fn emit_rust_generic_method_call(
                 {
                     let recv_str =
                         if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
-                            rust_by_ref_bridge_argument(emit_typed_expr_base(
-                                receiver.clone(),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                rust_by_ref_bridge_grant(emit_info.clone(), receiver.clone()),
-                            ))
+                            v1_rt::concat(
+                                "&".to_string(),
+                                emit_typed_expr_base(
+                                    receiver.clone(),
+                                    registry.clone(),
+                                    scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                            )
                         } else {
                             emit_cloned_arg(
                                 receiver.clone(),
@@ -37184,6 +36824,7 @@ pub fn emit_typed_bin_op(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
     operand: Option<Rc<OperandDeclaration>>,
+    derived: Option<Rc<DeclarationRef>>,
     left: Rc<Node>,
     right: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -37218,28 +36859,91 @@ pub fn emit_typed_bin_op(
                 RenderTarget::Rust,
             )
         } else {
-            match (*binop_operator_realization(op.clone(), operand, left.clone(), scope.clone()))
-                .clone()
+            if ((derived.clone() != std::option::Option::None)
+                && ((op.clone() == BinOp::Eq) || (op.clone() == BinOp::Ne)))
             {
-                OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
-                    emit_rust_compile_error_expr(
-                        crate::std_operator_realization::operator_realization_refusal_message(
-                            c.clone(),
-                        ),
-                    )
+                {
+                    let eq_fn = derived.clone().unwrap();
+                    let eq_target = Rc::new(CallTargetIdentity::SourceDeclarationCall {
+                        owner_module_path: eq_fn.module_path.clone(),
+                        decl_name: eq_fn.decl_name.clone(),
+                    });
+                    let eq_args = Rc::new({
+                        let mut __result = Vec::new();
+                        for a in Rc::new(vec![left.clone(), right.clone()]).iter().cloned() {
+                            __result.push(crate::v1_std_core::make_arg_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                std::option::Option::None,
+                                a.clone(),
+                                left.span.clone(),
+                                left.span.clone(),
+                            ));
+                        }
+                        __result
+                    });
+                    let eq_call = emit_typed_call_expr(
+                        eq_fn.decl_name.clone(),
+                        eq_args,
+                        std::option::Option::None,
+                        Some(Rc::new(CallSemantics::PlainCallSemantics {
+                            target: eq_target.clone(),
+                        })),
+                        false,
+                        eq_target.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    );
+                    if (op.clone() == BinOp::Ne) {
+                        crate::v1_compiler_emit::emit_unary_op(
+                            UnaryOpKind::Not,
+                            eq_call,
+                            RenderTarget::Rust,
+                        )
+                    } else {
+                        eq_call.clone()
+                    }
                 }
-                OperatorRealization::StructuralComparison {
-                    binding: b,
-                    test: t,
-                    ..
-                } => emit_rust_structural_comparison(
-                    l_str.clone(),
-                    r_str.clone(),
-                    b.clone(),
-                    t.clone(),
-                ),
-                OperatorRealization::StructuralEquality { declaration: _, .. } => {
-                    emit_rust_host_bin_op(
+            } else {
+                match (*binop_operator_realization(
+                    op.clone(),
+                    operand,
+                    left.clone(),
+                    scope.clone(),
+                ))
+                .clone()
+                {
+                    OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
+                        emit_rust_compile_error_expr(
+                            crate::std_operator_realization::operator_realization_refusal_message(
+                                c.clone(),
+                            ),
+                        )
+                    }
+                    OperatorRealization::StructuralComparison {
+                        binding: b,
+                        test: t,
+                        ..
+                    } => emit_rust_structural_comparison(
+                        l_str.clone(),
+                        r_str.clone(),
+                        b.clone(),
+                        t.clone(),
+                    ),
+                    OperatorRealization::StructuralEquality { declaration: _, .. } => {
+                        emit_rust_host_bin_op(
+                            op.clone(),
+                            algebra_field.clone(),
+                            left.clone(),
+                            right.clone(),
+                            l_str.clone(),
+                            r_str.clone(),
+                            scope.clone(),
+                        )
+                    }
+                    OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
                         op.clone(),
                         algebra_field.clone(),
                         left.clone(),
@@ -37247,17 +36951,8 @@ pub fn emit_typed_bin_op(
                         l_str.clone(),
                         r_str.clone(),
                         scope.clone(),
-                    )
+                    ),
                 }
-                OperatorRealization::HostOperator => emit_rust_demanded_host_bin_op(
-                    op.clone(),
-                    algebra_field.clone(),
-                    left.clone(),
-                    right.clone(),
-                    l_str.clone(),
-                    r_str.clone(),
-                    scope.clone(),
-                ),
             }
         }
     }
@@ -40908,19 +40603,105 @@ pub fn emit_typed_tco_reassign(
     }
 }
 
+pub fn service_import_brought_data_values(
+    item: Rc<Node>,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    {
+        let path = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+        let names = Rc::new({
+            let mut __result = Vec::new();
+            for c in item.children.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    c.clone(),
+                ));
+            }
+            __result
+        });
+        match v1_rt::map_get(&module_index.by_name.clone(), path.clone()) {
+            std::option::Option::None => Rc::new(vec![]),
+            Some(src) => {
+                if (item.body.clone() != std::option::Option::None) {
+                    crate::v1_compiler_infer_service::service_data_values(src.items.clone())
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for d in
+                            crate::v1_compiler_infer_service::service_data_values(src.items.clone())
+                                .iter()
+                                .cloned()
+                        {
+                            if {
+                                let mut __found = false;
+                                for nm in names.iter().cloned() {
+                                    if (nm.clone()
+                                        == crate::v1_std_core::authored_name_at(
+                                            source_indices.clone(),
+                                            d.clone(),
+                                        ))
+                                    {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                __result.push(d);
+                            }
+                        }
+                        __result
+                    })
+                }
+            }
+        }
+    }
+}
+
+pub fn service_imported_data_values(
+    module_name: String,
+    module_index: Rc<ModuleIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
+    match v1_rt::map_get(&module_index.by_name.clone(), module_name.clone()) {
+        std::option::Option::None => Rc::new(vec![]),
+        Some(tm) => Rc::new({
+            let mut __result = Vec::new();
+            for imp in crate::v1_std_core::module_imports(tm.module.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend(
+                    (*service_import_brought_data_values(
+                        imp.clone(),
+                        module_index.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
 pub fn emit_service_def(
     item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let safe_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
         );
         let fallback_transport = crate::v1_compiler_emit::service_fallback_transport(item.clone());
-        let op_children = item.children.clone();
+        let op_children = crate::v1_compiler_infer_service::service_operation_items(item.clone());
         let struct_def = emit_service_struct(
             safe_name.clone(),
             fallback_transport.clone(),
@@ -40937,6 +40718,8 @@ pub fn emit_service_def(
             env.clone(),
             item.clone(),
             emit_info,
+            data_values,
+            imported_data_values,
         );
         v1_rt::concat(
             v1_rt::concat(struct_def.clone(), "\n\n".to_string()),
@@ -41054,15 +40837,25 @@ pub fn emit_service_impl(
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
+    data_values: Rc<Vec<Rc<Node>>>,
+    imported_data_values: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let depth = 0;
+        let endpoint_answer = crate::v1_compiler_infer_service::service_endpoint_answer(
+            service_item.clone(),
+            op_children.clone(),
+            data_values,
+            imported_data_values,
+            env.source_indices.clone(),
+        );
         let new_method = emit_service_new_method(
             name.clone(),
             transport.clone(),
             op_children.clone(),
             service_item.clone(),
             env.source_indices.clone(),
+            endpoint_answer.clone(),
         );
         let method_strs = Rc::new({
             let mut __result = Vec::new();
@@ -41077,6 +40870,7 @@ pub fn emit_service_impl(
                     env.clone(),
                     service_item.clone(),
                     emit_info.clone(),
+                    endpoint_answer.clone(),
                 ));
             }
             __result
@@ -41108,6 +40902,7 @@ pub fn emit_service_new_method(
     op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
@@ -41132,73 +40927,77 @@ pub fn emit_service_new_method(
         } else {
             fs.clone()
         };
-        let from_config = match crate::v1_std_core::service_config_endpoint(
-            service_item.clone(),
-            source_indices.clone(),
-        ) {
-            Some(ep) => match (*ep.expr_data.clone()).clone() {
-                ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-                {
-                    let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
-                        unreachable!()
-                    };
-                    s.clone()
-                }
-                _ => "".to_string(),
-            },
-            std::option::Option::None => "".to_string(),
-        };
-        let base_url_default = if (from_config.clone() != "".to_string()) {
-            from_config.clone()
-        } else {
-            if fs.has_rest.clone() {
-                {
-                    let fallback_is_rest = crate::v1_std_core::is_rest_transport(
-                        fallback_transport.clone(),
-                        source_indices.clone(),
-                    );
-                    let from_fallback = if fallback_is_rest.clone() {
-                        match crate::v1_std_core::transport_base_url(
+        let base_url_default = match (*endpoint_answer.clone()).clone() {
+            ServiceEndpointSupply::EndpointLiteral { value: value, .. } => value.clone(),
+            ServiceEndpointSupply::EndpointOperationParameter { .. } => "".to_string(),
+            ServiceEndpointSupply::EndpointModuleDataLiteral { value, .. } => value.clone(),
+            ServiceEndpointSupply::EndpointNotDeclared => {
+                if fs.has_rest.clone() {
+                    {
+                        let fallback_is_rest = crate::v1_std_core::is_rest_transport(
                             fallback_transport.clone(),
                             source_indices.clone(),
-                        ) {
-                            Some(bu) => match (*bu.expr_data.clone()).clone() {
-                                ExprData::ExprLiteral { ref value, .. }
-                                    if matches!(
-                                        value.as_ref(),
-                                        LiteralValue::LitStr { value: _, .. }
-                                    ) =>
-                                {
-                                    let LiteralValue::LitStr { value: s, .. } = value.as_ref()
-                                    else {
-                                        unreachable!()
-                                    };
-                                    s.clone()
-                                }
-                                _ => "".to_string(),
-                            },
-                            std::option::Option::None => "".to_string(),
+                        );
+                        let from_fallback = if fallback_is_rest.clone() {
+                            match crate::v1_std_core::transport_base_url(
+                                fallback_transport.clone(),
+                                source_indices.clone(),
+                            ) {
+                                Some(bu) => match (*bu.expr_data.clone()).clone() {
+                                    ExprData::ExprLiteral { ref value, .. }
+                                        if matches!(
+                                            value.as_ref(),
+                                            LiteralValue::LitStr { value: _, .. }
+                                        ) =>
+                                    {
+                                        let LiteralValue::LitStr { value: s, .. } = value.as_ref()
+                                        else {
+                                            unreachable!()
+                                        };
+                                        s.clone()
+                                    }
+                                    _ => "".to_string(),
+                                },
+                                std::option::Option::None => "".to_string(),
+                            }
+                        } else {
+                            "".to_string()
+                        };
+                        if (from_fallback.clone() != "".to_string()) {
+                            from_fallback.clone()
+                        } else {
+                            "http://localhost".to_string()
                         }
-                    } else {
-                        "".to_string()
-                    };
-                    if (from_fallback.clone() != "".to_string()) {
-                        from_fallback.clone()
-                    } else {
-                        "http://localhost".to_string()
                     }
+                } else {
+                    "".to_string()
                 }
-            } else {
-                "".to_string()
             }
+            _ => "".to_string(),
         };
-        let ctors = crate::v1_compiler_emit::service_field_ctors(
-            fs.clone(),
-            crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
-                .service_fields
-                .clone(),
-        );
+        let refuses_endpoint = match (*endpoint_answer.clone()).clone() {
+            ServiceEndpointSupply::EndpointModuleExpression => true,
+            ServiceEndpointSupply::EndpointParameterNameUnbound => true,
+            _ => false,
+        };
+        let t = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
+            .service_fields
+            .clone();
+        let t_eff = if refuses_endpoint.clone() {
+            Rc::new(ServiceFieldTemplates {
+    rest_decl: t.rest_decl.clone(),
+    auth_decl: t.auth_decl.clone(),
+    shell_decl: t.shell_decl.clone(),
+    file_decl: t.file_decl.clone(),
+    rest_ctor: v1_rt::concat(v1_rt::concat("        base_url: ".to_string(), emit_rust_item_refusal(name.clone(), "service config `endpoint:` names a host this authority cannot resolve to exactly one reading (a computed expression, or a name only some rest operations bind as an input with no string-literal datum in scope); refusing to compile a host the author never wrote".to_string())), ",\n".to_string()),
+    auth_ctor: t.auth_ctor.clone(),
+    shell_ctor: t.shell_ctor.clone(),
+    file_ctor: t.file_ctor.clone(),
+})
+        } else {
+            t.clone()
+        };
+        let ctors = crate::v1_compiler_emit::service_field_ctors(fs.clone(), t_eff);
         let ctors = Rc::new({
             let mut __result = Vec::new();
             for c in ctors.iter().cloned() {
@@ -41306,6 +41105,7 @@ pub fn emit_operation_method(
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let op_text = crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone());
@@ -41384,6 +41184,7 @@ pub fn emit_operation_method(
             shared_types.clone(),
             env.clone(),
             emit_info.clone(),
+            endpoint_answer,
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
@@ -41613,6 +41414,7 @@ pub fn emit_transport_call(
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
@@ -41625,6 +41427,7 @@ pub fn emit_transport_call(
             source_indices.clone(),
             shared_types.clone(),
             env.clone(),
+            endpoint_answer,
         ),
         BoundOperation::ShellBound {
             transport: t,
@@ -41682,6 +41485,7 @@ pub fn emit_rest_call(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
+    endpoint_answer: Rc<ServiceEndpointSupply>,
 ) -> String {
     {
         let has_config_auth = match crate::v1_std_core::service_config_auth(
@@ -41703,8 +41507,12 @@ pub fn emit_rest_call(
         } else {
             {
                 let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
-                let url_line =
-                    emit_rest_url_line(transport.clone(), op_name, source_indices.clone());
+                let url_line = emit_rest_url_line(
+                    transport.clone(),
+                    op_name,
+                    emit_rest_url_base(endpoint_answer),
+                    source_indices.clone(),
+                );
                 let http_method = emit_rest_http_method(transport.clone(), source_indices.clone());
                 let auth_line = emit_rest_auth_line(
                     transport.clone(),
@@ -41925,110 +41733,106 @@ pub fn emit_rest_http_method(
     }
 }
 
+pub fn emit_rest_url_base(endpoint_answer: Rc<ServiceEndpointSupply>) -> String {
+    match (*endpoint_answer.clone()).clone() {
+        ServiceEndpointSupply::EndpointOperationParameter { name, .. } => {
+            crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)
+        }
+        _ => "self.base_url".to_string(),
+    }
+}
+
 pub fn emit_rest_url_line(
     transport: Rc<Node>,
     op_name: String,
+    base: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match crate::v1_std_core::transport_path_template(transport, source_indices.clone()) {
-        Some(path_node) => match (*path_node.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
-            {
-                let LiteralValue::LitStr {
-                    value: path_str, ..
-                } = value.as_ref()
-                else {
-                    unreachable!()
-                };
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "let url = format!(\"{}".to_string(),
-                        crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                            path_str.clone(),
-                        ),
-                    ),
-                    "\", self.base_url);".to_string(),
-                )
-            }
-            ExprData::ExprStringInterp => {
-                let parts = Rc::new({
-                    let mut __result = Vec::new();
-                    for child in path_node.children.clone().iter().cloned() {
-                        __result.push(match (*child.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { ref value, .. }
-                                if matches!(
-                                    value.as_ref(),
-                                    LiteralValue::LitStr { value: _, .. }
-                                ) =>
-                            {
-                                let LiteralValue::LitStr { value: text, .. } = value.as_ref()
-                                else {
-                                    unreachable!()
-                                };
-                                Rc::new(StringPart::Text {
-                                    value: text.clone(),
-                                })
-                            }
-                            _ => Rc::new(StringPart::Interpolation {
-                                expr: crate::v1_std_core::arg_value(child.clone()),
-                            }),
-                        });
-                    }
-                    __result
-                });
-                let fmt_segments = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parts.iter().cloned() {
-                        __result.push(match (*p.clone()).clone() {
-                            StringPart::Text { value: v, .. } => {
-                                crate::v1_compiler_emit::escape_rust_interp_text(v.clone())
-                            }
-                            StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
-                        });
-                    }
-                    __result
-                });
-                let fmt_str = fmt_segments.clone().join(&"".to_string());
-                let args = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in parts.iter().cloned() {
-                        __result.extend(
-                            (*match (*p.clone()).clone() {
-                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
-                                StringPart::Interpolation { expr: e, .. } => {
-                                    let var_name = crate::v1_compiler_emit::emit_ident(
-                                        crate::v1_std_core::expr_var_name_at(
-                                            e.clone(),
-                                            source_indices.clone(),
-                                        ),
-                                        RenderTarget::Rust,
-                                    );
-                                    let is_opt = is_optional_typed_expr(e.clone());
-                                    if is_opt.clone() {
-                                        Rc::new(vec![v1_rt::concat(
-                                            var_name.clone(),
-                                            ".as_deref().unwrap_or(\"\")".to_string(),
-                                        )])
-                                    } else {
-                                        Rc::new(vec![var_name.clone()])
-                                    }
+        Some(path_node) => {
+            match (*path_node.expr_data.clone()).clone() {
+                ExprData::ExprLiteral { ref value, .. }
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
+                {
+                    let LiteralValue::LitStr {
+                        value: path_str, ..
+                    } = value.as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let url = format!(\"{}".to_string(), crate::v1_compiler_emit_core_support::escape_string_literal_body(path_str.clone())), "\", ".to_string()), base.clone()), ");".to_string())
+                }
+                ExprData::ExprStringInterp => {
+                    let parts = Rc::new({
+                        let mut __result = Vec::new();
+                        for child in path_node.children.clone().iter().cloned() {
+                            __result.push(match (*child.expr_data.clone()).clone() {
+                                ExprData::ExprLiteral { ref value, .. }
+                                    if matches!(
+                                        value.as_ref(),
+                                        LiteralValue::LitStr { value: _, .. }
+                                    ) =>
+                                {
+                                    let LiteralValue::LitStr { value: text, .. } = value.as_ref()
+                                    else {
+                                        unreachable!()
+                                    };
+                                    Rc::new(StringPart::Text {
+                                        value: text.clone(),
+                                    })
                                 }
-                            })
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                });
-                if ((args.clone().len() as i64) == 0) {
-                    v1_rt::concat(
-                        v1_rt::concat("let url = format!(\"{}".to_string(), fmt_str.clone()),
-                        "\", self.base_url);".to_string(),
-                    )
-                } else {
-                    {
-                        let args_str = args.clone().join(&", ".to_string());
+                                _ => Rc::new(StringPart::Interpolation {
+                                    expr: crate::v1_std_core::arg_value(child.clone()),
+                                }),
+                            });
+                        }
+                        __result
+                    });
+                    let fmt_segments = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in parts.iter().cloned() {
+                            __result.push(match (*p.clone()).clone() {
+                                StringPart::Text { value: v, .. } => {
+                                    crate::v1_compiler_emit::escape_rust_interp_text(v.clone())
+                                }
+                                StringPart::Interpolation { expr: _, .. } => "{}".to_string(),
+                            });
+                        }
+                        __result
+                    });
+                    let fmt_str = fmt_segments.clone().join(&"".to_string());
+                    let args = Rc::new({
+                        let mut __result = Vec::new();
+                        for p in parts.iter().cloned() {
+                            __result.extend(
+                                (*match (*p.clone()).clone() {
+                                    StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                    StringPart::Interpolation { expr: e, .. } => {
+                                        let var_name = crate::v1_compiler_emit::emit_ident(
+                                            crate::v1_std_core::expr_var_name_at(
+                                                e.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                            RenderTarget::Rust,
+                                        );
+                                        let is_opt = is_optional_typed_expr(e.clone());
+                                        if is_opt.clone() {
+                                            Rc::new(vec![v1_rt::concat(
+                                                var_name.clone(),
+                                                ".as_deref().unwrap_or(\"\")".to_string(),
+                                            )])
+                                        } else {
+                                            Rc::new(vec![var_name.clone()])
+                                        }
+                                    }
+                                })
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    });
+                    if ((args.clone().len() as i64) == 0) {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -42036,21 +41840,49 @@ pub fn emit_rest_url_line(
                                         "let url = format!(\"{}".to_string(),
                                         fmt_str.clone(),
                                     ),
-                                    "\", self.base_url, ".to_string(),
+                                    "\", ".to_string(),
                                 ),
-                                args_str.clone(),
+                                base.clone(),
                             ),
                             ");".to_string(),
                         )
+                    } else {
+                        {
+                            let args_str = args.clone().join(&", ".to_string());
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "let url = format!(\"{}".to_string(),
+                                                    fmt_str.clone(),
+                                                ),
+                                                "\", ".to_string(),
+                                            ),
+                                            base.clone(),
+                                        ),
+                                        ", ".to_string(),
+                                    ),
+                                    args_str.clone(),
+                                ),
+                                ");".to_string(),
+                            )
+                        }
                     }
                 }
+                _ => {
+                    "compile_error!(\"transport path must be a string literal or interpolation\");"
+                        .to_string()
+                }
             }
-            _ => "compile_error!(\"transport path must be a string literal or interpolation\");"
-                .to_string(),
-        },
+        }
         std::option::Option::None => v1_rt::concat(
             v1_rt::concat(
-                "let url = format!(\"{}/{}\", self.base_url, \"".to_string(),
+                v1_rt::concat(
+                    v1_rt::concat("let url = format!(\"{}/{}\", ".to_string(), base.clone()),
+                    ", \"".to_string(),
+                ),
                 crate::v1_compiler_emit::emit_ident(op_name, RenderTarget::Rust),
             ),
             "\");".to_string(),
@@ -46352,117 +46184,128 @@ pub fn native_ingress_binding_parameter(
     }
 }
 
-pub fn native_ingress_legacy_facts() -> Rc<Vec<String>> {
-    thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["method".to_string(), "path".to_string(), "body".to_string(), "tailscale_identity".to_string(), "authorization".to_string(), "release_revision".to_string()])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressRequestShape {
+    NativeIngressTextShape,
+    NativeIngressHeadersShape,
 }
 
-pub fn native_ingress_handler_param_refusals(
-    params: Rc<Vec<Rc<Node>>>,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressRequestParameter {
+    pub name: String,
+    pub shape: NativeIngressRequestShape,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum NativeIngressRequestParameterReading {
+    NativeIngressRequestParameterRead {
+        parameter: Rc<NativeIngressRequestParameter>,
+    },
+    NativeIngressRequestParameterRefused {
+        reason: String,
+    },
+}
+
+pub fn native_ingress_type_is_header_list(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    (crate::v1_compiler_infer_types::node_is_element_collection(
+        n.clone(),
+        env.source_indices.clone(),
+    ) && native_ingress_type_names(
+        crate::v1_compiler_infer_types::for_each_element_type_node(
+            n.clone(),
+            env.source_indices.clone(),
+        ),
+        env.clone(),
+        "extdeps.http.server".to_string(),
+        "ServeRequestHeader".to_string(),
+    ))
+}
+
+pub fn native_ingress_request_parameter(
+    p: Rc<Node>,
     env: Rc<TypeEnv>,
-) -> Rc<Vec<String>> {
+) -> Rc<NativeIngressRequestParameterReading> {
     {
-        let names = Rc::new({
-            let mut __result = Vec::new();
-            for p in params.iter().cloned() {
-                __result.push(crate::v1_std_core::param_node_name_at(
-                    p.clone(),
-                    env.source_indices.clone(),
-                ));
-            }
-            __result
-        });
-        let legacy = Rc::new(v1_rt::list_take(
-            &names.clone(),
-            (native_ingress_legacy_facts().len() as i64),
-        ));
-        if (legacy.clone().join(&",".to_string())
-            != native_ingress_legacy_facts().join(&",".to_string()))
-        {
-            Rc::new(vec![v1_rt::concat(
-                "the handler's leading parameters are [".to_string(),
-                v1_rt::concat(
-                    legacy.clone().join(&", ".to_string()),
-                    v1_rt::concat(
-                        "]; the native door (M2a) passes exactly [".to_string(),
-                        v1_rt::concat(
-                            native_ingress_legacy_facts().join(&", ".to_string()),
-                            "]".to_string(),
-                        ),
-                    ),
-                ),
-            )])
+        let name = crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone());
+        let t = crate::v1_std_core::param_node_type_expr(p.clone());
+        if (p.return_cardinality.clone() != Cardinality::Required) {
+            Rc::new(NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused {
+    reason: v1_rt::concat("handler parameter ".to_string(), v1_rt::concat(name.clone(), " is optional; every request fact is supplied, so a request parameter admits no default".to_string())),
+})
         } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for p in Rc::new(v1_rt::list_take(
-                    &params.clone(),
-                    (native_ingress_legacy_facts().len() as i64),
+            if (native_ingress_type_is_kernel(t.clone(), env.clone(), "String".to_string())
+                || native_ingress_type_names(
+                    t.clone(),
+                    env.clone(),
+                    "std.types".to_string(),
+                    "CommitSha".to_string(),
                 ))
-                .iter()
-                .cloned()
-                {
-                    __result.extend(
-                        (*{
-                            let n = crate::v1_std_core::param_node_name_at(
-                                p.clone(),
-                                env.source_indices.clone(),
-                            );
-                            let t = crate::v1_std_core::param_node_type_expr(p.clone());
-                            let ok = if (n.clone() == "release_revision".to_string()) {
-                                (native_ingress_type_names(
-                                    t.clone(),
-                                    env.clone(),
-                                    "std.types".to_string(),
-                                    "CommitSha".to_string(),
-                                ) || native_ingress_type_is_kernel(
-                                    t.clone(),
-                                    env.clone(),
-                                    "String".to_string(),
-                                ))
-                            } else {
-                                native_ingress_type_is_kernel(
-                                    t.clone(),
-                                    env.clone(),
-                                    "String".to_string(),
-                                )
-                            };
-                            if (ok.clone()
-                                && (p.return_cardinality.clone() == Cardinality::Required))
-                            {
-                                Rc::new(vec![])
-                            } else {
-                                Rc::new(vec![v1_rt::concat(
-                                    "handler parameter ".to_string(),
-                                    v1_rt::concat(
-                                        n.clone(),
-                                        v1_rt::concat(
-                                            " is ".to_string(),
-                                            v1_rt::concat(
-                                                native_ingress_type_text(t.clone(), env.clone()),
-                                                if (n.clone() == "release_revision".to_string()) {
-                                                    ", not std.types CommitSha (String)".to_string()
-                                                } else {
-                                                    ", not String".to_string()
-                                                },
-                                            ),
-                                        ),
-                                    ),
-                                )])
-                            }
-                        })
-                        .iter()
-                        .cloned(),
-                    );
+            {
+                Rc::new(
+                    NativeIngressRequestParameterReading::NativeIngressRequestParameterRead {
+                        parameter: Rc::new(NativeIngressRequestParameter {
+                            name: name.clone(),
+                            shape: NativeIngressRequestShape::NativeIngressTextShape,
+                        }),
+                    },
+                )
+            } else {
+                if native_ingress_type_is_header_list(t.clone(), env.clone()) {
+                    Rc::new(
+                        NativeIngressRequestParameterReading::NativeIngressRequestParameterRead {
+                            parameter: Rc::new(NativeIngressRequestParameter {
+                                name: name.clone(),
+                                shape: NativeIngressRequestShape::NativeIngressHeadersShape,
+                            }),
+                        },
+                    )
+                } else {
+                    Rc::new(NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused {
+    reason: v1_rt::concat("handler parameter ".to_string(), v1_rt::concat(name.clone(), v1_rt::concat(" is ".to_string(), v1_rt::concat(native_ingress_type_text(t.clone(), env.clone()), "; a request fact is text (String or std.types CommitSha) or the request's header list (List<extdeps.http.server ServeRequestHeader>)".to_string())))),
+})
                 }
-                __result
-            })
+            }
         }
     }
+}
+
+pub fn native_ingress_request_params(
+    handler: Rc<NativeIngressSite>,
+    startup: Option<Rc<NativeIngressSite>>,
+) -> Rc<Vec<Rc<Node>>> {
+    {
+        let params = handler.item.params.clone();
+        match startup.clone() {
+            Some(_) => Rc::new(v1_rt::list_take(
+                &params.clone(),
+                v1_rt::int_sub((params.clone().len() as i64), 1),
+            )),
+            std::option::Option::None => params.clone(),
+        }
+    }
+}
+
+pub fn native_ingress_request_parameters(
+    handler: Rc<NativeIngressSite>,
+    startup: Option<Rc<NativeIngressSite>>,
+) -> Rc<Vec<Rc<NativeIngressRequestParameter>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in native_ingress_request_params(handler.clone(), startup)
+            .iter()
+            .cloned()
+        {
+            __result.extend((*match (*native_ingress_request_parameter(p.clone(), handler.tm.type_env.clone())).clone() {
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRead { parameter: q, .. } => Rc::new(vec![q.clone()]),
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused { reason: _, .. } => Rc::new(vec![]),
+}).iter().cloned());
+        }
+        __result
+    })
 }
 
 pub fn native_ingress_startup_payload(startup: Rc<NativeIngressSite>) -> Option<Rc<Node>> {
@@ -46480,35 +46323,15 @@ pub fn native_ingress_handler_refusals(
     {
         let env = handler.tm.type_env.clone();
         let params = handler.item.params.clone();
-        let expected = v1_rt::int_add(
-            (native_ingress_legacy_facts().len() as i64),
-            match startup.clone() {
-                Some(_) => 1,
-                std::option::Option::None => 0,
-            },
-        );
-        let arity = if ((params.clone().len() as i64) != expected.clone()) {
-            Rc::new(vec![v1_rt::concat(
-                "the handler declares ".to_string(),
-                v1_rt::concat(
-                    crate::v1_compiler_emit_core_support::to_string((params.clone().len() as i64)),
-                    v1_rt::concat(
-                        " parameters; the native door passes ".to_string(),
-                        v1_rt::concat(
-                            crate::v1_compiler_emit_core_support::to_string(expected.clone()),
-                            match startup.clone() {
-                                Some(_) => " (the legacy request facts, then the startup value)"
-                                    .to_string(),
-                                std::option::Option::None => {
-                                    " (the legacy request facts)".to_string()
-                                }
-                            },
-                        ),
-                    ),
-                ),
-            )])
-        } else {
-            Rc::new(vec![])
+        let arity = match startup.clone() {
+            Some(_) => {
+                if ((params.clone().len() as i64) == 0) {
+                    Rc::new(vec!["the program names a startup, so the handler's last parameter is the startup value, but the handler declares no parameters".to_string()])
+                } else {
+                    Rc::new(vec![])
+                }
+            }
+            std::option::Option::None => Rc::new(vec![]),
         };
         let returns = if native_ingress_type_names(
             crate::v1_compiler_infer_types::resolved_type(handler.item.clone()),
@@ -46529,9 +46352,22 @@ pub fn native_ingress_handler_refusals(
                 ),
             )])
         };
+        let requests = Rc::new({
+            let mut __result = Vec::new();
+            for p in native_ingress_request_params(handler.clone(), startup.clone())
+                .iter()
+                .cloned()
+            {
+                __result.extend((*match (*native_ingress_request_parameter(p.clone(), env.clone())).clone() {
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRefused { reason: why, .. } => Rc::new(vec![why.clone()]),
+    NativeIngressRequestParameterReading::NativeIngressRequestParameterRead { parameter: _, .. } => Rc::new(vec![]),
+}).iter().cloned());
+            }
+            __result
+        });
         let payload = match startup.clone() {
     std::option::Option::None => Rc::new(vec![]),
-    Some(st) => match params.clone().get(((native_ingress_legacy_facts().len() as i64)) as usize).cloned() {
+    Some(st) => match params.clone().get((v1_rt::int_sub((params.clone().len() as i64), 1)) as usize).cloned() {
     std::option::Option::None => Rc::new(vec![]),
     Some(p) => match native_ingress_startup_payload(st.clone()) {
     std::option::Option::None => Rc::new(vec!["the startup's return type carries no payload type to compose with the handler".to_string()]),
@@ -46547,7 +46383,7 @@ pub fn native_ingress_handler_refusals(
             v1_rt::concat(arity.clone(), returns.clone())
         } else {
             v1_rt::concat(
-                native_ingress_handler_param_refusals(params.clone(), env.clone()),
+                requests.clone(),
                 v1_rt::concat(returns.clone(), payload.clone()),
             )
         }
@@ -46694,6 +46530,7 @@ pub struct NativeIngressProgramResolved {
     pub binding: Rc<NativeIngressRef>,
     pub binding_parameters: Rc<Vec<Rc<NativeIngressParameter>>>,
     pub handler: Rc<NativeIngressRef>,
+    pub request_parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
     pub startup: Option<Rc<NativeIngressRef>>,
 }
 
@@ -47003,18 +46840,22 @@ pub fn native_ingress_program_from_descriptor(
     NativeIngressRefReading::NativeIngressRefUnread { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
     NativeIngressRefReading::NativeIngressRefRead { reference: hr, .. } => match (*binding_site.clone()).clone() {
     NativeIngressSiteReading::NativeIngressSiteRefused { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
-    NativeIngressSiteReading::NativeIngressSiteFound { site: b, .. } => Rc::new(NativeIngressResolution::NativeIngressResolvedProgram {
+    NativeIngressSiteReading::NativeIngressSiteFound { site: b, .. } => match (*handler_site.clone()).clone() {
+    NativeIngressSiteReading::NativeIngressSiteRefused { reason: why, .. } => native_ingress_unresolved(label.clone(), why.clone()),
+    NativeIngressSiteReading::NativeIngressSiteFound { site: h, .. } => Rc::new(NativeIngressResolution::NativeIngressResolvedProgram {
     resolved: Rc::new(NativeIngressProgramResolved {
     program: program.clone(),
     binding: br.clone(),
     binding_parameters: native_ingress_binding_parameters(b.clone()),
     handler: hr.clone(),
+    request_parameters: native_ingress_request_parameters(h.clone(), found_startup.clone()),
     startup: match (*startup_reading.clone()).clone() {
     NativeIngressStartupReading::NativeIngressStartupNamed { reference: sr, .. } => Some(sr.clone()),
     _ => std::option::Option::None,
 },
 }),
 }),
+},
 },
 },
 }
@@ -48055,6 +47896,42 @@ pub fn emit_native_ingress_driver_main_rs(
                 "".to_string()
             },
         );
+        let request = program.request_parameters.clone();
+        let has_headers = {
+            let mut __found = false;
+            for p in request.iter().cloned() {
+                if (p.shape.clone() == NativeIngressRequestShape::NativeIngressHeadersShape) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let header_import = if has_headers.clone() {
+            ", ServeRequestHeader".to_string()
+        } else {
+            "".to_string()
+        };
+        let second_import = if match program.startup.clone() {
+            Some(_) => true,
+            std::option::Option::None => false,
+        } {
+            ", second_count".to_string()
+        } else {
+            "".to_string()
+        };
+        let headers_variant = if has_headers.clone() {
+            "    Headers(Vec<(String, String)>),\n".to_string()
+        } else {
+            "".to_string()
+        };
+        let headers_wire = if has_headers.clone() {
+            "HttpIngressArgument::HttpIngressHeadersArgument { value, .. } => wire.push(WireArgument::Headers(value.iter().map(|header| (header.name.clone(), header.value.clone())).collect())),".to_string()
+        } else {
+            "HttpIngressArgument::HttpIngressHeadersArgument { .. } => return None,".to_string()
+        };
+        let request_parameters = native_ingress_request_parameter_values(request.clone());
+        let worker_pattern = native_ingress_worker_pattern(request.clone());
         let rendered_arguments = native_ingress_argument_render(parameters.clone());
         let constructor_call = v1_rt::concat(
             v1_rt::concat(
@@ -48137,13 +48014,26 @@ pub fn emit_native_ingress_driver_main_rs(
         } else {
             "".to_string()
         };
+        let worker_arguments = native_ingress_worker_arguments(request.clone());
         let worker_call = if handler_effectful.clone() {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            let response = match runtime.block_on(".to_string(), handler_path.clone()), "(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision".to_string()), startup_arg.clone()), handler_effect_args.clone()), ")) {".to_string()), "\n".to_string()), "                Ok(response) => response,".to_string()), "\n".to_string()), "                Err(cause) => native_serve_effect_failed(cause.to_string()),".to_string()), "\n".to_string()), "            };".to_string()), "\n".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("                    match runtime.block_on(".to_string(), handler_path.clone()), "(".to_string()), native_ingress_call_arguments(v1_rt::concat(worker_arguments.clone(), v1_rt::concat(startup_arg.clone(), handler_effect_args.clone())))), ")) {".to_string()), "\n".to_string()), "                        Ok(response) => response,".to_string()), "\n".to_string()), "                        Err(cause) => native_serve_effect_failed(cause.to_string()),".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string())
         } else {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            let response = ".to_string(), handler_path.clone()), "(call.method, call.path, call.body, call.tailscale_identity, call.authorization, call.release_revision".to_string()), startup_arg.clone()), ");\n".to_string())
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("                    ".to_string(), handler_path.clone()),
+                        "(".to_string(),
+                    ),
+                    native_ingress_call_arguments(v1_rt::concat(
+                        worker_arguments.clone(),
+                        startup_arg.clone(),
+                    )),
+                ),
+                ")\n".to_string(),
+            )
         };
         let realize_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let ready_within = ".to_string(), ready_within.clone()), ";".to_string()), "\n".to_string()), "    let mut generation = match realize_generation(ready_within) {".to_string()), "\n".to_string()), "        Ok(generation) => generation,".to_string()), "\n".to_string()), "        Err(cause) => refuse_launch(native_serve_worker_unrealized(cause)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string());
-        let bind_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let listener = match std::net::TcpListener::bind((contract.host.as_str(), contract.port as u16)) {".to_string(), "\n".to_string()), "        Ok(listener) => listener,".to_string()), "\n".to_string()), "        Err(cause) => refuse_launch(format!(\"failed to bind {}:{}: {}\", contract.host, contract.port, cause)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound = match listener.local_addr() {".to_string()), "\n".to_string()), "        Ok(addr) => addr,".to_string()), "\n".to_string()), "        Err(cause) => refuse_launch(format!(\"bound but could not read the bound address: {}\", cause)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let bound_host = bound.ip().to_string();".to_string()), "\n".to_string()), "    let bound_port = bound.port() as i64;".to_string()), "\n".to_string());
+        let bind_block = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    let listener = match &*listen_on {".to_string(), "\n".to_string()), "        // The start already refused a port or mode outside range (gunbc.http_ingress http_ingress_listener_refusal); the".to_string()), "\n".to_string()), "        // conversions are checked anyway, so no value is ever narrowed into another listener.".to_string()), "\n".to_string()), "        HttpIngressListener::HttpIngressTcp { host, port } => match u16::try_from(*port) {".to_string()), "\n".to_string()), "            Err(_) => refuse_launch(format!(\"listener port out of range: {}\", port)),".to_string()), "\n".to_string()), "            Ok(port) => match std::net::TcpListener::bind((host.as_str(), port)) {".to_string()), "\n".to_string()), "                Ok(listener) => Listener::Tcp(listener),".to_string()), "\n".to_string()), "                Err(cause) => refuse_launch(format!(\"failed to bind {}:{}: {}\", host, port, cause)),".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        HttpIngressListener::HttpIngressUnixSocket { path, mode } => match u32::try_from(*mode) {".to_string()), "\n".to_string()), "            Err(_) => refuse_launch(format!(\"listener socket mode out of range: {}\", mode)),".to_string()), "\n".to_string()), "            Ok(mode) => match bind_unix(path, mode) {".to_string()), "\n".to_string()), "                Ok((listener, lock)) => Listener::Unix { listener, _lock: lock },".to_string()), "\n".to_string()), "                Err(reason) => refuse_launch(reason),".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // A unix listener reports its listener text and port 0, as the seed's realization does.".to_string()), "\n".to_string()), "    let (bound_host, bound_port) = match &listener {".to_string()), "\n".to_string()), "        Listener::Tcp(tcp) => match tcp.local_addr() {".to_string()), "\n".to_string()), "            Ok(addr) => (addr.ip().to_string(), addr.port() as i64),".to_string()), "\n".to_string()), "            Err(cause) => refuse_launch(format!(\"bound but could not read the bound address: {}\", cause)),".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        Listener::Unix { .. } => (http_ingress_listener_text(listen_on.clone()), 0),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "".to_string());
         let first_block = if startup.clone() {
             realize_block.clone()
         } else {
@@ -48156,12 +48046,108 @@ pub fn emit_native_ingress_driver_main_rs(
         };
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::ServeWireResponse;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count".to_string()), if startup.clone() {
-            ", second_count".to_string()
-        } else {
-            "".to_string()
-        }), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement,".to_string()), effect_failed_import.clone()), " native_serve_frame, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_deadline_refused, native_serve_deadline_uninstallable, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route, native_serve_authorization,".to_string()), "\n".to_string()), "    native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,".to_string()), "\n".to_string()), "    NativeServeContract, NativeServeFrame, NativeServeOutgoing, NativeServeRoute, NativeServeStart,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_http_ingress::{".to_string()), "\n".to_string()), "    http_ingress_native_argv,".to_string()), argument_imports.clone()), " http_ingress_native_argument_refused, http_ingress_native_contract, HttpIngressNativeArgv,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), startup_import.clone()), "\n".to_string()), "// A launch refusal binds nothing: it prints the reason and exits 2 before any listener exists.".to_string()), "\n".to_string()), "fn refuse_launch(reason: String) -> ! {".to_string()), "\n".to_string()), "    eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "    std::process::exit(2);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// What a worker hands back across the thread boundary: owned plain values, because the compiled".to_string()), "\n".to_string()), "// handler's values are reference-counted and stay on the worker's thread.".to_string()), "\n".to_string()), "struct WireParts {".to_string()), "\n".to_string()), "    status: i64,".to_string()), "\n".to_string()), "    content_type_label: String,".to_string()), "\n".to_string()), "    header_lines: Vec<String>,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn wire_parts(response: &NativeServeOutgoing) -> WireParts {".to_string()), "\n".to_string()), "    WireParts {".to_string()), "\n".to_string()), "        status: response.status,".to_string()), "\n".to_string()), "        content_type_label: response.content_type_label.clone(),".to_string()), "\n".to_string()), "        header_lines: response.header_lines.iter().cloned().collect(),".to_string()), "\n".to_string()), "        body: response.body.clone(),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_parts(stream: &mut std::net::TcpStream, response: &WireParts) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    if let Err(cause) = stream.write_all(head.as_bytes()).and_then(|_| stream.write_all(response.body.as_bytes())).and_then(|_| stream.flush()) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn write_response(stream: &mut std::net::TcpStream, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    write_parts(stream, &wire_parts(response));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// A request that crossed the effective deadline: answer the typed 500, then end the process, so the".to_string()), "\n".to_string()), "// computation the loop stopped waiting for cannot run on (gunbc.native_serve native_serve_deadline_exit_code).".to_string()), "\n".to_string()), "fn exit_after_deadline(stream: &mut std::net::TcpStream, contract: &Rc<NativeServeContract>) -> ! {".to_string()), "\n".to_string()), "    write_response(stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));".to_string()), "\n".to_string()), "    let _ = stream.shutdown(std::net::Shutdown::Both);".to_string()), "\n".to_string()), "    eprintln!(\"native-serve: a request crossed its {} ms deadline; exiting {} for the supervisor to restart this process\", millisecond_count(contract.request_deadline.clone()), native_serve_deadline_exit_code());".to_string()), "\n".to_string()), "    std::process::exit(native_serve_deadline_exit_code() as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// The deadline could not be installed on the connection: no read proceeds under a stale bound, so the request is".to_string()), "\n".to_string()), "// refused with its typed 500 and the process ends exactly as after a crossing.".to_string()), "\n".to_string()), "fn exit_after_uninstallable_deadline(stream: &mut std::net::TcpStream, contract: &Rc<NativeServeContract>, reason: String) -> ! {".to_string()), "\n".to_string()), "    write_response(stream, &native_serve_outgoing(native_serve_deadline_uninstallable(contract.clone(), reason)));".to_string()), "\n".to_string()), "    let _ = stream.shutdown(std::net::Shutdown::Both);".to_string()), "\n".to_string()), "    eprintln!(\"native-serve: a request's deadline could not be installed on its connection; exiting {} for the supervisor to restart this process\", native_serve_deadline_exit_code());".to_string()), "\n".to_string()), "    std::process::exit(native_serve_deadline_exit_code() as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), startup_static.clone()), "struct HandlerCall {".to_string()), "\n".to_string()), "    method: String,".to_string()), "\n".to_string()), "    path: String,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "    tailscale_identity: String,".to_string()), "\n".to_string()), "    authorization: String,".to_string()), "\n".to_string()), "    release_revision: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// One worker generation: the thread that owns the effect executor and every admitted handle and runs".to_string()), "\n".to_string()), "// handler calls one at a time.".to_string()), "\n".to_string()), "struct Generation {".to_string()), "\n".to_string()), "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn realize_generation(ready_within: std::time::Duration) -> Result<Generation, String> {".to_string()), "\n".to_string()), "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();".to_string()), "\n".to_string()), "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();".to_string()), "\n".to_string()), "    std::thread::spawn(move || {".to_string()), "\n".to_string()), worker_realize.clone()), worker_startup.clone()), "        let _ = ready.send(Ok(()));".to_string()), "\n".to_string()), "        while let Ok((call, reply)) = inbox.recv() {".to_string()), "\n".to_string()), worker_call.clone()), "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    match readiness.recv_timeout(ready_within) {".to_string()), "\n".to_string()), "        Ok(Ok(())) => Ok(Generation { calls }),".to_string()), "\n".to_string()), "        Ok(Err(cause)) => Err(cause),".to_string()), "\n".to_string()), timeout_arm.clone()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "    Overran,".to_string()), "\n".to_string()), "    DeadlineUninstallable(String),".to_string()), "\n".to_string()), "    Handle(HandlerCall, std::time::Instant),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// The time left before the effective deadline, or None once it has passed.".to_string()), "\n".to_string()), "fn remaining(armed: std::time::Instant, deadline: std::time::Duration) -> Option<std::time::Duration> {".to_string()), "\n".to_string()), "    deadline.checked_sub(armed.elapsed()).filter(|left| !left.is_zero())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn exchange(stream: &std::net::TcpStream, contract: &Rc<NativeServeContract>, bound_host: &str, bound_port: i64, deadline: std::time::Duration, read_timeout: std::time::Duration) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE HEAD IS COMPLETE: the effective deadline is armed here, before framing.".to_string()), "\n".to_string()), "    let armed = std::time::Instant::now();".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            let mut filled = 0usize;".to_string()), "\n".to_string()), "            while filled < body.len() {".to_string()), "\n".to_string()), "                let left = match remaining(armed, deadline) { Some(left) => left, None => return Exchange::Overran };".to_string()), "\n".to_string()), "                // The read is bounded by what is left of the deadline; a bound that cannot be installed is never read past.".to_string()), "\n".to_string()), "                if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }".to_string()), "\n".to_string()), "                match reader.read(&mut body[filled..]) {".to_string()), "\n".to_string()), "                    Ok(0) => return Exchange::Answer(native_serve_read_refused(\"connection closed before the body was complete\".to_string())),".to_string()), "\n".to_string()), "                    Ok(n) => filled += n,".to_string()), "\n".to_string()), "                    Err(cause) if matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) && remaining(armed, deadline).is_none() => return Exchange::Overran,".to_string()), "\n".to_string()), "                    Err(cause) => return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause))),".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => Exchange::Handle(HandlerCall {".to_string()), "\n".to_string()), "            method: head.method.clone(),".to_string()), "\n".to_string()), "            path: head.target.clone(),".to_string()), "\n".to_string()), "            body,".to_string()), "\n".to_string()), "            tailscale_identity: head.tailscale_identity.clone(),".to_string()), "\n".to_string()), "            authorization: native_serve_authorization(head.clone()),".to_string()), "\n".to_string()), "            release_revision: contract.release_revision.clone(),".to_string()), "\n".to_string()), "        }, armed),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let declared: Vec<String> = vec![".to_string()), declared_names.clone()), "];".to_string()), "\n".to_string()), "    let arguments = match &*http_ingress_native_argv(Rc::new(argv.into()), Rc::new(declared.into())) {".to_string()), "\n".to_string()), "        HttpIngressNativeArgv::HttpIngressNativeArgvRead { arguments } => arguments.clone(),".to_string()), "\n".to_string()), "        HttpIngressNativeArgv::HttpIngressNativeArgvRefused { reason } => refuse_launch(reason.clone()),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), rendered_arguments.lines.clone()), "    // THE EXACT BINDING CONSTRUCTOR the program descriptor names, and the contract derived from what it returned.".to_string()), "\n".to_string()), "    let contract = match &*http_ingress_native_contract(".to_string()), constructor_call.clone()), ", ".to_string()), program_path.clone()), "()) {".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeListen { contract } => contract.clone(),".to_string()), "\n".to_string()), "        NativeServeStart::NativeServeStartRefused { reason } => refuse_launch(reason.clone()),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);".to_string()), "\n".to_string()), first_block.clone()), second_block.clone()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    for accepted in listener.incoming() {".to_string()), "\n".to_string()), "        let mut stream = match accepted {".to_string()), "\n".to_string()), "            Ok(stream) => stream,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: accept error: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &bound_host, bound_port, deadline, timeout) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&mut stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "            Exchange::Overran => exit_after_deadline(&mut stream, &contract),".to_string()), "\n".to_string()), "            Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&mut stream, &contract, reason),".to_string()), "\n".to_string()), "            Exchange::Handle(call, armed) => {".to_string()), "\n".to_string()), "                let (reply, answer) = std::sync::mpsc::channel::<WireParts>();".to_string()), "\n".to_string()), "                let replace = if generation.calls.send((call, reply)).is_err() {".to_string()), "\n".to_string()), "                    write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                    true".to_string()), "\n".to_string()), "                } else {".to_string()), "\n".to_string()), "                    match answer.recv_timeout(remaining(armed, deadline).unwrap_or_default()) {".to_string()), "\n".to_string()), "                        Ok(parts) => {".to_string()), "\n".to_string()), "                            write_parts(&mut stream, &parts);".to_string()), "\n".to_string()), "                            false".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {".to_string()), "\n".to_string()), "                            write_response(&mut stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                            true".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&mut stream, &contract),".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                };".to_string()), "\n".to_string()), "                if replace {".to_string()), "\n".to_string()), "                    generation = match realize_generation(ready_within) {".to_string()), "\n".to_string()), "                        Ok(generation) => generation,".to_string()), "\n".to_string()), "                        Err(cause) => {".to_string()), "\n".to_string()), "                            eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "                            std::process::exit(native_serve_worker_replacement_exit_code() as i32);".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                    };".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "use std::io::{BufRead, Read, Write};".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_http_server::{ServeWireResponse".to_string()), header_import.clone()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{byte_size_count, millisecond_count".to_string()), second_import.clone()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_native_serve::{".to_string()), "\n".to_string()), "    native_serve_announcement,".to_string()), effect_failed_import.clone()), " native_serve_frame, native_serve_read_refused,".to_string()), "\n".to_string()), "    native_serve_deadline_refused, native_serve_deadline_uninstallable, native_serve_deadline_exit_code, native_serve_handler_failed, native_serve_outgoing, native_serve_route,".to_string()), "\n".to_string()), "    native_serve_arguments_unplanned, native_serve_worker_replacement_exit_code, native_serve_worker_unrealized,".to_string()), "\n".to_string()), "    NativeServeContract, NativeServeFrame, NativeServeOutgoing, NativeServeRoute, NativeServeRequestHead,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::gunbc_http_ingress::{".to_string()), "\n".to_string()), "    http_ingress_native_argv,".to_string()), argument_imports.clone()), " http_ingress_native_argument_refused, http_ingress_native_contract, http_ingress_arguments, http_ingress_listener_text,".to_string()), "\n".to_string()), "    HttpIngressNativeArgv, HttpIngressNativeStart, HttpIngressListener, HttpIngressArgument,".to_string()), "\n".to_string()), "    HttpIngressDeclaredParameter, HttpIngressArgumentShape,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), startup_import.clone()), "// A launch refusal binds nothing: it prints the reason and exits 2 before any listener exists.".to_string()), "\n".to_string()), "fn refuse_launch(reason: String) -> ! {".to_string()), "\n".to_string()), "    eprintln!(\"REFUSED: {}\", reason);".to_string()), "\n".to_string()), "    std::process::exit(2);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE LISTENER THE BINDING NAMES: TCP, or a unix socket whose every peer the kernel attests.".to_string()), "\n".to_string()), "enum Listener {".to_string()), "\n".to_string()), "    Tcp(std::net::TcpListener),".to_string()), "\n".to_string()), "    // The socket path's lock is held, never read, for the listener's whole lifetime (bind_unix).".to_string()), "\n".to_string()), "    Unix { listener: std::os::unix::net::UnixListener, _lock: std::fs::File },".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One accepted connection, either kind; the exchange reads and writes it through a shared reference,".to_string()), "\n".to_string()), "// so the read bound can be moved while a reader holds it.".to_string()), "\n".to_string()), "enum Connection {".to_string()), "\n".to_string()), "    Tcp(std::net::TcpStream),".to_string()), "\n".to_string()), "    Unix(std::os::unix::net::UnixStream),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Connection {".to_string()), "\n".to_string()), "    fn set_read_timeout(&self, bound: Option<std::time::Duration>) -> std::io::Result<()> {".to_string()), "\n".to_string()), "        match self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => stream.set_read_timeout(bound),".to_string()), "\n".to_string()), "            Connection::Unix(stream) => stream.set_read_timeout(bound),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    fn shutdown(&self) {".to_string()), "\n".to_string()), "        let _ = match self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => stream.shutdown(std::net::Shutdown::Both),".to_string()), "\n".to_string()), "            Connection::Unix(stream) => stream.shutdown(std::net::Shutdown::Both),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Read for &Connection {".to_string()), "\n".to_string()), "    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {".to_string()), "\n".to_string()), "        match *self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => { let mut stream: &std::net::TcpStream = stream; stream.read(buf) }".to_string()), "\n".to_string()), "            Connection::Unix(stream) => { let mut stream: &std::os::unix::net::UnixStream = stream; stream.read(buf) }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Write for &Connection {".to_string()), "\n".to_string()), "    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {".to_string()), "\n".to_string()), "        match *self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => { let mut stream: &std::net::TcpStream = stream; stream.write(buf) }".to_string()), "\n".to_string()), "            Connection::Unix(stream) => { let mut stream: &std::os::unix::net::UnixStream = stream; stream.write(buf) }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    fn flush(&mut self) -> std::io::Result<()> {".to_string()), "\n".to_string()), "        match *self {".to_string()), "\n".to_string()), "            Connection::Tcp(stream) => { let mut stream: &std::net::TcpStream = stream; stream.flush() }".to_string()), "\n".to_string()), "            Connection::Unix(stream) => { let mut stream: &std::os::unix::net::UnixStream = stream; stream.flush() }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE SOCKET PATH IS OWNED BY WHOEVER HOLDS ITS LOCK. An exclusive flock on `<path>.lock` is taken before the path is".to_string()), "\n".to_string()), "// looked at and held for the listener's whole lifetime, so two realizations started on one path cannot both judge it".to_string()), "\n".to_string()), "// stale: the second finds the lock taken and refuses, and never unlinks the first one's socket. Under the lock a socket".to_string()), "\n".to_string()), "// file is replaced only when it is SHOWN stale: a connection to it is refused, so no process listens there (a process".to_string()), "\n".to_string()), "// that listens without taking the lock is still never displaced). Any socket whose staleness cannot be shown, and any".to_string()), "\n".to_string()), "// other file at the path, is refused. The file's mode is the binding's.".to_string()), "\n".to_string()), "fn lock_socket_path(path: &str) -> Result<std::fs::File, String> {".to_string()), "\n".to_string()), "    use std::os::unix::io::AsRawFd;".to_string()), "\n".to_string()), "    let lock_path = format!(\"{}.lock\", path);".to_string()), "\n".to_string()), "    let lock = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&lock_path).map_err(|cause| format!(\"could not open the socket's lock {}: {}\", lock_path, cause))?;".to_string()), "\n".to_string()), "    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {".to_string()), "\n".to_string()), "        let cause = std::io::Error::last_os_error();".to_string()), "\n".to_string()), "        return Err(if cause.kind() == std::io::ErrorKind::WouldBlock {".to_string()), "\n".to_string()), "            format!(\"unix socket {} is held by another realization (its lock {} is taken); refusing to replace it\", path, lock_path)".to_string()), "\n".to_string()), "        } else {".to_string()), "\n".to_string()), "            format!(\"could not lock {}: {}\", lock_path, cause)".to_string()), "\n".to_string()), "        });".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Ok(lock)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn bind_unix(path: &str, mode: u32) -> Result<(std::os::unix::net::UnixListener, std::fs::File), String> {".to_string()), "\n".to_string()), "    use std::os::unix::fs::{FileTypeExt, PermissionsExt};".to_string()), "\n".to_string()), "    let lock = lock_socket_path(path)?;".to_string()), "\n".to_string()), "    if let Ok(meta) = std::fs::symlink_metadata(path) {".to_string()), "\n".to_string()), "        if !meta.file_type().is_socket() {".to_string()), "\n".to_string()), "            return Err(format!(\"unix socket {} exists and is not a socket; refusing to replace it\", path));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match std::os::unix::net::UnixStream::connect(path) {".to_string()), "\n".to_string()), "            Ok(_) => return Err(format!(\"unix socket {} has a live listener; refusing to displace it\", path)),".to_string()), "\n".to_string()), "            Err(cause) if cause.kind() == std::io::ErrorKind::ConnectionRefused => {}".to_string()), "\n".to_string()), "            Err(cause) => return Err(format!(\"unix socket {} could not be shown stale ({}); refusing to replace it\", path, cause)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        std::fs::remove_file(path).map_err(|cause| format!(\"could not remove the stale socket {}: {}\", path, cause))?;".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let listener = std::os::unix::net::UnixListener::bind(path).map_err(|cause| format!(\"failed to bind unix socket {}: {}\", path, cause))?;".to_string()), "\n".to_string()), "    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).map_err(|cause| format!(\"could not set the socket {} to mode {:o}: {}\", path, mode, cause))?;".to_string()), "\n".to_string()), "    Ok((listener, lock))".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The kernel-attested peer uid of a unix-socket connection. Linux answers through SO_PEERCRED; macOS has no".to_string()), "\n".to_string()), "// SO_PEERCRED and answers the same fact through getpeereid. Any other target refuses.".to_string()), "\n".to_string()), "#[cfg(target_os = \"linux\")]".to_string()), "\n".to_string()), "fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {".to_string()), "\n".to_string()), "    use std::os::unix::io::AsRawFd;".to_string()), "\n".to_string()), "    let mut cred: libc::ucred = unsafe { std::mem::zeroed() };".to_string()), "\n".to_string()), "    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;".to_string()), "\n".to_string()), "    let rc = unsafe { libc::getsockopt(stream.as_raw_fd(), libc::SOL_SOCKET, libc::SO_PEERCRED, &mut cred as *mut libc::ucred as *mut libc::c_void, &mut len) };".to_string()), "\n".to_string()), "    if rc != 0 { return Err(std::io::Error::last_os_error()); }".to_string()), "\n".to_string()), "    Ok(cred.uid)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "#[cfg(target_os = \"macos\")]".to_string()), "\n".to_string()), "fn peer_uid(stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {".to_string()), "\n".to_string()), "    use std::os::unix::io::AsRawFd;".to_string()), "\n".to_string()), "    let mut uid: libc::uid_t = 0;".to_string()), "\n".to_string()), "    let mut gid: libc::gid_t = 0;".to_string()), "\n".to_string()), "    if unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) } != 0 { return Err(std::io::Error::last_os_error()); }".to_string()), "\n".to_string()), "    Ok(uid)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "#[cfg(not(any(target_os = \"linux\", target_os = \"macos\")))]".to_string()), "\n".to_string()), "fn peer_uid(_stream: &std::os::unix::net::UnixStream) -> std::io::Result<libc::uid_t> {".to_string()), "\n".to_string()), "    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"unix-socket peer credentials are not modeled for this target\"))".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The account the attested uid resolves to. A uid that resolves to no account is not a peer.".to_string()), "\n".to_string()), "fn peer_user(stream: &std::os::unix::net::UnixStream) -> Result<String, String> {".to_string()), "\n".to_string()), "    let uid = peer_uid(stream).map_err(|cause| format!(\"the peer's credentials could not be read: {}\", cause))?;".to_string()), "\n".to_string()), "    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };".to_string()), "\n".to_string()), "    let mut buf = vec![0 as libc::c_char; 4096];".to_string()), "\n".to_string()), "    let mut result: *mut libc::passwd = std::ptr::null_mut();".to_string()), "\n".to_string()), "    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };".to_string()), "\n".to_string()), "    if rc != 0 || result.is_null() { return Err(format!(\"peer uid {} resolves to no account\", uid)); }".to_string()), "\n".to_string()), "    Ok(unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }.to_string_lossy().into_owned())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "impl Listener {".to_string()), "\n".to_string()), "    // THE PEER IS READ FROM THE KERNEL, NEVER FROM THE REQUEST. A unix connection whose peer cannot be read".to_string()), "\n".to_string()), "    // or resolved to an account is dropped before any request byte is read; a TCP connection attests none.".to_string()), "\n".to_string()), "    fn accept(&self) -> Result<(Connection, String), String> {".to_string()), "\n".to_string()), "        match self {".to_string()), "\n".to_string()), "            Listener::Tcp(listener) => listener.accept().map(|(stream, _)| (Connection::Tcp(stream), String::new())).map_err(|cause| format!(\"accept error: {}\", cause)),".to_string()), "\n".to_string()), "            Listener::Unix { listener, .. } => {".to_string()), "\n".to_string()), "                let (stream, _) = listener.accept().map_err(|cause| format!(\"accept error: {}\", cause))?;".to_string()), "\n".to_string()), "                let user = peer_user(&stream).map_err(|cause| format!(\"unattested peer dropped: {}\", cause))?;".to_string()), "\n".to_string()), "                Ok((Connection::Unix(stream), user))".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// What a worker hands back across the thread boundary: owned plain values, because the compiled".to_string()), "\n".to_string()), "// handler's values are reference-counted and stay on the worker's thread.".to_string()), "\n".to_string()), "struct WireParts {".to_string()), "\n".to_string()), "    status: i64,".to_string()), "\n".to_string()), "    content_type_label: String,".to_string()), "\n".to_string()), "    header_lines: Vec<String>,".to_string()), "\n".to_string()), "    body: String,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn wire_parts(response: &NativeServeOutgoing) -> WireParts {".to_string()), "\n".to_string()), "    WireParts {".to_string()), "\n".to_string()), "        status: response.status,".to_string()), "\n".to_string()), "        content_type_label: response.content_type_label.clone(),".to_string()), "\n".to_string()), "        header_lines: response.header_lines.iter().cloned().collect(),".to_string()), "\n".to_string()), "        body: response.body.clone(),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn write_parts(stream: &Connection, response: &WireParts) {".to_string()), "\n".to_string()), "    let mut head = format!(".to_string()), "\n".to_string()), "        \"HTTP/1.1 {} \\r\\nContent-Type: {}\\r\\nContent-Length: {}\\r\\nConnection: close\\r\\n\",".to_string()), "\n".to_string()), "        response.status, response.content_type_label, response.body.len()".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    for line in response.header_lines.iter() { head.push_str(line); head.push_str(\"\\r\\n\"); }".to_string()), "\n".to_string()), "    head.push_str(\"\\r\\n\");".to_string()), "\n".to_string()), "    let mut writer = stream;".to_string()), "\n".to_string()), "    if let Err(cause) = writer.write_all(head.as_bytes()).and_then(|_| writer.write_all(response.body.as_bytes())).and_then(|_| writer.flush()) {".to_string()), "\n".to_string()), "        eprintln!(\"native-serve: write error: {}\", cause);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn write_response(stream: &Connection, response: &NativeServeOutgoing) {".to_string()), "\n".to_string()), "    write_parts(stream, &wire_parts(response));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A request that crossed the effective deadline: answer the typed 500, then end the process, so the".to_string()), "\n".to_string()), "// computation the loop stopped waiting for cannot run on (gunbc.native_serve native_serve_deadline_exit_code).".to_string()), "\n".to_string()), "fn exit_after_deadline(stream: &Connection, contract: &Rc<NativeServeContract>) -> ! {".to_string()), "\n".to_string()), "    write_response(stream, &native_serve_outgoing(native_serve_deadline_refused(contract.clone())));".to_string()), "\n".to_string()), "    stream.shutdown();".to_string()), "\n".to_string()), "    eprintln!(\"native-serve: a request crossed its {} ms deadline; exiting {} for the supervisor to restart this process\", millisecond_count(contract.request_deadline.clone()), native_serve_deadline_exit_code());".to_string()), "\n".to_string()), "    std::process::exit(native_serve_deadline_exit_code() as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The deadline could not be installed on the connection: no read proceeds under a stale bound, so the request is".to_string()), "\n".to_string()), "// refused with its typed 500 and the process ends exactly as after a crossing.".to_string()), "\n".to_string()), "fn exit_after_uninstallable_deadline(stream: &Connection, contract: &Rc<NativeServeContract>, reason: String) -> ! {".to_string()), "\n".to_string()), "    write_response(stream, &native_serve_outgoing(native_serve_deadline_uninstallable(contract.clone(), reason)));".to_string()), "\n".to_string()), "    stream.shutdown();".to_string()), "\n".to_string()), "    eprintln!(\"native-serve: a request's deadline could not be installed on its connection; exiting {} for the supervisor to restart this process\", native_serve_deadline_exit_code());".to_string()), "\n".to_string()), "    std::process::exit(native_serve_deadline_exit_code() as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), startup_static.clone()), "// One request argument as it crosses to the worker: owned plain values, rebuilt there into the".to_string()), "\n".to_string()), "// handler's parameter type at the position the fact plan gave it.".to_string()), "\n".to_string()), "enum WireArgument {".to_string()), "\n".to_string()), "    Text(String),".to_string()), "\n".to_string()), "".to_string()), headers_variant.clone()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One handler call: the planned request arguments, in the handler's declared order.".to_string()), "\n".to_string()), "struct HandlerCall {".to_string()), "\n".to_string()), "    arguments: Vec<WireArgument>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One worker generation: the thread that owns the effect executor and every admitted handle and runs".to_string()), "\n".to_string()), "// handler calls one at a time.".to_string()), "\n".to_string()), "struct Generation {".to_string()), "\n".to_string()), "    calls: std::sync::mpsc::Sender<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn realize_generation(ready_within: std::time::Duration) -> Result<Generation, String> {".to_string()), "\n".to_string()), "    let (calls, inbox) = std::sync::mpsc::channel::<(HandlerCall, std::sync::mpsc::Sender<WireParts>)>();".to_string()), "\n".to_string()), "    let (ready, readiness) = std::sync::mpsc::channel::<Result<(), String>>();".to_string()), "\n".to_string()), "    std::thread::spawn(move || {".to_string()), "\n".to_string()), worker_realize.clone()), worker_startup.clone()), "        let _ = ready.send(Ok(()));".to_string()), "\n".to_string()), "        while let Ok((call, reply)) = inbox.recv() {".to_string()), "\n".to_string()), "            let response = match call.arguments.as_slice() {".to_string()), "\n".to_string()), "                [".to_string()), worker_pattern.clone()), "] => {".to_string()), "\n".to_string()), worker_call.clone()), "                }".to_string()), "\n".to_string()), "                _ => native_serve_arguments_unplanned(),".to_string()), "\n".to_string()), "            };".to_string()), "\n".to_string()), "            let _ = reply.send(wire_parts(&native_serve_outgoing(response)));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    match readiness.recv_timeout(ready_within) {".to_string()), "\n".to_string()), "        Ok(Ok(())) => Ok(Generation { calls }),".to_string()), "\n".to_string()), "        Ok(Err(cause)) => Err(cause),".to_string()), "\n".to_string()), timeout_arm.clone()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn read_line(reader: &mut impl BufRead, budget: &mut usize) -> Result<Option<String>, String> {".to_string()), "\n".to_string()), "    let mut bytes = Vec::new();".to_string()), "\n".to_string()), "    match reader.read_until(b'\\n', &mut bytes) {".to_string()), "\n".to_string()), "        Ok(0) => return Ok(None),".to_string()), "\n".to_string()), "        Ok(n) if n > *budget => return Err(\"the request head exceeds the serve head limit\".to_string()),".to_string()), "\n".to_string()), "        Ok(n) => *budget -= n,".to_string()), "\n".to_string()), "        Err(cause) if bytes.is_empty() && matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => return Ok(None),".to_string()), "\n".to_string()), "        Err(cause) => return Err(format!(\"read: {}\", cause)),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\n\") { bytes.pop(); }".to_string()), "\n".to_string()), "    if bytes.ends_with(b\"\\r\") { bytes.pop(); }".to_string()), "\n".to_string()), "    String::from_utf8(bytes).map(Some).map_err(|_| \"the request head is not utf-8\".to_string())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "enum Exchange {".to_string()), "\n".to_string()), "    Idle,".to_string()), "\n".to_string()), "    Answer(Rc<ServeWireResponse>),".to_string()), "\n".to_string()), "    Overran,".to_string()), "\n".to_string()), "    DeadlineUninstallable(String),".to_string()), "\n".to_string()), "    Handle(HandlerCall, std::time::Instant),".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// The time left before the effective deadline, or None once it has passed.".to_string()), "\n".to_string()), "fn remaining(armed: std::time::Instant, deadline: std::time::Duration) -> Option<std::time::Duration> {".to_string()), "\n".to_string()), "    deadline.checked_sub(armed.elapsed()).filter(|left| !left.is_zero())".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// One request's planned arguments, made plain to cross to the worker.".to_string()), "\n".to_string()), "fn wire_arguments<'a>(arguments: impl Iterator<Item = &'a Rc<HttpIngressArgument>>) -> Option<Vec<WireArgument>> {".to_string()), "\n".to_string()), "    let mut wire = Vec::new();".to_string()), "\n".to_string()), "    for argument in arguments {".to_string()), "\n".to_string()), "        match &**argument {".to_string()), "\n".to_string()), "            HttpIngressArgument::HttpIngressTextArgument { value, .. } => wire.push(WireArgument::Text(value.clone())),".to_string()), "\n".to_string()), "            ".to_string()), headers_wire.clone()), "".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    Some(wire)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn exchange(stream: &Connection, contract: &Rc<NativeServeContract>, arguments_of: &dyn Fn(Rc<NativeServeRequestHead>, String) -> Option<Vec<WireArgument>>, bound_host: &str, bound_port: i64, deadline: std::time::Duration, read_timeout: std::time::Duration) -> Exchange {".to_string()), "\n".to_string()), "    let limit = (byte_size_count(contract.head_limit.clone()) + byte_size_count(contract.body_limit.clone())) as u64;".to_string()), "\n".to_string()), "    let mut reader = std::io::BufReader::new(stream.take(limit));".to_string()), "\n".to_string()), "    let mut budget = byte_size_count(contract.head_limit.clone()) as usize;".to_string()), "\n".to_string()), "    let request_line = match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "        Ok(Some(line)) => line,".to_string()), "\n".to_string()), "        Ok(None) => return Exchange::Idle,".to_string()), "\n".to_string()), "        Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut header_lines = Vec::new();".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        match read_line(&mut reader, &mut budget) {".to_string()), "\n".to_string()), "            Ok(Some(line)) if line.is_empty() => break,".to_string()), "\n".to_string()), "            Ok(Some(line)) => header_lines.push(line),".to_string()), "\n".to_string()), "            Ok(None) => return Exchange::Answer(native_serve_read_refused(\"connection closed before end of headers\".to_string())),".to_string()), "\n".to_string()), "            Err(reason) => return Exchange::Answer(native_serve_read_refused(reason)),".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE HEAD IS COMPLETE: the effective deadline is armed here, before framing.".to_string()), "\n".to_string()), "    let armed = std::time::Instant::now();".to_string()), "\n".to_string()), "    let head = match &*native_serve_frame(contract.clone(), request_line, Rc::new(header_lines.into())) {".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFrameRefused { response } => return Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeFrame::NativeServeFramed { head, body_length } => {".to_string()), "\n".to_string()), "            let mut body = vec![0u8; *body_length as usize];".to_string()), "\n".to_string()), "            let mut filled = 0usize;".to_string()), "\n".to_string()), "            while filled < body.len() {".to_string()), "\n".to_string()), "                let left = match remaining(armed, deadline) { Some(left) => left, None => return Exchange::Overran };".to_string()), "\n".to_string()), "                // The read is bounded by what is left of the deadline; a bound that cannot be installed is never read past.".to_string()), "\n".to_string()), "                if let Err(cause) = stream.set_read_timeout(Some(std::cmp::min(left, read_timeout))) { return Exchange::DeadlineUninstallable(cause.to_string()); }".to_string()), "\n".to_string()), "                match reader.read(&mut body[filled..]) {".to_string()), "\n".to_string()), "                    Ok(0) => return Exchange::Answer(native_serve_read_refused(\"connection closed before the body was complete\".to_string())),".to_string()), "\n".to_string()), "                    Ok(n) => filled += n,".to_string()), "\n".to_string()), "                    Err(cause) if matches!(cause.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) && remaining(armed, deadline).is_none() => return Exchange::Overran,".to_string()), "\n".to_string()), "                    Err(cause) => return Exchange::Answer(native_serve_read_refused(format!(\"read body: {}\", cause))),".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            match String::from_utf8(body) {".to_string()), "\n".to_string()), "                Ok(text) => (head.clone(), text),".to_string()), "\n".to_string()), "                Err(_) => return Exchange::Answer(native_serve_read_refused(\"the body is not utf-8\".to_string())),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let (head, body) = head;".to_string()), "\n".to_string()), "    match &*native_serve_route(contract.clone(), head.clone(), bound_host.to_string(), bound_port) {".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeAnswered { response } => Exchange::Answer(response.clone()),".to_string()), "\n".to_string()), "        NativeServeRoute::NativeServeToHandler => match arguments_of(head.clone(), body) {".to_string()), "\n".to_string()), "            Some(arguments) => Exchange::Handle(HandlerCall { arguments }, armed),".to_string()), "\n".to_string()), "            None => Exchange::Answer(native_serve_arguments_unplanned()),".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let declared: Vec<String> = vec![".to_string()), declared_names.clone()), "];".to_string()), "\n".to_string()), "    let arguments = match &*http_ingress_native_argv(Rc::new(argv.into()), Rc::new(declared.into())) {".to_string()), "\n".to_string()), "        HttpIngressNativeArgv::HttpIngressNativeArgvRead { arguments } => arguments.clone(),".to_string()), "\n".to_string()), "        HttpIngressNativeArgv::HttpIngressNativeArgvRefused { reason } => refuse_launch(reason.clone()),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), rendered_arguments.lines.clone()), "    // THE HANDLER'S REQUEST PARAMETERS as emission typed them; the start plans them against the binding.".to_string()), "\n".to_string()), "    let request_parameters: Vec<Rc<HttpIngressDeclaredParameter>> = vec![".to_string()), request_parameters.clone()), "];".to_string()), "\n".to_string()), "    // THE EXACT BINDING CONSTRUCTOR the program descriptor names, and the start derived from what it returned.".to_string()), "\n".to_string()), "    let (contract, listen_on, binding, facts) = match &*http_ingress_native_contract(".to_string()), constructor_call.clone()), ", ".to_string()), program_path.clone()), "(), Rc::new(request_parameters.into())) {".to_string()), "\n".to_string()), "        HttpIngressNativeStart::HttpIngressNativeListen { contract, listener, binding, facts } => (contract.clone(), listener.clone(), binding.clone(), facts.clone()),".to_string()), "\n".to_string()), "        HttpIngressNativeStart::HttpIngressNativeRefused { reason } => refuse_launch(reason.clone()),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let deadline = std::time::Duration::from_millis(millisecond_count(contract.request_deadline.clone()) as u64);".to_string()), "\n".to_string()), first_block.clone()), second_block.clone()), "    eprintln!(\"{}\", native_serve_announcement(contract.clone(), bound_host.clone(), bound_port));".to_string()), "\n".to_string()), "    let timeout = std::time::Duration::from_millis(millisecond_count(contract.read_timeout.clone()) as u64);".to_string()), "\n".to_string()), "    loop {".to_string()), "\n".to_string()), "        let (stream, peer_user) = match listener.accept() {".to_string()), "\n".to_string()), "            Ok(accepted) => accepted,".to_string()), "\n".to_string()), "            Err(cause) => { eprintln!(\"native-serve: {}\", cause); continue; }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if let Err(cause) = stream.set_read_timeout(Some(timeout)) {".to_string()), "\n".to_string()), "            eprintln!(\"native-serve: set_read_timeout: {}\", cause);".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        // THE ARGUMENTS ARE THE FACT PLAN'S (gunbc.http_ingress http_ingress_arguments over the binding and the planned".to_string()), "\n".to_string()), "        // facts, with the peer this connection's kernel attested).".to_string()), "\n".to_string()), "        let arguments_of = |head: Rc<NativeServeRequestHead>, body: String| wire_arguments(http_ingress_arguments(binding.clone(), facts.clone(), head, body, peer_user.clone()).iter());".to_string()), "\n".to_string()), "        match exchange(&stream, &contract, &arguments_of, &bound_host, bound_port, deadline, timeout) {".to_string()), "\n".to_string()), "            Exchange::Idle => {}".to_string()), "\n".to_string()), "            Exchange::Answer(response) => write_response(&stream, &native_serve_outgoing(response)),".to_string()), "\n".to_string()), "            Exchange::Overran => exit_after_deadline(&stream, &contract),".to_string()), "\n".to_string()), "            Exchange::DeadlineUninstallable(reason) => exit_after_uninstallable_deadline(&stream, &contract, reason),".to_string()), "\n".to_string()), "            Exchange::Handle(call, armed) => {".to_string()), "\n".to_string()), "                let (reply, answer) = std::sync::mpsc::channel::<WireParts>();".to_string()), "\n".to_string()), "                let replace = if generation.calls.send((call, reply)).is_err() {".to_string()), "\n".to_string()), "                    write_response(&stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                    true".to_string()), "\n".to_string()), "                } else {".to_string()), "\n".to_string()), "                    match answer.recv_timeout(remaining(armed, deadline).unwrap_or_default()) {".to_string()), "\n".to_string()), "                        Ok(parts) => {".to_string()), "\n".to_string()), "                            write_parts(&stream, &parts);".to_string()), "\n".to_string()), "                            false".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {".to_string()), "\n".to_string()), "                            write_response(&stream, &native_serve_outgoing(native_serve_handler_failed()));".to_string()), "\n".to_string()), "                            true".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => exit_after_deadline(&stream, &contract),".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                };".to_string()), "\n".to_string()), "                if replace {".to_string()), "\n".to_string()), "                    generation = match realize_generation(ready_within) {".to_string()), "\n".to_string()), "                        Ok(generation) => generation,".to_string()), "\n".to_string()), "                        Err(cause) => {".to_string()), "\n".to_string()), "                            eprintln!(\"REFUSED: {}\", native_serve_worker_unrealized(cause));".to_string()), "\n".to_string()), "                            std::process::exit(native_serve_worker_replacement_exit_code() as i32);".to_string()), "\n".to_string()), "                        }".to_string()), "\n".to_string()), "                    };".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()),
 })
+    }
+}
+
+pub fn native_ingress_request_parameter_values(
+    parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for p in parameters.iter().cloned() {
+            __result.push(v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "Rc::new(HttpIngressDeclaredParameter { name: \"".to_string(),
+                            p.name.clone(),
+                        ),
+                        "\".to_string(), shape: HttpIngressArgumentShape::".to_string(),
+                    ),
+                    match p.shape.clone() {
+                        NativeIngressRequestShape::NativeIngressTextShape => {
+                            "HttpIngressTextShape".to_string()
+                        }
+                        NativeIngressRequestShape::NativeIngressHeadersShape => {
+                            "HttpIngressHeadersShape".to_string()
+                        }
+                    },
+                ),
+                " })".to_string(),
+            ));
+        }
+        __result
+    })
+    .join(&", ".to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressPositionalRender {
+    pub index: i64,
+    pub items: Rc<Vec<String>>,
+}
+
+pub fn native_ingress_worker_pattern(
+    parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+) -> String {
+    {
+        let r = parameters.iter().cloned().fold(
+            Rc::new(NativeIngressPositionalRender {
+                index: 0,
+                items: Rc::new(vec![]),
+            }),
+            |acc: Rc<NativeIngressPositionalRender>, p: Rc<NativeIngressRequestParameter>| {
+                Rc::new(NativeIngressPositionalRender {
+                    index: v1_rt::int_add(acc.index.clone(), 1),
+                    items: v1_rt::concat(
+                        acc.items.clone(),
+                        Rc::new(vec![v1_rt::concat(
+                            v1_rt::concat(
+                                match p.shape.clone() {
+                                    NativeIngressRequestShape::NativeIngressTextShape => {
+                                        "WireArgument::Text(argument_".to_string()
+                                    }
+                                    NativeIngressRequestShape::NativeIngressHeadersShape => {
+                                        "WireArgument::Headers(argument_".to_string()
+                                    }
+                                },
+                                crate::v1_compiler_emit_core_support::to_string(acc.index.clone()),
+                            ),
+                            ")".to_string(),
+                        )]),
+                    ),
+                })
+            },
+        );
+        r.items.clone().join(&", ".to_string())
+    }
+}
+
+pub fn native_ingress_worker_arguments(
+    parameters: Rc<Vec<Rc<NativeIngressRequestParameter>>>,
+) -> String {
+    {
+        let r = parameters.iter().cloned().fold(Rc::new(NativeIngressPositionalRender {
+    index: 0,
+    items: Rc::new(vec![]),
+}), |acc: Rc<NativeIngressPositionalRender>, p: Rc<NativeIngressRequestParameter>| Rc::new(NativeIngressPositionalRender {
+    index: v1_rt::int_add(acc.index.clone(), 1),
+    items: v1_rt::concat(acc.items.clone(), Rc::new(vec![match p.shape.clone() {
+    NativeIngressRequestShape::NativeIngressTextShape => v1_rt::concat(v1_rt::concat("argument_".to_string(), crate::v1_compiler_emit_core_support::to_string(acc.index.clone())), ".clone()".to_string()),
+    NativeIngressRequestShape::NativeIngressHeadersShape => v1_rt::concat(v1_rt::concat("Rc::new(argument_".to_string(), crate::v1_compiler_emit_core_support::to_string(acc.index.clone())), ".iter().map(|(name, value)| Rc::new(ServeRequestHeader { name: name.clone(), value: value.clone() })).collect::<Vec<_>>().into())".to_string()),
+}])),
+}));
+        r.items.clone().join(&", ".to_string())
+    }
+}
+
+pub fn native_ingress_call_arguments(parts: String) -> String {
+    if v1_rt::starts_with(parts.clone(), ", ".to_string()) {
+        v1_rt::substring(&parts, 2, v1_rt::string_length(&parts))
+    } else {
+        parts.clone()
     }
 }
 
@@ -48662,3 +48648,7 @@ pub struct StoredDirectRc;
 pub struct NativeIngressTextArgument;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeIngressIntArgument;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressTextShape;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeIngressHeadersShape;

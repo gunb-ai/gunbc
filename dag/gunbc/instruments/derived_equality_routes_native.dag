@@ -1,0 +1,57 @@
+module gunbc.instruments.derived_equality_routes_native
+
+import std.types { Int, List, String, Bool }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+import test.fixture.derived_equality_routes {
+  deq_value_member_occurrence_only, deq_occurrence_member_occurrence_only, deq_value_member_structure_only,
+  deq_occurrence_member_structure_only, deq_occurrence_member_same, deq_synthetic_same_structure,
+  deq_synthetic_different_structure, deq_composite_value_differs, deq_composite_occurrence_differs,
+  deq_boxed_value_occurrence_only, deq_boxed_occurrence_occurrence_only, deq_shared_value_occurrence_only, deq_shared_value_structure_only
+}
+
+// THE EMITTED ARM of the derived-equality fixture (test.fixture.derived_equality_routes): each fixture is
+// emitted by the seed (its `==` realized from the std.operator_realization EqualityPlan as generated eq
+// fns), compiled by rustc and run, and is held when it returns the answer written here. The interpreted
+// arm is v2.test.claim.derived_equality_routes with the same expectations; the two agreeing is the
+// acceptance that interpretation and emission realize one plan.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type FixtureCase {
+  name: String
+  observed: Bool
+  expected: Bool
+}
+
+fn fixture_cases() -> List<FixtureCase> {
+  [
+    FixtureCase { name: "value_member_occurrence_only", observed: deq_value_member_occurrence_only(), expected: true },
+    FixtureCase { name: "occurrence_member_occurrence_only", observed: deq_occurrence_member_occurrence_only(), expected: false },
+    FixtureCase { name: "value_member_structure_only", observed: deq_value_member_structure_only(), expected: false },
+    FixtureCase { name: "occurrence_member_structure_only", observed: deq_occurrence_member_structure_only(), expected: false },
+    FixtureCase { name: "occurrence_member_same", observed: deq_occurrence_member_same(), expected: true },
+    FixtureCase { name: "synthetic_same_structure", observed: deq_synthetic_same_structure(), expected: true },
+    FixtureCase { name: "synthetic_different_structure", observed: deq_synthetic_different_structure(), expected: false },
+    FixtureCase { name: "composite_value_differs", observed: deq_composite_value_differs(), expected: true },
+    FixtureCase { name: "composite_occurrence_differs", observed: deq_composite_occurrence_differs(), expected: false },
+    FixtureCase { name: "boxed_value_occurrence_only", observed: deq_boxed_value_occurrence_only(), expected: true },
+    FixtureCase { name: "boxed_occurrence_occurrence_only", observed: deq_boxed_occurrence_occurrence_only(), expected: false },
+    FixtureCase { name: "shared_value_occurrence_only", observed: deq_shared_value_occurrence_only(), expected: true },
+    FixtureCase { name: "shared_value_structure_only", observed: deq_shared_value_structure_only(), expected: false },
+  ]
+}
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn bool_word(b: Bool) -> String { if b { "true" } else { "false" } }
+
+fn case_line(c: FixtureCase) -> String {
+  concat("case ", c.name, " ", verdict_word(held: c.observed == c.expected), " observed=", bool_word(b: c.observed), " expected=", bool_word(b: c.expected), "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = fixture_cases()
+  let failed = count(filter(cases, c => c.observed != c.expected))
+  let terminal = if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " fixture(s) disagree with their expected answer") } } else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(map(cases, c => c.name), ","), "\n", join(map(cases, c => case_line(c: c)), "")), terminal: terminal }
+}
