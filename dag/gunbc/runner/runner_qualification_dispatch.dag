@@ -34,6 +34,7 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow, fleet_converge_dispatch_inputs, fleet_converge_expected_revision_input, fleet_converge_mode_input, fleet_converge_host_input,
   fleet_converge_workflow_mode_wire, QualificationFloor,
   FleetConvergeDispatchSpec, DispatchInputValue, fleet_converge_dispatch_values, fleet_converge_dispatch_names_supplying,
+  FleetConvergeDispatchValuesRendered, FleetConvergeDispatchInputRepeated,
   fleet_converge_required_inputs_unsupplied,
 }
 import gunbc.auth.github_apps { DeclaredGitHubApp, GitHubAppControlPlaneState }
@@ -458,6 +459,9 @@ type QualificationDispatchRefusal
   | DispatchAuthorityNotAnInstallation
   | DispatchHoldForAnotherHost { held: HostIdentity, slot: HostIdentity }
   | DispatchStatusRefused { status: Int, body: String }
+  // the spec names one dispatch input twice (gunbc.fleet.fleet_converge_workflow fleet_converge_dispatch_values); no
+  // request is sent, since GitHub would receive only one of the two values.
+  | DispatchInputRepeated { name: String, first_value: String, repeated_value: String }
 
 type QualificationDispatchStanding
   = DispatchStandingSucceeded { receipt: WorkflowDispatchReceipt }
@@ -529,18 +533,24 @@ fn dispatch_qualification_floor(
             refusal: DispatchCredentialRefused { unsatisfied: unsatisfied_capabilities(authority: authority, control_plane: control_plane, effect: effect) },
           }
         } else {
-          let answer = dispatch_workflow_with(
-            token: token,
-            owner: gunbc_repository.owner as NonEmptyStr,
-            repo: gunbc_repository.name as NonEmptyStr,
-            workflow_id: qualification_workflow_file_name(),
-            git_ref: subject.pin.name.branch,
-            inputs: fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: subject.attempt, revision: subject.pin.revision, host: subject.host)),
-          )
-          match qualification_dispatch_standing(dispatch: answer.dispatch) {
-            DispatchStandingSucceeded { receipt: r } => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: r } }
-            DispatchStandingRefused { status: s, body: b } => QualificationDispatchRefused { subject: subject, refusal: DispatchStatusRefused { status: s, body: b } }
-            DispatchStandingCommitAmbiguous { detail: d } => QualificationDispatchCommitAmbiguous { subject: subject, detail: d }
+          match fleet_converge_dispatch_values(spec: qualification_floor_dispatch_spec(attempt: subject.attempt, revision: subject.pin.revision, host: subject.host)) {
+            FleetConvergeDispatchInputRepeated { name: n, first_value: f, repeated_value: r } =>
+              QualificationDispatchRefused { subject: subject, refusal: DispatchInputRepeated { name: n, first_value: f, repeated_value: r } }
+            FleetConvergeDispatchValuesRendered { values: values } => {
+              let answer = dispatch_workflow_with(
+                token: token,
+                owner: gunbc_repository.owner as NonEmptyStr,
+                repo: gunbc_repository.name as NonEmptyStr,
+                workflow_id: qualification_workflow_file_name(),
+                git_ref: subject.pin.name.branch,
+                inputs: values,
+              )
+              match qualification_dispatch_standing(dispatch: answer.dispatch) {
+                DispatchStandingSucceeded { receipt: r } => QualificationDispatched { run: DispatchedQualificationRun { subject: subject, receipt: r } }
+                DispatchStandingRefused { status: s, body: b } => QualificationDispatchRefused { subject: subject, refusal: DispatchStatusRefused { status: s, body: b } }
+                DispatchStandingCommitAmbiguous { detail: d } => QualificationDispatchCommitAmbiguous { subject: subject, detail: d }
+              }
+            }
           }
         }
     }

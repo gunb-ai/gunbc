@@ -193,13 +193,14 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 mod demand_acquire;
+pub(crate) mod keyed_module_lookup;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
-mod source_layout_lookup;
+pub(crate) mod source_layout_lookup;
 pub use demand_acquire::{
     resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
 };
