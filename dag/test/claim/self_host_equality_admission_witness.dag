@@ -137,6 +137,34 @@ test fn nested_routed_argument_equality_still_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: nested_routed_argument_eq_red_source) >= 1
 }
 
+// THE STRUCTURAL-ARGUMENT E0369 (run 42236475532, #15992 head cf31183f; E0369 at emitted
+// v2_compiler_source_root_eval.rs:5142:26, Rc<DemandEngine<Rc<NativeDemandValue>>>, the self-host
+// closure). #15972's equality_applied_arguments_by_target judged an OCCURRING applied argument by
+// equality_applied_argument_is_structural -- COMPARABILITY. That is not the question the emitted
+// comparison asks: a by-target member lowers to Rust `==` (04_infer.dag equality_synth_binop, the
+// EqualityByTarget arm) and emitted structural data carries no PartialEq (emit_data_def,
+// 05_emit_rust.dag), so only an argument the by-target TABLE names true may compare by the target.
+// A comparable-but-not-by-target argument reproduced the very failure the #15175 wall exists to
+// prevent. The hotfix conjoins the table reading (equality_argument_by_target) and reads parameter
+// OCCURRENCE also from the authored parameter spelling, so a parameter mentioned only inside an
+// applied member (DemandEngine<V>.entries: Map<DemandIdentity, DemandEntry<V>>) still judges its
+// argument. The shape below mirrors src/v2/std/demand_engine.dag:329 and its Carrier.
+// THE PAIR: the wall row pins the fail-closed behaviour the hotfix restores (typed refusal, absorbed
+// as residue-C ModuleUnavailable exactly as pre-#15972 -- the comparison is ABSENT from the emitted
+// compiler, never a raw `==`); the end-state row is PRE-REGISTERED RED: the comparison must eventually
+// be COMPUTED (routed to the concrete target's derived equality fn), which lands with
+// adhoc-a166f310-af0; until then it must fail, and if it ever passes while the wall row also passes,
+// the two readings disagree and one of them is wrong.
+data nested_structural_argument_eq_source: String = "module eq_probe_nested_structural_argument\nimport std.types { Map, Int, String }\ntype Ident { name: String }\ntype Entry<V> {\n  identity: Ident\n  weight: Int\n  value: Optional<V>\n}\ntype Engine<V> {\n  entries: Map<Ident, Entry<V>>\n  ready: List<Ident>\n}\ntype LeafTag { label: Ident }\ntype LeafVal\n  = Plain { tag: LeafTag }\n  | Weighted { tag: LeafTag, weight: Int }\ntype Carrier {\n  engine: Engine<LeafVal>\n  tag: String\n}\nfn same(a: Carrier, b: Carrier) -> Bool { a == b }\n"
+
+test fn nested_structural_argument_equality_wall_refuses() -> Bool {
+  eq_wall_refusal_count(source: nested_structural_argument_eq_source) >= 1
+}
+
+test fn nested_structural_argument_equality_end_state_computes() -> Bool {
+  eq_admitted(source: nested_structural_argument_eq_source)
+}
+
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
