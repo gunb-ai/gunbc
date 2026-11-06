@@ -10,10 +10,8 @@ import extdeps.gpu.types {
   SeveralGpus, InterconnectRead, OnBoardPcieSwitch,
   PcieAddInBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda, gpu_board_power_ceiling,
 }
-import extdeps.gpu.passive_card_row {
-  CardRow, FromCitedFigure, NeedsReading, CardLength, BracketInclusionUnstated, AuxiliaryPowerInput, CpuEightPin,
-  CardEastEdge, AirflowBidirectional,
-}
+import extdeps.gpu.passive_card_row { CardRow, CardLength, BracketInclusionUnstated, AuxiliaryPowerInput, CpuEightPin, CardEastEdge, AirflowBidirectional }
+import extdeps.cited_field { FromCitedFigure, NeedsReading }
 import extdeps.standards.pcie_cem { CemFullHeight, CemFullHeightBracket }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, Gen4 }

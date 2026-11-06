@@ -1,0 +1,389 @@
+module extdeps.whatwg.html_attribute_tokenization
+
+import std.types { Bool, Int, List }
+import std.algebra { list_push }
+import std.optional { Absent, Present }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "html.spec.whatwg.org/multipage/parsing.html#tokenization"
+  }
+}
+
+// The READING half of the WHATWG HTML Living Standard attribute tokenization (section 13.2.5), over
+// octets. Spec state names are kept: "Attribute name state" (13.2.5.33), "Before attribute value
+// state" (13.2.5.35), "Attribute value (double-quoted) state" (13.2.5.36), "(single-quoted)" (.37),
+// "(unquoted)" (.38). extdeps.languages.html owns the WRITING spellings (canonical_html_spellings);
+// this module owns what a tokenizer must accept, which is wider than what that writer emits.
+//
+// Whitespace in those states is TAB, LF, FF and SPACE. CR is added here because the spec's input
+// stream preprocessing normalizes CR and CRLF to LF before tokenization; reading raw octets must
+// do the same fold. Attribute names are ASCII case-insensitive (the spec lower-cases ASCII upper
+// alpha in the name state); values keep their case.
+//
+// The scan is tag-aware: only attributes of a START TAG are read, so the same `src="..."` written in
+// text, a comment, an end tag, or the body of script/style/textarea/title is not a reference.
+// NOT modeled (stated, not hidden): character references in values, CDATA sections in foreign
+// content, "<!-->" as an empty comment, duplicate attributes (the spec keeps the first; here each
+// listed occurrence is collected), and the tree-construction rules that decide a start tag's meaning.
+
+type HtmlAttributeQuoting
+  = AttributeValueDoubleQuoted
+  | AttributeValueSingleQuoted
+  | AttributeValueUnquoted
+
+type HtmlAttributeReference {
+  value: List<Int>
+  quoting: HtmlAttributeQuoting
+}
+
+type HtmlAttributeValueReading
+  = AttributeValueRead { reference: HtmlAttributeReference, after: Int }
+  | AttributeValueAbsent
+
+data html_octet_tab: Int = 9
+
+data html_octet_line_feed: Int = 10
+
+data html_octet_form_feed: Int = 12
+
+data html_octet_carriage_return: Int = 13
+
+data html_octet_space: Int = 32
+
+data html_octet_double_quote: Int = 34
+
+data html_octet_single_quote: Int = 39
+
+data html_octet_equals: Int = 61
+
+data html_octet_greater_than: Int = 62
+
+// get is nullable at the source index, so it is wrapped once here. The octet reads and the
+// needle match below are generic (not WHATWG-specific); this is their one home until a std octet
+// module exists, and consumers import them rather than keeping copies.
+fn html_octet_at(octets: List<Int>, at: Int) -> Int? {
+  match octets |> get(at) {
+    null => none
+    o => Present { value: o }
+  }
+}
+
+fn html_octets_slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
+  octets |> skip(at) |> take(n)
+}
+
+fn html_fold_ascii_octet(o: Int) -> Int {
+  if o >= 65 && o <= 90 { o + 32 } else { o }
+}
+
+fn html_octet_is_whitespace(o: Int) -> Bool {
+  o == html_octet_space || o == html_octet_tab || o == html_octet_line_feed
+    || o == html_octet_form_feed || o == html_octet_carriage_return
+}
+
+fn html_skip_whitespace(octets: List<Int>, at: Int) -> Int {
+  match html_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if html_octet_is_whitespace(o) { html_skip_whitespace(octets, at + 1) } else { at }
+  }
+}
+
+fn html_index_of_octet(octets: List<Int>, target: Int, at: Int) -> Int? {
+  match html_octet_at(octets, at) {
+    Absent => none
+    Present { value: o } => if o == target { Present { value: at } } else { html_index_of_octet(octets, target, at + 1) }
+  }
+}
+
+// Attribute value (unquoted) state: ends at whitespace or ">", or at the end of the input.
+fn html_unquoted_value_end(octets: List<Int>, at: Int) -> Int {
+  match html_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if html_octet_is_whitespace(o) || o == html_octet_greater_than {
+      at
+    } else {
+      html_unquoted_value_end(octets, at + 1)
+    }
+  }
+}
+
+fn html_quoted_value(octets: List<Int>, open_at: Int, quoting: HtmlAttributeQuoting, quote: Int) -> HtmlAttributeValueReading {
+  match html_index_of_octet(octets, quote, open_at + 1) {
+    Absent => AttributeValueAbsent
+    Present { value: close_at } => AttributeValueRead {
+      reference: HtmlAttributeReference { value: html_octets_slice(octets, open_at + 1, close_at - open_at - 1), quoting: quoting },
+      after: close_at + 1,
+    }
+  }
+}
+
+// Before attribute value state, from the first octet after "=" and whitespace. An opening quote never
+// closed is AttributeValueAbsent: a truncated input is not "the value is the rest of the input".
+fn html_attribute_value_at(octets: List<Int>, at: Int) -> HtmlAttributeValueReading {
+  match html_octet_at(octets, at) {
+    Absent => AttributeValueAbsent
+    Present { value: o } => if o == html_octet_double_quote {
+      html_quoted_value(octets, at, AttributeValueDoubleQuoted, o)
+    } else if o == html_octet_single_quote {
+      html_quoted_value(octets, at, AttributeValueSingleQuoted, o)
+    } else if o == html_octet_greater_than {
+      AttributeValueAbsent
+    } else {
+      let end = html_unquoted_value_end(octets, at)
+      AttributeValueRead {
+        reference: HtmlAttributeReference { value: html_octets_slice(octets, at, end - at), quoting: AttributeValueUnquoted },
+        after: end,
+      }
+    }
+  }
+}
+
+// One comparison of `name` (already ASCII-folded) at `at` in `folded`, octet by octet, stopping at the
+// first difference.
+fn html_octets_match_at(hay: List<Int>, needle: List<Int>, needle_length: Int, at: Int, compared: Int) -> Bool {
+  if compared >= needle_length {
+    true
+  } else {
+    match html_octet_at(hay, at + compared) {
+      Absent => false
+      Present { value: hay_octet } => match html_octet_at(needle, compared) {
+        Absent => false
+        Present { value: needle_octet } => if hay_octet == needle_octet {
+          html_octets_match_at(hay, needle, needle_length, at, compared + 1)
+        } else {
+          false
+        }
+      }
+    }
+  }
+}
+
+data html_octet_less_than: Int = 60
+
+data html_octet_solidus: Int = 47
+
+data html_octet_exclamation: Int = 33
+
+data html_octet_question: Int = 63
+
+// "<!--" and "-->" (comment start and end), ASCII.
+data html_comment_open_octets: List<Int> = [60, 33, 45, 45]
+
+data html_comment_close_octets: List<Int> = [45, 45, 62]
+
+// Elements whose content is not markup (raw text and RCDATA states, 13.2.5.2 to 13.2.5.5 and the
+// script data state): the tokenizer reads their content as text until the matching end tag, so an
+// attribute-looking string inside is text. Lower-case ASCII.
+data html_text_content_element_names: List<List<Int>> = [
+  [115, 99, 114, 105, 112, 116],
+  [115, 116, 121, 108, 101],
+  [116, 101, 120, 116, 97, 114, 101, 97],
+  [116, 105, 116, 108, 101],
+  [120, 109, 112],
+  [105, 102, 114, 97, 109, 101],
+  [110, 111, 101, 109, 98, 101, 100],
+  [110, 111, 102, 114, 97, 109, 101, 115],
+]
+
+type HtmlStartTagReading
+  = HtmlStartTagRead { after: Int, references: List<HtmlAttributeReference> }
+  | HtmlStartTagTruncated
+
+// Index of the first occurrence of `needle` at or after `from`, or Absent. An empty needle is Absent, not
+// a match at every position. One pass: each length enters once.
+fn html_octets_index_from(hay: List<Int>, needle: List<Int>, from: Int) -> Int? {
+  let needle_length = count(needle)
+  let haystack_length = count(hay)
+  if needle_length == 0 || from + needle_length > haystack_length {
+    Absent
+  } else {
+    html_octets_index_walk(hay, needle, needle_length, haystack_length, from)
+  }
+}
+
+fn html_octets_index_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int) -> Int? {
+  if at + needle_length > haystack_length {
+    Absent
+  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
+    Present { value: at }
+  } else {
+    html_octets_index_walk(hay, needle, needle_length, haystack_length, at + 1)
+  }
+}
+
+fn html_names_at(names: List<List<Int>>, at: Int) -> List<Int>? {
+  match names |> get(at) {
+    null => none
+    n => Present { value: n }
+  }
+}
+
+// Is the `len` octets at `at` in `folded` equal to one of `names` (ASCII lower-case)?
+fn html_name_listed(folded: List<Int>, names: List<List<Int>>, at: Int, len: Int, index: Int) -> Bool {
+  match html_names_at(names, index) {
+    Absent => false
+    Present { value: name } => if count(name) == len && html_octets_match_at(folded, name, len, at, 0) {
+      true
+    } else {
+      html_name_listed(folded, names, at, len, index + 1)
+    }
+  }
+}
+
+// Tag name state: ends at whitespace, "/" or ">".
+fn html_tag_name_end(octets: List<Int>, at: Int) -> Int {
+  match html_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if html_octet_is_whitespace(o) || o == html_octet_solidus || o == html_octet_greater_than {
+      at
+    } else {
+      html_tag_name_end(octets, at + 1)
+    }
+  }
+}
+
+// Attribute name state: ends at whitespace, "/", ">" or "=" (the first octet is consumed by the caller,
+// as the spec does for a leading "=").
+fn html_attribute_name_end(octets: List<Int>, at: Int) -> Int {
+  match html_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if html_octet_is_whitespace(o) || o == html_octet_solidus || o == html_octet_greater_than || o == html_octet_equals {
+      at
+    } else {
+      html_attribute_name_end(octets, at + 1)
+    }
+  }
+}
+
+// Before attribute name state / self-closing start tag state: whitespace and "/" separate attributes.
+fn html_skip_attribute_separators(octets: List<Int>, at: Int) -> Int {
+  match html_octet_at(octets, at) {
+    Absent => at
+    Present { value: o } => if html_octet_is_whitespace(o) || o == html_octet_solidus {
+      html_skip_attribute_separators(octets, at + 1)
+    } else {
+      at
+    }
+  }
+}
+
+// The attributes of ONE start tag, from just after its name to its ">". A listed name with a non-empty
+// value is collected. Input that ends inside the tag, or an opening quote never closed, is
+// HtmlStartTagTruncated: a cut-off tag is not a tag.
+fn html_tag_attributes(orig: List<Int>, folded: List<Int>, names: List<List<Int>>, at: Int, acc: List<HtmlAttributeReference>) -> HtmlStartTagReading {
+  let p = html_skip_attribute_separators(folded, at)
+  match html_octet_at(folded, p) {
+    Absent => HtmlStartTagTruncated
+    Present { value: o } => if o == html_octet_greater_than {
+      HtmlStartTagRead { after: p + 1, references: acc }
+    } else {
+      let name_end = html_attribute_name_end(folded, p + 1)
+      let listed = html_name_listed(folded, names, p, name_end - p, 0)
+      let equals_at = html_skip_whitespace(folded, name_end)
+      match html_octet_at(folded, equals_at) {
+        Absent => HtmlStartTagTruncated
+        Present { value: e } => if e == html_octet_equals {
+          let value_at = html_skip_whitespace(folded, equals_at + 1)
+          match html_attribute_value_at(orig, value_at) {
+            AttributeValueRead { reference: r, after: a } => html_tag_attributes(
+              orig, folded, names, a,
+              if listed && count(r.value) > 0 { list_push(acc, r) } else { acc },
+            )
+            AttributeValueAbsent => match html_octet_at(folded, value_at) {
+              Absent => HtmlStartTagTruncated
+              Present { value: g } => if g == html_octet_greater_than {
+                html_tag_attributes(orig, folded, names, value_at, acc)
+              } else {
+                HtmlStartTagTruncated
+              }
+            }
+          }
+        } else {
+          html_tag_attributes(orig, folded, names, name_end, acc)
+        }
+      }
+    }
+  }
+}
+
+// Raw text / RCDATA end tag (13.2.5.13-): "</name" only ends the body when followed by whitespace, "/" or ">";
+// a longer name such as "</scripture>" is body text, so the search continues past it.
+fn html_raw_text_end(folded: List<Int>, closer: List<Int>, from: Int) -> Int? {
+  match html_octets_index_from(folded, closer, from) {
+    Absent => none
+    Present { value: at } => match html_octet_at(folded, at + count(closer)) {
+      Absent => html_raw_text_end(folded, closer, at + 1)
+      Present { value: o } => if html_octet_is_whitespace(o) || o == html_octet_solidus || o == html_octet_greater_than {
+        Present { value: at }
+      } else {
+        html_raw_text_end(folded, closer, at + 1)
+      }
+    }
+  }
+}
+
+// Data state: the next "<" starts markup; everything before it is text and carries no attribute.
+fn html_markup_scan(orig: List<Int>, folded: List<Int>, names: List<List<Int>>, at: Int, acc: List<HtmlAttributeReference>) -> List<HtmlAttributeReference> {
+  match html_index_of_octet(orig, html_octet_less_than, at) {
+    Absent => acc
+    Present { value: lt } => html_markup_at(orig, folded, names, lt, acc)
+  }
+}
+
+fn html_skip_to_tag_close(orig: List<Int>, folded: List<Int>, names: List<List<Int>>, from: Int, acc: List<HtmlAttributeReference>) -> List<HtmlAttributeReference> {
+  match html_index_of_octet(orig, html_octet_greater_than, from) {
+    Absent => acc
+    Present { value: gt } => html_markup_scan(orig, folded, names, gt + 1, acc)
+  }
+}
+
+// Tag open state (13.2.5.6) at the "<" at `lt`: an end tag, "<!" or "<?" is skipped to its ">" (a comment
+// to its "-->"); an ASCII letter opens a start tag whose attributes are read; anything else is text.
+fn html_markup_at(orig: List<Int>, folded: List<Int>, names: List<List<Int>>, lt: Int, acc: List<HtmlAttributeReference>) -> List<HtmlAttributeReference> {
+  match html_octet_at(folded, lt + 1) {
+    Absent => acc
+    Present { value: next } => if next == html_octet_solidus || next == html_octet_question {
+      html_skip_to_tag_close(orig, folded, names, lt + 1, acc)
+    } else if next == html_octet_exclamation {
+      if html_octets_match_at(folded, html_comment_open_octets, 4, lt, 0) {
+        match html_octets_index_from(folded, html_comment_close_octets, lt + 4) {
+          Absent => acc
+          Present { value: close_at } => html_markup_scan(orig, folded, names, close_at + 3, acc)
+        }
+      } else {
+        html_skip_to_tag_close(orig, folded, names, lt + 1, acc)
+      }
+    } else if next >= 97 && next <= 122 {
+      let name_end = html_tag_name_end(folded, lt + 2)
+      match html_tag_attributes(orig, folded, names, name_end, acc) {
+        HtmlStartTagTruncated => acc
+        HtmlStartTagRead { after: a, references: r } => if html_name_listed(folded, html_text_content_element_names, lt + 1, name_end - lt - 1, 0) {
+          match html_raw_text_end(folded, concat([60, 47], html_octets_slice(folded, lt + 1, name_end - lt - 1)), a) {
+            Absent => r
+            Present { value: end_at } => html_markup_scan(orig, folded, names, end_at, r)
+          }
+        } else {
+          html_markup_scan(orig, folded, names, a, r)
+        }
+      }
+    } else {
+      html_markup_scan(orig, folded, names, lt + 1, acc)
+    }
+  }
+}
+
+// Every non-empty value of any attribute in `names` (each ASCII lower-case octets) on a START TAG in
+// `octets`, in document order. Text, comments, end tags and the content of script, style and the other
+// text-content elements are not tags, so a `src="..."` written there is not a reference.
+fn html_attribute_references(octets: List<Int>, names: List<List<Int>>) -> List<HtmlAttributeReference> {
+  html_attribute_references_folded(octets, octets |> map(o => html_fold_ascii_octet(o)), names)
+}
+
+// The same, for a caller that already holds the ASCII-folded octets (one fold per page).
+fn html_attribute_references_folded(octets: List<Int>, folded: List<Int>, names: List<List<Int>>) -> List<HtmlAttributeReference> {
+  html_markup_scan(octets, folded, names, 0, [])
+}
