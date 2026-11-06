@@ -582,7 +582,7 @@ fn executor_privileged_writable_parent_refusal(
       path: owned_directory_path(t: t) as String as NonEmptyStr,
       reason: join([
         "privileged install -d of ", owned_directory_path(t: t) as String, " is refused: its parent ",
-        parent as String, " is a declared directory a non-root principal can write it, so that principal",
+        parent as String, " is a declared directory, and a non-root principal can write it, so that principal",
         " could plant a symlink that the privileged install could be made to act on (a risk, not a confirmed",
         " install behaviour) -- the parent must be root-owned and writable by no principal other than root",
         " (the host_state_tree_root parent ruling)",
