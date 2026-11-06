@@ -216,6 +216,13 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_key_gen_argv"),
+    reason: "the host-key stages' inhabitance claim, test.claim.runner.runner_host_key_stage_real_execution_witness, executes the real stages against ssh-keygen but is run BY HAND only: it is not enrolled in the required floor's wet lane (the job roster is closed to growth, the wet lane needs a ci_layer_roots LocalRepoWetLane row, WetScheduledClaim rows and floor_route_gap rows, and a runner carrying ssh-keygen), and nothing consumes the SOL reader in production yet, so an edit to the key stages is not re-paired with a real run by any gate",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the SOL reader runner_host_key_observation has a production consumer, at which point that witness is enrolled in the wet lane and executes on every change to the key stages (runner_host_key_gen_argv, runner_host_key_pub_argv, runner_host_key_fingerprint_argv); a hand-run does not fire this"
+    )
+  ),
+  frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet"),
     reason: "the gated readback is prepared and GATED: it is called only by the witness (wet arms never execute) and no workflow dispatches it, so no presented key has ever been read back and every production anchor stays Absent",
     dissolution: unbound_dissolution(
