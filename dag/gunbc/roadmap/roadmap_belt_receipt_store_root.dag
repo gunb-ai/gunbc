@@ -10,8 +10,8 @@ import extdeps.filesystem.filesystem_io {
 }
 import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import gunbc.host.host_layout { instance_receipts_dir }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, dashboard_instance_dispatch_attempt_state_directory }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses, owned_directory_inheriting_from_parent }
 import gunbc.managed_directory { DirectoryOwnerOnly, DeclaredDirectoryMode }
 
 // THE BELT'S INSTANCE-SCOPED RECEIPT STORES (the belt tick receipt, the per-attempt obligation receipts and
@@ -187,11 +187,14 @@ fn belt_publication_receipt_put(store: BeltPublicationReceiptStore, project_key:
 // too), whose store is another cohort's. Owner-only, as the belt's own install -d already creates it, and the
 // owner is the instance's, as the worktree claim root's is: ownership is never adopted.
 fn belt_projects_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  OwnedDirectoryDeclared {
-    member: belt_projects_slots.member,
-    path: belt_projects_slots_path(instance: instance) as String as FilePath,
-    owner: instance.directory_owner,
-    mode: belt_projects_slots.mode,
-    group_adoption: ForeignOwnershipRefuses,
-  }
+  owned_directory_inheriting_from_parent(
+    parent: dashboard_instance_dispatch_attempt_state_directory(instance: instance),
+    child: OwnedDirectoryDeclared {
+      member: belt_projects_slots.member,
+      path: belt_projects_slots_path(instance: instance) as String as FilePath,
+      owner: instance.directory_owner,
+      mode: belt_projects_slots.mode,
+      group_adoption: ForeignOwnershipRefuses,
+    },
+  )
 }
