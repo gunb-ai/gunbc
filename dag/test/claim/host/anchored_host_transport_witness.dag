@@ -680,7 +680,7 @@ fn per_boot_console_line(boot_id: String, key_b64: String) -> String {
 
 fn per_boot_binding_kind(b: AnchoredHostBinding) -> String {
   match b {
-    AnchoredBindingBound { bound: _ } => "bound"
+    AnchoredBindingBound { bound: _, anchor: _ } => "bound"
     AnchoredBindingNotTheAnchoredHost { cause: _ } => "not-the-anchored-host"
     AnchoredBindingAnchorNotForRow { cause: _ } => "anchor-not-for-row"
     AnchoredBindingAnchorAbsent { cause: _ } => "anchor-absent"
