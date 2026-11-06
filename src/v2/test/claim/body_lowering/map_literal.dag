@@ -311,13 +311,12 @@ test fn ml_an_escaped_and_a_raw_key_are_one_key_holds() -> Bool {
 // key cannot satisfy it either. The producer that sets the locus is v2.compiler.resolve :: fn
 // resolve_map_literal_entries' MapIntroductionKeyRepeated arm: it takes the repeated entry as
 // list_at_optional(xs: entries, index: second), the second_index v2.std.map_introduction :: fn
-// map_introduction_duplicate_key reports (resolve.dag:3787-3789), and refuses through
-// resolve_anonymous_record_refused (resolve.dag:3447), which stamps Diagnostic.at =
-// node_locus(node: e.key). Both sides are read from one shared
-// parse, so the two nodes are the same occurrence; what is tested is WHICH occurrence the refusal
-// names. What it discriminates, at fc23212807e: the arm refusing at entries[0] instead -- the second
-// conjunct fails -- and the arm's Absent case refusing at the literal n under the SAME reason
-// (resolve.dag:3790), which control 2 cannot tell from a correct refusal and where the first
+// map_introduction_duplicate_key reports, and refuses through v2.compiler.resolve :: fn
+// resolve_anonymous_record_refused, which stamps Diagnostic.at = node_locus(node: e.key). Both sides
+// are read from one shared parse, so the two nodes are the same occurrence; what is tested is WHICH
+// occurrence the refusal names. What it discriminates: that arm refusing at entries[0] instead,
+// where the second conjunct fails; and that arm's Absent case, which refuses at the literal n under
+// the SAME reason -- something control 2 cannot tell from a correct refusal, and where the first
 // conjunct fails. Either way the claim is red, so a refusal that is merely reasoned, or reasoned at
 // the wrong occurrence, does not pass.
 test fn ml_the_duplicate_refusal_is_located_at_the_second_key_holds() -> Bool {
