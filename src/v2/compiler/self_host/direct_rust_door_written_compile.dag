@@ -17,8 +17,6 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   direct_rust_door_missing_rules_target
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.compiler.target_serialize { TargetBundleMalformed }
-import v2.compiler.translate { translate_diagnostic_reason_from_symbol }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected, diagnostics_fatal_reason }
 import v2.std.text { String }
 
@@ -92,18 +90,21 @@ fn written_compile_holds(observation: WrittenRustCompileObservation) -> Bool {
 }
 
 // The missing-rule control on the SAME route: refusing means no artifact, hence no file written and
-// no rustc run — a refusal that still compiled something would be the guess this node forbids. The
-// refusal must also carry the MISSING-RULE cause (TargetBundleMalformed, the same diagnostic the
-// in-memory contract's assess_missing_translation_rule_refuses requires), so an ingest, assembly or
-// admission failure on the route cannot pass this control for a reason unrelated to the missing rule.
+// no rustc run — a refusal that still compiled something would be the guess this node forbids.
+// The refusal must carry the MISSING-RULE cause, so an ingest, assembly or admission failure cannot
+// pass this control. TRACED FROM SOURCE, by symbol: generate_written_rust_candidate_from_ingest ->
+// mint_written_provenanced_rust_artifact -> mint_provenanced_rust_artifact ->
+// generate_rust_module_emission_candidate -> emit_module_body_members -> emit_module_member
+// (the fn-add member is ModuleMemberBodiedArrow) -> emit_produced_decl_declaring, whose first act is
+// to match target.produced_decl_support: direct_rust_door_missing_rules_target is ProducedDeclUnwired,
+// so it rejects with ^produced_decl_target_unwired (the typed reason swift_produced_decl_emit also
+// requires). TargetBundleMalformed, which assess_missing_translation_rule_refuses reads, is NOT
+// reached on this route: that contract calls target_serialize_source_from_model directly and so
+// bypasses the produced-declaration gate; the module route refuses one stage earlier.
 fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
   match observation {
     WrittenRouteRefused { diagnostics: d } =>
-      match translate_diagnostic_reason_from_symbol(sym: diagnostics_fatal_reason(d: d)) {
-        Present { value: TargetBundleMalformed } => true
-        Present { value: _ } => false
-        Absent => false
-      }
+      diagnostics_fatal_reason(d: d) == ^produced_decl_target_unwired
     WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
   }
 }
