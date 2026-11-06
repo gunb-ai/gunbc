@@ -4465,7 +4465,7 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
 fn equality_helper_declared(helper: EqualitySynthHelper, index: SymbolIndex) -> Bool {
   match symbol_index_lookup(index: index, qualified_name: concat(helper.module_path, ".", helper.fn_name)) {
     // A census entry qualifies only as a declared callable: parameters present, as the resolver
-    // itself requires of a direct call target (func_sig_from_global_bare at 16851).
+    // itself requires of a direct call target (func_sig_from_global_bare, 04_lookup.dag:742).
     Present { value: n } => n.params |> count > 0
     Absent => false
   }
@@ -16781,33 +16781,7 @@ fn type_match_for_direct_call_target(type_env: TypeEnv, func_name: String, call_
 // one and absent from the other is a scope-construction defect rather than a case to absorb --
 // it REFUSES, and if that refusal ever fires it has found something real.
 fn call_target_for_direct_call(scope: InferScope, func_name: String) -> CallTargetOutcome {
-  // DECLARED-IDENTITY ARM (equality re-base, #15992): a name whose exact qualified spelling is a
-  // census-declared callable binds by declaring identity, and the declaring module's import table
-  // is consulted at none of gate, resolution, or emission. This is the SAME record the equality
-  // body gate reads (equality_helper_declared via symbol_index_lookup), so gate acceptance and
-  // resolvability share one authority; a name absent from the census is refused there, never
-  // emitted. The import-key arm below stays for the import route. The census-present fallback to
-  // census_declaration_identity means gate acceptance always locates the declaration, so this arm
-  // cannot yield CallableUnresolved for a census-declared callable.
-  if symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: func_name) != none {
-    match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
-      FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
-      FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
-      FuncSigUnresolved =>
-        match func_sig_from_global_bare(type_env: scope.type_env, name: func_name) {
-          FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
-          FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }
-          FuncSigUnresolved =>
-            match census_declaration_identity(type_env: scope.type_env, func_name: func_name) {
-              Present { value: bd } => DeclaredCallableIdentityResolved {
-                declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: func_name) },
-                borrowed_declaration: bd.node
-              }
-              Absent => CallableUnresolved { name: func_name }
-            }
-        }
-    }
-  } else if declared_module_owner(index: scope.type_env.symbol_index, name: func_name) != none {
+  if declared_module_owner(index: scope.type_env.symbol_index, name: func_name) != none {
     match func_env_declared_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
       FuncSigResolved { sig: s, declared: d } => DeclaredCallableResolved { sig: s, declared: d }
       FuncSigAmbiguous { candidates: cs } => CallableAmbiguous { candidates: cs }

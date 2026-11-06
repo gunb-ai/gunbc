@@ -838,13 +838,13 @@ test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_be
 // HELPER BINDING IS DECLARING IDENTITY (integration concern
 // equality_synthesis_helper_binding_is_import_authority, source-integrated; disposition Open until
 // the executed validation named on the row lands). The synthesized equality body binds its step
-// helpers by the helper's own qualified name; the resolver's declared-identity arm
-// (call_target_for_direct_call, census branch) locates the declaration in the symbol-index census -
-// the SAME record the body-existence gate reads (equality_helper_declared) - and the emitter writes
+// helpers by the helper's own qualified name; the resolver resolves that qualified name through
+// declared_module_owner over module_named_imports - which records module REALIZATION, not authoring
+// import authority: the census pass (04_infer.dag:18172) keys EVERY pool module, empty map
+// included (std.optional declares no imports and still carries its key), and
+// symbol_index_with_bare_fill (:18444) merges keys tree-wide - and the emitter writes
 // crate::<module-to-filename-of-the-declaring-module>::<helper-name>. The holder's import table is
-// consulted at none of gate, resolution, or emission; the import-key arm
-// (declared_module_owner over module_named_imports) remains for the import route and is no longer
-// the path for synthesized helpers. These cells pin the ADMISSION invariance of that re-base for
+// consulted at none of gate, resolution, or emission. These cells pin the ADMISSION invariance of that re-base for
 // the case they run: a same-module holder of container members stays admitted with no
 // std.algebra/std.optional import at all. The cross-module positive is DESIGNED below, not
 // executed - it is NOT claimed by these cells. The executed proof of the binding itself is the
@@ -895,11 +895,11 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
 // counts: Map<String, Int>; HELPER-DECLARATING module std.algebra (zip_eq, map_values_eq), reached
 // by the holder's only import statement (import std.types { String, List, Map } plus no
 // std.algebra/std.optional import at all - admission must not depend on those imports existing).
-// What it would pin: admission of the holder despite the helpers being foreign, i.e. the resolver
-// arm func_env_declared_func_sig missing and func_sig_from_global_bare / census_declaration_identity
-// resolving by declaring identity. UNTESTED ARMS this design separates: (i) holder IMPORTS the
-// helper's module by name (import-key arm path - the arm this re-base removed from the equality
-// route, exercised corpus-wide by the bootstrap), (ii) holder IS the helper's module (local arm).
+// What it would pin: admission of the holder despite the helpers being foreign - the qualified
+// name resolving through the declared_module_owner arm with the func_env / func_sig_from_global_bare
+// fallbacks (04_lookup.dag:742) untouched. UNTESTED ARMS this design separates: (i) holder IMPORTS
+// the helper's module by name, (ii) holder IS the helper's module (local resolution among the
+// module's own fns), (iii) holder imports neither (the Bag cell above, realization-key path).
 // The prior cross-module cell (v2.std.node Edge) was deleted, not replaced: its subject carried
 // target: Node, and Node is equality-inadmissible corpus-wide (src/v2/std/node.dag:613; seed fold
 // at :679-680 via equality_route_for / equality_root_refused_leaf_names), so the cell could only
