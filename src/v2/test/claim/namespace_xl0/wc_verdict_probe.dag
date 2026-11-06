@@ -1,0 +1,153 @@
+module v2.test.claim.namespace_xl0.wc_verdict_probe
+
+// DIAGNOSTIC PROBE (frozen for packet wc-probe-v1; owner sleek-seal-226, #15695 lane).
+// PURPOSE: report, as a bounded reason string through the claim_batch typed-exit channel, WHICH
+// WcVerdict each of the four wildcard_arm_resolve fixtures actually takes at the pinned seed. It is
+// a measurement instrument, not an assertion: it returns ExitFailure { code: 3 } unconditionally so
+// the printed reason is the datum (claim_batch.rs:421-428 prints
+// 'FAIL <fn> (returned ProcessExit::ExitFailure, code 3: <reason>)'). code 4 is emitted ONLY if the
+// built reason violates the stated bound; the frozen classifier treats code 4 as BOUND_VIOLATED.
+// WHY IMPORTS AND NOT COPIES: the inputs are the SAME BYTES BY CONSTRUCTION — the four fixture
+// sources and the whole route are reached through the existing module's own exports. wc_outcomes is
+// the very function the four frozen wc claims call. No fixture text is duplicated here.
+// BOUND (stated in advance): the reason string is composed ONLY of fixed literals, single-character
+// tags, candidate-table indices (<= 2 digits), a T/F/- flag, and at most four decimal integers (the
+// i64 bound of int_to_decimal_string is 19 digits). It carries no symbol text, no file text and no
+// host string: lexemes are compared to frozen candidate tags and COUNTED, never rendered.
+// Widest layout, per verdict field: "X{"(2) + "r=23"(4) + ","(1) + "a=?"(3) + ",s=F"(4) + ",al="(4)
+// + <=19 digits + "}"(1) = 38 characters. Head "WCVERIFY ctx=OK"(15) + control fields " ctl_ok="(8)
+// + "r=23"(4) and " ctl_out="(9) + "r=23"(4) = 25 + separators " arm="(5),
+// " field="(7), " binder="(8), " body="(6) = 26. Stated maximum: 15 + 25 + 26 + 4*38 = 218
+// characters (the ctx=RF row is 15 + 25 + 30 = 70). The
+// guard re-counts and, on violation, replaces the payload with 'WCVERIFY BOUND_VIOLATED len=<digits>'
+// (<= 28 + 19 = 47 characters), so BOTH arms are bounded and nothing is ever truncated silently.
+// CONTROL FIELDS (parent msg_02bc6f7c B2): ctl_ok is reason_token applied to a symbol the chain
+// MUST match (^resolve_reason_unbound_symbol, so the declared value is 0), and ctl_out is
+// reason_token applied to a symbol outside the 24 compared names (^resolve_reason_binder_duplicate_
+// in_frame, so the declared value is X). Both are computed UNCONDITIONALLY, before any outcome is
+// known, and ride on BOTH row shapes as data: neither is asserted by this probe. Their purpose is to
+// settle whether '==' against caret symbols discriminates at all: ctl_ok = X while every field is
+// also X is the signature of a broken comparison, not of an outside-table reason. 'r=X' alone means
+// ONLY 'matched none of the 24 compared caret symbols (outside-table OR comparison failure); loses
+// which reason, and whether comparison works'.
+// CHARACTERS: every character above comes from a fixed literal in THIS file, from bool_token's
+// "T"/"F", or from int_to_decimal_string, whose only glyphs are the ten literals "0".."9" of
+// decimal_digit_glyph (dag/std/nat.dag:219-231) concatenated by int_digits_to_decimal_string
+// (dag/std/integer.dag:316-335; the leading "-" branch is unreachable here because atom_len is a
+// fold_list count starting at 0, so it is never negative). No lexeme, file text or host string
+// enters the reason, so it cannot contain a newline, ')', '{', '}' outside the payload braces or
+// ',' outside the payload separators.
+
+import v2.test.claim.namespace_xl0.wildcard_arm_resolve {
+  WcAbsent,
+  WcContextRefused,
+  WcFileRefused,
+  WcOutcomes,
+  WcOutcomesDecided,
+  WcRefused,
+  WcResolved,
+  WcVerdict,
+  wc_outcomes
+}
+import std.optional { Absent, Optional, Present }
+import std.process { ExitFailure, ProcessExit }
+import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
+import std.algebra { Cons, Empty, fold_list }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String }
+
+// Bounded length of a lexeme WITHOUT rendering it: the fold counts scalars and discards them.
+fn char_count(s: String) -> Int {
+  fold_list(xs: s, empty: 0, cons: fn(acc, _) { acc + 1 })
+}
+
+// Reason identity by candidate equality, never by text. Index is decimal; 'r=X' names
+// outside-the-table.
+fn reason_token(r: Symbol) -> String {
+  if r == ^resolve_reason_unbound_symbol { "r=0" }
+  else if r == ^resolve_reason_ambiguous_symbol { "r=1" }
+  else if r == ^resolve_reason_declarer_refused { "r=2" }
+  else if r == ^resolve_reason_pattern_atom_names_visible_value { "r=3" }
+  else if r == ^resolve_reason_test_code_referenced { "r=4" }
+  else if r == ^resolve_reason_generated_reference_declaration_absent { "r=5" }
+  else if r == ^resolve_reason_malformed_imported_root { "r=6" }
+  else if r == ^resolve_reason_type_parameter_shadows_visible_name { "r=7" }
+  else if r == ^resolve_reason_reference_category_mismatch { "r=8" }
+  else if r == ^resolve_reason_realized_declaration_mismatch { "r=9" }
+  else if r == ^resolve_reason_where_predicate_unbound { "r=10" }
+  else if r == ^resolve_reason_type_parameter_in_value_position { "r=11" }
+  else if r == ^resolve_reason_realized_declaration_shadowed { "r=12" }
+  else if r == ^resolve_reason_malformed_tree { "r=13" }
+  else if r == ^resolve_reason_primitive_row_name_disagrees { "r=14" }
+  else if r == ^resolve_reason_lexical_reference_unkeyed { "r=15" }
+  else if r == ^resolve_reason_construct_tag_not_a_constructor { "r=16" }
+  else if r == ^resolve_reason_catch_all_binder_unread { "r=17" }
+  else if r == ^resolve_reason_binder_hides_visible_value { "r=18" }
+  else if r == ^resolve_reason_anonymous_parameter_referenced { "r=19" }
+  else if r == ^resolve_reason_type_application_arity_mismatch { "r=20" }
+  else if r == ^resolve_reason_type_argument_kind_not_inhabited { "r=21" }
+  else if r == ^resolve_reason_requirement_not_a_resource { "r=22" }
+  else if r == ^resolve_reason_qualified_target_identity_unrepresentable { "r=23" }
+  else { "r=X" }
+}
+
+// The only frozen atom candidate is the one the frozen body claim compares against; every other
+// atom is 'a=?' plus its lexeme length below, which is how '_' (length 1) separates.
+fn atom_token(a: Optional<Symbol>) -> String {
+  match a {
+    Present { value: s } => if s == ^wc_undeclared_body { "a=U" } else { "a=?" }
+    Absent => "a=-"
+  }
+}
+
+// The atom spelling never reaches the output; only its scalar count does.
+fn atom_len(a: Optional<Symbol>) -> Int {
+  match a {
+    Present { value: s } => char_count(s: symbol_lexeme(sym: s))
+    Absent => 0
+  }
+}
+
+fn bool_token(b: Bool) -> String {
+  if b { "T" } else { "F" }
+}
+
+// Fixed layout: one single-character tag, or the refusal payload in a fixed field order.
+fn verdict_text(v: WcVerdict) -> String {
+  match v {
+    WcResolved => "R"
+    WcAbsent => "A"
+    WcFileRefused => "F"
+    WcRefused { reason: r, at_atom: a, sole_chain: s } =>
+      "X{" + reason_token(r: r) + "," + atom_token(a: a) + ",s=" + bool_token(b: s) + ",al=" + int_to_decimal_string(value: atom_len(a: a)) + "}"
+  }
+}
+
+// CONTROL: both tokens are produced by the SAME reason_token whose discrimination is in question,
+// applied to two fixed caret symbols with declared values (0 and X). Computed unconditionally so a
+// refused context still carries the control. Data, never asserted here; the reading table in the
+// packet interprets it.
+fn ctl_text() -> String {
+  " ctl_ok=" + reason_token(r: ^resolve_reason_unbound_symbol) + " ctl_out=" + reason_token(r: ^resolve_reason_binder_duplicate_in_frame)
+}
+
+fn outcomes_text(o: WcOutcomes) -> String {
+  match o {
+    WcContextRefused => "WCVERIFY ctx=RF" + ctl_text() + " arm=- field=- binder=- body=-"
+    WcOutcomesDecided { arm: arm, field: field, binder: binder, body: body } =>
+      "WCVERIFY ctx=OK" + ctl_text() + " arm=" + verdict_text(v: arm) + " field=" + verdict_text(v: field) + " binder=" + verdict_text(v: binder) + " body=" + verdict_text(v: body)
+  }
+}
+
+data reason_bound: Int = 218
+
+test fn wc_verdict_probe_reports() -> ProcessExit {
+  let reason = outcomes_text(o: wc_outcomes())
+  if char_count(s: reason) > reason_bound {
+    ExitFailure { code: 4, reason: "WCVERIFY BOUND_VIOLATED len=" + int_to_decimal_string(value: char_count(s: reason)) }
+  } else {
+    ExitFailure { code: 3, reason: reason }
+  }
+}
