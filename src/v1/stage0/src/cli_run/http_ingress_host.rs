@@ -142,7 +142,8 @@ impl IngressConnection for std::os::unix::net::UnixStream {
 
 enum IngressListener {
     Tcp(std::net::TcpListener),
-    Unix(std::os::unix::net::UnixListener, String),
+    /// The listener, its path, and the path's lock, held for the listener's lifetime.
+    Unix(std::os::unix::net::UnixListener, String, std::fs::File),
 }
 
 /// Bind the binding's listener. A unix socket path that already exists is removed only when it IS
@@ -192,13 +193,54 @@ fn bind_tcp(host: &str, port: u16) -> Result<IngressListener, String> {
         .map_err(|e| format!("failed to bind {host}:{port}: {e}"))
 }
 
+/// THE SOCKET PATH IS OWNED BY WHOEVER HOLDS ITS LOCK: an exclusive flock on `<path>.lock`, taken
+/// before the path is looked at and held for the listener's whole lifetime, so two realizations
+/// started on one path cannot both judge it stale and the second never unlinks the first's socket
+/// (side-chat review 5786866091). The same protocol as the native door's rendered main.
+fn lock_socket_path(path: &str) -> Result<std::fs::File, String> {
+    use std::os::unix::io::AsRawFd;
+    let lock_path = format!("{path}.lock");
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| format!("could not open the socket's lock {lock_path}: {e}"))?;
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        let e = std::io::Error::last_os_error();
+        return Err(if e.kind() == std::io::ErrorKind::WouldBlock {
+            format!("unix socket {path} is held by another realization (its lock {lock_path} is taken); refusing to replace it")
+        } else {
+            format!("could not lock {lock_path}: {e}")
+        });
+    }
+    Ok(lock)
+}
+
 fn bind_unix(path: &str, mode: u32) -> Result<IngressListener, String> {
     use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    let lock = lock_socket_path(path)?;
     if let Ok(meta) = std::fs::symlink_metadata(path) {
         if !meta.file_type().is_socket() {
             return Err(format!(
                 "unix socket {path} exists and is not a socket; refusing to replace it"
             ));
+        }
+        // Stale only when SHOWN stale: a refused connection means no process listens there. A live
+        // listener is never displaced, and a socket whose staleness cannot be shown is refused.
+        match std::os::unix::net::UnixStream::connect(path) {
+            Ok(_) => {
+                return Err(format!(
+                    "unix socket {path} has a live listener; refusing to displace it"
+                ))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {}
+            Err(e) => {
+                return Err(format!(
+                    "unix socket {path} could not be shown stale ({e}); refusing to replace it"
+                ))
+            }
         }
         std::fs::remove_file(path)
             .map_err(|e| format!("could not remove the stale socket {path}: {e}"))?;
@@ -207,7 +249,7 @@ fn bind_unix(path: &str, mode: u32) -> Result<IngressListener, String> {
         .map_err(|e| format!("failed to bind unix socket {path}: {e}"))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
         .map_err(|e| format!("could not set the socket {path} to mode {mode:o}: {e}"))?;
-    Ok(IngressListener::Unix(listener, path.to_string()))
+    Ok(IngressListener::Unix(listener, path.to_string(), lock))
 }
 
 impl IngressListener {
@@ -216,7 +258,7 @@ impl IngressListener {
             IngressListener::Tcp(l) => l
                 .local_addr()
                 .map(|a| (a.ip().to_string(), i64::from(a.port()))),
-            IngressListener::Unix(_, path) => Ok((format!("unix:{path}"), 0)),
+            IngressListener::Unix(_, path, _) => Ok((format!("unix:{path}"), 0)),
         }
     }
 
@@ -228,7 +270,7 @@ impl IngressListener {
             IngressListener::Tcp(l) => l
                 .accept()
                 .map(|(s, _)| (Box::new(s) as Box<dyn IngressConnection>, String::new())),
-            IngressListener::Unix(l, _) => {
+            IngressListener::Unix(l, _, _) => {
                 let (s, _) = l.accept()?;
                 let user = peer_user(&s)?;
                 Ok((Box::new(s) as Box<dyn IngressConnection>, user))
@@ -663,6 +705,33 @@ fn realize_in(ctx: &InterpContext, binding: Value) -> (i32, String) {
                 ))
             }
         };
+        // WHAT A LISTENER MAY CARRY is the graph's (gunbc.http_ingress http_ingress_listener_refusal),
+        // judged before any bind or path mutation, because a constructor may build its binding
+        // directly; the native door's start consumes the same fold.
+        let refusal = fold(
+            ctx,
+            "http_ingress_listener_refusal",
+            vec![("listener", listener_value.clone())],
+        )?;
+        match &refusal {
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Present") => {
+                return Err(match ctx.field(fields, "value") {
+                    Some(Value::Str(s)) => s.to_string(),
+                    _ => ctx.format_value(&refusal),
+                })
+            }
+            Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Absent") => {}
+            other => {
+                return Err(format!(
+                    "http_ingress_listener_refusal answered {}",
+                    ctx.format_value(other)
+                ))
+            }
+        }
         let listener = bind_listener(ctx, &listener_value)?;
         let (bound_host, bound_port) = listener
             .bound_address()
@@ -957,6 +1026,148 @@ mod tests {
         std::fs::write(&path, b"data").unwrap();
         assert!(bind_unix(&path, 0o666).is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"data");
+    }
+
+    // A socket a process still listens on is live, not stale, even when that process never took the
+    // path's lock: a start refuses and the listener keeps its name, so a connection by path still
+    // reaches it (side-chat review 5785782995). A listener that took the lock is refused by the lock
+    // first (a_held_socket_lock_refuses_a_second_start_and_leaves_the_path_untouched).
+    #[test]
+    fn a_live_unix_listener_is_never_displaced() {
+        let path = temp_socket_path("live");
+        let held = std::os::unix::net::UnixListener::bind(&path).expect("a live listener");
+        let refused = bind_unix(&path, 0o666);
+        assert!(
+            matches!(&refused, Err(reason) if reason.contains("has a live listener")),
+            "a live listener is refused, not displaced"
+        );
+        let _client = std::os::unix::net::UnixStream::connect(&path)
+            .expect("the path still names a listener");
+        assert!(
+            held.accept().is_ok(),
+            "the connection reached the original listener"
+        );
+        drop(held);
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    // A REALIZATION THAT HOLDS THE PATH'S LOCK OWNS THE PATH, even while the path still holds a stale
+    // socket it has not yet replaced: a second start refuses and leaves that socket untouched, which is
+    // the interleaving point at which an unlocked stale check let the second start unlink the first's
+    // socket (side-chat review 5786866091).
+    #[test]
+    fn a_held_socket_lock_refuses_a_second_start_and_leaves_the_path_untouched() {
+        use std::os::unix::fs::MetadataExt;
+        let path = temp_socket_path("locked");
+        drop(std::os::unix::net::UnixListener::bind(&path).unwrap());
+        let before = std::fs::metadata(&path).unwrap().ino();
+        let held = lock_socket_path(&path).expect("the first realization takes the lock");
+        let refused = bind_unix(&path, 0o666);
+        assert!(
+            matches!(&refused, Err(reason) if reason.contains("is held by another realization")),
+            "a second start refuses while the lock is held"
+        );
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().ino(),
+            before,
+            "the path was not touched"
+        );
+        drop(held);
+        assert!(
+            bind_unix(&path, 0o666).is_ok(),
+            "once released, the stale socket is replaced"
+        );
+    }
+
+    // TWO STARTS AT ONCE ON ONE STALE PATH: at most one binds, and the one that bound is still the
+    // listener a connection by path reaches.
+    #[test]
+    fn concurrent_starts_on_one_stale_path_bind_at_most_once() {
+        let path = temp_socket_path("race");
+        for _ in 0..50 {
+            drop(std::os::unix::net::UnixListener::bind(&path).ok());
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let starts: Vec<_> = (0..2)
+                .map(|_| {
+                    let (path, barrier) = (path.clone(), barrier.clone());
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        bind_unix(&path, 0o666)
+                    })
+                })
+                .collect();
+            let results: Vec<_> = starts.into_iter().map(|s| s.join().unwrap()).collect();
+            let bound: Vec<_> = results.iter().filter_map(|r| r.as_ref().ok()).collect();
+            assert!(bound.len() <= 1, "two starts both bound one path");
+            if let Some(IngressListener::Unix(winner, _, _)) = bound.first() {
+                let _client = std::os::unix::net::UnixStream::connect(&path)
+                    .expect("the path names a listener");
+                assert!(winner.accept().is_ok(), "the path still reaches the winner");
+            }
+            drop(results);
+        }
+    }
+
+    // A CONSTRUCTOR THAT BUILDS ITS BINDING ITSELF with a socket mode no socket can carry is refused by
+    // the graph's listener fold before anything touches the path: no socket and no lock file appear
+    // (side-chat review 5786866091; the native start consumes the same fold).
+    #[test]
+    fn a_directly_built_mode_no_socket_can_carry_refuses_before_the_path_is_touched() {
+        let root = crate::cli_run::workspace_root();
+        let roots = vec![
+            root.join("dag").display().to_string(),
+            root.join("src/v2").display().to_string(),
+        ];
+        let entry = root
+            .join("dag/test/fixture/serve_seam_direct_ingress.dag")
+            .display()
+            .to_string();
+        let (graph, source_indices) =
+            crate::cli_run::resolve_entry_graph(&roots, &entry).expect("the fixture resolves");
+        let ctx = crate::cli_run::make_eval_context(
+            graph.as_ref(),
+            source_indices,
+            v1_interpreter::ExecutionMode::Wet,
+        );
+        let path = temp_socket_path("direct");
+        let _ = std::fs::remove_file(&path);
+        let admission = v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "serve_seam_direct_mode_ingress",
+            &[(
+                Some("socket_path".to_string()),
+                v1_interpreter::str_value(&path),
+            )],
+            true,
+        )
+        .expect("the constructor answers");
+        let IngressAnswer::Bound(binding) = ingress_answer(&admission, &ctx) else {
+            panic!("the constructor answers a binding")
+        };
+        // A realization that does NOT refuse serves forever, so a regression must not hang the run:
+        // past the deadline the watchdog ends the test binary loudly.
+        let served = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let watched = served.clone();
+        let watched_path = path.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+            if watched.load(std::sync::atomic::Ordering::SeqCst) {
+                eprintln!("a_directly_built_mode_no_socket_can_carry_refuses_before_the_path_is_touched: the binding was SERVED at {watched_path} instead of refused");
+                std::process::abort();
+            }
+        });
+        let (status, reason) = realize(&ctx, binding);
+        served.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert_ne!(status, 0);
+        assert!(
+            reason.contains("listener socket mode out of range: 4096"),
+            "refused by the shared fold: {reason}"
+        );
+        assert!(!std::path::Path::new(&path).exists(), "no socket was bound");
+        assert!(
+            !std::path::Path::new(&format!("{path}.lock")).exists(),
+            "the path was not locked either"
+        );
     }
 
     // A TCP listener attests nothing: its peer is empty, and gunbc.http_ingress
