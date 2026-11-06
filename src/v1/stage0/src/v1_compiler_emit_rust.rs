@@ -25903,6 +25903,10 @@ pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool
     )
 }
 
+pub fn rust_by_ref_bridge_argument(base: String) -> String {
+    v1_rt::concat("&".to_string(), base.clone())
+}
+
 pub fn rust_runtime_bridge_name(function_name: String) -> String {
     match v1_rt::map_get(
         &crate::extdeps_languages_rust_emit::rt_bridge_function_names(),
@@ -28796,7 +28800,7 @@ pub fn emit_typed_call(
                                 shared_types.clone(),
                                 arg_emit_info.clone(),
                             );
-                            v1_rt::concat("&".to_string(), base.clone())
+                            rust_by_ref_bridge_argument(base.clone())
                         }
                     } else {
                         {
@@ -31397,17 +31401,14 @@ pub fn emit_rust_generic_method_call(
                 {
                     let recv_str =
                         if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
-                            v1_rt::concat(
-                                "&".to_string(),
-                                emit_typed_expr_base(
-                                    receiver.clone(),
-                                    registry.clone(),
-                                    scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                ),
-                            )
+                            rust_by_ref_bridge_argument(emit_typed_expr_base(
+                                receiver.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            ))
                         } else {
                             emit_cloned_arg(
                                 receiver.clone(),
