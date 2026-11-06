@@ -1,6 +1,6 @@
 module test.claim.runner.runner_slot_allocation_witness
 
-import gunbc.runner.runner_slot_allocation { host_transitional_ci_slot_identities, host_transitional_ci_slot_count, transitional_ci_slots, identity_in_list, srv1_deploy_slot, authored_microvm_slot_charge, microvm_controller_slice_memory_max, srv1_revision_job_slot, host_authored_microvm_slots, host_authored_slots_within_width, revision_job_slots, revision_job_slots_match_the_fleet_row, host_committed_identities_at, RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
+import gunbc.runner.runner_slot_allocation { host_width_facts, gunbc_runner_slot_desired_for, runner_memory_envelope_bytes_of, authored_microvm_slots_charge, transitional_ci_slot_memory_max, host_transitional_ci_slot_identities, host_transitional_ci_slot_count, transitional_ci_slots, identity_in_list, srv1_deploy_slot, authored_microvm_slot_charge, microvm_controller_slice_memory_max, srv1_revision_job_slot, host_authored_microvm_slots, host_authored_slots_within_width, revision_job_slots, revision_job_slots_match_the_fleet_row, host_committed_identities_at, RunnerSlotPurpose, SlotServesGitHubActions, SlotServesFabricExecution, RunnerSlotMembership, CommittedSlotMember, SlotOutsideCommittedPopulation, runner_slot_membership, srv3_fabric_first_slot, srv3_fabric_second_slot, srv4_fabric_first_slot, srv4_fabric_second_slot, srv1_microvm_shakedown_slot, host_fabric_slot_count, host_github_slot_count, gunbc_runner_slot_allocation_wall_holds, gunbc_runner_slot_oversubscription_within_slice, host_runner_pool_charge, gunbc_microvm_shakedown_slot_charge, gunbc_runner_cores_per_slot, host_cpu_admitted_width, compute_host_cpu_admitted_width, HostCpuWidthResolution, CpuWidthDerived, CpuWidthOfferAbsent, WidthComputeOfferAbsent, host_width_axes, AxisAdmits, AxisUnmeasured, gunbc_runner_committed_width, RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, WidthMemoryDenominatorUnestablished, WidthSlotShapeInadmissible, runner_width_unresolved_cause_text, host_memory_admitted_width, MemoryDenominatorStanding, MemoryDenominatorEstablished, MemoryDenominatorUnestablished, host_memory_denominator, HostRunnerSlotAllocationStanding, HostSlotAllocationAdmitted, HostSlotAllocationWidthUnresolved, gunbc_committed_runner_slot_allocation_standings, gunbc_admitted_runner_slot_allocations, SlotMembershipWidthUnresolved, host_disk_admitted_width, DiskAdmitsWidth, DiskWidthUnconstrained, gunbc_runner_slice_cap_for_width, gunbc_runner_slot_enforcement_expected_cap, gunbc_floor_minimum_viable_armed_budget_wall_holds, gunbc_floor_minimum_viable_armed_budget_bytes, gunbc_srv2_03_effective_cap_observation, runner_slot_effective_memory_max_drifts_from_declaration, runner_slot_effective_memory_high_drifts_from_declaration, gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation, srv2_03_floor_leaf_cgroup_events_at_entry_are_zero, gunbc_readback_refusal_stays_witnessed_by_synthetic_drift, FloorCgroupLeafEventAtEntry, RunnerSlotEffectiveCapMeasured }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, gunbc_runner_slot_memory_max, CpuQuotaResolved, SlotCpuQuotaUnbounded }
 import gunbc.runner.runner_host_deploy {
   runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
@@ -812,6 +812,31 @@ test fn srv1_01_is_committed_only_because_of_the_transitional_row() -> Bool {
           && all(host_transitional_ci_slot_identities(host: operator_host_srv1), t => t.slot_index == 1)
           && host_committed_identities_at(host: operator_host_srv1, committed: w).length() == w
     }
+}
+
+// THE TRANSITIONAL SLOT IS GRANTED THE ENVELOPE'S REMAINDER AND CHARGED THE SAME GRANT (operator option (a) narrowed to B,
+// 2026-11-06). The referent is independent arithmetic over the envelope, the authored charge and the memory width's fleet count, not the
+// production remainder fold: the grant, MemoryHigh and the pool charge at the committed width all equal it, swap is 0, and the whole charge is
+// EXACTLY the envelope (no over-admission). The RED arm is the fleet constant: charging the transitional slot one fleet row would put the
+// pool over the envelope, which is the refusal gunbc.ci.ci_runner_placement host_allocation_verdict raised (HostAllocationOversubscribedOnHost) and
+// the 25 GiB shape produced (the srv1 deployment refused, runner_host_file_converge_witness 85 pass / 12 fail on f909ef1142e).
+test fn the_transitional_slot_is_granted_the_envelope_remainder_and_the_pool_charge_equals_the_envelope() -> Bool {
+  let f = host_width_facts(host: operator_host_srv1)
+  let envelope = runner_memory_envelope_bytes_of(f: f)
+  let authored = byte_size_count(b: authored_microvm_slots_charge(slots: host_authored_microvm_slots(host: operator_host_srv1)))
+  let fleet = byte_size_count(b: gunbc_runner_slot_memory_max)
+  let fleet_fit = host_memory_admitted_width(host: operator_host_srv1) - host_authored_microvm_slots(host: operator_host_srv1).length()
+  let remainder = envelope - authored - fleet_fit * fleet
+  let grant = gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 })
+  let committed = host_memory_admitted_width(host: operator_host_srv1) + host_transitional_ci_slot_count(host: operator_host_srv1)
+  remainder > 0
+    && remainder < fleet
+    && byte_size_count(b: grant.memory_max) == remainder
+    && byte_size_count(b: grant.memory_high) == remainder
+    && byte_size_count(b: grant.memory_swap_max) == 0
+    && byte_size_count(b: transitional_ci_slot_memory_max(host: operator_host_srv1)) == remainder
+    && byte_size_count(b: host_runner_pool_charge(host: operator_host_srv1, slots: committed)) == envelope
+    && authored + (fleet_fit + 1) * fleet > envelope
 }
 
 // A WIDTH BELOW THE AUTHORED COUNT LISTS AND CHARGES THE SAME SLOTS (review 81866): srv1 at width 1 is
