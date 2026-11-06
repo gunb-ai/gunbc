@@ -212,7 +212,14 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_per_boot"),
     reason: "anchored_host_transport_per_boot and per_boot_pin_from_checked_key are called only by this module's witness: nothing reads the BMC serial console (SOL) of a boot, nothing supplies expected_boot_id from a real subject, and no production fold routes a transport through the per-boot binding (anchored_host_transport_live still compares against the row's static anchor)",
     dissolution: unbound_dissolution(
-      description: "dissolves when a production fold acting on a mtcollins1 boot has a production reader of that boot's SOL console that mints the pin through per_boot_pin_from_checked_key (the pin's only mint; no such reader is on this branch), supplies the subject's boot id as expected_boot_id, and refuses the leg on any non-Bound arm from anchored_host_transport_per_boot; a witness claim does not fire this. OPEN: the boot_id character set is not yet restricted (control characters in a console-read id could contaminate a refusal diagnostic); the restriction lands with the live SOL reader, which is the first place such text can arrive"
+      description: "dissolves when a production fold acting on a mtcollins1 boot has a production reader of that boot's SOL console that mints the pin through per_boot_pin_from_checked_key (the pin's only mint; the reader runner_host_key_observation exists in gunbc.runner.runner_host_medium but only a witness consumes it; no production fold does), supplies the subject's boot id as expected_boot_id, and refuses the leg on any non-Bound arm from anchored_host_transport_per_boot; a witness claim does not fire this. OPEN: the boot_id character set is not yet restricted (control characters in a console-read id could contaminate a refusal diagnostic); the restriction lands with the live SOL reader, which is the first place such text can arrive"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.runner.runner_host_medium", decl_name: "runner_host_key_gen_argv"),
+    reason: "the host-key stages' inhabitance claim, test.claim.runner.runner_host_key_stage_real_execution_witness, executes the real stages against ssh-keygen but is run BY HAND only: it is not enrolled in the required floor's wet lane (the job roster is closed to growth, the wet lane needs a ci_layer_roots LocalRepoWetLane row, WetScheduledClaim rows and floor_route_gap rows, and a runner carrying ssh-keygen), and nothing consumes the SOL reader in production yet, so an edit to the key stages is not re-paired with a real run by any gate",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the SOL reader runner_host_key_observation has a production consumer, at which point that witness is enrolled in the wet lane and executes on every change to the key stages (runner_host_key_gen_argv, runner_host_key_pub_argv, runner_host_key_fingerprint_argv); a hand-run does not fire this"
     )
   ),
   frontier_row_decl(
@@ -389,7 +396,7 @@ fn anchored_host_transport_per_boot(
 ) -> AnchoredHostBinding {
   match pin {
     Absent => AnchoredBindingAnchorAbsent {
-      cause: "no per-boot host-key pin: the console read of this boot's key line is absent or malformed; matching against nothing is accepting anything",
+      cause: "no per-boot host-key pin: the console read of this boot's checked host-key fields is absent or malformed; matching against nothing is accepting anything",
     }
     Present { value: p } =>
       if (p.boot_id as String) != (expected_boot_id as String) {
