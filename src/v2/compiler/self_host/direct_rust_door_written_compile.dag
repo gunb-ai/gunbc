@@ -1,7 +1,12 @@
 module v2.compiler.self_host.direct_rust_door_written_compile
 
 import extdeps.rust.rustc
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome
+}
 import extdeps.shell
 import v2.std.node { symbol_lexeme }
 import std.types { Bool, FilePath, Int }
@@ -163,4 +168,15 @@ fn written_refusal_reason_receipt_written(observation: WrittenRustCompileObserva
     )
     r.success
   } else { false }
+}
+
+// THE IN-TREE READER OF THE RECEIPT (DESIGN 3c): reads the receipt file back from disk, so the bytes a
+// claim asserts are the bytes on disk, not the string that was handed to the write. A read refusal is
+// its own text, never an empty or a matching string.
+fn written_refusal_reason_receipt_read(receipt_dir: String) -> String {
+  let read = Filesystem.Read(path: concat(receipt_dir, "/refusal-reason.txt"))
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadSucceeded { content: c } => c
+    FilesystemReadRefused { error: e } => concat("READ-REFUSED:", e)
+  }
 }

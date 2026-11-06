@@ -6,6 +6,7 @@ import v2.compiler.self_host.direct_rust_door_written_compile {
   direct_rust_door_written_missing_rule,
   direct_rust_door_written_production,
   direct_rust_door_written_unwritable,
+  written_refusal_reason_receipt_read,
   written_refusal_reason_receipt_written,
   written_file_not_written,
   written_compile_holds,
@@ -41,4 +42,5 @@ test fn missing_rule_refusal_reason_is_receipted() -> Bool {
   // Discriminating: green only if the route refused with the missing-rule cause AND the receipt was
   // written, so a compiled / unwritten / wrong-cause route goes red instead of being receipted green.
   written_route_refused(observation: observation) && written_refusal_reason_receipt_written(observation: observation, receipt_dir: "target/direct-rust-door-written")
+    && written_refusal_reason_receipt_read(receipt_dir: "target/direct-rust-door-written") == "produced_decl_target_unwired"
 }
