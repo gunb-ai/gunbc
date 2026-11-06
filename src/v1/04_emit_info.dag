@@ -624,21 +624,6 @@ type EmitGraphInfo {
   // its loop carries `__trmc_out`, the heads emitted so far, and every exit appends to it.
   trmc_out: Bool
 
-  // THE ONE PASS-DOWN THAT ASKS A CALL TO NAME ITS OWN TYPE ARGUMENTS. Set only by a by-ref bridge,
-  // only for the expression it borrows, and only when that expression IS a call --
-  // v1.compiler.emit_rust `rust_by_ref_bridge_grant` makes the whole grant, and it is a fact about
-  // the EXPRESSION, not the site: a type-argument clause names a callee, and only a call has one. The
-  // call it is granted to clears it again for everything it renders inside itself
-  // (emit_info_callee_type_arguments_spent), so at most one call per bridge site is annotated; the
-  // fold-body rebuilds in v1.compiler.emit_rust pin it false for the same reason. A borrowed `if`,
-  // `match`, field access or block therefore keeps main's spelling, and no call nested in one is
-  // refused for a defect it does not have. It is false everywhere else, which is the whole reason it
-  // is a field rather than a parameter: the question "does this call stand where a borrow is the only
-  // thing pinning its type arguments?" cannot be seen from an argument expression's own position.
-  // `gunbc.recurring_failure_mode`
-  // `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow` is the class.
-  names_callee_type_arguments: Bool
-
   // Terminal record literals (keyed by span start) whose same-typed base parameter dies at the
   // literal, mapped to that parameter. Derived once per fn by v1.compiler.ownership
   // analyze_dying_base_sites; empty for a fn that is TCO-lowered.
@@ -690,7 +675,6 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    names_callee_type_arguments: false,
     dying_base_sites: empty_map()
   }
 }
@@ -728,7 +712,6 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    names_callee_type_arguments: emit_info.names_callee_type_arguments,
     dying_base_sites: emit_info.dying_base_sites
   }
 }
@@ -766,7 +749,6 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    names_callee_type_arguments: emit_info.names_callee_type_arguments,
     dying_base_sites: emit_info.dying_base_sites
   }
 }
@@ -809,27 +791,8 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    names_callee_type_arguments: emit_info.names_callee_type_arguments,
     dying_base_sites: emit_info.dying_base_sites
   }
-}
-
-// THE BRIDGE SITE SAYS SO. Taking an argument by reference is the only thing in the compiler that
-// knows a call is standing where a borrow is the sole evidence of its type arguments, so the bridge
-// says it here and the callee's own rendering does the naming. It is set for ONE argument
-// expression; `emit_typed_call` spends the permission and clears it again for everything that call
-// renders inside itself, so a nested call is never annotated on an outer site's say-so. Both
-// spellings of a by-ref primitive (the filled-args receiver of a `v1_rt` call, and the receiver
-// position of `rust_runtime_bridge_passes_receiver_by_ref`) go through it, so the rule cannot be
-// applied to one member of the roster and missed by another.
-fn emit_info_names_callee_type_arguments(emit_info: EmitGraphInfo) -> EmitGraphInfo {
-  with(emit_info, { names_callee_type_arguments: true })
-}
-
-// THE PERMISSION, SPENT. What a call renders inside itself -- its arguments, its receiver, its
-// closures -- is not the bridged argument, whatever it is.
-fn emit_info_callee_type_arguments_spent(emit_info: EmitGraphInfo) -> EmitGraphInfo {
-  with(emit_info, { names_callee_type_arguments: false })
 }
 
 fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {

@@ -1,7 +1,7 @@
 module v1.compiler.emit_rust
 
 import v1.compiler.infer_emit_info { declaring_span_key, type_decl_occurrence_binding, type_decl_resolution_at_identity }
-import v1.std.core { expr_literal_string_optional, item_generic_param_names, type_variable_binder_name }
+import v1.std.core { expr_literal_string_optional, item_generic_param_names }
 import v1.compiler.infer_types { is_leaf_type }
 import v1.compiler.emit { render_target_name }
 import std.unicode.scalar { ascii_lowercase }
@@ -216,7 +216,7 @@ import v1.compiler.infer_types {
   child_type_node, emit_map_has,
   node_is_keyed_collection, node_is_element_collection, node_is_set_collection, node_is_collection,
   type_is_ordered_element_run,
-  is_product_type, is_coproduct_type, is_unit_like, is_fully_resolved
+  is_product_type, is_coproduct_type, is_unit_like
 }
 import v1.compiler.infer_method {
   infer_builtin_call_type
@@ -236,7 +236,6 @@ import v1.compiler.infer_service {
 }
 import v1.compiler.infer {
   is_lambda_expr,
-  param_is_generic_decl,
   InferScope,
   build_params_scope, extend_scope,
   build_emit_graph_info,
@@ -255,7 +254,6 @@ import v1.compiler.infer_emit_info {
   DataVariantSpellingRefused, TypeDeclIndex, type_decl_identity, type_decl_identities_of_leaf,
   TypeDeclResolved, TypeDeclLeafAmbiguous, TypeDeclKernelSpellingUndecided, TypeDeclNotDeclared, resolve_type_decl_reference,
   emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
-  emit_info_names_callee_type_arguments, emit_info_callee_type_arguments_spent,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
@@ -3794,7 +3792,6 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    names_callee_type_arguments: false,
     dying_base_sites: empty_map()
   }
   let registry = typed.item_registry
@@ -4510,7 +4507,6 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    names_callee_type_arguments: false,
     dying_base_sites: empty_map()
   }
   let shared_types = emit_info.shared_types
@@ -5847,7 +5843,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    names_callee_type_arguments: emit_info.names_callee_type_arguments,
     dying_base_sites: emit_info.dying_base_sites
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -8031,7 +8026,6 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             tco_cursor_params: emit_info.tco_cursor_params,
             tco_cursor_tails: emit_info.tco_cursor_tails,
             trmc_out: false,
-            names_callee_type_arguments: false,
             dying_base_sites: fn_dying_base_sites
           }
 
@@ -12342,254 +12336,22 @@ fn type_needs_rc_seen(type_node: Node, seen: Map<String, Bool>, source_indices: 
   }
 }
 
-// THE CALLEE NAMES ITS OWN TYPE ARGUMENTS AT A BY-REF BORROW.
-//
-// A by-ref bridge takes its carrier by reference, and the emission used to spell that borrow straight
-// onto the argument expression: `v1_rt::map_keys(&fold_list(..))`. When that argument is a call to a
-// GENERIC declaration, the borrow is the only evidence rustc gets for the call's own type arguments,
-// and rustc takes it -- `fold_list`'s accumulator is pinned by the borrowed parameter instead of by its
-// own seed. v1's checker had ALREADY typed that argument; the emission threw the answer away and let a
-// second compiler decide. The invalid state, the harm, the distinguishing facts and the runs that
-// recorded them live in exactly one place: `gunbc.recurring_failure_mode`
-// `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`. This comment is rationale and
-// pointer only, and states no occurrence of its own: an annotation that repeats a fact the row
-// carries is a second account of one fact (DESIGN section 3, "minimization holds only if each fact
-// lives in exactly one place").
-//
-// THE REPAIR IS AT THE CALL, NOT AT THE BORROW. Binding the borrow first is not a repair: the
-// temporary dies at its binding scope's end, before the consumer call, trading a possible E0308 for
-// a certain E0716 -- the shapes tried and the runs that recorded them are the row's. What the site
-// lacked was never a binding; it was the callee's TYPE ARGUMENTS, which is precisely what the call's
-// own application plan carries. So the borrow stays plain and the call renders its own clause:
-//   * the witnesses come from `rust_call_type_argument_witnesses`, ONE function that takes the plan, so
-//     a later widening to every declared call calls it instead of forking it -- that widening is the
-//     next rung the row names, not this change's work;
-//   * the ORDER is the callee's authored `<...>` clause, read the way `v1.compiler.infer`
-//     `bind_local_func_conformance` read it when it stamped the binder ids these witnesses match,
-//     because a turbofish is positional for rustc and an order taken from discovery order would be a
-//     different program;
-//   * an unpinned parameter or a not-fully-resolved witness refuses through
-//     `emit_rust_compile_error_expr`, the located-refusal vehicle this file already uses; the refusal
-//     states and their wording are the row's, and `::<_>` is never emitted -- a hole would hand rustc
-//     the very guess this rule exists to remove;
-//   * a callee that declares no type parameters keeps the plain `&<expr>`. That is the whole corpus
-//     today -- the population, with the command that measured it, is stated in the row -- so this arm
-//     is byte-identical over every committed mirror and is exercised by the fixture in the PR body
-//     rather than by the tree. Saying so is the honest standing of a rule written ahead of its corpus;
-//     the claim over it pins emitted TEXT, which is shape evidence, not execution.
-//
-// BOTH SPELLINGS, ONE RULE, NO NAME LIST. The grant is made at the `filled_args` receiver of a `v1_rt`
-// primitive call and at the receiver position of `rust_runtime_bridge_passes_receiver_by_ref`, so no
-// member of the by-ref roster can be annotated while another is silently not. The roster is derived
-// from `passes_by_ref` in `extdeps.languages.rust.emit` `rt_ref_map_functions`, not from a list written
-// here: the defect belonged to the borrow, so nothing had to grow to fix it. `emit_typed_call` SPENDS
-// the grant before it renders anything inside itself, so a nested call never rides an outer site's
-// permission.
-fn rust_by_ref_bridge_argument(base: String) -> String {
-  // THE ONE SPELLING OF THE BORROW, for both sites that take an argument by reference. The
-  // annotation that used to be spelled here is now the callee's own business: this site grants the
-  // permission with `emit_info_names_callee_type_arguments` and the call names its own type
-  // arguments as it renders. One rule for the whole by-ref roster -- map_keys, map_values,
-  // sorted_map_keys, map_lookup, map_insert, the string family -- because the defect belonged to the
-  // borrow, not to a name, and no name list had to grow to fix it.
-  concat("&", base)
-}
-
-// THE PERMISSION IS A FACT ABOUT THE EXPRESSION, NOT ABOUT THE BORROW. A type-argument clause is a
-// fact about a CALLEE: it names the type arguments the callee was left to invent. Only an expression
-// that IS a call has a callee, so only such an expression may be handed the permission -- an `if`, a
-// `match`, a field access or a block has none, and every call rendered inside one of those would
-// otherwise ride the outer borrow's permission and be asked to name type arguments its own branch
-// already pins. Annotating there is not a conservative widening: for a call the branch context
-// resolves, the clause is unwanted and an unreadable witness turns it into a `compile_error!` for a
-// defect the site does not have, which DESIGN section 5 refuses ("every path succeeds fully or fails
-// with a typed, located diagnostic"), and seed builds green on main would break. Where the borrowed
-// expression is not a call the borrow is spelled exactly as on main and nothing is annotated.
-// `ExprCall` only, not `ExprMethodCall`: the single renderer that spends this permission is
-// `emit_typed_call`'s declared-call path, which is where a callee's type arguments can be written.
-// Granting on a method-call node would set a flag no renderer consumes, and the flag would then be
-// inherited by the sub-expressions that rendering does -- the leak again, one variant over. A method
-// callee that needs its own type arguments named is its own shape, named as the next rung in
-// `gunbc.recurring_failure_mode` `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`.
-//
-// NOT THE SAME QUESTION AS `rust_call_arg_function_value_adapt`'s INLINE MATCH ON `ExprCall`. That arm
-// accepts a call result and a field access alike, because what it decides is whether an argument CARRIES
-// an rc-owned value and therefore needs the forwarding closure -- a fact about ownership. This decides
-// whether an expression HAS A CALLEE at all, which is the only thing that can name type arguments. The
-// arms overlap and the questions do not; folding them together would let an ownership decision settle an
-// inference one, so they stay two readings with two names.
-fn rust_by_ref_bridge_expression_is_call(texpr: Node) -> Bool {
-  match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } => true
-    _ => false
-  }
-}
-
-// THE ONE GRANT, BOTH SPELLINGS. A by-ref bridge takes its argument two ways -- `map_keys(m: x)` as a
-// primitive's first argument, `x.map_keys()` as a method receiver -- and the borrow is the same fact,
-// so the grant is made by this one call at the two positions that make the borrow. Neither spelling can
-// be annotated while the other silently is not, and neither can hand the permission to something with
-// no callee: the decision is `rust_by_ref_bridge_expression_is_call`, taken once here rather than at
-// each site.
-fn rust_by_ref_bridge_grant(emit_info_in: EmitGraphInfo, borrowed: Node) -> EmitGraphInfo {
-  if rust_by_ref_bridge_expression_is_call(texpr: borrowed) {
-    emit_info_names_callee_type_arguments(emit_info: emit_info_in)
-  } else {
-    emit_info_in
-  }
-}
-
-// ONE WITNESS PER DECLARED TYPE PARAMETER, READ OFF THE PLAN THE TYPED CALL ALREADY CARRIES.
-//
-// WHY THIS IS A READING AND NOT A GUESS. `ResolvedFormal` carries the same parameter TWICE:
-// `substitution_basis` is the declaration-side type with its generic leaves stamped
-// `TypeVariable { id: <binder> }` by `v1.compiler.lookup` `declaration_substitution_basis`, and
-// `declared_type` is the site-side type, with the callee's substitution already applied by
-// `v1.compiler.infer` `build_call_application_plan`. Neither side is the instantiation on its own;
-// laid position against position, every binder in the basis has exactly one site-side type under it,
-// and that is what the callee's `::<...>` has to name. This is the fact
-// `rust_witness_carrier_from_witness_headed_type_node`'s next-rung trigger records as missing -- "no
-// per-call type-argument substitution is recorded" -- and what is missing is the CHANNEL that comment
-// reads, `emit_info.expected_type`, which carries the ENCLOSING expression's type rather than this
-// argument's. The plan is a channel that does hold both sides, so the substitution is read once from
-// two facts inference already established instead of unified from a context that was never about this
-// argument.
-//
-// THE PAIRING IS TOTAL OR IT YIELDS NOTHING. Descending the two trees together is sound only while
-// they have the same shape; when the basis has more children than its site, the descent stops and
-// the binder is left unwitnessed, which the annotation turns into a refusal rather than a guess.
-//
-// ONE FUNCTION, TAKING THE PLAN, SO A LATER WIDENING CALLS IT INSTEAD OF FORKING IT. Today only the
-// by-ref bridge population asks -- the first argument of a primitive whose bridge takes `&T`. The
-// general case (every declared call naming its own type arguments) is the next rung named in
-// `gunbc.recurring_failure_mode` `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`.
-fn rust_call_type_argument_witnesses(plan: List<ResolvedCallFormal>) -> List<CallTypeArgumentWitness> {
-  flat_map(plan, entry =>
-    rust_type_argument_witness_pairs(basis: entry.formal.substitution_basis, site: entry.formal.declared_type, acc: []))
-}
-
-type CallTypeArgumentWitness {
-  name: String
-  witness: Node
-}
-
-fn rust_type_argument_witness_pairs(basis: Node, site: Node, acc: List<CallTypeArgumentWitness>) -> List<CallTypeArgumentWitness> {
-  match type_variable_binder_name(n: basis) {
-    Present { value: binder } => concat(acc, [CallTypeArgumentWitness { name: binder, witness: site }])
-    Absent => rust_type_argument_witness_pair_lists(basis_children: basis.children, site_children: site.children, acc: acc)
-  }
-}
-
-fn rust_type_argument_witness_pair_lists(basis_children: List<Node>, site_children: List<Node>, acc: List<CallTypeArgumentWitness>) -> List<CallTypeArgumentWitness> {
-  match basis_children |> first {
-    Absent => acc
-    Present { value: b } =>
-      match site_children |> first {
-        Absent => acc
-        Present { value: s } => rust_type_argument_witness_pair_lists(
-          basis_children: basis_children |> skip(1),
-          site_children: site_children |> skip(1),
-          acc: rust_type_argument_witness_pairs(basis: b, site: s, acc: acc))
-      }
-  }
-}
-
-// THE ANNOTATION ITSELF: "`::<A, B>`", the empty string when there is nothing to name, or a located
-// refusal. `callee_declaration` is the callee's declaration node, read from the same map the module
-// emitter reads every declaration from; `none` means emission could not reach it, which is refused
-// rather than treated as "not generic" -- guessing none is the old emission by another name. The
-// parameter ORDER is the callee's authored clause, read exactly as `v1.compiler.infer`
-// `bind_local_func_conformance` read it when it stamped the binder ids this rule now matches against:
-// `param_is_generic_decl` then `param_node_name_at`. It is never taken from the order witnesses happen
-// to appear in, because a turbofish is positional for rustc.
-//
-// THREE STATES ARE REFUSED, EACH LOUDLY, AT THE SITE. (1) A declared callee whose declaration
-// emission cannot reach. (2) A declared parameter the plan does not pin -- no witness, or witnesses
-// that render differently. (3) A witness the seed's own resolution check refuses:
-// `v1.compiler.infer_types` `is_fully_resolved`, the same walk the checker asks before it commits a
-// type -- the same pair the checker asks of a fold accumulator, `is_fully_resolved` together with
-// `fold_accumulator_is_unapplied_generic` in `v1.compiler.infer` -- asked with the `source_indices`
-// this function already carries. An `im::HashMap<String, _>` inside a turbofish is
-// a hole for rustc to fill, which is the defect this rule exists to close. In every case the emitted
-// program carries the refusal; it never degrades into the shape that was refused.
-fn rust_call_type_argument_annotation(
-  callee_declaration: Node?,
-  plan: List<ResolvedCallFormal>,
-  callee_name: String,
-  shared_types: Set<String>,
-  source_indices: Map<String, NewlineIndex>,
-  emit_info: EmitGraphInfo
-) -> String {
-  match callee_declaration {
-    Absent => emit_rust_compile_error_expr(message: concat(concat("by-ref bridge argument: the declaration of ", callee_name), " is not established, so its type arguments cannot be named"))
-    Present { value: item } =>
-      let type_param_names = item.params |> filter(p => param_is_generic_decl(p: p, source_indices: source_indices)) |> map(p => param_node_name_at(n: p, source_indices: source_indices))
-      let witnesses = rust_call_type_argument_witnesses(plan: plan)
-      let refusals = type_param_names |> map(name => rust_type_argument_refusal_message(witnesses: witnesses, name: name, callee_name: callee_name, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)) |> filter(m => m != "")
-      if (type_param_names |> count == 0) || (refusals |> count > 0) {
-        match refusals |> first {
-          // The FIRST refusal, in the callee's declared order, is enough: the emitted artifact is
-          // refused as a whole, and a list of complaints would be a second authority over which one
-          // the reader should fix first.
-          Present { value: message } => emit_rust_compile_error_expr(message: message)
-          Absent => ""
-        }
-      } else {
-        concat("::", concat("<", concat(type_param_names |> map(name => rust_type_argument_spelling(witnesses: witnesses, name: name, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)) |> join(separator: ", "), ">")))
-      }
-  }
-}
-
-// WHY THIS PARAMETER CANNOT BE SPOKEN, or "" when it can. The states are named apart rather than
-// collapsed into one "unavailable", because they have three different owners: an unwitnessed parameter
-// means the plan does not carry this callee's substitution, disagreeing witnesses mean its two sides
-// disagree, and an unresolved witness means inference left a hole at the site. The message is the
-// judgement's rendering, produced by the same reading that decided it, so a refusal cannot name a
-// parameter the judge did not refuse.
-fn rust_type_argument_refusal_message(witnesses: List<CallTypeArgumentWitness>, name: String, callee_name: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  let prefix = concat("by-ref bridge argument: ", callee_name)
-  let for_name = witnesses |> filter(w => w.name == name)
-  let spellings = for_name |> map(w => render_rust_type(n: w.witness, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
-  match spellings |> first {
-    Absent => concat(concat(prefix, " names no type argument for "), name)
-    Present { value: spelling } =>
-      if !all(spellings, other => other == spelling) {
-        concat(concat(prefix, " names two different type arguments for "), name)
-      } else if !all(for_name, w => is_fully_resolved(n: w.witness, source_indices: source_indices)) {
-        concat(concat(concat(prefix, " leaves the type argument for "), name), " unresolved")
-      } else {
-        ""
-      }
-  }
-}
-
-// THE ONE SPELLING OF A PINNED PARAMETER: the witness the plan carries for it. Reached only after
-// `rust_type_argument_refusal_message` said the parameter is pinned, which is what makes the `first`
-// here a reading rather than a hope.
-fn rust_type_argument_spelling(witnesses: List<CallTypeArgumentWitness>, name: String, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
-  match witnesses |> filter(w => w.name == name) |> map(w => render_rust_type(n: w.witness, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)) |> first {
-    Present { value: spelling } => spelling
-    Absent => ""
-  }
-}
-
-// WHY THE RESOLUTION QUESTION IS ASKED OF THE SEED AND NOT OF A LOCAL WALK OR OF RENDERED TEXT. The
-// seed already owns the answer -- `v1.compiler.infer_types` `type_resolution_verdict` -- so a second
-// walk beside it would be a second check for one fact (DESIGN section 3, "Minimization holds only if
-// each fact lives in exactly one place"), and a weaker one: a walk reads an `Arrow` as resolved without
-// asking its parameter types, and takes a container at its spelling without its arity or
-// `authored_container_spelling_verdict`, so it could hand this rule a witness with a hole in it -- the
-// defect the refusal exists to stop. Asking the verdict instead means whatever the emitter refuses is
-// exactly what inference refused. Rendered text is not a substitute either: a text test misses
-// placeholders inside tuples, function arrows and nested containers, and tracks whatever spacing the
-// renderer happens to use. ONE LIMITATION, STATED: `v1.compiler.infer`
-// `fold_accumulator_is_unapplied_generic` exists precisely because an unapplied generic accumulator
-// expansion -- a `Disj` or `Conj` still carrying its declared params -- reads as fully resolved to this
-// check; a callee type argument spelled as such an expansion would pass here, and if rustc ever refuses
-// one the repair belongs at `is_fully_resolved`, not in a second walk beside it.
-
 fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
+}
+
+// ONE BORROW, BOTH SPELLINGS. A by-ref bridge takes its carrier by reference in two spellings --
+// `map_keys(m: x)` as the bridge's first argument, and `x.map_keys()` as a method receiver -- and the
+// borrow is one fact, so it is spelled by one function rather than a `concat` repeated per position:
+// neither spelling can drift from the other, and the roster they apply to stays derived from the
+// declarations (`rt_ref_map_functions`, `rust_runtime_bridge_passes_receiver_by_ref`) rather than a
+// name list written here. The other half of the rule this borrow once needed -- a generic callee
+// rendering its own `::<..>` clause, because at a borrow the callee's type arguments are otherwise
+// rustc's to invent -- ships with the change that brings its first eligible call site; the class, the
+// receipts and the named trigger live in `gunbc.recurring_failure_mode`
+// `by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow`.
+fn rust_by_ref_bridge_argument(base: String) -> String {
+  concat("&", base)
 }
 
 // The Absent arm returns function_name UNCHANGED, and that is the identity case,
@@ -13519,7 +13281,7 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
       _ => "v1_rt::rc_empty_set::<_>()"
     }
   } else {
-    emit_typed_call(func: func, args: args, inferred: inferred, call_semantics: call_semantics, callee_is_function_value: callee_is_function_value, call_target: call_target, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info_in: emit_info)
+    emit_typed_call(func: func, args: args, inferred: inferred, call_semantics: call_semantics, callee_is_function_value: callee_is_function_value, call_target: call_target, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
 
   let wraps_in_rc = match call_target_runtime_primitive_name(target: call_target) {
@@ -13959,15 +13721,7 @@ fn emit_machine_word_lowered_call(call_target: CallTargetIdentity, func: String,
   }
 }
 
-fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info_in: EmitGraphInfo) -> String {
-  // THE PERMISSION IS SPENT HERE. A by-ref bridge grants it for exactly one argument expression;
-  // this call reads it once, decides its own annotation from it, and everything it renders INSIDE
-  // itself -- its arguments, its receiver, any closure body -- gets the cleared record, so a nested
-  // call never rides an outer site's permission. That is why the flag cannot simply travel: the
-  // question is "is THIS call the bridged argument", and the answer is yes for one call and no for
-  // everything below it.
-  let names_callee_arguments = emit_info_in.names_callee_type_arguments
-  let emit_info = emit_info_callee_type_arguments_spent(emit_info: emit_info_in)
+fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call_semantics: CallSemantics?, callee_is_function_value: Bool, call_target: CallTargetIdentity, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   if callee_is_function_value {
     return emit_typed_function_value_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
@@ -14083,12 +13837,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     let arg_emit_info = if callee != none && !is_rt { user_call_lambda_emit_info(arg: arg_value(n: a), emit_info: typed_emit_info, si: scope.type_env.source_indices) } else { typed_emit_info }
     let arg_scope = lambda_argument_scope(arg: arg_value(n: a), scope: scope)
     if is_rt_ref_map && idx == 0 {
-      // THE SITE GRANTS, THE CALLEE DECIDES -- AND ONLY A CALLEE CAN BE GRANTED. This is the one
-      // position where a borrow is the only thing telling rustc what the argument's callee was
-      // instantiated at, so the argument is rendered with the permission to name its own type
-      // arguments; nothing else about it changes. A borrowed expression that is not a call keeps the
-      // permission it was handed (`none` of it, in practice): `rust_by_ref_bridge_grant`.
-      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: rust_by_ref_bridge_grant(emit_info_in: arg_emit_info, borrowed: arg_value(n: a)))
+      let base = emit_typed_expr_base(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
       rust_by_ref_bridge_argument(base: base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: arg_emit_info)
@@ -14141,19 +13890,6 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
         }
     } }
   let func_name = if callee_self_capture { concat(func_ident, ".clone()") } else { func_ident }
-  // THE CALLEE NAMES ITS OWN TYPE ARGUMENTS, when and only when a by-ref bridge asked it to. Only a
-  // declared callee has an authored `<...>` clause to instantiate: a runtime bridge renders
-  // monomorphically, and a call whose target is not a declaration has nothing to name, so there the
-  // borrow stands exactly as it did before this rule existed. The declaration is read from the same
-  // map the module emitter reads every declaration from; its absence reaches the annotator as `none`
-  // and becomes a refusal there, not an assumption of monomorphism.
-  let callee_type_argument_annotation = if names_callee_arguments {
-    match call_target {
-      SourceDeclarationCall { owner_module_path: owner, decl_name: decl } =>
-        rust_call_type_argument_annotation(callee_declaration: map_get(emit_info_in.fn_decl_identity_items, type_decl_identity(owner_module: owner, decl_name: decl)), plan: application_plan, callee_name: func, shared_types: shared_types, source_indices: si, emit_info: emit_info)
-      _ => ""
-    }
-  } else { "" }
   let call_str = if unrealized_primitive_call {
     let seam_type = match inferred {
       Present { value: Resolved { node: ret_type } } =>
@@ -14174,7 +13910,7 @@ fn emit_typed_call(func: String, args: List<Node>, inferred: InferredNode?, call
     if is_rt && func == "concat" && all_args |> count > 2 {
       emit_nested_rt_concat(remaining: all_args, acc: "", shared_types: shared_types)
     } else {
-      concat(func_name, concat(callee_type_argument_annotation, concat("(", args_str, ")")))
+      concat(func_name, "(", args_str, ")")
     }
   }
   match callee {
@@ -14507,10 +14243,6 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
 // them from the fold body or refuses loudly. An earlier cut of this repair instead widened the
 // "under-resolved accumulator" test to prefer the contextual type; that was a measured NON-EVENT
 // (falsifier m09: removing it reddened nothing, and the four sites stayed) and is deleted.
-// The two emit_info rebuilds below render the fold's BODY -- the accumulator binding and the fold's
-// own sub-expressions -- which sit INSIDE whatever expression the by-ref bridge borrowed. They pin
-// `names_callee_type_arguments: false` rather than copying it: a call rendered here is not the
-// borrowed expression, so it has no claim on the annotation (rust_by_ref_bridge_grant).
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -14598,7 +14330,6 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
               trmc_out: emit_info.trmc_out,
-              names_callee_type_arguments: false,
               dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
@@ -14643,7 +14374,6 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
               trmc_out: emit_info.trmc_out,
-              names_callee_type_arguments: false,
               dying_base_sites: emit_info.dying_base_sites
             }
           Absent => emit_info
@@ -15004,11 +14734,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
     apply_type_template1(template: spec.error_type_template, arg0: concat("method ", function_name, " is neither a resolved callable receiver field nor a registered v1_rt bridge function"))
   } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
-    // The same borrow spelled as a method: `fold_list(..).map_keys()` drops the argument's type at
-    // the borrow exactly as `map_keys(m: fold_list(..))` does, so the rule sits where the borrow is
-    // made rather than being repeated per spelling -- and both spellings grant the same permission,
-    // so neither can be annotated while the other silently is not.
-    rust_by_ref_bridge_argument(base: emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: rust_by_ref_bridge_grant(emit_info_in: emit_info, borrowed: receiver)))
+    rust_by_ref_bridge_argument(base: emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
   } else {
     emit_cloned_arg(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   }
@@ -17663,7 +17389,7 @@ fn emit_rust_tco_non_self_call(frame: TcoFrame, registry: Map<String, ItemInfo>,
   match frame.expr.expr_data {
     ExprCall { call_semantics: cs, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: frame.expr, source_indices: frame.scope.type_env.source_indices)
-      let call_str = emit_typed_call(func: f, args: frame.expr.children, inferred: frame.expr.inferred, call_semantics: cs, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info_in: emit_info)
+      let call_str = emit_typed_call(func: f, args: frame.expr.children, inferred: frame.expr.inferred, call_semantics: cs, callee_is_function_value: call_semantics_is_function_value(cs: cs), call_target: call_semantics_target(cs: cs), registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info)
       concat("break ", trmc_exit(value: call_str, emit_info: emit_info), ";")
     _ => emit_error_expr(message: "emit_rust_tco_non_self_call expected ExprCall", target: Rust)
   }

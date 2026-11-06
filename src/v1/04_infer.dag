@@ -20929,7 +20929,6 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    names_callee_type_arguments: false,
     dying_base_sites: empty_map()
   }
 }

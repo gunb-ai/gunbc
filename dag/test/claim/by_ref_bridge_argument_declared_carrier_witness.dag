@@ -1,74 +1,42 @@
 module test.claim.by_ref_bridge_argument_declared_carrier_witness
 
-// THE CALLEE NAMES ITS OWN TYPE ARGUMENTS AT A BY-REF BORROW.
+// THE BY-REF BORROW IS ONE SPELLING, AND IT STAYS PLAIN WHEREVER NOTHING ASKS MORE OF IT.
 //
 // A by-ref runtime bridge (`extdeps.languages.rust.emit rt_function_registry` rows with
-// `passes_by_ref: true`) took its argument as `&<expr>`. When `<expr>` is a call to a GENERIC
-// declaration, rustc receives that borrow as the only evidence for the call's own type arguments and
-// uses it, so the emitted crate refuses a program the .dag checker had already accepted. The invalid
-// state, the harm, the distinguishing facts and the runs that recorded them live in exactly one place:
-// gunbc.recurring_failure_mode by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow.
-// This file cites that row by symbol and states no occurrence of its own -- a second account of one
-// fact is a DESIGN section 3 defect, and an earlier revision of this header carried one.
+// `passes_by_ref: true`) takes its argument as `&<expr>`, in two spellings -- the bridge's first
+// argument and a method receiver -- and this head centralizes that borrow into `v1.compiler.emit_rust`
+// `rust_by_ref_bridge_argument` so neither spelling can drift from the other. The invalid state that
+// borrow once caused over a GENERIC call argument, the harm, the distinguishing facts and the runs
+// that recorded them live in exactly one place: gunbc.recurring_failure_mode
+// by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow. This file cites that row by
+// symbol and states no occurrence of its own -- a second account of one fact is a DESIGN section 3
+// defect. The repair half of that row -- the callee rendering its own `::<..>` clause, with the
+// refusal in place of a `::<_>` hole -- ships WITH THE CHANGE THAT BRINGS ITS FIRST ELIGIBLE CALL
+// SITE, together with the claim that exercises it (the row names the trigger); review 91465 found the
+// one-way door in shipping an unexecuted annotation arm ahead of the corpus, and deleting it from this
+// PR rather than shipping it unexecuted is the DESIGN 5 answer.
 //
-// THE FORM, EXACTLY. The borrow stays as it was and the CALL gains the clause rustc had been left to
-// invent: `v1_rt::sorted_map_keys(&crate::std_algebra::fold_list::<i64, bool>(..))`. The type arguments
-// are read off the call's own application plan by `v1.compiler.emit_rust`
-// `rust_call_type_argument_witnesses`, in the callee's AUTHORED order, and a parameter the plan does
-// not pin -- or a witness the checker left unresolved -- emits a located `compile_error!` instead of a
-// hole: `::<_>` is never emitted, because a hole is the very guess this rule exists to remove. An
-// earlier revision wrapped the argument in a binding block instead, and the borrow checker refused that
-// shape at every site it fired at (the temporary the borrow points at dies at the block's brace, before
-// the call that uses the reference). That finding is what this revision answers, and the four-shape rustc
-// differential in the PR body is its evidence: shape A is main's plain borrow, shape B the refused block,
-// shape C this form compiling and running, shape D the refusal.
-//
-// WHAT THESE CLAIMS ARE, AND WHAT THEY ARE NOT. Three arms over three programs, each one seed compile,
-// each pinning EMITTED TEXT. They are shape evidence and nothing more: each goes red when the rule is deleted
-// (the required text disappears and the plain-borrow form returns), and the name arm goes red if the rule
-// is widened into a wrapper at sites that need no clause. They are NOT execution evidence, and this
-// header does not pretend otherwise. No lane under `.github/workflows` evaluates the claim pool these
-// arms belong to, and at this head no committed mirror puts a GENERIC call behind a by-ref borrow (the
-// population, with the command that measured it, is in the row), so nothing in the tree drives the arm.
-// The executing evidence is the rustc differential, run by hand and reproduced in the PR body with
-// commands, the compiler version and the full output. The missing route -- a sanctioned way for a claim
-// to invoke the target compiler -- is named in the row as the next rung's trigger, not built here.
-//
-// WHY THE SECOND CLAIM EXISTS. A name, a field or an index is already a place of a known type: rustc has
-// no type arguments to invent there, and annotating it would be work that changes nothing at each of the
-// plain by-ref sites the committed mirrors already hold. The second claim asserts the plain borrow
-// survives for a name, so widening the rule into a wrapper at every borrow site reddens the floor too.
-//
-// The programs below are kept in the exact spelling that was measured emitting the defect form, so a
-// reader can run either one through `gunbc compile` and diff it against the assertion.
+// WHAT THESE CLAIMS ARE, AND WHAT THEY ARE NOT. Two arms over two programs, each one seed compile,
+// each pinning EMITTED TEXT. They are shape evidence, and they exist to go RED if the plain borrow is
+// ever widened into a wrapper or a block at sites that need no clause: the name arm pins the borrow
+// over a name, the branch arm pins the borrow over an `if` whose branches are calls -- the borrowed
+// expression has no callee, so nothing behind it may be asked to name type arguments. They are NOT
+// execution evidence, and this header does not pretend otherwise: no lane under `.github/workflows`
+// evaluates the claim pool these arms belong to. The rustc differential for the class, including the
+// `&if` shape these programs emit, is recorded in the row.
 
-// A by-ref bridge over an unbound call to the generic `fold_list`: the shape that was measured emitting the
-// defect form, kept in the spelling it was measured in so a reader can run it through `gunbc compile` and
-// diff the result against the assertion below.
-fn by_ref_generic_call_argument_source() -> String {
-  "module byrefgenericarg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(ids: List<Int>) -> List<Int> {\n  sorted_map_keys(fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))\n}\n"
-}
-
-// The same bridge over a NAME: the shape that has always compiled and must keep its plain borrow.
+// The bridge over a NAME: the shape that has always compiled and must keep its plain borrow.
 fn by_ref_plain_name_source() -> String {
   "module byrefplainname\n\nimport std.types { Int, String }\n\nfn use_len(s: String) -> Int {\n  string_length(s: s)\n}\n"
 }
 
-// The same bridge over an `if` whose branches are calls to the generic `fold_list`. The borrowed
-// expression has no callee, so the permission must stop at it: the calls its branches render are not
-// the bridged argument and their own branch context is what pins their type arguments. This is the
-// third shape the rule must refuse to touch.
+// The bridge over an `if` whose branches are calls to the generic `fold_list`. The borrowed expression
+// has no callee; the calls its branches render are not the bridged argument and their own branch
+// context is what pins their type arguments. This is the shape that must keep main's clause-free
+// spelling: requiring the branches to carry a clause -- or handing a permission to a borrowed
+// expression that cannot answer it -- reddens this floor.
 fn by_ref_branch_call_argument_source() -> String {
   "module byrefbrancharg\n\nimport std.algebra { fold_list, empty_map, map_insert }\nimport std.types { Bool, Int, List, Map }\n\nfn keyed_ids(flag: Bool, ids: List<Int>) -> List<Int> {\n  sorted_map_keys(if flag { fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }) } else { empty_map() })\n}\n"
-}
-
-test fn by_ref_bridge_over_a_call_argument_names_its_own_type_arguments() -> Bool {
-  compile_dag_rust_emit_check(
-    by_ref_generic_call_argument_source(),
-    "src/byrefgenericarg.rs",
-    ["v1_rt::sorted_map_keys(&crate::std_algebra::fold_list::<"],
-    ["v1_rt::sorted_map_keys(&crate::std_algebra::fold_list(", "__by_ref_arg", "::<_>"]
-  )
 }
 
 test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
@@ -80,19 +48,6 @@ test fn by_ref_bridge_over_a_name_keeps_the_plain_borrow() -> Bool {
   )
 }
 
-// WHY THE THIRD CLAIM EXISTS. The permission to name type arguments is granted at the borrow, and a
-// borrow can point at anything: `sorted_map_keys(if flag { fold_list(..) } else { empty_map() })` borrows
-// an `if`, not a call. Granting on the site alone handed that permission to the whole borrowed expression,
-// so each branch's `fold_list` rode it and was asked to name type arguments its own branch already pins --
-// and a witness the plan left unreadable would then have emitted a `compile_error!` at a call that never
-// had the defect, breaking a seed build that is green on main. That is a diagnostic for a state the site
-// is not in, which DESIGN section 5 refuses ("every path succeeds fully or fails with a typed, located
-// diagnostic"), so the grant is made by v1.compiler.emit_rust `rust_by_ref_bridge_grant` only when the
-// borrowed expression IS a call. This claim is what reddens a grant made on the site instead of the
-// expression: it requires the branches to keep main's clause-free spelling and forbids any clause on them.
-// The branches' own context is what pins those callees -- the shape compiles and asserts its result with
-// no annotation, rustc fixture shape E in the row's differential -- and the `&if` spelling this program
-// emits is what main emits and what rustc accepts, so nothing here asks for parentheses.
 test fn by_ref_bridge_over_a_branch_call_keeps_the_plain_borrow() -> Bool {
   compile_dag_rust_emit_check(
     by_ref_branch_call_argument_source(),

@@ -38,10 +38,6 @@ data by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow: Recur
   evidence: [
     DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_by_ref_bridge_argument", field: WholeDeclaration },
     DeclarationRef { module_path: "v1.compiler.infer_types", decl_name: "is_fully_resolved", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_call_type_argument_witnesses", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "rust_call_type_argument_annotation", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1.compiler.infer_emit_info", decl_name: "emit_info_names_callee_type_arguments", field: WholeDeclaration },
-    DeclarationRef { module_path: "test.claim.by_ref_bridge_argument_declared_carrier_witness", decl_name: "by_ref_bridge_over_a_call_argument_names_its_own_type_arguments", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.by_ref_bridge_argument_declared_carrier_witness", decl_name: "by_ref_bridge_over_a_name_keeps_the_plain_borrow", field: WholeDeclaration },
   ],
 }
