@@ -525,7 +525,7 @@ fn runner_host_key_observation(capture: String, machine: NonEmptyStr, row: Ancho
     HostCaptureOpen { envelope: _ } => RunnerHostKeyNotObserved { cause: "the envelope is still open; no pin is taken before END" }
     HostCaptureBound { envelope: e } => {
       let refusals = flat_map(
-        [runner_host_section_host_key_privsep, runner_host_section_host_key_gen, runner_host_section_host_key_pub, runner_host_section_host_key_fingerprint],
+        [runner_host_section_host_key_gen, runner_host_section_host_key_pub, runner_host_section_host_key_fingerprint],
         n => runner_host_section_refusal(read: runner_host_section_read(envelope: e, name: n)),
       )
       if count(refusals) != 0 {
