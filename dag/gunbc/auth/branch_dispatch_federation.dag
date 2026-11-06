@@ -168,12 +168,26 @@ fn run_scoped_account_id(m: RunScopedMode) -> NonEmptyStr {
 
 data mtcollins1_boot_mode_name: NonEmptyStr = "mtcollins1_boot"
 
+// THE RUNNER-HOST MODES RUN FROM A BRANCH ON ONE APPROVED RUN AT A TIME (operator, 2026-11-04: "i need to
+// be able to fleet converge from a branch, doing it from main is too slow/formal"; per-run approval chosen
+// over an approval-free branch identity). Without a row they kept the main-only sign-in, so a change to the
+// runner fold -- gunbc#15819, which had to reach every slot before actions/runner 2.336.0 stopped receiving
+// jobs on 2026-11-05 -- could not touch a host before it merged (branch observe run 41841506708 refused at
+// WIF). Both map to the standing fleet account, the account these modes sign in as at main: the converge
+// reads the fleet SSH key and the gunbai-ci App key, and fleet-apply-run holds only the first, so it is not
+// a narrower account for this mode but one that cannot run it. The grant still gates a credential the
+// branch cannot obtain without it, which is what admits a row (dashboard_deploy above is the counter-case).
+data runner_host_file_observe_mode_name: NonEmptyStr = "runner_host_file_observe"
+data runner_host_file_converge_mode_name: NonEmptyStr = "runner_host_file_converge"
+
 fn run_scoped_modes() -> List<RunScopedMode> {
   [
     RunScopedMode { mode: "hetzner_cloud_server_read", account_id: hetzner_cloud_control_service_account_id, main_route: MainUsesGrantedAccount },
     RunScopedMode { mode: mtcollins1_boot_mode_name, account_id: mtcollins1_boot_run_scoped_service_account_id, main_route: MainUsesSelectedSource },
     RunScopedMode { mode: "plan", account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
     RunScopedMode { mode: "apply", account_id: fleet_apply_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: runner_host_file_observe_mode_name, account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
+    RunScopedMode { mode: runner_host_file_converge_mode_name, account_id: fleet_plan_run_scoped_service_account_id, main_route: MainUsesFleetIdentity },
   ]
 }
 

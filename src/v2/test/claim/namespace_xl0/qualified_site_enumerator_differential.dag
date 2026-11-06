@@ -5,7 +5,6 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.reference_site_collector { collect_reference_sites }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import std.types { list_length }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -13,7 +12,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.std.text { String }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -102,7 +101,7 @@ fn qsd_call_body_rows() -> FreeMonoid<String> {
 
 fn qsd_call_body_has_exactly(row: String) -> Bool {
   let rows = qsd_call_body_rows()
-  list_length(items: rows) == 2
+  length(xs: rows) == 2
     && fold_list(xs: rows, empty: false, cons: fn(acc, r) { acc || r == row })
 }
 

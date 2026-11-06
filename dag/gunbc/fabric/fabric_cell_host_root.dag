@@ -1,6 +1,6 @@
 module gunbc.fabric.fabric_cell_host_root
 
-import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.optional { Optional, Present }
 import product.host_identity { HostIdentity }

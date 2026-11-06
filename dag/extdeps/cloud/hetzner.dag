@@ -1,15 +1,11 @@
 module extdeps.cloud.hetzner
 
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Architecture }
 import extdeps.currency.currency { CurrencyCode, Eur, Usd, currency_code_eq }
 import std.measure { ByteSize, HardwareThreadCount, MoneyAmountMicro, MoneyPerHour, MoneyPerMonth, byte_size, hardware_thread_count, money_amount_micro }
 import std.types { Bool, Int, List, NonEmptyStr }
-
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -55,14 +51,6 @@ data hetzner_cloud_nested_virtualization_available: Bool = false
 data hetzner_cloud_metadata_instance_id_url: String = "http://169.254.169.254/hetzner/v1/metadata/instance-id"
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
-
-data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.cloud.hetzner", decl_name: "HetznerCloudServerCatalogRow"),
-    reason: "hourly/monthly_cap: MoneyAmountMicro + separate currency forks std.measure MoneyRate<P> (MoneyPerHour/MoneyPerMonth); parallel representation fork",
-    dissolution: unbound_dissolution(description: "next hetzner-cloud catalog edit routes hourly and monthly_cap through MoneyPerHour/MoneyPerMonth"),
-  )
-]
 
 // A PRICE WITHOUT THE DATE IT APPLIES FROM IS NOT A PRICE, IT IS A PRICE-SHAPED HOLE. This field
 // was added after the row below was found carrying the SUPERSEDED tariff - cited, correctly, to a
@@ -173,7 +161,6 @@ data cax41_catalog_usd: HetznerCloudServerCatalogRow = HetznerCloudServerCatalog
 // quote in that currency, and joining two tariff VERSIONS across two currencies - which is the
 // arithmetic that manufactured the premium in the first place.
 
-
 // ---------------------------------------------------------------------------------------------
 // THE CLOUD LISTING AS OBSERVED FROM A SIGNED-IN CONSOLE ON 2026-09-05/06, carrying three facts
 // the cax41_catalog row above does not: the REGION the rate belongs to, the CURRENCY the console
@@ -221,9 +208,6 @@ type HetznerCloudListedRow {
 }
 
 data hetzner_cloud_console_observation: NonEmptyStr = "Operator reading of the signed-in Hetzner Cloud console, 2026-09-05 and 2026-09-06, relayed into session quiet-cat-23. Prices as displayed, excl. VAT. WHAT DETERMINED THE DISPLAY CURRENCY WAS NOT RECORDED - an account billing country, a console selector, or a region default would each produce a dollar figure and they are not the same fact. The rows are therefore carried as USD-quoted-to-this-account rather than as the vendor's universal dollar price, and a consumer serving a differently-billed market must re-read rather than reuse. Memory is recorded in GIBIBYTES following cax41_catalog above, which reads this vendor's GB suffix as binary; the vendor's own suffix is not repeated here so the two rows cannot drift apart on the byte basis."
-
-
-
 
 // THE ROWS. Helsinki and Nuremberg quoted IDENTICAL hourly and monthly figures on every size where
 // both were read, so each row carries the list of regions it was observed in rather than being

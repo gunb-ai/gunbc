@@ -31,6 +31,9 @@ import gunbc.machine_intake.mtcollins1_boot_run {
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_medium_refusal,
 }
 import gunbc.host.megarac_managed_host { megarac_operation_evidence }
+import gunbc.executor_privileged_operation { EnsureSystemAccount, ensure_system_account_converge_command_as_root, executor_privileged_operation_converge_command }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
+import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
@@ -383,8 +386,9 @@ test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> B
 
 // THE IMAGE CREATES THE ACCOUNT ITS LISTENERS RUN AS, AND THE READBACK GATES ON IT (operator decision B,
 // 2026-10-27). The seed program runs useradd for exactly the declared account; a boot whose runner-account section
-// failed (useradd exits 9 on a name already in use, 1 when it cannot update the password file) is refused naming
-// that section, never reported up with an account the slots would then fail to find.
+// failed (useradd exits 1 when it cannot update the password file; the stage's AccountExistsCheck keeps an existing
+// name from reaching useradd's 9) is refused naming that section, never reported up with an account the slots would
+// then fail to find.
 test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() -> Bool {
   let created = match runner_host_medium_image(host: mtcollins1_runner_host) {
     RunnerHostMediumImageDerived { input: input, runner: _ } =>
@@ -405,7 +409,7 @@ test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() 
 // THE SOL READER (S4(c)). The pin is read from the CLOSED envelope bound to the machine, its expected boot id is the
 // envelope's own run identity, and every section the pin depends on must have exited 0. The inhabitance obligation
 // (DESIGN section 3: the real image emits exactly this line) is NOT discharged here: the capture below is SUPPLIED;
-// the open frontier row is per_boot_console_marker in anchored_host_transport_frontier_rows.
+// the open frontier row is anchored_host_transport_per_boot in anchored_host_transport_frontier_rows.
 fn observed_boot(capture: String) -> String {
   match runner_host_key_observation(capture: capture, machine: "mtcollins1" as NonEmptyStr, row: mtcollins1_anchored_host_row) {
     RunnerHostKeyObserved { boot_id: b, pin: p } => if (p.boot_id as String) == (b as String) { b as String } else { "pin-boot-differs" }
@@ -421,7 +425,7 @@ test fn the_sol_reader_takes_the_pin_and_the_boot_id_from_the_bound_closed_envel
   observed_boot(capture: keyed_capture(key_exit: "0", pub: pub_body, fp: fingerprint_body)) == "aaaaaaaa-0000-4000-8000-000000000001"
 }
 
-// RED: a key whose daemon never started, or whose generation failed, is not a pin; neither is an absent line,
+// RED: a key whose generation failed, is not a pin; neither is an absent line,
 // a malformed line, an open envelope, or an envelope for another machine.
 test fn the_sol_reader_refuses_a_failed_section_a_missing_or_malformed_line_an_open_envelope_and_another_machine() -> Bool {
   observed_boot(capture: keyed_capture(key_exit: "1", pub: pub_body, fp: fingerprint_body)) == "not-observed"
@@ -436,7 +440,7 @@ test fn the_sol_reader_refuses_a_failed_section_a_missing_or_malformed_line_an_o
 }
 
 // The stages' rendered commands: the key lives only on tmpfs under the declared path, the public half and its
-// fingerprint are read by single structured commands (no shell composition), and no sshd is started. The line grammar is composed in the reader from the marker, which is imported, not retyped.
+// fingerprint are read by single structured commands (no shell composition), and no sshd is started.
 test fn the_host_key_stages_render_single_commands_on_the_declared_path() -> Bool {
   let gen = runner_host_key_gen_command()
   let pubcmd = runner_host_key_pub_command()
@@ -446,4 +450,24 @@ test fn the_host_key_stages_render_single_commands_on_the_declared_path() -> Boo
   && string_contains(s: fp, pattern: "ssh-keygen") && string_contains(s: fp, pattern: runner_host_key_public_file as String)
  
   && !string_contains(s: gen, pattern: "&&") && !string_contains(s: pubcmd, pattern: "$(") && !string_contains(s: fp, pattern: "$(")
+}
+
+// THE ACCOUNT STAGE IS EnsureSystemAccount'S OWN OPERATION, NOT A SECOND useradd SPELLING (review 90833). An installer
+// stage already runs as root, so it takes the operation unelevated: the same argv the sudo route runs (the binary from
+// the fleet roster, the nologin shell from fleet_posix_nologin_shell_path) behind the same AccountExistsCheck, with
+// only the sudo prefix gone. The expected line is spelled out from useradd(8) and id(1) as a fixture, and the image
+// must carry exactly that line as a stage, so the route from the operation to the seed program is executed here.
+test fn the_runner_account_stage_is_ensure_system_account_without_sudo() -> Bool {
+  let as_root = ensure_system_account_converge_command_as_root(login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path) as String
+  let elevated = executor_privileged_operation_converge_command(op: EnsureSystemAccount { login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path })
+  let operation_words = "'/usr/sbin/useradd' '--system' '--no-create-home' '--shell' '/usr/sbin/nologin' 'gunbc-runner'"
+  as_root == concat("'id' '-u' 'gunbc-runner' >/dev/null 2>&1 || ", operation_words)
+    && string_contains(s: elevated, pattern: operation_words)
+    && string_contains(s: elevated, pattern: "sudo")
+    && !string_contains(s: as_root, pattern: "sudo")
+    && (match runner_host_medium_image(host: mtcollins1_runner_host) {
+      RunnerHostMediumImageDerived { input: input, runner: _ } =>
+        string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: posix_single_quote(spelling: as_root))
+      _ => false
+    })
 }

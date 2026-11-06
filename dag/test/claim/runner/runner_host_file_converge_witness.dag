@@ -4,7 +4,7 @@ import gunbc.runner.runner_user_session_receipt { ReceiptAbsent }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
 import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
 import std.list { distinct_by_key }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.runner.runner_slot_allocation { deploy_slot_identities }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd.unit_file { ExitTypeMain, ExitTypeCgroup, KillModeControlGroup, KillModeProcess, serialize_systemd_drop_in }
@@ -507,25 +507,26 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
     RunnerHostFileSubjectAdmitted { subject: s } =>
       (s.target.principal as String) == "ubuntu"
         && (known_hosts_host_field(address: s.target.address) as String) == "srv1"
-        && length(s.desired_units) > 1
-        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+        && length(s.desired_units) >= 1
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
+        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
   }
 }
 
 // THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
 // before any SSH. On srv1, committed width 3 (user-work 88 GiB plus the stacked attempt-worker
-// slice) desires 01 and 02; fabric member 13 is not a retiree; the union of open rows retires
-// 03..12 and 14..50.
+// slice) desires the deploy slot 02 ALONE (it is charged before the CI prefix, so 01 is a retiree at the 25 GiB slot);
+// fabric member 13 is not a retiree; the union of open rows retires 01, 03..12 and 15..50.
 test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
   match runner_host_file_subject(host: operator_host_srv1) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
-      length(s.desired_units) == 2
-        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+      length(s.desired_units) == 1
+        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
+        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
-        && length(s.retired_units) == 46
+        && length(s.retired_units) == 47
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
@@ -1004,7 +1005,7 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
               FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
             deploy_account: HostHasNoDeploySlot,
-            deploy_trees: [],
+            slot_trees: [],
             superseded: [],
             deploy_readings: [],
           })
@@ -1610,7 +1611,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
-        deploy_trees: [],
+        slot_trees: [],
         superseded: [],
         deploy_readings: [],
       })
@@ -1792,7 +1793,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
-        deploy_trees: [],
+        slot_trees: [],
         superseded: [],
         deploy_readings: [],
       })
@@ -1810,7 +1811,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
-        deploy_trees: [],
+        slot_trees: [],
         superseded: [],
         deploy_readings: [],
       })
@@ -2042,7 +2043,7 @@ test fn the_control_shadows_retired_are_only_set_property_files_of_the_cap_prope
       let paths = runner_host_control_shadow_paths(subject: subj)
       count(paths) == count(subj.desired_units) * 8
         && any(paths, p => p == "/etc/systemd/system.control/actions-runner@srv1-02.service.d/50-MemoryMax.conf")
-        && any(paths, p => p == "/run/systemd/system.control/actions-runner@srv1-01.service.d/50-TasksMax.conf")
+        && any(paths, p => p == "/run/systemd/system.control/actions-runner@srv1-02.service.d/50-TasksMax.conf")
         && !any(paths, p => starts_with(s: p, prefix: "/etc/systemd/system/"))
     }
   }

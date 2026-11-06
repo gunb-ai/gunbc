@@ -46,8 +46,9 @@ import gunbc.machine_intake.host_capture_envelope {
 }
 import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, checked_host_key, per_boot_pin_from_checked_key }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
-import extdeps.tools.shadow_utils { useradd_system_nologin_command }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
+import gunbc.executor_privileged_operation { ensure_system_account_converge_command_as_root }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -184,7 +185,7 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0, existing_directories: TarOverwriteDir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
-    HostCaptureStage { name: runner_host_section_runner_account, command: shell_command_render(command: useradd_system_nologin_command(name: runner_host_medium_runner_account)) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_account, command: ensure_system_account_converge_command_as_root(login: runner_host_medium_runner_account, shell: fleet_posix_nologin_shell_path) },
     HostCaptureStage { name: runner_host_section_host_key_gen, command: runner_host_key_gen_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_pub, command: runner_host_key_pub_command() as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_host_key_fingerprint, command: runner_host_key_fingerprint_command() as NonEmptyStr },

@@ -7,8 +7,9 @@ import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterfa
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 import std.process { ExitSuccess,exit_failure }
 import product.printed_chassis.cadquery_realization {realize_review_parts,ReviewCadQueryEmitted,ReviewCadQueryRefused,review_program_source}
-import product.printed_chassis.cassette_review {rack_review_assembly}
-import product.printed_chassis.printable_assembly {PrintableAssembly,printable_manifest}
+import product.printed_chassis.cassette_review {rack_review_selection_for}
+import product.printed_chassis.board_seat {BoardSeat,altra_seat}
+import product.printed_chassis.printable_assembly {PrintableAssembly,PrintableAssemblyReady,PrintableAssemblyRefused,printable_manifest}
 import extdeps.languages.json.emit {serialize_json,json_string,json_object,json_kv}
 import product.printed_chassis.assembly_review_checks {review_model_checks}
 
@@ -138,6 +139,15 @@ fn adapter_source() -> String { join([
   "                volume=world[a['id']].intersect(world[b['id']]).Volume()\n",
   "                if volume>1e-4:collisions.append(\{'a':a['id'],'b':b['id'],'volume_mm3':volume\})\n",
   "    if collisions:raise ValueError('Printed-part collisions: '+json.dumps(collisions))\n",
+  "    # A printed part overlapping a purchased or metal part is refused unless one interface lists both and declares the non-printed one intended_overlap.\n",
+  "    declared=\{(i_id,m) for i in model['interfaces'] for m in i['intended_overlap'] for i_id in i['members']\}\n",
+  "    purchased_collisions=[]\n",
+  "    for a in printed:\n",
+  "        for b in model['parts']:\n",
+  "            if b['kind'] not in ('purchased','metal') or b['id'] not in world or not overlaps(bounds[a['id']],bounds[b['id']]):continue\n",
+  "            volume=world[a['id']].intersect(world[b['id']]).Volume()\n",
+  "            if volume>1e-4 and (a['id'],b['id']) not in declared:purchased_collisions.append(\{'printed':a['id'],'purchased':b['id'],'volume_mm3':volume\})\n",
+  "    if purchased_collisions:raise ValueError('Printed part overlaps a purchased part with no declared intent: '+json.dumps(purchased_collisions))\n",
   "    keepout_collisions=[]\n",
   "    for ident in model['required_keepouts']:\n",
   "        assert ident in world and next(p for p in model['parts'] if p['id']==ident)['kind']=='clearance', 'Required keepout absent'\n",
@@ -146,7 +156,7 @@ fn adapter_source() -> String { join([
   "                volume=world[ident].intersect(world[p['id']]).Volume()\n",
   "                if volume>1e-4:keepout_collisions.append((ident,p['id'],volume))\n",
   "    if keepout_collisions:raise ValueError('Required clearance occupied: '+json.dumps(keepout_collisions))\n",
-  "    model['validation']=\{'cadquery':cq.__version__,'printed_part_count':len(printed),'unique_print_geometries':len(groups),'printed_pair_collisions':collisions,'required_keepout_collisions':keepout_collisions,'required_keepouts':model['required_keepouts'],'source_model_checks':'DAG bed/mate/member checks','scope':'geometry only; no fastener engagement, thermal, structural or electrical qualification'\}\n",
+  "    model['validation']=\{'cadquery':cq.__version__,'printed_part_count':len(printed),'unique_print_geometries':len(groups),'printed_pair_collisions':collisions,'purchased_overlap_collisions':purchased_collisions,'required_keepout_collisions':keepout_collisions,'required_keepouts':model['required_keepouts'],'source_model_checks':'DAG bed/mate/member checks','scope':'geometry only; no fastener engagement, thermal, structural or electrical qualification'\}\n",
   "    model['print_groups']=[\{'representative':items[0],'quantity':len(items),'instances':items\} for items in groups.values()]\n",
   "    assembly=cq.Assembly()\n",
   "    for p in model['parts']:\n",
@@ -188,11 +198,19 @@ fn program_for(a:PrintableAssembly) -> CliWireResponse {
  if !review_model_checks(parts:a.parts,interfaces:a.interfaces) {return CliWirePrintable {bytes:"Assembly source checks refused",exit:exit_failure(reason:"Assembly source checks refused")}}
 match realize_review_parts(parts:a.parts) {ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD emission refused",exit:exit_failure(reason:"Review CAD emission refused")} ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:join([review_program_source(p:p),"import json\n_expected_manifest = json.loads(",serialize_json(v:json_string(s:serialize_json(v:printable_manifest(a:a)))),")\n",adapter_source()],""),exit:ExitSuccess}}
 }
-fn main() -> CliWireResponse {program_for(a:rack_review_assembly())}
+// Both rack emitters read the seat-gated selection (product.printed_chassis.cassette_review
+// rack_review_selection_for); a refused seat refuses the program and the bundle with its cause.
+fn main() -> CliWireResponse {program_main_for(seat:altra_seat())}
+fn program_main_for(seat:BoardSeat) -> CliWireResponse {
+ match rack_review_selection_for(seat:seat) {PrintableAssemblyReady {assembly:a}=>program_for(a:a) PrintableAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
+}
 
 // Both payloads derive from the same parts and joints. Callers cannot supply a
 // manifest from another model, and program_for owns the single admission check.
 fn bundle_for(a:PrintableAssembly) -> CliWireResponse {
  match program_for(a:a) {CliWirePrintable {bytes:b,exit:e}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"manifest",value:printable_manifest(a:a)),json_kv(key:"program",value:json_string(s:b))])),exit:e} CliWireUnprintable {cause:c}=>CliWireUnprintable {cause:c}}
 }
-fn bundle() -> CliWireResponse {bundle_for(a:rack_review_assembly())}
+fn bundle() -> CliWireResponse {bundle_main_for(seat:altra_seat())}
+fn bundle_main_for(seat:BoardSeat) -> CliWireResponse {
+ match rack_review_selection_for(seat:seat) {PrintableAssemblyReady {assembly:a}=>bundle_for(a:a) PrintableAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
+}

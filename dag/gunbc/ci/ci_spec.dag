@@ -1,5 +1,12 @@
 module gunbc.ci.ci_spec
 
+import gunbc.ci.ci_run_step_target {
+  GunbcRunStepTarget,
+  gunbc_ci_tier_o_drift_check_target,
+  gunbc_ci_heal_publication_admit_target,
+  gunbc_ci_heal_publication_publish_target,
+}
+
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
 
@@ -699,60 +706,6 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
   }
 }
 
-// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045; manager
-// approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective TasksMax, pids.max,
-// pids.current, ancestor limit, observer slot membership) via the typed read seams only.
-// workflow_dispatch-gated at the job, so it never rides PR or push events; the printed return value
-// IS the typed receipt.
-// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09): on a
-// floor-green main push (needs: [ci] IS the floor-green admission — this job exists only downstream
-// of the required check succeeding in the same run), advance refs/fleet/desired to the merged
-// revision by CAS: --force-with-lease names the exact observed prior (gunbc.fleet.fleet_main_revision
-// decide_fleet_desired_advance's from side), so a race with a concurrent advance refuses rather
-// than overwriting; ref creation is the from=none arm. Hosts follow the ref; no host is contacted
-// here.
-// EVERY `gunbc run` STEP THIS SPEC EMITS NAMES ITS TARGET HERE, AND NOWHERE ELSE.
-//
-// The pair was previously two string literals at each call site, and that cost a real defect: a
-// merge conflict resolution in gunbc#8377 re-authored two of them by hand, guessing paths from
-// module names, and produced `dag/gunbc/spark/grant_install.dag` (never existed at any commit) and
-// `dag/gunbc/spark/serving_durability.dag` (exists but does not define the named function, nor
-// import the module that does). Nothing refused, because a path in a string is not a symbol — the
-// DESIGN section 3 stale-citation class, landing in an emitted argv rather than prose. Both steps
-// were unrunnable on main from the day they landed. One roster gives one population to join
-// against, instead of pairs scattered across call sites where two strings could disagree unnoticed.
-//
-// NO CHECK ENFORCES THIS ROSTER TODAY, stated plainly because an earlier revision named one: it
-// promised `test.claim.ci_run_step_target_resolution` joined every row against decl_facts — a
-// witness written, measured, then REMOVED from this PR along with a second attempt at an emit-time
-// wall. Leaving that sentence would have been the DESIGN section 3 stale-citation defect in the
-// very comment diagnosing it, and it had already misled one reviewer into reading coverage that
-// does not exist. The roster buys single authority, not enforcement.
-//
-// WHY BOTH ATTEMPTS WERE WITHDRAWN, so nobody rebuilds them: "does file F declare symbol G" is
-// answered by decl_facts, which walks POOL ROOTS — directories, recursively, ~3833 modules, ~8s. By
-// controlled A/B, an emit-time wall cost 180s across 22 call sites and took SEVEN pre-existing
-// witness claims below verdict, because two witness modules render workflow steps and inherited the
-// walk. The fast-lane ceiling is 5000ms, so the binding constraint is that NO CORPUS WALK MAY BE
-// REACHABLE FROM A FAST-LANE CLAIM AT ALL — one walk breaches it.
-//
-// THE WALL IS OWED at the generated-artifact gate rather than the argv crossing — a re-scoping of
-// the hazard, not a weaker wall: a bad argv built in memory by a witness harms nothing, while a bad
-// argv reaching a COMMITTED workflow is what CI runs, and is the route both defects above took. The
-// gate sits upstream of every emitter producing a committed artifact and already returns
-// ArtifactGenerationRefused { reason }.
-//
-// SO THE RUNG THIS ROSTER REACHES IS MITIGATABLE, NOT MECHANICALLY PREVENTABLE. An earlier revision
-// claimed the higher rung on the strength of the witness no longer here; with nothing enforcing it,
-// the consolidation is a cost-of-error reduction, not a wall. NEXT-RUNG TRIGGER: the artifact-gate
-// refusal above. The rung ABOVE that — structural — is a resolved symbol reference (a
-// DeclarationRef the substrate resolves) with the entry path derived from the module index rather
-// than authored beside it, at which point a wrong target cannot be written.
-type GunbcRunStepTarget {
-  entry: NonEmptyStr
-  function: NonEmptyStr
-}
-
 data gunbc_ci_fleet_reach_probe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_reach_identity_probe.dag",
   function: "probe_fleet_reach_wet",
@@ -828,6 +781,15 @@ data gunbc_ci_admit_dashboard_deploy_inputs_target: GunbcRunStepTarget = GunbcRu
 data gunbc_ci_assert_dashboard_deploy_receipts_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply_receipt.dag",
   function: "assert_dashboard_deploy_receipts",
+}
+
+// THE PLAN'S SERVE-ENTRY VERDICT (gunbc.live_deploy.pre_swap_admission): the plan job compiles the
+// prod-role serve entry once, with the release pair the run itself built, and publishes the verdict
+// beside the plan receipt; the swap transaction consumes it by identity instead of paying the cold
+// resolve again (prod gap 1, failure b).
+data gunbc_ci_record_plan_serve_entry_verdict_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/pre_swap_admission.dag",
+  function: "record_plan_serve_entry_compile_verdict",
 }
 
 data gunbc_ci_org_actions_inspect_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1044,6 +1006,14 @@ data gunbc_ci_host_memory_envelope_observe_target: GunbcRunStepTarget = GunbcRun
   function: "host_memory_envelope_observe_ci_wet",
 }
 
+// THE DEPLOY PATH'S BUDGET PREFLIGHT (gunbc.host.host_budget_preflight): read the process cgroup and
+// refuse by name, before the fold is paid for, when no limit bounds this process. Read-only; the fold's
+// own budget gate stays authoritative.
+data gunbc_ci_host_budget_preflight_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_budget_preflight.dag",
+  function: "admit_host_budget_declared",
+}
+
 data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_file_converge_ci_wet",
@@ -1061,6 +1031,13 @@ data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRun
 data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/host/host_primary_network_apply.dag",
   function: "host_primary_network_converge_ci_wet",
+}
+
+// THE BOARD-FUNCTION CONVERGE DELIVERY (gunbc.fleet.board_function_converge_delivery). The receipt path is that
+// module's, so this target names only the entry.
+data gunbc_ci_board_function_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/board_function_converge_delivery.dag",
+  function: "board_function_converge_delivery_ci_wet",
 }
 
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1267,6 +1244,15 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "mtcollins1_fan_observe_wet",
 }
 
+// THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
+// .mtcollins1_ui_status_asset_observation). Read-only: GETs over the session the lane already opens,
+// no media action, no power, no SEL. It is dispatched under the fan observation's mode because the
+// mode list is a closed choice and this probe shares that lane's credential, host and authority.
+data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag",
+  function: "mtcollins1_ui_status_asset_observation_wet",
+}
+
 data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_fan_observe.dag",
   function: "mtcollins1_fan_observe_boot_phase_wet",
@@ -1433,6 +1419,18 @@ data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRu
   function: "rlm_launch_deployment_receipt_wet",
 }
 
+// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045; manager
+// approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective TasksMax, pids.max,
+// pids.current, ancestor limit, observer slot membership) via the typed read seams only.
+// workflow_dispatch-gated at the job, so it never rides PR or push events; the printed return value
+// IS the typed receipt.
+// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09): on a
+// floor-green main push (needs: [ci] IS the floor-green admission — this job exists only downstream
+// of the required check succeeding in the same run), advance refs/fleet/desired to the merged
+// revision by CAS: --force-with-lease names the exact observed prior (gunbc.fleet.fleet_main_revision
+// decide_fleet_desired_advance's from side), so a race with a concurrent advance refuses rather
+// than overwriting; ref creation is the from=none arm. Hosts follow the ref; no host is contacted
+// here.
 data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
   function: "observe_srv1_tasks_preapply_wet",
@@ -1491,21 +1489,6 @@ data gunbc_ci_seed_build_artifacts_regen_target: GunbcRunStepTarget = GunbcRunSt
   function: "main_wet",
 }
 
-data gunbc_ci_tier_o_drift_check_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/instruments/tier_o_drift_check.dag",
-  function: "main",
-}
-
-data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_publication.dag",
-  function: "heal_publication_admit_wet",
-}
-
-data gunbc_ci_heal_publication_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
-  entry: "dag/gunbc/heal_publication.dag",
-  function: "heal_publication_publish_wet",
-}
-
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
 // why targets are declared here rather than inline: a new call site that re-inlines a literal pair
 // is outside the join.
@@ -1552,6 +1535,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_admit_apply_run_pointer_target,
     gunbc_ci_admit_dashboard_deploy_inputs_target,
     gunbc_ci_assert_dashboard_deploy_receipts_target,
+    gunbc_ci_record_plan_serve_entry_verdict_target,
     gunbc_ci_org_actions_inspect_target,
     gunbc_ci_r2_mint_preflight_target,
     gunbc_ci_r2_bucket_ensure_target,
@@ -1582,10 +1566,12 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_microvm_network_apply_target,
     gunbc_ci_runner_host_file_observe_target,
     gunbc_ci_host_memory_envelope_observe_target,
+    gunbc_ci_host_budget_preflight_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_host_cap_release_target,
     gunbc_ci_host_primary_network_observe_target,
     gunbc_ci_host_primary_network_converge_target,
+    gunbc_ci_board_function_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
@@ -1604,6 +1590,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_reset_return_target,
     gunbc_ci_host_reset_dispatch_admission_target,
     gunbc_ci_mtcollins1_fan_observe_target,
+    gunbc_ci_mtcollins1_ui_status_asset_observe_target,
     gunbc_ci_mtcollins1_fan_observe_boot_phase_target,
     gunbc_ci_mtcollins1_kvm_observer_observe_target,
     gunbc_ci_mtcollins1_kvm_observer_release_target,
@@ -2192,6 +2179,20 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> String {
   )
 }
 
+// THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
+// credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
+// "did the file arrive" check and the invocation itself are all bash_build nodes rendered by
+// v2.workflow.bash_emit - so this step carries no hand-spelled shell and needs no scaffold marker.
+// The stem only names its temp files; the secret is the SAME pinned BMC credential version the fan
+// lane reads, exported through mtcollins1_fan_credential_path_env by
+// gunbc_ci_mtcollins1_probe_credential_statements, and the probe prints that variable's NAME, never
+// its contents. Strict (typed_fetch_failure: false) because this probe has no fetch-status file of its
+// own: an unreadable credential fails closed at the export, and the probe then refuses at its own
+// credential gate without ever contacting the controller.
+fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> String {
+  gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-status", target: gunbc_ci_mtcollins1_ui_status_asset_observe_target)
+}
+
 // THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
 // bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
 // steps carry no hand-spelled shell and no scaffold marker. Each probe materializes the one pinned BMC
@@ -2520,6 +2521,16 @@ fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_assert_dashboard_deploy_receipts_target.entry,
     function: gunbc_ci_assert_dashboard_deploy_receipts_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_record_plan_serve_entry_verdict_target.entry,
+    function: gunbc_ci_record_plan_serve_entry_verdict_target.function,
     claim_run: false,
     receipt_rel: none
   )
@@ -3360,6 +3371,16 @@ fn gunbc_ci_host_primary_network_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_board_function_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_board_function_converge_target.entry,
+    function: gunbc_ci_board_function_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/board-function-converge-delivery-receipt.txt"
+  )
+}
+
 fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -3367,6 +3388,16 @@ fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
     function: gunbc_ci_host_memory_envelope_observe_target.function,
     claim_run: false,
     receipt_rel: host_memory_envelope_receipt_path
+  )
+}
+
+fn gunbc_ci_host_budget_preflight_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_budget_preflight_target.entry,
+    function: gunbc_ci_host_budget_preflight_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

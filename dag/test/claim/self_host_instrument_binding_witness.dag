@@ -5,7 +5,6 @@ import gunbc.target_binding {
   TargetProducer,
   SelfHostProducer,
   HeadsReadingDifferentialProducer,
-  CompileCleanDiagnosticCensusProducer,
   V2NativeCliProducer
 }
 import gunbc.instrument_targets {
