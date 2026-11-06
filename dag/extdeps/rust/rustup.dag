@@ -88,8 +88,15 @@ type RustupChannelReading
   | RustupChannelAbsent
   | RustupChannelUnsupportedForm { form: String }
 
+// Where the scan stands: a dotted `toolchain.channel` is the channel only before any table header, and a
+// bare `channel` only inside [toolchain]; under any other table the same keys name something else.
+type ToolchainTable
+  = BeforeAnyTable
+  | InToolchainTable
+  | InOtherTable
+
 type ToolchainFileScan {
-  in_table: Bool
+  table: ToolchainTable
   reading: RustupChannelReading
 }
 
@@ -97,26 +104,26 @@ type ToolchainFileScan {
 // `toolchain.channel` before any table). First match wins. Comments are stripped from table HEADERS only:
 // a `#` after a value's closing quote is ignored by the quote reader, and a `#` inside the quotes is kept.
 fn rustup_toolchain_file_channel(text: String) -> RustupChannelReading {
-  fold(split(s: text, delimiter: "\n") |> map(l => trim(s: l)), init: ToolchainFileScan { in_table: false, reading: RustupChannelAbsent }, f: (acc, line) => rustup_toolchain_scan_step(acc: acc, line: line)).reading
+  fold(split(s: text, delimiter: "\n") |> map(l => trim(s: l)), init: ToolchainFileScan { table: BeforeAnyTable, reading: RustupChannelAbsent }, f: (acc, line) => rustup_toolchain_scan_step(acc: acc, line: line)).reading
 }
 
 fn rustup_toolchain_scan_step(acc: ToolchainFileScan, line: String) -> ToolchainFileScan {
-  if !rustup_channel_is_absent(reading: acc.reading) {
-    acc
-  } else if starts_with(s: line, prefix: "[") {
-    ToolchainFileScan { in_table: trim(s: rustup_first_text(split(s: line, delimiter: "#"))).replace(from: " ", to: "") == "[toolchain]", reading: RustupChannelAbsent }
-  } else if acc.in_table {
-    ToolchainFileScan { in_table: true, reading: rustup_channel_value(line: line, key: "channel") }
-  } else {
-    ToolchainFileScan { in_table: false, reading: rustup_channel_value(line: line, key: "toolchain.channel") }
+  match acc.reading {
+    RustupChannelAbsent => rustup_toolchain_scan_unread(acc: acc, line: line)
+    RustupChannelNamed { channel: _ } => acc
+    RustupChannelUnsupportedForm { form: _ } => acc
   }
 }
 
-fn rustup_channel_is_absent(reading: RustupChannelReading) -> Bool {
-  match reading {
-    RustupChannelAbsent => true
-    RustupChannelNamed { channel: _ } => false
-    RustupChannelUnsupportedForm { form: _ } => false
+fn rustup_toolchain_scan_unread(acc: ToolchainFileScan, line: String) -> ToolchainFileScan {
+  if starts_with(s: line, prefix: "[") {
+    ToolchainFileScan { table: if trim(s: rustup_first_text(split(s: line, delimiter: "#"))).replace(from: " ", to: "") == "[toolchain]" { InToolchainTable } else { InOtherTable }, reading: RustupChannelAbsent }
+  } else {
+    match acc.table {
+      InToolchainTable => ToolchainFileScan { table: InToolchainTable, reading: rustup_channel_value(line: line, key: "channel") }
+      BeforeAnyTable => ToolchainFileScan { table: BeforeAnyTable, reading: rustup_channel_value(line: line, key: "toolchain.channel") }
+      InOtherTable => acc
+    }
   }
 }
 
@@ -140,8 +147,9 @@ fn rustup_unquote(value: String) -> RustupChannelReading {
     RustupChannelUnsupportedForm { form: "escape sequence in a basic string" }
   } else if basic || literal {
     let quote = if basic { "\"" } else { "'" }
-    let inner = rustup_first_text(skip(xs: split(s: value, delimiter: quote), n: 1))
-    if inner == "" { RustupChannelAbsent } else { RustupChannelNamed { channel: inner as NonEmptyStr } }
+    let segments = skip(xs: split(s: value, delimiter: quote), n: 1)
+    let inner = rustup_first_text(segments)
+    if count(segments) < 2 { RustupChannelUnsupportedForm { form: "unterminated string" } } else if inner == "" { RustupChannelAbsent } else { RustupChannelNamed { channel: inner as NonEmptyStr } }
   } else {
     RustupChannelAbsent
   }

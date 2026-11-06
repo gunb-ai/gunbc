@@ -138,4 +138,6 @@ test fn the_toolchain_file_channel_is_read_by_exact_key_in_its_table() -> Bool {
     && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"a\\\"b\"\n" }), pattern: "escape sequence")
     && (match work_toolchain_requirement(toolchain_file: none) { Present { value: _ } => false  Absent => true })
     && toolchain_file_names_requirement("toolchain.channel = \"1.93.0\"\n")
+    && !toolchain_file_names_requirement("[foo]\ntoolchain.channel = \"nightly\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"nightly\n")
+    && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"nightly\n" }), pattern: "unterminated")
 }
