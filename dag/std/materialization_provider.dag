@@ -521,7 +521,6 @@ fn request_git_object_rows(req: ArtifactRequest) -> List<EvaluationIdentityCompo
     universe: (tt, rb) => [],
     module_verdict_bundle: s => [],
     compute_work: (sj, op, tc) => [
-      EvaluationIdentityComponentRow { ref: evaluation_identity_subject_ref, component: compute_work_subject_component(subject: sj) },
       EvaluationIdentityComponentRow { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: tc.observed.provider_revision) }
     ],
     fabric_blob: a => []
