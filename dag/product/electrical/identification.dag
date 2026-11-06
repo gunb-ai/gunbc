@@ -194,22 +194,21 @@ type GlyphReduction
 //
 // Measured, each row a separate claim_batch run (the shapes, by name; the probe sources are not part of this tree):
 //   PASS  non-recursive, literal argument                           into string_any_char_in
-//   PASS  non-recursive, bound name (coerced) + literal alphabet   into string_any_char_in   (f7)
-//   PASS  non-recursive, bound name + destructured Char             into string_contains_char (f2, f9)
-//   PASS  non-recursive, call expression as the argument            into string_eq             (f1)
-//   FAIL  non-recursive, bound name in the `alphabet:` label         into string_any_char_in   (f3)
-//   FAIL  RECURSIVE,   bound name                                    into string_contains_char (f10)
-//   FAIL  RECURSIVE,   bound name (coerced)                          into string_contains_char (f8)
-//   FAIL  RECURSIVE,   bound name (coerced)                          into string_eq             (f11)
+//   PASS  non-recursive, bound name (coerced) + literal alphabet   into string_any_char_in
+//   PASS  non-recursive, bound name + destructured Char             into string_contains_char
+//   PASS  non-recursive, call expression as the argument            into string_eq
+//   FAIL  non-recursive, bound name in the `alphabet:` label         into string_any_char_in
+//   FAIL  RECURSIVE,   bound name                                    into string_contains_char
+//   FAIL  RECURSIVE,   bound name (coerced)                          into string_contains_char
+//   FAIL  RECURSIVE,   bound name (coerced)                          into string_eq
 //
 // So the two shapes this module keeps away from these calls are: a bound name reached from a RECURSIVE frame,
-// and a bound name in `alphabet:`. Recursion is the switch, not the callee -- f8, f10 and f11 are the same
-// function handed three different predicates, and the same function without the recursive arm (f9) is green.
-// The smallest repro is a twelve-line recursive function handing a bound name to string_contains_char (f8).
+// and a bound name in `alphabet:`. Recursion is the switch, not the callee -- the rows above are the same
+// function handed three different predicates, and the same function without the recursive arm is green.
+// The smallest repro is a twelve-line recursive function handing a bound name to string_contains_char.
 //
 // It is NOT a cast, NOT an identifier spelled like the keyword `as`, and NOT a member access: each of those
-// was eliminated by measured shapes (five, seven and one respectively, kept with this work's receipts in the
-// private atlas branch), and `reduced_marking` below has carried a cast inside a labelled argument for
+// was eliminated by measured shapes (five, seven and one respectively), and `reduced_marking` below has carried a cast inside a labelled argument for
 // months. Renaming this helper moved the word inside the error message and changed nothing else.
 //
 // What this note does NOT claim: that the boundary above is complete. It is drawn where it was measured.
@@ -383,28 +382,44 @@ fn span_sighting(s: MarkingSpan) -> PhotographCitation? {
   }
 }
 
-// Which channel a span was recorded in, as data. Four, closed: glyphs, a maker's printed logo, a physical
-// feature of the package, a circumstance of the reading.
-fn annotation_channel(a: MarkingAnnotation) -> Nat {
+// Whether two spans were recorded in DIFFERENT channels. Four, closed: glyphs, a maker's printed logo, a
+// physical feature of the package, a circumstance of the reading. Decided by matching the pair of arms
+// directly, so a fifth arm is a compile-time non-exhaustive match and no number stands for an arm.
+fn annotation_channels_differ(a: MarkingAnnotation, b: MarkingAnnotation) -> Bool {
   match a {
-    PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => 1
-    BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => 2
-    ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => 3
-  }
-}
-
-fn span_channel(s: MarkingSpan) -> Nat {
-  match s {
-    Glyphs { glyphs: _ } => 0
-    Annotation { annotation } => annotation_channel(a: annotation)
+    PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } =>
+      match b {
+        PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => false
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => true
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => true
+      }
+    BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } =>
+      match b {
+        PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => true
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => false
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => true
+      }
+    ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } =>
+      match b {
+        PrintedLogo { preceded_by: _, span: _, whose: _, sighting: _ } => true
+        BodyFeature { preceded_by: _, span: _, described: _, sighting: _ } => true
+        ReadingCircumstance { preceded_by: _, span: _, noted: _, sighting: _ } => false
+      }
   }
 }
 
 fn channels_differ(a: MarkingSpan, b: MarkingSpan) -> Bool {
-  match nat_compare(a: span_channel(s: a), b: span_channel(s: b)) {
-    Equal => false
-    Less => true
-    Greater => true
+  match a {
+    Glyphs { glyphs: _ } =>
+      match b {
+        Glyphs { glyphs: _ } => false
+        Annotation { annotation: _ } => true
+      }
+    Annotation { annotation: x } =>
+      match b {
+        Glyphs { glyphs: _ } => true
+        Annotation { annotation: y } => annotation_channels_differ(a: x, b: y)
+      }
   }
 }
 
@@ -461,12 +476,13 @@ fn any_glyph_unread(spans: List<GlyphSpan>) -> Bool {
 // after tokenize, parse, resolve and typecheck had all passed. A literal there is fine, and so is a call:
 // only an identifier leaks, which is why each of the two shapes that looked like the trigger was green on
 // its own. string_contains_char passes `xs: s` -- the first parameter, no capture -- and the same bound
-// identifier through it ran green (variant f2, kept with this work's receipts in the private atlas branch).
+// identifier through it ran green (the non-recursive bound-name row in the table above).
 // So the mark is a Char here, obtained once, and the test is membership.
 // The leaf is its own function on purpose, and this split is load-bearing rather than tidiness. The label leak
-// described above needs BOTH halves in one function: f8 (recursive arm + bound coercion + the capturing
-// predicate) is red while f2 (the same binding in a function that does not recurse) and f9 (the same arm
-// without the recursive tail) are both green. So the coercion is bound in a function that never calls itself,
+// described above needs BOTH halves in one function: the recursive arm + bound coercion + the capturing
+// predicate is red, while the same binding in a function that does not recurse, and the same arm
+// without the recursive tail, are both green. This is the filed class gunbc.recurring_failure_mode.a_generated_crossing_call_is_labelled_from_source_text_not_the_callee_parameter
+// (the argument's spelling appears as the callee's parameter label). So the coercion is bound in a function that never calls itself,
 // and the walk below binds nothing at all.
 fn span_carries_mark(s: GlyphSpan, mark: Char) -> Bool {
   string_contains_char(s: s.span as String, c: mark)
@@ -895,7 +911,8 @@ fn no_dissent(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingRel
 }
 
 // PREFERRED UNDER DISSENT: the readings do dissent, the relied-on reading is checkable AS A READING OF
-// THIS SUBJECT, and at least one dissenting reading is not. The contract's `dissents: Bool` is computed
+// THIS SUBJECT, and EVERY dissenting reading is not (one checkable dissenter refuses: two checkable
+// readings that conflict give no reason to prefer either, whatever else is in the set). The contract's `dissents: Bool` is computed
 // here instead, from `disputed_glyphs`, because §2b forbids a row writing its own dissent verdict -- and
 // `CheckablePreferredOverUncheckable` would otherwise be a label an author could put on any preference
 // whatsoever, which is the "row chooses" route this whole section exists to close.
@@ -909,8 +926,9 @@ fn prefer_checkable(roster: BoardSightings, readings: MarkingReadingSet) -> Mark
     roster: roster, subject: readings.subject, reading: readings.relied_on
   ) {
     Absent
-  } else if !any(readings.others, o =>
-    !reading_checkable_for_subject(roster: roster, subject: readings.subject, reading: o)) {
+  } else if any(readings.others, o =>
+    !is_empty(xs: reading_disputes(relied: readings.relied_on, other: o))
+      && reading_checkable_for_subject(roster: roster, subject: readings.subject, reading: o)) {
     Absent
   } else {
     Present {

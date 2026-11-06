@@ -385,6 +385,30 @@ test fn control_8_preference_mints_only_when_the_other_reading_is_the_uncheckabl
        Absent => true
        Present { value: _ } => false
      })
+    // THREE READINGS: B is checkable and dissents, C is uncheckable and dissents. A and B are both checkable and
+    // conflict, so C's existence gives no reason to prefer A: every DISSENTER must be uncheckable, not just one.
+    && (match prefer_checkable(
+      roster: mine,
+      readings: set_of(
+        who: u49(),
+        relied: good,
+        others: [
+          read_glyphs_on_board_frame(text: "LV165A / 9BKG4", c: Present { value: c }, rest: []),
+          read_no_citation(text: "LV165A / 7BKG4")
+        ]
+      )
+    ) {
+       Absent => true
+       Present { value: _ } => false
+     })
+    // Two uncheckable dissenters: the standing still mints (every dissenter is uncheckable).
+    && (match prefer_checkable(
+      roster: mine,
+      readings: set_of(who: u49(), relied: good, others: [bad, read_no_citation(text: "LV165A / 7BKG4")])
+    ) {
+       Present { value: _ } => true
+       Absent => false
+     })
     // The relied-on reading uncheckable: nothing to prefer.
     && (match prefer_checkable(
       roster: mine,
