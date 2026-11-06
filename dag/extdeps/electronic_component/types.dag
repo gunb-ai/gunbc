@@ -546,6 +546,8 @@ type MarkLine {
 /// `ListedOnly`: further marking content is known to exist (a logo, plant or date line, a trace code)
 /// or is not excluded by the cited figure. A source's omission is not evidence of absence, so a
 /// complete-mark comparison may rest only on `Complete`, and the default for a row is `ListedOnly`.
+/// DECLARED FRONTIER: consumed by the reading-vs-published-mark join (the next P4261 PR, follow-on (a)).
+/// Until it lands, no production code reads this distinction; the trigger is that PR.
 type MarkCoverage
   = Complete
   | ListedOnly
@@ -555,7 +557,9 @@ type MarkCoverage
 /// document does not describe is omitted. `MarkDescribedNotStructured` is the honest standing of a
 /// document that describes the mark in prose, lists alternatives, or does not say which positions
 /// are fixed or variable: the text is kept, `why` names what keeps it from being structured, and a
-/// comparison against it can only be undecidable. No comparison exists yet: the board-reading-to-published-mark join is the next PR in the queue (a declared frontier, trigger: this type merged), and until it lands only `published_fixed_line_contains` reads this type.
+/// comparison against it can only be undecidable. DECLARED FRONTIER: consumed by the reading-vs-published-mark
+/// join (the next P4261 PR, follow-on (a)). Until it lands, no production code reads this distinction; the
+/// trigger is that PR. `published_fixed_line_contains` is the only production consumer of this type here.
 type PublishedMark
   = MarkStructured { lines: List<MarkLine>, coverage: MarkCoverage }
   | MarkDescribedNotStructured { text: NonEmptyStr, why: NonEmptyStr }
@@ -571,33 +575,6 @@ fn line_sole_fixed_glyphs(line: MarkLine) -> NonEmptyStr? {
       }
     }
   } else { Absent }
-}
-
-// Declared frontier, not yet consumed in production: the join PR's complete-mark `Matches` reads this
-// (trigger: this type merged); today only its controls in p4261_carrier_layout_witness execute it.
-// The glyphs of a mark that is COMPLETE and whose listed structure is exactly one line holding exactly
-// one fixed run. A ListedOnly mark has no such run: a source's omission is not evidence of absence, so
-// the one line it lists is never reported as the mark's only run. A described mark has none either.
-fn mark_sole_fixed_glyphs(m: PublishedMark) -> NonEmptyStr? {
-  match m {
-    MarkDescribedNotStructured { text: _, why: _ } => Absent
-    MarkStructured { lines, coverage } => match coverage {
-      ListedOnly => Absent
-      Complete => if lines.length() == 1 {
-        match lines.first() {
-          Absent => Absent
-          Present { value: line } => line_sole_fixed_glyphs(line: line)
-        }
-      } else { Absent }
-    }
-  }
-}
-
-fn row_sole_fixed_glyphs(row: ElectronicComponentRow) -> NonEmptyStr? {
-  match row.top_marking {
-    Absent => Absent
-    Present { value: m } => mark_sole_fixed_glyphs(m: m)
-  }
 }
 
 // True iff `code` equals a whole FixedGlyphs-only line among the lines the row lists. It says only that

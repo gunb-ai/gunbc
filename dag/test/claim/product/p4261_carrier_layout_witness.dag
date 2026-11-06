@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { volt, volt_count, milliampere, milliampere_count, millivolt, millivolt_count }
 import product.placement_supply { physical_asset_identity_eq }
 import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_k1_a, p4261_e1_b }
-import extdeps.electronic_component.types { published_fixed_line_contains, row_sole_fixed_glyphs, mark_sole_fixed_glyphs, ListedOnly, Complete, MarkStructured, MarkLine, FixedGlyphs, ElectronicComponentRow, RectifierSpec, RectifierSpecification, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin, RectifierRepetitivePeak, voltage_withstand }
+import extdeps.electronic_component.types { published_fixed_line_contains, ListedOnly, MarkStructured, MarkLine, FixedGlyphs, ElectronicComponentRow, RectifierSpec, RectifierSpecification, CapacitorSpec, CapacitorSpecification, ProgrammableLogicSpec, VolatileConfiguration, configuration_done_signal, RootOfTrustSpec, guards_boot, SerialFlashSpec, PullUpByStrap, RegulatorPin, RectifierRepetitivePeak, voltage_withstand }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.bourns_5_0smdj60a { tvs_5_0smdj60a }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
@@ -600,30 +600,6 @@ fn negative_term() -> TerminalIdentity {
 // top_marking, or change the rating, and the identification stops being supportable.
 test fn the_fsv_row_prints_the_part_number_the_sheet_prints() -> Bool {
   published_fixed_line_contains(row: onsemi_schottky_fsv20100v, code: "FSV20100V")
-}
-
-// FSV20100V's diagram has a further logo/plant/date line, so its one listed line is not the whole mark:
-// the sole-run projection refuses it, and the narrow projection does not claim a full-mark match.
-test fn the_fsv_row_is_listed_only_so_it_has_no_sole_run() -> Bool {
-  match row_sole_fixed_glyphs(row: onsemi_schottky_fsv20100v) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-// Positive control on the same shape: the identical one-line mark with coverage Complete projects its run.
-test fn a_complete_one_line_mark_projects_its_sole_run() -> Bool {
-  match mark_sole_fixed_glyphs(m: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "X1" }] }], coverage: Complete }) {
-    Absent => false
-    Present { value: t } => t == "X1"
-  }
-}
-
-test fn a_listed_only_one_line_mark_projects_no_sole_run() -> Bool {
-  match mark_sole_fixed_glyphs(m: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "X1" }] }], coverage: ListedOnly }) {
-    Absent => true
-    Present { value: _ } => false
-  }
 }
 
 // The sheet's own legend prints the issuer as "onsemi" (33 occurrences, including "$Y = onsemi Logo"),
