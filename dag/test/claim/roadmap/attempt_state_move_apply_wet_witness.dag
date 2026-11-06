@@ -12,18 +12,21 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.http_ingress { HttpIngressTcp, http_ingress_binding_arguments }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.emit { live_deploy_serve_unit_file_over }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.unit_standing { service_unit_expectation_of, ServiceExpectationDerived, ServiceExpectationUnderivable }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
   dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries, DashboardAssertLegacyWriterExcluded, DashboardRetireLegacyWriters,
 }
-import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op, legacy_writer_runs_of_show }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated_argv }
 import gunbc.roadmap.roadmap_attempt_state_layout_move {
-  LegacyWriterUnitReading, LegacyWriterUnitRead, LegacyWriterUnitUnreadable, legacy_writer_exclusion, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations,
+  LegacyWriterUnitReading, LegacyWriterUnitRead, LegacyWriterUnitUnreadable, LegacyWriterRunsOther, legacy_writer_exclusion, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations,
   LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, LegacyWriterExcluded, LegacyWriterNotExcluded,
 }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnit, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterFenceRow, legacy_writer_fence_for, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
@@ -462,18 +465,29 @@ test fn two_fence_rows_for_one_instance_are_a_typed_conflict_that_refuses_the_mo
 
 // ── THE RETIREMENT LEG (a unit whose fragment lives in /etc cannot be masked; it is retired) ─────────────────
 fn reading(load: SystemdUnitLoadState, active: SystemdUnitActiveState, fragment: String) -> LegacyWriterUnitReading {
-  LegacyWriterUnitRead { load_state: load, active_state: active, fragment_path: fragment, exec_start: "" }
+  LegacyWriterUnitRead { load_state: load, active_state: active, fragment_path: fragment, runs: LegacyWriterRunsOther }
 }
 
 fn running_reading(exec_start: String) -> LegacyWriterUnitReading {
-  LegacyWriterUnitRead { load_state: UnitLoaded, active_state: Active, fragment_path: "/etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service", exec_start: exec_start }
+  LegacyWriterUnitRead { load_state: UnitLoaded, active_state: Active, fragment_path: "/etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service", runs: legacy_writer_runs_of_show(row: srv1_lab_desired_deployment(), show: exec_start) }
 }
 
-// The successor's ExecStart words as the ONE producer renders them (http_ingress_binding_arguments, which
-// live_deploy_ingress_execstart consumes); the legacy writer's is the flat-entry serve verb.
+// The successor's `systemctl show` ExecStart value for a given release revision, built from the ExecStart the declared
+// lab deployment EMITS (live_deploy_serve_unit_file_over, the unit the install step writes), not from a restated
+// argument list. `ExecStart` is the argv text; systemd renders it inside `{ path=P ; argv[]=A ; ignore_errors=no }`.
+fn successor_exec_start_for(revision: String) -> String {
+  match service_unit_expectation_of(file: live_deploy_serve_unit_file_over(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()), revision: RevisionBoundAtEmission { revision: revision }, oidc_env: [])) {
+    ServiceExpectationDerived { expectation: e } => join(["{ path=/opt/gunbc/bin/gunbc ; argv[]=", e.exec_start, " ; ignore_errors=no }"], "")
+    ServiceExpectationUnderivable { detail: d } => d
+  }
+}
+
+fn successor_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
 fn successor_exec_start() -> String {
-  join(concat(["{ path=/opt/gunbc/bin/gunbc ; argv[]=/opt/gunbc/bin/gunbc run --entry e --function roadmap_ingress"],
-    concat(http_ingress_binding_arguments(handler: "roadmap_serve_handle_srv1_lab", listener: HttpIngressTcp { host: "127.0.0.1", port: 18081 }, release_revision: "abc123", cpu_limit_ms: Present { value: 1 }, wall_limit_ms: Present { value: 2 }), [" ; ignore_errors=no }"])), " ")
+  successor_exec_start_for(revision: successor_revision())
 }
 
 fn legacy_exec_start() -> String {
@@ -566,6 +580,11 @@ test fn a_running_unit_is_the_legacy_writer_by_what_it_runs_and_the_successor_un
   let successor = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: successor_exec_start())) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
   let noexec = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: "")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
   let unreadable = match legacy_writer_exclusion(unit: "u", reading: unreadable_reading()) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  // A unit that CARRIES the release argument but runs something else is not the successor: a different handler, a
+  // revision that is not a commit id, and a trailing extra word each refuse.
+  let other_handler = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: replace(successor_exec_start(), "roadmap_serve_handle_srv1_lab", "another_handler"))) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  let not_a_commit = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: successor_exec_start_for(revision: "abc123"))) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  let extra_word = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: replace(successor_exec_start(), " ; ignore_errors", " --extra ; ignore_errors"))) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
   let retire_successor = match legacy_writer_retirement(unit: lab_unit(), reading: running_reading(exec_start: successor_exec_start())) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
-  legacy && successor && noexec && unreadable && retire_successor
+  legacy && successor && noexec && unreadable && other_handler && not_a_commit && extra_word && retire_successor
 }

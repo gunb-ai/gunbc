@@ -1,7 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_state_layout_move
 
 import std.types { String, NonEmptyStr, List, Int, Bool }
-import gunbc.http_ingress { http_ingress_execstart_runs_binding }
 import extdeps.systemd { SystemdUnitLoadState, SystemdUnitActiveState, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_wire_label, systemd_unit_active_state_wire_label, systemd_unit_active_state_is_stopped, systemd_unit_load_state_cannot_start }
 import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, SystemdStopUnit, SystemdDaemonReload, RetireUnitFragment }
 import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldOwnerRef }
@@ -158,13 +157,26 @@ type LegacyWriterExclusion
 // What `systemctl show -p LoadState -p ActiveState -p FragmentPath <unit>` read, as the typed states of
 // extdeps.systemd, or the typed fact that it could not be read (a failed `show`, or a state word outside the
 // vocabulary extdeps.systemd declares). An unreadable unit is never excluded.
+// WHAT THE UNIT RUNS, as judged by the one reader that can render the declared successor (the apply module; this
+// module cannot import gunbc.live_deploy.desired, which imports it). Only an exact match is the successor.
+type LegacyWriterRuns
+  = LegacyWriterRunsDeclaredSuccessor
+  | LegacyWriterRunsOther
+
+fn legacy_writer_runs_is_declared_successor(runs: LegacyWriterRuns) -> Bool {
+  match runs {
+    LegacyWriterRunsDeclaredSuccessor => true
+    LegacyWriterRunsOther => false
+  }
+}
+
 type LegacyWriterUnitReading
-  = LegacyWriterUnitRead { load_state: SystemdUnitLoadState, active_state: SystemdUnitActiveState, fragment_path: String, exec_start: String }
+  = LegacyWriterUnitRead { load_state: SystemdUnitLoadState, active_state: SystemdUnitActiveState, fragment_path: String, runs: LegacyWriterRuns }
   | LegacyWriterUnitUnreadable { detail: String }
 
 fn legacy_writer_reading_summary(reading: LegacyWriterUnitReading) -> String {
   match reading {
-    LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: _, exec_start: _ } =>
+    LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: _, runs: _ } =>
       join(["LoadState ", systemd_unit_load_state_wire_label(s: l), ", ActiveState ", systemd_unit_active_state_wire_label(s: a)], "")
     LegacyWriterUnitUnreadable { detail: d } => join(["unreadable: ", d], "")
   }
@@ -174,11 +186,11 @@ fn legacy_writer_exclusion(unit: String, reading: LegacyWriterUnitReading) -> Le
   match reading {
     LegacyWriterUnitUnreadable { detail: d } =>
       LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " could not be read (", d, ")"], "") }
-    LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: _, exec_start: x } =>
-      if http_ingress_execstart_runs_binding(execstart: x) {
+    LegacyWriterUnitRead { load_state: l, active_state: a, fragment_path: _, runs: x } =>
+      if legacy_writer_runs_is_declared_successor(runs: x) {
         // THE FENCE FACT IS "NO UNIT RUNS THE FLAT-ENTRY WRITER", read from what the unit RUNS, never its name:
         // the successor is installed under the legacy unit's own name (gunbc.live_deploy.spec derived_deployment_names)
-        // and its handler is the same function, so only the ingress binding's release argument discriminates.
+        // and its handler is the same function, so the discriminator is an EXACT comparison of the read ExecStart against the ExecStart the declared deployment emits (roadmap_dashboard_instance_apply dashboard_legacy_writer_runs); any other text, a unit merely carrying the release argument included, is not the successor.
         LegacyWriterExcluded
       } else if !systemd_unit_active_state_is_stopped(s: a) {
         LegacyWriterNotExcluded { reason: join(["the legacy dispatcher unit ", unit, " is not stopped (ActiveState read '", systemd_unit_active_state_wire_label(s: a), "')"], "") }
@@ -205,7 +217,7 @@ fn legacy_writer_retirement(unit: LegacyWriterUnit, reading: LegacyWriterUnitRea
     LegacyWriterNotExcluded { reason: r } =>
       match reading {
         LegacyWriterUnitUnreadable { detail: _ } => LegacyWriterRetirementRefused { reason: r }
-        LegacyWriterUnitRead { load_state: l, active_state: _, fragment_path: f, exec_start: _ } =>
+        LegacyWriterUnitRead { load_state: l, active_state: _, fragment_path: f, runs: _ } =>
           match l {
             UnitLoaded =>
               if f == (unit.etc_fragment as String) {
