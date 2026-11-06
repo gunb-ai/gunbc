@@ -310,6 +310,9 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
+  // 124 W is the figure as transcribed for this row, UNREAD against a design-power (TDP) datasheet row
+  // and possibly a usage-power figure; the unread standing makes cooling return
+  // CoolingDesignPowerUnestablished, so it is never compared as a design wall.
   tdp_watts: watt(124),
   tdp_standing: cpu_tdp_unread_standing,
   l1_cache: ampere_altra_l1_cache_geometry,
@@ -365,6 +368,9 @@ data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(80),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: ampere_lga4926_socket,
+  // 161 W is the figure as transcribed for this row, UNREAD against a design-power (TDP) datasheet row
+  // and possibly a usage-power figure; the unread standing makes cooling return
+  // CoolingDesignPowerUnestablished, so it is never compared as a design wall.
   tdp_watts: watt(161),
   tdp_standing: cpu_tdp_unread_standing,
   l1_cache: ampere_altra_l1_cache_geometry,

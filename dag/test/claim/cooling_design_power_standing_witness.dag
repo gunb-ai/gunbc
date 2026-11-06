@@ -3,7 +3,7 @@ module test.claim.cooling_design_power_standing_witness
 import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
-import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q6430_catalog, altra_q8030_catalog }
 import extdeps.external_authority { CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import gunbc.fleet.fleet_asset_identity { cooler_srv3 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
@@ -87,4 +87,18 @@ test fn an_unestablished_design_power_does_not_admit_qualification() -> Bool {
   !cooling_catalog_verdict_admits_qualification(
     verdict: cooling_catalog_verdict(realization: realization_with(cooler_watts: 250, processor: altra_q8030_catalog)),
   )
+}
+
+// Q64-30 (124 W) and Q80-30 (161 W) carry watts whose design-power row is unread: even against a
+// cooler vastly over the figure, cooling withholds rather than admits.
+test fn q64_and_q80_figures_are_never_compared_as_design_power() -> Bool {
+  let q64 = match cooling_catalog_verdict(realization: realization_with(cooler_watts: 1000, processor: altra_q6430_catalog)) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => true
+    _ => false
+  }
+  let q80 = match cooling_catalog_verdict(realization: realization_with(cooler_watts: 1000, processor: altra_q8030_catalog)) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => true
+    _ => false
+  }
+  q64 && q80
 }
