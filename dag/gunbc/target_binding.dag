@@ -47,7 +47,6 @@ type TargetProducer
   | EvaluationStoreAddressExactHeadProducer
   | TypedGraphExclusiveBytesProducer
   | TypedGraphExclusiveBytesFloorSubjectProducer
-  | RequiredLaneResolutionCensusProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | SelfHostFrontierProducer
@@ -80,7 +79,6 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     EvaluationStoreAddressExactHeadProducer {} => optional_absent()
     TypedGraphExclusiveBytesProducer {} => optional_absent()
     TypedGraphExclusiveBytesFloorSubjectProducer {} => optional_absent()
-    RequiredLaneResolutionCensusProducer {} => optional_absent()
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     SelfHostFrontierProducer {} => optional_absent()

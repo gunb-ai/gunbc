@@ -4,7 +4,7 @@ import std.optional { optional_absent }
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.emit_module { emit_module_decl_separator }
+import v2.compiler.target_carriers { emit_module_decl_separator }
 import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
 import v2.extdeps.languages.dag { dag_language_model }
