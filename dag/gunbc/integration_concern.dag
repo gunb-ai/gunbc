@@ -694,6 +694,85 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
   },
 }
 
+// srv13 AND srv15 NAME ONE BOARD (recorded 2026-11-05; the operator keeps srv15, "bobo"). Both slots read
+// ASRock Rack ALTRAD8UD-1L2T board serial BR80S6102300049 with host NIC 9c:6b:00:e7:ca:63. srv13's first
+// contact (2026-10-07) found the controller at 192.168.1.247, MAC 9c:6b:00:e7:c9:83, on BMC 2.07.00, and
+// pushed 3.22.00. srv15's in-band recovery (2026-10-29) found it at 192.168.1.248, MAC 9c:6b:00:e7:c9:e7.
+// On 2026-11-05 the router lists .247 inactive and .248 active, and .248's unauthenticated Redfish root
+// answers ServiceEntryPointUUID 6e884505-ba5e-49f2-af66-cedf82ef8d8c, the one srv13's capture carries.
+// The merge is left open, not done, because srv13's slot is not only a name: the machine-intake witnesses
+// replay its 2026-10-07 captures at .247 through srv13's own write-controller row, and the row model has no
+// way to name an endpoint a board HAD. Repointing them at srv15 (.248) would assert the captures came from
+// an address they did not.
+data srv13_srv15_sighting_revision: CommitSha = "64671d19744d133e78e2e9af35602833cfa07dc5"
+
+data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
+  identity: "srv13_and_srv15_name_one_board",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv13"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15"),
+      rest: [
+        decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "srv13_baseboard"),
+        decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "srv15_baseboard"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller"),
+    tail: [
+      decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
+      decl_ref(module_path: "gunbc.fleet.machine_board", decl_name: "machine_board_rows"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
+    ],
+  },
+  question: "Which slot is the ALTRAD8UD-1L2T with board serial BR80S6102300049, and how do the machine-intake witnesses keep replaying its 2026-10-07 captures at 192.168.1.247 once srv13 stops being a fleet host?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: srv13_srv15_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesArtifact {
+          label: "artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Systems_system.json (SerialNumber BR80S6102300049)",
+          sha256: Sha256Digest { hex: "fd4ad69ffdbef8db4e21eedb4b7c107627abd662d9f0bc3fd0effff1484469da" as Sha256DigestHex },
+        },
+        tail: [
+          CitesArtifact {
+            label: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system.json (SerialNumber BR80S6102300049)",
+            sha256: Sha256Digest { hex: "281dbfefd5d55d5c30b2d6f730d45d28062162bc9a2d5ce6be396a30bbfe948a" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "artifacts/bmc/srv13-first-contact-2026-10-07/FINDINGS.txt (BMC 192.168.1.247 MAC 9c:6b:00:e7:c9:83; host NIC 9C:6B:00:E7:CA:63)",
+            sha256: Sha256Digest { hex: "81bb5b9576a26c909ed769ebb3ae75cc85c3397192ec82e2a98613e329041567" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "artifacts/bmc/srv15-inband-recovery-2026-10-29/00_README.txt (BMC 192.168.1.248 MAC 9c:6b:00:e7:c9:e7; board serial BR80S6102300049; host lease from NIC 9c:6b:00:e7:ca:63)",
+            sha256: Sha256Digest { hex: "6f4a3c900238b2575d386bd4b6d96cb014e1d8439d3b2274b988d8644b8e0d4e" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Both slots' captures report board serial BR80S6102300049 and host NIC 9c:6b:00:e7:ca:63, an Intel I210 address burned into the board; only the controller's MAC and lease differ, across a BMC firmware push from 2.07.00 to 3.22.00 that srv13's own capture records. Read-only on 2026-11-05: the controller at .248 serves Redfish with srv13's captured ServiceEntryPointUUID, and the router shows srv13's reservation (.247) inactive. srv15's recovery also found the root credential changed by hand without a record, which is what srv13's forced first rotation would leave. Not established: whether the MAC change came from the firmware push or from a later reflash.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
+        statement: "the board's write-controller row admits a per-write approval only at the board's own current controller and refuses the standing grant",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
+        statement: "the forced-first-rotation and arrival witnesses keep replaying the board's 2026-10-07 factory 403 and Manager captures against the controller as it was then (192.168.1.247, OpenBMC 3.22.00), and still refuse another controller or build",
+      },
+    ],
+    next: climbs_when(capability: "a write-controller row (or the witnesses' supplied controller) can name the endpoint a board HAD at a capture's time apart from the endpoint it has now, so srv13's 2026-10-07 captures replay against srv15's board; then operator_host_srv13, srv13_baseboard, srv13_bmc_write_controller and srv13's hostname row are deleted and every srv13 consumer is repointed at srv15"),
+  },
+}
+
 data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = IntegrationConcern {
   identity: "run_closure_typecheck_exceeds_eval_demand",
   kind: SuspectedCapabilityGap {
@@ -824,7 +903,43 @@ data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern 
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool]
+data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
+  identity: "equality_synthesis_helper_binding_is_import_authority",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
+    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
+      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
+    ],
+  },
+  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity. (#15972's interim gate equality_helpers_visible and its import-enumeration interim were reverted by #16000 on operator decision; they re-land with #15992 and this row's sightings then resume.)",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
+      },
+      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
+    },
+    tail: [ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
+        tail: [],
+      },
+      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
+    }],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
