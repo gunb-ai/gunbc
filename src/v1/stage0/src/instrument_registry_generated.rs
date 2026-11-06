@@ -82,13 +82,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "required-lane-resolution-census".to_string(),
-            },
-            TargetProducer::RequiredLaneResolutionCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "bare-reference-channel-outcome".to_string(),
             },
             TargetProducer::BareReferenceChannelOutcome,
@@ -264,6 +257,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             TargetProducer::CliWireProgram {
                 entry: "dag/gunbc/instruments/compute_wrong_capture.dag",
                 function: "compute_wrong_capture_exit",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "derived-equality-routes".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/derived_equality_routes_native.dag",
             },
         ),
         (

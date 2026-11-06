@@ -34,6 +34,7 @@ import v2.std.text { string_eq }
 import std.optional { Absent, Present }
 import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
 import product.electrical.identification {
+  marking_text,
   BodySeenMarkingUnread,
   ComponentIdentification,
   FootprintUnpopulated,
@@ -47,6 +48,8 @@ import product.electrical.identification {
   ResistanceCodeRead,
   ObservedPresence,
   observed_presence,
+  GlyphSpan,
+  Transcribed,
 }
 import extdeps.nvidia.p4261.population {
   PopulatedPart,
@@ -75,7 +78,7 @@ import product.p4261.e1_candidate_source { same_candidate }
 import product.p4261.e1_b { p4261_e1_layout }
 import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
 import product.p4261.e1_photographs { e1_photographs }
-import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store }
+import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store, same_boxed_frame }
 import product.electrical.continuity { OperatorPhotograph }
 import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 
@@ -210,10 +213,12 @@ test fn a_candidate_never_became_an_identification() -> Bool {
 // attaches to Y1 from this pass. (A crystal's maker, package and orderable are still owed.)
 test fn a_printed_frequency_is_not_an_identification() -> Bool {
   any(component_rows("Y1"), c => match c.identification {
-    // MarkingReading.text is optional: a reading can record evidence without a legible text. Absent text
-    // prints nothing, so it cannot be the reading that carries "27.000".
-    MarkingUnresolved { marking: m, discriminator: _ } => match m.text {
-      Present { value: t } => (t as String).contains("27.000")
+    // Rev 6: a reading that yielded nothing renders as "no glyphs read ...", which cannot contain the
+    // figure. `MarkingUnresolved` carries its reading as OPTIONAL -- that arm means a body named in the
+    // session that nobody read -- so the branch here is about whether anything was transcribed at all:
+    // no reading, no figure. The figure has to have been TRANSCRIBED to appear in this test.
+    MarkingUnresolved { marking, discriminator: _ } => match marking {
+      Present { value: m } => (marking_text(r: m)).contains("27.000")
       Absent => false
     }
     _ => false
@@ -485,16 +490,27 @@ test fn every_named_exception_reaches_the_board() -> Bool {
 
 
 // (This is where a test used to sit which asked every rule-admitted row to state a label it had
-// read in full. It is gone, and the reason is worth keeping: `rests_on: RuleRead` now has no field
-// in which to claim a half-read label, so the state it refused has no constructor and a witness
-// would only be checking that a record equals itself. The mutant that used to prove that test --
-// writing `RuleRead { legibility: Partial { } }` into a row -- is now refused by the compiler,
-// and that refusal is what the PR reports. The held path closed the same way and by the same means:
-// an exact held row carries an authority and no legibility field at all, and a row that was only
-// partly read is a candidate arm that mints no Designator, so there is nowhere to write 'exact name,
-// partly read' either. What the types cannot reach is the CROSS-ROW direction, and the
-// four tests below are what covers it: a reading for every exception, a photograph-dated reading for a
-// photograph authority, and a candidate's proposed name kept off the board.)
+// read in full. It is gone, and the reason is worth keeping: `rests_on` is a `ReceiptBasis`, whose
+// `RuleRead` arm carries no field at all (e1_position_receipts.dag:67), so a row the base rule
+// reached has nowhere to write 'the label was only partly read'. The state has no constructor, so a
+// witness for it would only be checking that a record equals itself. What proves it is a mutation
+// rather than a test, and this is the version that runs: `RuleRead { why: "..." }` written into a
+// row -- `why` being a real field on the sibling `NamedException`, so the mutant is a plausible row
+// in every respect except the arm it sits on -- refused by the compiler with
+// `error: field 'why' not found in type 'RuleRead'`. Its control writes the same field on
+// `NamedException`, where it IS declared, and the tree compiles and the entry passes; without that
+// control the refusal would prove only that the name is unknown somewhere. An earlier draft of this
+// comment described a `legibility: Partial { }` being written instead; no `legibility` field exists
+// in the model any more, and justifying a current refusal with a retired field is how the next
+// reader starts hunting for a field that does not exist. The held path closed the same way, by the
+// same means:
+// an exact held row carries the authority that licenses every character of its spelling, and a row
+// only partly read is a candidate arm, which mints no `Designator` -- so 'exact name, partly read'
+// has no constructor there either. What the types cannot reach is the CROSS-ROW direction, and the
+// four tests that follow are what covers it: `the_held_arms_carry_only_what_they_may`,
+// `no_board_row_names_a_designator_the_receipts_never_saw`,
+// `every_body_sighting_is_at_a_position_the_authority_admitted`, and
+// `the_pass_row_counts_are_a_change_detector`.)
 
 test fn the_held_arms_carry_only_what_they_may() -> Bool {
   // The two held shapes are not interchangeable, and neither is allowed to be silently true here. An
@@ -685,8 +701,11 @@ fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
 
 fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
   count(component_rows(d), c => match c.identification {
-    IdentifiedByMarking { marking: MarkingReading { text: t, evidence: OperatorPhotograph { citation } } } =>
-      (t as String).contains("PI3CH")
+    // `rest` is BOUND and then counted: a pattern is not an expression, so `rest: []` is not how this language
+    // asks for an empty list -- it fails to parse with "expected name, found LBracket". The model's own
+    // patterns bind (`Transcribed { first, rest }`), and the witness follows them.
+    IdentifiedByMarking { marking: MarkingReading { content: Transcribed { leading: _, first: GlyphSpan { preceded_by: _, span: t, sighting: Absent }, rest: rest, followed_by: _ }, evidence: OperatorPhotograph { citation } } } =>
+      (t as String).contains("PI3CH") && count(rest) == 0
         && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
              Checkable { } => true
              _ => false
@@ -786,53 +805,51 @@ test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
 // reader following the name lands somewhere else; a digest typed from memory resolves nowhere, which is
 // the failure this whole test exists to catch, and a name typed from memory is the same mistake quieter.
 fn frame_is_held(s: LabelSighting) -> Bool {
-  match photograph_in_store(store: e1_photographs, content: s.digest) {
-    Present { value: p } =>
-      string_eq(a: p.store.file_name as String, b: s.file_name as String)
-    Absent { } => false
-  }
-}
-
-// The same pixels, not merely the same frame. An overview carries dozens of components, so agreeing on
-// which bytes the reading came from does not yet say the label was read off THIS part -- the lesson this
-// PR's own second review round taught, applied to a frame claim as well. Both sides have to state a box
-// and agree on it: a sighting with no box says only that somebody looked at the whole board.
-fn read_inside_the_same_box(sighting: LabelSighting, on_the_board: PixelRegion?) -> Bool {
-  match sighting.box {
-    Present { value: p } =>
-      match on_the_board {
-        Present { value: q } =>
-          p.left == q.left && p.top == q.top && p.width == q.width && p.height == q.height
+  match s.citation {
+    InStore { content: content, region: _ } =>
+      match photograph_in_store(store: e1_photographs, content: content) {
+        Present { value: p } =>
+          string_eq(a: p.store.file_name as String, b: s.file_name as String)
         Absent { } => false
       }
-    Absent { } => false
+    // No bytes, no frame. The store cannot hold what was never supplied, and this function IS the claim
+    // that it does, so the arm that says the bytes are missing is refused rather than excused.
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
   }
 }
 
-// The board's own reading of this designator has to point at one of the very same bytes AND inside the
-// same box, not merely at a photo taken on some day. Digest alone is the weaker join this module spent
-// a review round removing: on a frame showing dozens of parts it says the bytes exist, not that the
-// label was read here. The unstored arm is refused rather than excused -- it says the bytes were never
-// supplied, which is the gap this authority was written to close -- and a board reading with no box is
-// refused too, because the claim being checked is about pixels somebody drew.
+// Whether a sighting says WHERE on the frame the label sits. A sighting with no region says only that
+// somebody looked at the whole board, which is enough to hold a frame and not enough to have read a
+// label off it: the difference between 'nobody read it' and 'nobody looked'. It is a region test on the
+// citation now that the sighting carries one, and it is written once because two tables ask it.
+fn sighting_states_a_region(s: LabelSighting) -> Bool {
+  match s.citation {
+    InStore { content: _, region: Present { value: _ } } => true
+    InStore { content: _, region: Absent { } } => false
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// The same pixels, not merely the same frame, is no longer decided here: it is `same_boxed_frame` in
+// product.electrical.photograph, next to the citation type it compares. What stays in this module is
+// only what is E1's own -- how a receipts sighting is expressed as a citation -- because a relation the
+// store layer owns must not have a second implementation in a test, which is the §3 duplication the
+// digest ruling refused.
+
 type BoardReadingTable =
   | DesignatorReadings { }
   | UnresolvedRows { }
 
-// One board citation against one sighting the authority names: the same bytes AND the same pixels, or it
-// is not a join. Written once so both tables answer to one rule. Digest alone was the weaker join this
-// module spent a review round removing -- on a frame showing dozens of parts it says the bytes exist, not
-// that the label was read here -- and the unstored arm is refused rather than excused, because it says
-// the bytes were never supplied, which is the very gap an authority was written to close.
+// One board citation against one sighting the authority names. The rule is `same_boxed_frame`'s, in the
+// store layer; what is E1's own is the types being compared, since `LabelSighting` is declared in E1's
+// receipts module. It is written once so both reading tables answer to one rule, and it is a single call
+// now that a sighting carries a citation rather than a digest with a loose box beside it -- the two sides
+// are the same shape, so there is nothing to project. It refuses on its own terms: a sighting with no
+// region says only that somebody looked at the board, and a board citation whose bytes were never
+// supplied says less than that. A spoken "it says J3" is the shape that last arm exists to refuse -- a
+// name with no image behind it is exactly what an identity must not be able to lean on.
 fn cites_this_label(citation: PhotographCitation, s: LabelSighting) -> Bool {
-  match citation {
-    InStore { content: c, region: r } =>
-      string_eq(a: c.hex as String, b: s.digest.hex as String)
-        && read_inside_the_same_box(sighting: s, on_the_board: r)
-    // A spoken "it says J3" is the shape this arm exists to refuse: a name with no image behind it is
-    // exactly what an identity must not be able to lean on.
-    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
-  }
+  same_boxed_frame(a: citation, b: s.citation)
 }
 
 // Some board row that names this designator has to point at one of the very same bytes inside the same
@@ -882,10 +899,7 @@ fn authority_is_checkable(name: NonEmptyStr, authority: DesignatorAuthority,
       && frames.all(s => frame_is_held(s))
       // A read that states every character has to say where on at least one image it read them: a claim
       // with no box anywhere is somebody's impression of a label, not a read of it.
-      && any(frames, s => match s.box {
-           Present { value: _ } => true
-           Absent { } => false
-         })
+      && any(frames, s => sighting_states_a_region(s))
       // and a board row that names this designator points at the same pixels
       && board_reads_those_frames(name: name, frames: frames, on_the_board: on_the_board)
   }
