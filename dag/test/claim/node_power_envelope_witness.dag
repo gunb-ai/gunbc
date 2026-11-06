@@ -22,6 +22,7 @@ import std.measure {
   watt_count,
 }
 import extdeps.vendor.sk_hynix { sk_hynix }
+import extdeps.vendor.amd { amd }
 import extdeps.memory.jedec { ddr4_generation_catalog }
 import extdeps.memory.types {
   DramModuleCatalogRow,
@@ -104,6 +105,10 @@ import product.node_power_envelope {
   DimmPowerFromPartCurrents,
   DimmPowerRefused,
   DimmTraffic,
+  DimmActivation,
+  ActivationEstablished,
+  ActivationNotEstablished,
+  ActivationDutyUnestablished,
   MemoryPowerUnresolved,
   NoPartEvidenceAndNoClassBound,
   TemperatureBeyondClassBound,
@@ -260,7 +265,7 @@ fn node_wall(inputs: NodeElectricalInputs) -> Int {
 }
 
 data idle_normal_load: DimmLoad = DimmLoad {
-  traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activate_duty: permille(count: 0) },
+  traffic: DimmTraffic { read: Bandwidth { count: 0 }, write: Bandwidth { count: 0 }, activation: ActivationEstablished { duty: permille(count: 0), standing: fixture_profile_standing } },
   temperature: celsius(count: 60),
 }
 
@@ -672,7 +677,7 @@ data fixture_uncited_profile_standing: CitedFigureStanding = TranscribedUncited 
 }
 
 data fixture_part_evidence: DramPartCurrentEvidence = DramPartCurrentEvidence {
-  part_number: "GENERIC-32G-2RX4-3200" as NonEmptyStr,
+  subject: mod_2rx4_32g,
   profile: DramCurrentProfile {
     supply: millivolt(count: 1200),
     idd0: milliampere(count: 50),
@@ -687,7 +692,7 @@ data fixture_part_evidence: DramPartCurrentEvidence = DramPartCurrentEvidence {
 }
 
 data fixture_uncited_part_evidence: DramPartCurrentEvidence = DramPartCurrentEvidence {
-  part_number: fixture_part_evidence.part_number,
+  subject: fixture_part_evidence.subject,
   profile: fixture_part_evidence.profile,
   standing: fixture_uncited_profile_standing,
 }
@@ -725,7 +730,7 @@ data fixture_part_only_evidence: DimmPowerEvidence = DimmPowerEvidence {
 
 fn load_at(temp: Int, read: Int, write: Int) -> DimmLoad {
   DimmLoad {
-    traffic: DimmTraffic { read: Bandwidth { count: read }, write: Bandwidth { count: write }, activate_duty: permille(count: 300) },
+    traffic: DimmTraffic { read: Bandwidth { count: read }, write: Bandwidth { count: write }, activation: ActivationEstablished { duty: permille(count: 300), standing: fixture_profile_standing } },
     temperature: celsius(count: temp),
   }
 }
@@ -886,6 +891,51 @@ test fn cpu_usage_power_for_a_foreign_cpu_refuses() -> Bool {
 test fn class_bound_path_also_refuses_traffic_beyond_peak() -> Bool {
   match dimm_power(module: mod_2rx4_32g, evidence: class_bound_only_evidence, load: load_at(temp: 60, read: 30000000000, write: 30000000000)) {
     DimmPowerRefused { cause: TrafficExceedsModulePeak { demanded: _, peak: _ } } => true
+    _ => false
+  }
+}
+
+// Evidence is bound to the exact module row: the same part-number text under another manufacturer
+// does not match, so the foreign vendor falls to its (absent) class bound and refuses.
+data foreign_vendor_same_part_module: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: mod_2rx4_32g.part_number,
+  manufacturer: amd,
+  generation: mod_2rx4_32g.generation,
+  capacity_bytes: mod_2rx4_32g.capacity_bytes,
+  data_rate_mts: mod_2rx4_32g.data_rate_mts,
+  ecc: mod_2rx4_32g.ecc,
+  buffering: mod_2rx4_32g.buffering,
+  die_stacking: mod_2rx4_32g.die_stacking,
+  chip_width: mod_2rx4_32g.chip_width,
+  rank_count: mod_2rx4_32g.rank_count,
+}
+
+test fn evidence_for_one_vendor_does_not_match_another_vendors_same_part_number() -> Bool {
+  (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: idle_normal_load) {
+    DimmPowerFromPartCurrents { power: _, standing: _ } => true
+    _ => false
+  })
+    && (match dimm_power(module: foreign_vendor_same_part_module, evidence: fixture_part_only_evidence, load: idle_normal_load) {
+      DimmPowerRefused { cause: NoPartEvidenceAndNoClassBound { part_number: _ } } => true
+      _ => false
+    })
+}
+
+// An activation duty with no established evidence refuses the part-current path instead of guessing.
+test fn an_unestablished_activation_duty_refuses_the_part_current_reading() -> Bool {
+  match dimm_power(
+    module: mod_2rx4_32g,
+    evidence: fixture_part_only_evidence,
+    load: DimmLoad {
+      traffic: DimmTraffic {
+        read: Bandwidth { count: 0 },
+        write: Bandwidth { count: 0 },
+        activation: ActivationNotEstablished { read_obligation: "an ACT/PRE counter observation or a cited activation bound" as NonEmptyStr },
+      },
+      temperature: celsius(count: 40),
+    },
+  ) {
+    DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: _ } } => true
     _ => false
   }
 }

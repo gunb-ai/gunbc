@@ -242,11 +242,18 @@ type DramCurrentProfile {
   buffer_overhead: Milliwatt
 }
 
-// ONE PART'S CURRENT EVIDENCE, keyed by the exact catalog part number. standing says whether the
+// Module identity is manufacturer AND part number: two vendors may spell one part number, and
+// evidence for one must never match the other. Equality is decided here, once.
+fn dram_module_catalog_row_eq(a: DramModuleCatalogRow, b: DramModuleCatalogRow) -> Bool {
+  (a.manufacturer.legal_name as String) == (b.manufacturer.legal_name as String)
+    && (a.part_number as String) == (b.part_number as String)
+}
+
+// ONE MODULE'S CURRENT EVIDENCE, bound to the exact module row (manufacturer + part number). standing says whether the
 // profile was read from the vendor datasheet (CitedToAuthority) or is an uncited transcription; a
 // consumer must carry that standing to its own answer rather than consuming a bet as deduced.
 type DramPartCurrentEvidence {
-  part_number: NonEmptyStr
+  subject: DramModuleCatalogRow
   profile: DramCurrentProfile
   standing: CitedFigureStanding
 }

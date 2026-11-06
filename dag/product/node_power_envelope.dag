@@ -57,6 +57,7 @@ import extdeps.memory.types {
   DramModuleCatalogRow,
   dram_chips_per_rank,
   dram_data_word_width,
+  dram_module_catalog_row_eq,
 }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import gunbc.memory_provisioning {
@@ -287,13 +288,14 @@ fn memory_bandwidth(
 // --- DIMM POWER AS A FUNCTION OF TRAFFIC, TEMPERATURE AND THE PART ------------------------------
 //
 // REPLACES memory_power's per-chip constant times devices_per_stick (host thermal plan finding B).
-// That arithmetic counted every DIE as a package (144 for an M393A8G40D40, whose stick has about 36
-// packages: ~58 W per stick at the witness's 400 mW) and had no traffic or temperature term; it is
-// deleted, not kept beside this. Two evidence paths and no third:
+// That arithmetic multiplied one arbitrary per-chip constant by the die count and had no traffic,
+// operating-state, temperature, buffer or evidentiary model (about 58 W per M393A8G40D40 stick at the
+// witness's 400 mW); it is deleted, not kept beside this. Per-die IDD currents legitimately use the
+// die count; the defect was the constant, not the count. Two evidence paths and no third:
 //   1. PART CURRENTS: the part's per-die IDD profile (extdeps.memory.types DramCurrentProfile) by the
 //      DDR4 current-based method. Background current on every die; activate, read and write on the
 //      addressed rank's dies only; refresh at tRFC/tREFI, DOUBLED above 85 C.
-//   2. CLASS BOUND: extdeps.memory.dimm_class_power_bound, a conservative ceiling by generation,
+//   2. CLASS BOUND: product.dimm_class_power_bound, a conservative ceiling by generation,
 //      class and capacity, used when no part evidence resolves.
 // A module resolving through neither REFUSES; it never reads as zero or as a default. The reading
 // carries the figure's CitedFigureStanding so a bet is never consumed as deduced (DESIGN 4d).
@@ -301,10 +303,18 @@ fn memory_bandwidth(
 // Consumers: node_draw below (and through it psu_adequacy and derived_wall_power). Declared later
 // consumers: P3 (host envelope) and P5 (steady-state prediction) of
 // gunbc.plans.host_thermal_operating_point.
+// The row-activation duty cannot be guessed and has no producer yet: the planned
+// ReadMemoryTrafficStanding observation covers read and write bandwidth only. Until an observation of
+// ACT/PRE (or a cited bound) exists, a part-current reading REFUSES rather than minting a wattage over
+// an arbitrary activation fraction. An uncited duty is a bet and is treated as not established.
+type DimmActivation
+  = ActivationNotEstablished { read_obligation: NonEmptyStr }
+  | ActivationEstablished { duty: Permille, standing: CitedFigureStanding }
+
 type DimmTraffic {
   read: Bandwidth
   write: Bandwidth
-  activate_duty: Permille
+  activation: DimmActivation
 }
 
 type DimmLoad {
@@ -324,6 +334,7 @@ type DimmPowerRefusalCause
   | TemperatureBeyondClassBound { temperature: Celsius }
   | AmbiguousClassBound { part_number: NonEmptyStr, candidate_count: Nat }
   | UncitedPartEvidenceAndNoClassBound { part_number: NonEmptyStr, read_obligation: NonEmptyStr }
+  | ActivationDutyUnestablished { read_obligation: NonEmptyStr }
 
 type DimmPowerReading
   = DimmPowerFromPartCurrents { power: Milliwatt, standing: CitedFigureStanding }
@@ -350,6 +361,7 @@ fn dimm_power_from_currents(
   module: DramModuleCatalogRow,
   profile: DramCurrentProfile,
   traffic: DimmTraffic,
+  activate_duty: Permille,
   temperature: Celsius,
 ) -> Milliwatt {
   let peak = bandwidth_count(b: module_peak_bandwidth(module: module))
@@ -360,7 +372,7 @@ fn dimm_power_from_currents(
   let idd3n = milliampere_count(i: profile.idd3n)
   let background = all_dies * idd3n
   let activate = div_ceil(
-    a: active_dies * nat_sub_floor(a: milliampere_count(i: profile.idd0), b: idd3n) * permille_count(p: traffic.activate_duty),
+    a: active_dies * nat_sub_floor(a: milliampere_count(i: profile.idd0), b: idd3n) * permille_count(p: activate_duty),
     b: 1000,
   )
   let read = div_ceil(a: active_dies * nat_sub_floor(a: milliampere_count(i: profile.idd4r), b: idd3n) * read_pm, b: 1000)
@@ -410,12 +422,39 @@ fn dimm_power_from_class_selection(
   }
 }
 
+// The part-current reading, which needs an ESTABLISHED row-activation duty (cited or observed).
+fn dimm_power_from_part(
+  module: DramModuleCatalogRow,
+  part: DramPartCurrentEvidence,
+  load: DimmLoad,
+) -> DimmPowerReading {
+  match load.traffic.activation {
+    ActivationNotEstablished { read_obligation: o } =>
+      DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: o } }
+    ActivationEstablished { duty: d, standing: g } =>
+      match g {
+        TranscribedUncited { read_obligation: o } =>
+          DimmPowerRefused { cause: ActivationDutyUnestablished { read_obligation: o } }
+        CitedToAuthority { authority: _ } =>
+          DimmPowerFromPartCurrents {
+            power: dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: d, temperature: load.temperature),
+            standing: part.standing,
+          }
+        ObservedByReceipt { observed: _ } =>
+          DimmPowerFromPartCurrents {
+            power: dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: d, temperature: load.temperature),
+            standing: part.standing,
+          }
+      }
+  }
+}
+
 fn dimm_power(
   module: DramModuleCatalogRow,
   evidence: DimmPowerEvidence,
   load: DimmLoad,
 ) -> DimmPowerReading {
-  let matches = filter(evidence.parts, e => (e.part_number as String) == (module.part_number as String))
+  let matches = filter(evidence.parts, e => dram_module_catalog_row_eq(a: e.subject, b: module))
   let demanded = bandwidth_count(b: load.traffic.read) + bandwidth_count(b: load.traffic.write)
   if count(matches) > 1 {
     DimmPowerRefused {
@@ -437,15 +476,9 @@ fn dimm_power(
           TranscribedUncited { read_obligation: o } =>
             dimm_power_from_class_selection(module: module, evidence: evidence, temperature: load.temperature, uncited_obligation: Present { value: o })
           CitedToAuthority { authority: _ } =>
-            DimmPowerFromPartCurrents {
-              power: dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, temperature: load.temperature),
-              standing: part.standing,
-            }
+            dimm_power_from_part(module: module, part: part, load: load)
           ObservedByReceipt { observed: _ } =>
-            DimmPowerFromPartCurrents {
-              power: dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, temperature: load.temperature),
-              standing: part.standing,
-            }
+            dimm_power_from_part(module: module, part: part, load: load)
         }
     }
   }

@@ -32,6 +32,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 
 import product.cooling_qualification {
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
+  CoolingDesignPowerUnestablished,
   CoolerDesignPowerBelowProcessorTdp,
   CoolerMountDoesNotMatchProcessorMount,
   BaseboardNotInCoolerSupportedPopulation,
@@ -66,6 +67,7 @@ test fn installed_srv3_cooling_is_catalog_compatible() -> Bool {
   match cooling_catalog_verdict(realization: srv3_installed_cooling) {
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => true
     CoolingCatalogRefused { host: _, cause: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -108,6 +110,7 @@ test fn cooler_with_a_different_retention_is_a_discriminating_refusal() -> Bool 
         } => false
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -148,6 +151,7 @@ test fn baseboard_absent_from_supported_population_is_refused() -> Bool {
         } => false
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -187,6 +191,7 @@ test fn design_power_one_watt_below_tdp_is_refused() -> Bool {
         BaseboardNotInCoolerSupportedPopulation { baseboard_model: _ } => false
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -224,6 +229,7 @@ test fn host_without_modeled_cooler_is_unobserved_not_compatible() -> Bool {
     host: operator_host_srv1,
     realizations: installed_cooling_realizations,
   ) {
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => true
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => false
@@ -267,6 +273,7 @@ test fn catalog_verdict_cannot_stand_in_for_runtime_thermal_evidence() -> Bool {
     CoolingCatalogCompatible { host: host, cooler_asset: asset, design_power_standing: _ } =>
       host == operator_host_srv3 && asset == cooler_srv3
     CoolingCatalogRefused { host: _, cause: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -307,6 +314,7 @@ fn verdict_is_ambiguous(v: CoolingCatalogVerdict) -> Bool {
     InstalledCoolingAmbiguous { host: _, candidate_count: n } => n == 2
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => false
     CoolingCatalogRefused { host: _, cause: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
@@ -368,6 +376,7 @@ test fn cross_platform_socket_at_the_same_contact_count_is_refused() -> Bool {
         } => false
       }
     CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_standing: _ } => false
+    CoolingDesignPowerUnestablished { host: _, standing: _ } => false
     InstalledCoolingUnobserved { host: _ } => false
     InstalledCoolingAmbiguous { host: _, candidate_count: _ } => false
   }
