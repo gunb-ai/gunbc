@@ -9449,14 +9449,6 @@ type BeltVerifyMode = VerifyAsBelt | VerifyAsOperatorResume
 // the host it ran on (verify_without_observable_subject_defers_instead_of_rerunning, red on main).
 // belt_verify_attempt_for_instance owns the real lookup and the not-yet-terminal deferral; this function
 // is the verification given a decided lookup.
-fn belt_verify_terminal_attempt(
-  instance: HostDashboardInstance,
-  progress: WorkflowAttemptProgress,
-  lookup: BeltNodeLookup,
-) -> BeltVerifyOutcome {
-  belt_verify_attempt_in_mode(instance: instance, progress: progress, lookup: lookup, mode: VerifyAsBelt)
-}
-
 // The belt's run is bounded by the refused-retry ledger; the operator's resume is not (it bypasses the ledger).
 fn belt_verify_decision_in_mode(
   mode: BeltVerifyMode,
@@ -9479,7 +9471,7 @@ fn belt_verify_decision_in_mode(
   }
 }
 
-fn belt_verify_attempt_in_mode(
+fn belt_verify_terminal_attempt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
   lookup: BeltNodeLookup,
@@ -9665,36 +9657,17 @@ fn belt_verify_attempt_in_mode(
   }
 }
 
-// The operator's resume of a refused verification: the same terminal-worker deferral as the belt's run, then the
-// verification in the resume mode (a recorded REFUSED verdict runs again; the retry ledger is bypassed).
-fn belt_verify_resume_attempt_for_instance(
-  instance: HostDashboardInstance,
-  progress: WorkflowAttemptProgress,
-) -> BeltVerifyOutcome {
-  if belt_provider_is_terminal(provider: progress.provider) {
-    belt_verify_attempt_in_mode(
-      instance: instance,
-      progress: progress,
-      lookup: belt_lookup_node(node_id: progress.node_id),
-      mode: VerifyAsOperatorResume,
-    )
-  } else {
-    VerifyDeferred {
-      node_id: progress.node_id,
-      reason: "the agent obligation is not satisfied: the agent has not reached a terminal state, so there is nothing to verify yet",
-    }
-  }
-}
-
 fn belt_verify_attempt_for_instance(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
+  mode: BeltVerifyMode,
 ) -> BeltVerifyOutcome {
   if belt_provider_is_terminal(provider: progress.provider) {
     belt_verify_terminal_attempt(
       instance: instance,
       progress: progress,
       lookup: belt_lookup_node(node_id: progress.node_id),
+      mode: mode,
     )
   } else {
     VerifyDeferred {
@@ -10105,7 +10078,7 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
             head: revision as CommitSha,
             selection: selection,
           ) {
-            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
             VerificationSubjectObserved { subject } =>
               match belt_verify_one_gate(observation: belt_verify_one_receipt_observation_of(
                 evidence: verification_file_evidence_for(
@@ -10116,7 +10089,7 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
                 VerifyOneNoOp { verdict_key, detail } =>
                   VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
                 VerifyOneRefuse { reason } => VerifyOneRefused { reason: reason }
-                VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key)
+                VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
               }
           }
         }
@@ -10129,20 +10102,10 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
 // verdict replaces the refused receipt. Nothing else changes: a passed or failed verdict answers
 // already-recorded, exactly as belt_verify_one_for_instance does.
 fn belt_verify_resume_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
-  match belt_progress_for_one_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    OneAttemptNotCurrent { named, current } =>
-      VerifyOneRefused {
-        reason: join([
-          "the named attempt ", named, " is not the node's current modeled attempt (current is ",
-          current, "); the resume does not act on a lineage the pointer has left",
-        ], ""),
-      }
-    OneAttemptProgress { progress } =>
-      VerifyOneVerdictRecorded { outcome: belt_verify_resume_attempt_for_instance(instance: instance, progress: progress) }
-  }
+  belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsOperatorResume)
 }
 
-fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt_key: String, mode: BeltVerifyMode) -> BeltVerifyOneResult {
   match belt_progress_for_one_attempt(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     OneAttemptNotCurrent { named, current } =>
       VerifyOneRefused {
@@ -10152,7 +10115,7 @@ fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt
         ], ""),
       }
     OneAttemptProgress { progress } =>
-      VerifyOneVerdictRecorded { outcome: belt_verify_attempt_for_instance(instance: instance, progress: progress) }
+      VerifyOneVerdictRecorded { outcome: belt_verify_attempt_for_instance(instance: instance, progress: progress, mode: mode) }
   }
 }
 
@@ -14629,7 +14592,7 @@ fn belt_attempt_obligation_step(instance: HostDashboardInstance, progress: Workf
       BeltAttemptObligationStep { kind: kind, pass: belt_commit_pass_outcome_from(outcomes: [o]), detail: belt_commit_outcome_json_value(o: o) }
     }
     VerifyObligation => {
-      let o = belt_verify_attempt_for_instance(instance: instance, progress: progress)
+      let o = belt_verify_attempt_for_instance(instance: instance, progress: progress, mode: VerifyAsBelt)
       BeltAttemptObligationStep { kind: kind, pass: belt_verify_pass_outcome_from(outcomes: [o]), detail: belt_verify_outcome_json(o: o) }
     }
     ReviewObligation => {

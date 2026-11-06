@@ -132,6 +132,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
   belt_verify_terminal_attempt,
+  VerifyAsBelt,
   belt_workflow_attempt_presentation_json,
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
@@ -1320,6 +1321,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
     lookup: NodeMissing,
+    mode: VerifyAsBelt,
   ) {
     VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
@@ -1378,6 +1380,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       goal_audit: [],
       session_placement: SessionPlacementAbsent { unit: "" },
     }),
+    mode: VerifyAsBelt,
   ) {
     VerifyDeferred { node_id: _, reason } =>
       string_contains(s: reason, pattern: "agent obligation is not satisfied")
