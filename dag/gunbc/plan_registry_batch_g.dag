@@ -28,6 +28,9 @@ import gunbc.plans.ntfy_deployment_gate_approval { ntfy_deployment_gate_approval
 import gunbc.plans.serving_fleet_program { serving_fleet_program_plan }
 import gunbc.plans.fabric_serving_router { fabric_serving_router_plan }
 import gunbc.plans.network_install_architecture_rows { network_install_architecture_rows_plan }
+import gunbc.plans.fleet_subsumption_manual_gaps { fleet_subsumption_manual_gaps_plan }
+import gunbc.plans.host_convergence_circuit_residue { host_convergence_circuit_residue_plan }
+import gunbc.plans.transport_argv_anemia_dissolution { transport_argv_anemia_dissolution_plan }
 import gunbc.plans.fleet_naming_reach_access { fleet_naming_reach_access_plan }
 import gunbc.plans.site_segment_anchor_bmc_reach { site_segment_anchor_bmc_reach_plan }
 import gunbc.plans.boot_origin_bmc_media { boot_origin_bmc_media_plan }
@@ -35,6 +38,7 @@ import gunbc.plans.gpu_card_host_program { gpu_card_host_program_plan }
 import gunbc.plans.logical_work_realization { logical_work_realization_plan }
 import gunbc.plans.mtcollins1_ci_service_legs { mtcollins1_ci_service_legs_plan }
 import gunbc.plans.converged_ingress { converged_ingress_plan }
+import gunbc.plans.host_thermal_operating_point { host_thermal_operating_point_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -70,5 +74,9 @@ data batch_g_plans: List<Plan> = [
   gpu_card_host_program_plan,
   logical_work_realization_plan,
   mtcollins1_ci_service_legs_plan,
-  converged_ingress_plan
+  fleet_subsumption_manual_gaps_plan,
+  host_convergence_circuit_residue_plan,
+  transport_argv_anemia_dissolution_plan,
+  converged_ingress_plan,
+  host_thermal_operating_point_plan
 ]

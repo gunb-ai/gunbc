@@ -19,7 +19,8 @@ module test.claim.scm.scm_object_table_json_witness
 // not carry it. And the round trips no longer pass through JSON text serialization, which was the
 // closure document's concern; what is asserted is that the TABLE preserves what it was given.
 
-import std.types { Bool, Int, String, List, list_length, NonEmptyStr }
+import std.types { Bool, Int, String, List, NonEmptyStr }
+import std.algebra { length }
 import v2.std.node { Node, Edge, Symbol, Authored, Conj, Atom, TypeNode, node_synthetic, AdmitCallersEdge, StructuralLabel, CoreMarker }
 import extdeps.languages.json.emit { json_object, json_kv, json_array, json_string, json_null, JsonValue }
 import gunbc.scm.object_store {
@@ -548,7 +549,7 @@ test fn ot_a_manifest_survives_the_table() -> Bool {
                     CorpusManifestIsSemanticNode { identity: _ } => false
                     CorpusManifestIsAuthoredSource { identity: _ } => false
                     CorpusManifestFound(record) =>
-                      (list_length(items: record.entries) == 1)
+                      (length(xs: record.entries) == 1)
                         && fold(
                           record.entries,
                           init: false,

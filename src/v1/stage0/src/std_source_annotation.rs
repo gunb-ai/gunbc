@@ -5,8 +5,8 @@ use self::AnnotationLineShape::*;
 use self::AnnotationPlacement::*;
 use self::AnnotationScope::*;
 pub use crate::std_algebra::{
-    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_push,
-    list_snoc_item, list_sort_by_key, map_insert, map_keys, map_lookup,
+    collection_concat_shape, empty_map, int_total_order, length, list_at_optional, list_head,
+    list_push, list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys,
 };
 pub use crate::std_coercion::unicode_scalar_unfold;
 pub use crate::std_occurrence_identity::OccurrenceId;
@@ -232,25 +232,28 @@ pub fn annotation_region_index(
         );
         let children_seed = v1_rt::rc_empty_map::<_, _>();
         Rc::new(AnnotationRegionIndex {
-            children: Rc::new(v1_rt::map_keys(&grouped)).iter().cloned().fold(
-                children_seed.clone(),
-                |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
-                 key: Rc<AnnotationScope>| match v1_rt::lookup(
-                    &grouped,
-                    key.clone(),
-                ) {
-                    Some(siblings) => v1_rt::rc_map_insert(
-                        acc.clone(),
+            children: crate::std_algebra::map_support_keys(grouped.clone())
+                .iter()
+                .cloned()
+                .fold(
+                    children_seed.clone(),
+                    |acc: Rc<HashMap<Rc<AnnotationScope>, Rc<Vec<Rc<AnnotationRegion>>>>>,
+                     key: Rc<AnnotationScope>| match v1_rt::lookup(
+                        &grouped,
                         key.clone(),
-                        crate::std_algebra::list_sort_by_key(
-                            siblings.clone(),
-                            region_extent_start,
-                            crate::std_algebra::int_total_order(),
+                    ) {
+                        Some(siblings) => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            key.clone(),
+                            crate::std_algebra::list_sort_by_key(
+                                siblings.clone(),
+                                region_extent_start,
+                                crate::std_algebra::int_total_order(),
+                            ),
                         ),
-                    ),
-                    std::option::Option::None => acc.clone(),
-                },
-            ),
+                        std::option::Option::None => acc.clone(),
+                    },
+                ),
         })
     }
 }
@@ -526,26 +529,23 @@ pub fn keyed_annotation_rows_agree(
                 rest: right.clone(),
                 agreed: true,
             }),
-            |acc: Rc<KeyedAnnotationRowWalk>, row: Rc<KeyedAnnotationRow>| match acc
-                .rest
-                .clone()
-                .first()
-                .cloned()
-            {
-                std::option::Option::None => Rc::new(KeyedAnnotationRowWalk {
-                    rest: Rc::new(vec![]),
-                    agreed: false,
-                }),
-                Some(other) => Rc::new(KeyedAnnotationRowWalk {
-                    rest: Rc::new(v1_rt::list_skip(&acc.rest.clone(), 1)),
-                    agreed: ((((acc.agreed.clone()
-                        && (row.scope_key.clone() == other.scope_key.clone()))
-                        && (row.before_key.clone().as_deref()
-                            == other.before_key.clone().as_deref()))
-                        && (row.after_key.clone().as_deref()
-                            == other.after_key.clone().as_deref()))
-                        && (row.text.clone() == other.text.clone())),
-                }),
+            |acc: Rc<KeyedAnnotationRowWalk>, row: Rc<KeyedAnnotationRow>| {
+                match crate::std_algebra::list_head(acc.rest.clone()) {
+                    std::option::Option::None => Rc::new(KeyedAnnotationRowWalk {
+                        rest: Rc::new(vec![]),
+                        agreed: false,
+                    }),
+                    Some(other) => Rc::new(KeyedAnnotationRowWalk {
+                        rest: Rc::new(v1_rt::list_skip(&acc.rest.clone(), 1)),
+                        agreed: ((((acc.agreed.clone()
+                            && (row.scope_key.clone() == other.scope_key.clone()))
+                            && (row.before_key.clone().as_deref()
+                                == other.before_key.clone().as_deref()))
+                            && (row.after_key.clone().as_deref()
+                                == other.after_key.clone().as_deref()))
+                            && (row.text.clone() == other.text.clone())),
+                    }),
+                }
             },
         );
         (walk.agreed.clone() && (crate::std_algebra::length(walk.rest.clone()) == 0))

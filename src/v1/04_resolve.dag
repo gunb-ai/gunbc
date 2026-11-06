@@ -50,7 +50,7 @@ import v1.compiler.infer_types {
 import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
+  TypeEnv, TypeBinding, substitute_type_slots, substitute_type_slots_scoped, declaration_ref_of_declaration_node, lookup_type, lookup_type_by_name, lookup_type_for, lookup_binding_by_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
   env_with_type_variable_bindings, bare_name_miss_diagnostic,
   type_ref_measure_binding_authority, TypeRefMeasureBinding, TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
   width_resolution_declaration, symbol_index_lookup, lookup_unit_variant_phantom_type, UnitVariantPhantomLookup, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
@@ -337,7 +337,7 @@ fn preserve_nominal_brand_on_resolve(
 // reference to an item's own parameter. This function then looked the node up BY NAME and returned
 // whatever the environment bound to that spelling, so a parameter spelled like some other binding in
 // scope was replaced by that binding and its own identity was dropped: measured by
-// //gunbc/instruments:generic-identity-census as formal_declaration_bound_conformance leaves carrying
+// the (since retired) generic-identity census as formal_declaration_bound_conformance leaves carrying
 // neither mark, where the signature they were read from carried both. There is nothing to peel
 // beneath a parameter, so a node carrying the mark is returned as it was given.
 fn node_is_type_parameter_reference(n: Node) -> Bool {
@@ -349,6 +349,28 @@ fn node_is_type_parameter_reference(n: Node) -> Bool {
 
 // EXPANSION, NOT IDENTITY: reads the structure an alias RHS expands to (connective, children, kernel head). Which declaration a type
 // denotes, or whether two types are the same, is alias_settled_agree / alias_identity_in_judgment (DESIGN 6b: one relation).
+// DESIGN 6b: a nominal alias whose TypeBinding.resolved is an ungrounded NoConnective leaf still
+// carries its target on TypeBinding.alias_rhs. Ground it there (resolve_node_bounded, applied args
+// intact) so the alias genuinely expands and the consumer judges the aliased declaration rather
+// than the alias shell. lookup_type_by_name is NOT used: it drops the applied args (the peel
+// defect #15175 fixes), so it would misjudge a parameterized alias; a parameterized alias still
+// yields NoConnective here and is left for that applied-args arm -- no instantiation is invented.
+fn ground_ungrounded_alias_leaf(resolved: Node, brand: String, env: TypeEnv, module_name: String) -> Node {
+  let ground = resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
+  if ground.connective != NoConnective { ground }
+  else {
+    match lookup_binding_by_name(env: env, name: brand) {
+      Present { value: b } => match b.alias_rhs {
+        Present { value: rhs } =>
+          let expanded = resolve_node_bounded(n: rhs, env: env, module_name: module_name, depth: 0, masked: false).resolved
+          if expanded.connective != NoConnective { expanded } else { ground }
+        _ => ground
+      }
+      _ => ground
+    }
+  }
+}
+
 fn expand_nominal_alias_rhs(n: Node, env: TypeEnv, module_name: String) -> Node {
   if node_is_type_parameter_reference(n: n) { n } else { expand_nominal_alias_rhs_by_name(n: n, env: env, module_name: module_name) }
 }
@@ -365,7 +387,7 @@ fn expand_nominal_alias_rhs_by_name(n: Node, env: TypeEnv, module_name: String) 
           _ => resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
         }
       } else {
-        resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0, masked: false).resolved
+        ground_ungrounded_alias_leaf(resolved: resolved, brand: brand, env: env, module_name: module_name)
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand)
@@ -1148,11 +1170,11 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       let resolved_children = el_results |> map(r => r.expr)
       let all_diags = flat_map(el_results, r => r.diagnostics)
       ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprListLit, children: resolved_children, inferred: texpr.inferred, span: texpr.span), diagnostics: all_diags }
-    ExprBinOp { op: op, algebra_field: af, operand: od } =>
+    ExprBinOp { op: op, algebra_field: af, operand: od, derived: eqp } =>
       let ch = texpr.children
       let lr = match ch |> first { Present { value: l } => resolve_expr_types(texpr: l, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       let rr = match ch |> skip(1) |> first { Present { value: r } => resolve_expr_types(texpr: r, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
-      ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: af, operand: od }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
+      ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: af, operand: od, derived: eqp }, children: [lr.expr, rr.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: concat(lr.diagnostics, rr.diagnostics) }
     ExprUnaryOp { op: op } =>
       let r = match texpr.children |> first { Present { value: o } => resolve_expr_types(texpr: o, env: env, module_name: module_name)  Absent => ExprResolveResult { expr: texpr, diagnostics: [] } }
       ExprResolveResult { expr: make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprUnaryOp { op: op }, children: [r.expr], inferred: texpr.inferred, span: texpr.span), diagnostics: r.diagnostics }

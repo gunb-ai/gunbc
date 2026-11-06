@@ -19,7 +19,7 @@ import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.provenance { SpanIndex }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.namespace_alias { AliasBindingRow }
-import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, list_snoc_item, list_at_optional }
+import std.algebra { Cons, Empty, fold_list, is_empty, length, list_map, list_snoc_item, list_at_optional, string_contains }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.optional { Absent, Optional, Present }
@@ -30,6 +30,9 @@ import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, 
 import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
 import std.filesystem { path_parent_directory }
 import v2.workflow.roster_import_sweep {
+  RosterStageDiagnostic,
+  roster_stage_diagnostic,
+  roster_stage_diagnostic_text,
   ImportDeclFact,
   RosterHeldLock,
   RosterHomeClosure,
@@ -57,7 +60,9 @@ import v2.workflow.roster_import_sweep {
   roster_target_refusal,
   roster_target_unchanged,
   RosterLockAcquired,
-  RosterLockRefused
+  RosterLockRefused,
+  RosterLockBusy,
+  roster_lock_refusal_row
 }
 
 // DECLARED-TO-DECLARED REHOMING (NAMESPACE-XL, tidy-ant-251's approved design, 2026-10-20). A wave of
@@ -135,9 +140,9 @@ type RehomeRefusal
   | RehomeAliasUnsupported
   | RehomeExtentMismatch
   | RehomeNoImportAnchor
-  | RehomeTokenizeRefused
-  | RehomeParseRefused
-  | RehomeNormalizeRefused
+  | RehomeTokenizeRefused { diagnostic: RosterStageDiagnostic }
+  | RehomeParseRefused { diagnostic: RosterStageDiagnostic }
+  | RehomeNormalizeRefused { diagnostic: RosterStageDiagnostic }
   | RehomeUnreadable
   | RehomeGrammarUnprepared
   | RehomeWriteFailed
@@ -156,9 +161,9 @@ fn rehome_refusal_text(r: RehomeRefusal) -> String {
     RehomeAliasUnsupported => "rehome-alias-unsupported"
     RehomeExtentMismatch => "rehome-extent-mismatch"
     RehomeNoImportAnchor => "rehome-no-import-anchor"
-    RehomeTokenizeRefused => "tokenize-refused"
-    RehomeParseRefused => "parse-refused"
-    RehomeNormalizeRefused => "normalize-refused"
+    RehomeTokenizeRefused { diagnostic: d } => "tokenize-refused " + roster_stage_diagnostic_text(d: d)
+    RehomeParseRefused { diagnostic: d } => "parse-refused " + roster_stage_diagnostic_text(d: d)
+    RehomeNormalizeRefused { diagnostic: d } => "normalize-refused " + roster_stage_diagnostic_text(d: d)
     RehomeUnreadable => "unreadable"
     RehomeGrammarUnprepared => "grammar-unprepared"
     RehomeWriteFailed => "write-failed"
@@ -409,13 +414,13 @@ fn rehome_kind_verdict(from: DeclFact, to: DeclFact) -> RehomePairVerdict {
 // The file's splices for one row, given the pair verdict and the new home's closure (both read once per run).
 fn rehome_text(path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, row: RehomeRow, pair: RehomePairVerdict, closures: List<RosterHomeClosure>) -> RehomeOutcome {
   match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-    Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeTokenizeRefused }
+    Rejected { diagnostics: d } => RehomeRefused { reason: RehomeTokenizeRefused { diagnostic: roster_stage_diagnostic(d: d) } }
     Accepted { value: stream, diagnostics: _ } =>
       match parse_module_prepared(tokens: stream, prepared: prepared) {
-        Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeParseRefused }
+        Rejected { diagnostics: d } => RehomeRefused { reason: RehomeParseRefused { diagnostic: roster_stage_diagnostic(d: d) } }
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-            Rejected { diagnostics: _ } => RehomeRefused { reason: RehomeNormalizeRefused }
+            Rejected { diagnostics: d } => RehomeRefused { reason: RehomeNormalizeRefused { diagnostic: roster_stage_diagnostic(d: d) } }
             Accepted { value: scoped, diagnostics: _ } =>
               rehome_parsed(text: text, tokens: stream.all, parse_root: artifact.tree, spans: artifact.span_index, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
           }
@@ -900,6 +905,7 @@ fn rehome_apply_exit(root_dir: String, paths_csv: String, name: String, from_hom
   let row = rehome_row_of(name: name, from_home: from_home, to_home: to_home)
   let report = match roster_lock_acquire(root_dir: root_dir) {
     RosterLockRefused { reason: r } => "REFUSE * " + roster_refusal_text(reason: r) + "\n"
+    RosterLockBusy { reason: r, holder: h, detail: d } => roster_lock_refusal_row(acquisition: RosterLockBusy { reason: r, holder: h, detail: d })
     RosterLockAcquired { held: held } => {
       let out = rehome_apply_locked(held: held, paths_csv: paths_csv, row: row)
       if roster_lock_release(held: held) { out } else { out + "REFUSE * apply-lock-not-released\n" }
@@ -1009,6 +1015,8 @@ fn rehome_controls_report() -> String {
         + rehome_control_record()
         + rehome_control_pair_inhabited(prepared: prepared, lex: lex)
         + rehome_control_contracts(prepared: prepared, lex: lex)
+        + rehome_control_stage_located(prepared: prepared, lex: lex)
+        + rehome_control_normalize_located(prepared: prepared, lex: lex)
     }
   }
 }
@@ -1064,6 +1072,38 @@ fn rehome_control_refuses(name: String, prepared: PreparedGrammar, lex: Prepared
   match rehome_text(path: "control/user.dag", text: "module c.user\n\nimport c.old { Token }\n\nfn f(t: Token) -> Token {\n  t\n}\n", prepared: prepared, lex: lex, row: rehome_control_row(), pair: pair, closures: closures) {
     RehomeRefused { reason: r } => if rehome_refusal_text(r: r) == want { "" } else { "CONTROL-FAIL rehome " + name + ": refused " + rehome_refusal_text(r: r) + ", wanted " + want + "\n" }
     _ => "CONTROL-FAIL rehome " + name + ": not refused\n"
+  }
+}
+
+// RED (DESIGN section 5, typed AND located): a file the front end refuses yields a REFUSE cause with its reason, file and byte
+// span from the stage's fatal diagnostic (v2.workflow.roster_import_sweep roster_stage_diagnostic, the ONE rule the sweep's
+// stage arms use too), not the bare stage name. On main this text refused as plain "parse-refused" with no position.
+fn rehome_control_stage_located(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match rehome_text(path: "control/user.dag", text: "module c.user\n\nfn f( {\n", prepared: prepared, lex: lex, row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeRefused { reason: r } =>
+      let t = rehome_refusal_text(r: r)
+      let staged = starts_with(s: t, prefix: "tokenize-refused reason=") || starts_with(s: t, prefix: "parse-refused reason=")
+      if staged && string_contains(s: t, pattern: " file=control/user.dag bytes=") && !string_contains(s: t, pattern: "bytes=unlocated") { "" } else { "CONTROL-FAIL rehome stage-located: refused as " + t + "\n" }
+    _ => "CONTROL-FAIL rehome stage-located: not refused\n"
+  }
+}
+
+// The normalize sibling: a refusal with no extent (the duplicate variant's DeclarationLocus) names why it is unlocated.
+fn rehome_control_normalize_located(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match rehome_text(path: "control/user.dag", text: "module c.user\n\ntype T = A | A\n", prepared: prepared, lex: lex, row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+    RehomeRefused { reason: r } =>
+      let t = rehome_refusal_text(r: r)
+      if t == "normalize-refused reason=sugar_reason_duplicate_variant_name file=none bytes=unlocated why=declaration" { "" } else { "CONTROL-FAIL rehome normalize-unlocated-names-why: refused as " + t + "\n" }
+    _ => "CONTROL-FAIL rehome normalize-unlocated-names-why: not refused\n"
+  }
+}
+
+fn rehome_normalize_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "rehome-normalize-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = rehome_control_normalize_located(prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "rehome-normalize-red HELD" } else { "rehome-normalize-red FAIL " + f }
   }
 }
 
@@ -1186,5 +1226,26 @@ fn rehome_control_pair_inhabited(prepared: PreparedGrammar, lex: PreparedLexRule
     RehomePairRefused { reason: RehomeSignatureDiffers } => ""
     RehomePairRefused { reason: r } => "CONTROL-FAIL rehome pair-inhabited: the real Int pair refused " + rehome_refusal_text(r: r) + "\n"
     RehomePairSame => "CONTROL-FAIL rehome pair-inhabited: the real Int pair read as the same shape\n"
+  }
+}
+
+// SINGLE-FUNCTION ENTRIES for the rehome stage-refusal RED and its positive control.
+fn rehome_stage_red_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "rehome-stage-red FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      let f = rehome_control_stage_located(prepared: prepared, lex: dag_prepared_lex())
+      if f == "" { "rehome-stage-red HELD" } else { "rehome-stage-red FAIL " + f }
+  }
+}
+
+fn rehome_stage_positive_only() -> String {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => "rehome-stage-positive FAIL grammar-unprepared"
+    Accepted { value: prepared, diagnostics: _ } =>
+      match rehome_text(path: "control/user.dag", text: "module c.user\n\nfn f() -> Int {\n  1\n}\n", prepared: prepared, lex: dag_prepared_lex(), row: rehome_control_row(), pair: RehomePairSame, closures: rehome_control_closures()) {
+        RehomeRefused { reason: r } => "rehome-stage-positive FAIL refused " + rehome_refusal_text(r: r)
+        _ => "rehome-stage-positive HELD"
+      }
   }
 }

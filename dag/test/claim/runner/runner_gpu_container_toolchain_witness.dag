@@ -1459,7 +1459,7 @@ test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> B
 // dangling declaration making a meaning claim the apply does not honour. What this write does is bound its
 // own wait and give a conflict an exit code a caller can recognise: 75 is EX_TEMPFAIL from sysexits.h, the
 // "temporary condition, retrying is the remedy" convention the corpus also cites in
-// codex_harness_turn_busy_exit and native_serve_stuck_exit_code -- cited, not imported, because an exit
+// codex_harness_turn_busy_exit and native_serve_deadline_exit_code -- cited, not imported, because an exit
 // contract belongs to the subsystem that reports it and a GPU runner converge's exit status has no
 // business depending on the codex harness. A contention here also means the host-mutation concurrency
 // group failed to keep the two actuators off one host, which is a reason to stop, not to wait longer.

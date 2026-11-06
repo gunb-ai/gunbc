@@ -1,6 +1,7 @@
 module v2.workflow.legacy_repair_tap
 
-import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { length }
 import std.decl_ref { decl_ref }
 import gunbc.whole_corpus_compile_admission { whole_corpus_compile_repository }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_path }
@@ -113,7 +114,7 @@ fn admit_bridge_rows(rows: List<ReferenceDerivedCandidateRow>) -> BridgeRowsAdmi
     init: BridgeRowsFold { sites: [], rows: [], malformed: [], next_index: 0 },
     f: fold_bridge_row
   )
-  if list_length(items: folded.malformed) == 0 {
+  if length(xs: folded.malformed) == 0 {
     BridgeRowsAdmitted { roster: RepairSiteRoster { sites: folded.sites }, rows: folded.rows }
   } else {
     BridgeRowsRefused { malformed: folded.malformed }
@@ -249,7 +250,7 @@ fn xl1_live_repair_tap_census_of(tap: Xl1PrimaryRootTap) -> Xl1LiveRepairTapCens
   match tap {
     Xl1PrimaryRootRefused { cause: c } => Xl1LiveRepairTapUnavailable { cause: c }
     Xl1PrimaryRootObserved { repair_rows: rows, primary_root: _, occurrence_transport: _, binding_rows: _ } =>
-      Xl1LiveRepairTapRows { count: list_length(items: rows) }
+      Xl1LiveRepairTapRows { count: length(xs: rows) }
   }
 }
 

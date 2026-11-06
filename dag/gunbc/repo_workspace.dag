@@ -70,6 +70,12 @@ fn own_tool_footprints() -> List<WorkspaceFootprint> {
       ]
     },
     WorkspaceFootprint {
+      provenance: RepoTool { display: "Roster import sweep apply hold", owner_module: "v2.workflow.roster_import_sweep" },
+      artifacts: [
+        WorkspaceArtifact { pattern: "/.roster_import_sweep_apply_hold.*", meaning: "windowed slot files of the apply hold (std.durable_exclusive_hold over gunbc.durable_cas_file_store) one worktree's sweep and rehome applies take; lock state, never source", reason: SessionRuntimeState }
+      ]
+    },
+    WorkspaceFootprint {
       provenance: RepoTool { display: "CI attempt receipts", owner_module: "gunbc.ci.ci_failure_class" },
       artifacts: [
         WorkspaceArtifact { pattern: "/gunbc-floor-cmd.log", meaning: "per-attempt command log a fleet step tees under the checkout before classifying its exit", reason: SessionRuntimeState },
