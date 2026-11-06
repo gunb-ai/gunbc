@@ -137,6 +137,14 @@ type ContinuationPlan
   | AlreadyRunning { reason: String, attempt_key: String }
   | Resume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
   | NextAttempt { reason: String, from_branch: String }
+  // Restore -- CONTINUE's recovery of a STILL-RESUMABLE attempt whose worktree was reaped while its
+  // lineage had NOT ended: the belt rebuilds the SAME attempt in place (same attempt key) from its live
+  // branch and reopens the claim that names it (worktree_claim_reopen_settled on the same CAS slot). It is
+  // NOT NextAttempt (which mints a NEW key for a lineage that ENDED without a candidate); a live attempt is
+  // recovered under its own key so its ledger history is kept, never abandoned to an orphan (operator ruling
+  // D3). Its branch must be live: a gone branch is nothing to restore onto (Refuse), an unreadable branch is
+  // unknown and refused, never restored onto. It carries the key it restores and the branch it restores from.
+  | Restore { reason: String, attempt_key: String, from_branch: String }
   | AlreadyComplete { reason: String }
   | Refuse { reason: String }
 
@@ -151,12 +159,34 @@ fn continuation_plan(obs: PriorExecutionObservation?) -> ContinuationPlan {
       }
     Present { value: prior } =>
       if !prior.worker_terminal {
-        // THE LIVE ATTEMPT IS JOINED, NEVER DOUBLED. The worker is still running; the plan names its
-        // attempt key and nothing launches beside it. This is the double-spawn guard the fence used
-        // to claim: a live attempt is present, so a fresh attempt is refused by the plan itself.
-        AlreadyRunning {
-          reason: join(["the prior attempt ", prior.attempt_key, " is live: its worker is not terminal; its session is JOINED and no second attempt is started beside it"], ""),
-          attempt_key: prior.attempt_key,
+        // A LIVE WORKER IS JOINED -- but only while its worktree is still HERE. A live (not-terminal) worker
+        // whose worktree was REAPED is the accident M3 prevents: its session is resumable, so its claim should
+        // never have been released and its tree reclaimed. When that has already happened, CONTINUE neither
+        // JOINS a session whose tree is gone nor starts a NEW attempt (the lineage has not ENDED); it RESTORES
+        // the SAME attempt in place from its live branch and reopens the claim naming it (operator ruling D3).
+        // The double-spawn guard still holds: no second attempt key is ever minted for a live attempt -- a
+        // present worktree JOINs under its key, a reaped worktree RESTORES the same key, nothing doubles it.
+        match prior.worktree {
+          AttemptWorktreePresent { path: _ } =>
+            AlreadyRunning {
+              reason: join(["the prior attempt ", prior.attempt_key, " is live: its worker is not terminal; its session is JOINED and no second attempt is started beside it"], ""),
+              attempt_key: prior.attempt_key,
+            }
+          AttemptWorktreeAbsent { path: _ } =>
+            match prior.branch_head {
+              BranchLive =>
+                Restore {
+                  reason: join(["the prior attempt ", prior.attempt_key, " is live (not terminal) but its worktree was reaped; its session is resumable, so the SAME attempt is restored in place from its live branch ", prior.branch, " and its claim reopened -- no new attempt key is minted"], ""),
+                  attempt_key: prior.attempt_key,
+                  from_branch: prior.branch,
+                }
+              BranchGone =>
+                Refuse { reason: join(["BranchAbsent: the prior attempt ", prior.attempt_key, " is live but its worktree is reaped and its branch ", prior.branch, " is gone, so there is nothing to restore the resumable attempt onto"], "") }
+              BranchUnknown { reason: why } =>
+                Refuse { reason: join(["could not determine whether the live attempt ", prior.attempt_key, "'s branch ", prior.branch, " is present to restore its reaped worktree from; a failed branch check is not an absence (", why, ")"], "") }
+            }
+          AttemptWorktreeUnobserved { path: _, cause } =>
+            Refuse { reason: join(["the worktree standing of the live attempt ", prior.attempt_key, " could not be established (", cause, "), so it is neither joined nor restored onto a possibly-absent tree"], "") }
         }
       } else {
         // THE WORKTREE STANDING IS READ FIRST, because the capture and recovery live INSIDE it. When the
