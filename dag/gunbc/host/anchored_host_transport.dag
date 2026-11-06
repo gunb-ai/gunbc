@@ -389,7 +389,7 @@ fn anchored_host_transport_per_boot(
 ) -> AnchoredHostBinding {
   match pin {
     Absent => AnchoredBindingAnchorAbsent {
-      cause: "no per-boot host-key pin: the console read of this boot's key line is absent or malformed; matching against nothing is accepting anything",
+      cause: "no per-boot host-key pin: the console read of this boot's checked host-key fields is absent or malformed; matching against nothing is accepting anything",
     }
     Present { value: p } =>
       if (p.boot_id as String) != (expected_boot_id as String) {
