@@ -3,7 +3,7 @@ module gunbc.machine_intake.mtcollins1_fan_observe
 import extdeps.shell
 import std.algebra { string_contains, trim }
 import std.types { NonEmptyStr, String }
-import std.measure { ObservationRoundCount, Second, observation_round_count, second }
+import std.measure { ObservationRoundCount, Second, observation_round_count, observation_round_count_value, second, second_count }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
@@ -77,6 +77,16 @@ fn mtcollins1_fan_credential_fetch_status(credential_path: NonEmptyStr) -> MtCol
 // series buys resolution the first question does not need.
 data mtcollins1_fan_observation_rounds: ObservationRoundCount = observation_round_count(count: 6)
 data mtcollins1_fan_observation_interval: Second = second(count: 10)
+
+// THE SERIES' OWN DECLARED DURATION: rounds at the interval, each counted once. The step's wall-clock budget
+// is a fold over this (gunbc.fleet.fleet_converge_workflow fleet_converge_gunbc_run_step_timeout_minutes),
+// so the step pays gunbc run's resolve of this entry's closure plus the series, not a flat figure that the
+// resolve alone can exceed (run 42184429821: 282.5 s of a 300 s flat budget went to resolve). The IPMI
+// client's own per-call bound is NOT modeled here: a stalled session adds time this figure does not
+// declare, and that is a stated gap, not an included allowance.
+fn mtcollins1_fan_observe_probe_bound() -> Second {
+  second(count: (observation_round_count_value(c: mtcollins1_fan_observation_rounds) as Int) * (second_count(s: mtcollins1_fan_observation_interval) as Int))
+}
 
 // A MINUTE IS NOT A TRANSITION WINDOW ANYBODY MEASURED, and this row says so rather than implying
 // otherwise. No family publishes how long its loop takes to close, and this run is sixty seconds
