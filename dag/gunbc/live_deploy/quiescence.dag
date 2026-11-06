@@ -120,6 +120,44 @@ fn quiescence_mark_refusals(mark: QuiescenceMarkCapture) -> List<String> {
   }
 }
 
+// The is-active words decide together: a local let binds the cast once, because the parser reads an
+// `if` condition as a plain expression (a cast in that position is not a condition).
+fn drain_state_refusals(state: NonEmptyStr) -> List<String> {
+  let words = state as String
+  if words == "inactive" {
+    []
+  } else if words == "failed" {
+    ["the drain unit is failed: a failed drain is not a drained serve, and reset-failed would erase the evidence rather than answer for it"]
+  } else {
+    [join(["the drain unit is still ", words, ": quiescence requires the drain to have exited"], "")]
+  }
+}
+
+fn serve_state_refusals(
+  state: NonEmptyStr,
+  serve_load_state: SystemdPropertyCapture,
+  serve_sub_state: SystemdPropertyCapture,
+) -> List<String> {
+  let words = state as String
+  if words == "failed" {
+    ["the serve unit is failed: a serve that died is not a serve that stood down, and the swap refuses until its failure is accounted for"]
+  } else if words == "inactive" {
+    match serve_load_state {
+      SystemdPropertyCaptured { value: "not-found" } => []
+      SystemdPropertyCaptured { value: _ } => match serve_sub_state {
+        SystemdPropertyCaptured { value: v } =>
+          if v == "dead" { [] } else { [join(["the serve unit is inactive but its SubState is ", v, ": only dead proves no process remains"], "")] }
+        SystemdPropertyBlank => ["the serve unit's SubState reads blank: inactivity without a sub-state is unproven (DESIGN 4d: assert nothing as deduced that is only inferred)"]
+        SystemdPropertyCaptureRefused { reason: r } => [join(["the serve unit's SubState read was refused: ", r], "")]
+      }
+      SystemdPropertyBlank => ["the serve unit's LoadState reads blank: absence must be observed, not unproven"]
+      SystemdPropertyCaptureRefused { reason: r } => [join(["the serve unit's LoadState read was refused: ", r], "")]
+    }
+  } else {
+    [join(["the serve unit is still ", words, ": the swap refuses until the stop leg has brought it down"], "")]
+  }
+}
+
 fn quiescence_drain_refusals(
   mark: QuiescenceMarkCapture,
   drain_is_active: UnitIsActiveCapture,
@@ -129,14 +167,7 @@ fn quiescence_drain_refusals(
 ) -> List<String> {
   let active_reasons = match drain_is_active {
     UnitIsActiveCaptureRefused { reason: r } => [join(["the drain unit's is-active read was refused: ", r], "")]
-    UnitIsActiveCaptured { state: st, active: _ } =>
-      if st as String == "inactive" {
-        []
-      } else if st as String == "failed" {
-        ["the drain unit is failed: a failed drain is not a drained serve, and reset-failed would erase the evidence rather than answer for it"]
-      } else {
-        [join(["the drain unit is still ", st as String, ": quiescence requires the drain to have exited"], "")]
-      }
+    UnitIsActiveCaptured { state: st, active: _ } => drain_state_refusals(state: st)
   }
   let result_reasons = match drain_result {
     SystemdPropertyCaptured { value: v } =>
@@ -179,23 +210,7 @@ fn quiescence_serve_refusals(
   match serve_is_active {
     UnitIsActiveCaptureRefused { reason: r } => [join(["the serve unit's is-active read was refused: ", r], "")]
     UnitIsActiveCaptured { state: st, active: _ } =>
-      if st as String == "failed" {
-        ["the serve unit is failed: a serve that died is not a serve that stood down, and the swap refuses until its failure is accounted for"]
-      } else if st as String == "inactive" {
-        match serve_load_state {
-          SystemdPropertyCaptured { value: "not-found" } => []
-          SystemdPropertyCaptured { value: _ } => match serve_sub_state {
-            SystemdPropertyCaptured { value: v } =>
-              if v == "dead" { [] } else { [join(["the serve unit is inactive but its SubState is ", v, ": only dead proves no process remains"], "")] }
-            SystemdPropertyBlank => ["the serve unit's SubState reads blank: inactivity without a sub-state is unproven (DESIGN 4d: assert nothing as deduced that is only inferred)"]
-            SystemdPropertyCaptureRefused { reason: r } => [join(["the serve unit's SubState read was refused: ", r], "")]
-          }
-          SystemdPropertyBlank => ["the serve unit's LoadState reads blank: absence must be observed, not unproven"]
-          SystemdPropertyCaptureRefused { reason: r } => [join(["the serve unit's LoadState read was refused: ", r], "")]
-        }
-      } else {
-        [join(["the serve unit is still ", st as String, ": the swap refuses until the stop leg has brought it down"], "")]
-      }
+      serve_state_refusals(state: st, serve_load_state: serve_load_state, serve_sub_state: serve_sub_state)
   }
 }
 
