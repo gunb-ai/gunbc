@@ -237,19 +237,39 @@ test fn witness_a_symlink_at_the_path_refuses_and_what_it_points_at_is_left_alon
 // AN UNREADABLE STATE REFUSES. The path's parent is a symlink to nowhere, so the provider's own listing of
 // that parent fails and its presence walk establishes nothing: the reading the leg is handed is
 // EnsureInaccessible with a real origin behind it, and no policy installs on a read that failed.
+// AN UNREADABLE STATE REFUSES. The parent is a real directory that the observing account cannot READ: mode 0300 keeps
+// it traversable, so the directory underneath still stats, while the provider's own listing of the parent fails and
+// presence cannot be established -- which is the unreadable outcome, not the absent one. A broken symlink in the
+// parent slot does NOT build this state, and this claim used to be built that way: ls -1A of a symlink prints the
+// link's own name and exits 0, so the provider reads "not listed" and answers EnsureAbsent. The mode is taken from
+// the filesystem after the fact, and the refusal is pinned alongside the fact that the real 2770 directory below is
+// left exactly as it was.
+// The scratch directory is deliberately left in place, exactly as the other wet witnesses leave theirs -- there is
+// no teardown in this file. Worth knowing for whoever cleans up: this one leaves a parent at mode 0300, and rm -rf
+// over it is quietly incomplete -- it prints "cannot remove .../parent-that-cannot-be-read: Permission denied" and
+// STILL exits 0, leaving the scratch directory behind. The parent needs chmod u+rwx before it will go. Probed here on
+// the same coreutils the witness runs against.
 test fn witness_an_unreadable_state_refuses() -> Bool {
   match scratch_directory() {
     Absent => false
     Present { value: root } => {
-      let dangling = concat(root, "/parent-that-is-a-broken-link")
-      if shell.Exec.RunArgv(program: "ln", arguments: ["-s", concat(root, "/nowhere-exists"), dangling]).exit_code != 0 { false } else {
-        let path = concat(dangling, "/printer-starts")
-        let unreadable_prior = OwnedDirectoryReading { is_directory: true, owner: owner_pair(login: observing_login(), group: observing_login()), mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }
-        match printer_state_parent_reown(target: declared_target(root: dangling, owner: owner_pair(login: observing_login(), group: observing_login()), mode: DirectoryOwnerAllEveryoneTraverse), prior: unreadable_prior, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
-          PrinterStartsParentReowned { path: _, before: _, after: _ } => false
-          PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
-          (at == path) && reown_refusal_cause_name(cause: cause) == "path-unreadable"
-          PrinterStartsParentReownRefused { path: _, cause: _ } => false
+      let locked = concat(root, "/parent-that-cannot-be-read")
+      if !plant_directory(path: locked, mode_operand: "00755") { false }
+      else if !plant_directory(path: concat(locked, "/printer-starts"), mode_operand: "02770") { false }
+      else if shell.Exec.RunArgv(program: "chmod", arguments: ["0300", "--", locked]).exit_code != 0 { false }
+      else {
+        let path = concat(locked, "/printer-starts")
+        match observe_path(path: locked as FilePath) {
+          EnsureObserved { evidence } =>
+            match printer_state_parent_reown(target: declared_target(root: locked, owner: evidence.owner, mode: DirectoryOwnerAllEveryoneTraverse), prior: OwnedDirectoryReading { is_directory: true, owner: evidence.owner, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) }, observe: p => observe_path(path: p), apply: plan => apply_declared_install(plan: plan)) {
+              PrinterStartsParentReowned { path: _, before: _, after: _ } => false
+              PrinterStartsParentReownPreconditionFailed { path: at, cause: cause } =>
+                (at == path) && reown_refusal_cause_name(cause: cause) == "path-unreadable"
+                  && identity_read(path: path as FilePath).stdout == join(["directory", evidence.owner.user, evidence.owner.group, "2770"], "|")
+              PrinterStartsParentReownRefused { path: _, cause: _ } => false
+            }
+          EnsureAbsent { reason: _ } => false
+          EnsureInaccessible { reason: _ } => false
         }
       }
     }
