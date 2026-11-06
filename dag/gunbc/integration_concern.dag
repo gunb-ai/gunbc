@@ -840,6 +840,9 @@ data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationCon
 // construction binds these helpers by DECLARING identity, as the derived equality binds `==`
 // 
 // itself; when that lands, delete the gate and cover it in self_host_equality_admission_witness.
+// RE-LAND UPDATE 2026-11-06: the re-base at 4f581cb5 binds helpers by declaring identity (qualified
+// call + census gate); the import-view gate named above lived only in the #15175 line and is gone
+// from the DAG. The committed stage0 mirror still carries the old bearer pending heal publication.
 data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
   identity: "equality_synthesis_helper_binding_is_import_authority",
   kind: SuspectedCapabilityGap {
@@ -851,11 +854,12 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
     head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
     tail: [
       decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
-      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helpers_visible"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted"),
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared"),
       decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
     ],
   },
-  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity -- then the interim gate equality_helpers_visible is deleted and the shapes are exercised through self_host_equality_admission_witness.",
+  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger REACHED: the re-base at 4f581cb5 binds helpers by declaring identity and the import-view gate is gone from the DAG; the row stays Open until the executed validation named in the latest sighting retires it.",
   sightings: FreeSemigroup {
     head: ConcernSighting {
       revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
@@ -913,7 +917,7 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
         head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted") }],
       },
-      account: "ROOT FIX LANDED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND): the question is answered YES. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through declared-module ownership (call_target_for_direct_call) and emitted as crate::<declaring>::::<fn>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared) reads the symbol-index census at the qualified name. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof REQUIRED before this row may close as Integrated, and none exists at this revision - this sighting records SOURCE INTEGRATION ONLY, per review 91653 and DESIGN sections 5 and 6 (a shorter ledger is not evidence of integration): v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus, with real run IDs and conclusions recorded as RetainedExecutionResults against witness controls container_holder_stays_admitted_with_no_helper_import_by_identity and sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag. Until then the disposition stays Open.",
+      account: "ROOT FIX SOURCE-INTEGRATED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND); executed validation of the re-base is OPEN and recorded below. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through declared-module ownership (call_target_for_direct_call) and emitted as crate::<declaring-module>::<helper>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared) reads the symbol-index census at the qualified name. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof REQUIRED before this row may close as Integrated, and none exists at this revision - this sighting records SOURCE INTEGRATION ONLY, per review 91653 and DESIGN sections 5 and 6 (a shorter ledger is not evidence of integration): v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus, with real run IDs and conclusions recorded as RetainedExecutionResults against witness controls container_holder_stays_admitted_with_no_helper_import_by_identity and sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag. Until then the disposition stays Open.",
     }],
   },
   disposition: Open,
@@ -990,42 +994,6 @@ data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern 
     preserve: [PreservedObligation { holder: decl_ref(module_path: "product.fabric.execution", decl_name: "admit_receipt_for_grant"), control: Present { value: decl_ref(module_path: "test.claim.fabric.fabric_terminal_contract_witness", decl_name: "acceptance_compares_lease_identity_not_only_generation") }, statement: "Preserve complete lease identity and attempt admission; generation equality alone is insufficient." }, PreservedObligation { holder: decl_ref(module_path: "product.fabric.work", decl_name: "SourceManifestRef"), control: Absent, statement: "Source identity is provider-neutral; clean Git and dirty worktrees are adapters with provenance distinct." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOutcome"), control: Absent, statement: "Preserve the existing five endings; OOM and watchdog evidence inhabit infrastructure refusal rather than domain failure or a sixth ending." }],
     next: climbs_when(capability: "PR 2/3/5 bind the existing ReceiptPayload.ExecutionReceipt to source/work and typed terminal evidence; mismatched or stale receipts cannot complete requests and the existing lease-identity control remains green."),
   },
-}
-
-data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
-  identity: "equality_synthesis_helper_binding_is_import_authority",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
-    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
-    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
-    tail: [
-      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
-      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
-    ],
-  },
-  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity. (#15972's interim gate equality_helpers_visible and its import-enumeration interim were reverted by #16000 on operator decision; they re-land with #15992 and this row's sightings then resume.)",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
-      },
-      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
-    },
-    tail: [ConcernSighting {
-      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
-      evidence: FreeSemigroup {
-        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
-        tail: [],
-      },
-      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
-    }],
-  },
-  disposition: Open,
 }
 
 data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board]

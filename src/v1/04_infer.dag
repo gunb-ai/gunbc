@@ -4450,7 +4450,8 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
 // body while the by-target judgment still emitted the call).
 // The answer is DECLARING IDENTITY, not imports: every helper the structure names must be
 // declared at the qualified name the synthesized body binds it to (symbol_index_lookup is the
-// census; equality_synth_qcall binds through it, and the emitter writes crate::<declaring>::::<fn>).
+// census; equality_synth_qcall binds through it, and the emitter writes the helper as
+// crate::<declaring-module>::<helper> (v1_compiler_emit_rust emit_typed_call).
 // Every `==` a body carries - authored or synthesized - is itself guarded by the use door, so a
 // use reaching a skipped body is REFUSED at its own site with a located reason: no dangling call
 // at any depth, and admission never depends on a module's import set.
@@ -20511,9 +20512,9 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
 // an optional, sequence or map member. A coproduct matches both operands on the same arm. Only the
 // declaring module synthesizes for a declaration (3c: one derived equality per Node-reaching declaration,
 // the type's own derived capability, used or not). The v2 front end owes the same semantics.
-fn equality_synthesized_items(items: List<Node>, module_name: String, env: TypeEnv, imports: List<Node>) -> List<Node> {
+fn equality_synthesized_items(items: List<Node>, module_name: String, env: TypeEnv) -> List<Node> {
   let scope = equality_synthesis_scope(env: env, module_name: module_name)
-  items |> flat_map(item => equality_synthesized_for(item: item, scope: scope, imports: imports))
+  items |> flat_map(item => equality_synthesized_for(item: item, scope: scope))
 }
 
 fn equality_synthesis_scope(env: TypeEnv, module_name: String) -> InferScope {
@@ -20533,7 +20534,7 @@ fn equality_synthesis_scope(env: TypeEnv, module_name: String) -> InferScope {
   }
 }
 
-fn equality_synthesized_for(item: Node, scope: InferScope, imports: List<Node>) -> List<Node> {
+fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
   let is_type_decl = (item.connective == Conj || item.connective == Disj) && item.transport == none
   if !is_type_decl { [] } else {
     let si = scope.type_env.source_indices
@@ -20622,7 +20623,7 @@ fn equality_synth_binop(m: String, op: BinOp, l: Node, r: Node) -> Node {
 // A helper call inside a synthesized body binds by DECLARING IDENTITY, never by spelling in the
 // holder's import table: the node is a direct call named by its QUALIFIED name, which the resolver
 // reads through declared-module ownership (call_target_for_direct_call: declared_module_owner plus
-// the global declaration census) and the emitter writes as crate::<declaring>::::<fn> through the
+// the global declaration census) and the emitter writes crate::<declaring-module>::<helper> through the
 // SourceDeclarationCall route. The holder's import set plays no part at gate, resolution or
 // emission (equality_synthesis_helper_binding_is_import_authority, closed by this construction).
 // Arguments are positional.
@@ -20711,7 +20712,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
 
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let synthesized_items = equality_synthesized_items(items: module_items(n: resolved.module), module_name: resolved_module_name, env: env, imports: module_imports(n: resolved.module))
+  let synthesized_items = equality_synthesized_items(items: module_items(n: resolved.module), module_name: resolved_module_name, env: env)
   let contributions = map(concat(module_items(n: resolved.module), synthesized_items), item =>
     analyze_item(item: item, env: env, module_name: resolved_module_name)
   )
