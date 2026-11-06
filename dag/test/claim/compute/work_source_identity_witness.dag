@@ -121,21 +121,21 @@ test fn binary_and_empty_files_are_digest_members_of_the_identity() -> Bool {
     && identity_key(s: git_subject(manifest: m)) != identity_key(s: git_subject(manifest: manifest_of(files: flipped)))
 }
 
-fn has(t: String) -> Bool {
+fn toolchain_file_names_requirement(t: String) -> Bool {
   match work_toolchain_requirement(toolchain_file: Present { value: t }) { Present { value: _ } => true  Absent => false }
 }
 
 // (6) The toolchain-file channel reader (extdeps.rust.rustup): exact key, [toolchain] table, both quote
 // styles. RED controls: a prefix key, a channel outside the table and an unquoted value name no channel.
 test fn the_toolchain_file_channel_is_read_by_exact_key_in_its_table() -> Bool {
-  has("[toolchain]\nchannel = \"1.93.0\"\n") && has("[toolchain]\nchannel = '1.93.0'\n")
-    && !has("[toolchain]\nchannel_override = \"1.93.0\"\n")
-    && !has("channel = \"1.93.0\"\n")
-    && !has("[other]\nchannel = \"1.93.0\"\n[toolchain]\ncomponents = []\n")
-    && !has("[toolchain]\nchannel = 1.93.0\n")
-    && has("[toolchain] # pinned\nchannel = \"1.93.0\" # now\n") && has("[ toolchain ]\nchannel = \"1.93.0\"\n")
-    && has("[toolchain]\nchannel = \"nightly#x\"\n") && !has("[toolchain]\nchannel = \"a\\\"b\"\n") && !has("[toolchain]\nchannel = \"\"\"x\"\"\"\n")
+  toolchain_file_names_requirement("[toolchain]\nchannel = \"1.93.0\"\n") && toolchain_file_names_requirement("[toolchain]\nchannel = '1.93.0'\n")
+    && !toolchain_file_names_requirement("[toolchain]\nchannel_override = \"1.93.0\"\n")
+    && !toolchain_file_names_requirement("channel = \"1.93.0\"\n")
+    && !toolchain_file_names_requirement("[other]\nchannel = \"1.93.0\"\n[toolchain]\ncomponents = []\n")
+    && !toolchain_file_names_requirement("[toolchain]\nchannel = 1.93.0\n")
+    && toolchain_file_names_requirement("[toolchain] # pinned\nchannel = \"1.93.0\" # now\n") && toolchain_file_names_requirement("[ toolchain ]\nchannel = \"1.93.0\"\n")
+    && toolchain_file_names_requirement("[toolchain]\nchannel = \"nightly#x\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"a\\\"b\"\n") && !toolchain_file_names_requirement("[toolchain]\nchannel = \"\"\"x\"\"\"\n")
     && string_contains(s: work_toolchain_requirement_refusal(toolchain_file: Present { value: "[toolchain]\nchannel = \"a\\\"b\"\n" }), pattern: "escape sequence")
     && (match work_toolchain_requirement(toolchain_file: none) { Present { value: _ } => false  Absent => true })
-    && has("toolchain.channel = \"1.93.0\"\n")
+    && toolchain_file_names_requirement("toolchain.channel = \"1.93.0\"\n")
 }
