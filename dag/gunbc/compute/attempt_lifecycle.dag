@@ -671,7 +671,6 @@ fn attempt_reopen_settled_payload<P>(
   codec: AttemptPayloadCodec<P>,
 ) -> AttemptTransition
   admit_callers: [
-    decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "attempt_reopen_settled"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_reopen_settled"),
   ]
 {
@@ -724,20 +723,6 @@ fn attempt_reopen_settled_payload<P>(
         }
     }
   }
-}
-
-fn attempt_reopen_settled(
-  store: SlotStore,
-  reference: NonEmptyStr,
-  expected: CasGeneration,
-  record: AttemptRecord,
-) -> AttemptTransition {
-  attempt_reopen_settled_payload(
-    store: store,
-    reference: reference,
-    expected: expected,
-    record: record,
-    codec: attempt_record_codec())
 }
 
 // THE LAUNCH GATE. Called BEFORE the reader is admitted, never after. It reads the current slot,
