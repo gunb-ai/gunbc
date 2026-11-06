@@ -2888,10 +2888,9 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 /// `module_path`, or none.
 ///
 /// The population read exists because a consumer wanted every module; this exists because most
-/// consumers want ONE — "is this module declared, and where does it live". Both project the one
-/// `build_module_path_index` authority, so a hit here is the same `(module, path)` pair the list
-/// carries; the difference is that the keyed form neither materializes nor sorts ~thousands of rows
-/// to answer about one, and the interpreter never marshals them.
+/// consumers want ONE — "is this module declared, and where does it live". A hit here is the same `(module, path)` pair
+/// the list carries (differential: `keyed_reads_equal_the_whole_pool_census`); the keyed form
+/// derives the path from the name and reads no other pool file.
 ///
 /// `Option`, not a bool: the two questions a keyed caller asks — declared? at which path? — are one
 /// lookup, and answering only the first would send the second back through the population read.
@@ -2899,12 +2898,13 @@ pub fn module_declaration_fact_at(
     pool_roots: &[String],
     module_path: &str,
 ) -> Option<ModuleDeclarationFactRaw> {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    with_module_path_index(&abs_pool_roots, |index| {
-        index.get(module_path).map(|path| ModuleDeclarationFactRaw {
+    // Derived from the name (gunbc.source_layout), never from the whole-pool index: see
+    // `keyed_module_lookup`. The answer is the row the index would hold for this module.
+    super::keyed_module_lookup::keyed_module_path(pool_roots, module_path).map(|path| {
+        ModuleDeclarationFactRaw {
             module: module_path.to_string(),
-            path: path.clone(),
-        })
+            path,
+        }
     })
 }
 

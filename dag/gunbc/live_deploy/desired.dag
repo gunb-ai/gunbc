@@ -1,6 +1,7 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
@@ -268,6 +269,18 @@ fn spec_owned_identities(spec: DeploymentSpec) -> List<String> {
   )
 }
 
+// WHAT EACH DISJUNCT PROTECTS, ONE HOST, TWO DEPLOYMENTS (re-derived after the per-release-binary
+// slices): a LISTEN PORT (the second bind fails or hijacks), a SYSTEMD UNIT NAME (`systemctl` on one
+// deploy mutates the other's unit), a REPO CHECKOUT (one tree-sync rewrites the other's worktree), a
+// BINARY PATH (two services executing ONE file -- twins now differ here BY CONSTRUCTION of the
+// per-root layout, so this disjunct guards the misconfiguration case: two instance rows naming the
+// same release path), a SERVE FUNCTION (two units claiming one served entry: one tailscale route
+// serving two drafts), the TREE-SYNC UNIT/ENV pair (one sync daemon driven by two masters), the
+// TAILSCALE ENDPOINT (route hijack), and an OWNED IDENTITY (one deploy's retract deletes the other's
+// file). Every disjunct is load-bearing and individually witnessed: the restore-one-surface claims in
+// test.claim.live_deploy.emit redden exactly the claim whose disjunct is deleted; the path axis keeps
+// its dedicated pair there (reading the record PATH via fixed_serve_binary_path, immune to
+// provenance); the all-distinct control shows none of them fires for a properly separated twin.
 fn spec_same_host_surface_collision(
   a: DeploymentSpec,
   b: DeploymentSpec,
@@ -280,7 +293,11 @@ fn spec_same_host_surface_collision(
     deployment_plan_listen_port(spec: a) == deployment_plan_listen_port(spec: b)
       || a.service.unit_name == b.service.unit_name
       || a.service.repo_root == b.service.repo_root
-      || a.service.serve_binary == b.service.serve_binary
+      // The collision axis is the serve binary's PATH -- two deployments driving one binary is
+      // the hazard this law prevents. PROVENANCE is not a collision axis: it is judged by the
+      // grammar gate (live_deploy_serve_grammar_refusal), so the compare reads the path field,
+      // never the whole record.
+      || fixed_serve_binary_path(binary: a.service.serve_binary) == fixed_serve_binary_path(binary: b.service.serve_binary)
       || a.service.serve_function == b.service.serve_function
       || a.names.tree_sync_unit_name == b.names.tree_sync_unit_name
       || a.names.tree_sync_env_path == b.names.tree_sync_env_path

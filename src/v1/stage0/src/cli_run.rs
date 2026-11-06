@@ -109,20 +109,14 @@ pub use native_lane_runner::{
     run_required_v2_native, run_self_host, run_self_host_frontier, run_v2_native_cli,
     run_v2_native_cli_emit, run_v2_native_frontier, NativeClaimProgramAttempt,
     NativeClaimProgramRun, NativeFrontierRun, NativeMemberTermination, NativeRouteOutcome,
-    NativeServeLaunches, NativeServePhases, NativeServeProgramRun, PreparationCause,
-    PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
+    NativeServeContention, NativeServeLaunches, NativeServePhases, NativeServeProgramRun,
+    PreparationCause, PreparationRefusal, SelfHostHeld, V2NativeCliHeld,
 };
 pub(crate) use required_floor_runner::*;
 mod entry_resolve;
 pub mod pre_entry_phase;
-mod required_lane_resolution_census;
 pub use entry_resolve::resolve_virtual_entry_compile_closure;
 pub(crate) use entry_resolve::*;
-pub use required_lane_resolution_census::{
-    entry_closure_module_identities, module_admission,
-    required_floor_nominal_subject_module_identities, source_root_ingest_module_identities,
-    ModuleAdmission, ModuleIdentityPopulation,
-};
 
 pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_judged_module_identities()
@@ -199,13 +193,14 @@ pub(crate) use test_migration::*;
 // and a second acquisition of the corpus to answer a second question is the cost-shape defect
 // DESIGN §6 names.
 mod demand_acquire;
+pub(crate) mod keyed_module_lookup;
 #[path = "namespace_baseline.rs"]
 pub mod namespace_baseline;
 #[path = "phase_profile.rs"]
 mod phase_profile;
 pub(crate) mod pool_acquire;
 mod provider_acquire;
-mod source_layout_lookup;
+pub(crate) mod source_layout_lookup;
 pub use demand_acquire::{
     resolve_entry_graph_demand_acquired, resolve_entry_graph_demand_acquired_with_diagnostics,
 };
