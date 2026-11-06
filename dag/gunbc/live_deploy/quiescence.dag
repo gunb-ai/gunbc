@@ -1,0 +1,283 @@
+module gunbc.live_deploy.quiescence
+
+// BEFORE A SERVE IS SWAPPED, THE OLD ONE MUST BE PROVEN QUIESCENT -- AND PROVEN SO BY THIS APPLY'S RUN.
+//
+// The serve unit's restart replaces a process that may be mid-request, and the attempt workers the
+// serve hands work to may be mid-attempt. Today the apply chain writes the new unit and restarts, and
+// nothing between those legs ever asks whether the old serve stopped or whether a drain ran for THIS
+// apply. The earliest unjustified boundary (DESIGN 6b) is that missing sequence: a stop that was never
+// issued, and a readback that could not tell "this apply drained" from "some earlier run drained and
+// the unit has read inactive ever since". `systemctl is-active` answers inactive for a unit that
+// started and exited, for a unit that never started, and -- after reset-failed -- for a unit that
+// failed, so the word alone carries none of the proof the swap needs (DESIGN 4d: it is a proxy).
+//
+// THE PROOF IS THREE EXECUTED LEGS, IN ORDER, BEFORE THE SWAP, EACH A FACT THE APPLY ITSELF MINTS:
+//   [quiescence-mark]     read the drain unit's InvocationID and record it in a file under the
+//                         instance receipts dir. This is the state BEFORE the drain start, captured
+//                         by the run that is about to depend on it.
+//   [quiescence-drain-start]  `systemctl start` the drain service. `start`, not `restart`: a drain
+//                         already mid-pass must not be interrupted; a drain that never ran must run.
+//   [quiescence-serve-stop]   `systemctl stop --ignore-unknown` the serve unit. The ignore-unknown
+//                         verb is the first-install case: a serve that has never been installed has
+//                         nothing to quiesce, and that absence is a load-state fact the readback
+//                         observes, not a shell error the stop leg swallows.
+//   [quiescence-readback]     run the INSTALLED binary over the reads (the same executed-readback
+//                         shape as gunbc.live_deploy.repository_convergence_placement's
+//                         repository_convergence_readback_wet) and fail the apply -- stopping the
+//                         legs after it, via the realize fold's set-e law -- unless every fact below
+//                         reads as THIS RUN having drained and the serve standing down:
+//                           the mark file exists and was read (its absence indicts the mark leg);
+//                           the drain unit is inactive, its Result is success, its ExecMainStatus is
+//                           0, and its InvocationID is PRESENT and DIFFERENT from the mark --
+//                           present proves it started at all, different proves THIS apply started it;
+//                           the serve unit is inactive with SubState dead, or its LoadState is
+//                           not-found (never installed, nothing to drain).
+// A failed unit is refused, never folded into inactive: `failed` keeps its own arm in
+// gunbc.systemctl_is_active_read's capture and its own refusal line here, which is what keeps
+// "failed" from reading as quiet after a reset-failed race. A blank InvocationID is refused as
+// never-started; an unchanged one is refused as not-this-run. No clock, no journal window: the
+// identity that replaces the journal is the systemd invocation identity, read through the existing
+// operation family (gunbc.host.host_operation_exec; the property rows already exist in
+// extdeps.systemd, their wire spellings measured against v254 per gunbc#11803).
+
+import std.types { String, NonEmptyStr, List }
+import std.algebra { is_empty, trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.host.host_effect { LocalShell }
+import gunbc.systemctl_show_read {
+  SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,
+  systemctl_show_property_read,
+}
+import gunbc.systemctl_is_active_read {
+  UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused, systemctl_is_active_read,
+}
+import extdeps.systemd { LoadState, SubState, Result, ExecMainStatus, InvocationIDProperty }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  filesystem_exact_read,
+  filesystem_failure_kind_name,
+}
+import gunbc.host.host_layout { instance_receipts_dir }
+
+// THE ENTRY THIS APPLY'S EXECUTED READBACK RUNS FROM, and the wet functions' own home. One module
+// owns the legs, the reads and the verdict, because the verdict's meaning is the legs' meaning:
+// splitting them would let the leg order and the fact order drift apart unnoticed (DESIGN 3).
+data quiescence_entry_path: String = "dag/gunbc/live_deploy/quiescence.dag"
+
+// WHERE THE MARK LIVES: the instance's receipts dir, the one location this instance's evidence
+// already accumulates (gunbc.host.host_layout.instance_receipts_dir). A fresh apply overwrites it; a
+// mark left by a dead apply cannot bind a later readback, because that readback compares against the
+// mark ITS mark leg wrote -- the inequality law is what makes the slot self-cleaning.
+fn live_deploy_quiescence_mark_path(instance_root: String) -> String {
+  join([instance_receipts_dir(instance_root: instance_root), "/quiescence-drain-invocation"], "")
+}
+
+// THE MARK, TYPED. Absence is its own arm and may only come from the host saying NOT FOUND for this
+// exact path (the same law read_convergence_receipt_bound established for the receipts dir); any
+// other failure kind is Unreadable with the host's kind named -- never absence by default.
+type QuiescenceMarkCapture =
+    QuiescenceMarkCaptured { value: String }
+  | QuiescenceMarkAbsent
+  | QuiescenceMarkUnreadable { detail: String }
+
+fn quiescence_mark_read(path: String) -> QuiescenceMarkCapture {
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(
+    path: path,
+    content: read.content,
+    success: read.success,
+    error: read.error,
+    error_kind: read.error_kind,
+  ) {
+    FilesystemExactPathRead { path: _, content: content } => QuiescenceMarkCaptured { value: trim(s: content) }
+    FilesystemExactPathAbsent { path: _ } => QuiescenceMarkAbsent
+    FilesystemExactPathUnreadable { path: _, kind: k, error: e } =>
+      QuiescenceMarkUnreadable { detail: join(["host reported ", filesystem_failure_kind_name(kind: k), ": ", e], "") }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
+      QuiescenceMarkUnreadable { detail: join(["host reported an unrecognized kind ", o, ": ", e], "") }
+  }
+}
+
+// THE VERDICT: quiescent, or refused with EVERY unmet fact named at once. Listing all refusals rather
+// than the first is deliberate: an operator staring at a stopped apply sees the whole state of the
+// swap's preconditions in one pass, not one fact per round trip (DESIGN 5: the typed, located
+// diagnostic; the located part is the unit and the property in every line).
+type LiveDeployQuiescenceVerdict =
+    Quiescent {}
+  | QuiescenceRefused { reasons: List<String> }
+
+fn quiescence_mark_refusals(mark: QuiescenceMarkCapture) -> List<String> {
+  match mark {
+    QuiescenceMarkCaptured { value: _ } => []
+    QuiescenceMarkAbsent => [
+      "the quiescence mark file is absent: the mark leg never ran, so no invocation identity was recorded and this apply cannot prove which drain run is its own",
+    ]
+    QuiescenceMarkUnreadable { detail: d } => [join(["the quiescence mark could not be read: ", d], "")]
+  }
+}
+
+fn quiescence_drain_refusals(
+  mark: QuiescenceMarkCapture,
+  drain_is_active: UnitIsActiveCapture,
+  drain_result: SystemdPropertyCapture,
+  drain_exec_main_status: SystemdPropertyCapture,
+  drain_invocation: SystemdPropertyCapture,
+) -> List<String> {
+  let active_reasons = match drain_is_active {
+    UnitIsActiveCaptureRefused { reason: r } => [join(["the drain unit's is-active read was refused: ", r], "")]
+    UnitIsActiveCaptured { state: st, active: _ } =>
+      if st as String == "inactive" {
+        []
+      } else if st as String == "failed" {
+        ["the drain unit is failed: a failed drain is not a drained serve, and reset-failed would erase the evidence rather than answer for it"]
+      } else {
+        [join(["the drain unit is still ", st as String, ": quiescence requires the drain to have exited"], "")]
+      }
+  }
+  let result_reasons = match drain_result {
+    SystemdPropertyCaptured { value: v } =>
+      if v == "success" { [] } else { [join(["the drain unit's Result is ", v, ", not success"], "")] }
+    SystemdPropertyBlank => ["the drain unit's Result reads blank: the unit has not run to produce one"]
+    SystemdPropertyCaptureRefused { reason: r } => [join(["the drain unit's Result read was refused: ", r], "")]
+  }
+  let status_reasons = match drain_exec_main_status {
+    SystemdPropertyCaptured { value: v } =>
+      if v == "0" { [] } else { [join(["the drain unit's ExecMainStatus is ", v, ", not 0: the drain exited unsuccessfully"], "")] }
+    SystemdPropertyBlank => ["the drain unit's ExecMainStatus reads blank: the unit has not run to produce one"]
+    SystemdPropertyCaptureRefused { reason: r } => [join(["the drain unit's ExecMainStatus read was refused: ", r], "")]
+  }
+  let invocation_reasons = match drain_invocation {
+    SystemdPropertyCaptured { value: v } =>
+      if trim(s: v) == "" {
+        ["the drain unit's InvocationID is blank: the drain never started, and an unstarted drain proves no draining"]
+      } else {
+        match mark {
+          QuiescenceMarkCaptured { value: marked } =>
+            if v == marked {
+              [join(["the drain unit's InvocationID ", v, " is unchanged from before the drain-start leg: this apply's drain did not run"], "")]
+            } else {
+              []
+            }
+          _ => []
+        }
+      }
+    SystemdPropertyBlank => ["the drain unit's InvocationID reads blank: the drain never started, and an unstarted drain proves no draining"]
+    SystemdPropertyCaptureRefused { reason: r } => [join(["the drain unit's InvocationID read was refused: ", r], "")]
+  }
+  concat(concat(concat(active_reasons, result_reasons), status_reasons), invocation_reasons)
+}
+
+fn quiescence_serve_refusals(
+  serve_is_active: UnitIsActiveCapture,
+  serve_load_state: SystemdPropertyCapture,
+  serve_sub_state: SystemdPropertyCapture,
+) -> List<String> {
+  match serve_is_active {
+    UnitIsActiveCaptureRefused { reason: r } => [join(["the serve unit's is-active read was refused: ", r], "")]
+    UnitIsActiveCaptured { state: st, active: _ } =>
+      if st as String == "failed" {
+        ["the serve unit is failed: a serve that died is not a serve that stood down, and the swap refuses until its failure is accounted for"]
+      } else if st as String == "inactive" {
+        match serve_load_state {
+          SystemdPropertyCaptured { value: "not-found" } => []
+          SystemdPropertyCaptured { value: _ } => match serve_sub_state {
+            SystemdPropertyCaptured { value: v } =>
+              if v == "dead" { [] } else { [join(["the serve unit is inactive but its SubState is ", v, ": only dead proves no process remains"], "")] }
+            SystemdPropertyBlank => ["the serve unit's SubState reads blank: inactivity without a sub-state is unproven (DESIGN 4d: assert nothing as deduced that is only inferred)"]
+            SystemdPropertyCaptureRefused { reason: r } => [join(["the serve unit's SubState read was refused: ", r], "")]
+          }
+          SystemdPropertyBlank => ["the serve unit's LoadState reads blank: absence must be observed, not unproven"]
+          SystemdPropertyCaptureRefused { reason: r } => [join(["the serve unit's LoadState read was refused: ", r], "")]
+        }
+      } else {
+        [join(["the serve unit is still ", st as String, ": the swap refuses until the stop leg has brought it down"], "")]
+      }
+  }
+}
+
+fn live_deploy_quiescence_verdict(
+  mark: QuiescenceMarkCapture,
+  drain_is_active: UnitIsActiveCapture,
+  drain_result: SystemdPropertyCapture,
+  drain_exec_main_status: SystemdPropertyCapture,
+  drain_invocation: SystemdPropertyCapture,
+  serve_is_active: UnitIsActiveCapture,
+  serve_load_state: SystemdPropertyCapture,
+  serve_sub_state: SystemdPropertyCapture,
+) -> LiveDeployQuiescenceVerdict {
+  let reasons = concat(
+    concat(quiescence_mark_refusals(mark: mark), quiescence_drain_refusals(
+      mark: mark,
+      drain_is_active: drain_is_active,
+      drain_result: drain_result,
+      drain_exec_main_status: drain_exec_main_status,
+      drain_invocation: drain_invocation,
+    )),
+    quiescence_serve_refusals(serve_is_active: serve_is_active, serve_load_state: serve_load_state, serve_sub_state: serve_sub_state),
+  )
+  if is_empty(xs: reasons) { Quiescent {} } else { QuiescenceRefused { reasons: reasons } }
+}
+
+// THE MARK LEG'S WET FUNCTION, run by the installed binary: one property read, one write. It fails
+// (nonzero, named) rather than writing a placeholder on a refused read, because a mark leg that
+// half-succeeded would make the readback's inequality law pass for a unit that never moved.
+fn live_deploy_quiescence_mark_wet(drain_unit: String, mark_file: String) -> ProcessExit {
+  if trim(s: drain_unit) == "" {
+    exit_failure(reason: "--arg drain_unit=<unit> is required -- the mark records the drain unit's invocation identity")
+  } else if trim(s: mark_file) == "" {
+    exit_failure(reason: "--arg mark_file=<path> is required -- the mark has no home without it")
+  } else {
+    match systemctl_show_property_read(transport: LocalShell, unit: drain_unit as NonEmptyStr, property: InvocationIDProperty) {
+      SystemdPropertyCaptureRefused { reason: r } =>
+        exit_failure(reason: join(["live-deploy quiescence mark refused: the drain unit's InvocationID could not be read (", r, ") -- a half-written mark would let the readback bind to nothing"], ""))
+      SystemdPropertyBlank =>
+        if Filesystem.Write(path: mark_file, content: "").success {
+          ExitSuccess
+        } else {
+          exit_failure(reason: join(["live-deploy quiescence mark refused: the mark file ", mark_file, " could not be written"], ""))
+        }
+      SystemdPropertyCaptured { value: v } =>
+        if Filesystem.Write(path: mark_file, content: v).success {
+          ExitSuccess
+        } else {
+          exit_failure(reason: join(["live-deploy quiescence mark refused: the mark file ", mark_file, " could not be written"], ""))
+        }
+    }
+  }
+}
+
+// THE READBACK LEG'S WET FUNCTION, run by the installed binary after the stop leg and before any
+// swap leg: every fact is read through the operation family at execution time, and the fold above
+// answers for all of them at once. Its nonzero exit is what stops the remaining legs (the realize
+// fold's set-e law), so the swap -- and the restart that would have cut the old serve -- never runs
+// on an unproven quiescence.
+fn live_deploy_quiescence_readback_wet(drain_unit: String, serve_unit: String, mark_file: String) -> ProcessExit {
+  if trim(s: drain_unit) == "" {
+    exit_failure(reason: "--arg drain_unit=<unit> is required -- the readback has no drain to bind to")
+  } else if trim(s: serve_unit) == "" {
+    exit_failure(reason: "--arg serve_unit=<unit> is required -- the readback has no serve to quiet")
+  } else if trim(s: mark_file) == "" {
+    exit_failure(reason: "--arg mark_file=<path> is required -- the readback binds to the invocation this apply marked")
+  } else {
+    let verdict = live_deploy_quiescence_verdict(
+      mark: quiescence_mark_read(path: mark_file),
+      drain_is_active: systemctl_is_active_read(transport: LocalShell, unit: drain_unit as NonEmptyStr),
+      drain_result: systemctl_show_property_read(transport: LocalShell, unit: drain_unit as NonEmptyStr, property: Result),
+      drain_exec_main_status: systemctl_show_property_read(transport: LocalShell, unit: drain_unit as NonEmptyStr, property: ExecMainStatus),
+      drain_invocation: systemctl_show_property_read(transport: LocalShell, unit: drain_unit as NonEmptyStr, property: InvocationIDProperty),
+      serve_is_active: systemctl_is_active_read(transport: LocalShell, unit: serve_unit as NonEmptyStr),
+      serve_load_state: systemctl_show_property_read(transport: LocalShell, unit: serve_unit as NonEmptyStr, property: LoadState),
+      serve_sub_state: systemctl_show_property_read(transport: LocalShell, unit: serve_unit as NonEmptyStr, property: SubState),
+    )
+    match verdict {
+      Quiescent {} => ExitSuccess
+      QuiescenceRefused { reasons: reasons } =>
+        exit_failure(reason: join(["live-deploy quiescence refused before the swap: ", join(reasons, "; ")], ""))
+    }
+  }
+}
+

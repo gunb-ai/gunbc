@@ -240,6 +240,17 @@ fn systemctl_stop_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "stop", unit as String]
 }
 
+// `--ignore-unknown` (systemctl(1)): a stop of a unit that is not loaded exits with a failure, and an
+// apply that has never installed this serve has nothing to quiesce. The variant exists so the FIRST
+// INSTALL is an admitted case of the stop leg rather than a shell error to swallow: what certifies
+// the absence is not this word but the readback's observation of LoadState=not-found through the
+// operation family (gunbc.live_deploy.quiescence). Without --ignore-unknown the stop leg would refuse
+// first installs on an exit code; with it, the absence is proven by a read, and every other stop
+// failure still stops the run.
+fn systemctl_stop_ignore_unknown_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "stop", "--ignore-unknown", unit as String]
+}
+
 // MASK IS NOT A STRONGER DISABLE, IT IS A DIFFERENT OPERATION, and systemctl(1) separates them on
 // two axes this repository has a caller for. FIRST, REACH: `disable` removes the enablement
 // symlinks, which is why it does nothing at all to a STATIC unit -- one with no [Install] section,

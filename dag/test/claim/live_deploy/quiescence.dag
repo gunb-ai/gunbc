@@ -1,0 +1,364 @@
+module test.claim.live_deploy.quiescence
+
+// THE SERVE MAY NOT BE SWAPPED UNTIL THIS APPLY HAS PROVEN IT QUIESCENT -- the law of
+// gunbc.live_deploy.quiescence, witnessed leg by leg and fact by fact. Each RED here is one fact
+// that must refuse, and each GREEN names the state that admits; nothing is decorated -- every claim
+// would fail if its refusal line (or its leg) were removed.
+//
+// The pending inhabitance the mock captures cannot reach: these claims decide the fold over typed
+// captures and the plan over typed legs; the reads themselves run on the host through the operation
+// family and are inhabited end-to-end by the STAGE apply (the receipted CI deploy is their
+// trigger). That is the same split repository_convergence_readback_wet's witnesses already use.
+
+import std.types { Bool, String, Int, NonEmptyStr, List, Cons, Empty }
+import std.process { ExitFailure }
+import std.algebra { string_contains }
+import std.optional { Absent }
+import gunbc.systemctl_show_read {
+  SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,
+}
+import gunbc.systemctl_is_active_read { UnitIsActiveCapture, UnitIsActiveCaptured, UnitIsActiveCaptureRefused }
+import gunbc.live_deploy.quiescence {
+  QuiescenceMarkCapture, QuiescenceMarkCaptured, QuiescenceMarkAbsent, QuiescenceMarkUnreadable,
+  LiveDeployQuiescenceVerdict, Quiescent, QuiescenceRefused,
+  live_deploy_quiescence_verdict, live_deploy_quiescence_mark_path,
+  live_deploy_quiescence_mark_wet, live_deploy_quiescence_readback_wet,
+}
+import gunbc.host.host_layout { instance_receipts_dir }
+import gunbc.live_deploy.apply_legs { DeployApplyLeg, deploy_apply_leg_step, deploy_apply_unit_plan }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+
+fn quiet_drain_is_active() -> UnitIsActiveCapture {
+  UnitIsActiveCaptured { state: "inactive" as NonEmptyStr, active: false }
+}
+
+fn quiet_mark() -> QuiescenceMarkCapture {
+  QuiescenceMarkCaptured { value: "inv-before-this-run" }
+}
+
+fn reasons_of(verdict: LiveDeployQuiescenceVerdict) -> List<String> {
+  match verdict {
+    Quiescent {} => []
+    QuiescenceRefused { reasons: r } => r
+  }
+}
+
+fn count_from(xs: List<String>, i: Int) -> Int {
+  match xs {
+    Empty => i
+    Cons { head: _, tail: rest } => count_from(xs: rest, i: i + 1)
+  }
+}
+
+fn count_reasons(xs: List<String>) -> Int {
+  count_from(xs: xs, i: 0)
+}
+
+fn any_reason_says(reasons: List<String>, needle: String) -> Bool {
+  any(reasons, r => string_contains(s: r, pattern: needle))
+}
+
+// THE GREEN BASELINE: every fact reads as this apply having started the drain and the serve having
+// stood down. If this ever refuses, every RED below it is meaningless.
+test fn the_quiet_state_admits_quiescence() -> Bool {
+  match live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ) {
+    Quiescent {} => true
+    QuiescenceRefused { reasons: _ } => false
+  }
+}
+
+// A DRAIN UNIT THAT NEVER STARTED REFUSES. Blank InvocationID is the only honest reading of "no
+// invocation has ever happened", and inactive + success + 0 all read quiet without it -- this is
+// the RED that stops the fold from trusting the bare word `inactive`.
+test fn a_drain_that_never_started_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyBlank,
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "never started")
+}
+
+// A FAILED DRAIN REFUSES, AND `failed` IS NOT FOLDED INTO `inactive`: the capture keeps the word,
+// the refusal keeps it distinct -- a drain reset-failed after crashing must not read as drained.
+test fn a_failed_drain_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: UnitIsActiveCaptured { state: "failed" as NonEmptyStr, active: false },
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "failed drain is not a drained serve")
+}
+
+// A DRAIN STILL RUNNING REFUSES.
+test fn a_drain_still_running_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: UnitIsActiveCaptured { state: "active" as NonEmptyStr, active: true },
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "still active")
+}
+
+// THE RUN-SCOPE IDENTITY: an unchanged InvocationID means the drain that ran ran BEFORE this apply
+// marked, i.e. this apply's drain-start leg started nothing. The word `inactive` would read quiet.
+test fn an_unchanged_drain_invocation_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-before-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "unchanged from before the drain-start leg")
+}
+
+// THE DRAIN'S EXIT RESULT IS ITS OWN FACT: Result not success, and ExecMainStatus not 0, each
+// refuse on their own -- a drain may exit 0 without succeeding, and succeed on a stale Result.
+test fn an_unsuccessful_drain_exit_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "1" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "exited unsuccessfully")
+}
+
+test fn a_drain_result_other_than_success_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "timeout" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "Result is timeout")
+}
+
+// THE SERVE, SAME LAWS: still running refuses; failed is kept distinct from inactive; inactive
+// without SubState dead is unproven (DESIGN 4d), and an unreadable LoadState cannot certify the
+// not-found that admits a first install.
+test fn a_serve_still_running_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: UnitIsActiveCaptured { state: "active" as NonEmptyStr, active: true },
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "running" },
+  ))
+  any_reason_says(reasons: reasons, needle: "serve unit is still active")
+}
+
+test fn a_failed_serve_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: UnitIsActiveCaptured { state: "failed" as NonEmptyStr, active: false },
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "a serve that died is not a serve that stood down")
+}
+
+test fn an_inactive_serve_without_a_dead_substate_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "exited" },
+  ))
+  any_reason_says(reasons: reasons, needle: "only dead proves no process remains")
+}
+
+// FIRST INSTALL IS THE ADMITTED ABSENCE: LoadState not-found, observed through the operation family,
+// quiesces the serve facts -- no serving has ever happened to drain.
+test fn a_never_installed_serve_admits_quiescence() -> Bool {
+  match live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "not-found" },
+    serve_sub_state: SystemdPropertyBlank,
+  ) {
+    Quiescent {} => true
+    QuiescenceRefused { reasons: _ } => false
+  }
+}
+
+test fn an_unreadable_serve_load_state_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptureRefused { reason: "transport closed" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "absence must be observed, not unproven")
+}
+
+// THE MARK: absent refuses even against an otherwise quiet state (no identity was recorded, so no
+// inequality can bind); unreadable refuses with the host's kind named; a refused property read
+// refuses -- a half-succeeded leg never certifies.
+test fn an_absent_mark_refuses_quiescence_even_against_a_quiet_state() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: QuiescenceMarkAbsent,
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "the mark leg never ran")
+}
+
+test fn an_unreadable_mark_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: QuiescenceMarkUnreadable { detail: "host reported i/o: EIO" },
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "host reported i/o: EIO")
+}
+
+test fn a_refused_property_read_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptureRefused { reason: "systemctl show exited unsuccessfully" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "Result read was refused")
+}
+
+// THE VERDICT NAMES EVERY UNMET FACT AT ONCE: three violations, three reasons -- an operator sees
+// the swap's whole state per stopped apply, not one fact per round trip.
+test fn the_verdict_names_every_unmet_fact_at_once() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: quiet_mark(),
+    drain_is_active: UnitIsActiveCaptured { state: "active" as NonEmptyStr, active: true },
+    drain_result: SystemdPropertyCaptured { value: "timeout" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-after-this-run" },
+    serve_is_active: UnitIsActiveCaptured { state: "active" as NonEmptyStr, active: true },
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "running" },
+  ))
+  count_reasons(xs: reasons) == 3
+}
+
+// THE MARK'S HOME IS THE INSTANCES RECEIPTS DIR -- the one place this instance's evidence already
+// accumulates; a second receipts location would be a second spelling of that fact.
+test fn the_mark_lives_in_the_instances_receipts_dir() -> Bool {
+  live_deploy_quiescence_mark_path(instance_root: "/var/lib/gunbc/stage")
+    == join([instance_receipts_dir(instance_root: "/var/lib/gunbc/stage"), "/quiescence-drain-invocation"], "")
+}
+
+// THE WET ENTRYPOINTS REFUSE MALFORMED CALLS: a mark leg with no unit to mark, or a readback missing
+// any of its three bindings, fails rather than certifying nothing.
+test fn the_mark_wet_refuses_a_blank_drain_unit() -> Bool {
+  match live_deploy_quiescence_mark_wet(drain_unit: "", mark_file: "/r/mark") {
+    ExitFailure { code: _, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn the_readback_wet_refuses_a_missing_binding() -> Bool {
+  match live_deploy_quiescence_readback_wet(drain_unit: "d.service", serve_unit: "", mark_file: "/r/mark") {
+    ExitFailure { code: _, reason: _ } => true
+    _ => false
+  }
+}
+
+// THE LEG ORDER IS THE LAW'S ORDER (the manager's pin): mark, then drain start -- the leg that can
+// change the invocation -- then serve stop, then readback, and only THEN the serve-unit write. Any
+// reordering that puts the readback before the start, or the unit write before the readback, fails
+// this claim rather than passing silently.
+fn step_index_from(legs: List<DeployApplyLeg>, step: String, i: Int) -> Int {
+  match legs {
+    Empty => 0 - 1
+    Cons { head: h, tail: rest } => if deploy_apply_leg_step(leg: h) == step { i } else { step_index_from(legs: rest, step: step, i: i + 1) }
+  }
+}
+
+fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
+  step_index_from(legs: legs, step: step, i: 0)
+}
+
+test fn the_quiescence_legs_run_mark_then_drain_start_then_serve_stop_then_readback() -> Bool {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Absent) {
+    ApplyPlanReady { legs: legs } => {
+      let mark = step_index(legs: legs, step: "quiescence-mark")
+      let start = step_index(legs: legs, step: "quiescence-drain-start")
+      let stop = step_index(legs: legs, step: "quiescence-serve-stop")
+      let readback = step_index(legs: legs, step: "quiescence-readback")
+      let unit = step_index(legs: legs, step: "serve-unit")
+      mark >= 0 && start >= 0 && stop >= 0 && readback >= 0 && unit >= 0
+        && mark < start && start < stop && stop < readback && readback < unit
+    }
+    ApplyPlanRefused { step: _, reason: _ } => false
+  }
+}
