@@ -13,7 +13,6 @@ module test.claim.live_deploy.quiescence
 import std.types { Bool, String, Int, NonEmptyStr, List }
 import std.process { ExitFailure }
 import std.algebra { Cons, Empty, string_contains }
-import std.optional { Absent }
 import gunbc.systemctl_show_read {
   SystemdPropertyCapture, SystemdPropertyCaptured, SystemdPropertyBlank, SystemdPropertyCaptureRefused,
 }
@@ -27,6 +26,8 @@ import gunbc.live_deploy.quiescence {
 import gunbc.host.host_layout { instance_receipts_dir }
 import gunbc.live_deploy.apply_legs { DeployApplyLeg, deploy_apply_leg_step, deploy_apply_unit_plan }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_valid_until_epoch }
+import std.optional { Present, Absent }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
 
 fn quiet_drain_is_active() -> UnitIsActiveCapture {
@@ -349,16 +350,40 @@ fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
 
 test fn the_quiescence_legs_run_mark_then_drain_start_then_serve_stop_then_readback() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Absent) {
-    ApplyPlanReady { legs: legs } => {
-      let mark = step_index(legs: legs, step: "quiescence-mark")
-      let start = step_index(legs: legs, step: "quiescence-drain-start")
-      let stop = step_index(legs: legs, step: "quiescence-serve-stop")
-      let readback = step_index(legs: legs, step: "quiescence-readback")
-      let unit = step_index(legs: legs, step: "serve-unit")
-      mark >= 0 && start >= 0 && stop >= 0 && readback >= 0 && unit >= 0
-        && mark < start && start < stop && stop < readback && readback < unit
-    }
-    ApplyPlanRefused { step: _, reason: _ } => false
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: now } =>
+      match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Present { value: now }) {
+        ApplyPlanReady { legs: legs } => {
+          let mark = step_index(legs: legs, step: "quiescence-mark")
+          let start = step_index(legs: legs, step: "quiescence-drain-start")
+          let stop = step_index(legs: legs, step: "quiescence-serve-stop")
+          let readback = step_index(legs: legs, step: "quiescence-readback")
+          let unit = step_index(legs: legs, step: "serve-unit")
+          mark >= 0 && start >= 0 && stop >= 0 && readback >= 0 && unit >= 0
+            && mark < start && start < stop && stop < readback && readback < unit
+        }
+        ApplyPlanRefused { step: _, reason: _ } => false
+      }
   }
+}
+
+// A DRAIN ALREADY IN FLIGHT WHEN THE APPLY MARKED REFUSES, IT IS NOT ADOPTED (review 91530): the
+// mark recorded the in-flight invocation X, `systemctl start` joined that same job, and the drain
+// finished before the readback -- inactive, success, 0, all of it -- with InvocationID still X. It
+// is not this apply's drain (the apply started nothing), and the identity law says so; the comment
+// at the drain-start leg says the same thing: `start` is chosen so a mid-pass drain is not
+// RESTARTED, not so a borrowed drain is admitted.
+test fn a_drain_already_in_flight_when_the_apply_marked_refuses_quiescence() -> Bool {
+  let reasons = reasons_of(live_deploy_quiescence_verdict(
+    mark: QuiescenceMarkCaptured { value: "inv-in-flight-at-mark" },
+    drain_is_active: quiet_drain_is_active(),
+    drain_result: SystemdPropertyCaptured { value: "success" },
+    drain_exec_main_status: SystemdPropertyCaptured { value: "0" },
+    drain_invocation: SystemdPropertyCaptured { value: "inv-in-flight-at-mark" },
+    serve_is_active: quiet_drain_is_active(),
+    serve_load_state: SystemdPropertyCaptured { value: "loaded" },
+    serve_sub_state: SystemdPropertyCaptured { value: "dead" },
+  ))
+  any_reason_says(reasons: reasons, needle: "unchanged from before the drain-start leg")
 }

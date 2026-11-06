@@ -15,8 +15,13 @@ module gunbc.live_deploy.quiescence
 //   [quiescence-mark]     read the drain unit's InvocationID and record it in a file under the
 //                         instance receipts dir. This is the state BEFORE the drain start, captured
 //                         by the run that is about to depend on it.
-//   [quiescence-drain-start]  `systemctl start` the drain service. `start`, not `restart`: a drain
-//                         already mid-pass must not be interrupted; a drain that never ran must run.
+//   [quiescence-drain-start]  `systemctl start` the drain service. `start`, not `restart`: restarting
+//                         would re-run a drain mid-pass and erase the progress it has already made.
+//                         It is NOT an adoption of a borrowed drain: an apply that finds the drain
+//                         already in flight started nothing, the identity law below refuses that
+//                         apply (unchanged InvocationID = not this run), and a claim says so
+//                         (test.claim.live_deploy.quiescence
+//                         .a_drain_already_in_flight_when_the_apply_marked_refuses_quiescence).
 //   [quiescence-serve-stop]   `systemctl stop --ignore-unknown` the serve unit. The ignore-unknown
 //                         verb is the first-install case: a serve that has never been installed has
 //                         nothing to quiesce, and that absence is a load-state fact the readback
