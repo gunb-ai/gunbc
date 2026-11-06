@@ -1,0 +1,11 @@
+module test.fixture.reexport_owner_probe.control
+
+import std.types { Int, Bool }
+import test.fixture.reexport_owner_probe.a { probe_d, probe_e }
+
+fn probe_pick_control(flag: Bool) -> Int {
+  match flag {
+    true => probe_d
+    false => probe_e
+  }
+}
