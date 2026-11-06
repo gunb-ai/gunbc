@@ -1,0 +1,34 @@
+module test.claim.roadmap.roadmap_belt_converge_witness
+
+import std.types { Bool, String, List }
+import std.measure { kibibyte }
+import gunbc.compute.work_request { WorkRefusedByInfrastructure, HostComputeCapacityFull, WorkCancelled }
+import gunbc.compute.work_provider_local { ProvideFresh, ProvideAttached, HostRecordWritten }
+import gunbc.compute.compute_seat_ensure { SeatDischargeRan, SeatDischargeRefused, SeatEnsureReleased, SeatEnsureNoop }
+import gunbc.roadmap.roadmap_belt_actuate { belt_provide_pool_full, belt_discharge_pass_released_a_seat }
+
+// The converge step retries a claim run only for a full pool (belt_provide_converging), and only when the discharge
+// pass actually returned a seat. Each decision is witnessed in both directions: a flipped condition (retry on
+// anything, or never) turns one of these red.
+
+test fn a_full_pool_refusal_is_the_one_first_result_that_converges() -> Bool {
+  belt_provide_pool_full(first: ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: "i", cause: HostComputeCapacityFull { wire: "pool-full" } }, document: "d", host_record: HostRecordWritten })
+}
+
+test fn any_other_first_result_stands_without_a_discharge_pass() -> Bool {
+  !belt_provide_pool_full(first: ProvideFresh { outcome: WorkCancelled { identity: "i", detail: "x" }, document: "d", host_record: HostRecordWritten })
+    && !belt_provide_pool_full(first: ProvideAttached { identity: "i", ending: "e", document: "d", host_record: HostRecordWritten })
+}
+
+test fn a_pass_that_released_a_seat_owes_one_retry() -> Bool {
+  belt_discharge_pass_released_a_seat(pass: SeatDischargeRan { outcomes: [
+    SeatEnsureNoop { reference: "r0", why: "held by a live unit" },
+    SeatEnsureReleased { reference: "r1", committed_before: kibibyte(count: 100), committed_after: kibibyte(count: 40) },
+  ] })
+}
+
+test fn a_pass_that_released_nothing_leaves_the_first_refusal_standing() -> Bool {
+  !belt_discharge_pass_released_a_seat(pass: SeatDischargeRan { outcomes: [SeatEnsureNoop { reference: "r0", why: "held by a live unit" }] })
+    && !belt_discharge_pass_released_a_seat(pass: SeatDischargeRan { outcomes: [] })
+    && !belt_discharge_pass_released_a_seat(pass: SeatDischargeRefused { reason: "no capacity subject" })
+}

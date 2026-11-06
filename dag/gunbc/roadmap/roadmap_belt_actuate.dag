@@ -14,6 +14,7 @@ import std.algebra { trim, skip, list_append }
 import std.durable_compare_and_set { cas_generation_count }
 import extdeps.sudo.elevation { sudo_elevate, ElevatedInvocation }
 import extdeps.systemd.systemctl { systemctl_start_argv, systemctl_reset_failed_argv }
+import extdeps.systemd.service_exec { ServiceResultSuccess }
 
 import gunbc.output_policy { OutcomeIsData }
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, GitRef, EpochSecs }
@@ -318,15 +319,15 @@ import gunbc.roadmap.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
-import gunbc.compute.work_request { RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
-import gunbc.compute.attempt_lifecycle { DispatchOwned, attempt_record_json }
+import gunbc.compute.work_request { WorkOperation, WorkRefusedByInfrastructure, HostComputeCapacityFull, RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
+import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, attempt_record_json }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
-  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, compute_seat_discharge_all,
+  SeatDischargePass, SeatDischargeSkipped, SeatDischargeRefused, SeatDischargeRan, SeatEnsureReleased, compute_seat_discharge_all,
   SeatDischargeStanding, SeatDischargeClean, SeatDischargePassRefused, SeatDischargeHasRefusals, SeatDischargeHasReds, seat_discharge_pass_standing,
 }
 import gunbc.compute.work_provider_local {
-  compute_provide, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
+  compute_provide, ProvideResult, ProvideAttached, ProvideFresh, provide_result_document, provide_result_identity, provide_result_ending,
   provide_result_host_record, host_record_was_written, host_record_wire,
   ObserveUnitLifecycle,
 }
@@ -602,7 +603,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_record_put_worker_exited, attempt_exit_record_put_vendor_pane_death,
   AttemptExitRecordPutOk, AttemptExitRecordPutFailed,
   VendorPaneDeath, VendorPaneExited, VendorPaneSignaled,
-  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  AttemptExitRecord, attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
 import gunbc.durable_handoff_host {
@@ -612,6 +613,8 @@ import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
 import extdeps.tools.stat { stat_mtime_epoch_command }
 import gunbc.live_deploy.belt_cadence {
   belt_tick_run_bound, instance_obligation_run_bound, belt_attempt_obligation_unit_run_bound,
+  VerifyRunBound, VerifyRunBounded, VerifyRunProvisional, verify_run_bound_note, verify_run_bound_derived_line, VerifyRunOverCeiling, VerifyRunUnsampled, verify_run_bound_for,
+  verify_entry_compile_samples, verify_entries_ceiling, verify_run_headroom_percent, verify_run_slack,
 }
 import gunbc.actions_run_binding { json_required_string_member, JsonStringMemberFound, JsonStringMemberRefused }
 import gunbc.roadmap.roadmap_dispatch_actuator {
@@ -8850,7 +8853,69 @@ fn belt_covered_claims_all_passed(covered: List<ValidationOperation>, document: 
   })) == 0
 }
 
+// The one reading of a node's verification bound: the receipt line and the run share it (no second derivation).
+fn belt_verify_bound_of(validations: List<ValidationOperation>) -> VerifyRunBound {
+  let entries = flat_map(belt_validation_units(validations: validations), v => match v {
+    GunbcClaimValidation { entry, function: _ } => [entry as String]
+    _ => [] as List<String>
+  })
+  verify_run_bound_for(entries: entries, samples: verify_entry_compile_samples, ceiling: verify_entries_ceiling, headroom_percent: verify_run_headroom_percent, slack: verify_run_slack)
+}
+
+// The bound's receipt line: the derived per-node figure (this is its consumer; it is NOT a run limit, only the unit's
+// outer bound kills) and, when an entry is unsampled, the provisional bet.
+fn belt_verify_provisional_note(contract: WorkItemExecutionContract) -> String {
+  match contract_closure(contract: contract) {
+    ContractCloses { validations } => {
+      let b = belt_verify_bound_of(validations: validations)
+      match verify_run_bound_note(bound: b) {
+        "" => verify_run_bound_derived_line(bound: b)
+        bet => join([bet, "; ", verify_run_bound_derived_line(bound: b)], "")
+      }
+    }
+    _ => ""
+  }
+}
+
+// THE ENTRY COUNT AND THE SAMPLES ARE CHECKED BEFORE ANY RUN STARTS; THE DERIVED BOUND IS NOT ENFORCED PER RUN. An
+// entry count past the declared ceiling, or no recorded compile sample at all, is a typed refusal instead of a run
+// the unit's outer bound would kill (gunbc.live_deploy.belt_cadence verify_run_bound_for). The derived per-node
+// figure is carried to the receipt only; the unit's outer bound is the one limit that kills (a per-run deadline
+// is the owed capability, tracked in a_provisional_verify_bound_is_a_bet_until_its_sample_is_recorded).
 fn belt_run_validation_operations(
+  instance: HostDashboardInstance,
+  subject: VerificationSubject,
+  validations: List<ValidationOperation>,
+  worktree: String,
+  oracle_identity: ContentHash,
+  diff_window_path: String?,
+  source_roots: ClaimSourceRootLayout,
+) -> BeltValidationRun {
+  match belt_verify_bound_of(validations: validations) {
+    VerifyRunBounded { bound: _, entries: _ } =>
+      belt_run_bounded_validation_units(instance: instance, subject: subject, validations: validations, worktree: worktree, oracle_identity: oracle_identity, diff_window_path: diff_window_path, source_roots: source_roots)
+    VerifyRunProvisional { bound: _, entries: _, unsampled: _, borrowed_entry: _, borrowed_seconds: _ } =>
+      belt_run_bounded_validation_units(instance: instance, subject: subject, validations: validations, worktree: worktree, oracle_identity: oracle_identity, diff_window_path: diff_window_path, source_roots: source_roots)
+    VerifyRunOverCeiling { entries: n, ceiling } =>
+      BeltValidationRun {
+        executions: [],
+        verdict: ValidationRefused { cause: ValidationCommandRefused {
+          program: "gunbc-verify-bound",
+          reason: join(["the node verifies ", to_string(value: n), " entries, past the declared per-attempt ceiling of ", to_string(value: ceiling), "; no run started"], ""),
+        } },
+      }
+    VerifyRunUnsampled { entry } =>
+      BeltValidationRun {
+        executions: [],
+        verdict: ValidationRefused { cause: ValidationCommandRefused {
+          program: "gunbc-verify-bound",
+          reason: join(["entry ", entry, " has no recorded compile sample, so its run bound cannot be derived; no run started"], ""),
+        } },
+      }
+  }
+}
+
+fn belt_run_bounded_validation_units(
   instance: HostDashboardInstance,
   subject: VerificationSubject,
   validations: List<ValidationOperation>,
@@ -9011,6 +9076,44 @@ fn belt_run_validation_operations(
 // tree the work ran on, and whether it attached or computed. A run whose citation cannot be built
 // REFUSES -- it is never recorded as a compute execution without one, and never passes. A host-record loss is not a verdict
 // about the work, but it is not a clean verification either, so it refuses rather than passing.
+// CONVERGE BEFORE REFUSING (DESIGN 5: a deficit stops the line only after the precise answer was tried). A claim run
+// refused because the pool is full is retried ONCE after a seat-discharge pass, and only when that pass actually
+// returned a seat (SeatEnsureReleased). The pass releases only seats whose unit termination it re-proves
+// (compute_seat_discharge_all): no age, no doubt, no expiry frees anything. A pass that returned nothing, was
+// refused, or any other refusal leaves the first result standing, so the refusal stays typed and located.
+// The two decisions of the converge step, pure so each is exercised in both directions: a first result whose
+// refusal is a full pool, and a discharge pass that actually returned a seat.
+fn belt_provide_pool_full(first: ProvideResult) -> Bool {
+  match first {
+    ProvideFresh { outcome: WorkRefusedByInfrastructure { identity: _, cause: HostComputeCapacityFull { wire: _ } }, document: _, host_record: _ } => true
+    _ => false
+  }
+}
+
+fn belt_discharge_pass_released_a_seat(pass: SeatDischargePass) -> Bool {
+  match pass {
+    SeatDischargeRan { outcomes } =>
+      any(outcomes, o => match o {
+        SeatEnsureReleased { reference: _, committed_before: _, committed_after: _ } => true
+        _ => false
+      })
+    _ => false
+  }
+}
+
+fn belt_provide_converging(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
+  let first = compute_provide(instance: instance, owner: owner, commit: commit, op: op)
+  if belt_provide_pool_full(first: first) {
+    if belt_discharge_pass_released_a_seat(pass: belt_compute_seat_discharge_pass(instance: instance)) {
+      compute_provide(instance: instance, owner: owner, commit: commit, op: op)
+    } else {
+      first
+    }
+  } else {
+    first
+  }
+}
+
 fn belt_run_claim_through_compute(
   instance: HostDashboardInstance,
   subject: VerificationSubject,
@@ -9048,7 +9151,7 @@ fn belt_run_claim_through_compute(
       args: ["--entry", entry as String, "--functions", function as String],
     }
     let wire = modeled_validation_command_wire(command: command)
-    let result = compute_provide(instance: instance, owner: DispatchOwned { node_id: subject.node_identity as String, attempt_key: subject.attempt_key }, commit: subject.head_sha as String, op: op)
+    let result = belt_provide_converging(instance: instance, owner: DispatchOwned { node_id: subject.node_identity as String, attempt_key: subject.attempt_key }, commit: subject.head_sha as String, op: op)
     let document = provide_result_document(r: result)
     let citation = match stored_outcome_subject_tree(document: document) {
       Present { value: tree } =>
@@ -9337,13 +9440,19 @@ fn belt_verify_retry_gate(
   }
 }
 
-fn belt_verify_attempt_for_instance(
+// The roadmap node is SUPPLIED at this interface: belt_lookup_node reads the runtime task roster from
+// fabric state, a host fact, so a witness that derived it through the real lookup passed or failed with
+// the host it ran on (verify_without_observable_subject_defers_instead_of_rerunning, red on main).
+// belt_verify_attempt_for_instance owns the real lookup and the not-yet-terminal deferral; this function
+// is the verification given a decided lookup.
+fn belt_verify_terminal_attempt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
+  lookup: BeltNodeLookup,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  if belt_provider_is_terminal(provider: progress.provider) {
-      match belt_lookup_node(node_id: progress.node_id) {
+  {
+      match lookup {
         AuthorityProjectionRefused { detail: detail } =>
           VerifyDeferred {
             node_id: progress.node_id,
@@ -9520,6 +9629,19 @@ fn belt_verify_attempt_for_instance(
           }
         }
       }
+  }
+}
+
+fn belt_verify_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltVerifyOutcome {
+  if belt_provider_is_terminal(provider: progress.provider) {
+    belt_verify_terminal_attempt(
+      instance: instance,
+      progress: progress,
+      lookup: belt_lookup_node(node_id: progress.node_id),
+    )
   } else {
     VerifyDeferred {
       node_id: progress.node_id,
@@ -9810,7 +9932,10 @@ fn belt_verify_run_and_persist(
         VerifyRecorded {
           node_id: progress.node_id,
           verdict_key: validation_verdict_key(verdict: run.verdict),
-          detail: validation_verdict_detail(verdict: run.verdict),
+          detail: match belt_verify_provisional_note(contract: node.execution) {
+            "" => validation_verdict_detail(verdict: run.verdict)
+            note => join([note, "; ", validation_verdict_detail(verdict: run.verdict)], "")
+          },
         }
       FilesystemWriteRefused { path: _, error: e } =>
         VerifyWriteFailed {
@@ -14987,6 +15112,7 @@ fn belt_attempt_obligation_receipt_read(instance: HostDashboardInstance, node_id
 type BeltExitDrainEntry
   = BeltExitEntryHanded { entry: String, enqueue: BeltObligationEnqueue }
   | BeltExitEntryClaimed { entry: String }
+  | BeltExitObligationEnded { entry: String }
   | BeltExitEntryRefused { entry: String, reason: String }
   | BeltExitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
@@ -15092,15 +15218,29 @@ fn belt_exit_obligation_entry_at(root: String, entry: String, observe: fn(String
       match observe(record.node_id, record.attempt_key) {
         AttemptUnitActive => [] as List<BeltExitDrainEntry>
         AttemptUnitUnreadable { reason } => [BeltExitEntryRefused { entry: entry, reason: join(["the user manager could not say whether the unit is live: ", reason], "") }]
-        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
-        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, move: move)
+        AttemptUnitAbsent => belt_exit_obligation_entry_consume_at(root: root, entry: entry, owes_discharge: belt_exit_record_ended_unsettled(record: record), move: move)
+        AttemptUnitFinished { exit_status: _ } => belt_exit_obligation_entry_consume_at(root: root, entry: entry, owes_discharge: belt_exit_record_ended_unsettled(record: record), move: move)
       }
   }
 }
 
-fn belt_exit_obligation_entry_consume_at(root: String, entry: String, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
+// THE CONSUME IS THE OBLIGATION UNIT'S OWN END OBSERVATION: it lands only after the user manager said the unit is
+// absent or finished, so it is typed (BeltExitObligationEnded) and owes the seat-discharge pass through the launch
+// obligation. Before this, a killed obligation's exit was routed as a rescue that answered nothing, so a seat the
+// obligation held was never visited (srv1, 2026-11-04: charged for four hours). No age, no doubt: an active or
+// unreadable unit returns before this point and owes nothing.
+// A run that settled (service result success) held no seat past its own settle, so its consume starts nothing;
+// any other end (killed, timed out, failed, signaled) may have left the seat it held charged, and owes the pass.
+fn belt_exit_record_ended_unsettled(record: AttemptExitRecord) -> Bool {
+  match record.result {
+    ServiceResultSuccess => false
+    _ => true
+  }
+}
+
+fn belt_exit_obligation_entry_consume_at(root: String, entry: String, owes_discharge: Bool, move: fn(String, String, HostSpoolStage, HostSpoolStage) -> String?) -> List<BeltExitDrainEntry> {
   match move(root, entry, AttemptExitInbox, AttemptExitDone) {
-    Absent => [] as List<BeltExitDrainEntry>
+    Absent => if owes_discharge { [BeltExitObligationEnded { entry: entry }] } else { [] as List<BeltExitDrainEntry> }
     Present { value: why } => [BeltExitEntryUnmovable { entry: entry, step: SpoolStallMove { from: AttemptExitInbox, to: AttemptExitDone }, cause: why }]
   }
 }
@@ -15126,9 +15266,13 @@ fn belt_exit_drain_moving_at(root: String, enqueue: fn(String, String) -> BeltOb
         BeltExitEntryClaimed { entry } => belt_exit_entry_is_worker(entry: entry)
         _ => false
       })
+      let obligation_ended = any(rescued, r => match r {
+        BeltExitObligationEnded { entry: _ } => true
+        _ => false
+      })
       BeltExitDrained {
         entries: concat(concat(reconciled, rescued), concat(claims, swept)),
-        launch: if claimed_a_worker { Present { value: launch() } } else { none },
+        launch: if claimed_a_worker || obligation_ended { Present { value: launch() } } else { none },
       }
     }
   }
@@ -15147,6 +15291,7 @@ fn belt_exit_drain_entry_json(e: BeltExitDrainEntry) -> JsonValue {
   match e {
     BeltExitEntryHanded { entry, enqueue } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "handed", value: belt_obligation_enqueue_json(e: enqueue))])
     BeltExitEntryClaimed { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "claimed", value: json_string(s: "queued"))])
+    BeltExitObligationEnded { entry } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "obligation_ended", value: json_string(s: "done"))])
     BeltExitEntryRefused { entry, reason } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "refused", value: json_string(s: reason))])
     BeltExitEntryUnmovable { entry, step, cause } => json_object(members: [json_kv(key: "entry", value: json_string(s: entry)), json_kv(key: "unmovable", value: json_object(members: [json_kv(key: "step", value: json_string(s: spool_stall_step_text(step: step))), json_kv(key: "cause", value: json_string(s: cause))]))])
   }
@@ -15174,6 +15319,7 @@ fn belt_exit_drain_failures(d: BeltExitDrain) -> List<String> {
           BeltExitEntryRefused { entry, reason } => [join([entry, ": ", reason], "")]
           BeltExitEntryUnmovable { entry, step, cause } => [join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays on disk): ", cause], "")]
           BeltExitEntryClaimed { entry: _ } => [] as List<String>
+          BeltExitObligationEnded { entry: _ } => [] as List<String>
           BeltExitEntryHanded { entry: _, enqueue: _ } => [] as List<String>
         }),
         match launch {
@@ -15204,6 +15350,7 @@ fn belt_exit_stall_verdict(d: BeltExitDrain) -> BeltExitStallVerdict {
     BeltExitDrained { entries, launch: _ } => {
       let claimed = entries |> filter(e => match e {
         BeltExitEntryClaimed { entry: _ } => true
+        BeltExitObligationEnded { entry: _ } => true
         _ => false
       })
       let unmovable = entries |> flat_map(e => match e {

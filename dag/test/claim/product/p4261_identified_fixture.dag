@@ -1,0 +1,51 @@
+module test.claim.product.p4261_identified_fixture
+
+import std.types { NonEmptyStr }
+import std.optional { Present }
+import product.electrical.connectivity { ComponentInstanceIdentity }
+import product.electrical.continuity { OperatorPhotograph }
+import product.electrical.photograph { BoardSightings, InStore, PixelRegion, PhotographCitation, SpecimenSighting }
+import product.electrical.identification {
+  ComponentIdentification,
+  GlyphSpan,
+  MarkingReading,
+  MarkingReadingSet,
+  Transcribed,
+  identify_by_marking
+}
+import extdeps.electronic_component.types { ElectronicComponentRow }
+import product.p4261.e1_photographs { e1_photo_b4_02 }
+
+// AN IDENTIFIED PART FOR A TEST THAT CONSUMES IDENTIFICATIONS, MADE THE ONLY WAY THE MODEL MAKES ONE.
+// A consumer test (a layout, a population, a report) needs a part the board identifies; the arm that says so
+// is no longer writable, so the fixture asks the one constructor, with a roster that attributes a stored frame
+// and box to this subject and a reading taken from exactly that frame and box. The frame is a real stored one
+// (the same one the marking witness uses), so the attribution resolves against the store the model really
+// has. Nothing here is a real reading of any board.
+fn fixture_box() -> PixelRegion {
+  PixelRegion { left: 100, top: 200, width: 300, height: 90 }
+}
+
+fn fixture_citation() -> PhotographCitation {
+  InStore { content: e1_photo_b4_02.content, region: Present { value: fixture_box() } }
+}
+
+fn fixture_roster(subject: ComponentInstanceIdentity) -> BoardSightings {
+  BoardSightings { rows: [SpecimenSighting { specimen: subject, sighting: fixture_citation() }] }
+}
+
+fn fixture_reading(text: NonEmptyStr) -> MarkingReading {
+  MarkingReading {
+    content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: Present { value: fixture_citation() } }, rest: [], followed_by: "" },
+    evidence: OperatorPhotograph { citation: fixture_citation() }
+  }
+}
+
+fn identified_fixture(subject: ComponentInstanceIdentity, row: ElectronicComponentRow, text: NonEmptyStr) -> ComponentIdentification {
+  identify_by_marking(
+    roster: fixture_roster(subject: subject),
+    row: row,
+    readings: MarkingReadingSet { subject: subject, relied_on: fixture_reading(text: text), others: [] },
+    discriminator: "the fixture's roster attributes its frame and box to the subject, so this does not arise"
+  )
+}
