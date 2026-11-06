@@ -13,12 +13,12 @@ import product.fabric.work { SourceManifestRef }
 import extdeps.git.object_store { git_null_sha1_object_id }
 import gunbc.compute.work_request {
   WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_toolchain_requirement, work_toolchain_requirement_refusal,
-  WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
+  WorkToolchainRequirement, WorkToolchainIdentity, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
 }
 import gunbc.fabric.fabric_source_snapshot {
   SnapshotSourceFile, SnapshotIdentity, SnapshotIdentified, SnapshotIdentityRefused, snapshot_manifest_identity, source_manifest_ref,
 }
-import test.claim.compute.work_request_witness { key_with, tc_default }
+import test.claim.compute.work_request_witness { key_with, tc_default, tc }
 
 // A file is its digest: the 64-hex digest is supplied, standing for the sha256 of the file's bytes.
 // "d" repeated stands for distinct byte contents; `empty` and a binary digest are ordinary members.
@@ -85,16 +85,22 @@ test fn a_changed_declared_input_changes_the_identity() -> Bool {
     && manifest_of(files: clean_files()) != manifest_of(files: concat(clean_files(), [file(directory: ".", name: "rust-toolchain.toml", content: "x")]))
 }
 
+fn x86_host_observed(rustc: String) -> WorkToolchainIdentity {
+  tc(rustc: rustc, triple: "x86_64-unknown-linux-gnu", cargo: "cargo 1.93.0", cache: "sccache 0.15.0", provider: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").observed
+}
+
 // (3) An observed toolchain that differs from the declared requirement refuses; the matching one is admitted.
 test fn an_observed_toolchain_mismatch_refuses() -> Bool {
   let file = "[toolchain]\nchannel = \"1.93.0\"\ncomponents = [\"clippy\"]\n"
-  let observed = tc_default(rustc: "rustc 1.93.0 (abc)").observed
-  let wrong_release = tc_default(rustc: "rustc 1.90.0 (abc)").observed
+  let observed = x86_host_observed(rustc: "rustc 1.93.0 (abc)")
+  let wrong_release = x86_host_observed(rustc: "rustc 1.90.0 (abc)")
+  let wrong_arch = tc_default(rustc: "rustc 1.93.0 (abc)").observed
   match work_toolchain_requirement(toolchain_file: Present { value: file }) {
     Absent => false
     Present { value: req } =>
       (match work_toolchain_admit(requirement: req, observed: observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
         && (match work_toolchain_admit(requirement: req, observed: wrong_release) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+        && (match work_toolchain_admit(requirement: req, observed: wrong_arch) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
         && (req.rustc_release_prefix as String) == "1.93.0"
         && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\nchannel = \"1.90.0\"\n" }) { Present { value: other } => match work_toolchain_admit(requirement: other, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true }  Absent => false })
         && (match work_toolchain_requirement(toolchain_file: Present { value: "[toolchain]\ncomponents = []\n" }) { Present { value: _ } => false  Absent => true })
