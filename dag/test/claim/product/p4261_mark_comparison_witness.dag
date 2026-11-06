@@ -240,3 +240,21 @@ test fn mark_11_u1_p3_differs_and_u451_is_undecidable() -> Bool {
   }
   u1 && u451
 }
+
+// FAN65004C's third line is AWLYYWWG, EIGHT positions (A 1, WL 2, YY 2, WW 2, G 1). The eight-glyph reading
+// matches; a SEVEN-glyph line ending in G differs (it split as D + A + 23 + 07 + G while A and WL were unstated).
+fn supplied_against_fan(text: NonEmptyStr) -> MarkComparison? {
+  match e1_entry(designator: "U1_P3") {
+    Absent => Absent
+    Present { value: i } => match reading_of(i: i) {
+      Absent => Absent
+      Present { value: r } => Present { value: compare_reading_to_row(row: fan65004c, reading: with_text(real: r, text: text)) }
+    }
+  }
+}
+
+test fn mark_12_fan65004c_third_line_is_exactly_eight_positions() -> Bool {
+  is_matches(c: supplied_against_fan(text: "FAN / 65004C / DAA2307G"))
+    && is_differs(c: supplied_against_fan(text: "FAN / 65004C / DA2307G"))
+    && is_differs(c: supplied_against_fan(text: "FAN / 65004C / DAAA2307G"))
+}
