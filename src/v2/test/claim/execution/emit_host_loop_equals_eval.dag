@@ -6,17 +6,13 @@ import v2.test.claim.complexity_gate.table_fixture_loop_subject_producer {
   table_fixture_loop_arrow_with_body,
   table_fixture_loop_wrong_value_arrow_with_body
 }
-import v2.compiler.emit_host {
-  emit_host_octets_byte_string,
-  run_test_claim_emit_vs_eval
-}
-import v2.test.claim.execution.loop_admission_refusal { loop_verdict_reason }
+import v2.compiler.emit_host { emit_host_octets_byte_string }
+import v2.test.claim.execution.loop_admission_refusal { loop_outcome_reason }
 import v2.compiler.eval {
   EvalContext,
-  TestClaimEvalSubject,
-  TestClaimRun,
+  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject
+  inputs_root_only
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -25,7 +21,6 @@ import v2.extdeps.languages.dag {
   dag_node_is_int_literal_atom
 }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
-import v2.extdeps.languages.rust_fixtures { rust_loop_target_model_staging }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import std.algebra { list_at_optional }
@@ -239,48 +234,35 @@ fn emit_loop_eval_context() -> EvalContext {
   )
 }
 
-fn emit_loop_eval_claim(rhs_result_node: Node) -> TestClaim {
-  EqualsClaim {
-    label: "S2 B8: rust emit(loop-fn) host-run == eval(loop-body) via shared octet codec",
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    lhs: rhs_result_node,
-    rhs: rhs_result_node,
-    classification: TestClassification { tier: Tier3, layer: Integration }
-  }
-}
-
-fn emit_loop_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
-  eval_test_claim_subject(
-    claim: emit_loop_eval_claim(rhs_result_node: emit_loop_eval_subgraph_node),
-    context: emit_loop_eval_context(),
-    tree: tree,
-    evaluator_pin: ^emit_loop_eval_evaluator_pin
-  )
-}
-
-fn emit_loop_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
-  run_test_claim_emit_vs_eval(
-    subject: emit_loop_eval_subject(tree: tree),
-    target: rust_loop_target_model_staging()
-  )
-}
-
 // ADMISSION: the fixture Loop is bounded by the registered dag_loop_measure but carries no
 // ^loop_realized_declaration_edge, so v2.compiler.eval eval_loop_admission refuses it bound_not_executable
-// before the stub's step_loop; the eval side has no value to compare with the emitted host run. Both
-// claims therefore assert that typed refusal (the old agreement came from a stub bypassing realization).
-fn emit_loop_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  loop_verdict_reason(v: run.verdict) == "v2_eval_loop_bound_not_executable"
+// before the stub's step_loop. The eval side (the `expected` of v2.compiler.emit_host
+// run_test_claim_emit_vs_eval_for_claim) is therefore Rejected. The emit-vs-eval verdict reaches its
+// BuildFailed{actual: expected} arm (run_test_claim_emit_vs_eval_verdict) ONLY after emit, the host run and
+// the output parse succeed; otherwise it is RunFailed/Deferred carrying the host outcome, not the
+// admission reason. So both claims assert the eval-side refusal directly, which does not depend on the host run.
+fn emit_loop_eval_refusal_reason(tree: InferredTree) -> String {
+  loop_outcome_reason(
+    o: eval(
+      tree: tree,
+      interpretation: emit_loop_eval_interpretation(),
+      inputs: inputs_root_only(root: emit_loop_eval_subgraph_node)
+    )
+  )
 }
 
-fn emit_loop_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  loop_verdict_reason(v: run.verdict) == "v2_eval_loop_bound_not_executable"
+fn emit_loop_eval_verdict_is_pass(tree: InferredTree) -> Bool {
+  emit_loop_eval_refusal_reason(tree: tree) == "v2_eval_loop_bound_not_executable"
+}
+
+fn emit_loop_eval_verdict_is_fail(tree: InferredTree) -> Bool {
+  emit_loop_eval_refusal_reason(tree: tree) == "v2_eval_loop_bound_not_executable"
 }
 
 test fn emit_host_loop_equals_eval_holds() -> Bool {
   match emit_loop_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      emit_loop_eval_verdict_is_pass(run: emit_loop_eval_run(tree: tree))
+      emit_loop_eval_verdict_is_pass(tree: tree)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -288,7 +270,7 @@ test fn emit_host_loop_equals_eval_holds() -> Bool {
 test fn emit_host_loop_wrong_fixture_refuses_holds() -> Bool {
   match emit_loop_eval_wrong_value_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      emit_loop_eval_verdict_is_fail(run: emit_loop_eval_run(tree: tree))
+      emit_loop_eval_verdict_is_fail(tree: tree)
     Rejected { diagnostics: _ } => false
   }
 }
