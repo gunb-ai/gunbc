@@ -184,6 +184,25 @@ fn roster_capture_run(overlay: OverlayIngest, source_roots: List<String>, name: 
   )
 }
 
+// THE AGGREGATE'S RUN, STREAMED. The aggregate is one process over the whole enforced roster, and its
+// output is captured so the verdict can echo it - which also hides every line the run prints while it is
+// alive (the phase=... timings, the process_cpu and memory lines) until the process exits, and for a run the
+// job's timeout cancels, forever. tee to the step's own stderr inside the substitution shows those lines as
+// they happen while `out` still holds the full text; the job runs with pipefail, so the substitution's
+// status stays the run's own. Per-row runs stay unstreamed: they are short and their text is the evidence.
+fn roster_streamed_capture_run(overlay: OverlayIngest, source_roots: List<String>, name: String, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
+  roster_capture(
+    name: name,
+    body: bash_build_pipe(
+      left: bash_build_with_redir(
+        inner: compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function),
+        redir: ^bash_production_fold_redir_stderr_to_stdout,
+      ),
+      right: roster_command(words: [roster_word(text: "tee"), roster_word(text: "/dev/stderr")])
+    )
+  )
+}
+
 // A DECLARED CAUSE MUST HAVE OCCURRED. Checked per cause, with the cause quoted in the refusal, so a
 // reader learns which of the quarantine's claims stopped being true instead of learning that the
 // quarantine is somehow wrong.
@@ -375,7 +394,7 @@ fn roster_refusal_check(entry: NonEmptyStr, cause: NonEmptyStr) -> Node {
 fn roster_enforced_verdict(aggregate: RosterAggregate, overlay: OverlayIngest, source_roots: List<String>) -> List<Node> {
   [
     bash_build_if_else(
-      cond: roster_capture_run(overlay: overlay, source_roots: source_roots, name: "out", entry: aggregate.invocation.entry, function: aggregate.invocation.function),
+      cond: roster_streamed_capture_run(overlay: overlay, source_roots: source_roots, name: "out", entry: aggregate.invocation.entry, function: aggregate.invocation.function),
       then_body: roster_statements(stmts: [
         roster_echo_variable(name: "out"),
         roster_echo(text: join(["PASS  ", aggregate.pass_banner, " — ", aggregate.invocation.entry as String], "")),
