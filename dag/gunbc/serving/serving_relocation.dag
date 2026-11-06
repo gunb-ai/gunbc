@@ -7,9 +7,9 @@ module gunbc.serving.serving_relocation
 // that re-places a conversation's continuation, through fabric, when an admissible transition
 // improves useful fleet throughput, while preserving its execution and retention obligations. The
 // between-turn handoff is the first supported boundary; it is not a preference for inactive
-// conversations. Realization: gunbc.serving.router_dev_policy (a manually invoked operation, shipped
-// uncommissioned: /router/relocate refuses until a relocation token is placed). Its falsifier cases in
-// //gunbc/instruments:router-proxy-falsifier are a declared frontier (plan R durability row), not yet executed.
+// conversations. This is the MODEL only: no router realizes relocation yet and nothing moves a
+// conversation. The realization, its requirements and its executable falsifier acceptance are the R-S3
+// frontier row of gunbc.plans.fabric_serving_router; witness coverage here is not executed relocation.
 //
 // REUSE, DO NOT RE-MINT. Placement/residency live in gunbc.serving.turn_admission; the durable move
 // fence lives in gunbc.serving.caller_backlog's rebinding spine. The CHOICE goes through std.decision
@@ -297,14 +297,14 @@ fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry
 }
 
 // ── THE RENDERED MOVE INTENT (the model's output; the router verifies it, never re-decides) ──────
-// The move intent that /router/relocate accepts is THIS module's output, never a hand-written command.
+// The move intent a relocation realization (the R-S3 frontier) will accept is THIS module's output,
+// never a hand-written command.
 // render_move_intent runs the real decision (decide_relocation -> select_realization) and renders the
 // intent that is posted to the router: conversation, current placement revision, destination, method,
 // authorization, bounded transition allowance, and the SelectionReceipt identities that tie the intent
-// to a real selection. The router verifies the intent's SHAPE and its PLACEMENT REVISION; it does not
-// re-decide (DESIGN 3d: one decision authority). Because the falsifier obtains this payload by calling
-// render_move_intent, deleting this module removes the payload and breaks the falsifier control that
-// posts it — supplying inputs never removes the last execution of the real path.
+// to a real selection. The realization is to verify the intent's SHAPE and its PLACEMENT REVISION and
+// never re-decide (DESIGN 3d: one decision authority). Its falsifier is to obtain this payload by calling
+// render_move_intent, so supplying inputs never removes the last execution of the real path.
 // The transition allowance is what the plan's first ResourceBudgetPolicy trial declares: one bounded
 // reconstruction plus one handoff's temporary overlap -- a count of operations the trial may spend, not a
 // duration and not a price (the plan fabricates no pricing). The replay/measurement study retires it.
@@ -373,7 +373,7 @@ type MoveIntent {
   receipt: SelectionReceipt
 }
 
-// The /router/relocate wire form: MoveIntent's JSON encoding. The router decodes it with cjson and checks
+// The move intent's wire form: MoveIntent's JSON encoding. The R-S3 realization is to decode it and check
 // its shape and placement revision; the receipt is carried by identity, never re-decided by the router.
 fn move_intent_json(i: MoveIntent) -> JsonValue {
   json_object(members: [
@@ -403,8 +403,8 @@ type HandoffRecord {
 }
 
 // The move is claimed on the durable spine so a retried command cannot move a session twice: a stale
-// predecessor seat is refused (the one authoritative record already advanced). The snapshot is built
-// by the realization; this module reuses the claim, it does not build the ledger.
+// predecessor seat is refused (the one authoritative record already advanced). The snapshot is to be built
+// by the R-S3 realization; this module reuses the claim, it does not build the ledger.
 type MoveClaim
   = MoveClaimed
   | MoveAlreadyClaimed { held: SeatRef? }
