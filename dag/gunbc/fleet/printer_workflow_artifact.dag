@@ -35,12 +35,13 @@ data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 // (where the fleet group collaborates on records), never on the ancestor that hosts the privileged installs.
 // The refusal that enforces this invariant is gunbc.executor_privileged_operation
 // executor_privileged_writable_parent_refusal: a privileged install -d whose parent is another declared
-// target whose group can write is refused by the model, so the projection stops granting it.
+// target that a non-root principal can write (by owner, group, or other) is refused by the model, so
+// the projection stops granting it.
 //
 // DEPLOY ORDERING (quick-newt-573 review, msg_eb68902c gap 2; DESIGN 4c -- a comment is not a refusal, so
 // this states what IS enforced by the model and what is NOT). ENFORCED AND RED-TESTED: the projection refuses
 // and withholds the host's WHOLE sudoers artifact whenever a declared privileged install names a parent that
-// is another declared target whose group can write it (runner_host_provisioning_plan_refusals ->
+// is another declared target a non-root principal can write by owner, group, or other (runner_host_provisioning_plan_refusals ->
 // executor_privileged_writable_parent_refusal; witness a_group_writable_parent_of_a_privileged_install_is_refused
 // drives this very parent to gunbc-fleet 2770 and asserts the refusal). A model that left printer-starts
 // group-writable under these grants could not emit sudoers at all. NOT ENFORCED BY THE PROJECTION: this
