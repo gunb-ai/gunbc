@@ -1,0 +1,117 @@
+module test.claim.belt_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// THE SIX BELT RECEIPT AND ATTEMPT-STATE STORES CANNOT BE SPELLED OR CAST OUTSIDE THEIR DECLARING FILES.
+// gunbc.roadmap.roadmap_belt_receipt_store_root (BeltTickReceiptStore, BeltObligationReceiptStore,
+// BeltPublicationReceiptStore) and gunbc.roadmap.roadmap_belt_attempt_store_root (BeltSubmissionStore,
+// BeltCaptureIntentStore, BeltIntegrationStore) are sole_constructor; each is built only by its one mint, which
+// takes the instance (and the node and attempt) and derives the root from its declaration. Each RED hands the
+// compiler a module outside the defining files that spells the record as a literal, and asserts EXACTLY ONE
+// SoleConstructorViolation keyed on that record's name. Each forged text then runs a second time against the
+// seal-stripped twin (test.fixture.belt_store_seal.unsealed, same fields, no keyword): it draws no violation, so
+// the refusal is the keyword. Claimed: construction is sealed (no forged store, no store over the wrong root).
+// NOT claimed: that business code cannot read store.root (field reads are not sealed; the declared residual
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module).
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+data forged_belt_tick_receipt_store_source: String = "module probe_belt_forged_belt_tick_receipt_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_receipt_store_root { BeltTickReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltTickReceiptStore {\n  BeltTickReceiptStore { instance: d, root: d }\n}\n"
+
+data twin_belt_tick_receipt_store_source: String = "module probe_belt_twin_belt_tick_receipt_store\nimport std.types { NonEmptyStr }\nimport test.fixture.belt_store_seal.unsealed { BeltTickReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltTickReceiptStore {\n  BeltTickReceiptStore { instance: d, root: d }\n}\n"
+
+data cast_belt_tick_receipt_store_source: String = "module probe_belt_cast_belt_tick_receipt_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_receipt_store_root { BeltTickReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltTickReceiptStore {\n  d as BeltTickReceiptStore\n}\n"
+
+data forged_belt_obligation_receipt_store_source: String = "module probe_belt_forged_belt_obligation_receipt_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_receipt_store_root { BeltObligationReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltObligationReceiptStore {\n  BeltObligationReceiptStore { instance: d, root: d }\n}\n"
+
+data twin_belt_obligation_receipt_store_source: String = "module probe_belt_twin_belt_obligation_receipt_store\nimport std.types { NonEmptyStr }\nimport test.fixture.belt_store_seal.unsealed { BeltObligationReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltObligationReceiptStore {\n  BeltObligationReceiptStore { instance: d, root: d }\n}\n"
+
+data cast_belt_obligation_receipt_store_source: String = "module probe_belt_cast_belt_obligation_receipt_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_receipt_store_root { BeltObligationReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltObligationReceiptStore {\n  d as BeltObligationReceiptStore\n}\n"
+
+data forged_belt_publication_receipt_store_source: String = "module probe_belt_forged_belt_publication_receipt_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_receipt_store_root { BeltPublicationReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltPublicationReceiptStore {\n  BeltPublicationReceiptStore { instance: d, root: d }\n}\n"
+
+data twin_belt_publication_receipt_store_source: String = "module probe_belt_twin_belt_publication_receipt_store\nimport std.types { NonEmptyStr }\nimport test.fixture.belt_store_seal.unsealed { BeltPublicationReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltPublicationReceiptStore {\n  BeltPublicationReceiptStore { instance: d, root: d }\n}\n"
+
+data cast_belt_publication_receipt_store_source: String = "module probe_belt_cast_belt_publication_receipt_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_receipt_store_root { BeltPublicationReceiptStore }\nfn forged(d: NonEmptyStr) -> BeltPublicationReceiptStore {\n  d as BeltPublicationReceiptStore\n}\n"
+
+data forged_belt_submission_store_source: String = "module probe_belt_forged_belt_submission_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_attempt_store_root { BeltSubmissionStore }\nfn forged(d: NonEmptyStr) -> BeltSubmissionStore {\n  BeltSubmissionStore { node: d, attempt: d, root: d }\n}\n"
+
+data twin_belt_submission_store_source: String = "module probe_belt_twin_belt_submission_store\nimport std.types { NonEmptyStr }\nimport test.fixture.belt_store_seal.unsealed { BeltSubmissionStore }\nfn forged(d: NonEmptyStr) -> BeltSubmissionStore {\n  BeltSubmissionStore { node: d, attempt: d, root: d }\n}\n"
+
+data cast_belt_submission_store_source: String = "module probe_belt_cast_belt_submission_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_attempt_store_root { BeltSubmissionStore }\nfn forged(d: NonEmptyStr) -> BeltSubmissionStore {\n  d as BeltSubmissionStore\n}\n"
+
+data forged_belt_capture_intent_store_source: String = "module probe_belt_forged_belt_capture_intent_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_attempt_store_root { BeltCaptureIntentStore }\nfn forged(d: NonEmptyStr) -> BeltCaptureIntentStore {\n  BeltCaptureIntentStore { node: d, attempt: d, root: d }\n}\n"
+
+data twin_belt_capture_intent_store_source: String = "module probe_belt_twin_belt_capture_intent_store\nimport std.types { NonEmptyStr }\nimport test.fixture.belt_store_seal.unsealed { BeltCaptureIntentStore }\nfn forged(d: NonEmptyStr) -> BeltCaptureIntentStore {\n  BeltCaptureIntentStore { node: d, attempt: d, root: d }\n}\n"
+
+data cast_belt_capture_intent_store_source: String = "module probe_belt_cast_belt_capture_intent_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_attempt_store_root { BeltCaptureIntentStore }\nfn forged(d: NonEmptyStr) -> BeltCaptureIntentStore {\n  d as BeltCaptureIntentStore\n}\n"
+
+data forged_belt_integration_store_source: String = "module probe_belt_forged_belt_integration_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_attempt_store_root { BeltIntegrationStore }\nfn forged(d: NonEmptyStr) -> BeltIntegrationStore {\n  BeltIntegrationStore { node: d, attempt: d, root: d }\n}\n"
+
+data twin_belt_integration_store_source: String = "module probe_belt_twin_belt_integration_store\nimport std.types { NonEmptyStr }\nimport test.fixture.belt_store_seal.unsealed { BeltIntegrationStore }\nfn forged(d: NonEmptyStr) -> BeltIntegrationStore {\n  BeltIntegrationStore { node: d, attempt: d, root: d }\n}\n"
+
+data cast_belt_integration_store_source: String = "module probe_belt_cast_belt_integration_store\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_belt_attempt_store_root { BeltIntegrationStore }\nfn forged(d: NonEmptyStr) -> BeltIntegrationStore {\n  d as BeltIntegrationStore\n}\n"
+
+test fn a_forged_belt_tick_receipt_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_belt_tick_receipt_store_source, subject: "BeltTickReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_tick_receipt_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_belt_tick_receipt_store_source, subject: "BeltTickReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_obligation_receipt_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_belt_obligation_receipt_store_source, subject: "BeltObligationReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_obligation_receipt_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_belt_obligation_receipt_store_source, subject: "BeltObligationReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_publication_receipt_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_belt_publication_receipt_store_source, subject: "BeltPublicationReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_publication_receipt_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_belt_publication_receipt_store_source, subject: "BeltPublicationReceiptStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_submission_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_belt_submission_store_source, subject: "BeltSubmissionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_submission_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_belt_submission_store_source, subject: "BeltSubmissionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_capture_intent_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_belt_capture_intent_store_source, subject: "BeltCaptureIntentStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_capture_intent_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_belt_capture_intent_store_source, subject: "BeltCaptureIntentStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_integration_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: forged_belt_integration_store_source, subject: "BeltIntegrationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_belt_integration_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_belt_integration_store_source, subject: "BeltIntegrationStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_same_forged_sources_pass_against_the_seal_stripped_twin() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: seal_violations(source: twin_belt_tick_receipt_store_source, subject: "BeltTickReceiptStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_belt_obligation_receipt_store_source, subject: "BeltObligationReceiptStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_belt_publication_receipt_store_source, subject: "BeltPublicationReceiptStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_belt_submission_store_source, subject: "BeltSubmissionStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_belt_capture_intent_store_source, subject: "BeltCaptureIntentStore"), holds: fn(n) { n == 0 }),
+    census_verdict(census: seal_violations(source: twin_belt_integration_store_source, subject: "BeltIntegrationStore"), holds: fn(n) { n == 0 }),
+  ])
+}

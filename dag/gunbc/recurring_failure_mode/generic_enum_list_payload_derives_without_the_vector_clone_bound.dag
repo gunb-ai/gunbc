@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.generic_enum_list_payload_derives_without_the_vector_clone_bound
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { FoundAtAmbiguous, RecurringFailureMode, RungUnread }
+
+data generic_enum_list_payload_derives_without_the_vector_clone_bound: RecurringFailureMode = RecurringFailureMode {
+  identity: "generic_enum_list_payload_derives_without_the_vector_clone_bound" as NonEmptyStr,
+
+  rung: RungUnread { cause: FoundAtAmbiguous },
+
+  receipts: [
+    "INVALID STATE: a generic enum whose variant payload is written List<K> is emitted with derive(Debug, PartialEq) over im::Vector<K> and a bare header, so rustc refuses the variant field (E0277, K: Clone not satisfied). Specimen: std.observation_completeness ObservationCompleteness<K>, reached by every native closure that imports std.decision or std.goal_assessment.",
+    "EARLIEST UNJUSTIFIED LINK (DESIGN 6b): not the fn emission. The fn header was already bounded. The type declaration's route to the hand-written FreeMonoid impls, v1.compiler.trait_derive_emit v1_freemonoid_element_params, tested the authored spelling against the literal FreeMonoid, so the alias List never took the route. Sibling sites in v1.compiler.emit_rust already accepted both spellings, and v1_keyed_map_verdict_from_algebra already asked std.types container_template_algebra.",
+    "REPAIR: v1_type_expr_is_free_monoid_carrier asks the std.algebra roster. Control: gunbc.instruments.native_emission_controls list_payload_enum_cases, emitted, built and run, red before and green after.",
+    "RUNG FOUND AT: mitigatable (typed rustc refusal, not silent wrongness), and visible only outside the two required closures. CEILING: 3. NEXT TRIGGER: the required gate emits a closure that imports std.decision, so this class is judged on every pull request.",
+  ],
+
+  evidence: [],
+}

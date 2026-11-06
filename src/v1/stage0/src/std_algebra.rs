@@ -235,9 +235,9 @@ pub struct PointwisePower<T> {
 #[derive(Clone)]
 pub struct FinitePowerSet<T> {
     pub member: Rc<dyn Fn(T) -> bool>,
-    pub union: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub intersect: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
-    pub diff: Rc<dyn Fn(Rc<FinitePowerSet<T>>) -> Rc<FinitePowerSet<T>>>,
+    pub union: Rc<dyn Fn(Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>>>,
+    pub intersect: Rc<dyn Fn(Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>>>,
+    pub diff: Rc<dyn Fn(Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>>>,
     pub contains: Rc<dyn Fn(T) -> bool>,
     pub count: Rc<dyn Fn() -> i64>,
     pub length: Rc<dyn Fn() -> i64>,
@@ -425,6 +425,7 @@ impl ContainerSource {
 pub enum AlgebraTypeTemplate {
     ReceiverSelf,
     ReceiverElement,
+    ReceiverElementOrSelf,
     ReceiverKey,
     ReceiverValue,
     NamedTemplate {
@@ -744,6 +745,7 @@ pub fn template_step_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64> {
         AlgebraTypeTemplate::CallableOf { .. } => true,
         AlgebraTypeTemplate::ReceiverSelf => false,
         AlgebraTypeTemplate::ReceiverElement => false,
+        AlgebraTypeTemplate::ReceiverElementOrSelf => false,
         AlgebraTypeTemplate::ReceiverKey => false,
         AlgebraTypeTemplate::ReceiverValue => false,
         AlgebraTypeTemplate::NamedTemplate { name: _, .. } => false,
@@ -771,6 +773,7 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
                     AlgebraTypeTemplate::CallableOf { return_type: r, .. } => Some(r.clone()),
                     AlgebraTypeTemplate::ReceiverSelf => std::option::Option::None,
                     AlgebraTypeTemplate::ReceiverElement => std::option::Option::None,
+                    AlgebraTypeTemplate::ReceiverElementOrSelf => std::option::Option::None,
                     AlgebraTypeTemplate::ReceiverKey => std::option::Option::None,
                     AlgebraTypeTemplate::ReceiverValue => std::option::Option::None,
                     AlgebraTypeTemplate::NamedTemplate { name: _, .. } => std::option::Option::None,
@@ -794,6 +797,9 @@ pub fn template_accumulator_position(t: Rc<AlgebraFieldTemplate>) -> Option<i64>
                         AlgebraTypeTemplate::CallableOf { .. } => false,
                         AlgebraTypeTemplate::ReceiverSelf => (p.clone() == acc_type.clone()),
                         AlgebraTypeTemplate::ReceiverElement => (p.clone() == acc_type.clone()),
+                        AlgebraTypeTemplate::ReceiverElementOrSelf => {
+                            (p.clone() == acc_type.clone())
+                        }
                         AlgebraTypeTemplate::ReceiverKey => (p.clone() == acc_type.clone()),
                         AlgebraTypeTemplate::ReceiverValue => (p.clone() == acc_type.clone()),
                         AlgebraTypeTemplate::NamedTemplate { name: _, .. } => {
@@ -1963,7 +1969,7 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             name: "append".to_string(),
             param_types: Rc::new(vec![
                 Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-                Rc::new(AlgebraTypeTemplate::ReceiverElement),
+                Rc::new(AlgebraTypeTemplate::ReceiverElementOrSelf),
             ]),
             return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
             size_effect: std::option::Option::None,
@@ -2532,6 +2538,12 @@ pub fn list_head<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<T> {
     }
 }
 
+pub fn list_last<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Option<T> {
+    fold_list(xs, std::option::Option::None, |acc, item| {
+        Some(item.clone())
+    })
+}
+
 pub fn skip<T: Clone>(
     mut __tco_loop_xs: Rc<FreeMonoid<T>>,
     mut __tco_loop_n: i64,
@@ -2748,6 +2760,25 @@ pub fn int_compare_canonical(a: i64, b: i64) -> Ordering {
 pub fn int_total_order() -> Rc<TotalOrder<i64>> {
     Rc::new(TotalOrder {
         compare: Rc::new(int_compare_canonical),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn string_compare_canonical(a: String, b: String) -> Ordering {
+    if (a.clone() < b.clone()) {
+        Ordering::Less
+    } else {
+        if (a.clone() > b.clone()) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
+}
+
+pub fn string_total_order() -> Rc<TotalOrder<String>> {
+    Rc::new(TotalOrder {
+        compare: Rc::new(string_compare_canonical),
         _phantom: std::marker::PhantomData,
     })
 }
@@ -3100,38 +3131,55 @@ pub fn non_empty_to_list<T: Clone>(xs: Rc<FreeSemigroup<T>>) -> Rc<FreeMonoid<T>
     })
 }
 
-pub fn list_init<T: Clone>(mut __tco_loop_xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    {
-        let mut __trmc_out = Rc::new(vec![]);
-        let mut __tco_cursor_xs: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_xs = __tco_loop_xs.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_xs = __tco_base_xs.focus();
-            break loop {
-                {
-                    let __fm = __tco_base_xs.clone();
-                    if (__fm.len() - __tco_cursor_xs) == 0 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else if (__fm.len() - __tco_cursor_xs) == 1 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else {
-                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
-                        {
-                            __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
-                            {
-                                let __tco_0 = __tco_cursor_xs + 1;
-                                __tco_cursor_xs = __tco_0;
-                                continue;
-                            }
-                        }
-                    }
-                }
-            };
-        };
-        __tco_result
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ListInitLag<T> {
+    pub kept: Rc<FreeMonoid<T>>,
+    pub pending: Option<T>,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListInitLag<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ListInitLag")
+            .field("kept", &self.kept)
+            .field("pending", &self.pending)
+            .finish()
     }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ListInitLag<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.kept == other.kept && self.pending == other.pending
+    }
+}
+
+pub fn list_init<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    fold_list(
+        xs,
+        Rc::new(ListInitLag {
+            kept: Rc::new(vec![]),
+            pending: std::option::Option::None,
+            _phantom: std::marker::PhantomData,
+        }),
+        |acc, item| match acc.pending.clone() {
+            std::option::Option::None => Rc::new(ListInitLag {
+                kept: acc.kept.clone(),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+            Some(p) => Rc::new(ListInitLag {
+                kept: v1_rt::rc_list_push(acc.kept.clone(), p.clone()),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+        },
+    )
+    .kept
+    .clone()
 }
 
 pub fn bag_eq<T: Clone>(
@@ -3149,37 +3197,91 @@ pub fn bag_eq<T: Clone>(
     }
 }
 
+pub fn map_values_eq<K: Clone + std::cmp::Eq + std::hash::Hash, V: Clone>(
+    a: Rc<HashMap<K, V>>,
+    b: Rc<HashMap<K, V>>,
+    eq: impl Fn(V, V) -> bool + Clone,
+) -> bool {
+    (((Rc::new(v1_rt::map_keys(&a)).len() as i64) == (Rc::new(v1_rt::map_keys(&b)).len() as i64))
+        && for_all(Rc::new(v1_rt::map_keys(&a)), |k| {
+            match v1_rt::map_get(&a, k.clone()) {
+                Some(x) => match v1_rt::map_get(&b, k.clone()) {
+                    Some(y) => eq(x.clone(), y.clone()),
+                    std::option::Option::None => false,
+                },
+                std::option::Option::None => false,
+            }
+        }))
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ZipEqWalk<T> {
+    pub rest: Rc<FreeMonoid<T>>,
+    pub agreed: bool,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ZipEqWalk<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ZipEqWalk")
+            .field("rest", &self.rest)
+            .field("agreed", &self.agreed)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ZipEqWalk<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rest == other.rest && self.agreed == other.agreed
+    }
+}
+
 pub fn zip_eq<T: Clone>(
     a: Rc<FreeMonoid<T>>,
     b: Rc<FreeMonoid<T>>,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = a.clone();
-        if __fm.is_empty() {
-            {
-                let __fm = b.clone();
+    {
+        let walk = fold_list(
+            a,
+            Rc::new(ZipEqWalk {
+                rest: b.clone(),
+                agreed: true,
+                _phantom: std::marker::PhantomData,
+            }),
+            |acc, item| {
+                let __fm = acc.rest.clone();
                 if __fm.is_empty() {
-                    true
-                } else {
-                    false
-                }
-            }
-        } else {
-            let ha = (*__fm)[0].clone();
-            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    false
+                    Rc::new(ZipEqWalk {
+                        rest: Rc::new(vec![]),
+                        agreed: false,
+                        _phantom: std::marker::PhantomData,
+                    })
                 } else {
                     let hb = (*__fm)[0].clone();
                     let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+                    if acc.agreed.clone() {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: eq(item, hb.clone()),
+                            _phantom: std::marker::PhantomData,
+                        })
+                    } else {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: false,
+                            _phantom: std::marker::PhantomData,
+                        })
+                    }
                 }
-            }
-        }
-    })
+            },
+        );
+        (walk.agreed.clone() && is_empty(walk.rest.clone()))
+    }
 }
 
 pub fn zip_map<A: Clone, B: Clone, C: Clone>(

@@ -22,6 +22,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_chassis_power, megarac_boot_param5,
 }
 import gunbc.host.managed_host_unit_hold { unit_hold_acquire }
+import gunbc.host_state_root { host_state_tree }
 import gunbc.host.managed_host_boot_handoff { boot_drive_handoff }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, uefi_once_boot_selection }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_attach_boot_image, MegaRacIpmiReadBound }
@@ -146,6 +147,6 @@ fn actuate_with_a_forged_proof_from_outside(s: AdmittedUnitHoldSubject, b: Admit
 }
 
 fn acquire_the_unit_hold_from_outside_its_roots(s: AdmittedUnitHoldSubject) -> String {
-  let _x = unit_hold_acquire(subject: s, owner: "forger" as DurableHoldOwnerRef)
+  let _x = unit_hold_acquire(subject: s, owner: "forger" as DurableHoldOwnerRef, tree: host_state_tree())
   ""
 }

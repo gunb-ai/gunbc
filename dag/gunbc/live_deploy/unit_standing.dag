@@ -1,7 +1,7 @@
 module gunbc.live_deploy.unit_standing
 
-import std.types { String, Bool, NonEmptyStr, Int, List, list_length }
-import std.algebra { trim }
+import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.algebra { trim, length }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   systemd_unit_property_wire, SystemdUnitProperty,
@@ -140,6 +140,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ExecStartPost { command: _ } => none
       ExecStop { command: _ } => none
       ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
       ExecStopPostIgnoringFailure { command: _ } => none
       ServiceStandardOutput { stream: _ } => none
       ServiceStandardError { stream: _ } => none
@@ -161,6 +162,7 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -178,6 +180,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ExecStartPost { command: _ } => none
       ExecStop { command: _ } => none
       ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
       ExecStopPostIgnoringFailure { command: _ } => none
       ServiceStandardOutput { stream: _ } => none
       ServiceStandardError { stream: _ } => none
@@ -198,6 +201,7 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -215,6 +219,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ExecStartPost { command: _ } => none
       ExecStop { command: _ } => none
       ExecStopPost { command: _ } => none
+      ExecReload { command: _ } => none
       ExecStopPostIgnoringFailure { command: _ } => none
       ServiceStandardOutput { stream: _ } => none
       ServiceStandardError { stream: _ } => none
@@ -235,6 +240,7 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
       ServiceTasksMax { count: _ } => none
       ServiceResourceControl { directive: _ } => none
       TimeoutStopSec { duration: _ } => none
+      ServiceUMask { mask: _ } => none
     }
   })
 }
@@ -270,7 +276,7 @@ type ExecStartRead
 
 fn exec_start_argv_of_show_value(value: String) -> ExecStartRead {
   let parts = split(s: value, delimiter: "argv[]=")
-  if list_length(items: parts) < 2 {
+  if length(xs: parts) < 2 {
     ExecStartUnparseable { value: value }
   } else {
     let tail = fold(parts, init: "", f: fn(_, seg) { seg })

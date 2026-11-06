@@ -1,5 +1,6 @@
 module test.claim.machine_intake.supermicro_bmc_reading_witness
 
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -20,12 +21,12 @@ import gunbc.bmc.supermicro_bmc_read {
   SupermicroResourceStanding, ResourceServed, ResourceLicenceRefused, ResourceRouteAbsent, ResourceUnreadable,
   supermicro_bmc_identity, supermicro_boot_vendor_tokens, supermicro_boot_unaccounted_tokens, supermicro_dimm_reading_disagreements,
 }
+import gunbc.machine_intake.bmc_first_contact_reading { BmcCaptureManifestRow }
 import gunbc.machine_intake.supermicro_bmc_reading {
-  SupermicroH11sslBmcReading, SupermicroH11sslRead, SupermicroH11sslReadRefused, SupermicroCapture,
+  SupermicroH11sslBmcReading, SupermicroH11sslRead, SupermicroH11sslReadRefused,
   supermicro_h11ssl_unit1_reading_2026_10_27, supermicro_h11ssl_unit2_reading, supermicro_h11ssl_reading,
   supermicro_h11ssl_unit1_captures_2026_10_27,
 }
-import gunbc.machine_intake.supermicro_h11ssl_unit_observation { supermicro_h11ssl_unit1_bmc_mac }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 // THE H11SSL BMC READINGS, END TO END: each claim runs the unit's committed captures through
@@ -97,7 +98,7 @@ test fn a_get_device_id_from_another_manufacturer_refuses() -> Bool {
 // RED: a capture whose bytes no longer match the manifest refuses the whole reading.
 test fn a_capture_that_differs_from_its_manifest_digest_refuses_the_reading() -> Bool {
   let tampered = map(supermicro_h11ssl_unit1_captures_2026_10_27, c =>
-    if ends_with(s: c.path as String, suffix: "sol-info-1.txt") { SupermicroCapture { path: c.path, sha256: "00", request: c.request, http_status: c.http_status } } else { c })
+    if ends_with(s: c.path as String, suffix: "sol-info-1.txt") { BmcCaptureManifestRow { controller: c.controller, read: c.read, observed_at: c.observed_at, operation: c.operation, outcome: c.outcome, path: c.path, digest: "00" as NonEmptyStr, intake_key: c.intake_key } } else { c })
   match supermicro_h11ssl_reading(bmc_mac: supermicro_h11ssl_unit1_bmc_mac, captures: tampered) {
     SupermicroH11sslReadRefused { path: p, cause: _ } => ends_with(s: p as String, suffix: "sol-info-1.txt")
     SupermicroH11sslRead { reading: _ } => false

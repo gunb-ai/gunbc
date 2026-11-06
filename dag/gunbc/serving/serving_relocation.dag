@@ -1,0 +1,496 @@
+module gunbc.serving.serving_relocation
+
+// FABRIC-GOVERNED CONVERSATION RELOCATION AT TURN BOUNDARIES — the model.
+//
+// Operator ruling 2026-10-31: "never move a session" is the wrong invariant. The invariant is:
+// never LOSE or DUPLICATE a session's obligations while moving it. This module models one operation
+// that re-places a conversation's continuation, through fabric, when an admissible transition
+// improves useful fleet throughput, while preserving its execution and retention obligations. The
+// between-turn handoff is the first supported boundary; it is not a preference for inactive
+// conversations. This is the MODEL only: no router realizes relocation yet and nothing moves a
+// conversation. The realization, its requirements and its executable falsifier acceptance are the R-S3
+// frontier row of gunbc.plans.fabric_serving_router; witness coverage here is not executed relocation.
+//
+// REUSE, DO NOT RE-MINT. Placement/residency live in gunbc.serving.turn_admission; the durable move
+// fence lives in gunbc.serving.caller_backlog's rebinding spine. The CHOICE goes through std.decision
+// select_realization with "stay" as a candidate — never a Lua-local or model-local migration score. A
+// conversation's long-lived retention reservation (ServingSessionRecord) is kept distinct from a turn's
+// execution grant (ServingGroupAdmission). A binding is not warmth: the incumbent enters on its
+// serving_session_residency, and an unprobed owner PINS the session rather than relocating it
+// (serving_unread_when_owner_unprobed).
+//
+// Declared reuse GAP (frontier row in gunbc.plans.fabric_serving_router): there is no production route
+// from an owned-fleet serving replica to an admitted product.fabric.selection CandidateOffer
+// (CandidateOffer/FabricCellCandidate are sole_constructor; bind_candidate has no non-test caller), so
+// the choice runs through std.decision today; when S3's native serving_router admits owned replicas
+// through capacity_admission this rewires to select_supply, keeping the same funded axes and receipt.
+
+import std.types { Int, Bool, NonEmptyStr, List, String, brand }
+import std.nat { Nat }
+import std.integer { nat_to_int }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_int, json_string, json_object, serialize_json }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.interval { degenerate_interval }
+import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
+import std.decision {
+  HardConstraint, NonMoneyConstraint, UniqueSurvivorElsePrefer, SelectionPolicy, SelectionReceipt,
+  SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
+  NoFeasibleRealization, CandidateFieldUnestablished, DecisionVariable, ContextParameter,
+  DecisionConstraint, ObjectiveTerm, ObjectiveMeasure, ChoiceDomain, DecisionSubject, DecisionRegion,
+  DecisionAssessment, PhysicalModelUnestablished, CausalModelUnestablished,
+  select_realization, policy_identity_of,
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import gunbc.serving.turn_admission {
+  ServingSessionRecord, ServingSessionResidency, ServingSessionPlacement, ServingHostTierStanding,
+  ServingGpuPrefixStanding, serving_session_standing, serving_session_placement,
+  serving_unread_when_owner_unprobed,
+}
+import gunbc.serving.caller_backlog {
+  CallerBacklogSnapshot, CallerWorkRecord, CallerWorkPhase, RecoveryEvent, SeatRef, PartitionId,
+  ReservationRef, LogicalWorkId, rebind_reservation, logical_work_eq,
+}
+
+// ── LOGICAL IDENTITY ────────────────────────────────────────────────────────────────────────────
+type ConversationId = NonEmptyStr where brand("ConversationId")
+type PlacementRevision = Int
+
+// ── DEMAND STANDING (amendment 2) — never collapsed into one "idle" flag ───────────────────────
+// A tool return and a person typing are different readiness events, and a finished conversation has
+// no next turn at all. Consumed by defer_when_demand_not_ready, which carries the standing into its
+// deferral so the cause is never lost. (Execution standing -- executing, queued, completed, unresolved
+// after timeout -- is NOT declared here: no decision reads it yet; R-S3 declares it with its reader.)
+type DemandStanding = NextTurnReady | AwaitingTool | AwaitingPerson | Finished
+
+// RETAINED STATE is carried by ServingSessionResidency from turn_admission (what usable state exists,
+// where, for which prefix and launch). It is reused verbatim; this module never re-declares it.
+
+// ── STATE-ESTABLISHMENT METHODS ─────────────────────────────────────────────────────────────────
+type StateEstablishmentMethod = RestoreCompatibleSavedState | ReconstructFromCompleteRequest
+
+type ReconstructionEvidence {
+  carries_history: Bool
+  carries_tool_definitions: Bool
+  carries_tool_results: Bool
+  carries_reasoning_and_template_settings: Bool
+  carries_referenced_inputs: Bool
+  destination_meets_model_contract: Bool
+  destination_meets_quality_contract: Bool
+}
+
+fn reconstruction_is_complete(e: ReconstructionEvidence) -> Bool {
+  e.carries_history && e.carries_tool_definitions && e.carries_tool_results
+    && e.carries_reasoning_and_template_settings && e.carries_referenced_inputs
+    && e.destination_meets_model_contract && e.destination_meets_quality_contract
+}
+
+// RETENTION MOVEMENT (freeing memory) is a DIFFERENT capability from EXECUTION MOVEMENT. Reconstruct
+// re-establishes the continuation on the destination; it does NOT evacuate the retained KV still on
+// the source, and must never claim memory was freed. Only a fully established restore could move
+// retained state, and it has no admitted case.
+type MethodAdmission = MethodAdmitted { method: StateEstablishmentMethod } | MethodNotAdmitted { reason: NonEmptyStr }
+
+fn admit_state_method(method: StateEstablishmentMethod, evidence: ReconstructionEvidence) -> MethodAdmission {
+  match method {
+    RestoreCompatibleSavedState =>
+      MethodNotAdmitted { reason: "no cross-engine KV transfer is established; restore is a declared method with no admitted case" as NonEmptyStr }
+    ReconstructFromCompleteRequest =>
+      if reconstruction_is_complete(e: evidence) {
+        MethodAdmitted { method: ReconstructFromCompleteRequest }
+      } else {
+        MethodNotAdmitted { reason: "the request does not carry everything needed to continue, or the destination is not established against the model and quality contract" as NonEmptyStr }
+      }
+  }
+}
+
+// ── THE DECISION (std.decision select_realization; never a local comparison) ─────────────────────
+// Stay versus move is a select_realization over a candidate field that ALWAYS includes "stay". The
+// funded axes encode the objective (amendment 3): useful completed work within the fixed grant over
+// the affected source-AND-destination schedule. The economic comparison is ONE net-benefit axis
+// (ax_net): throughput gain minus reconstruction transition, minus harm to the destination's other
+// work, minus long-context starvation cost — repeated prefill counts as cost. A move is selected
+// exactly when its net benefit exceeds the incumbent's; a tie falls to the stay policy. The second
+// axis (ax_service_class) carries the hard feasibility bound so a service-class violation (cold
+// prefill beside active decoding) is EXCLUDED before Pareto, never ranked. Missing performance
+// evidence is never zero: an unread net axis is a gap, so the economic move is NOT ESTABLISHED
+// (SelectionNeedsEvidence), never free.
+// THE EVIDENCE IS AN INPUT, NEVER MINTED HERE (DESIGN 4d, 5). No relocation performance has been read
+// on the fleet, so this module owns only the honest arm, rloc_unread_assessment: the objective term is
+// TranscribedUncited and the physical and causal models are Unestablished, so select_realization
+// answers SelectionNeedsEvidence and nothing moves. A caller that HAS readings supplies its own
+// DecisionAssessment (built over rloc_subject with the ground it actually holds); the witnesses supply
+// a fixture one at their boundary. No Bool is ever promoted to established evidence.
+data ax_net: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_net")
+data ax_service_class: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_service_class")
+data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_subject")
+data id_field: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_field")
+data id_constraints: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_constraints")
+data id_evidence: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_evidence")
+data id_objective: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_objective")
+data id_domain: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_domain")
+data id_parameter: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_parameter")
+data id_policy_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_policy_stay")
+data id_term: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_term")
+data id_var: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_var")
+data id_region: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_region")
+data id_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_candidate_stay")
+
+data rloc_variable: DecisionVariable = DecisionVariable { identity: id_var }
+data rloc_constraint: DecisionConstraint = DecisionConstraint { identity: id_constraints }
+data rloc_parameter: ContextParameter = ContextParameter { identity: id_parameter }
+data rloc_decision_region: DecisionRegion = DecisionRegion { identity: id_region }
+data rloc_domain: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [rloc_variable] }
+
+// The relocation decision subject, over the ground its one objective term actually holds.
+fn rloc_subject(term_ground: CitedFigureStanding) -> DecisionSubject {
+  DecisionSubject {
+    identity: id_subject,
+    question: "relocate this conversation's continuation to the most admissible placement, or stay" as NonEmptyStr,
+    parameters: [rloc_parameter], constraints: [rloc_constraint],
+    objective: ObjectiveMeasure { identity: id_objective, goal: HigherIsBetter, terms: [ObjectiveTerm { identity: id_term, ground: term_ground }] },
+    choice_domain: rloc_domain,
+  }
+}
+
+// The only assessment this module asserts: nothing about relocation performance has been read.
+fn rloc_unread_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: rloc_subject(term_ground: TranscribedUncited { read_obligation: "relocation net benefit (throughput gain minus transition, destination harm and starvation cost) is unread on the fleet" as NonEmptyStr }),
+    sensitivities: [], constraints: [], parameters: [],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelUnestablished { subject: id_subject, read_obligation: "fleet performance for this move is unread" as NonEmptyStr },
+    causal_model: CausalModelUnestablished { subject: id_subject, read_obligation: "how relocation net benefit varies with placement is unread" as NonEmptyStr },
+  }
+}
+
+fn ax_reading(axis: DeclarationRef, v: Int) -> AxisReading { AxisReading { axis: axis, interval_micro: degenerate_interval(point: v) } }
+
+fn rloc_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: ax_net, goal: HigherIsBetter },
+    SelectionAxis { identity: ax_service_class, goal: LowerIsBetter },
+  ]
+}
+
+// The incumbent's net benefit. A warm, unstarved stay has a high (least-negative) net; a long turn
+// behind runnable demand carries a starvation cost that lowers it.
+fn stay_candidate(net: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id_stay, display_label: "stay" as NonEmptyStr,
+    readings: [ax_reading(axis: ax_net, v: net), ax_reading(axis: ax_service_class, v: 0)],
+    missing_inputs: [],
+  }
+}
+
+// A move's net benefit already nets out reconstruction transition, destination harm and long-context
+// cost (the caller folds them in, and only admits the competitor past the declared margin). The
+// service-class reading is the candidate's cold-prefill-vs-active-decoding cost, bounded by the hard
+// constraint below.
+fn move_candidate(id: DeclarationRef, label: NonEmptyStr, net: Int, service_class: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id, display_label: label,
+    readings: [ax_reading(axis: ax_net, v: net), ax_reading(axis: ax_service_class, v: service_class)],
+    missing_inputs: [],
+  }
+}
+
+// A candidate whose expected improvement is NOT measured carries a gap on the net axis — never a zero.
+fn move_candidate_unknown_gain(id: DeclarationRef, label: NonEmptyStr, service_class: Int) -> ParetoEntry {
+  ParetoEntry {
+    identity: id, display_label: label,
+    readings: [ax_reading(axis: ax_service_class, v: service_class)],
+    missing_inputs: [AxisGap { axis: ax_net, cause: "expected improvement for this move is not established" as NonEmptyStr }],
+  }
+}
+
+// The hard service-class bound: a candidate whose service-class reading exceeds it (cold prefill beside
+// active decoding) is EXCLUDED before Pareto, never ranked.
+fn capacity_bound() -> HardConstraint {
+  HardConstraint { identity: id_constraints, axis: ax_service_class, bound_micro: 1000, denomination: NonMoneyConstraint }
+}
+
+type RelocationDecision
+  = Move { destination_label: NonEmptyStr, receipt: SelectionReceipt }
+  | Stay
+  | NotEstablished { reason: NonEmptyStr }
+  | CompetingMovesNeedPolicy
+  | DeferredDemandNotReady { demand: DemandStanding }
+  | NoAdmissibleTransition
+  | Evacuate { destination_label: NonEmptyStr, receipt: SelectionReceipt }
+  | ReconciliationRequired { obligation: NonEmptyStr }
+
+fn decide_relocation(field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  match select_realization(
+    assessment: assessment,
+    candidate_field_identity: id_field,
+    field: field,
+    axes: rloc_axes(),
+    constraints: [capacity_bound()],
+    constraint_authority: id_constraints,
+    // A move is selected only when it STRICTLY DOMINATES stay on the funded axes (the caller folds the
+    // required margin into the net reading, so a marginal benefit ties and does not dominate). The
+    // UniqueSurvivorElsePrefer arm selects the sole survivor on its own merit (a dominating move wins),
+    // and falls to the preferred stay identity only when several nondominated alternatives survive.
+    // This keeps the whole choice inside std.decision (DESIGN 3d): there is no caller-side second
+    // decision, and the SelectionReceipt records the arm and its preferred parameter.
+    policy: UniqueSurvivorElsePrefer { identity: id_policy_stay, preferred: id_stay },
+    evidence_snapshot: id_evidence,
+  ) {
+    SelectedWithin { candidate: c, receipt: r } =>
+      if declaration_ref_eq(a: c.identity, b: id_stay) { Stay } else { Move { destination_label: c.display_label, receipt: r } }
+    SelectionNeedsEvidence { needs: _ } => NotEstablished { reason: "economic move not established: a funded axis has no reading" as NonEmptyStr }
+    // The arm already resolved stay-vs-move (it prefers stay among survivors). SelectionNeedsPolicy is
+    // reached only when several survivors EXCLUDE stay — competing moves with no stay survivor — which
+    // needs a policy rather than picking one arbitrarily. It is NOT a dormancy deferral.
+    SelectionNeedsPolicy { survivors: _ } => CompetingMovesNeedPolicy
+    RealizationSelectionRefused { defects: _ } => NoAdmissibleTransition
+    NoFeasibleRealization { causes: _, scope: _ } => NoAdmissibleTransition
+    CandidateFieldUnestablished { causes: _ } => NotEstablished { reason: "candidate field unestablished" as NonEmptyStr }
+  }
+}
+
+// Drain / failure removes "stay" as a feasible candidate: the question becomes which admissible
+// transition satisfies the drain, and it is answered by the same std.decision selection over the same
+// funded axes and hard bound, with the stay candidate removed from the field. Mandatory evacuation follows
+// feasibility, never an economic margin: a destination worse than staying is still selected.
+fn decide_evacuation(field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  match decide_relocation(field: filter(field, e => !declaration_ref_eq(a: e.identity, b: id_stay)), assessment: assessment) {
+    Move { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
+    Stay => NoAdmissibleTransition
+    NotEstablished { reason: why } => NotEstablished { reason: why }
+    CompetingMovesNeedPolicy => CompetingMovesNeedPolicy
+    DeferredDemandNotReady { demand: d } => DeferredDemandNotReady { demand: d }
+    NoAdmissibleTransition => NoAdmissibleTransition
+    Evacuate { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
+    ReconciliationRequired { obligation: o } => ReconciliationRequired { obligation: o }
+  }
+}
+
+// A dormant conversation (awaiting a person or tool) has no runnable demand at this boundary, so the
+// move is DEFERRED regardless of how attractive its economics look — re-evaluate at the next
+// re-evaluation event. This is a boundary guard, not a Pareto outcome: the stay-preference policy
+// would otherwise resolve the field to a move. Removing this guard is the discriminating mutation.
+fn defer_when_demand_not_ready(demand: DemandStanding, field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  match demand {
+    NextTurnReady => decide_relocation(field: field, assessment: assessment)
+    _ => DeferredDemandNotReady { demand: demand }
+  }
+}
+
+fn demand_not_ready_reason(demand: DemandStanding) -> NonEmptyStr {
+  match demand {
+    NextTurnReady => "deferred: the next turn is ready (not a dormancy deferral)" as NonEmptyStr
+    AwaitingTool => "deferred: awaiting a tool return; re-evaluate when it arrives" as NonEmptyStr
+    AwaitingPerson => "deferred: awaiting the person; re-evaluate at their next turn" as NonEmptyStr
+    Finished => "deferred: the conversation is finished; there is no next turn to place" as NonEmptyStr
+  }
+}
+
+// A source over its retained-capacity promise is an obligation to reconcile, never "moving is free": the
+// guard runs before the economic decision, which is reached only when the source is within its promise.
+fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  if source_over_promise {
+    ReconciliationRequired { obligation: "the source is over its retained-capacity promise; reconcile the obligation, do not treat relocation as free" as NonEmptyStr }
+  } else {
+    decide_relocation(field: field, assessment: assessment)
+  }
+}
+
+// ── THE RENDERED MOVE INTENT (the model's output; the router verifies it, never re-decides) ──────
+// The move intent a relocation realization (the R-S3 frontier) will accept is THIS module's output,
+// never a hand-written command.
+// render_move_intent runs the real decision (decide_relocation -> select_realization) and renders the
+// intent that is posted to the router: conversation, current placement revision, destination, method,
+// authorization, bounded transition allowance, and the SelectionReceipt identities that tie the intent
+// to a real selection. The realization is to verify the intent's SHAPE and its PLACEMENT REVISION and
+// never re-decide (DESIGN 3d: one decision authority). Its falsifier is to obtain this payload by calling
+// render_move_intent, so supplying inputs never removes the last execution of the real path.
+// The transition allowance is what the plan's first ResourceBudgetPolicy trial declares: one bounded
+// reconstruction plus one handoff's temporary overlap -- a count of operations the trial may spend, not a
+// duration and not a price (the plan fabricates no pricing). The replay/measurement study retires it.
+type TransitionAllowance {
+  reconstructions: Nat
+  overlapping_handoffs: Nat
+}
+
+// The rendered intent carries the MoveIntent it was rendered from; the payload is that record's JSON
+// encoding (move_intent_json), the one wire form the router parses.
+type RenderedIntent = IntentPayload { intent: MoveIntent, payload: String } | NoIntent { reason: NonEmptyStr }
+
+fn method_name(method: StateEstablishmentMethod) -> NonEmptyStr {
+  match method {
+    RestoreCompatibleSavedState => "restore" as NonEmptyStr
+    ReconstructFromCompleteRequest => "reconstruct" as NonEmptyStr
+  }
+}
+
+fn intent_payload(i: MoveIntent) -> RenderedIntent {
+  IntentPayload { intent: i, payload: serialize_json(v: move_intent_json(i: i)) }
+}
+
+fn render_move_intent(
+  conversation: ConversationId,
+  from_launch: NonEmptyStr,
+  current_revision: PlacementRevision,
+  authorization: NonEmptyStr,
+  allowance: TransitionAllowance,
+  method: StateEstablishmentMethod,
+  evidence: ReconstructionEvidence,
+  field: List<ParetoEntry>,
+  assessment: DecisionAssessment,
+) -> RenderedIntent {
+  // FAIL CLOSED ON THE METHOD: the intent carries only a method admit_state_method admitted on the
+  // evidence supplied. A restore (no admitted case) or an incomplete request renders NO intent.
+  match admit_state_method(method: method, evidence: evidence) {
+    MethodNotAdmitted { reason: why } => NoIntent { reason: why }
+    MethodAdmitted { method: admitted } => render_admitted_move_intent(
+      conversation: conversation, from_launch: from_launch, current_revision: current_revision,
+      authorization: authorization, allowance: allowance, method: admitted, field: field, assessment: assessment,
+    )
+  }
+}
+
+fn render_admitted_move_intent(
+  conversation: ConversationId,
+  from_launch: NonEmptyStr,
+  current_revision: PlacementRevision,
+  authorization: NonEmptyStr,
+  allowance: TransitionAllowance,
+  method: StateEstablishmentMethod,
+  field: List<ParetoEntry>,
+  assessment: DecisionAssessment,
+) -> RenderedIntent {
+  match decide_relocation(field: field, assessment: assessment) {
+    Move { destination_label: dest, receipt: r } =>
+      intent_payload(i: MoveIntent {
+        conversation: conversation,
+        from_launch: from_launch,
+        current_revision: current_revision,
+        destination_label: dest,
+        method: method,
+        authorization: authorization,
+        allowance: allowance,
+        receipt: r,
+      })
+    Stay => NoIntent { reason: "stay preferred: no move intent" as NonEmptyStr }
+    NotEstablished { reason: reason } => NoIntent { reason: reason }
+    CompetingMovesNeedPolicy => NoIntent { reason: "several moves survive and stay is not among them; a policy must choose" as NonEmptyStr }
+    DeferredDemandNotReady { demand: d } => NoIntent { reason: demand_not_ready_reason(demand: d) }
+    NoAdmissibleTransition => NoIntent { reason: "no admissible transition" as NonEmptyStr }
+    Evacuate { destination_label: _, receipt: _ } => NoIntent { reason: "evacuation is a separate mandatory-drain path, not an economic move intent" as NonEmptyStr }
+    ReconciliationRequired { obligation: o } => NoIntent { reason: o }
+  }
+}
+
+// ── THE DURABLE HANDOFF, fenced on caller_backlog's rebinding spine ─────────────────────────────
+type HandoffPhase = Selecting | Prepared | Dispatched | Committed | Retired | Interrupted | Refused
+
+type MoveIntent {
+  conversation: ConversationId
+  from_launch: NonEmptyStr
+  current_revision: PlacementRevision
+  destination_label: NonEmptyStr
+  method: StateEstablishmentMethod
+  authorization: NonEmptyStr
+  allowance: TransitionAllowance
+  receipt: SelectionReceipt
+}
+
+// The move intent's wire form: MoveIntent's JSON encoding. The R-S3 realization is to decode it and check
+// its shape and placement revision; the receipt is carried by identity, never re-decided by the router.
+fn move_intent_json(i: MoveIntent) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "conversation", value: json_string(s: i.conversation)),
+    json_kv(key: "from", value: json_string(s: i.from_launch)),
+    json_kv(key: "revision", value: json_int(n: i.current_revision)),
+    json_kv(key: "destination", value: json_string(s: i.destination_label)),
+    json_kv(key: "method", value: json_string(s: method_name(method: i.method))),
+    json_kv(key: "authorization", value: json_string(s: i.authorization)),
+    json_kv(key: "allowance", value: json_object(members: [
+      json_kv(key: "reconstructions", value: json_int(n: nat_to_int(n: i.allowance.reconstructions))),
+      json_kv(key: "overlapping_handoffs", value: json_int(n: nat_to_int(n: i.allowance.overlapping_handoffs))),
+    ])),
+    json_kv(key: "receipt_selected", value: json_string(s: declaration_ref_display_key(ref: i.receipt.selected_identity))),
+    json_kv(key: "receipt_policy", value: json_string(s: declaration_ref_display_key(ref: policy_identity_of(policy: i.receipt.applied_policy)))),
+  ])
+}
+
+type HandoffRecord {
+  conversation: ConversationId
+  revision: PlacementRevision
+  source_seat: SeatRef
+  destination_seat: SeatRef
+  phase: HandoffPhase
+  method: StateEstablishmentMethod
+}
+
+// The move is claimed on the durable spine so a retried command cannot move a session twice: a stale
+// predecessor seat is refused (the one authoritative record already advanced). The snapshot is to be built
+// by the R-S3 realization; this module reuses the claim, it does not build the ledger.
+type MoveClaim
+  = MoveClaimed
+  | MoveAlreadyClaimed { held: SeatRef? }
+  | MoveClaimUnknown
+  | MoveClaimDuplicate
+  | MoveClaimRefusedTerminal
+
+fn claim_move(snapshot: CallerBacklogSnapshot, work: LogicalWorkId, from_seat: SeatRef, to_seat: SeatRef) -> MoveClaim {
+  match rebind_reservation(snapshot: snapshot, work: work, expected: Present { value: from_seat }, next: to_seat) {
+    ReservationRebound { record: _ } => MoveClaimed
+    RebindPredecessorMismatch { held: h } => MoveAlreadyClaimed { held: h }
+    RebindUnknownWork => MoveClaimUnknown
+    RebindDuplicate => MoveClaimDuplicate
+    RebindRefusedTerminal { phase: _ } => MoveClaimRefusedTerminal
+  }
+}
+
+// Prepare at the turn boundary: the incumbent is read on its SERVING STANDING, not its binding. An
+// unprobed owner (ResidencyUnread) PINS the session; it is not relocated. A destination already owned
+// by another replica cannot be taken.
+type PrepareOutcome = HandoffPrepared { residency: ServingSessionResidency } | PinnedNotRelocated { reason: NonEmptyStr } | DestinationHeld { owner: NonEmptyStr }
+
+fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, host: ServingHostTierStanding, gpu: ServingGpuPrefixStanding, destination_launch: NonEmptyStr) -> PrepareOutcome {
+  let residency = serving_session_standing(record: record, current_launch: current_launch, host: host, gpu: gpu)
+  match residency {
+    ResidencyUnread { obligation: o } => PinnedNotRelocated { reason: o }
+    _ =>
+      match serving_session_placement(residency: residency, record: record, candidate_launch: destination_launch) {
+        PlacementFree => HandoffPrepared { residency: residency }
+        OwnedByAnotherReplica { owner: owner } => DestinationHeld { owner: owner }
+      }
+  }
+}
+
+// Execute: send the next real request ONCE, and only from a Prepared handoff. A recorded attempt
+// (already dispatched, or interrupted mid-dispatch) is RECOVERED rather than blindly sent elsewhere; a
+// committed or retired handoff is never dispatched again; an unprepared or refused one never dispatches.
+// The phase alone says whether a dispatch is on record (Dispatched/Interrupted and after), so there is
+// no separate count that could disagree with it (correctness by construction, DESIGN 5).
+// There is no speculative warm-up.
+type DispatchOutcome = SentOnce | RecoveredRecordedAttempt | DispatchNotPrepared | DispatchAfterCommitRefused
+
+fn attempt_dispatch(record: HandoffRecord) -> DispatchOutcome {
+  match record.phase {
+    Prepared => SentOnce
+    Dispatched => RecoveredRecordedAttempt
+    Interrupted => RecoveredRecordedAttempt
+    Selecting => DispatchNotPrepared
+    Refused => DispatchNotPrepared
+    Committed => DispatchAfterCommitRefused
+    Retired => DispatchAfterCommitRefused
+  }
+}
+
+// A missing in-memory binding on restart is neither a new conversation nor free capacity: the durable
+// handoff record reconciles it. With no durable evidence the conversation is refused, not treated new.
+type ReconcileOutcome = Reconciled { record: HandoffRecord } | RefusedUnreconcilable | NewConversationDenied
+
+fn reconcile_after_restart(durable: HandoffRecord?, in_memory_binding_present: Bool, work: LogicalWorkId, durable_work: LogicalWorkId) -> ReconcileOutcome {
+  match durable {
+    Present { value: rec } =>
+      if logical_work_eq(a: work, b: durable_work) { Reconciled { record: rec } } else { RefusedUnreconcilable }
+    Absent =>
+      if in_memory_binding_present { RefusedUnreconcilable } else { NewConversationDenied }
+  }
+}

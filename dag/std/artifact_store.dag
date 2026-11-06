@@ -113,6 +113,7 @@ type ArtifactRow {
 
 type ArtifactStore {
   budget: ByteSize
+  at_capacity: AtCapacityDisposition
   next_ordinal: Int
   rows: List<ArtifactRow>
 }
@@ -121,7 +122,7 @@ type ArtifactStore {
 // a wrong UNIT means this provider is the wrong cache for a byte-budgeted
 // store; an unresolved value means the deriving authority has to run first; an
 // unobserved one needs a citation; an unsupported at-capacity action means the
-// LRU realization below is not what that provider does; a timed release means
+// store realization below is not what that provider does; a timed release means
 // the provider reclaims by age, which this store has no clock to honour.
 type StoreRefusalCause
   = ProviderScopeReleased
@@ -132,7 +133,6 @@ type StoreRefusalCause
   | CapacityValueUnobserved
   | CapacityValueUnresolved
   | StoreAtCapacityUnobserved
-  | RefuseNewStoreUnsupported
   | ReplacementStrategyUnsupported
 
 type StoreConstruction
@@ -172,18 +172,16 @@ fn store_from_capacity(provider: CacheProvider, c: CapacityPolicy) -> StoreConst
     CapacityBounded { limit: l, at_capacity: action } =>
       match store_replacement_supported(action: action) {
         Present { value: cause } => store_refused(provider: provider, cause: cause)
-        Absent => store_from_limit(provider: provider, l: l)
+        Absent => store_from_limit(provider: provider, l: l, action: action)
       }
   }
 }
 
-// THE REALIZATION BELOW IS LEAST-RECENTLY-USED, so it may only be built over a
-// provider that says so. The former shape read at_capacity not at all and
-// packed by LRU whatever the row declared.
+// Only implemented capacity actions may construct a store.
 fn store_replacement_supported(action: AtCapacityDisposition) -> StoreRefusalCause? {
   match action {
     AtCapacityUnobserved => Present { value: StoreAtCapacityUnobserved }
-    RefuseNewStore => Present { value: RefuseNewStoreUnsupported }
+    RefuseNewStore => none
     ReplaceExisting { strategy: s } => match s {
       LeastRecentlyUsed => none
       ProviderNativeReplacement => Present { value: ReplacementStrategyUnsupported }
@@ -191,12 +189,12 @@ fn store_replacement_supported(action: AtCapacityDisposition) -> StoreRefusalCau
   }
 }
 
-fn store_from_limit(provider: CacheProvider, l: CapacityLimit) -> StoreConstruction {
+fn store_from_limit(provider: CacheProvider, l: CapacityLimit, action: AtCapacityDisposition) -> StoreConstruction {
   match l {
     EntryCountCapacity { limit: _ } => store_refused(provider: provider, cause: CapacityUnitMismatch)
     ByteCapacity { limit: v } => match v {
       ExactLimit { value: bytes } =>
-        StoreReady { store: ArtifactStore { budget: bytes, next_ordinal: 1, rows: [] } }
+        StoreReady { store: ArtifactStore { budget: bytes, at_capacity: action, next_ordinal: 1, rows: [] } }
       RuntimeDerivedLimit { authority: _ } =>
         store_refused(provider: provider, cause: CapacityValueUnresolved)
       EffectiveLimitUnobserved =>
@@ -220,6 +218,7 @@ fn store_get(store: ArtifactStore, key: ContentHash) -> StoreLookup {
       StoreHit {
         store: ArtifactStore {
           budget: store.budget,
+          at_capacity: store.at_capacity,
           next_ordinal: store.next_ordinal + 1,
           rows: concat(store.rows |> filter(r => content_hash_equal(left: r.key, right: key) == false), [bumped])
         },
@@ -253,6 +252,7 @@ fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -
         evict_until_within_budget(
           store: ArtifactStore {
             budget: store.budget,
+            at_capacity: store.at_capacity,
             next_ordinal: store.next_ordinal,
             rows: store.rows |> filter(r => content_hash_equal(left: r.key, right: victim.key) == false)
           },
@@ -263,7 +263,7 @@ fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -
   }
 }
 
-// store_put is TOTAL over its two real outcomes, and the fit test runs BEFORE any eviction
+// store_put checks fit and policy before eviction
 // (operator scope call, 2026-07-29; reproduction receipt on PR 7385). The prior signature returned
 // a StorePutReceipt unconditionally, which conflated two states that need opposite remedies: an
 // artifact LARGER than the whole budget fell into the eviction loop, evicted every legitimate row,
@@ -282,6 +282,8 @@ fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -
 type StorePutOutcome
   = StorePutAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
   | StorePutDidNotFit { artifact_bytes: ByteSize, budget: ByteSize }
+  | StorePutAtCapacity { artifact_bytes: ByteSize, available: ByteSize }
+  | StorePutPolicyRefused { cause: StoreRefusalCause }
 
 fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -> StorePutOutcome {
   if measure_count(m: artifact_bytes) > measure_count(m: store.budget) {
@@ -290,33 +292,54 @@ fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -
     let fresh = ArtifactRow { key: key, artifact_bytes: artifact_bytes, last_use_ordinal: store.next_ordinal }
     let grown = ArtifactStore {
       budget: store.budget,
+      at_capacity: store.at_capacity,
       next_ordinal: store.next_ordinal + 1,
       rows: concat(store.rows |> filter(r => content_hash_equal(left: r.key, right: key) == false), [fresh])
     }
-    let packed = evict_until_within_budget(store: grown, evicted: [])
-    StorePutAdmitted { store: packed.store, evicted: packed.evicted }
+    match store.at_capacity {
+      RefuseNewStore => {
+        let used = store_bytes_used(store: grown)
+        if used > measure_count(m: store.budget) {
+          let available = measure_count(m: store.budget) - used + measure_count(m: artifact_bytes)
+          StorePutAtCapacity {
+            artifact_bytes: artifact_bytes,
+            available: byte_size(count: if available < 0 { 0 } else { available }),
+          }
+        } else { StorePutAdmitted { store: grown, evicted: [] } }
+      }
+      ReplaceExisting { strategy: LeastRecentlyUsed } => {
+        let packed = evict_until_within_budget(store: grown, evicted: [])
+        StorePutAdmitted { store: packed.store, evicted: packed.evicted }
+      }
+      ReplaceExisting { strategy: ProviderNativeReplacement } => StorePutPolicyRefused { cause: ReplacementStrategyUnsupported }
+      AtCapacityUnobserved => StorePutPolicyRefused { cause: StoreAtCapacityUnobserved }
+    }
   }
 }
 
 data store_put_reader_contract: Disposition = Terminal {
-  reason: "store_put_fold is the only match over StorePutOutcome; the readers below derive from it and contain no match of their own, so a third outcome is a type error at exactly one site. There is deliberately NO store_put_store(outcome, fallback) projection — answering DidNotFit with a caller-supplied store is the absorbing fallback DESIGN section 5 forbids, and it is precisely what would let the destructive behavior this type exists to remove return in a new shape. Discriminating corpus: dag/test/claim/artifact_store_witness.dag."
+  reason: "store_put_fold handles every StorePutOutcome; its readers distinguish admission from oversize, capacity and policy refusals. Discriminating corpus: test.claim.artifact_store_witness."
 }
 
 fn store_put_fold<T>(
   outcome: StorePutOutcome,
   admitted: fn(ArtifactStore, List<ContentHash>) -> T,
-  did_not_fit: fn(ByteSize, ByteSize) -> T
+  did_not_fit: fn(ByteSize, ByteSize) -> T,
+  at_capacity: fn(ByteSize, ByteSize) -> T,
+  policy_refused: fn(StoreRefusalCause) -> T
 ) -> T {
   match outcome {
     StorePutAdmitted { store: s, evicted: e } => admitted(s, e)
     StorePutDidNotFit { artifact_bytes: a, budget: b } => did_not_fit(a, b)
+    StorePutAtCapacity { artifact_bytes: a, available: b } => at_capacity(a, b)
+    StorePutPolicyRefused { cause: c } => policy_refused(c)
   }
 }
 
 fn store_put_is_admitted(outcome: StorePutOutcome) -> Bool {
-  store_put_fold(outcome: outcome, admitted: (s, e) => true, did_not_fit: (a, b) => false)
+  store_put_fold(outcome: outcome, admitted: (s, e) => true, did_not_fit: (a, b) => false, at_capacity: (a, b) => false, policy_refused: c => false)
 }
 
 fn store_put_evicted_keys(outcome: StorePutOutcome) -> List<ContentHash> {
-  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => no_evicted_keys)
+  store_put_fold(outcome: outcome, admitted: (s, e) => e, did_not_fit: (a, b) => no_evicted_keys, at_capacity: (a, b) => no_evicted_keys, policy_refused: c => no_evicted_keys)
 }

@@ -13,8 +13,7 @@ import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.workspace_allocation_store {
   WorkspaceAllocation, WorkspaceOwnerSnapshot, WorkspaceStoreReadOk, WorkspaceStoreUnreadable,
-  workspace_read_owner, workspace_owner_key, workspace_allocation_json, workspace_allocation_coherent,
-}
+  workspace_read_owner, workspace_owner_key, workspace_allocation_json, workspace_allocation_coherent, workspace_allocation_store }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan }
 
 // The selected host observes its own hold root. A matching path on another host is never the
@@ -39,7 +38,7 @@ fn workspace_convergence_observe(store: FabricStorageBinding, owner: PrincipalRe
     ProcessOutputPresent { text: hostname } => if trim(s: hostname) == "" {
       WorkspaceConvergenceUnobserved { reason: "selected host identity is empty" }
     } else {
-      match workspace_read_owner(store: store, owner: owner) {
+      match workspace_read_owner(store: workspace_allocation_store(binding: store), owner: owner) {
         WorkspaceStoreUnreadable { reason: detail } => WorkspaceConvergenceUnobserved { reason: detail }
         WorkspaceStoreReadOk { snapshot: observed } => workspace_convergence_basis(
           snapshot: observed, idempotency_key: idempotency_key, host: trim(s: hostname) as NonEmptyStr,

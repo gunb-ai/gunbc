@@ -53,19 +53,24 @@ data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
 // CLIENT key's sibling, not a second client key: it authenticates the HOST, and the client credential
 // that rides over it stays what the selectors choose (gunbc.auth.authorization_pattern_selection
 // select_authorization_pattern, gunbc.auth.access_token_source select_access_token_source).
-// NOT YET MINTED, honestly: the keypair does not exist yet and generating it plus writing it into
-// Secret Manager is itself a privileged effect the operator or merry-fox-82 runs — and it is a
-// MODEL, not prose: anchored_host_key_mint_intervention / anchored_host_key_mint_effect /
-// anchored_host_key_mint_shell (gunbc.host.anchored_host_transport), censused in
-// gunbc.auth.privileged_effect_census, rendered into
-// docs/runbooks/mtcollins1-ssh-host-key-mint.md Step 1 (the model is the authority for the command
-// lines; the claims pin the RENDER's legs to the argv builders, AND a claim reads the runbook file off
-// disk and pins its fenced mint block to anchored_host_key_mint_shell() byte-for-byte --
-// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render -- so the
-// copied block is a checked projection, not an untested copy). Until the secret
-// exists every read of this ref refuses at Secret Manager, which is what custody must do; nothing
-// here fabricates key material (§4d). The version stays "pending" for the same reason the BMC and
-// harness rows do: there is no published version to pin until the mint lands.
+// NOT YET MINTED, honestly: the keypair does not exist yet, and generating it plus writing it into Secret
+// Manager is itself a privileged effect -- but it is now a WORKFLOW MINT and not a human shell step. The model
+// is gunbc.host.mtcollins1_ssh_host_key_mint, one of the two rows of the single keypair-mint policy
+// gunbc.host.fleet_keypair_mint (the other is the boot medium reader key), censused at
+// gunbc.auth.privileged_effect_census as a federated grant, and dispatched as the fleet-converge mode
+// FleetKeypairMint (one dispatch walks the roster; each row's own pin decides whether an effect is reached).
+// It replaces the scaffold that used to sit beside it
+// (anchored_host_key_mint_shell / anchored_host_key_mint_intervention / anchored_host_key_mint_effect,
+// gunbc.host.anchored_host_transport) and the runbook's human Step 1, on the operator's ruling
+// gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation -- "i don't see why a human needs to
+// do this - this seems just like normal account creation". The claims that pin the mint (its Q1 RED on argv,
+// its tmpfs RED, its census row) are dag/test/claim/host/fleet_keypair_mint_witness.dag and
+// test.claim.host.anchored_host_transport_witness; the runbook no longer carries a mint block to compare
+// against, and a claim reads the file to make sure none came back. DISPATCHING the mint stays an operator go.
+// Until the secret exists every read of this ref refuses at Secret
+// Manager, which is what custody must do; nothing here fabricates key material (§4d). The version stays
+// "pending" for the same reason the BMC and harness rows do: there is no published version to pin until the
+// mint lands.
 data mtcollins1_ssh_host_key_secret: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "mtcollins1-ssh-host-key" as NonEmptyStr,

@@ -209,12 +209,8 @@ import gunbc.runner.runner_slot_provision {
   runner_slot_member_key,
   runner_slot_provision_plan,
   RunnerSlotProvisionPlan,
+  fleet_runner_slot_artifact,
 }
-import extdeps.github.actions_runner {
-  actions_runner_release_2_336_0,
-  actions_runner_binary_artifact_for_arch,
-}
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_deploy {
   RunnerHostDeployFound,
@@ -1208,10 +1204,7 @@ fn fleet_converge_slot_family(
     RunnerHostDeployRefused { host: h, cause: c } => SlotFamilyHostRefused { host: h, cause: c }
     RunnerHostDeployFound { deploy: d } =>
       {
-        match actions_runner_binary_artifact_for_arch(
-          binary_release: actions_runner_release_2_336_0,
-          arch: altra_max_m12830_catalog.architecture,
-        ) {
+        match fleet_runner_slot_artifact() {
           Absent => SlotFamilyArtifactUnpublished { host: host as HostIdentity }
           Present { value: a } =>
             SlotFamilyPlanned {
@@ -1309,7 +1302,7 @@ fn fleet_converge_fabric_cell_family(
           ownership_of: fabric_cell_member_ownership,
         )
       )
-      if list_length(items: planned.actions) == 0 {
+      if length(xs: planned.actions) == 0 {
         FabricCellFamilyConvergedNoActions
       } else {
         FabricCellFamilyPlanned { planned: planned }
@@ -1392,7 +1385,7 @@ fn fabric_cell_effect_plan_line(effect: FabricCellEffect) -> String {
     FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
       join([
         "REALIZE fabric-cell ensure-slice ", u as String,
-        " directives=", to_string(list_length(items: ds)),
+        " directives=", to_string(length(xs: ds)),
       ], "")
   }
 }
@@ -1425,13 +1418,13 @@ fn fleet_converge_fabric_cell_refusal_count(
   observed_fabric_cells: FabricCellObservationDecision,
 ) -> Int {
   match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
-    FabricCellFamilyObservationRefused { blocked: b } => list_length(items: b)
+    FabricCellFamilyObservationRefused { blocked: b } => length(xs: b)
     FabricCellFamilyNotApplicable => 0
     FabricCellFamilyConvergedNoActions => 0
     FabricCellFamilyPlanned { planned: p } =>
       match fabric_cell_realization(actions: p.actions) {
         CellPlanRealizable { effects: _ } => 0
-        CellPlanRefused { refusals: _ } => list_length(items: p.actions)
+        CellPlanRefused { refusals: _ } => length(xs: p.actions)
       }
     FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
   }

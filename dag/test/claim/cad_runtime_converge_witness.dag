@@ -7,6 +7,7 @@ import gunbc.artifact_acquisition { ContentDigestSha256, UpstreamRevision, Sourc
 import extdeps.package_managers.micromamba { micromamba_linux_aarch64_release }
 import product.printing.cad_runtime_spec { CadRuntimeSpec, cad_runtime_spec }
 import product.printing.print_runtime { CadEnvironmentReading, CadEnvironmentAbsent, CadEnvironmentWrong, CadEnvironmentUnreadable, cad_environment_reading_reason }
+import gunbc.host_state_root { host_state_tree }
 import product.printing.cad_runtime_converge { as_observation, satisfies, build_plan, micromamba_subject, micromamba_path }
 
 fn decide(r: CadEnvironmentReading) -> UpsertDecision<CadRuntimeSpec> {
@@ -44,7 +45,7 @@ test fn w_a_wrong_or_unreadable_environment_is_not_touched() -> Bool {
 // The solver is acquired by its pinned digest, staged beside its install path, from its one
 // published URL.
 test fn w_micromamba_is_acquired_by_its_pinned_digest() -> Bool {
-  let s = micromamba_subject(spec: cad_runtime_spec)
+  let s = micromamba_subject(tree: host_state_tree(), spec: cad_runtime_spec)
   let keyed = match s.key {
     ContentDigestSha256 { hex: h } => (h as String) == (micromamba_linux_aarch64_release.sha256 as String)
     UpstreamRevision { revision: _ } => false
@@ -57,5 +58,5 @@ test fn w_micromamba_is_acquired_by_its_pinned_digest() -> Bool {
     SourceUrl { url: u } => (u as String) == (micromamba_linux_aarch64_release.url as String)
     SourceArgv { argv: _ } => false
   })
-  keyed && staged && sourced && (s.install_path as String) == micromamba_path(spec: cad_runtime_spec)
+  keyed && staged && sourced && (s.install_path as String) == micromamba_path(tree: host_state_tree(), spec: cad_runtime_spec)
 }

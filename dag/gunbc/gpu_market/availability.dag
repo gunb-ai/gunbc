@@ -1,0 +1,158 @@
+module gunbc.gpu_market.availability
+
+import std.types { Bool, List, NonEmptyStr, String }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.gpu.types { GpuBoardAdmission, gpu_board_admission_facts }
+import extdeps.gpu.nvidia_cmp { nvidia_cmp_board_catalogs, cmp_product_page_authority }
+import extdeps.gpu.nvidia_t10 { nvidia_tesla_t10_board_catalog }
+
+// HOW A GPU PRODUCT CAN BE ACQUIRED, AND WHO ACQUIRES IT: three axes the catalogue's device and board rows
+// do not carry, because they are facts about a market, not about the silicon or the board.
+//   GpuAcquisitionForm  what is bought: a bare board, a bare module, a whole system, or a cloud instance.
+//   GpuAvailability     through whom: authorised partners only, OEMs only, one cloud provider, one region.
+//   GpuMarketRole       what the vendor sells it for.
+// Each reading carries its standing (extdeps.external_authority CitedFigureStanding). A page that STATES
+// the availability is CitedToAuthority; an availability this repository INFERS (no source says a product
+// is sold only in China, for instance; the driver merely lists an H20) is TranscribedUncited with the
+// statement that would ground it. The inference is a typed bet, never a fact: a consumer that treats a
+// TranscribedUncited reading as decided is the defect DESIGN section 4d names.
+//
+// WHICH PRODUCTS: the ones the catalogue's acquisition questions turn on (the T10 fleet, the mining boards,
+// the cloud parts a listing would wrongly price as cards) and the regional variants the driver lists. A
+// product with no row here has no availability reading, which is not the same as being available anywhere.
+
+// THE PRODUCT A READING IS ABOUT. A catalogue board where one exists; otherwise the name the NVIDIA driver
+// lists the product under (test.claim.gpu_market_availability_witness holds every such name to the pinned
+// appendix), or, for a product no driver list names, the name its provider's page uses.
+type GpuMarketIdentity
+  = MarketCatalogBoard { board: GpuBoardAdmission }
+  | MarketDriverListedProduct { name: NonEmptyStr }
+  | MarketProviderNamedProduct { name: NonEmptyStr, provider_page: ExternalAuthority }
+
+type GpuAcquisitionForm = BareBoard | CloudInstanceOnly
+
+type GpuAvailability
+  = PartnerOnly
+  | OemOnly
+  | CloudOnly { provider: NonEmptyStr }
+  | Regional { market: NonEmptyStr }
+
+type GpuMarketRole = DataCenterCompute | VirtualDesktop | Mining
+
+type GpuAvailabilityReading
+  = AvailabilityRead { availability: GpuAvailability, standing: CitedFigureStanding }
+  | AvailabilityUnread { read_obligation: NonEmptyStr }
+
+type GpuAvailabilityRow {
+  identity: GpuMarketIdentity
+  acquisition: GpuAcquisitionForm
+  availability: GpuAvailabilityReading
+  role: GpuMarketRole
+}
+
+data aws_ec2_g5_authority: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "aws.amazon.com/ec2/instance-types/g5/" } }
+data aws_ec2_g5g_authority: ExternalAuthority = ExternalAuthority { uri: Uri { scheme: Https, locator: "aws.amazon.com/ec2/instance-types/g5g/" } }
+
+// MINING BOARDS: NVIDIA's CMP page states they are "available from authorized partners, including ASUS,
+// Colorful, EVGA, Gigabyte, MSI, Palit, and PC Partner" (read 2026-10-28). Stated, so cited.
+fn cmp_partner_row(board: GpuBoardAdmission) -> GpuAvailabilityRow {
+  GpuAvailabilityRow {
+    identity: MarketCatalogBoard { board: board },
+    acquisition: BareBoard,
+    availability: AvailabilityRead { availability: PartnerOnly, standing: CitedToAuthority { authority: cmp_product_page_authority } },
+    role: Mining,
+  }
+}
+
+// CLOUD PARTS: AWS's G5 page states its instances "feature NVIDIA A10G Tensor Core GPUs ... 24 GB of memory
+// per GPU", and its G5g page that those instances "feature NVIDIA T4G Tensor Core GPUs" (read 2026-10-28).
+// That they are sold nowhere else is not stated by either page; it is inferred from no seller, datasheet or
+// retail listing having been found, so the reading is TranscribedUncited. The T4G is not in the NVIDIA
+// driver's appendix, so it is named as AWS names it.
+data a10g_cloud_obligation: NonEmptyStr = "AWS's G5 page states its instances carry NVIDIA A10G GPUs; it does not state the A10G is sold outside AWS or not. Ground CloudOnly with a vendor or provider statement that the A10G is an AWS-exclusive part, or retire it with a bare-board listing or datasheet for a purchasable A10G." as NonEmptyStr
+data t4g_cloud_obligation: NonEmptyStr = "AWS's G5g page states its instances carry NVIDIA T4G GPUs; it does not state whether the T4G is sold outside AWS. Ground CloudOnly with a vendor or provider statement, or retire it with a bare-board listing for a purchasable T4G." as NonEmptyStr
+
+// THE T10: no NVIDIA page, datasheet, retail listing or driver-appendix row names it (extdeps.gpu.nvidia_t10).
+// The PCI ID Repository names its vGPU profiles ("GRID RTX T10-2/T10-4/T10-8"). OEM-only and virtual-desktop
+// are therefore inferences from what is absent and from those profile names, not readings.
+data t10_oem_obligation: NonEmptyStr = "No NVIDIA public page, datasheet or driver-appendix row names the Turing Tesla T10 (extdeps.gpu.nvidia_t10). Ground OemOnly with the OEM, integrator or cloud document the operator's cards were sold under (the seller's listing, the cards' label or SKU), or replace it when one is read." as NonEmptyStr
+
+// REGIONAL VARIANTS: the NVIDIA driver's appendix lists the H20, H800, A800, L20, RTX 6000D and RTX PRO 6000D
+// products. That they are sold for one market is widely reported and stated by no source read here, so each
+// reading is TranscribedUncited.
+data regional_obligation: NonEmptyStr = "The NVIDIA driver appendix lists this product; it does not state where it is sold. Ground Regional with an NVIDIA, OEM or regulator statement of the market the product is made for, or replace it." as NonEmptyStr
+
+fn regional_row(name: NonEmptyStr) -> GpuAvailabilityRow {
+  GpuAvailabilityRow {
+    identity: MarketDriverListedProduct { name: name },
+    acquisition: BareBoard,
+    availability: AvailabilityRead { availability: Regional { market: "China" }, standing: TranscribedUncited { read_obligation: regional_obligation } },
+    role: DataCenterCompute,
+  }
+}
+
+data gpu_availability_rows: List<GpuAvailabilityRow> = concat(
+  nvidia_cmp_board_catalogs |> map(b => cmp_partner_row(board: b)),
+  [
+    GpuAvailabilityRow {
+      identity: MarketDriverListedProduct { name: "NVIDIA A10G" },
+      acquisition: CloudInstanceOnly,
+      availability: AvailabilityRead { availability: CloudOnly { provider: "Amazon EC2 G5" }, standing: TranscribedUncited { read_obligation: a10g_cloud_obligation } },
+      role: DataCenterCompute,
+    },
+    GpuAvailabilityRow {
+      identity: MarketProviderNamedProduct { name: "NVIDIA T4G", provider_page: aws_ec2_g5g_authority },
+      acquisition: CloudInstanceOnly,
+      availability: AvailabilityRead { availability: CloudOnly { provider: "Amazon EC2 G5g" }, standing: TranscribedUncited { read_obligation: t4g_cloud_obligation } },
+      role: DataCenterCompute,
+    },
+    GpuAvailabilityRow {
+      identity: MarketCatalogBoard { board: nvidia_tesla_t10_board_catalog },
+      acquisition: BareBoard,
+      availability: AvailabilityRead { availability: OemOnly, standing: TranscribedUncited { read_obligation: t10_oem_obligation } },
+      role: VirtualDesktop,
+    },
+    regional_row(name: "NVIDIA H20"),
+    regional_row(name: "NVIDIA H20-3e"),
+    regional_row(name: "NVIDIA H800"),
+    regional_row(name: "NVIDIA H800 PCIe"),
+    regional_row(name: "NVIDIA A800 80GB PCIe"),
+    regional_row(name: "NVIDIA A800-SXM4-80GB"),
+    regional_row(name: "NVIDIA L20"),
+    regional_row(name: "NVIDIA RTX 6000D"),
+    regional_row(name: "NVIDIA RTX PRO 6000D Blackwell Workstation Edition"),
+    // Listed by the driver and sold through channels no source read describes.
+    GpuAvailabilityRow {
+      identity: MarketDriverListedProduct { name: "NVIDIA A10M" },
+      acquisition: BareBoard,
+      availability: AvailabilityUnread { read_obligation: "The NVIDIA driver appendix lists the A10M (2238); no page read states how it is sold." },
+      role: DataCenterCompute,
+    },
+    GpuAvailabilityRow {
+      identity: MarketDriverListedProduct { name: "NVIDIA RTX A4000H" },
+      acquisition: BareBoard,
+      availability: AvailabilityUnread { read_obligation: "The NVIDIA driver appendix lists the RTX A4000H (24b1); no page read states how it is sold." },
+      role: DataCenterCompute,
+    },
+  ],
+)
+
+// The name a market identity carries: a board's driver-listed name, else its model; a listed or named
+// product's name. What a listing's title or a receipt's GPU name is compared against.
+fn gpu_market_identity_name(identity: GpuMarketIdentity) -> NonEmptyStr {
+  match identity {
+    MarketCatalogBoard { board: b } => match gpu_board_admission_facts(admission: b).driver_listed_name {
+      Present { value: n } => n
+      Absent => gpu_board_admission_facts(admission: b).model
+    }
+    MarketDriverListedProduct { name: n } => n
+    MarketProviderNamedProduct { name: n, provider_page: _ } => n
+  }
+}
+
+// The availability rows for a product, by its market name. More than one is two readings of one product,
+// which a consumer must not resolve by picking.
+fn gpu_availability_rows_named(name: NonEmptyStr) -> List<GpuAvailabilityRow> {
+  gpu_availability_rows |> filter(r => (gpu_market_identity_name(identity: r.identity) as String) == (name as String))
+}

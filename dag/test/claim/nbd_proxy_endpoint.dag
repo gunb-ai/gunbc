@@ -1,5 +1,7 @@
 module test.claim.nbd_proxy_endpoint
 
+import std.algebra { length }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -8,7 +10,7 @@ test fn altrad8ud_nbd_proxy_primary_endpoint_is_vm_slot_index() -> Bool {
 }
 
 test fn altrad8ud_nbd_proxy_nbd_slot_absent_on_2_07_00() -> Bool {
-  list_length(items: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints) == 1
+  length(xs: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints) == 1
     && match asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints.first() {
       Present { value: e } => e == NbdSlotEndpoint
       Absent => false

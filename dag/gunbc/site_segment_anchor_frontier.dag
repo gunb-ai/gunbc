@@ -1,0 +1,16 @@
+module gunbc.site_segment_anchor_frontier
+
+// THE ANCHOR'S MISSING PRODUCTION CONSUMER IS ROSTERED HERE, NOT PROMISED IN PROSE.
+//
+// gunbc.site_segment_anchor.host_interface_segment_anchor places a host's operating-system and
+// controller interfaces on a site segment, and today only its witness calls it. DESIGN section 3c
+// names that state: "consumed by a named later change (a declared frontier, with its trigger)". The
+// named later change is S3 of gunbc.plans.site_segment_anchor_bmc_reach, the lookup with routerless
+// refusal, which has to ask which segment a host's controller is on before it can find the controller.
+//
+// The roster fold that read this row (gunbc.census_closure_frontier) was retired.
+// The trigger names a declaration that does not exist yet, as in
+// gunbc.machine_intake.bmc_recovery_route_frontier: the ref is the contract for what must be added.
+//
+// NOT satisfied by: a witness calling the anchor, or a module importing it without a call site.
+

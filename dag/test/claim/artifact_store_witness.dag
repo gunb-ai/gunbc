@@ -28,9 +28,8 @@ import std.artifact_store {
   ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
   ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider,
   ProviderScopeReleased, ProviderTimedReleaseUnrealized, CapacityUnitMismatch, CapacityValueUnobserved,
-  RefuseNewStoreUnsupported,
   StoreHit, StoreMiss, store_get,
-  StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
+  StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit, StorePutAtCapacity,
   store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
 }
 import extdeps.realization.emit_on_demand_host {
@@ -93,7 +92,7 @@ data timed_release_provider: CacheProvider = provider_row(
 fn test_store() -> ArtifactStore {
   match store_over_provider(provider: byte_bounded_provider) {
     StoreReady { store: s } => s
-    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => ArtifactStore { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
@@ -213,9 +212,7 @@ test fn unobserved_byte_value_is_refused_rather_than_defaulted() -> Bool {
   }
 }
 
-// The LRU realization may not be built over a provider that refuses new stores
-// instead of replacing — it would silently evict where the row says it should
-// have declined. This is the at_capacity field's first behavioral reader.
+// A full retained store refuses the new entry and preserves the old one.
 test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
   let refuses_new = provider_row(
     id: "refuse-new-test",
@@ -228,8 +225,21 @@ test fn refuse_new_store_provider_is_not_realized_as_lru() -> Bool {
     })
   )
   match store_over_provider(provider: refuses_new) {
-    StoreReady { store: _ } => false
-    StoreRefusedRetention { provider_id: _, declared: _, cause: c } => c == RefuseNewStoreUnsupported
+    StoreReady { store: s } =>
+      store_put_fold(
+        outcome: store_put(store: s, key: key_of(toolchain: "retained"), artifact_bytes: byte_size(count: 60)),
+        admitted: (occupied, evicted) => {
+          let refused = store_put(store: occupied, key: key_of(toolchain: "incoming"), artifact_bytes: byte_size(count: 50))
+          let retry = store_put(store: occupied, key: key_of(toolchain: "retained"), artifact_bytes: byte_size(count: 60))
+          count(evicted) == 0 && refused == StorePutAtCapacity { artifact_bytes: byte_size(count: 50), available: byte_size(count: 40) }
+            && store_put_is_admitted(outcome: retry) && count(store_put_evicted_keys(outcome: retry)) == 0
+            && store_bytes_used(store: occupied) == 60
+        },
+        did_not_fit: (a, b) => false,
+        at_capacity: (a, b) => false,
+        policy_refused: c => false,
+      )
+    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => false
   }
 }
 
@@ -239,6 +249,8 @@ test fn store_hit_and_stale_never_served_holds() -> Bool {
   store_put_fold(
     outcome: store_put(store: test_store(), key: k1, artifact_bytes: byte_size(count: 40)),
     did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false,
     admitted: fn(put1_store, evicted) {
       let hit = match store_get(store: put1_store, key: k1) {
         StoreHit { store: _, row: r } => r.key == k1
@@ -431,10 +443,14 @@ test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
   store_put_fold(
     outcome: store_put(store: test_store(), key: ka, artifact_bytes: byte_size(count: 40)),
     did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false,
     admitted: fn(s1, e1) {
   store_put_fold(
     outcome: store_put(store: s1, key: kb, artifact_bytes: byte_size(count: 40)),
     did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false,
     admitted: fn(s2, e2) {
   let touched = match store_get(store: s2, key: ka) {
     StoreHit { store: s, row: _ } => s
@@ -451,7 +467,9 @@ test fn store_budget_evicts_least_recent_counted_holds() -> Bool {
       }
       evicted_is_least_recent && within_budget && survivors_hit
     },
-    did_not_fit: (a, b) => false
+    did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false
   )
     }
   )
@@ -474,7 +492,7 @@ test fn store_no_eviction_under_budget_holds() -> Bool {
 // cold-only witness would have gone green against the destructive implementation.
 
 fn oversize_store() -> ArtifactStore {
-  ArtifactStore { budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
+  ArtifactStore { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
 }
 
 test fn store_put_oversized_artifact_does_not_fit_holds() -> Bool {
@@ -496,6 +514,8 @@ test fn store_put_oversized_artifact_preserves_warm_rows_holds() -> Bool {
   store_put_fold(
     outcome: store_put(store: oversize_store(), key: survivor, artifact_bytes: byte_size(count: 40)),
     did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false,
     admitted: fn(warmed, e) {
       let outcome = store_put(store: warmed, key: key_of(toolchain: "oversize-warm"), artifact_bytes: byte_size(count: 500))
       let still_there = match store_get(store: warmed, key: survivor) {

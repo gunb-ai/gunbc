@@ -311,6 +311,8 @@ fn p4_row_is_add_in_card(row: GpuBoardAdmission) -> Bool {
   match gpu_board_admission_facts(admission: row).attachment {
     PcieAddInBoard { link: _ } => true
     SxmModule => false
+    MxmModule { variant: _, link: _ } => false
+    SolderedBga => false
   }
 }
 
@@ -318,6 +320,8 @@ fn p4_row_is_sxm(row: GpuBoardAdmission) -> Bool {
   match gpu_board_admission_facts(admission: row).attachment {
     PcieAddInBoard { link: _ } => false
     SxmModule => true
+    MxmModule { variant: _, link: _ } => false
+    SolderedBga => false
   }
 }
 

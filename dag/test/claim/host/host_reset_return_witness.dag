@@ -1,12 +1,12 @@
 module test.claim.host.host_reset_return_witness
 
 import std.logic { Bool }
-import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String, list_length }
+import std.types { EpochMs, Int, List, Milliseconds, NonEmptyStr, String }
 import std.observation { Measured, MeasuredValue, MeasuredUnavailable }
 import std.content_hash { ContentHash, Fnv1a64, Fnv1a64Structural, Sha256Digest, Sha256Hash }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.process { ProcessExit, ExitSuccess }
-import std.algebra { string_contains }
+import std.algebra { string_contains, length }
 import std.list { first_where }
 import v2.std.witness_evaluation { WitnessEvaluation, WitnessReturned, evaluate_in_witness_frame }
 import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
@@ -1260,7 +1260,7 @@ test fn w_the_real_peer_roster_excludes_every_reset_subject_and_the_assignment_i
   let subjects = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
   let peers = reset_observer_peer_roster(subjects: subjects)
   let excluded = fold(subjects, init: true, f: (ok, s) => ok && host_roster_contains(roster: peers, host: s) == false)
-  excluded && list_length(subjects) > 0 && list_length(peers) > 0 && match reset_dispatch_pairings(subject_roster: subjects, peer_roster: peers) {
+  excluded && length(subjects) > 0 && length(peers) > 0 && match reset_dispatch_pairings(subject_roster: subjects, peer_roster: peers) {
     DispatchAssignment { pairings: _ } => true
     DispatchAssignmentRefused { cause: _ } => false
   }

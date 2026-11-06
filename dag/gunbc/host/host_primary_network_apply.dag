@@ -9,7 +9,7 @@ import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { argv_words }
 import extdeps.netplan.netplan {
-  netplan_config_dir, NetplanRenderer, SystemdNetworkd, NetworkManager,
+  netplan_config_dir,
   netplan_try_argv, netplan_try_ready_stamp_path, netplan_try_confirmation_line, netplan_empty_document_rendering,
   NetplanDocumentRendered, NetplanDocumentRefused, netplan_document_rendering_wire,
   NetplanTryOutcome, NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable, NetplanTryOutcomePending, netplan_try_outcome,
@@ -41,11 +41,12 @@ import gunbc.fleet.fleet_converge_executor_subject_split {
 }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.ci.ci_spec { host_primary_network_receipt_path }
+import gunbc.host.host_primary_network_desired { HostPrimaryNetworkDesired }
 import gunbc.host.host_primary_network {
-  HostPrimaryNetworkDesired, PrimaryNetworkRow, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
+  PrimaryNetworkRow, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
   primary_network_row_for, primary_network_netplan_file, primary_network_netplan_file_name,
   primary_network_cloud_init_guard,
-  PrimaryNetworkIpReads, PrimaryEffectiveVerdict, PrimaryEffectiveHolds, PrimaryEffectiveUnjudged, primary_effective_verdict, primary_effective_refusal,
+  PrimaryNetworkIpReads, PrimaryEffectiveVerdict, PrimaryEffectiveHolds, PrimaryEffectiveUnjudged, primary_effective_verdict, primary_effective_refusal, primary_effective_settling,
   NetplanDirectoryListing, NetplanDirectoryListed, NetplanDirectoryUnread, netplan_yaml_names,
   PrimaryNetworkObservation, PrimaryNetplanSwap,
   plan_primary_network, primary_network_plan_wire,
@@ -68,9 +69,11 @@ import gunbc.host.host_primary_network {
 //     writer exists, so a second transient unit holds the FIFO's write end for longer than the try
 //     can run: the try's stdin then blocks without data, as netplan's confirmation loop needs
 //     (netplan_try_confirmation_line).
-//  3. READ BACK FROM THE OBSERVER. After the ready stamp and the renderer's own online wait, the
-//     running network is judged against the row (gunbc.host.host_primary_network
-//     primary_effective_verdict). Every administrator leg is a password session with ControlPath none
+//  3. READ BACK FROM THE OBSERVER. After the ready stamp the running network is judged against the
+//     row (gunbc.host.host_primary_network primary_effective_verdict), read again on a bounded poll
+//     while the verdict is one a reconfigure passes through (primary_effective_settling) and taken
+//     as soon as it is not. No renderer online wait stands in for it: `wait-online --any` returned
+//     on srv1's IPv6 address two seconds before the IPv4 lease the readback judges. Every administrator leg is a password session with ControlPath none
 //     (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_password_client_options), so a leg that answers
 //     after the try applied is a fresh connection across the new network. And the observer is not
 //     the target (PrimaryReadbackVantage): a leg from the target to itself is delivered locally and
@@ -91,8 +94,8 @@ data primary_network_netplan_run_dir: NonEmptyStr = "/run/netplan" as NonEmptySt
 data primary_network_try_unit: NonEmptyStr = "gunbc-primary-network-try" as NonEmptyStr
 data primary_network_try_stdin_unit: NonEmptyStr = "gunbc-primary-network-try-stdin" as NonEmptyStr
 
-// Long enough for the ready poll and the online wait below plus the readback, persist and
-// confirmation legs; the FIFO holder outlives it by a minute.
+// Long enough for the ready poll and the settling readback below plus the persist and confirmation
+// legs; the FIFO holder outlives it by a minute.
 data primary_network_try_timeout: Second = second(count: 300)
 
 fn primary_network_try_stdin_hold() -> Second {
@@ -168,17 +171,13 @@ fn primary_network_try_launch() -> PrimaryTryLaunch {
   )
 }
 
-fn primary_network_wait_online_argv(renderer: NetplanRenderer) -> List<String> {
-  match renderer {
-    SystemdNetworkd => ["/usr/lib/systemd/systemd-networkd-wait-online", "--any", "--timeout=60"]
-    NetworkManager => ["nm-online", "-q", "-t", "60"]
-  }
-}
-
-// Bounded polls, one leg each: thirty two-second waits for the ready stamp, and forty ten-second
-// waits for the verdict, which outlast the try's timeout.
+// Bounded polls, one leg each: thirty two-second waits for the ready stamp, twelve five-second
+// readbacks for the running network to settle (the minute the online wait it replaces allowed), and
+// forty ten-second waits for the verdict, which outlast the try's timeout.
 data primary_network_ready_polls: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
 data primary_network_ready_poll_wait: Second = second(count: 2)
+data primary_network_settle_polls: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+data primary_network_settle_poll_wait: Second = second(count: 5)
 data primary_network_verdict_polls: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
 data primary_network_verdict_poll_wait: Second = second(count: 10)
 
@@ -191,6 +190,7 @@ fn primary_network_apply_phase_budgets() -> List<Second> {
   [
     primary_network_try_timeout,
     second(count: length(primary_network_ready_polls) * (second_count(s: primary_network_ready_poll_wait) + second_count(s: primary_network_leg_allowance))),
+    second(count: length(primary_network_settle_polls) * (second_count(s: primary_network_settle_poll_wait) + 3 * second_count(s: primary_network_leg_allowance))),
     second(count: length(primary_network_verdict_polls) * (second_count(s: primary_network_verdict_poll_wait) + second_count(s: primary_network_leg_allowance))),
   ]
 }
@@ -279,6 +279,23 @@ fn observe_primary_effective(subject: FleetHostFileSubject, context: FleetSshExe
           }
       }
   }
+}
+
+// The readback during a try: read until the verdict is not one a reconfigure passes through, or the
+// polls run out, and answer the last verdict read. Each read is three fresh legs (link, address,
+// route), hence the three leg allowances per poll in the phase budget.
+fn settle_primary_effective(subject: FleetHostFileSubject, context: FleetSshExecutionContext, d: HostPrimaryNetworkDesired) -> PrimaryEffectiveVerdict
+{
+  fold(primary_network_settle_polls, init: PrimaryEffectiveUnjudged { cause: "the running network was not read" as NonEmptyStr }, f: (acc, _n) =>
+    if !primary_effective_settling(v: acc) { acc }
+    else {
+      let v = observe_primary_effective(subject: subject, context: context, d: d)
+      if primary_effective_settling(v: v) {
+        let _w = primary_leg(subject: subject, context: context, command: ["sleep", to_string(second_count(s: primary_network_settle_poll_wait))])
+        v
+      } else { v }
+    }
+  )
 }
 
 fn observe_netplan_directory(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> NetplanDirectoryListing
@@ -592,13 +609,9 @@ fn try_staged_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecut
                       match poll_until(subject: subject, context: context, polls: primary_network_ready_polls, wait: primary_network_ready_poll_wait, command: ["test", "-e", netplan_try_ready_stamp_path as String]) {
                         Absent => stopped_in_try(subject: subject, context: context, staged: staged, step: "ready", cause: "the try never touched its ready stamp")
                         Present { value: _ } =>
-                          match primary_step(subject: subject, context: context, what: "online", command: primary_network_wait_online_argv(renderer: d.renderer)) {
-                            Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "online", cause: why)
-                            Absent =>
-                              match primary_effective_refusal(v: observe_primary_effective(subject: subject, context: context, d: d)) {
-                                Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "readback", cause: why as String)
-                                Absent => persist_and_confirm(subject: subject, context: context, r: r, staged: staged, foreign: foreign)
-                              }
+                          match primary_effective_refusal(v: settle_primary_effective(subject: subject, context: context, d: d)) {
+                            Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "readback", cause: why as String)
+                            Absent => persist_and_confirm(subject: subject, context: context, r: r, staged: staged, foreign: foreign)
                           }
                       }
                   }

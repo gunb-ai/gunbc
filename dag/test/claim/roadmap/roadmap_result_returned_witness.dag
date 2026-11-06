@@ -32,7 +32,7 @@ import extdeps.filesystem.filesystem_io {
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
   attempt_request_binding_json, attempt_request_binding_decode, RequestBindingDecoded, RequestBindingUndecodable,
-  AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused, attempt_request_binding_commit_of,
+  AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused,
   attempt_request_binding_read_from_observation,
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
 }
@@ -277,21 +277,8 @@ test fn a_continuation_copies_its_predecessors_recorded_binding_or_refuses() -> 
   class_continuing && class_fresh && class_reassigned && copies_c1 && copies_autonomous && missing_refuses && unreadable_refuses
 }
 
-// CONTROL 2 OF THE LAUNCH BINDING: THE COMMIT IS CREATE-ONLY. The first commit is a create. A
-// repeated initialization that finds the SAME binding is an idempotent success. One that finds a
-// DIFFERENT binding -- the attempt re-initialized under a later claim, or as autonomous -- refuses
-// and the first stands. A binding already there that cannot be read is not replaced, and a create
-// the host refused fails the launch.
-test fn a_committed_binding_is_created_once_and_cannot_be_replaced() -> Bool {
-  let c1 = rr_claim_by(node: rr_node(), requester: rr_alice(), parent: none, at: "t1")
-  let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
-  let first = attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) == RequestBindingCommitted { binding: RequestClaimBound { claim: c1.id } }
-  let again = attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreateTargetOccupied { path: "p" }, existing: RequestBindingRead { binding: RequestClaimBound { claim: c1.id } }) == RequestBindingCommitted { binding: RequestClaimBound { claim: c1.id } }
-  let rebind = all([RequestClaimBound { claim: c2.id }, RequestAutonomous], b => rr_commit_refused_at(c: attempt_request_binding_commit_of(binding: b, created: FilesystemCreateTargetOccupied { path: "p" }, existing: RequestBindingRead { binding: RequestClaimBound { claim: c1.id } }), step: "attempt-request-binding-conflict"))
-  let unreadable_kept = rr_commit_refused_at(c: attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreateTargetOccupied { path: "p" }, existing: RequestBindingUnreadable { reason: "not json" }), step: "attempt-request-binding-conflict")
-  let host_refused = rr_commit_refused_at(c: attempt_request_binding_commit_of(binding: RequestClaimBound { claim: c1.id }, created: FilesystemCreateRefused { path: "p", kind: FilesystemPermissionDenied, error: "denied" }, existing: RequestBindingAbsent), step: "attempt-request-binding-persist")
-  first && again && rebind && unreadable_kept && host_refused
-}
+// CONTROL 2 OF THE LAUNCH BINDING (THE COMMIT IS CREATE-ONLY) is driven through its effect entry in
+// test.claim.roadmap.attempt_request_binding_commit_wet_witness.
 
 fn rr_commit_refused_at(c: AttemptRequestBindingCommit, step: String) -> Bool {
   match c {
@@ -615,9 +602,8 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
   match attempt_request_binding_admission(request: LaunchForClaim { node: rr_node(), claim: c1.id }, node_id: rr_node(), read: EventsRead { node: rr_node(), envelopes: [c1, c2] }, predecessor: RequestBindingAbsent) {
     RequestBindingNotAdmitted { step: _, detail: _ } => false
     RequestBindingAdmitted { binding: launch } =>
-      match attempt_request_binding_commit_of(binding: launch, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) {
-        RequestBindingCommitRefused { step: _, detail: _ } => false
-        RequestBindingCommitted { binding: committed } => {
+      {
+          let committed = launch
           let recorded = attempt_request_binding_read_from_observation(
             observation: filesystem_file_observation(
               listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
@@ -659,7 +645,6 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
                   }
               }
           }
-        }
       }
   }
 }

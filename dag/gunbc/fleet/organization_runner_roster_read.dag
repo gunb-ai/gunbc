@@ -14,6 +14,7 @@ import std.page_fold {
   page_fold_begin, page_fold_demand, page_fold_observe, page_fold_finish, page_fold_refusal_key
 }
 import std.integer { PositiveInt }
+import std.measure { Second, second, second_count }
 import extdeps.uri { uri_wire }
 import extdeps.transports.rest { RestRefusal, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.github.actions_self_hosted_runners { OrganizationRunnerRosterEntryWire, OrganizationRunnerRosterPageWire }
@@ -468,6 +469,21 @@ fn roster_walk_pump_by(
 // (organization_runner_roster_observe_wet) records pages_read and the authority's total_count on
 // every run -- and an inadequate bound is loud: PageBudgetExhausted, reported as Partial.
 data organization_runner_roster_page_bound: PageBound = PageBound { max_pages: 60 }
+
+// THE WALL-CLOCK BUDGET OF ONE ROSTER READ, which the step that runs it adds to its closure resolve
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_org_runner_roster_step_timeout_minutes): the
+// organization read, then at most organization_runner_roster_page_bound pages, each one gh request.
+// The per-request allowance is a policy budget, not a measurement; the receipt that grounds its
+// order of magnitude is run 41655364699 (srv3, 2026-11-03), whose twelve ListOrgRunnersPage requests
+// each took 488-540 ms. Nothing enforces it per request, so a request that hangs past it can still
+// meet the step timeout mid-walk, and what survives that is the interrupted receipt below.
+// Requested runner_ids probes are one GetOrgRunner each and are not in this budget: their count is
+// the dispatcher's, and a probe list long enough to outrun the step ends in the same interrupted receipt.
+data organization_runner_roster_request_allowance: Second = second(count: 10)
+
+fn organization_runner_roster_read_budget() -> Second {
+  second(count: (organization_runner_roster_page_bound.max_pages + 1) * second_count(s: organization_runner_roster_request_allowance))
+}
 
 // WHAT THE WALK ESTABLISHED, WITH THE REASON A PARTIAL WAS PARTIAL. The carrier has no reason field
 // on its partial arm, so the report keeps it -- and the ids whose readings disagreed -- for the
@@ -1138,22 +1154,62 @@ fn organization_runner_roster_observe_wet() -> ProcessExit {
   }
 }
 
+// THE RECEIPT HEADER, one rendering for the interrupted receipt and the final one, so a reader parses
+// one shape whether or not the read finished.
+fn roster_receipt_header(org: NonEmptyStr, page_size: PageSize, pages_read: String, evidence: OrganizationRunnerRosterEvidence, disputed_ids: List<String>, note: String) -> String {
+  join([
+    "endpoint=GET-/orgs/\{org\}/actions/runners organization=", org as String,
+    " page_size=", to_string(page_size.count),
+    " pages_read=", pages_read,
+    " roster=", roster_evidence_arm(e: evidence),
+    " disputed_ids=", join(disputed_ids, ","),
+    " note=", note, "\n"
+  ], "")
+}
+
+// A STEP TIMEOUT ENDS THE PROCESS WITHOUT A WORD, so the receipt that answers for it is written BEFORE
+// the first request: the read typed as Unavailable because it did not finish. The final write replaces
+// it. Run 41655364699 read twelve pages and was killed by its step timeout before writing anything,
+// and the upload then found no file, so the pages it had read and the reason it stopped were both lost.
+// What this receipt cannot cover is a kill during the closure resolve, before this entry runs: no
+// receipt exists then, and the upload step's missing-file error is the loud answer.
+data organization_runner_roster_interrupted_reason: String = "interrupted: the read did not finish before the process ended (a step timeout or a cancellation); no page it read is kept"
+
 fn organization_runner_roster_observe_with_probes(runner_ids: List<Int>, page_size: PageSize) -> ProcessExit {
   let org = organization_runner_roster_org()
+  let interrupted = Filesystem.Write(
+    path: organization_runner_roster_receipt_path,
+    content: roster_receipt_header(
+      org: org,
+      page_size: page_size,
+      pages_read: "unobserved",
+      evidence: RosterReadUnavailable { reason: organization_runner_roster_interrupted_reason },
+      disputed_ids: [],
+      note: "this line is replaced when the read finishes"
+    )
+  )
+  if !interrupted.success {
+    exit_failure(reason: concat("OrgRunnerRosterReceiptWriteRefused: the interrupted receipt could not be written before the read, so a timeout would leave no record: ", interrupted.error))
+  } else {
+    organization_runner_roster_observe_read(org: org, runner_ids: runner_ids, page_size: page_size)
+  }
+}
+
+fn organization_runner_roster_observe_read(org: NonEmptyStr, runner_ids: List<Int>, page_size: PageSize) -> ProcessExit {
   let route = organization_runner_read_route()
   let report = organization_runner_roster_report(org: org, page_size: page_size)
   let probes = match route {
     OrgRunnerRouteRefused { reason } => organization_runner_id_observations(org: org, visibility: RunnersVisibilityUnestablished { org: org, reason: reason }, runner_ids: runner_ids)
     OrgRunnerRouteAdmitted { route: r } => organization_runner_id_observations(org: org, visibility: runner_visibility_from_report(org: org, route: r, report: report), runner_ids: runner_ids)
   }
-  let receipt = join([
-    "endpoint=GET-/orgs/\{org\}/actions/runners organization=", org as String,
-    " page_size=", to_string(page_size.count),
-    " pages_read=", to_string(report.pages_read),
-    " roster=", roster_evidence_arm(e: report.evidence),
-    " disputed_ids=", join(report.disputed_ids, ","),
-    " note=", report.note, "\n"
-  ], "")
+  let receipt = roster_receipt_header(
+    org: org,
+    page_size: page_size,
+    pages_read: to_string(report.pages_read),
+    evidence: report.evidence,
+    disputed_ids: report.disputed_ids,
+    note: report.note
+  )
   let wrote = Filesystem.Write(
     path: organization_runner_roster_receipt_path,
     content: join([

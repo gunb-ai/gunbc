@@ -1,0 +1,28 @@
+{
+  "@odata.id": "/redfish/v1/Systems/system/Processors/cpu0",
+  "@odata.type": "#Processor.v1_18_0.Processor",
+  "Id": "cpu0",
+  "Location": {
+    "PartLocation": {
+      "ServiceLabel": "CPU1"
+    }
+  },
+  "Manufacturer": "Ampere(R)",
+  "MaxSpeedMHz": 3000,
+  "Name": "Processor",
+  "PartNumber": "Q80-30",
+  "ProcessorId": {
+    "EffectiveFamily": "0x0101",
+    "IdentificationRegisters": "0x000000A10A160001"
+  },
+  "ProcessorType": "CPU",
+  "SerialNumber": "000000000000000090D90909033865B0",
+  "Socket": "CPU1",
+  "Status": {
+    "Health": "OK",
+    "State": "Enabled"
+  },
+  "TotalCores": 80,
+  "TotalThreads": 80,
+  "Version": "Ampere(R) Altra(R) Processor"
+}

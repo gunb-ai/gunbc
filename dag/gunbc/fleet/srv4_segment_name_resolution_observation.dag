@@ -1,0 +1,11 @@
+module gunbc.fleet.srv4_segment_name_resolution_observation
+
+import std.types { NonEmptyStr, EpochMs }
+
+// WHAT THE SEGMENT'S RESOLVER ANSWERS FOR srv4, read from srv1 on the operator LAN: the resolver its DHCP lease
+// names (192.168.1.1, the one an installer on this segment is also handed) answered `srv4 A` authoritatively with
+// this address, and the neighbour table put that address at srv4's host NIC. Captured in
+// artifacts/network/srv4-name-resolution-2026-10-28/srv1_dig_srv4.txt at 2026-10-28T12:22:51Z.
+data srv4_segment_resolver_answer: NonEmptyStr = "192.168.1.196"
+
+data srv4_segment_resolver_observed_at: EpochMs = 1793190171000

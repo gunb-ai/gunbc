@@ -218,7 +218,7 @@ fn review_cycle(
     auth_token: "",
     owner: owner,
     repo: repo,
-    state: extdeps.github.pulls.Open
+    state: extdeps.github.pulls.ListStateOpen
   ) {
     RestRefused { refusal } =>
       return ReviewAgentCycleRefused { refusal: refusal }

@@ -171,16 +171,17 @@ test fn a_slot_that_is_not_observed_held_releases_nothing_on_either_basis() -> B
 }
 
 
-// THE CONSUMER FRONTIER'S TRIGGER DISCRIMINATES. With deploy_transition's exclusive-create outcome
-// present the row is pending; with it retired the row has fired, so the census refuses a row left
-// standing after the lease migrates. The live-tree reading is the dissolution census's own.
-test fn the_consumer_frontier_is_pending_while_the_exclusive_create_lease_stands_and_fires_when_it_retires() -> Bool {
+// THE CONSUMER FRONTIER IS UNBOUND, AND NO DECLARATION FIRES IT. Its consumer did not materialize (the
+// transition lease refuses a non-holder release), so it waits on a capability with no declaration yet:
+// it is counted unbound whatever the tree holds, and in particular retiring deploy_transition's old
+// exclusive-create outcome no longer reports it fired. The live-tree reading is the dissolution census's own.
+test fn the_consumer_frontier_waits_on_the_capability_and_no_declaration_fires_it() -> Bool {
   let rows = durable_hold_nonholder_release_consumer_frontier_rows
-  let standing = fold_frontier_expiry(rows: rows, present_decls: [decl_ref(module_path: "gunbc.deploy_transition", decl_name: "LeaseCreateOutcome")])
-  let retired = fold_frontier_expiry(rows: rows, present_decls: [])
+  let old_trigger_present = fold_frontier_expiry(rows: rows, present_decls: [decl_ref(module_path: "gunbc.deploy_transition", decl_name: "LeaseCreateOutcome")])
+  let nothing_present = fold_frontier_expiry(rows: rows, present_decls: [])
   frontier_rows_well_formed(rows: rows)
-    && standing.pending_count == 1 && standing.fired_still_present_count == 0 && standing.unbound_count == 0
-    && retired.pending_count == 0 && retired.fired_still_present_count == 1
+    && old_trigger_present.unbound_count == 1 && old_trigger_present.pending_count == 0 && old_trigger_present.fired_still_present_count == 0
+    && nothing_present.unbound_count == 1 && nothing_present.pending_count == 0 && nothing_present.fired_still_present_count == 0
 }
 
 // HOLDER AND GENERATION DO NOT IDENTIFY A HOLD. Another slot held by the same holder at the same

@@ -1,0 +1,74 @@
+module product.printed_chassis.duct_fit_policy
+
+import std.types { NonEmptyStr }
+import std.measure { Micrometer, micrometer }
+import std.claim_evidence { RecordedFact }
+import product.printed_chassis.fit_observations { PlugFitRingProposition, plug_fit_ring_fit }
+
+// ═══ THE FIT AND TOLERANCE POLICY: WHAT THE PRINTER AND THE OPERATOR CHOSE, NOT WHAT ANY COMPONENT IS ═══
+//
+// An interface fit is two mating components' dimensions plus a policy: how far under the card's window the
+// plug lip sits, how far short of the fins it stops, how thick the walls are. The components' dimensions
+// are rows (extdeps.gpu.<card> <card>_card_row, the read end face in product.printed_chassis.duct_card_catalog,
+// extdeps.fans.<fan>); these are the numbers that are NEITHER, held apart so a reader can tell which is which.
+//
+// They are split by what stands behind them, because the two are not the same claim (DESIGN section 4d):
+//
+//   RingExercisedDims  the dimensions that enter the geometry of the plug fit ring the operator printed and
+//                      hand-fitted on an A16 (product.printed_chassis.fit_observations plug_fit_ring_fit,
+//                      2026-10-26). The ring seats, so these values are the ones a card known to take them
+//                      was printed with. They are NOT re-derived: nothing in a component row says 0.2 mm
+//                      per side, and a derived value that differs by a micrometre is a different print.
+//   UnqualifiedAllowances  design allowances no print has exercised (the sleeve, the plenum depth and bore,
+//                      the plate). Proposals, and they stay so until a print says otherwise.
+//
+// The policy is not an A16 fact: it is applied to whatever card's read end face the duct is fitted to, and a
+// card whose fit shows these wrong gets its own policy row rather than an edit here.
+
+type RingExercisedDims {
+  wall: Micrometer
+  plug_clearance: Micrometer
+  fin_margin: Micrometer
+  flange_thickness: Micrometer
+  band_clearance: Micrometer
+  connector_keepout_past_outer_pin: Micrometer
+  connector_keepout_depth: Micrometer
+}
+
+type UnqualifiedAllowances {
+  plate_thickness: Micrometer
+  plenum_depth: Micrometer
+  bore: Micrometer
+  sleeve_clearance: Micrometer
+  sleeve_depth: Micrometer
+}
+
+type DuctFitPolicy {
+  id: NonEmptyStr
+  ring_exercised: RingExercisedDims
+  ring_fit: RecordedFact<PlugFitRingProposition>
+  allowances: UnqualifiedAllowances
+}
+
+// Values are the ones the A16 plug fit ring was printed with; product.printed_chassis.gpu_duct
+// a16_duct_design carried them as literals before this row, and the A16 golden manifests are byte-identical.
+data plug_and_flange_print_policy: DuctFitPolicy = DuctFitPolicy {
+  id: "plug-and-flange-print-policy-2026-10-26",
+  ring_exercised: RingExercisedDims {
+    wall: micrometer(count: 2000),
+    plug_clearance: micrometer(count: 200),
+    fin_margin: micrometer(count: 500),
+    flange_thickness: micrometer(count: 2500),
+    band_clearance: micrometer(count: 1000),
+    connector_keepout_past_outer_pin: micrometer(count: 23440),
+    connector_keepout_depth: micrometer(count: 40000),
+  },
+  ring_fit: plug_fit_ring_fit,
+  allowances: UnqualifiedAllowances {
+    plate_thickness: micrometer(count: 4000),
+    plenum_depth: micrometer(count: 30000),
+    bore: micrometer(count: 86000),
+    sleeve_clearance: micrometer(count: 300),
+    sleeve_depth: micrometer(count: 10000),
+  },
+}

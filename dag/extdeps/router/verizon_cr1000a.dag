@@ -5,7 +5,6 @@ import extdeps.dhcp.v4 {
   DhcpLeaseObservation,
   DhcpLeaseAssignment,
   DhcpLeaseStatus,
-  MacAddress,
   DynamicLease,
   StaticReservation,
   DynamicDhcpLease,
@@ -14,15 +13,13 @@ import extdeps.dhcp.v4 {
   Inactive,
 }
 import extdeps.network.ipv4 { Ipv4Address }
+import extdeps.network.mac { Eui48Address }
 import extdeps.vendor.verizon { verizon }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref, decl_field_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -55,18 +52,29 @@ type Cr1000aRouterStatusSnapshot {
   delegated_prefix_length: Int?
 }
 
+// THE MAC COLUMNS OF BOTH ROUTER TABLES ARE extdeps.network.mac Eui48Address SINCE PLAN
+// gunbc.plans.site_segment_anchor_bmc_reach PHASE S1. They used to be extdeps.dhcp.v4 MacAddress, a
+// branded NonEmptyStr: a row transcribed from the router's own table then carried six octets as text
+// with the parse deferred forever, and "is this row about the same machine as that row" was a string
+// comparison two call sites had to each get right. Eui48Address gives the columns the fields the
+// reading actually has, so a lease row can be compared, rendered, and matched against a reservation
+// without either side re-decoding it. The lease-table row is the one the site PXE edge and the
+// fleet-intent printer bindings read through, so this is the column the S2 anchor will reach BMC
+// addresses by.
 type Cr1000aIpv4AddressDistributionRow {
   host_name_raw: String
   ip: Ipv4Address
-  mac: MacAddress
+  mac: Eui48Address
   lease_type: DhcpLeaseAssignment
   connection_name: NonEmptyStr?
   status: DhcpLeaseStatus
   expires_in: NonEmptyStr?
 }
 
+// (See the note on Cr1000aIpv4AddressDistributionRow: both MAC columns moved to Eui48Address
+// together, from the same router table, for the same reason.)
 type Cr1000aDhcpLeaseRow {
-  mac_address: MacAddress
+  mac_address: Eui48Address
   ipv4_address: Ipv4Address
   lease: DhcpLeaseObservation
 }
@@ -80,46 +88,3 @@ type Cr1000aBroadbandIpv6Snapshot {
   prefix: NonEmptyStr?
 }
 
-data cr1000a_dhcp_lease_transport_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.router.verizon_cr1000a", decl_name: "Cr1000aDhcpLeaseTable"),
-    reason: "Cr1000aDhcpLeaseTable has cited semantic shape only; read transport for /cgi/cgi_dhcp*.js addCfg projection is not yet bound as a handler",
-    dissolution: unbound_dissolution(description: "extdeps/router/verizon_cr1000a_rest.dag or shell handler lands with a live read witness"),
-  )
-]
-
-data cr1000a_host_name_raw_parse_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_field_ref(
-      module_path: "extdeps.router.verizon_cr1000a",
-      decl_name: "Cr1000aIpv4AddressDistributionRow",
-      field_name: "host_name_raw",
-    ),
-    reason: "Cr1000aIpv4AddressDistributionRow.host_name_raw is cited router UI text; parse via parse_host_name at observation boundary when transport lands",
-    dissolution: unbound_dissolution(description: "cr1000a lease-table read transport binds host_name_raw through parse_host_name"),
-  )
-]
-
-data cr1000a_delegated_prefix_length_scalar_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_field_ref(
-      module_path: "extdeps.router.verizon_cr1000a",
-      decl_name: "Cr1000aBroadbandIpv6Snapshot",
-      field_name: "delegated_prefix_length",
-    ),
-    reason: "delegated_prefix_length is a cited IPv6 PD prefix bit-count on bare Int/Int?; should ground on std.measure BitWidth once the CR1000A observation transport lands",
-    dissolution: unbound_dissolution(description: "Cr1000aBroadbandIpv6Snapshot read transport parses prefix length through bit_width"),
-  )
-]
-
-data cr1000a_expires_in_ui_text_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_field_ref(
-      module_path: "extdeps.router.verizon_cr1000a",
-      decl_name: "Cr1000aIpv4AddressDistributionRow",
-      field_name: "expires_in",
-    ),
-    reason: "expires_in is cited router UI duration text on bare NonEmptyStr?; parse to Second (or Minute carrier) at observation boundary when transport lands",
-    dissolution: unbound_dissolution(description: "cr1000a lease-table read transport binds expires_in through a typed duration parser"),
-  )
-]

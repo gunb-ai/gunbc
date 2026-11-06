@@ -1,6 +1,8 @@
 module extdeps.tools.gh
 
+import std.types { String, List }
 import extdeps.exec.program { ProgramIdentity, cataloged_program }
+import extdeps.exec.command { ArgvCommand, argv_command }
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -25,6 +27,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 fn gh_program() -> ProgramIdentity = cataloged_program(invocation: "gh")
+
+// `gh run download <run> --repo <owner/name> --name <artifact> --dir <dir>` (cli.github.com/manual/gh_run_download):
+// the one spelling of the words, as argv (program word first) and as the sealed command built from them.
+// The argv is homed here, beside the program, so a consumer that names the read -- the converge receipt's read
+// spec in gunbc.runner.runner_user_session_receipt -- projects these words rather than re-spelling them.
+fn gh_run_download_argv(run_id: String, repo: String, artifact: String, dir: String) -> List<String> {
+  [gh_program().invocation as String, "run", "download", run_id, "--repo", repo, "--name", artifact, "--dir", dir]
+}
+
+fn gh_run_download_command(run_id: String, repo: String, artifact: String, dir: String) -> ArgvCommand {
+  argv_command(program: gh_program(), arguments: gh_run_download_argv(run_id: run_id, repo: repo, artifact: artifact, dir: dir).skip(n: 1))
+}
 
 data gh_cli_tool: CliTool = CliTool {
   program: gh_program(),

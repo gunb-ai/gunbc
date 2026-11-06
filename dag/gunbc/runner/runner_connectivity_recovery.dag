@@ -1,7 +1,8 @@
 module gunbc.runner.runner_connectivity_recovery
 
 import std.nat { nat_to_decimal_string }
-import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
+import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration }
+import std.algebra { length }
 import std.disposition { ConstructionMechanism, Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.host_identity { HostIdentity }
@@ -10,6 +11,7 @@ import gunbc.runner.runner_registration_labels {
   runner_slot_labels_conform, RegistrationLabelsConform, RegistrationLabelsDiverge, RegistrationLabelsUnjudged,
 }
 import gunbc.runner.runner_unit { runner_slot_unit_name }
+import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.build_cache.build_cache_instance {
   process_identity_eq,
   RunnerSlotIdentity,
@@ -295,7 +297,7 @@ fn classify_control_plane_standing(
   snapshots: List<RunnerSlotConnectivitySnapshot>,
   degraded_threshold_percent: Int,
 ) -> RunnerControlPlaneStanding {
-  let total = list_length(items: snapshots)
+  let total = length(xs: snapshots)
   let offline = fold(
     snapshots,
     init: 0,
@@ -597,8 +599,8 @@ fn plan_slot_connectivity_action(
 // under another host's label is not this slot's runner.
 // A slot whose registration labels do not resolve cannot verify ANY successor's labels, so it
 // fails the postcondition rather than accepting whatever the successor registered with.
-fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) -> Bool {
-  match runner_slot_labels_conform(slot: slot, observed: observed) {
+fn replace_successor_labels_conform(slot: RunnerSlotIdentity, observed: List<String>, receipt: RunnerUserSessionReceiptInput) -> Bool {
+  match runner_slot_labels_conform(slot: slot, observed: observed, receipt: receipt) {
     RegistrationLabelsConform => true
     RegistrationLabelsDiverge => false
     RegistrationLabelsUnjudged { host: _, cause: _ } => false
@@ -610,6 +612,7 @@ fn verify_incarnation_replace_postcondition(
   prior: RunnerLocalIncarnation,
   after_local: RunnerLocalObservation,
   after_remote: RunnerRemoteObservation,
+  receipt: RunnerUserSessionReceiptInput,
 ) -> IncarnationReplacePostcondition {
   if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
     ReplacePostconditionFailed {
@@ -626,7 +629,7 @@ fn verify_incarnation_replace_postcondition(
       Present { value: reg } =>
         match reg {
           RunnerRemoteOnline { runner_name: name, labels: labels } =>
-            if replace_successor_labels_conform(slot: slot, observed: labels) {
+            if replace_successor_labels_conform(slot: slot, observed: labels, receipt: receipt) {
               ReplaceVerified {
                 slot: slot,
                 prior: prior,

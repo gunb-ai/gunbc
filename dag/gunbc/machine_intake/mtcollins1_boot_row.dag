@@ -22,8 +22,9 @@ module gunbc.machine_intake.mtcollins1_boot_row
 import std.types { NonEmptyStr, String }
 import std.measure { Second, second, ByteSize, byte_size }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import gunbc.host.boot_attempt {
-  ConsoleReading, CaptureContents, console, console_reading, publish_allowance,
+import gunbc.host.boot_attempt { publish_allowance }
+import gunbc.host.boot_console_observation {
+  ConsoleReading, CaptureContents, console, console_reading,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacBootRow, MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacAccountReceipt,

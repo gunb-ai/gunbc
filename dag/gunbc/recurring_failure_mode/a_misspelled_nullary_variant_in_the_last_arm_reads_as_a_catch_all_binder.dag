@@ -1,0 +1,32 @@
+module gunbc.recurring_failure_mode.a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: StructurallyGuaranteed }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "explicit binder syntax, so that a bare name in pattern position is never a binder and a misspelled nullary variant has no Accepted reading at all, sufficient to remove the behaviour-identical singleton residual; not staffed (sleek-owl-397, 2026-10-25)." } },
+
+  receipts: [
+    "INVALID STATE: the LAST arm of a match is a misspelled nullary variant (`Absnet => ..` where `Absent` was meant). A bare name in pattern position has one grammatical form whether it is a constructor or a binder (v2.extdeps.languages.dag dag_grammar_constructor_pattern_expr), and v2 decides by ONE rule at every pattern position (v2.compiler.lexical_scope pattern_binder_candidates, v2.compiler.resolve pattern_binders): an atom that names a declared payload is a constructor, otherwise a binder. A misspelling names no payload, so it reads as a catch-all binder.",
+
+    "HARM, WHEN IT WIDENS: if the earlier arms leave the binder two or more alternatives, the intended match was non-exhaustive and the misspelling silently covers the rest, so a variant the author forgot (or one added later) is absorbed instead of refused.",
+
+    "FOUND BELOW THE LADDER, BY gunbc#15125 ITSELF, AND CLIMBED IN THE SAME PR. Before #15125 a bare top-level atom was never a binder candidate, so every misspelled nullary refused unbound at resolve. The first revision of #15125 made it a binder and declared the loss as a rung drop; review 86112 rejected that (DESIGN 4b/5: silent wrongness is forbidden outright, and a drop moves between rungs, not below the ladder), so the drop was deleted and the class closed by three refusals: an arm after any catch-all refuses as unreachable (v2.compiler.infer infer_coproduct_arm_after_catch_all); a catch-all binder its arm never reads refuses (v2.compiler.resolve resolve_catch_all_binder_read_gate, remedy `_`); and a read catch-all binder refuses when the alternatives the earlier arms leave it number two or more and include a nullary variant (v2.compiler.infer infer_coproduct_catch_all_binder_widening_over_a_nullary, remedy: give the nullary variants their own arms).",
+
+    "RULE R, RULED by sleek-owl-397 on tidy-ant-251's escalation, 2026-10-25, NARROWED: a singleton remainder is exempt, because the binder then binds exactly the value the intended arm would have matched (a nullary variant carries only its tag), so the program is behaviour-identical to the intended one. It is judged against the CURRENT remainder on every compile and never grandfathered: adding a variant to the type turns an exempt singleton into a refusal exactly when a misspelling would become a silent widen. REDs: v2.test.claim.match_binder.match_binder_typing mbt_r_a_misspelled_binder_over_two_alternatives_refuses_holds and mbt_r_the_same_source_refuses_once_a_second_alternative_is_added_holds; positive mbt_r_an_intended_catch_all_over_a_singleton_or_payload_remainder_infers_holds; the unread case v2.test.claim.match_arm_binder_frame mab_misspelled_nullary_in_the_last_arm_refuses.",
+
+    "ITS COST, COUNTED BEFORE IT WAS RULED (structural census, 2026-10-25): 98 read catch-all arms in the corpus have a remainder holding a nullary variant, 0 of them possible misspellings (binder within edit distance 2 of a remaining variant name); 97 have a remainder of two or more and refuse under the narrowed rule. The five in src/v2 are rewritten with explicit nullary arms in #15125; the rest are rewritten by the catch-all codemod PR.",
+
+    "RESIDUAL, AND WHY IT IS NOT SILENT WRONGNESS: a misspelling over a SINGLETON remainder is Accepted and behaves exactly as the intended program. What is lost is only the name's honesty (the source spells a binder where a constructor was meant), which explicit binder syntax would restore.",
+
+    "RUNG: found BELOW the ladder (by #15125's first revision). Now structurally guaranteed: no Accepted program contains a misspelling that widens a match. Ceiling structurally impossible, via explicit binder syntax (not staffed).",
+
+    "REVIEW TELL: a match whose last arm is a bare name that is not a variant of the scrutinee's type.",
+  ],
+
+  evidence: [],
+}

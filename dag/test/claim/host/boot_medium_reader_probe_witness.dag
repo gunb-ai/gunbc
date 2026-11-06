@@ -1,0 +1,577 @@
+module test.claim.host.boot_medium_reader_probe_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { string_contains }
+import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
+import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
+import extdeps.github.actions { Job, RunStep, UsesStep }
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.yaml.types { YamlValue, YamlMapping, kv, yaml_string }
+import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused }
+import extdeps.languages.yaml.gha_workflow { steps_yaml, concurrency_yaml, string_list_flow }
+import std.algebra { skip, take_prefix }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_job, fleet_converge_mode_options,
+  fleet_converge_jobs, fleet_converge_boot_medium_reader_probe_step,
+  fleet_converge_boot_medium_reader_probe_receipt_upload_step,
+}
+import gunbc.host.boot_medium_reader_probe {
+  ReaderProbeReceipt, ReaderProbeObserved, ReaderProbeRefused, ReaderProbeStage, ReaderProbeLockedAccountFact,
+  LockedAccountRead, LockedAccountUnreadable, ReaderProbeForcedAnswer,
+  ForcedAnswerHeld, ForcedAnswerImageUnreadable, ForcedAnswerMalformed, ForcedAnswerLoginRefused,
+  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ReaderProbeRefusal, ProbeNotRefused,
+  ProbeAuthenticationRefused, ProbeTransportRefused, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
+  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts,
+  boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class,
+  reader_probe_forced_command_masks, reader_probe_holds, reader_probe_locked_account_fact,
+  reader_probe_export_reading, reader_shadow_field_is_locked, reader_probe_stage_text,
+  render_reader_probe_receipt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS WITNESSES, AND WHY IT IS THE PRIZE. The lane's permission to run a branch boot WITHOUT an
+// approval rests on one claim about a far host: under the reader key the account can run nothing but the
+// served image's digest. Behavior like that is invisible to a plan that reads config files -- sshd -T does
+// not render what a ForceCommand DOES -- so it is read by authenticating and asking, and the reading is
+// adjudicated by the fold this file pins. A mutation here does not merely change a test expectation; it
+// moves the gate that lets an unapproved run touch a boot medium.
+//
+// THE SHAPE OF THE EVIDENCE. Answers here are authored values, not host output: what is under test is
+// which fact an answer is READ AS, and an answer that could only be built from a real host could not be
+// given the shapes that matter -- exit 255 with the two different stderrs that must not be confused, a
+// forced command that failed to read its file, a second command differing from the first in stderr alone.
+// That is why the fold takes RemoteAnswers rather than dispatching (DESIGN section 12, authored data vs.
+// host data): the wet function holds the dispatch, this file holds the judgement.
+
+data probe_fingerprint: NonEmptyStr = "SHA256:aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff000000"
+
+// 64 lower-case hex characters -- the digest field sha256sum prints.
+data probe_digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+data probe_resource: NonEmptyStr = "projects/gunbc-fleet/secrets/boot-medium-reader-ssh-key"
+
+fn ans(exit_code: Int, stdout: String, stderr: String) -> RemoteAnswer {
+  RemoteAnswer { exit_code: exit_code, stdout: stdout, stderr: stderr }
+}
+
+// THE LINE THE FORCED COMMAND IS SUPPOSED TO PRINT: two spaces, as sha256sum prints and as
+// boot_medium_served_reader_join admits it. One space is a different fact, so it is a fixture of its own.
+fn held_line() -> String {
+  join([probe_digest as String, "  ", boot_medium_served_link_path() as String], "")
+}
+
+fn held_forced() -> RemoteAnswer {
+  ans(exit_code: 0, stdout: concat(held_line(), "\n"), stderr: "")
+}
+
+// THE SHADOW ROW FOR A `useradd --system` ACCOUNT: field two `!`, which is what the locked reading looks
+// for. The login field must match the account asked about, so a fixture naming someone else is a separate
+// case rather than a mutated one.
+fn good_shadow() -> RemoteAnswer {
+  ans(exit_code: 0, stdout: concat(boot_medium_reader_login as String, ":!:19000:0:99999:7:::\n"), stderr: "")
+}
+
+fn good_use_pam() -> RemoteAnswer {
+  ans(exit_code: 0, stdout: "PermitRootLogin no\nusepam yes\n", stderr: "")
+}
+
+// `test -r` prints nothing; its whole answer is the exit code.
+fn good_readable() -> RemoteAnswer {
+  ans(exit_code: 0, stdout: "", stderr: "")
+}
+
+fn good_accessor() -> ReaderProbeAccessorReport {
+  AccessorReport { permission_listed: true, resource: probe_resource }
+}
+
+// THE FOLD, WITH EVERYTHING THAT CAN SUCCEED ALREADY SUCCEEDED, so each claim below varies exactly one
+// answer and says which stage that answer must -- and must not -- be read as.
+fn fold_with(forced: RemoteAnswer, second: RemoteAnswer) -> ReaderProbeReceipt {
+  fold_with_accessor(forced: forced, second: second, acc: good_accessor())
+}
+
+fn fold_with_accessor(forced: RemoteAnswer, second: RemoteAnswer, acc: ReaderProbeAccessorReport) -> ReaderProbeReceipt {
+  boot_medium_reader_probe_fold(
+    pinned: true, agent_holds_pinned_key: true, fingerprint: probe_fingerprint,
+    target_reached: true, target_cause: "",
+    forced: forced, second: second,
+    shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: good_readable(),
+    login: boot_medium_reader_login, accessor: acc,
+  )
+}
+
+fn cause_of(r: ReaderProbeReceipt) -> String {
+  match r {
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => ""
+    ReaderProbeRefused { stage: _, cause: c } => c as String
+  }
+}
+
+// STAGE COMPARED AS ITSELF, not as its rendered name: a claim written against the constructor says the
+// fold reached THAT stage, and cannot be satisfied by two stages ever sharing a string.
+fn refused_at(r: ReaderProbeReceipt, wanted: ReaderProbeStage) -> Bool {
+  match r {
+    ReaderProbeRefused { stage: s, cause: _ } => s == wanted
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+}
+
+// ── THE LANE'S OWN RED ────────────────────────────────────────────────────────────────────────────
+test fn a_second_command_answered_identically_is_masked_and_the_probe_observes() -> Bool {
+  match fold_with(forced: held_forced(), second: held_forced()) {
+    ReaderProbeObserved { fingerprint: f, second_command_masked: m, locked_account: _, export: _, accessor: _, forced: _ } => f == probe_fingerprint && m
+    ReaderProbeRefused { stage: _, cause: _ } => false
+  }
+}
+
+// THE MOST IMPORTANT CLAIM IN THIS FILE. A server that ran the second command and wrote to stderr while
+// printing the same digest on stdout is a server whose forced command is NOT holding. A comparison on
+// stdout alone -- the obvious implementation -- passes it, and the lane would proceed to run an
+// unapproved boot on the strength of a masking property that does not exist. So stderr is compared, and
+// this claim is the one that fails first if someone drops it.
+test fn a_second_command_differing_only_in_stderr_is_the_red_not_a_pass() -> Bool {
+  let leaked = ans(exit_code: 0, stdout: concat(held_line(), "\n"), stderr: "uid=999(boot-medium-reader) gid=999 groups=999")
+  match fold_with(forced: held_forced(), second: leaked) {
+    ReaderProbeRefused { stage: s, cause: c } => refused_at(r: fold_with(forced: held_forced(), second: leaked), wanted: StageRed) && string_contains(s: c, pattern: "forced command did not hold")
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+}
+
+// ...AND EXIT CODE, FOR THE SAME REASON: a server that ran the second command and exited non-zero while
+// echoing the digest line is also not holding.
+test fn a_second_command_differing_only_in_exit_code_is_the_red() -> Bool {
+  let differing_exit = ans(exit_code: 1, stdout: concat(held_line(), "\n"), stderr: "")
+  refused_at(r: fold_with(forced: held_forced(), second: differing_exit), wanted: StageRed)
+}
+
+test fn a_second_command_differing_only_in_stdout_is_the_red() -> Bool {
+  let differing_stdout = ans(exit_code: 0, stdout: "uid=999(boot-medium-reader)\n", stderr: "")
+  refused_at(r: fold_with(forced: held_forced(), second: differing_stdout), wanted: StageRed)
+}
+
+// THE COMPARISON IS EQUALITY, NOT "LOOKS LIKE A DIGEST". A second answer carrying a DIFFERENT valid digest
+// is a second answer that was not answered by the forced command, however well-formed it is.
+test fn a_second_answer_with_a_different_valid_digest_is_the_red() -> Bool {
+  let other_digest = ans(exit_code: 0, stdout: join(["fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "  ", boot_medium_served_link_path() as String, "\n"], ""), stderr: "")
+  refused_at(r: fold_with(forced: held_forced(), second: other_digest), wanted: StageRed)
+}
+
+// THE ASYMMETRY THAT KEEPS THE RED FROM BEING ARGUED OUT OF. Only the FORCED leg's answer is classified for
+// refusal; the second leg is compared and nothing else. Were it classified too, an exit 255 on the second
+// leg could be read as "we never reached the daemon" -- a stage that says no fact was answered -- and a
+// genuine failure to mask would be downgraded into a non-finding. Forged here rather than assumed.
+test fn the_second_leg_is_never_classified_a_transport_failure() -> Bool {
+  let transport_shaped = ans(exit_code: 255, stdout: "", stderr: "ssh: connect to host srv2 port 22: Connection refused")
+  refused_at(r: fold_with(forced: held_forced(), second: transport_shaped), wanted: StageRed)
+}
+
+// ── THE TWO EXIT-255 SHAPES THAT LOOK IDENTICAL ───────────────────────────────────────────────────
+test fn an_authentication_refusal_is_read_as_the_locked_account_fact() -> Bool {
+  let refused = ans(exit_code: 255, stdout: "", stderr: "boot-medium-reader@srv2: Permission denied (publickey).")
+  reader_probe_refusal_class(a: refused) == ProbeAuthenticationRefused
+    && refused_at(r: fold_with(forced: refused, second: refused), wanted: StageReaderLogin)
+}
+
+// THE SIBLING CLAIM: a transport answer must NOT reach the reader stage, because the stage name is what a
+// reader of the log acts on. The fix for "cannot reach the daemon" is never a PAM change.
+test fn a_transport_refusal_is_not_read_as_the_locked_account_fact() -> Bool {
+  let unreachable = ans(exit_code: 255, stdout: "", stderr: "ssh: connect to host srv2 port 22: Connection refused")
+  reader_probe_refusal_class(a: unreachable) == ProbeTransportRefused
+    && refused_at(r: fold_with(forced: unreachable, second: unreachable), wanted: StageTransport)
+}
+
+// THE CAUSE TEXT IS PART OF THE SAFETY, NOT DECORATION. The reader stage tells the operator what NOT to do,
+// because the tempting fix for a locked-account finding is to unlock the account -- which would put a usable
+// password on a key-only service account, a worse posture than the boot this probe exists to approve. The
+// transport stage must not carry that advice, and must say plainly that UsePAM is not implicated.
+test fn the_reader_stage_forbids_unlocking_and_the_transport_stage_does_not_implicate_pam() -> Bool {
+  let refused = ans(exit_code: 255, stdout: "", stderr: "boot-medium-reader@srv2: Permission denied (publickey).")
+  let unreachable = ans(exit_code: 255, stdout: "", stderr: "ssh: connect to host srv2 port 22: Connection refused")
+  let reader_text = cause_of(r: fold_with(forced: refused, second: refused))
+  let transport_text = cause_of(r: fold_with(forced: unreachable, second: unreachable))
+  string_contains(s: reader_text, pattern: "UsePAM")
+    && string_contains(s: reader_text, pattern: "unlocking the account")
+    && string_contains(s: transport_text, pattern: "UsePAM is not implicated")
+    && string_contains(s: transport_text, pattern: "known_hosts")
+    && !string_contains(s: transport_text, pattern: "unlocking the account")
+}
+
+// THE COLLISION THIS PROBE'S OWN SUBJECT CREATES. The failure it is built to observe -- a forced sha256sum
+// that cannot open the served image -- prints `sha256sum: <path>: Permission denied`, which contains the
+// substring `Permission denied` that also appears in ssh's auth refusal. Matching the loose phrase would
+// report "the locked account cannot log in" about a host where the account logged in perfectly and could
+// not read the file: fact 2 invented as fact 1. The ssh phrase is therefore matched fully qualified.
+test fn the_tools_own_permission_denied_is_not_read_as_an_authentication_refusal() -> Bool {
+  let unreadable = ans(exit_code: 1, stdout: "", stderr: "sha256sum: /srv/bmc/mtcollins1-branch.raw.img: Permission denied")
+  reader_probe_refusal_class(a: unreadable) == ProbeNotRefused
+    && match forced_of(a: unreadable) {
+         ForcedAnswerImageUnreadable { evidence: _ } => true
+         ForcedAnswerLoginRefused { evidence: _ } => false
+         ForcedAnswerTransportBlocked { evidence: _ } => false
+         ForcedAnswerMalformed { evidence: _ } => false
+         ForcedAnswerUnexplained { evidence: _ } => false
+         ForcedAnswerHeld { digest: _ } => false
+       }
+}
+
+// A NON-ZERO EXIT WITH NOTHING ON STDERR IS NOT A COMMAND REPORTING A READ FAILURE; it is the absence of the
+// reading that decides open fact 2. Reading silence as "unreadable" would put a manufactured fact into the
+// receipt PR-C is built on, so the shape is named and refused instead.
+test fn a_silent_non_zero_answer_invents_no_fact_and_refuses() -> Bool {
+  let silent = ans(exit_code: 1, stdout: "", stderr: "")
+  refused_at(r: fold_with(forced: silent, second: silent), wanted: StageUnexplained)
+    && match forced_of(a: silent) {
+         ForcedAnswerUnexplained { evidence: _ } => true
+         ForcedAnswerImageUnreadable { evidence: _ } => false
+         ForcedAnswerHeld { digest: _ } => false
+         ForcedAnswerMalformed { evidence: _ } => false
+         ForcedAnswerLoginRefused { evidence: _ } => false
+         ForcedAnswerTransportBlocked { evidence: _ } => false
+       }
+}
+
+// THE LINE MUST BE THE FORCED COMMAND'S OWN. A digest-shaped stdout whose path is not the served link is not
+// the forced answer, and the two-space separator is load-bearing -- it is sha256sum's own format and the
+// shape boot_medium_served_reader_join admits, so a one-space line is a different program's output.
+test fn a_digest_line_naming_another_path_or_spelled_otherwise_is_not_the_forced_answer() -> Bool {
+  let wrong_path = ans(exit_code: 0, stdout: join([probe_digest as String, "  ", "/srv/bmc/something-else.raw.img", "\n"], ""), stderr: "")
+  let one_space = ans(exit_code: 0, stdout: join([probe_digest as String, " ", boot_medium_served_link_path() as String, "\n"], ""), stderr: "")
+  refused_at(r: fold_with(forced: wrong_path, second: wrong_path), wanted: StageRed)
+    && refused_at(r: fold_with(forced: one_space, second: one_space), wanted: StageRed)
+}
+
+// THE FORCED LEG IS THE ONE THAT GATES: an unreadable image does not erase the masking test, because the
+// command still authenticated and still answered -- the second command must be answered with that same
+// failed line. Only the digest is missing, and that is open fact 2's own answer.
+test fn an_unreadable_image_still_submits_to_the_masking_test() -> Bool {
+  let unreadable = ans(exit_code: 1, stdout: "", stderr: "sha256sum: /srv/bmc/mtcollins1-branch.raw.img: Permission denied")
+  match fold_with(forced: unreadable, second: unreadable) {
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: m, locked_account: _, export: e, accessor: _ } => m && string_contains(s: e.forced_evidence as String, pattern: "could not read the served image")
+    ReaderProbeRefused { stage: _, cause: _ } => false
+  }
+}
+
+// THE MASKING PREDICATE PINNED DIRECTLY, alongside the fold that uses it: it is the lane's RED in one
+// expression, and pinning it alone means a fold-level change cannot quietly redefine what "masked" means.
+test fn masking_is_equality_on_all_three_answer_fields() -> Bool {
+  reader_probe_forced_command_masks(forced: held_forced(), other: held_forced())
+    && !reader_probe_forced_command_masks(forced: held_forced(), other: ans(exit_code: 0, stdout: concat(held_line(), "\n"), stderr: "extra"))
+    && !reader_probe_forced_command_masks(forced: held_forced(), other: ans(exit_code: 1, stdout: concat(held_line(), "\n"), stderr: ""))
+    && !reader_probe_forced_command_masks(forced: held_forced(), other: ans(exit_code: 0, stdout: "uid=999\n", stderr: ""))
+}
+
+// THE CLASSIFIER, AS ONE CALL PER ANSWER: the fold runs it on the forced leg; the tests below run it
+// directly so a wrong reading is attributed to the classifier rather than to the fold's ordering.
+fn forced_of(a: RemoteAnswer) -> ReaderProbeForcedAnswer {
+  reader_probe_forced_answer(a: a, link: boot_medium_served_link_path())
+}
+
+// ── THE STAGES BEFORE ANY LEG ─────────────────────────────────────────────────────────────────────
+test fn an_unminted_key_refuses_before_anything_else_is_asked() -> Bool {
+  match boot_medium_reader_probe_fold(
+    pinned: false, agent_holds_pinned_key: false, fingerprint: probe_fingerprint,
+    target_reached: true, target_cause: "",
+    forced: held_forced(), second: held_forced(),
+    shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: good_readable(),
+    login: boot_medium_reader_login, accessor: good_accessor(),
+  ) {
+    ReaderProbeRefused { stage: s, cause: c } => s == StageKey && string_contains(s: c, pattern: "mint")
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+}
+
+// THE AGENT IS THE ACCESSOR GRANT'S OBSERVABLE, AND THE REFUSAL IS WHAT MAKES IT REAL. An agent without the
+// pinned fingerprint means the read never happened; the only way that can be answered is to say so, because
+// every reader leg would otherwise authenticate with the FLEET key and report the fleet account's privileges
+// as the reader's -- the one result that could let PR-C through falsely.
+test fn an_agent_without_the_pinned_key_refuses_rather_than_borrowing_another_credential() -> Bool {
+  match boot_medium_reader_probe_fold(
+    pinned: true, agent_holds_pinned_key: false, fingerprint: probe_fingerprint,
+    target_reached: true, target_cause: "",
+    forced: held_forced(), second: held_forced(),
+    shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: good_readable(),
+    login: boot_medium_reader_login, accessor: good_accessor(),
+  ) {
+    ReaderProbeRefused { stage: s, cause: c } => s == StageAgent
+      && string_contains(s: c, pattern: "boot_medium_reader_key_accessor_row")
+      && string_contains(s: c, pattern: "fleet")
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+}
+
+test fn an_unanchorable_target_refuses_with_the_its_own_cause() -> Bool {
+  match boot_medium_reader_probe_fold(
+    pinned: true, agent_holds_pinned_key: true, fingerprint: probe_fingerprint,
+    target_reached: false, target_cause: "srv2 is not in the trust anchor" as NonEmptyStr,
+    forced: held_forced(), second: held_forced(),
+    shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: good_readable(),
+    login: boot_medium_reader_login, accessor: good_accessor(),
+  ) {
+    ReaderProbeRefused { stage: s, cause: c } => s == StageTarget && c == "srv2 is not in the trust anchor"
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+}
+
+// ── OPEN FACT 1: THE THREE READINGS ──────────────────────────────────────────────────────────────
+fn locked_of(r: ReaderProbeReceipt) -> ReaderProbeLockedAccountFact {
+  match r {
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: la, export: _, accessor: _ } => la
+    ReaderProbeRefused { stage: _, cause: _ } => LockedAccountUnreadable { cause: "the probe refused before the facts were read" as NonEmptyStr }
+  }
+}
+
+// THE FACT IS RECORDED WITH ALL THREE READINGS PRESENT, not collapsed into a verdict: an operator reading
+// the log has to see the shadow field, the EFFECTIVE usepam, and the login outcome, because the whole point
+// of open fact 1 is that those three were never read together before this probe existed.
+test fn a_locked_account_admitted_under_usepam_is_recorded_as_read() -> Bool {
+  match locked_of(r: fold_with(forced: held_forced(), second: held_forced())) {
+    LockedAccountRead { shadow_locked: l, use_pam: u, login_admitted: a } => l && u == "yes" && a
+    LockedAccountUnreadable { cause: _ } => false
+  }
+}
+
+// THE COMBINATION THAT CANNOT BE TRUE, REFUSED RATHER THAN SMOOTHED. A login admitted while the field is
+// locked AND sshd reports usepam=no means the reading itself is untrustworthy -- either the daemon answering
+// is not the one that rendered this config, or something other than sshd admitted the key. Reporting that as
+// an observation would put a contradiction under PR-C's approval-free cell.
+test fn the_contradictory_triple_refuses_instead_of_becoming_an_observation() -> Bool {
+  let no_pam = ans(exit_code: 0, stdout: "usepam no\n", stderr: "")
+  match reader_probe_locked_account_fact(shadow: good_shadow(), use_pam: no_pam, login_admitted: true, login: boot_medium_reader_login) {
+    LockedAccountUnreadable { cause: c } => string_contains(s: c as String, pattern: "contradict")
+    LockedAccountRead { shadow_locked: _, use_pam: _, login_admitted: _ } => false
+  }
+}
+
+// THE SAME THREE READINGS ARE ADMISSIBLE WHEN THEY AGREE: usepam=no with an UNLOCKED field is a host whose
+// account simply has no lock, and that is a fact rather than a contradiction. The refusal above must be
+// about the combination, not about either reading being unusual.
+test fn an_unlocked_field_under_usepam_no_is_a_fact_not_a_contradiction() -> Bool {
+  let unlocked = ans(exit_code: 0, stdout: join([boot_medium_reader_login as String, ":*:19000:0:99999:7:::\n"], ""), stderr: "")
+  let no_pam = ans(exit_code: 0, stdout: "usepam no\n", stderr: "")
+  match reader_probe_locked_account_fact(shadow: unlocked, use_pam: no_pam, login_admitted: true, login: boot_medium_reader_login) {
+    LockedAccountRead { shadow_locked: l, use_pam: u, login_admitted: a } => !l && u == "no" && a
+    LockedAccountUnreadable { cause: _ } => false
+  }
+}
+
+test fn an_unreadable_shadow_or_missing_usepam_keyword_refuses_rather_than_defaulting() -> Bool {
+  let shadow_gone = ans(exit_code: 2, stdout: "", stderr: "getent: not found")
+  let no_keyword = ans(exit_code: 0, stdout: "permitrootlogin no\n", stderr: "")
+  match reader_probe_locked_account_fact(shadow: shadow_gone, use_pam: good_use_pam(), login_admitted: true, login: boot_medium_reader_login) {
+    LockedAccountUnreadable { cause: _ } =>
+      match reader_probe_locked_account_fact(shadow: good_shadow(), use_pam: no_keyword, login_admitted: true, login: boot_medium_reader_login) {
+        LockedAccountUnreadable { cause: _ } => true
+        LockedAccountRead { shadow_locked: _, use_pam: _, login_admitted: _ } => false
+      }
+    LockedAccountRead { shadow_locked: _, use_pam: _, login_admitted: _ } => false
+  }
+}
+
+// THE LOCKED READING READS THE FIELD IT CLAIMS TO READ, from shadow(5): `!`, `*`, `*LK*`, or a leading `!`.
+// The negative cases are the load-bearing ones -- an empty field is NOT a lock, and a row for a different
+// login is not this account's row, so a fixture mix-up cannot silently manufacture fact 1's answer.
+fn shadow_row(login: NonEmptyStr, field: String) -> String {
+  join([login as String, ":", field, ":19000:0:99999:7:::"], "")
+}
+
+test fn the_locked_reading_recognises_the_lock_shapes_and_nothing_else() -> Bool {
+  let login = boot_medium_reader_login
+  reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: "!"), login: login)
+    && reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: "*LK*"), login: login)
+    && reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: "!$6$rounds$abc"), login: login)
+    // A bare `*` is "no UNIX password" -- the state a --system account is created with -- not the lock
+    // marker; calling it locked would make the open fact read "locked" on every host.
+    && !reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: "*"), login: login)
+    && !reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: ""), login: login)
+    && !reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: "$6$rounds$abc"), login: login)
+    && !reader_shadow_field_is_locked(shadow_line: shadow_row(login: login, field: "!"), login: "some-other-account" as NonEmptyStr)
+    && !reader_shadow_field_is_locked(shadow_line: "", login: login)
+}
+
+// ── OPEN FACT 2: POLARITY RECORDED, NOT ASSERTED ─────────────────────────────────────────────────
+// B2b deliberately declared no other-read on the export, so "unreadable" is that ruling working and
+// "readable" means something unnamed is granting access. BOTH are admissible and the receipt must say
+// which, because PR-C's BMC-only cell is built on top of the answer.
+test fn the_export_reading_records_which_polarity_it_saw_from_both_sides() -> Bool {
+  let readable = reader_probe_export_reading(admin: good_readable(), forced: ForcedAnswerHeld { digest: probe_digest })
+  let blocked = reader_probe_export_reading(admin: ans(exit_code: 1, stdout: "", stderr: ""), forced: ForcedAnswerLoginRefused { evidence: "never authenticated" as NonEmptyStr })
+  readable.readable
+    && string_contains(s: readable.admin_evidence as String, pattern: "admin leg asked as the reader account")
+    && !blocked.readable
+    && string_contains(s: blocked.forced_evidence as String, pattern: "never authenticated")
+}
+
+// ── THE RENDERED RECEIPT ─────────────────────────────────────────────────────────────────────────
+// THE RECEIPT CANNOT LEAK WHAT THE MODEL CANNOT CARRY. No type in the module holds a private half -- there
+// is no secret read anywhere in it -- so no arm can render one, and the fingerprint is the only thing ever
+// said about the key. This claim is the regression guard on that structure: it is the one place where
+// far-side text reaches a log, and the assertion is that the only key-shaped thing reaching it is public.
+test fn the_receipt_names_the_key_by_fingerprint_alone_and_never_by_material() -> Bool {
+  let text = render_reader_probe_receipt(r: fold_with(forced: held_forced(), second: held_forced()))
+  string_contains(s: text, pattern: "reader_probe=observed")
+    && string_contains(s: text, pattern: probe_fingerprint as String)
+    && string_contains(s: text, pattern: "second_command_masked=true")
+    && string_contains(s: text, pattern: "sshd_effective_usepam=yes")
+    && string_contains(s: text, pattern: "shadow_password_field_locked=true")
+    && string_contains(s: text, pattern: "image_readable_by_reader=true")
+    && !string_contains(s: text, pattern: "PRIVATE KEY")
+    && !string_contains(s: text, pattern: "BEGIN OPENSSH")
+}
+
+// A REFUSAL RENDERS ITS STAGE NAME, so a red step leaves behind the fact rather than an empty artifact.
+test fn a_refusal_renders_its_stage_so_a_red_step_is_still_evidence() -> Bool {
+  let refused = ans(exit_code: 255, stdout: "", stderr: "boot-medium-reader@srv2: Permission denied (publickey).")
+  let text = render_reader_probe_receipt(r: fold_with(forced: refused, second: refused))
+  string_contains(s: text, pattern: "reader_probe=refused")
+    && string_contains(s: text, pattern: "stage=reader")
+}
+
+// THE ACCESSOR LINE STATES ITS OWN LIMITS, because the instrument cannot answer the question a reader will
+// want to ask of it. testIamPermissions is diagnostic-only here (no absent constructor: an empty set also
+// means the resource does not exist), so `false` in this field must not be readable as "the grant is
+// missing" -- the grant is enforced by the agent stage, and the log has to say so or it misleads.
+test fn the_accessor_line_refuses_to_be_read_as_a_refusal_of_the_grant() -> Bool {
+  let listed = render_reader_probe_receipt(r: fold_with_accessor(forced: held_forced(), second: held_forced(), acc: AccessorReport { permission_listed: true, resource: probe_resource }))
+  let unlisted_receipt = fold_with_accessor(forced: held_forced(), second: held_forced(), acc: AccessorReport { permission_listed: false, resource: probe_resource })
+  let unreadable = render_reader_probe_receipt(r: fold_with_accessor(forced: held_forced(), second: held_forced(), acc: AccessorReportUnreadable { reason: "testIamPermissions refused" as NonEmptyStr }))
+  let unlisted = render_reader_probe_receipt(r: unlisted_receipt)
+  string_contains(s: listed, pattern: "versions_access_listed=true")
+    && string_contains(s: unlisted, pattern: "versions_access_listed=false")
+    && string_contains(s: listed, pattern: "diagnostic only")
+    && string_contains(s: unlisted, pattern: "not a refusal of the grant")
+    && string_contains(s: unreadable, pattern: "accessor_probe=unreadable")
+    && reader_probe_holds(r: unlisted_receipt)
+}
+
+// THE GATE THE CI STEP ACTUALLY CHECKS: an observation whose forced command could not read the image still
+// holds (that is open fact 2's answer, recorded), while any refusal -- and any unmasked observation -- does
+// not. The second arm is the one that matters: an unmasked observation with every other field present must
+// not be able to look like success.
+test fn the_hold_needs_the_mask_and_a_refusal_never_holds() -> Bool {
+  let refused = ans(exit_code: 255, stdout: "", stderr: "boot-medium-reader@srv2: Permission denied (publickey).")
+  let unreadable = ans(exit_code: 1, stdout: "", stderr: "sha256sum: /srv/bmc/mtcollins1-branch.raw.img: Permission denied")
+  reader_probe_holds(r: fold_with(forced: held_forced(), second: held_forced()))
+    && reader_probe_holds(r: fold_with(forced: unreadable, second: unreadable))
+    && !reader_probe_holds(r: fold_with(forced: refused, second: refused))
+    && !reader_probe_holds(r: fold_with(forced: held_forced(), second: ans(exit_code: 0, stdout: "uid=999\n", stderr: "")))
+}
+
+// THE STAGE NAMES ARE EIGHT DISTINCT WORDS, so a log reader can tell the six causes of a red run apart. If
+// two stages ever collapse to one string, the transport/authentication split this file exists to enforce
+// collapses with them, silently.
+test fn every_stage_has_its_own_name() -> Bool {
+  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts], s => reader_probe_stage_text(stage: s))
+  all(names, n => n != "") && all(names, n => filter(names, m => m == n).length() == 1)
+}
+
+fn probe_step_id(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn probe_step_if(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: i, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: i, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+// THE PROBE IS A DISPATCH, NOT A SIDE EFFECT: exactly one job carries its step, the step runs only under its
+// own mode, and the receipt -- the finding, refusal included -- uploads under `always()`, the same gate shape
+// that review 87458 taught this lane about receipt survival.
+test fn the_probe_is_one_gated_step_in_one_job_and_its_receipt_uploads_under_always() -> Bool {
+  let jobs_with = filter(fleet_converge_jobs(), j => any(j.steps, st => probe_step_id(st: st) == "boot_medium_reader_probe"))
+  let uploads = filter(fleet_converge_jobs(), j => any(j.steps, st => probe_step_id(st: st) == "boot_medium_reader_probe_receipt_upload"))
+  jobs_with.count() == 1
+    && uploads.count() == 1
+    && jobs_with.first().value.id == uploads.first().value.id
+    && probe_step_if(st: fleet_converge_boot_medium_reader_probe_step()) == "github.event.inputs.mode == 'boot_medium_reader_probe'"
+    && probe_step_if(st: fleet_converge_boot_medium_reader_probe_receipt_upload_step()) == "always() && github.event.inputs.mode == 'boot_medium_reader_probe'"
+}
+
+// THE COMMITTED PROBE YAML IS THE MODEL'S EMISSION (review of #15383: the probe hunks of fleet-converge.yml
+// were a hand-carried projection nothing compared). The model's own YAML writer renders each probe-specific
+// piece -- the mode option, the shared job's admission and concurrency, the probe step, the receipt-upload
+// step -- and the committed file must contain that rendering line for line at the indent its position gives.
+// Unlike the seed-build fold, none of these pieces needs a capable interpreter: the writer is plain Dag, so
+// the equality is STRICT on every interpreter and there is no disclosed-gap arm. A writer refusal renders
+// "" and so matches nothing (a refusal cannot pass).
+
+fn committed_probe_lines() -> List<String> {
+  filesystem_read(path: ".github/workflows/fleet-converge.yml").content.split(delimiter: "\n")
+}
+
+fn emitted_probe_text(v: YamlValue) -> String {
+  match emit_yaml(v: v) {
+    EmittedYaml { text: t } => t
+    YamlEmitRefused { path: _, reason: _ } => ""
+  }
+}
+
+fn emitted_probe_block(v: YamlValue, indent: String) -> List<String> {
+  map(filter(emitted_probe_text(v: v).split(delimiter: "\n"), l => l != ""), l => concat(indent, l))
+}
+
+fn probe_block_at(lines: List<String>, block: List<String>, i: Int) -> Bool {
+  take_prefix(xs: skip(xs: lines, n: i), n: count(block)) == block
+}
+
+fn committed_contains_block(block: List<String>) -> Bool {
+  match block.first() {
+    Absent => false
+    Present { value: head } => any(enumerate(committed_probe_lines()), p => p.second == head && probe_block_at(lines: committed_probe_lines(), block: block, i: p.first))
+  }
+}
+
+fn committed_probe_step_block(step: Step) -> List<String> {
+  emitted_probe_block(v: steps_yaml(steps: [step]), indent: "      ")
+}
+
+test fn the_committed_probe_step_is_the_models_emission_line_for_line() -> Bool {
+  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_step())
+  count(block) > 5 && committed_contains_block(block: block)
+}
+
+test fn the_committed_receipt_upload_step_is_the_models_emission_line_for_line() -> Bool {
+  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_receipt_upload_step())
+  count(block) > 5 && committed_contains_block(block: block)
+}
+
+test fn the_committed_mode_option_list_is_the_models_dispatch_modes() -> Bool {
+  let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "options", value: string_list_flow(items: fleet_converge_mode_options))] }, indent: "        ")
+  count(block) == 1 && committed_contains_block(block: block) && any(fleet_converge_mode_options, o => o == "boot_medium_reader_probe")
+}
+
+test fn the_committed_shared_job_admission_is_the_models_if_condition() -> Bool {
+  match fleet_converge_job().if_condition {
+    Absent => false
+    Present { value: c } => {
+      let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "if", value: yaml_string(s: c))] }, indent: "    ")
+      count(block) == 1 && committed_contains_block(block: block) && string_contains(s: c, pattern: "boot_medium_reader_probe")
+    }
+  }
+}
+
+test fn the_committed_shared_job_concurrency_is_the_models_and_serializes_the_probe_on_srv2() -> Bool {
+  match fleet_converge_job().concurrency {
+    Absent => false
+    Present { value: spec } => {
+      let block = emitted_probe_block(v: YamlMapping { entries: [kv(key: "concurrency", value: concurrency_yaml(spec: spec))] }, indent: "    ")
+      count(block) > 2 && committed_contains_block(block: block)
+        && any(block, l => string_contains(s: l, pattern: "'boot_medium_reader_probe' && 'gunbc-host-mutation-srv2'"))
+    }
+  }
+}
+
+// THE RED: the comparison discriminates. The same block with its last line (the timeout) changed is not in
+// the committed file, so an equality that were vacuous (an empty emission, a match on a prefix) would fail here.
+test fn a_probe_block_with_one_line_changed_is_not_the_committed_file() -> Bool {
+  let block = committed_probe_step_block(step: fleet_converge_boot_medium_reader_probe_step())
+  committed_contains_block(block: block)
+    && !committed_contains_block(block: append(take_prefix(xs: block, n: count(block) - 1), items: ["        timeout-minutes: 6"]))
+}

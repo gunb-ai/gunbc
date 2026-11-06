@@ -308,7 +308,7 @@ fn snapshot_census_prior_of_read(namespace: String, success: Bool, content: Stri
 }
 
 // Per-instance by construction, in the directory the service principal owns
-// (gunbc.roadmap.roadmap_belt_actuate belt_tick_receipt_path_for_instance records why that directory).
+// (gunbc.roadmap.roadmap_belt_receipt_store_root belt_tick_receipt_store records why that directory).
 fn roadmap_snapshot_census_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
   join([instance_receipts_dir(instance_root: instance.instance_root as String), "/roadmap-event-snapshot-census.json"], "")
 }

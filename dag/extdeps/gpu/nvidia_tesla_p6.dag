@@ -1,0 +1,83 @@
+module extdeps.gpu.nvidia_tesla_p6
+
+import std.types { List, NonEmptyStr }
+import std.optional { Present }
+import std.measure { hardware_thread_count, bandwidth, watt, gibibyte, gibibyte_to_byte_size }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
+import extdeps.gpu.types { GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, Cuda, ConfigurableBoardPower, MxmModule, MxmVariant, SingleGpu }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { Gen3, PcieLink }
+import extdeps.pci.identity { PciDeviceId }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.nvidia.linux_driver_supported_chips { nvidia_linux_driver_supported_chips_authority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA Tesla P6 product brief, read 2026-10-28: "an MXM 3.1 Type B card with a single NVIDIA Pascal GP104
+// graphics processing unit (GPU). It has 16 GB GDDR5 video memory and a 90 Watt maximum power limit." Its
+// specification table: total board power "90 W (70 W optional)", form factor "MXM 3.1 Type B", 2,048 CUDA
+// cores, PCI Express interface "P0: Gen3 16 lanes", memory size 16 GB, memory bandwidth 192.2 GB/s. A
+// removable module, bought bare: it needs an MXM carrier, cooling and power the module does not supply.
+// The power is a configurable choice between the two stated points, 90 W by default. The driver lists
+// "Tesla P6", device 1bb4.
+
+data tesla_p6_product_brief_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "images.nvidia.com/content/pdf/tesla/Tesla-P6-Product-Brief.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_board_catalogs", field: WholeDeclaration
+  } },
+  first_citation: tesla_p6_product_brief_authority,
+  further_citations: []
+}
+
+data nvidia_tesla_p6_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
+  vendor: nvidia,
+  model: "Tesla P6",
+  microarchitecture: "Pascal",
+  execution_lane_count: Present { value: hardware_thread_count(2048) },
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 192200000000) },
+  boost_clock: none,
+  compute_capability: none,
+  supported_runtimes: [Cuda],
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_catalog", field_name: "memory"), authority: tesla_p6_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_catalog", field_name: "memory_bandwidth"), authority: tesla_p6_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_catalog", field_name: "execution_lane_count"), authority: tesla_p6_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_catalog", field_name: "microarchitecture"), authority: tesla_p6_product_brief_authority },
+  ],
+  dense_tensor_throughput: [],
+}
+
+data nvidia_tesla_p6_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
+  vendor: nvidia,
+  model: "Tesla P6",
+  gpu: nvidia_tesla_p6_catalog,
+  composition: SingleGpu,
+  attachment: MxmModule { variant: MxmVariant { revision: "3.1", module_type: "Type B" }, link: Present { value: PcieLink { generation: Gen3, lane_count: 16 } } },
+  board_power: Present { value: ConfigurableBoardPower { default: Present { value: watt(count: 90) }, minimum: watt(count: 70), maximum: watt(count: 90), named_points: [] } },
+  zero_power: none,
+  thermal: none,
+  pci_device_id: Present { value: "1bb4" as PciDeviceId },
+  driver_listed_name: Present { value: "Tesla P6" },
+  figure_citations: [
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_board_facts", field_name: "attachment"), authority: tesla_p6_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_board_facts", field_name: "board_power"), authority: tesla_p6_product_brief_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_board_facts", field_name: "pci_device_id"), authority: nvidia_linux_driver_supported_chips_authority },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_tesla_p6", decl_name: "nvidia_tesla_p6_board_facts", field_name: "driver_listed_name"), authority: nvidia_linux_driver_supported_chips_authority },
+  ],
+}
+
+data nvidia_tesla_p6_board_catalog: GpuBoardAdmission = admit_gpu_board(facts: nvidia_tesla_p6_board_facts)
+
+// Every board this module declares, in declaration order: the roster test.claim.gpu_board_catalog_witness
+// requires to be admitted, and this module's model-scope subject.
+data nvidia_tesla_p6_board_catalogs: List<GpuBoardAdmission> = [nvidia_tesla_p6_board_catalog]

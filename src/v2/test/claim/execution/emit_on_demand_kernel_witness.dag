@@ -120,7 +120,7 @@ fn kernel_test_store() -> ArtifactStore {
   match store_over_provider(provider: kernel_provider) {
     StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
-      ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+      ArtifactStore { at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }, budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
@@ -154,7 +154,9 @@ test fn emit_on_demand_materialize_share_on_hit_holds() -> Bool {
         EmitOnDemandMiss => false
       }
     },
-    did_not_fit: (a, b) => false
+    did_not_fit: (a, b) => false,
+    at_capacity: (a, b) => false,
+    policy_refused: c => false
   )
 }
 

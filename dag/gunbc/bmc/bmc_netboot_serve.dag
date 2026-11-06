@@ -3,9 +3,32 @@ module gunbc.bmc.bmc_netboot_serve
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.types { NonEmptyStr, String, Int, List, Port }
-import std.algebra { list_append }
+import std.algebra { list_append, FreeSemigroup }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, parse_mac_address }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.host.host_network_diagnosis { boot_nic_of }
+import gunbc.provisioning.public_nocloud_seed {
+  PublicSeedAdmission
+  PublicSeedAdmitted
+  PublicSeedRefused
+  PublicSeedFinding
+  SeedKeyNotAdmitted
+  SeedCredentialField
+  SeedValueNotAdmitted
+  SeedPasswordSshEnabled
+  SeedAuthorizedKeyNotPublic
+  SeedCredentialShapedValue
+  SeedRenderRefused
+  SeedDocument
+  SeedUserData
+  SeedMetaData
+  admit_public_nocloud_seed
+  public_nocloud_seed_user_data
+  public_nocloud_seed_meta_data
+}
 import extdeps.uri { Uri, Http, Https, uri_wire }
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload, WithIdentity, UserDataOnly, nocloud_seedfrom_kernel_arg }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload, nocloud_seedfrom_kernel_arg }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
@@ -25,18 +48,19 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
-import gunbc.os_install_emit {
-  autoinstall_user_data
-  AutoinstallUserData
-  AutoinstallUserDataRendered
-  AutoinstallUserDataRefused
-}
+import gunbc.os_install_emit { autoinstall_user_data_document }
 
 type BmcNetbootServePlan {
   bmc_host: NonEmptyStr
   serve_port: Port
   netboot_dir: NonEmptyStr
   boot_interface: NonEmptyStr
+  // THE HOST THIS EDGE INSTALLS. The plan's subject is a typed fact, not an inference: the BMC at
+  // bmc_host is the management interface OF this host, and the netboot client the served seed is
+  // keyed on is THIS host's boot NIC (gunbc.host.host_network_diagnosis.boot_nic_of), never "the
+  // interface that happens to be measured nearby". A plan whose subject has no boot-NIC row cannot
+  // name its client and refuses before staging anything.
+  subject_host: HostIdentity
   bulk_iso_url: Uri
   autoinstall: UbuntuAutoinstallPayload
 }
@@ -46,6 +70,11 @@ data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
   serve_port: 8080,
   netboot_dir: "/tmp/netboot",
   boot_interface: "eth2",
+  // The typed statement of what this edge is for: 192.168.1.195 is srv4's BMC
+  // (gunbc.fleet.fleet_intent_network srv4_bmc_endpoint, subject EndpointHost srv4), so the host
+  // this serve plan installs is srv4, and its client MAC is srv4's boot NIC from the inventory —
+  // derived from the plan's subject, not hard-wired to srv4's interface row.
+  subject_host: operator_host_srv4,
   bulk_iso_url: Uri {
     scheme: Https,
     locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
@@ -106,15 +135,76 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
   }
 }
 
-// The nocloud seed travels as the emitter's own verdict: the YAML emit either rendered the
-// document or refused with a reason, and there is no String here to widen that refusal into
-// (§5: a failure arm must refuse, never widen). The staged value carries only the rendered
-// content; a refused seed refuses the whole staging before any op is prepared. (This function
-// previously declared `-> String` while returning the emitter's sum — a declaration the
-// substrate let stand until a witness ran a strict string operation over the value, which is
-// why the floor caught it and this clause exists.)
-fn bmc_netboot_user_seed_verdict(plan: BmcNetbootServePlan) -> AutoinstallUserData {
-  autoinstall_user_data(payload: plan.autoinstall)
+// THE SERVED SEED IS THE ADMITTED PUBLIC SEED, NOT A RENDERING. This payload leaves the repository
+// over a network — httpd at the plan's BMC edge serves the volume to whatever NIC netboots — so the
+// document that reaches it must be the one the fleet's public-seed contract signs: the same
+// admit_public_nocloud_seed that governs a site PXE edge binding, over the SAME document tree the
+// emitter renders (autoinstall_user_data_document; never a re-parse of rendered text). Nothing
+// that does not pass is staged, and this module renders no seed of its own any more: the admitted
+// seed's user_data and meta_data bytes are what the staged puts carry. An identity section (a
+// password or not), an allow-pw that is not false, or a non-canonical key refuses by name here
+// (dashboard node adhoc-dfa3a487; the finding came from #15136's public-seed audit).
+//
+// THE CLIENT MAC IS THE PLAN'S SUBJECT HOST'S BOOT NIC. The instance-id rule this module defers to
+// derives the field from the netbooting client's MAC, so the plan carries a SUBJECT (subject_host)
+// and the MAC comes from gunbc.host.host_network_diagnosis.boot_nic_of(subject) — the inventory
+// that answers "which NIC does THIS host PXE from" with the row that measured it. That is a
+// derivation from the plan's own subject, not a hard-wire to any one host's interface row: a plan
+// whose subject has no boot-NIC assignment cannot name its client, and refuses below before any op
+// is prepared (a borrowed MAC would mint an instance-id for the wrong machine, which is exactly
+// what the contract's MAC-derived instance-id exists to prevent). The parse can still fail — the
+// row's mac is a NonEmptyStr whose bytes upstream chose — and that refusal says so too.
+// The client-MAC verdict, in this module's own vocabulary (§5: a typed, located refusal): either
+// the plan's subject names a measured boot NIC whose bytes parse, or a reason that names the host
+// and the missing/bad row.
+type NetbootClientMacVerdict
+  = ClientMacNamed { mac: Eui48Address }
+  | ClientMacUnnameable { reason: NonEmptyStr }
+
+fn seed_client_mac_verdict(plan: BmcNetbootServePlan) -> NetbootClientMacVerdict {
+  match boot_nic_of(host: plan.subject_host) {
+    Absent => ClientMacUnnameable {
+      reason: join(
+        [
+          "bmc-netboot cannot name its netboot client: ",
+          plan.subject_host as String,
+          " has no boot-NIC assignment in gunbc.host.host_network_diagnosis.boot_nic_inventory",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+    Present { value: nic } =>
+      match parse_mac_address(text: nic.mac as String) {
+        MacParseFailed { error: _ } => ClientMacUnnameable {
+          reason: join(
+            [
+              "bmc-netboot cannot name its netboot client: ",
+              plan.subject_host as String,
+              " boot NIC ",
+              nic.name as String,
+              " has a mac that does not parse",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+        MacParsed { address: client_mac } => ClientMacNamed { mac: client_mac }
+      }
+  }
+}
+
+fn bmc_netboot_user_seed_admission(plan: BmcNetbootServePlan) -> PublicSeedAdmission {
+  match seed_client_mac_verdict(plan: plan) {
+    ClientMacUnnameable { reason: why } => PublicSeedRefused {
+      findings: FreeSemigroup {
+        head: SeedRenderRefused { document: SeedUserData, reason: why },
+        tail: [],
+      },
+    }
+    ClientMacNamed { mac: client_mac } => admit_public_nocloud_seed(
+      client_mac: client_mac,
+      user_data: autoinstall_user_data_document(payload: plan.autoinstall),
+    )
+  }
 }
 
 // The BMC fleet this module targets ships OpenBMC/Dropbear (gunbc.remote_shell_command
@@ -240,7 +330,7 @@ fn bmc_netboot_staging_refused_transport(name: String) -> BmcNetbootStaging {
 fn bmc_netboot_staging_refused_seed(cause: String) -> BmcNetbootStaging {
   BmcNetbootStagingRefused {
     reason: join(
-      ["bmc-netboot nocloud seed could not be rendered: ", cause],
+      ["bmc-netboot staged no seed: ", cause],
       "",
     ) as NonEmptyStr,
   }
@@ -326,42 +416,62 @@ fn bmc_netboot_staging_of(plan: BmcNetbootServePlan, ops: List<BmcNetbootOp>) ->
 }
 
 // THE STAGED PROVISION, ONE AUTHORITY: the directory, the seven staged files (five from the
-// artifact dir, grub.cfg and the two nocloud seeds rendered from typed payloads), and the serve
-// launch, in the order they must act. This replaces the old hand-unrolled sequence -- a separate
+// artifact dir, grub.cfg rendered from the typed plan, and the two nocloud seed documents —
+// ADMITTED BY THE PUBLIC-SEED CONTRACT, never rendered freehand here), and the serve launch, in
+// the order they must act. This replaces the old hand-unrolled sequence -- a separate
 // mkdir run, then a per-file fold, then a serve launch gated on the fold's exit code -- whose
 // three argv call sites each reached the transport on their own.
-// THE INSTANCE-ID OF THE STAGED meta-data FILE IS THE PLAN'S OWN HOSTNAME — that is what this file has
-// always written there, and the plan supplying it is the whole authority for it. When the seed takes the
-// key-only route there is no identity section and so no hostname, and NOTHING CITED SAYS what instance-id
-// such a seed carries: the fleet's one cited rule for this field
-// (gunbc.provisioning.public_nocloud_seed.public_seed_meta_data_document — cloud-init's NoCloud datasource
-// requires instance-id, so it is derived, never caller-chosen) derives it from the CLIENT'S MAC, and a serve
-// plan has no MAC to give it: at serve-plan time the client has not been identified yet, which is the point
-// of PXE. So this says Absent, and the staging that would have needed the value refuses by name. Inventing
-// "iid-datasource-none" here would have been a fabricated default in a credential-adjacent file, and the
-// comment claiming the vendor data "would carry it anyway" cited no one (DESIGN.md §5: a silent widen or
-// fabricated default is a hard reject).
-fn bmc_netboot_instance_id(plan: BmcNetbootServePlan) -> Optional<NonEmptyStr> {
-  match plan.autoinstall.identity_posture {
-    WithIdentity { identity: id, user_data: _ } => Present { value: id.hostname }
-    UserDataOnly { users: _ } => Absent
+//
+// THE TWO SEED FILES ARE THE CONTRACT'S OWN BYTES. meta-data used to write the plan's identity
+// hostname as its instance-id; that route died with the identity section, and its replacement is
+// NOT a reinvention here: the admitted seed's meta_data is exactly
+// public_nocloud_seed_meta_data — "instance-id: iid-<the client MAC, hyphenated, lowercase>" —
+// the one cited rule for the field, applied to the measured srv4 NIC row. The bytes staged are
+// the bytes that passed; re-deriving them here would put a second copy of the format in this
+// module, where the next contract change edits one and forgets the other.
+fn seed_document_name(document: SeedDocument) -> String {
+  match document {
+    SeedUserData => "user-data"
+    SeedMetaData => "meta-data"
   }
 }
 
-fn bmc_netboot_staging_refused_instance_id() -> BmcNetbootStaging {
-  BmcNetbootStagingRefused {
-    reason: join(
-      [
-        "bmc-netboot cannot stage a key-only (user-data) seed: nocloud/meta-data needs an instance-id, ",
-        "this plan's comes from its identity hostname, and the only cited rule for the field derives it ",
-        "from a client MAC a serve plan does not yet have",
-      ],
-      "",
-    ) as NonEmptyStr,
+fn seed_finding_cause(finding: PublicSeedFinding) -> String {
+  match finding {
+    SeedKeyNotAdmitted { document: d, path: p } => join([seed_document_name(document: d), ": field '", p, "' is not a public-seed field"], "")
+    SeedCredentialField { document: d, path: p } => join([seed_document_name(document: d), ": credential field '", p, "' has no place in a seed served to the network"], "")
+    SeedValueNotAdmitted { document: d, path: p } => join([seed_document_name(document: d), ": the value at '", p, "' is not an admitted one"], "")
+    SeedPasswordSshEnabled { document: d, path: p } => join([seed_document_name(document: d), ": password authentication is enabled at '", p, "'"], "")
+    SeedAuthorizedKeyNotPublic { document: d, path: p } => join([seed_document_name(document: d), ": the authorized key at '", p, "' is not a canonical public key line"], "")
+    SeedCredentialShapedValue { document: d, path: p } => join([seed_document_name(document: d), ": the value at '", p, "' is shaped like a credential"], "")
+    SeedRenderRefused { document: d, reason: r } => join([seed_document_name(document: d), " could not render: ", r], "")
   }
 }
 
-fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String, instance_id: NonEmptyStr) -> List<BmcNetbootOp> {
+fn seed_findings_text(findings: FreeSemigroup<PublicSeedFinding>) -> String {
+  fold(
+    concat([findings.head], findings.tail),
+    init: "",
+    f: (acc, finding) =>
+      if acc == "" {
+        seed_finding_cause(finding: finding)
+      } else {
+        join([acc, "; ", seed_finding_cause(finding: finding)], "")
+      },
+  )
+}
+
+fn seed_admission_cause(findings: FreeSemigroup<PublicSeedFinding>) -> NonEmptyStr {
+  let note = "bmc-netboot refuses to stage: the seed is not admitted by gunbc.provisioning.public_nocloud_seed"
+  let rendered = seed_findings_text(findings: findings)
+  if rendered == "" { note as NonEmptyStr } else { join([note, ": ", rendered], "") as NonEmptyStr }
+}
+
+fn bmc_netboot_staging_ops(
+  plan: BmcNetbootServePlan,
+  user_seed: String,
+  meta_seed: String,
+) -> List<BmcNetbootOp> {
   [
     BmcNetbootMakeDir { name: "nocloud" },
     BmcNetbootPutArtifact { name: "busybox", artifact: bmc_netboot_artifact(name: "busybox") },
@@ -370,33 +480,26 @@ fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String, instanc
     BmcNetbootPutArtifact { name: "grubaa64.efi", artifact: bmc_netboot_artifact(name: "grubaa64.efi") },
     BmcNetbootPutText { name: "grub.cfg", text: bmc_netboot_grub_cfg_text(plan: plan) },
     BmcNetbootPutText { name: "nocloud/user-data", text: user_seed },
-    // THE INSTANCE-ID IS A PARAMETER, NOT A FALLBACK. The caller had to establish one — from this plan's
-    // identity hostname — or it never reached this line: the staging folds through
-    // bmc_netboot_provision_staging, which refuses first when bmc_netboot_instance_id says Absent. So there
-    // is no branch here that manufactures a value, and the bytes for a plan that has a hostname are exactly
-    // what they were.
-    BmcNetbootPutText {
-      name: "nocloud/meta-data",
-      text: join(["instance-id: ", instance_id as String], ""),
-    },
+    BmcNetbootPutText { name: "nocloud/meta-data", text: meta_seed },
     BmcNetbootLaunchServe,
   ]
 }
 
 fn bmc_netboot_provision_staging(plan: BmcNetbootServePlan) -> BmcNetbootStaging {
-  // THE INSTANCE-ID IS ESTABLISHED BEFORE ANY OP IS PREPARED, so a plan that cannot name one stages nothing
-  // rather than staging a file whose instance-id was made up. The refusal carries no operation list at all,
-  // which is how this module already says "none of this becomes observable".
-  match bmc_netboot_instance_id(plan: plan) {
-    Absent => bmc_netboot_staging_refused_instance_id()
-    Present { value: instance_id } =>
-      match bmc_netboot_user_seed_verdict(plan: plan) {
-        AutoinstallUserDataRendered { content: t } => bmc_netboot_staging_of(
-          plan: plan,
-          ops: bmc_netboot_staging_ops(plan: plan, user_seed: t, instance_id: instance_id),
-        )
-        AutoinstallUserDataRefused { reason: r } => bmc_netboot_staging_refused_seed(cause: r)
-      }
+  // THE SEED IS ADMITTED BEFORE ANY OP IS PREPARED, so a document the public-seed contract
+  // refuses stages NOTHING rather than staging a file whose credential field or instance-id was
+  // made up. The refusal carries no operation list at all, which is how this module already says
+  // "none of this becomes observable".
+  match bmc_netboot_user_seed_admission(plan: plan) {
+    PublicSeedRefused { findings: f } => bmc_netboot_staging_refused_seed(cause: seed_admission_cause(findings: f))
+    PublicSeedAdmitted { seed: admitted } => bmc_netboot_staging_of(
+      plan: plan,
+      ops: bmc_netboot_staging_ops(
+        plan: plan,
+        user_seed: public_nocloud_seed_user_data(seed: admitted),
+        meta_seed: public_nocloud_seed_meta_data(seed: admitted),
+      ),
+    )
   }
 }
 

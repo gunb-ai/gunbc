@@ -315,7 +315,7 @@ fn stage_wires(stages: List<IamBootstrapStage>) -> List<String> {
 // cost no refusal, because every in-run check folded over the run's own list.
 test fn the_ceremony_folds_all_twelve_stages_in_order() -> Bool {
   stage_wires(stages: iam_bootstrap_stages) == [
-    "services", "identities", "journal-bucket", "trust-root-tags", "roles", "deny",
+    "services", "identities", "trust-root-tags", "roles", "journal-bucket", "deny",
     "authority-cleanup", "capabilities", "probe-authority", "privilege-readback",
     "probe-cleanup", "workflow-trust"
   ]

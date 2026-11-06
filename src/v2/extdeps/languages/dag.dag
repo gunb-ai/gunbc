@@ -200,7 +200,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_init, list_map, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_map, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -223,6 +223,7 @@ import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_node, integer_decimal_magnitude_node_to_int, integer_int_type_node, integer_string_to_decimal_digits_optional, DecimalMagnitude, DecimalNonZero, DecimalNonZeroMagnitude, Int, NonZeroD1, NonZeroD2 }
 import std.integer { int_to_decimal_string }
 import v2.std.text { String }
+import extdeps.languages.dag.syntax { dag_keyword_literals }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
@@ -783,6 +784,7 @@ fn dag_lex_rules_except_braces() -> List<LexRule> {
       dag_literal_lex_rule(token_class: ^dag_token_rbracket, text: "]"),
       dag_literal_lex_rule(token_class: ^dag_token_lt, text: "<"),
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
+      dag_literal_lex_rule(token_class: ^dag_token_question_question, text: "??"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
   ]
@@ -1687,13 +1689,13 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
 fn dag_grammar_arrow_lambda_name_head_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
-      left: dag_grammar_ident_or_type_decl_modifier_name(),
+      left: dag_grammar_primary_name_expr(),
       right: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
     ),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
-        left: dag_grammar_ident_or_type_decl_modifier_name(),
+        left: dag_grammar_primary_name_expr(),
         right: dag_grammar_terminal(token_class: ^dag_token_comma)
       )
     )
@@ -1744,7 +1746,7 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
 }
 
 // THE BINARY OPERATORS, ONE ROW EACH, WITH THE PRECEDENCE AS A BINDING POWER (higher binds tighter):
-// pipe, then `||`, `&&`, equality, comparison, additive, multiplicative. Equality and comparison do
+// pipe, then `||`, `&&`, `??`, equality, comparison, additive, multiplicative. Equality and comparison do
 // not chain -- `a < b < c` refuses with NonAssociativeOperatorChain -- and every other row folds
 // left. `|>` binds LOOSEST: `a + b |> f` is `(a + b) |> f` (sharp-raven-357 ruling 2026-10-05; the
 // seed's tightest `|>`, dag/extdeps/languages/dag/syntax.dag dag_operators, is a seed defect under
@@ -1760,17 +1762,18 @@ fn dag_infix_operators() -> List<InfixOperatorRow> {
     dag_infix_row(token_class: ^dag_token_pipe_gt, binding_power: 1, associativity: InfixLeft),
     dag_infix_row(token_class: ^dag_token_or_or, binding_power: 2, associativity: InfixLeft),
     dag_infix_row(token_class: ^dag_token_and_and, binding_power: 3, associativity: InfixLeft),
-    dag_infix_row(token_class: ^dag_token_eq_eq, binding_power: 4, associativity: InfixNonAssociative),
-    dag_infix_row(token_class: ^dag_token_neq, binding_power: 4, associativity: InfixNonAssociative),
-    dag_infix_row(token_class: ^dag_token_gte, binding_power: 5, associativity: InfixNonAssociative),
-    dag_infix_row(token_class: ^dag_token_lte, binding_power: 5, associativity: InfixNonAssociative),
-    dag_infix_row(token_class: ^dag_token_lt, binding_power: 5, associativity: InfixNonAssociative),
-    dag_infix_row(token_class: ^dag_token_gt, binding_power: 5, associativity: InfixNonAssociative),
-    dag_infix_row(token_class: ^dag_token_plus, binding_power: 6, associativity: InfixLeft),
-    dag_infix_row(token_class: ^dag_token_minus, binding_power: 6, associativity: InfixLeft),
-    dag_infix_row(token_class: ^dag_token_star, binding_power: 7, associativity: InfixLeft),
-    dag_infix_row(token_class: ^dag_token_slash, binding_power: 7, associativity: InfixLeft),
-    dag_infix_row(token_class: ^dag_token_percent, binding_power: 7, associativity: InfixLeft)
+    dag_infix_row(token_class: ^dag_token_question_question, binding_power: 4, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_eq_eq, binding_power: 5, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_neq, binding_power: 5, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_gte, binding_power: 6, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_lte, binding_power: 6, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_lt, binding_power: 6, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_gt, binding_power: 6, associativity: InfixNonAssociative),
+    dag_infix_row(token_class: ^dag_token_plus, binding_power: 7, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_minus, binding_power: 7, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_star, binding_power: 8, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_slash, binding_power: 8, associativity: InfixLeft),
+    dag_infix_row(token_class: ^dag_token_percent, binding_power: 8, associativity: InfixLeft)
   ]
 }
 
@@ -1889,7 +1892,7 @@ fn dag_grammar_untyped_params_helper() -> GrammarExpr {
   dag_grammar_comma_list_expr(
     item: dag_grammar_sequence(
       left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false)),
-      right: dag_grammar_ident_or_type_decl_modifier_name()
+      right: dag_grammar_primary_name_expr()
     )
   )
 }
@@ -2486,7 +2489,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
       left: dag_grammar_value_name_binder_before(
-        name: dag_grammar_ident_or_type_decl_modifier_name(),
+        name: dag_grammar_primary_name_expr(),
         follow: dag_grammar_terminal(token_class: ^dag_token_fat_arrow)
       ),
       right: dag_grammar_sequence(
@@ -2498,14 +2501,14 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
       left: dag_grammar_terminal(token_class: ^dag_token_lparen),
       right: dag_grammar_sequence(
         left: dag_grammar_value_name_binder_before(
-          name: dag_grammar_ident_or_type_decl_modifier_name(),
+          name: dag_grammar_primary_name_expr(),
           follow: dag_grammar_terminal(token_class: ^dag_token_comma)
         ),
         right: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: ^dag_token_comma),
           right: dag_grammar_sequence(
             left: dag_grammar_value_name_binder_before(
-              name: dag_grammar_ident_or_type_decl_modifier_name(),
+              name: dag_grammar_primary_name_expr(),
               follow: dag_grammar_value_name_ends_param()
             ),
             right: dag_grammar_sequence(
@@ -2513,7 +2516,7 @@ fn dag_grammar_arrow_lambda_expr() -> GrammarExpr {
                 element: dag_grammar_sequence(
                   left: dag_grammar_terminal(token_class: ^dag_token_comma),
                   right: dag_grammar_value_name_binder_before(
-                    name: dag_grammar_ident_or_type_decl_modifier_name(),
+                    name: dag_grammar_primary_name_expr(),
                     follow: dag_grammar_value_name_ends_param()
                   )
                 )
@@ -5549,32 +5552,26 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   }
 }
 
-// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the open
+// The lexeme's body TEXT, sliced; a lexeme is framed when its first and last scalars are the open
 // and close and there are at least two of them (quotes for a literal; quote/`{` and `}`/quote for
-// a template part).
-fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<List<Int>> {
-  let cs = unicode_scalar_unfold(s: lexeme)
-  let n = length(xs: cs)
+// a template part). THE BODY IS READ BY SLICE, NOT REBUILT (DESIGN 6: a fixed cost, regardless of
+// n): the earlier shape unfolded the lexeme to scalars and rebuilt the body one Cons at a time
+// (skip + list_init), so every caller of the lexer paid the fold's depth on the literal's length —
+// a 10^5-scalar literal overflowed the seed interpreter. string_length counts scalars, char_at and
+// substring index scalars on the non-ASCII path (v1_rt.rs), so the three reads agree on the scalar
+// measure the framing judgment is stated in, and the O(1) slice replaces the O(n) rebuild.
+fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<String> {
+  let n = string_length(s: lexeme)
   if n < 2 {
     optional_absent()
+  } else if (code_point(c: char_at(s: lexeme, pos: 0)) == open) && (code_point(c: char_at(s: lexeme, pos: n - 1)) == close) {
+    optional_present(value: substring(s: lexeme, start: 1, end: n - 1))
   } else {
-    match list_at_optional(xs: cs, index: 0) {
-      Present { value: first } =>
-        match list_at_optional(xs: cs, index: n - 1) {
-          Present { value: last } =>
-            if (first == open) && (last == close) {
-              optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      Absent => optional_absent()
-    }
+    optional_absent()
   }
 }
 
-fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<String> {
   dag_string_framed_body_optional(lexeme: lexeme, open: 34, close: 34)
 }
 
@@ -5613,12 +5610,12 @@ fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrence
   dag_string_text_decoded(token_class: ^dag_token_string_literal, body: dag_string_literal_body_optional(lexeme: lexeme), occurrence_id: occurrence_id)
 }
 
-fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+fn dag_string_text_decoded(token_class: Symbol, body: Optional<String>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
   match body {
     Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
-    Present { value: scalars } =>
-      match fold(scalars, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
+    Present { value: text } =>
+      match fold(unicode_scalar_unfold(s: text), init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
         DagStringDecodeEscape { text: _ } => escape_refusal
         DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal
@@ -6120,6 +6117,29 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         }
       } else {
         outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
+  }
+}
+
+// A PATTERN ATOM THAT IS A LITERAL IS NEVER A BINDER, at any pattern position. A canonical literal
+// (dag_canonical_literal_from_node: `true`, `false`, a number, a string, a caret symbol) is a literal
+// pattern. So is every word the dag language's literal table names (extdeps.languages.dag.syntax
+// dag_keyword_literals), read from that table and not restated here: today `none` and `null`, which it
+// maps to LitNull. A pattern-position absence literal is the declared follow-up of ruling
+// gunbc.design_ruling dag_absence_is_one_meaning, so it has no lowering here yet; if it were read as a
+// binder it would match every value, so it stays an atom that resolves as a reference and refuses. A word
+// the table gains later is a literal here at once, never a catch-all binder.
+fn dag_pattern_atom_is_literal(node: Node) -> Bool {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } =>
+          match map_lookup(m: dag_keyword_literals, key: symbol_lexeme(sym: id)) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
       }
   }
 }

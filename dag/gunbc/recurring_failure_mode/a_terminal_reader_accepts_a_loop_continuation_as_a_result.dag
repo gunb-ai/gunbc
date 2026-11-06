@@ -1,0 +1,31 @@
+module gunbc.recurring_failure_mode.a_terminal_reader_accepts_a_loop_continuation_as_a_result
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_terminal_reader_accepts_a_loop_continuation_as_a_result: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_terminal_reader_accepts_a_loop_continuation_as_a_result" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "a v2.std.runtime ControlTransfer in which 'iterate the enclosing Loop again' and 'this evaluation completed with a value' are distinct constructors, so the terminal reader v2.extdeps.runtimes.v2_evaluator v2_eval_terminal_value has no arm that accepts an iterate request as a result, sufficient for a Loop driver whose step answers iterate to be unable to surface its intermediate carrier as the Loop's value" } },
+
+  receipts: [
+    "INVALID STATE: v2.std.runtime ControlTransfer has one constructor, Continue { value }, with no declared meaning that tells 'normal completion carrying a value' from 'iterate the enclosing Loop again'. v2.extdeps.runtimes.v2_evaluator v2_eval_terminal_value accepts Continue exactly as it accepts Return: both arms answer Accepted { value: v }. The two readings are one name with two meanings (DESIGN section 3, a meaning fork).",
+
+    "HARM (latent, stated for the executor that is coming): the Loop feasibility design (operator direction A2, 2026-11-05) adds a driver in v2.compiler.eval eval_loop_node that re-invokes the step while it answers Continue. Once that driver exists, any path that hands a step's Continue to v2_eval_terminal_value instead of the driver returns the loop's INTERMEDIATE carrier as its final value: a plausible, silently wrong result (DESIGN section 5). The fault is upstream of the terminal reader: the carrier ControlTransfer cannot say which of the two facts it holds.",
+
+    "WHY IT IS NOT LIVE TODAY (measured by source reading at origin/main 2026-11-05, git grep 'Continue {' over src/v2/compiler/eval.dag, src/v2/extdeps/runtimes/v2_evaluator.dag, src/v2/std/runtime.dag and src/v2/program.dag): no production producer of Continue exists. The only constructions are test-claim step stubs (for example v2.test.claim.execution.long.loop_eval_by_execution loop_step_loop), and every installed production Loop handler refuses (v2_eval_step_loop, v2.program program_step_loop), so eval_loop_node reaches a typed refusal before any terminal read. The residual is fail-closed now and becomes silent wrongness only when a driver lands without this split.",
+
+    "DISTINGUISHING FACTS: not a cost defect; not the iteration-direction class (gunbc.recurring_failure_mode fold_realized_loop_carries_no_iteration_direction, which is about traversal ORDER, not about what a step's answer means). The fix belongs at the carrier, ControlTransfer, not as a guard in the terminal reader: a guard there would restate in the consumer a fact the type could carry (DESIGN section 5, validation where construction was available).",
+
+    "RUNG: found below the ladder. The invalid state is constructible, and nothing refuses it on any path. CEILING: structurally impossible, because splitting the constructor removes the ambiguous state from the canonical model. NEXT TRIGGER: the split ControlTransfer stated in trigger_capability, landed with or before the Loop driver, and with an executing control in which a driver step answers iterate while the terminal reader is asked for a result, which must refuse.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "v2.std.runtime", decl_name: "ControlTransfer", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.runtimes.v2_evaluator", decl_name: "v2_eval_terminal_value", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.extdeps.runtimes.v2_evaluator", decl_name: "v2_eval_step_loop", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.eval", decl_name: "eval_loop_node", field: WholeDeclaration },
+  ],
+}

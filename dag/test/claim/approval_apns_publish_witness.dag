@@ -18,7 +18,7 @@ import gunbc.auth.approval_device_wire { ApnsRegistration, FcmRegistration }
 import gunbc.auth.approval_device_redemption { push_outcome_of_apns, PushRegistrationInvalid, PushProviderAccepted, PushProviderRefused, ProviderApns }
 import gunbc.auth.approval_apns_publish {
   approval_apns_provider, CachedProviderToken, cached_provider_token_text, parse_cached_provider_token, provider_token_reusable,
-  approval_push_request, ApprovalPushRequestReady, ApprovalPushRequestRefused, apns_curl_config, apns_rest_result_of,
+  approval_push_request, approval_request_push_notice, new_device_push_notice, ApprovalPushRequestReady, ApprovalPushRequestRefused, apns_curl_config, apns_rest_result_of,
   DeviceNotificationAttempted, DevicePushSent, DevicePushNotSent, device_notification_sentence,
 }
 
@@ -111,7 +111,7 @@ test fn the_cached_token_record_round_trips_and_refuses_a_foreign_record() -> Bo
 data dev_registration_token: String = "a1b2c3d4"
 
 test fn the_payload_is_the_generic_alert_and_the_escalation_locator() -> Bool {
-  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, escalation_id: "esc-1") {
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, notice: approval_request_push_notice(escalation_id: "esc-1")) {
     ApprovalPushRequestRefused { detail: _ } => false
     ApprovalPushRequestReady { request: r } =>
       apns_payload_json(r: r) == "\{\"aps\": \{\"alert\": \{\"title\": \"Approval requested\", \"body\": \"A request is waiting for your decision in Approve.\"}, \"interruption-level\": \"active\"}, \"notification_id\": \"esc-1\"}"
@@ -122,15 +122,15 @@ test fn the_payload_is_the_generic_alert_and_the_escalation_locator() -> Bool {
 // collapse id are each refused before anything is sent.
 test fn a_foreign_topic_an_fcm_registration_and_an_overlong_id_are_refused() -> Bool {
   let long_id = "esc-0123456789012345678901234567890123456789012345678901234567890"
-  match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.other", token: "t" }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d as String, "not this app's bundle")  ApprovalPushRequestReady { request: _ } => false }
-    && match approval_push_request(registration: FcmRegistration { project: "p" as FcmProjectId, token: "t" as FcmRegistrationToken }, escalation_id: "esc-1") { ApprovalPushRequestRefused { detail: d } => contains(d as String, "FCM")  ApprovalPushRequestReady { request: _ } => false }
-    && match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "t" }, escalation_id: long_id as NonEmptyStr) { ApprovalPushRequestRefused { detail: d } => contains(d as String, "collapse id")  ApprovalPushRequestReady { request: _ } => false }
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.other", token: "t" }, notice: approval_request_push_notice(escalation_id: "esc-1")) { ApprovalPushRequestRefused { detail: d } => contains(d as String, "not this app's bundle")  ApprovalPushRequestReady { request: _ } => false }
+    && match approval_push_request(registration: FcmRegistration { project: "p" as FcmProjectId, token: "t" as FcmRegistrationToken }, notice: approval_request_push_notice(escalation_id: "esc-1")) { ApprovalPushRequestRefused { detail: d } => contains(d as String, "FCM")  ApprovalPushRequestReady { request: _ } => false }
+    && match approval_push_request(registration: ApnsRegistration { environment: ApnsProduction, topic: "ai.gunb.approve", token: "t" }, notice: approval_request_push_notice(escalation_id: long_id as NonEmptyStr)) { ApprovalPushRequestRefused { detail: d } => contains(d as String, "collapse id")  ApprovalPushRequestReady { request: _ } => false }
 }
 
 // THE CONFIG ON STDIN: the sandbox host for a development token, HTTP/2, the bearer as a header line
 // (never argv), and a body whose quotes are escaped so curl reads the JSON back unchanged.
 test fn the_curl_config_carries_the_host_the_bearer_and_the_escaped_body() -> Bool {
-  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, escalation_id: "esc-1") {
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, notice: approval_request_push_notice(escalation_id: "esc-1")) {
     ApprovalPushRequestRefused { detail: _ } => false
     ApprovalPushRequestReady { request: r } => {
       let c = apns_curl_config(r: r, token: "h.p.s" as JwtCompactSerialization) as String
@@ -172,6 +172,19 @@ test fn the_sentence_counts_accepted_devices_out_of_attempted() -> Bool {
   }
   let s = device_notification_sentence(n: n)
   contains(s, "1/2 accepted") && contains(s, "genr-b: refused 403 InvalidProviderToken") && contains(s, "1 enrolled device(s) without a registration")
+}
+
+// THE NEW-DEVICE NOTICE IS GENERIC TOO: Apple sees every alert, so it names neither the account nor
+// the key; its locator is the new enrolment, which is also its collapse id.
+test fn the_new_device_notice_is_generic_and_keyed_by_the_enrolment() -> Bool {
+  match approval_push_request(registration: ApnsRegistration { environment: ApnsDevelopment, topic: "ai.gunb.approve", token: "a1b2c3d4" }, notice: new_device_push_notice(enrollment_id: "genr-new")) {
+    ApprovalPushRequestRefused { detail: _ } => false
+    ApprovalPushRequestReady { request: r } => {
+      let p = apns_payload_json(r: r)
+      contains(p, "New approval device enrolled") && contains(p, "\"notification_id\": \"genr-new\"")
+        && !contains(p, "@") && (r.collapse_id as String) == "genr-new"
+    }
+  }
 }
 
 // ABSENT AND EMPTY ARE TWO WIRE FACTS (review 86055): an Absent subtitle or category sends no key,

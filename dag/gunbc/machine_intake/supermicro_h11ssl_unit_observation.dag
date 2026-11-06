@@ -1,5 +1,6 @@
 module gunbc.machine_intake.supermicro_h11ssl_unit_observation
 
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Present, Absent }
@@ -117,8 +118,6 @@ type H11sslUnitReading {
   sources: List<EvidenceRef>
 }
 
-data supermicro_h11ssl_unit2_bmc_mac: Eui48Address = mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 34)
-data supermicro_h11ssl_unit1_bmc_mac: Eui48Address = mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123)
 
 // Unit 2 is first contact; its FRU Board Area reads blank (PART_NUM empty), so the read the variant
 // owes returned nothing. Unit 1 is the replacement-CPU reading; its power-info read returned the

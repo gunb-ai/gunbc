@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.caret_symbol_inhabits_string_via_conformance_unjudged
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data caret_symbol_inhabits_string_via_conformance_unjudged: RecurringFailureMode = RecurringFailureMode {
+  identity: "caret_symbol_inhabits_string_via_conformance_unjudged" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "a declared Symbol-to-text conversion route, so a Symbol reaches a text position only through a named plan and a bare Symbol at a text position refuses (the text_crossings_go_through_the_unfold precedent)" } },
+
+  receipts: [
+    "INVALID STATE: a Symbol value (`^tag`, minted as symbol_type by `v1.compiler.infer_types` `infer_literal_node`) is accepted at a String or NonEmptyStr position with no declared conversion. It passes through the one explicit exemption `symbol_at_text` in `v1.compiler.infer` `kernel_value_declared_type_mismatch_bounded`, which keeps `-> String { ^tag }` accepted while every other ground non-text type (`-> Int`, `-> Bool`, a record) refuses a Symbol.",
+    "HARM: the nominal distinction the producer now draws is erased at a text position, and the chosen Rust representation std::string::String erases it again at the target. Nothing marks which String positions meant a Symbol. The population of caret literals reaching text positions is not measured here.",
+    "RUNG FOUND AT: mitigatable, a written exemption with a stated reason rather than a silent pass. It replaces the earlier undeclared gap, where Symbol was outside std.types kernel_type_set so conformance emitted nothing at ANY ground type (measured: `-> Int { ^tag }` and `-> Bool { ^tag }` compiled with 0 diagnostics, gunbc#14082 review 86296).",
+    "CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: a declared Symbol-to-text conversion route; until it exists the exemption cannot be removed without refusing the corpus's caret-keyed String positions.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.litsymbol_is_symbol", decl_name: "symbol_at_string_stays_accepted", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.litsymbol_is_symbol", decl_name: "symbol_at_int_refuses", field: WholeDeclaration },
+  ],
+}

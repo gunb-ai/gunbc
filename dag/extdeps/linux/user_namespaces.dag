@@ -1,0 +1,94 @@
+module extdeps.linux.user_namespaces
+
+// THE KERNEL'S USER-NAMESPACE MAPPING CONTRACT: what a line of /proc/<pid>/uid_map or gid_map MEANS, and
+// how the namespace a process belongs to is IDENTIFIED. The authority is the kernel's user_namespaces(7);
+// namespaces(7) carries the /proc/<pid>/ns/<name> link, which is a separate document because it covers all
+// namespace classes and not user namespaces only. WHAT LIVES HERE IS THE MEANING OF THOSE ROWS AND LINKS --
+// never whether some host has some range mapped somewhere. That is a reading, and it belongs to the
+// instrument that takes it: gunbc.runner.runner_gpu_container_toolchain gpu_container_provision_displaced_maps.
+//
+// WHY THIS MODULE EXISTS, AND THE RUN THAT FORCED IT. The GPU container converge's namespace precheck
+// compared the OUTSIDE column of every process of a displacee account against the subordinate range being
+// moved, and on srv3 (fleet-converge run 40843061056) that refused the move on ubuntu pid 4116 -- its
+// systemd --user -- whose /proc/4116/uid_map reads `0 0 4294967295`. That row is not a namespace drawing
+// ids out of a subordinate range; it is what the kernel puts in the map of EVERY process that has created
+// or joined no user namespace, because the initial user namespace maps each id to itself. Reading it as an
+// overlap means no live host can ever have a clear displacee. The error was answering "does this row overlap
+// the range?" without first answering "which namespace is this row's outside column relative to?" -- the
+// question this module exists to answer.
+
+import std.types { Int, List, String }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "man7.org/linux/man-pages/man7/user_namespaces.7.html" }
+}
+
+// NAMESPACES(7) IS CITED APART, NOT AS A COURTESY. The /proc/<pid>/ns/<name> symbolic link and the rule that
+// equal link targets mean the same namespace are stated there for every namespace class; user_namespaces(7)
+// does not define them.
+data namespaces_link_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "man7.org/linux/man-pages/man7/namespaces.7.html" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.linux.user_namespaces",
+      decl_name: "user_namespace_map_row_column_count",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [namespaces_link_authority]
+}
+
+// THE SHAPE OF ONE MAPPING LINE. user_namespaces(7): each of /proc/[pid]/uid_map and /proc/[pid]/gid_map
+// consists of a THREE-COLUMN table, each line specifying the mapping for a contiguous range of ids: the
+// start of the range INSIDE the user namespace of <pid>, the start of the corresponding range IN THE PARENT OR READER'S
+// USER NAMESPACE, and the LENGTH of the range. The three indices below are that order, and a reader that
+// names them takes the column choice off the caller.
+data user_namespace_map_row_column_count: Int = 3
+
+data user_namespace_map_inside_column: Int = 0
+
+data user_namespace_map_outside_column: Int = 1
+
+data user_namespace_map_length_column: Int = 2
+
+// WHICH NAMESPACE THE OUTSIDE COLUMN IS RELATIVE TO (user_namespaces(7), the account of the second and
+// third fields of /proc/[pid]/uid_map): it depends on WHO READS THE FILE.
+//   - If the reader is in the SAME user namespace as <pid>, the outside column is a range in the PARENT of
+//     that namespace.
+//   - If the reader is in a DIFFERENT user namespace, the outside column is a range in the READER'S own
+//     user namespace.
+// This converge reads every map through sudo from the INITIAL user namespace, which is different from any
+// child's, so for a process in a child or grandchild namespace one read already yields ids relative to the
+// host: no composition of intermediate maps is needed. The consequence that srv3 paid for: a process in the
+// INITIAL namespace has no parent, and its row covers the whole id space to itself; that range is nobody's
+// subordinate range, and comparing it against one answers no question.
+
+// THE NAMESPACE ITSELF IS NAMED BY A LINK, NOT BY A ROW (namespaces(7)). /proc/<pid>/ns/user is a symbolic
+// link whose target is `user:[<inode>]`, and that target identifies the namespace: two processes are in the
+// same user namespace exactly when their targets are equal. It is read with readlink(1), because a namespace
+// link is not a readable file. A process that has created or joined no user namespace is in the INITIAL one,
+// so its target equals the target of /proc/1/ns/user -- which is what makes "is this process in a namespace
+// at all" a decidable question about identity rather than a guess from the shape of a map row.
+// (namespaces(7)) equal targets are the same namespace; the target of /proc/1/ns/user is the initial one.
+fn user_namespace_link_path(pid: Int) -> String {
+  join(["/proc/", to_string(pid), "/ns/user"], "")
+}
+
+data init_user_namespace_link_path: String = "/proc/1/ns/user"
+
+// THE CAPABILITY ROOTLESSKIT NEEDS FIRST, EXERCISED AS THE ACCOUNT. unshare(1) `--user --map-root-user`
+// creates a user namespace and maps the caller's uid to 0 inside it; setpriv(1) drops root to the given
+// uid and gid first (`--clear-groups` rather than --init-groups, which would need a name). Exit 0: the
+// kernel and any LSM admit an unprivileged user namespace for that uid. Nonzero with an EPERM message is
+// the AppArmor restriction; it does not exercise newuidmap or the subordinate ranges, which a range-wide
+// map needs and this single-uid map does not.
+fn unshare_map_root_user_as_uid_argv(uid: Int) -> List<String> {
+  ["setpriv", concat("--reuid=", to_string(uid)), concat("--regid=", to_string(uid)), "--clear-groups", "unshare", "--user", "--map-root-user", "true"]
+}

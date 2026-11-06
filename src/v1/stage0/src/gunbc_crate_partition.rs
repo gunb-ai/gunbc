@@ -18,7 +18,7 @@ use crate::gunbc_rust_emitted_edge::EmittedEdgeTarget::{
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance, EmittedEdgeTarget};
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_push, map_lookup,
 };
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
@@ -245,7 +245,7 @@ pub fn module_dag_edge_key(from: String, to: String) -> String {
 }
 
 pub fn string_member(set: Rc<HashMap<String, bool>>, key: String) -> bool {
-    match v1_rt::map_get(&set, key.clone()) {
+    match v1_rt::lookup(&set, key) {
         Some(_) => true,
         std::option::Option::None => false,
     }
@@ -295,7 +295,7 @@ pub fn emitted_target_reach(
                 match (*edge.to.clone()).clone() {
                     EmittedEdgeTarget::EmittedCrateRootTarget => acc.clone(),
                     EmittedEdgeTarget::EmittedModuleTarget { module: target, .. } => {
-                        match v1_rt::map_get(&acc, target.clone()) {
+                        match v1_rt::lookup(&acc, target.clone()) {
                             Some(_) => acc.clone(),
                             std::option::Option::None => v1_rt::rc_map_insert(
                                 acc.clone(),
@@ -339,7 +339,7 @@ pub fn emitted_edge_merge_step(
                         })
                     } else {
                         {
-                            let target_reaches_source = match v1_rt::map_get(&reach, target.clone())
+                            let target_reaches_source = match v1_rt::lookup(&reach, target.clone())
                             {
                                 Some(reached) => string_member(reached.clone(), edge.from.clone()),
                                 std::option::Option::None => false,
@@ -584,7 +584,7 @@ pub fn assignment_owner(
     assignment: Rc<HashMap<NonEmptyStr, NonEmptyStr>>,
     module_id: NonEmptyStr,
 ) -> Option<NonEmptyStr> {
-    v1_rt::map_get(&assignment, module_id.clone())
+    v1_rt::lookup(&assignment, module_id)
 }
 
 pub fn assignment_first_omitted_module(
@@ -623,7 +623,7 @@ pub fn assignment_first_stranger(
                 std::option::Option::None,
                 |acc: Option<NonEmptyStr>, module_id: ModuleId| match acc.clone() {
                     Some(_) => acc.clone(),
-                    std::option::Option::None => match v1_rt::map_get(&known, module_id.clone()) {
+                    std::option::Option::None => match v1_rt::lookup(&known, module_id.clone()) {
                         Some(_) => std::option::Option::None,
                         std::option::Option::None => Some(module_id.clone()),
                     },

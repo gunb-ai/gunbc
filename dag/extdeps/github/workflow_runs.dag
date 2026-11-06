@@ -2,7 +2,7 @@ module extdeps.github.workflow_runs
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import std.types { CommitSha, List, NonEmptyStr, String, Timestamp }
+import std.types { Bearer, CommitSha, List, NonEmptyStr, String, Timestamp }
 import std.credentials { EnvVar }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
@@ -201,7 +201,7 @@ type WorkflowRunList {
 // tree already meet: extdeps.google.drive models DrivePermissionRole as a coproduct with a wire fold
 // so "Content manager" cannot be written where the wire needs fileOrganizer, extdeps.google.sheets
 // carries SheetsValueRenderOption the same way, and extdeps.github.pulls already defaults a typed
-// input as `state: PullRequestState = Open`. Two variants and a fold make the bad spelling
+// input as `state: PullRequestListStateFilter = ListStateOpen`. Two variants and a fold make the bad spelling
 // unwritable rather than validated.
 //
 // THE FOLD BELOW IS REQUIRED AND AN EARLIER REVISION OF THIS ANNOTATION DENIED IT. That revision

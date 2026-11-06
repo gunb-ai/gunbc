@@ -15,7 +15,7 @@ import extdeps.auth.oidc {
 import gunbc.principal_projection { principal_ref_label }
 import extdeps.uri { Uri, Https }
 import gunbc.auth.session_store {
-  SessionStoreLayout, session_cookie_standing_of, session_cookie_standing_of_store_result,
+  session_cookie_standing_of_store_result,
   SessionStoreFound, SessionStoreUnknown, SessionStoreUnread, SessionStoreEntryMalformed,
   authenticated_session_json, authenticated_session_of_json,
   SessionFileDecoded, SessionFileMalformed,
@@ -352,12 +352,6 @@ test fn the_cookie_attributes_are_the_rulings_spelled_set() -> Bool {
 // fold (pure over the store's three-valued answer); the store's filesystem realization is
 // substrate, witnessed by the live seam rather than here.
 
-// THE COOKIE CHANNEL WITNESS LAYOUT: the standing fold's total form takes a layout, but an
-// absent header never reaches the store, so the root is a marker string the store never sees.
-fn witness_store_layout() -> SessionStoreLayout {
-  SessionStoreLayout { root: "witness-cookie-channel-unused" as FilePath }
-}
-
 // THE INBOUND PARSE distinguishes a present id from an absent one and from malformed spellings:
 // an empty value, a character outside RFC 6265's cookie-octet set, and a duplicate session
 // cookie are three Malformed arms with their own causes — never silently NotPresent.
@@ -386,13 +380,14 @@ test fn the_cookie_parse_admits_a_present_id_and_refuses_malformed_spellings() -
     }
 }
 
-// THE STANDING FOLD KEEPS EVERY NON-VALID ARM DISTINCT: absent, unknown (the forged-cookie arm:
-// the id names no session the store holds), unread, malformed, and the valid/expired split each
-// survive the fold as their own constructor, because each names a different remedy.
+// THE STANDING FOLD KEEPS EVERY NON-VALID ARM DISTINCT: unknown (the forged-cookie arm: the id
+// names no session the store holds), unread, malformed, and the valid/expired split each survive
+// the fold as their own constructor, because each names a different remedy. Absent is decided
+// before any store exists, by the cookie parse the test above drives (an empty header is
+// SessionCookieIdNotPresent); the header-taking fold that once answered it beside the seam had
+// no production consumer and is deleted.
 test fn the_standing_fold_keeps_absent_unknown_unread_and_expired_distinct() -> Bool {
-  session_cookie_standing_of(cookie_header: "", layout: witness_store_layout(), observed_at: "2026-09-25T00:05:00Z")
-    == SessionCookieAbsent
-    && match session_cookie_standing_of_store_result(
+  match session_cookie_standing_of_store_result(
       lookup: SessionStoreUnknown { session_id: "forged" as NonEmptyStr },
       observed_at: "2026-09-25T00:05:00Z",
     ) {

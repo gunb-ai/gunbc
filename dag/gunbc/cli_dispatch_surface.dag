@@ -24,10 +24,12 @@ type CliDispatchRungClass {
   dissolution: DissolutionCondition,
 }
 
-// `first` currently has two runtime meanings: the interpreter returns the raw element or Null,
-// while emitted Rust returns Optional<T>. That is silent wrongness, outside the ladder: the
-// consumer typechecks and computes a false answer without a diagnostic. The executing known-red
-// `interpreter_first_returns_the_modeled_optional` is the confirmed specimen. A source census
+// `first` had two runtime meanings: the interpreter returned the raw element or Null, while emitted
+// Rust returns Optional<T>; silent wrongness, outside the ladder. The interpreter route now returns
+// the modeled optional, executed by test.claim.interpreter_list_read_optional_witness (srv2, head
+// 8941390fdf37, after 16 PASS / 0 FAIL vs origin/main 5 PASS / 10 FAIL). The claim
+// `interpreter_first_returns_the_modeled_optional` did not resolve under claim-run on either binary,
+// so it is not itself the receipt and stays known-red on v2.workflow.floor_expected_red; the emitted-Rust route is not covered by that run. A source census
 // found 187 terminal `|> first` sites across 82 files; that is a lower bound on candidate
 // consumers, not a claim that every site is harmed. The ceiling is structural: derive both the
 // interpreter and emitted realizations from one authority for `first`. When that capability lands,
@@ -680,143 +682,6 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         successor: "unwired AS A SUBCOMMAND -- `gunbc scm log` does not exist -- but the answer is now REACHABLE, and this row said it was not. The successor is `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=<p>`, which prints the rendered answer and exits on the exit the response itself carries. What changed: gunbc.cli_wire CliWireResponse gained a host binding in run_verb (cli_run classify_cli_wire + cli_wire_outcome), so a wire-returning entry is no longer refused with `returned ScmReadResult, not ProcessExit` and its answer is no longer computed and discarded. The earlier text -- `there is NO route a user can invoke today` -- was true when written and this row is the authority that has to stop saying it, because a surface that keeps asserting an absence the host has since filled is a §3 fork between the model and the thing it models. scm_status and scm_init are reachable by the same route; scm_init REFUSES an occupied path (gunbc.scm.init)."
       },
       emission: AbsentFromShippedDispatch
-    },
-    CliSubcommandRow {
-      verb: "serve",
-      variant: "Serve",
-      doc: [
-        "Long-running HTTP server: compile once, then answer each request by",
-        "calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.",
-        "The seam is parse/write only -- routing and handlers live in .dag."
-      ],
-      operands: [],
-      options: [
-        CliOptionRow {
-          field: "source_roots",
-          long: "source-root",
-          value: CliTextValue { text_default: none },
-          arity: CliRepeated,
-          doc: ["Source root directories (searched recursively for .dag files)"],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "entry",
-          long: "entry",
-          value: CliTextValue { text_default: none },
-          arity: CliRequired,
-          doc: ["Entry `.dag` file: load only this module and its transitive imports"],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "function",
-          long: "function",
-          value: CliTextValue { text_default: none },
-          arity: CliRequired,
-          doc: ["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse"],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "host",
-          long: "host",
-          value: CliTextValue { text_default: Present { value: "127.0.0.1" } },
-          arity: CliRequired,
-          doc: [],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "port",
-          long: "port",
-          value: CliPortValue { port_default: Present { value: 8080 } },
-          arity: CliRequired,
-          doc: [],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "unix_socket",
-          long: "unix-socket",
-          value: CliTextValue { text_default: none },
-          arity: CliAtMostOne,
-          doc: [
-            "Listen on this unix socket INSTEAD of --host/--port. Each request's",
-            "kernel-attested peer (SO_PEERCRED) is handed to the handler as peer_user."
-          ],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "release_revision",
-          long: "release-revision",
-          value: CliTextValue { text_default: none },
-          arity: CliRequired,
-          doc: [
-            "Release revision this process serves, bound ONCE at startup and",
-            "immutable for the process lifetime."
-          ],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "eval_budget_cpu_ms",
-          long: "eval-budget-cpu-ms",
-          value: CliMillisecondValue { millisecond_default: none },
-          arity: CliAtMostOne,
-          doc: ["Per-request THREAD-CPU evaluation budget in milliseconds."],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "eval_budget_wall_ms",
-          long: "eval-budget-wall-ms",
-          value: CliMillisecondValue { millisecond_default: none },
-          arity: CliAtMostOne,
-          doc: ["Per-request MONOTONIC-WALL evaluation budget in milliseconds."],
-          emission: CarriedByGeneratedDispatch
-        }
-      ],
-      realization: CliDelegatesToHostFn { symbol: "handle_serve" },
-      emission: CarriedByGeneratedDispatch
-    },
-    CliSubcommandRow {
-      verb: "measure-root-demand",
-      variant: "MeasureRootDemand",
-      doc: [
-        "Measure a root's whole-root compile demand under an enforceable cgroup memory limit.",
-        "The only product is a receipt (gunbc.root_demand_measurement); no artifact, no verdict."
-      ],
-      operands: [],
-      options: [
-        CliOptionRow {
-          field: "source_roots",
-          long: "source-root",
-          value: CliTextValue { text_default: none },
-          arity: CliRepeated,
-          doc: ["The primary root to measure first, then its dependency pools in order."],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "repository",
-          long: "repository",
-          value: CliTextValue { text_default: none },
-          arity: CliRequired,
-          doc: ["Repository identity of the root, declared by the caller."],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "receipt",
-          long: "receipt",
-          value: CliTextValue { text_default: none },
-          arity: CliRequired,
-          doc: ["Where the parent writes the measurement receipt."],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "measurement_child",
-          long: "measurement-child",
-          value: CliToggleValue,
-          arity: CliRequired,
-          doc: ["Set by the measuring parent on the child it observes; the child emits only its census line."],
-          emission: CarriedByGeneratedDispatch
-        }
-      ],
-      realization: CliDelegatesToHostFn { symbol: "measure_root_demand" },
-      emission: CarriedByGeneratedDispatch
     },
     CliSubcommandRow {
       verb: "test",

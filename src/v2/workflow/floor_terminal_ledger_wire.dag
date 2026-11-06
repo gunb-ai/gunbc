@@ -11,6 +11,8 @@ import std.content_hash {
   content_hash_combine_structural
 }
 import v2.std.integer { Int }
+import std.integer { int_to_decimal_string }
+import std.nat { nat_to_decimal_string }
 import v2.std.node { Symbol }
 import std.algebra { list_append }
 import v2.workflow.floor2_prepared_subject { witness_identity_qualified_name }
@@ -53,13 +55,15 @@ import v2.workflow.floor_terminal_ledger {
   ObservedVerdict,
   Returned,
   RouteGap,
-  RuntimeErrored
-}
-import v2.workflow.required_floor {
+  RuntimeErrored,
   ClaimSafetyOutcome,
   CompletedPastSafetyLimit,
   CompletedWithinSafetyLimits,
-  SafetyInterrupted
+  SafetyInterrupted,
+  ClaimPreemptionReachability,
+  CooperativelyPollable,
+  OpaqueHostCallUnbounded,
+  ReachabilityUnobserved
 }
 
 // ONE GRAMMAR, READ IN BOTH DIRECTIONS, FOR THE ARTIFACT THE SCHEMA ALREADY DESCRIBES.
@@ -366,7 +370,7 @@ fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String
 fn render_footer(rows: List<ClaimTerminalRow>) -> String {
   ledger_wire_join(fields: [
     ledger_wire_footer_tag,
-    rows.length() as String,
+    nat_to_decimal_string(value: rows.length()),
     ledger_rows_digest(rows: rows).digest
   ])
 }
@@ -421,7 +425,7 @@ fn render_partial_refusal_line(reason: Symbol, offending: String, row_count: Int
     ledger_partial_refusal_tag,
     reason as String,
     offending,
-    row_count as String
+    int_to_decimal_string(value: row_count)
   ])
 }
 
@@ -712,7 +716,7 @@ fn readback_footer_count_agrees(readback: LedgerReadback, planned_rows: Int) -> 
       rows: _,
       footer_row_count_wire: wire,
       footer_digest: _
-    } => wire == planned_rows as String
+    } => wire == int_to_decimal_string(value: planned_rows)
   }
 }
 
@@ -998,7 +1002,7 @@ fn render_ledger_from_seed(
                 ),
                 right: [ledger_wire_join(fields: [
                   ledger_wire_footer_tag,
-                  admitted.length() as String,
+                  nat_to_decimal_string(value: admitted.length()),
                   readback_rows_digest(rows: admitted).digest
                 ])]
               )
@@ -1006,5 +1010,237 @@ fn render_ledger_from_seed(
           }
       }
   }
+  }
+}
+
+// ── THE OUTCOME-FACING SURFACE: THE SEED NAMES THE OUTCOME KIND, THIS MODULE OWNS WHAT IT MEANS ──
+//
+// `render_ledger_from_seed` asks the seed for a tag, a detail and a disposition per row, which
+// makes the seed author a second outcome-to-tag mapping beside `render_terminal_tag`. This surface
+// removes that mapping: the seed sends the NAME of the `ClaimOutcome` variant it reached and the
+// facts that variant carries as strings, and the tag, the detail and the disposition are all
+// derived here, once. The seed's disposition field is therefore derived from the same tag it is
+// compared with, so the `seed-disposition-disagrees` refusal cannot fire on this path: its check
+// guarded a second mapping and this surface has none.
+//
+// A ROW IS THE DECLARED RECORD `OutcomeRow` (qualified name, expectation wire, outcome kind, detail,
+// exit code, ground), so a row of the wrong shape has no constructor. A field a kind does not carry
+// is the empty string. An unknown kind refuses with its own typed reason; there is no
+// default tag, because a default is the plausible output that reads as a verdict nobody reached.
+// THE OUTCOME KIND AND THE HERMETIC GROUND ARE CLOSED SUMS, DECLARED HERE. The seed's `ClaimOutcome`
+// has exactly these variants; every arm below matches the type, so a variant added here without an
+// arm fails to compile, and an illegal kind has no constructor. A name crosses the host boundary
+// as a String at ONE parse step (`parse_outcome_kind`, `parse_outcome_ground`), which is where an
+// unrecognized name refuses; nothing after it handles a string kind.
+type OutcomeKind
+  = OutcomeKindPass
+  | OutcomeKindFail
+  | OutcomeKindNotBool
+  | OutcomeKindRuntimeError
+  | OutcomeKindBudgetInterrupted
+  | OutcomeKindCompletedOverBudget
+  | OutcomeKindHostToolUnresolved
+  | OutcomeKindHostEffectRefused
+  | OutcomeKindPanicked
+  | OutcomeKindNotAttempted
+  | OutcomeKindExitFailure
+
+fn parse_outcome_kind(name: String) -> OutcomeKind? {
+  if name == "Pass" { Present { value: OutcomeKindPass } } else {
+  if name == "Fail" { Present { value: OutcomeKindFail } } else {
+  if name == "NotBool" { Present { value: OutcomeKindNotBool } } else {
+  if name == "RuntimeError" { Present { value: OutcomeKindRuntimeError } } else {
+  if name == "BudgetInterrupted" { Present { value: OutcomeKindBudgetInterrupted } } else {
+  if name == "CompletedOverBudget" { Present { value: OutcomeKindCompletedOverBudget } } else {
+  if name == "HostToolUnresolved" { Present { value: OutcomeKindHostToolUnresolved } } else {
+  if name == "HostEffectRefused" { Present { value: OutcomeKindHostEffectRefused } } else {
+  if name == "Panicked" { Present { value: OutcomeKindPanicked } } else {
+  if name == "NotAttempted" { Present { value: OutcomeKindNotAttempted } } else {
+  if name == "ExitFailure" { Present { value: OutcomeKindExitFailure } } else { none }
+  }}}}}}}}}}
+}
+
+fn parse_route_gap_ground(name: String) -> FloorRouteGapGround? {
+  if name == "UnpublishedMockCase" { Present { value: UnpublishedMockCase } } else {
+  if name == "NoMockResponse" { Present { value: NoMockResponse } } else {
+  if name == "FilesystemRemoval" { Present { value: FilesystemRemoval } } else { none }
+  }}
+}
+
+// THE SEED'S REACHABILITY OBSERVATION CROSSES AS A NAME PLUS THE OPERATIONS IT NAMES, parsed once
+// into the existing `ClaimPreemptionReachability`. `unobserved` is the seed's `SurfaceUnarmed`: no
+// reachability surface was armed, which lands in `ReachabilityUnobserved` and is never read as
+// `CooperativelyPollable`. Several operations travel comma-joined in the one `operation` field the
+// existing arm carries.
+fn parse_preemption_reach(name: String, operations: String) -> ClaimPreemptionReachability? {
+  if name == "unobserved" { Present { value: ReachabilityUnobserved } } else {
+  if name == "cooperatively-pollable" { Present { value: CooperativelyPollable } } else {
+  if name == "opaque-host-call-unbounded" {
+    Present { value: OpaqueHostCallUnbounded { operation: operations } }
+  } else { none }
+  }}
+}
+
+type OutcomeRowDerivation
+  = OutcomeRowDerived { row: SeedLedgerRow }
+  | OutcomeRowRefused { reason: Symbol, offending: String }
+
+// `cpu_ms` / `wall_ms` are the measured claim cost the seed's receipt carries, as Ints because the
+// sum fields they fill (`ClaimSafetyOutcome` observed_cpu / observed_wall / elapsed_*_at_least) are
+// Int today: the declared gap `required_floor` `flat_scalar_millisecond_fields_dissolve_on` (no
+// verified Int/Nat bridge to `std.measure` Millisecond). They convert together with those fields
+// when that condition is met; converting only here would add an unverified bridge (review 85268). `reach` and
+// `reach_operations` are the receipt's reachability observation (see `parse_preemption_reach`).
+type OutcomeRow {
+  qualified: String
+  expectation_wire: String
+  kind: String
+  detail: String
+  exit_code: String
+  ground: String
+  reach: String
+  reach_operations: String
+  cpu_ms: Int
+  wall_ms: Int
+}
+
+type OutcomeRefusal {
+  reason: Symbol
+  offending: String
+}
+
+// THE ROW BECOMES A `ClaimAttemptTerminal`, the one terminal sum, and tag and detail are then
+// rendered by `render_terminal_tag` / `render_terminal_detail` -- no second outcome-to-tag mapping
+// lives here (DESIGN section 3, review 85191 on gunbc#14933). `ExitFailure` maps by its code: 1 is
+// the process's own "did not hold" (verdict false), 2 is the harness's no-observation exit
+// (unrepresentable), and any other code has no arm in the sum and refuses typed.
+type OutcomeTerminalDerivation
+  = OutcomeTerminalDerived { terminal: ClaimAttemptTerminal }
+  | OutcomeTerminalRefused { reason: Symbol, offending: String }
+
+fn derive_outcome_terminal(kind: OutcomeKind, row: OutcomeRow) -> OutcomeTerminalDerivation {
+  match kind {
+    OutcomeKindPass =>
+      OutcomeTerminalDerived { terminal: Returned { observation: ObservedVerdict { holds: true } } }
+    OutcomeKindFail =>
+      OutcomeTerminalDerived { terminal: Returned { observation: ObservedVerdict { holds: false } } }
+    OutcomeKindNotBool =>
+      OutcomeTerminalDerived { terminal: Returned { observation: ObservationUnrepresentable { reason: "returned-non-bool" } } }
+    OutcomeKindRuntimeError =>
+      OutcomeTerminalDerived { terminal: RuntimeErrored { message: row.detail } }
+    OutcomeKindBudgetInterrupted =>
+      OutcomeTerminalDerived { terminal: BudgetRefused { safety: SafetyInterrupted {
+        raised_by: row.detail,
+        elapsed_cpu_at_least: row.cpu_ms,
+        elapsed_wall_at_least: row.wall_ms
+      } } }
+    OutcomeKindCompletedOverBudget =>
+      match parse_preemption_reach(name: row.reach, operations: row.reach_operations) {
+        Absent => OutcomeTerminalRefused { reason: "outcome-reach-unrecognized", offending: row.reach }
+        Present { value: reach } =>
+          OutcomeTerminalDerived { terminal: BudgetRefused { safety: CompletedPastSafetyLimit {
+            observed_cpu: row.cpu_ms,
+            observed_wall: row.wall_ms,
+            preemption: reach
+          } } }
+      }
+    OutcomeKindHostToolUnresolved =>
+      OutcomeTerminalDerived { terminal: HostToolUnresolved { name: row.detail, probed: [] } }
+    OutcomeKindHostEffectRefused =>
+      match parse_route_gap_ground(name: row.ground) {
+        Present { value: g } =>
+          OutcomeTerminalDerived { terminal: RouteGap { operation: row.detail, ground: g } }
+        Absent => OutcomeTerminalRefused { reason: "outcome-ground-unrecognized", offending: row.ground }
+      }
+    OutcomeKindPanicked => OutcomeTerminalDerived { terminal: Panicked { payload: row.detail } }
+    OutcomeKindNotAttempted => OutcomeTerminalDerived { terminal: NotAttempted { halted_by: row.detail } }
+    OutcomeKindExitFailure =>
+      if row.exit_code == "1" {
+        OutcomeTerminalDerived { terminal: Returned { observation: ObservedVerdict { holds: false } } }
+      } else {
+        if row.exit_code == "2" {
+          OutcomeTerminalDerived { terminal: Returned { observation: ObservationUnrepresentable { reason: "exit-failure-code-2" } } }
+        } else {
+          OutcomeTerminalRefused { reason: "outcome-exit-code-unrecognized", offending: row.exit_code }
+        }
+      }
+  }
+}
+
+fn derive_outcome_row(row: OutcomeRow) -> OutcomeRowDerivation {
+  match parse_outcome_kind(name: row.kind) {
+    Absent => OutcomeRowRefused { reason: "outcome-kind-unrecognized", offending: row.kind }
+    Present { value: parsed_kind } =>
+      match derive_outcome_terminal(kind: parsed_kind, row: row) {
+        OutcomeTerminalRefused { reason: r, offending: o } => OutcomeRowRefused { reason: r, offending: o }
+        OutcomeTerminalDerived { terminal: terminal } =>
+          match parse_expectation(wire: row.expectation_wire) {
+            Absent => OutcomeRowRefused { reason: "seed-expectation-unrecognized", offending: row.qualified }
+            Present { value: expectation } =>
+              match readback_disposition(row: LedgerReadbackRow {
+                qualified: row.qualified,
+                expectation: expectation,
+                terminal_tag: render_terminal_tag(terminal: terminal),
+                terminal_detail: render_terminal_detail(terminal: terminal)
+              }) {
+                Absent => OutcomeRowRefused { reason: "seed-terminal-tag-unrecognized", offending: row.qualified }
+                Present { value: disposition } =>
+                  OutcomeRowDerived { row: SeedLedgerRow {
+                    qualified: row.qualified,
+                    expectation_wire: row.expectation_wire,
+                    terminal_tag: render_terminal_tag(terminal: terminal),
+                    terminal_detail: render_terminal_detail(terminal: terminal),
+                    seed_disposition_wire: render_disposition(disposition: disposition)
+                  } }
+              }
+          }
+      }
+  }
+}
+
+// A LEDGER OVER NO ROWS IS NOT A LEDGER: nothing was observed, and an empty file would read as a
+// run that observed and held. It refuses, located at the subject it was asked to speak for.
+fn render_ledger_from_outcomes(
+  repository_snapshot: String,
+  prepared_subject: String,
+  rows: List<OutcomeRow>,
+) -> LedgerRender {
+  let derivations = map(rows, r => derive_outcome_row(row: r))
+  let derived = flat_map(derivations, d => match d {
+    OutcomeRowDerived { row: r } => [r]
+    OutcomeRowRefused { reason: _, offending: _ } => []
+  })
+  let refusals = flat_map(derivations, d => match d {
+    OutcomeRowRefused { reason: reason, offending: offending } => [OutcomeRefusal { reason: reason, offending: offending }]
+    OutcomeRowDerived { row: _ } => []
+  })
+  match refusals.first() {
+    Present { value: first } =>
+      LedgerUnrenderable {
+        reason: first.reason,
+        offending: first.offending,
+        diagnosis: seed_diagnosis_of(
+          repository_snapshot: repository_snapshot,
+          prepared_subject: prepared_subject,
+          roster_identity: seed_roster_identity(rows: derived).digest,
+          rows: derived,
+          reason: first.reason,
+          offending: first.offending
+        )
+      }
+    Absent =>
+      if rows.length() == 0 {
+        LedgerUnrenderable {
+          reason: "outcome-rows-empty",
+          offending: prepared_subject,
+          diagnosis: "outcome-rows-empty"
+        }
+      } else {
+        render_ledger_from_seed(
+          repository_snapshot: repository_snapshot,
+          prepared_subject: prepared_subject,
+          rows: derived
+        )
+      }
   }
 }

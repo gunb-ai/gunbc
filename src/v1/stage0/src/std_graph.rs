@@ -2,7 +2,8 @@
 // Source module: std.graph
 
 pub use crate::std_algebra::{
-    collection_concat_shape, collection_count_shape, collection_map_shape, list_push,
+    collection_concat_shape, collection_count_shape, collection_map_shape, list_flat_map,
+    list_push, map_lookup,
 };
 pub use crate::std_optional::Optional;
 use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
@@ -95,12 +96,12 @@ pub fn build_adjacency_views(
             }),
             |acc: Rc<CallGraphAdjacencyViews>, edge: Rc<GraphEdge>| {
                 let forward_neighbors =
-                    match v1_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
+                    match v1_rt::lookup(&acc.forward.clone(), edge.caller.clone()) {
                         Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
                         std::option::Option::None => Rc::new(vec![edge.callee.clone()]),
                     };
                 let reverse_neighbors =
-                    match v1_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
+                    match v1_rt::lookup(&acc.reverse.clone(), edge.callee.clone()) {
                         Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
                         std::option::Option::None => Rc::new(vec![edge.caller.clone()]),
                     };
@@ -146,7 +147,7 @@ pub fn dfs_finish_order(
         } else {
             {
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
-                let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
+                let neighbors = match v1_rt::lookup(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
                     std::option::Option::None => Rc::new(vec![]),
                 };
@@ -180,7 +181,7 @@ pub fn dfs_collect_component(
             {
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let next_members = v1_rt::rc_list_push(acc.members.clone(), node.clone());
-                let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
+                let neighbors = match v1_rt::lookup(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
                     std::option::Option::None => Rc::new(vec![]),
                 };
@@ -420,16 +421,8 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
             false
         } else {
             {
-                let members = Rc::new({
-                    let mut __result = Vec::new();
-                    for e in edges.iter().cloned() {
-                        __result.extend(
-                            (*Rc::new(vec![e.caller.clone(), e.callee.clone()]))
-                                .iter()
-                                .cloned(),
-                        );
-                    }
-                    __result
+                let members = crate::std_algebra::list_flat_map(edges.clone(), |e| {
+                    Rc::new(vec![e.caller.clone(), e.callee.clone()])
                 });
                 let nd_graph =
                     build_call_graph_from_proof_edges(members.clone(), non_descending.clone());

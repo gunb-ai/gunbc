@@ -1,9 +1,7 @@
 module extdeps.backblaze.b2
 
-import std.types { NonEmptyStr, String, Secret, Timestamp, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.types { NonEmptyStr, String, Secret, Timestamp }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, FactCitation }
 import extdeps.uri { Uri, Https }
 
@@ -134,47 +132,3 @@ data b2_storage_pricing_citation_locator: NonEmptyStr = "backblaze.com/cloud-sto
 
 data b2_egress_pricing_citation_locator: NonEmptyStr = "backblaze.com/cloud-storage/pricing#egress-beyond-3x"
 
-data backblaze_b2_frontier_rows: List<FrontierRow> = [
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2ApplicationKeyIdentity"),
-    reason: "no executing b2_authorize_account caller; the credential shapes are a declared frontier while the citation locators below are consumed by extdeps.pricing.object_storage",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration authorizes against Backblaze B2 on an executing converge or gunbc-run entry, supplying an application key id and key from custody and consuming the returned account identity; a witness that the shape exists does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2StorageApiEndpoints"),
-    reason: "authorization response endpoints have no executing consumer in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration reads apiUrl, downloadUrl or s3ApiUrl from a performed b2_authorize_account on an executing entry; a witness that the shape exists does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "b2_authorize_account_as_of"),
-    reason: "as-of pin has no reader; ExternalAuthority has no as-of field",
-    dissolution: unbound_dissolution(
-      description: "dissolves when ExternalAuthority or FactCitation carries an as-of date and this pin inhabits that field, or a gunbc executing fold reads b2_authorize_account_as_of as the cited document date"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2AuthorizationToken"),
-    reason: "the 24-hour authorization token has no executing holder in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration holds a B2AuthorizationToken returned by a performed b2_authorize_account and spends it on a subsequent B2 call within its lifetime; a witness that the type exists does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "B2AuthorizedAccountIdentity"),
-    reason: "the authorized account identity has no executing consumer in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a gunbc declaration consumes the accountId returned by a performed b2_authorize_account on an executing entry; a witness that the type exists does not fire this"
-    )
-  ),
-  frontier_row_decl(
-    ref: decl_ref(module_path: "extdeps.backblaze.b2", decl_name: "b2_api_v4_base"),
-    reason: "no operation is declared against the v4 base in this change",
-    dissolution: unbound_dissolution(
-      description: "dissolves when a service operation in this module is invoked against b2_api_v4_base on an executing entry; a witness that the base string exists does not fire this"
-    )
-  )
-]

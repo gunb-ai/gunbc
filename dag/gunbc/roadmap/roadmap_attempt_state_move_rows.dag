@@ -1,0 +1,28 @@
+module gunbc.roadmap.roadmap_attempt_state_move_rows
+
+import std.types { List }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { bound_dissolution }
+import std.decl_ref { decl_ref }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow }
+import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
+import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
+
+// EVERY STORE WHOSE ENTRIES USED TO LIVE FLAT IN THE SHARED DISPATCH ATTEMPT-STATE ROOT. The provision plan
+// emits one move op per row and no op branches on which store a row belongs to; a store joining the move is
+// one row here.
+data attempt_state_move_rows: List<MoveRow> = [attempt_identity_slots.move, dogfood_start_slots.move]
+
+// ROW Sb4581047 (session placement records) IS NOT A MOVE ROW YET. The session slot store sealed by #14972
+// (gunbc.roadmap.roadmap_session_attempt_slots_root) holds generation-checked seat slots; the placement, release
+// and note files in the shared root (`session-placement-*.json`, `*.release.json`, `session-placement-note-*.txt`)
+// are plain overwritten JSON that gunbc.roadmap.roadmap_session_placement names as NOT a slot store
+// (records_dir stays a path), so that store is not their destination and a row carrying their bytes into it would
+// forge a slot. The trigger is the sealed store that holds them.
+data attempt_state_move_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_state_move_rows", decl_name: "attempt_state_move_rows"),
+    reason: "session placement records (row Sb4581047) have no sealed destination store: the session slot store holds generation-checked slots, and the placement records are plain overwritten JSON files, so no MoveRow can name their member",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.roadmap.roadmap_session_placement_records_store_root", decl_name: "session_placement_records_slots"))
+  )
+]

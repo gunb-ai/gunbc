@@ -168,6 +168,18 @@ fn classify_rest_refusal(standing: RestExchangeStanding) -> RestExchangeRefusal 
   }
 }
 
+// THE TEXT OF A REFUSED EXCHANGE, for a receipt or CLI line only. The typed refusal stays on the caller's result arm;
+// this renders it and decides nothing. One renderer for every consumer, beside the coproduct it renders, so a new arm
+// refuses to compile here rather than in each caller's copy.
+fn rest_exchange_refusal_text(refusal: RestExchangeRefusal) -> String {
+  match refusal {
+    RestExchangeStatusRefused { status, body } => join(["HTTP ", to_string(status as Int), ": ", body], "")
+    RestExchangeCommitAmbiguous { detail } => detail as String
+    RestExchangeUnreached { cause } => concat("no response: ", cause as String)
+    RestExchangeUndecodable { status, cause } => join(["HTTP ", to_string(status as Int), " with an undecodable body: ", cause as String], "")
+  }
+}
+
 // THE HTTP CLIENT BOUNDARY REPORTS FACTS AND DECIDES NO OPERATION POLICY. RestResponseObserved says
 // a status arrived and then says separately whether its body was readable; RestExchangeRefused says
 // no response arrived, so no status can be fabricated. The operation-facing RestResult above is

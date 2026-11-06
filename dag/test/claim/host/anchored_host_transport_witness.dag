@@ -1,6 +1,6 @@
 module test.claim.host.anchored_host_transport_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, List, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.decl_ref { decl_ref, declaration_ref_eq }
@@ -10,21 +10,30 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefuse
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
-import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
+import gunbc.fleet.fleet_host_key_enrollment { KnownHostKeyRow, ScannedFirstContact, ProvisionedInstall, host_key_provenance_label, known_hosts_line, known_host_row_field, fleet_name_at_ssh_port }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.provisioning.network_install_receipt { ClientClassUnread, NetworkInstallReceipt, network_install_receipt, current_install_for_host_established, current_install_unestablished }
+import test.claim.provisioning.network_install_receipt_witness { all_fetches, client, good, installed_host, other_client, readings, subject }
+import extdeps.network.mac { Eui48Address }
 import gunbc.host.anchored_host_transport {
-  AnchoredHostRow,
   AnchoredBindingBound,
   AnchoredBindingNotTheAnchoredHost,
   AnchoredBindingAnchorNotForRow,
   AnchoredBindingAnchorAbsent,
   AnchoredBindingPresentedKeyMismatch,
+  AnchoredBindingPinFromAnotherBoot,
+  AnchoredBindingPinNotInstallRecord,
+  AnchoredBindingInstallNotAttested,
+  AnchoredBindingInstallSuperseded,
+  AnchoredBindingCurrentInstallUnestablished,
   AnchoredBindingRefused,
   mtcollins1_anchored_host_row,
   anchored_host_row_for,
   anchored_host_trusted_row,
   anchored_host_transport_of,
   anchored_host_transport_against,
+  anchored_host_transport_per_boot,
+  anchored_host_transport_provisioned,
   anchored_host_binding_refusal_reason,
   anchored_host_key_scan_effect,
   anchored_host_key_readback_go_step,
@@ -32,26 +41,22 @@ import gunbc.host.anchored_host_transport {
   anchored_host_pattern_citation,
   anchored_host_token_source_citation,
   anchored_host_transport_frontier_rows,
-  anchored_host_key_mint_effect,
-  anchored_host_key_mint_intervention,
-  anchored_host_key_mint_shell,
-  anchored_host_key_mint_shell_bash_emit_dissolution_trigger,
-  anchored_host_key_mint_create_command,
-  anchored_host_key_mint_upload_command,
-  anchored_host_key_mint_keygen_command,
-  anchored_host_key_mint_cleanup_commands,
+  mtcollins1_host_key_anchor,
+  mtcollins1_host_key_read_obligation,
 }
+import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, checked_host_key, per_boot_pin_from_checked_key }
+import gunbc.host.mtcollins1_ssh_host_key_mint { mtcollins1_host_key_mint_receipt_path }
+import gunbc.host.fleet_keypair_mint { mtcollins1_host_keypair_mint_subject }
 import extdeps.dns.domain_name { DnsLabel }
-import std.roster_frontier { FrontierRow, frontier_rows_well_formed, frontier_subject_eq }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import extdeps.exec.command { argv_words, shell_command_render }
-import std.disposition { Scaffold, RealizationDispatch }
-import std.human_intervention { FleetOnce, NoDischargeSiteModeled }
+import std.roster_frontier { FrontierRow, frontier_rows_well_formed }
+import extdeps.filesystem.filesystem_io
+import std.human_intervention { FleetOnce }
 import gunbc.auth.privileged_effect_census {
-  privileged_effect_census, site_verdict, SiteVerdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
-  manual_api_effect_beside_unlanded_approval_adapter,
+  privileged_effect_census, PrivilegedEffectSite, RealizedFederatedGrant, site_verdict, SiteVerdict,
+  Conforms, DivergesWithReason, Diverges, SiteNotDecidable, mtcollins1_host_key_mint_effect,
 }
-import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, OperatorApprovedCapability, PatternSelected }
+import gunbc.auth.authorization_pattern_selection { HumanSurfaceOnly, PatternSelected, FederatedScopedGrant }
+import gunbc.auth.access_token_source { selected_access_token_source }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fleet_ssh_execution_context_hermetic_witness_fixture,
   fixture_public_key,
@@ -73,6 +78,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fleet_locus_ssh_target over the managed-host join, wrapped whole into the fleet arm. The address is
 // what binds (gunbc.host.host_bound_transport), so nothing here hand-names a host the binding does not.
 fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unanchored_host_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
@@ -80,6 +86,15 @@ fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers:
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_pin_and_current_install_record_bind_the_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_current_install_carrier_for_another_host_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unestablished_current_install_never_binds_a_provisioned_pin"),
 ] {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => none
@@ -126,7 +141,8 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
     Absent => false
     Present { value: t } =>
       match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", wrong_public_key_base64], "")) {
-        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingBound { bound: _, anchor: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
           expected != observed
           && string_contains(s: observed, pattern: wrong_public_key_base64)
@@ -135,12 +151,18 @@ test fn a_wrong_presented_key_refuses_the_transport() -> Bool {
     AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingRefused { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
       }
   }
 }
 
 // (helper) the fixture row's anchor, which the fixture construction above guarantees Present.
 fn the_present_anchor(row: AnchoredHostRow) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_per_boot_pin_carries_its_own_provenance_arm"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "per_boot_binding"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "no_anchor_refuses_the_transport"),
   decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
@@ -178,11 +200,16 @@ test fn an_empty_presented_line_never_binds() -> Bool {
     Present { value: t } =>
       match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: "") {
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: observed } => observed == ""
-        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingBound { bound: _, anchor: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingRefused { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
       }
   }
 }
@@ -198,10 +225,15 @@ test fn an_unanchored_host_refuses_the_transport() -> Bool {
     Present { value: t } =>
       match anchored_host_transport_of(transport: t, presented_key_line: "mtcollins1 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITOTALGARBAGEKEY0") {
         AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "not the endpoint of any managed host")
-        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingBound { bound: _, anchor: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
       }
   }
@@ -221,10 +253,15 @@ test fn no_anchor_refuses_the_transport() -> Bool {
                 string_contains(s: cause, pattern: "Read obligation")
                 && string_contains(s: cause, pattern: "mtcollins1-ssh-host-key")
               AnchoredBindingAnchorNotForRow { cause: _ } => false
-              AnchoredBindingBound { bound: _ } => false
+              AnchoredBindingBound { bound: _, anchor: _ } => false
               AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+              AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
               AnchoredBindingNotTheAnchoredHost { cause: _ } => false
               AnchoredBindingRefused { cause: _ } => false
+              AnchoredBindingPinNotInstallRecord { cause: _ } => false
+              AnchoredBindingInstallNotAttested { why: _ } => false
+              AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+              AnchoredBindingCurrentInstallUnestablished { why: _ } => false
             }
         }
     }
@@ -243,12 +280,17 @@ test fn matching_presented_key_binds_the_anchored_host() -> Bool {
     Present { value: t } =>
       let outcome = anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: known_hosts_line(k: the_present_anchor(row: row)))
       match outcome {
-        AnchoredBindingBound { bound: _ } => anchored_host_binding_refusal_reason(b: outcome) == "bound; not a refusal"
+        AnchoredBindingBound { bound: _, anchor: _ } => anchored_host_binding_refusal_reason(b: outcome) == "bound; not a refusal"
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingRefused { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
       }
   }
 }
@@ -269,10 +311,15 @@ test fn a_transport_to_another_machine_never_binds_the_anchored_host() -> Bool {
       match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: t, presented_key_line: known_hosts_line(k: the_present_anchor(row: row))) {
         AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "is not the endpoint of any managed host")
         AnchoredBindingNotTheAnchoredHost { cause: cause } => string_contains(s: cause, pattern: "srv2") && string_contains(s: cause, pattern: "mtcollins1")
-        AnchoredBindingBound { bound: _ } => false
+        AnchoredBindingBound { bound: _, anchor: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
       }
   }
 }
@@ -283,10 +330,15 @@ test fn a_local_shell_refuses_before_any_key_is_read() -> Bool {
   let row = anchored_fixture_row()
   match anchored_host_transport_against(row: row, anchor: the_present_anchor(row: row), transport: LocalShell, presented_key_line: known_hosts_line(k: the_present_anchor(row: row))) {
     AnchoredBindingRefused { cause: cause } => string_contains(s: cause, pattern: "local shell")
-    AnchoredBindingBound { bound: _ } => false
+    AnchoredBindingBound { bound: _, anchor: _ } => false
     AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
     AnchoredBindingAnchorNotForRow { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
     AnchoredBindingNotTheAnchoredHost { cause: _ } => false
   }
 }
@@ -353,20 +405,30 @@ test fn an_anchor_for_another_machine_refuses_the_row() -> Bool {
         provenance: foreign_address_anchor.provenance,
       }
       let host_sibling_binds = match anchored_host_transport_against(row: row, anchor: host_sibling, transport: t, presented_key_line: known_hosts_line(k: host_sibling)) {
-        AnchoredBindingBound { bound: _ } => true
+        AnchoredBindingBound { bound: _, anchor: _ } => true
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
         AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingRefused { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
       }
       let address_sibling_binds = match anchored_host_transport_against(row: row, anchor: address_sibling, transport: t, presented_key_line: known_hosts_line(k: address_sibling)) {
-        AnchoredBindingBound { bound: _ } => true
+        AnchoredBindingBound { bound: _, anchor: _ } => true
         AnchoredBindingNotTheAnchoredHost { cause: _ } => false
         AnchoredBindingAnchorNotForRow { cause: _ } => false
         AnchoredBindingAnchorAbsent { cause: _ } => false
         AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+        AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
         AnchoredBindingRefused { cause: _ } => false
+        AnchoredBindingPinNotInstallRecord { cause: _ } => false
+        AnchoredBindingInstallNotAttested { why: _ } => false
+        AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+        AnchoredBindingCurrentInstallUnestablished { why: _ } => false
       }
       // And the host case additionally proves the refusal cannot be a key mismatch masquerading as one:
       // the rendered line is address + key type + key material (known_hosts_line), invisible to the
@@ -389,11 +451,16 @@ fn anchored_pairing_refused(b: AnchoredHostBinding) -> Bool admit_callers: [
       string_contains(s: cause, pattern: "srv2")
       && string_contains(s: cause, pattern: "mtcollins1")
       && !string_contains(s: cause, pattern: "PRIVATE")
-    AnchoredBindingBound { bound: _ } => false
+    AnchoredBindingBound { bound: _, anchor: _ } => false
     AnchoredBindingNotTheAnchoredHost { cause: _ } => false
     AnchoredBindingAnchorAbsent { cause: _ } => false
     AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => false
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => false
     AnchoredBindingRefused { cause: _ } => false
+    AnchoredBindingPinNotInstallRecord { cause: _ } => false
+    AnchoredBindingInstallNotAttested { why: _ } => false
+    AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => false
+    AnchoredBindingCurrentInstallUnestablished { why: _ } => false
   }
 }
 
@@ -409,6 +476,7 @@ test fn the_private_key_never_appears_in_argv_or_rendered_text() -> Bool {
     anchored_host_binding_refusal_reason(b: AnchoredBindingAnchorAbsent { cause: "anchor absent" }),
     anchored_host_binding_refusal_reason(b: AnchoredBindingNotTheAnchoredHost { cause: "not the anchored host" }),
     anchored_host_binding_refusal_reason(b: AnchoredBindingRefused { cause: "binding refused" }),
+    anchored_host_binding_refusal_reason(b: AnchoredBindingPinFromAnotherBoot { pinned_boot: "boot-a", expected_boot: "boot-b" }),
     anchored_host_binding_refusal_reason(b: AnchoredBindingPresentedKeyMismatch { expected_line: "exp", observed_line: "obs" }),
     anchored_host_key_scan_effect(host: operator_host_mtcollins1).subject as String,
   ], "\n")
@@ -444,179 +512,553 @@ test fn the_readback_scan_effect_is_census_classified() -> Bool {
 // test.claim.authorization_pattern_selection_witness and test.claim.access_token_source_witness.)
 test fn the_transport_route_cites_the_executed_selectors() -> Bool {
   let pattern_cited = anchored_host_pattern_citation(host: operator_host_mtcollins1)
-  let source_cited = anchored_host_token_source_citation()
+  let selected_cited = anchored_host_token_source_citation(selection: selected_access_token_source(workload_present: true, supplied: none))
+  let unavailable_cited = anchored_host_token_source_citation(selection: selected_access_token_source(workload_present: false, supplied: none))
   string_contains(s: pattern_cited, pattern: "select_authorization_pattern:")
-  && string_contains(s: source_cited, pattern: "select_access_token_source:")
+  && string_contains(s: selected_cited, pattern: "select_access_token_source: AccessTokenSourceSelected")
+  && string_contains(s: unavailable_cited, pattern: "select_access_token_source: AccessTokenSourceUnavailable")
 }
 
 // THE OPEN GAPS ARE ROWS, NOT COMMENTS (review 85051, DESIGN sec.3c). The module carries four frontier
 // rows for what this diff does NOT yet do in production: nothing routes a live transport through
 // anchored_host_transport_of, no live readback has run, and nothing on the host consumes the placed key
-// (no sshd in this slice). They must be well-formed and stand in the census-closure registry -- a gap in
-// a comment dissolves; a row's trigger is checked.
+// (no sshd in this slice). They must be well-formed -- a gap in
+// a comment dissolves; a row is at least checked for well-formedness (no fold checks its trigger).
 
-fn anchored_census_has_frontier_subject(row: FrontierRow) -> Bool {
-  any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject))
-}
-
-test fn the_open_gaps_are_frontier_rows_and_registered() -> Bool {
+test fn the_open_gaps_are_well_formed_frontier_rows() -> Bool {
   count(anchored_host_transport_frontier_rows) == 4
   && frontier_rows_well_formed(rows: anchored_host_transport_frontier_rows)
-  && all(anchored_host_transport_frontier_rows, row => anchored_census_has_frontier_subject(row: row))
 }
 
-// ── THE MINT (review 85232: the step that CREATES the secret was unmodeled hand shell) ────────
+// ── THE MINT, WHICH IS NO LONGER A HUMAN STEP ──────────────────────────────────────────────────
 //
-// The mint is now a model: argv builders on admitted extdeps programs, a rendered shell the runbook
-// copies from the render, a HumanIntervention, a PrivilegedEffect in the census, and a Scaffold
-// marker naming the trigger that dissolves the hand execution. These claims pin each of those at
-// the edge that matters -- and one of them is the Q1 RED: no mint argv word, and no rendered line,
-// may carry private key material; the private half moves only as file CONTENTS through the cat pipe.
+// This block used to witness a human paste: argv builders for gcloud, a rendered shell, a HumanIntervention,
+// a PrivilegedEffect the fold diverged on with a stated reason, and a Scaffold marker whose trigger named the
+// capability that would retire the hand execution (review 85232: "the one step that actually creates the
+// secret" had no privileged effect at all). The capability arrived and the human step went away with it: the
+// operator's ruling of 2026-10-28 -- "i don't see why a human needs to do this - this seems just like normal
+// account creation" -- is a design_ruling row, the_mint_of_a_fleet_ssh_keypair_is_account_creation, and the
+// mint is now gunbc.host.mtcollins1_ssh_host_key_mint, one of the two rows of the single policy
+// gunbc.host.fleet_keypair_mint.
+//
+// The claims below are the ones that survived the change, restated against what still exists. What was
+// DELETED is recorded here rather than silently dropped, because the block's history is the evidence that the
+// census moved deliberately:
+//   - the_mint_effect_is_censused_and_diverges_with_reason, the_mint_render_carries_no_private_material,
+//     the_runbook_mint_block_is_the_model_render, the_mint_render_is_the_builders_render and
+//     the_mint_is_a_declared_scaffold_and_a_fleet_once_step went with the scaffold they name;
+//   - the Q1 RED did not go: it is asserted over the mint's own argv in
+//     dag/test/claim/host/fleet_keypair_mint_witness.dag, which enumerates the four commands a mint issues for
+//     BOTH subjects -- a stronger form of the same claim, since it checks the commands the run actually issues
+//     rather than a rendered script somebody might run;
+//   - the runbook fold below REPLACES the byte-for-byte comparison of a mint fence, and asserts the opposite
+//     property: there must be NO mint block to compare.
 
-fn mint_word_is_clean(w: String) -> Bool {
-  !string_contains(s: w, pattern: "PRIVATE KEY")
-  && !string_contains(s: w, pattern: "ssh-ed25519 ")
-  && !string_contains(s: w, pattern: "--data-file=/")
+// CLAIM: THE MINT'S EFFECT IS CENSUSED AT THE SITE THAT PERFORMS IT, AS A FEDERATED GRANT, AND THE FOLD
+// SELECTS THE FEDERATED PATTERN. This is the retirement's audit trail in machine-checkable form. The retired
+// row sat at anchored_host_key_mint_intervention with RealizedHumanStep and the reason
+// manual_api_effect_beside_unlanded_approval_adapter; its reason named what had to land (an authority adapter
+// that performs the store write), and once that existed the selection computed differently rather than being
+// edited to say so. So the claim is not "the row says FederatedScopedGrant" -- it is that the FOLD EXECUTED
+// over the effect computes it: reversible, resource-scoped reach, a bindable workload identity, no witness
+// owed. Rig the effect's fields and the selection stops matching, which is the only reason a reader has to
+// believe the retirement was earned rather than declared.
+fn host_mint_census_rows() -> List<PrivilegedEffectSite> {
+  filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.mtcollins1_ssh_host_key_mint", decl_name: "mtcollins1_host_key_mint_wet")))
 }
 
-// CLAIM: THE MINT EFFECT IS CENSUS-CLASSIFIED AND THE FOLD DIVERGES WITH THE STATED REASON. Exactly
-// one row stands for the mint site; the fold EXECUTED over the effect selects the operator-approval
-// pattern (the witness gate fires -- irreversible with no discharge -- and the unbindable workload
-// identity excludes the federated grant), while the row realizes the named human step; so the
-// conformance is DivergesWithReason carrying the manual-API-beside-unlanded-adapter reason -- the
-// same reason the ntfy publisher-token mint row carries, because the situation is the same: an
-// ApiSurface gcloud effect no fleet principal is allowed to perform. The claim fails if the row is
-// absent (an unclassified mint), if it diverges UNreasoned (an unexplained hole), if it silently
-// conforms (the fold would have to be rigged), or if the effect's frequency drifts from the step's.
-fn anchored_mint_verdict_selected_approval(v: SiteVerdict) -> Bool {
+fn host_mint_verdict_selects_federated(v: SiteVerdict) -> Bool {
   match v.selection {
-    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
     _ => false
   }
 }
 
-fn anchored_mint_verdict_stated_divergence(v: SiteVerdict) -> Bool {
-  match v.conformance {
-    DivergesWithReason { reason: reason } => reason.statement == manual_api_effect_beside_unlanded_approval_adapter.statement
-    Conforms => false
-    Diverges => false
-    SiteNotDecidable { standing: _ } => false
-  }
-}
-
-test fn the_mint_effect_is_censused_and_diverges_with_reason() -> Bool {
-  let rows = filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention")))
+test fn the_mint_effect_is_censused_as_a_federated_grant_that_the_fold_selects() -> Bool {
+  let rows = host_mint_census_rows()
   count(rows) == 1
-  && all(rows, r => anchored_mint_verdict_selected_approval(v: site_verdict(row: r)))
-  && all(rows, r => anchored_mint_verdict_stated_divergence(v: site_verdict(row: r)))
-  && anchored_host_key_mint_effect().frequency == anchored_host_key_mint_intervention().frequency
-}
-
-// CLAIM: NO MINT LEG CARRIES PRIVATE MATERIAL (rule Q1; the class in
-// dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag). Every
-// word of every mint argv command -- the keygen leg, both gcloud legs, the cleanup legs -- is free
-// of key material: no PRIVATE KEY marker, no public-key line, and NO --data-file PATH that could
-// make the CLI read the key from disk on a server-bound leg. The create leg has no --data-file word
-// at all (an empty version 1 would be a lie the server serves), and the upload leg's only
-// --data-file word is exactly "--data-file=-": the key reaches the server as stdin CONTENTS from
-// cat and in no other way. Delete the stdin rule and the upload leg gains a path form here; widen
-// the keygen leg with key material and this refuses.
-test fn the_mint_render_carries_no_private_material() -> Bool {
-  all(argv_words(command: anchored_host_key_mint_create_command()), w => mint_word_is_clean(w: w))
-  && all(argv_words(command: anchored_host_key_mint_upload_command()), w => mint_word_is_clean(w: w))
-  && all(argv_words(command: anchored_host_key_mint_keygen_command(mint_dir: "/dev/shm/mc-hostkey")), w => mint_word_is_clean(w: w))
-  && all(anchored_host_key_mint_cleanup_commands(mint_dir: "/dev/shm/mc-hostkey"), c => all(argv_words(command: c), w => mint_word_is_clean(w: w)))
-  && !string_contains(s: shell_command_render(command: anchored_host_key_mint_create_command()), pattern: "--data-file")
-  && string_contains(s: shell_command_render(command: anchored_host_key_mint_upload_command()), pattern: "--data-file=-")
-}
-
-// The operator-facing runbook (docs/runbooks/mtcollins1-ssh-host-key-mint.md, Step 1) copies the mint
-// shell into a ```bash fence. This folds the runbook text and returns the FIRST bash fence whose body
-// carries the mint's ssh-keygen leg -- the mint block -- or "" if the file no longer has one. split /
-// .skip / .take / join / fold are the claim-witness builtins (the shape at
-// dag/test/claim/action_use_admission_witness.dag); filesystem_read reads the committed file under this
-// module's SubstrateInputsOnly disposition, the same lane action_use_admission_witness reads real census
-// files.
-fn anchored_runbook_mint_block() -> String {
-  let doc = filesystem_read(path: "docs/runbooks/mtcollins1-ssh-host-key-mint.md").content
-  let parts = split(s: doc, delimiter: "```bash\n")
-  fold(parts.skip(n: 1), init: "", f: fn(acc, chunk) {
-    if acc != "" {
-      acc
-    } else {
-      let body_parts = split(s: chunk, delimiter: "\n```")
-      let body = join(body_parts.take(n: 1), "\n")
-      if string_contains(s: body, pattern: "ssh-keygen") { body } else { acc }
+    && all(rows, r => host_mint_verdict_selects_federated(v: site_verdict(row: r)))
+    && all(rows, r => match r.realized {
+      RealizedFederatedGrant => true
+      _ => false
+    })
+    // NO DIVERGENCE IS CLAIMED ANYWHERE: the retired row's stated reason was the absence of this capability.
+    && all(rows, r => match r.divergence_reason { Absent => true  Present { value: _ } => false })
+    // THE RETIRED SITE IS GONE FROM THE CENSUS, so the audit trail cannot be read as "both are live": a
+    // census with a human mint step AND a workflow mint beside it would describe a fleet with two ways to
+    // mint the same key, one of which nobody may use.
+    && count(filter(privileged_effect_census, r => declaration_ref_eq(a: r.site, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_intervention")))) == 0
+    // THE EFFECT'S OWN FIELDS ARE THE MINT'S, NOT A COPY OF THE READER KEY'S: the subject names THIS key's
+    // secret row, so the census cannot be satisfied by pointing at the reader key's mint.
+    && string_contains(s: mtcollins1_host_key_mint_effect().subject as String, pattern: "mtcollins1-ssh-host-key")
+    && match mtcollins1_host_key_mint_effect().frequency {
+      FleetOnce => true
+      _ => false
     }
-  })
 }
 
-// CLAIM: THE RUNBOOK'S MINT BLOCK IS THE MODEL RENDER, BYTE FOR BYTE (review 85414 finding 1). The
-// runbook copies anchored_host_key_mint_shell() for a human to run during a secret mint; a hand-pasted
-// copy is a second source for the command lines an operator executes, and DESIGN §6 names "a
-// hand-authored projection the model should generate" as a scaffold tell. This is NOT the model checking
-// itself: it reads the committed markdown file off disk and compares its fenced block to the render
-// (the fence strips the render's trailing newline, so the block is re-terminated before the equality).
-// Editing the runbook block to drift from the model -- retyping a gcloud leg, dropping the tmpfs guard,
-// widening the trap -- fails HERE, not by convention. anchored_host_key_mint_shell() returns an
-// Outcome<String> (review 85659: a rejected emission is a typed refusal, not a sentinel string inside
-// the success type), so a Rejected emission REFUSES this claim rather than being compared against -- a
-// refusal is never a pass. The failure companion prints both the file's block and the model render so
-// the drift is located, not inferred.
-fn anchored_mint_render_text() -> String {
-  match anchored_host_key_mint_shell() {
-    Accepted { value: text, diagnostics: _ } => text
-    Rejected { diagnostics: _ } => "EMIT_REFUSED"
+// CLAIM: THE ANCHOR STANDING SURVIVES THE RETIREMENT, AND IS THE PART THAT MATTERS MOST. The transport is
+// unskippable because there is exactly one door that can fill this row -- the mint's receipt, which names the
+// public half and the fingerprint together. The retired mint printed both on a terminal for a human to copy,
+// which is how a fingerprint reaches an anchor row wrong; the new receipt is a file the same commit that
+// installs the anchor reads. The claim fails if the anchor row vanishes (a transport that trusts on first
+// contact), if its public half is populated while the key has never been minted (a row that would silence the
+// only thing able to create the key), or if the mint's receipt path drifts from where the workflow uploads it.
+test fn the_anchor_standing_and_the_mint_receipt_are_still_one_door() -> Bool {
+  match mtcollins1_host_key_anchor() {
+    // Today: no minted host key, so no anchor. That is the honest state, and it is what keeps the mint
+    // reachable -- a populated anchor with no key in the store would silence the only thing that can create
+    // one (gunbc.host.mtcollins1_ssh_host_key_mint mtcollins1_host_key_pinned_line reads exactly this call).
+    Absent => true
+    // Once a key exists, the row is a complete ssh-ed25519 statement: a public half AND a SHA256-shaped
+    // fingerprint. The fingerprint half is what the retired human step transcribed by hand, and what the
+    // mint's receipt now names in the same commit as the public half.
+    Present { value: row } =>
+      row.key_type == "ssh-ed25519"
+        && row.public_key_base64 != ""
+        && string_contains(s: row.sha256_fingerprint, pattern: "SHA256:")
+  }
+    // THE READ OBLIGATION IS STILL ATTACHED, naming the secret whose private half the anchor stands for: an
+    // anchor whose read nobody owes is a figure nobody will ever verify.
+    && string_contains(s: mtcollins1_host_key_read_obligation as String, pattern: mtcollins1_ssh_host_key_secret.secret as String)
+    && string_contains(s: mtcollins1_host_key_read_obligation as String, pattern: "anchor row")
+    // THE ROW STILL POINTS AT THE SAME SECRET THE MINT WRITES, so "pinned" and "minted" cannot drift onto
+    // two different store rows -- which would let a mint of one key satisfy an anchor for another.
+    && mtcollins1_anchored_host_row.host_key_secret.secret == mtcollins1_host_keypair_mint_subject.privkey_secret.secret
+    && mtcollins1_host_key_mint_receipt_path == "target/mtcollins1-ssh-host-key-mint.txt"
+}
+
+// CLAIM: THE RUNBOOK NO LONGER TELLS A HUMAN TO MINT THE KEY (the RED that keeps the retirement real).
+// Step 1 is deleted; Step 2 -- installing the anchor row, which is a source change and stays human-owned --
+// remains. This reads the committed markdown, the way action_use_admission_witness reads real census files, so
+// it cannot be satisfied by a model that merely prefers the workflow: a restored hand-mint fence, with
+// ssh-keygen or a gcloud add-version in it, fails here. Deleting the whole runbook does NOT pass either --
+// Step 2 and the custody boundary are load-bearing prose -- so the file must exist and must still say what
+// the operator does now.
+fn anchored_runbook_text() -> String {
+  filesystem_read(path: "docs/runbooks/mtcollins1-ssh-host-key-mint.md").content
+}
+
+test fn the_runbook_mints_nothing_and_still_installs_the_anchor() -> Bool {
+  let doc = anchored_runbook_text()
+  doc != ""
+    // No hand mint, in any of its five shapes: no keygen, no store create, no store write from a shell, no
+    // temp directory for a private half to be born in, and no "one shell session" framing. Each is asserted
+    // directly rather than by the shape of a heading, because what must not come back is the COMMAND -- a
+    // restored fence under a renamed heading would pass a heading test.
+    && !string_contains(s: doc, pattern: "ssh-keygen")
+    && !string_contains(s: doc, pattern: "add-version")
+    && !string_contains(s: doc, pattern: "secrets create")
+    && !string_contains(s: doc, pattern: "--data-file")
+    && !string_contains(s: doc, pattern: "mc-hostkey")
+    && !string_contains(s: doc, pattern: "one shell session")
+    // What the operator does now, and the two halves that stay human-owned: dispatching a mint is an operator
+    // go, and installing a trust anchor is a source change that is reviewed in a commit. Deleting the whole
+    // runbook would not pass either -- these are load-bearing prose.
+    && string_contains(s: doc, pattern: "FleetKeypairMint")
+    && string_contains(s: doc, pattern: "fleet_keypair_mint_subject_rows")
+    && string_contains(s: doc, pattern: "mtcollins1-ssh-host-key")
+    && string_contains(s: doc, pattern: "fingerprint")
+    && string_contains(s: doc, pattern: "known_hosts")
+}
+
+// ── THE PER-BOOT PIN (S4: the image generates its host key each boot and prints the PUBLIC line on SOL) ──
+//
+// The reported key fields are a supplied value at this boundary. The producer is the runner medium's key stages
+// (gunbc.runner.runner_host_medium), whose reader is the pin's only mint path. What is pinned here is the fleet's side:
+// a pin binds only its own boot and only the key it carries.
+
+// A well-formed ed25519 blob (RFC 8709), so the parser's blob check passes; the hermetic fixture key above is a placeholder that is not a parseable blob.
+data per_boot_valid_key_b64: String = "AAAAC3NzaC1lZDI1NTE5AAAAIErU2itxhvGPRx1UxiuCYkikYIV9DtuXiELy64bQpAXL"
+
+data per_boot_fixture_fingerprint: String = "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86w"
+
+// the pin a boot's reported fields yield; Absent when the checked constructor refuses them
+fn per_boot_pin_of(boot_id: String, key_type: String, key_b64: String, fingerprint: String) -> PerBootHostPin? {
+  if boot_id == "" { none } else {
+    match checked_host_key(boot_id: boot_id as NonEmptyStr, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint) {
+      Absent => none
+      Present { value: checked } => Present { value: per_boot_pin_from_checked_key(row: anchored_fixture_row(), parsed: checked) }
+    }
   }
 }
 
-test fn the_runbook_mint_block_is_the_model_render() -> Bool {
-  match anchored_host_key_mint_shell() {
-    Accepted { value: text, diagnostics: _ } => concat(anchored_runbook_mint_block(), "\n") == text
-    Rejected { diagnostics: _ } => false
+fn per_boot_pin_ok(boot_id: String, key_b64: String) -> PerBootHostPin? {
+  per_boot_pin_of(boot_id: boot_id, key_type: "ssh-ed25519", key_b64: key_b64, fingerprint: per_boot_fixture_fingerprint)
+}
+
+fn per_boot_binding_kind(b: AnchoredHostBinding) -> String {
+  match b {
+    AnchoredBindingBound { bound: _, anchor: _ } => "bound"
+    AnchoredBindingNotTheAnchoredHost { cause: _ } => "not-the-anchored-host"
+    AnchoredBindingAnchorNotForRow { cause: _ } => "anchor-not-for-row"
+    AnchoredBindingAnchorAbsent { cause: _ } => "anchor-absent"
+    AnchoredBindingPresentedKeyMismatch { expected_line: _, observed_line: _ } => "presented-key-mismatch"
+    AnchoredBindingPinFromAnotherBoot { pinned_boot: _, expected_boot: _ } => "pin-from-another-boot"
+    AnchoredBindingRefused { cause: _ } => "refused"
+    AnchoredBindingPinNotInstallRecord { cause: _ } => "pin-not-install-record"
+    AnchoredBindingInstallNotAttested { why: _ } => "install-not-attested"
+    AnchoredBindingInstallSuperseded { pinned_install: _, current_install: _ } => "install-superseded"
+    AnchoredBindingCurrentInstallUnestablished { why: _ } => "current-install-unestablished"
   }
 }
 
-fn the_runbook_mint_block_is_the_model_render_failure_receipt() -> String {
-  match anchored_host_key_mint_shell() {
-    Accepted { value: text, diagnostics: _ } => concat(concat(concat("RUNBOOK_BLOCK=[", anchored_runbook_mint_block()), "] MODEL_RENDER=["), concat(text, "]"))
-    Rejected { diagnostics: _ } => "MODEL_RENDER=EMIT_REFUSED (bash_emit_stmts rejected the mint script)"
+// the binding for a pin parsed from `console`, acting on `expected_boot` and presented `key_b64`
+fn per_boot_binding(pin_in: PerBootHostPin?, expected_boot: NonEmptyStr, key_b64: String) -> String {
+  let row = anchored_fixture_row()
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => "no-transport"
+    Present { value: t } => per_boot_binding_kind(b: anchored_host_transport_per_boot(
+      transport: t,
+      expected_boot_id: expected_boot,
+      pin: pin_in,
+      presented_key_line: join([known_host_row_field(k: the_present_anchor(row: row)), " ssh-ed25519 ", key_b64], ""),
+    ))
   }
 }
 
-// CLAIM: THE MINT RENDER IS COMPOSED FROM THE BUILDERS. The shell string contains the create leg's
-// render, the upload leg's render, and the stdin pipe -- and the secret name and project it carries
-// are the SecretRef's OWN fields, so the literals have no second spelling INSIDE THE MODEL: change
-// the SecretRef and this render changes. Re-typing a gcloud leg by hand in the model, or retyping the
-// literals, fails here. The runbook's own copy is checked against the render by
-// the_runbook_mint_block_is_the_model_render, not by this claim.
-test fn the_mint_render_is_the_builders_render() -> Bool {
-  let shell = anchored_mint_render_text()
-  shell != "EMIT_REFUSED"
-  && string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_create_command()))
-  && string_contains(s: shell, pattern: shell_command_render(command: anchored_host_key_mint_upload_command()))
-  && string_contains(s: shell, pattern: concat("'", mtcollins1_ssh_host_key_secret.secret as String, "'"))
-  && string_contains(s: shell, pattern: concat("'", mtcollins1_ssh_host_key_secret.project as String, "'"))
-  && string_contains(s: shell, pattern: " | ")
+// POSITIVE CONTROL: the sshd presents the key the console printed at THIS boot -> bound.
+test fn a_per_boot_pin_binds_the_key_printed_at_that_boot() -> Bool {
+  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-a" as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "bound"
 }
 
-// CLAIM: THE HAND EXECUTION IS A DECLARED SCAFFOLD WITH A NAMED TRIGGER, AND THE STEP IS ONCE PER
-// FLEET. The render's disposition is Scaffold dissolving to a real dispatch bound to
-// anchored_host_key_mint_shell itself (the bash_emit precedent), and the operator-facing step is
-// FleetOnce with no discharge site modeled yet -- the mint happens once per fleet, not per boot
-// (per boot is the DELIVERY, the custody arm's job), and no witness standing discharges it.
-test fn the_mint_is_a_declared_scaffold_and_a_fleet_once_step() -> Bool {
-  match anchored_host_key_mint_shell_bash_emit_dissolution_trigger {
-    Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
-      declaration_ref_eq(a: bind, b: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"))
-    _ => false
+// A per-boot pin is neither trust-on-first-use nor an external join: its provenance is its own arm, so a policy
+// keyed on provenance can tell a BMC-console key from a bare network scan (review 89380). The static anchor's
+// arm is unchanged.
+test fn a_per_boot_pin_carries_its_own_provenance_arm() -> Bool {
+  match per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64) {
+    Present { value: pin } => host_key_provenance_label(p: pin.anchor.provenance) == "console-per-boot"
+    Absent => false
   }
-  && match anchored_host_key_mint_intervention().frequency {
-    FleetOnce => true
-    _ => false
+  && host_key_provenance_label(p: the_present_anchor(row: anchored_fixture_row()).provenance) == "scanned-first-contact"
+}
+
+// RED: a pin read at boot A, presented while acting on boot B (the same key even) refuses before any key
+// is compared -- a per-boot key vouches for its own boot only.
+test fn a_pin_from_another_boot_refuses() -> Bool {
+  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-b" as NonEmptyStr, key_b64: per_boot_valid_key_b64) == "pin-from-another-boot"
+}
+
+// RED: right boot, but the sshd presents a different key than the console printed.
+test fn a_mismatched_key_under_a_per_boot_pin_refuses() -> Bool {
+  per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: per_boot_valid_key_b64), expected_boot: "boot-a" as NonEmptyStr, key_b64: wrong_public_key_base64) == "presented-key-mismatch"
+}
+
+// RED: no pin refuses, and so does every key the checked constructor refuses: an empty boot id, a key type that
+// is not ed25519, a fingerprint that is not the blob's, an absent fingerprint, a truncated blob.
+test fn no_per_boot_pin_refuses_and_so_does_every_key_the_checked_constructor_refuses() -> Bool {
+  let key = per_boot_valid_key_b64
+  let fp = per_boot_fixture_fingerprint
+  per_boot_binding(pin_in: none, expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "", key_type: "ssh-ed25519", key_b64: key, fingerprint: fp), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-rsa", key_b64: key, fingerprint: fp), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-ed25519", key_b64: key, fingerprint: "SHA256:hIxG0YT2jIxXbxs4XGqwehgoA63kxD4xKP2j6YjG86x"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_of(boot_id: "boot-a", key_type: "ssh-ed25519", key_b64: key, fingerprint: ""), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+  && per_boot_binding(pin_in: per_boot_pin_ok(boot_id: "boot-a", key_b64: "AAAAC3NzaC1lZDI1NTE5"), expected_boot: "boot-a" as NonEmptyStr, key_b64: key) == "anchor-absent"
+}
+
+// ══ T2: THE PROVISIONED PER-INSTALL PIN (gunbc.plans.host_trust_provisioned_key) ══
+// The claims below pin anchored_host_transport_provisioned: the comparison for an INSTALLED system,
+// where the pin is a ProvisionedInstall catalog row and the currency of the pin is decided by the
+// host's CURRENT install, supplied as the sealed CurrentInstallForHost carrier (minted only by the
+// selection of the latest complete receipt for that host - the fold that does not exist yet, so the
+// carrier is minted here through its admit_callers-gated constructor; gunbc.provisioning.network_install_receipt).
+// Fixtures borrow
+// the network-install receipt witness's kit (its admitted chain, seed and readings) so the install
+// side is minted by the real receipt fold from admitted readings, not hand-fabricated, and the host
+// side is mtcollins1 ONLY because it is the fleet_ssh_locus-resolved host this file's transport
+// fixture reaches; a fixture installed system is a model state, not a claim about mtcollins1's disks.
+fn provisioned_pin_fixture(install_attempt: String, install_client_mac: Eui48Address) -> KnownHostKeyRow admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_pin_and_current_install_record_bind_the_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_current_install_carrier_for_another_host_never_binds"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unestablished_current_install_never_binds_a_provisioned_pin"),
+] {
+  let base = mtcollins1_anchored_host_row
+  KnownHostKeyRow {
+    host: base.host,
+    address: base.address,
+    key_type: "ssh-ed25519",
+    public_key_base64: fixture_public_key.material as String,
+    sha256_fingerprint: "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0",
+    provenance: ProvisionedInstall {
+      install_client_mac: install_client_mac,
+      install_attempt: install_attempt as NonEmptyStr,
+      authority: "fixture: the install-boot console capture and the complete install receipt" as NonEmptyStr,
+    },
   }
-  && match anchored_host_key_mint_intervention().completion_evidence {
-    NoDischargeSiteModeled => true
-    _ => false
+}
+
+// A complete InstalledToDisk receipt for attempt "attempt-1", minted by the receipt fold itself from
+// the borrowed fixture readings -- so supersession is compared against a real record, not a literal.
+fn attested_fixture_receipt() -> NetworkInstallReceipt? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_pin_and_current_install_record_bind_the_host"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_reinstall_without_re_enrolment_refuses_the_old_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_key_refuses_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_pin_from_another_record_never_vouches_an_installed_contact"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_install_record_of_another_machine_never_vouches_a_provisioned_pin"),
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_current_install_carrier_for_another_host_never_binds"),
+] {
+  match subject() {
+    Absent => Absent
+    Present { value: s } => Present { value: network_install_receipt(subject: s, readings: good(secure_boot: SecureBootDisabled)) }
+  }
+}
+
+// The same install with a named gap (the client class was never read): the fold refuses to call it a
+// completed install, and the comparison must refuse to vouch against it.
+fn unattested_fixture_receipt() -> NetworkInstallReceipt? admit_callers: [
+  decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_unattested_install_never_binds_a_provisioned_pin"),
+] {
+  match subject() {
+    Absent => Absent
+    Present { value: s } => Present { value: network_install_receipt(
+      subject: s,
+      readings: readings(
+        class: ClientClassUnread { why: "fixture: the client class was never read" },
+        fetches: all_fetches(),
+        host: installed_host(secure_boot: SecureBootDisabled),
+      ),
+    ) }
+  }
+}
+
+// CLAIM: A PROVISIONED PIN AND ITS INSTALL'S COMPLETE RECORD BIND THE HOST. Positive control: the pin
+// names attempt-1, the current complete receipt names attempt-1, the presented line is the pinned
+// public half -- the transport binds.
+test fn anchored_pin_and_current_install_record_bind_the_host() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
+        match anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        ) {
+          // B1's anchor semantics: the binding carries the row that vouched for it. The provisioned
+          // path anchors to the pin, so the carried anchor must BE that row - checked, not assumed.
+          AnchoredBindingBound { bound: _, anchor: a } => known_hosts_line(k: a) == known_hosts_line(k: pin)
+          _ => false
+        }
+    }
+  }
+}
+
+// CLAIM: A REINSTALL WITHOUT RE-ENROLMENT REFUSES THE OLD PIN -- the brief's RED, and the side-chat
+// P1 witness (1): the host has complete installs A (the pin's, attempt-0) and B (attempt-1, current
+// in the carrier); the pin AND the presented key match A, and supplying them while B is current must
+// refuse. The binding refuses ANYWAY with the supersession named on both sides. This is the reused-key
+// case per-install minting exists to forbid: the key matching is no help once its install is dead.
+// A caller cannot dodge this by handing over A's bare receipt: the comparison consumes the carrier,
+// whose Established arm only the latest-complete-install selection mints (admit_callers-gated; the
+// sealing mechanism is pinned corpus-wide by test.claim.sole_constructor_completeness_audit_probe).
+test fn a_reinstall_without_re_enrolment_refuses_the_old_pin() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-0", install_client_mac: client)
+        let outcome = anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        )
+        match outcome {
+          AnchoredBindingInstallSuperseded { pinned_install: pinned, current_install: current } =>
+            pinned == "attempt-0"
+              && current == "attempt-1"
+              && string_contains(s: anchored_host_binding_refusal_reason(b: outcome), pattern: "reinstall invalidates the old pin")
+          _ => false
+        }
+    }
+  }
+}
+
+// CLAIM: A WRONG PRESENTED KEY REFUSES A PROVISIONED PIN. The install is current, the key is not:
+// the mismatch refuses with the pinned line expected and the observed line reported, binding nothing.
+test fn a_wrong_key_refuses_a_provisioned_pin() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } => match anchored_host_transport_provisioned(
+        pin: provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client),
+        current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+        transport: t,
+        presented_key_line: join(["ssh-ed25519 ", wrong_public_key_base64], ""),
+      ) {
+        AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
+          string_contains(s: expected, pattern: fixture_public_key.material as String)
+            && string_contains(s: observed, pattern: wrong_public_key_base64)
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: AN UNATTESTED INSTALL NEVER BINDS A PROVISIONED PIN. The install record carries a named gap
+// (no complete receipt), so the pin's install cannot be shown current and NOTHING is vouched -- the
+// comparison refuses with the gap's own record, it does not fall back to trusting the key.
+test fn an_unattested_install_never_binds_a_provisioned_pin() -> Bool {
+  match unattested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
+        match anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        ) {
+          AnchoredBindingInstallNotAttested { why: why } => string_contains(s: why, pattern: "attempt-1")
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: A PIN FROM ANOTHER RECORD NEVER VOUCHES AN INSTALLED CONTACT (strategy crossing, one
+// direction). A scanned pin -- the arm with no install record behind it -- meets a current install
+// and the right key, and still refuses: installed contact is vouched only by the install's own
+// record. The per-boot direction lands with T1's comparison (#15523); this row pins the direction
+// this slice builds.
+test fn a_pin_from_another_record_never_vouches_an_installed_contact() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let scanned_pin = KnownHostKeyRow {
+          host: mtcollins1_anchored_host_row.host,
+          address: mtcollins1_anchored_host_row.address,
+          key_type: "ssh-ed25519",
+          public_key_base64: fixture_public_key.material as String,
+          sha256_fingerprint: "SHA256:HERMETICWITNESSFIXTUREFINGERPRINT0",
+          provenance: ScannedFirstContact { scanned_from: "fixture: a scan, not an install record" as NonEmptyStr },
+        }
+        match anchored_host_transport_provisioned(
+          pin: scanned_pin,
+          current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: scanned_pin),
+        ) {
+        AnchoredBindingPinNotInstallRecord { cause: cause } => string_contains(s: cause, pattern: "scanned first contact")
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: A TRANSPORT TO ANOTHER MACHINE NEVER BINDS A PROVISIONED PIN. The pin is mtcollins1's; the
+// transport targets another machine. The refusal comes at the host layer (the target resolves to no
+// managed host) or at the pin layer (bound host is not the pin's host) -- either refuses, nothing
+// binds, exactly the discipline anchored_host_transport_against already pins for the literal rows.
+test fn a_transport_to_another_machine_never_binds_a_provisioned_pin() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_srv2) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
+        match anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        ) {
+        AnchoredBindingNotTheAnchoredHost { cause: cause } =>
+          string_contains(s: cause, pattern: "srv2") && string_contains(s: cause, pattern: "mtcollins1")
+        AnchoredBindingRefused { cause: cause } =>
+          string_contains(s: cause, pattern: "not the endpoint of any managed host")
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: AN INSTALL RECORD OF ANOTHER MACHINE NEVER VOUCHES A PROVISIONED PIN. The pin names the
+// client MAC of ITS install boot; the current complete record on file belongs to a different
+// machine's install boot. Attempt ids are unique across hosts only by convention, and the compare
+// does not trust conventions: a record from another host's install cannot vouch this pin, and the
+// refusal says the record is not this machine's.
+test fn an_install_record_of_another_machine_never_vouches_a_provisioned_pin() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: other_client)
+        match anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: current_install_for_host_established(host: operator_host_mtcollins1, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        ) {
+        AnchoredBindingInstallNotAttested { why: why } =>
+          string_contains(s: why, pattern: "not this machine's")
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: A CURRENT-INSTALL CARRIER FOR ANOTHER HOST NEVER BINDS (side-chat P1 witness 2). The
+// receipt's install-boot MAC and attempt both match the pin and the presented key matches the row -
+// the bytes line up perfectly - yet the carrier is not this transport's host's, and a receipt whose
+// association with the transport's host is unestablished never vouches the contact. Host association
+// is not inferred from the bytes; the selection fold mints it, or nothing does.
+test fn a_current_install_carrier_for_another_host_never_binds() -> Bool {
+  match attested_fixture_receipt() {
+    Absent => false
+    Present { value: receipt } => match fleet_transport_to(host: operator_host_mtcollins1) {
+      Absent => false
+      Present { value: t } =>
+        let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
+        match anchored_host_transport_provisioned(
+          pin: pin,
+          current_install: current_install_for_host_established(host: operator_host_srv2, install: receipt),
+          transport: t,
+          presented_key_line: known_hosts_line(k: pin),
+        ) {
+        AnchoredBindingCurrentInstallUnestablished { why: why } =>
+          string_contains(s: why, pattern: "not the transport's bound host")
+        _ => false
+      }
+    }
+  }
+}
+
+// CLAIM: AN UNESTABLISHED CURRENT INSTALL NEVER BINDS A PROVISIONED PIN. Until the selection fold
+// lands - the carrier's only intended production producer - that is the only carrier production can
+// supply, so the honest production state refuses rather than binds: no live route can vouch an
+// installed contact before the fold exists. This is the frontier rung, pinned as a refusal.
+test fn an_unestablished_current_install_never_binds_a_provisioned_pin() -> Bool {
+  match fleet_transport_to(host: operator_host_mtcollins1) {
+    Absent => false
+    Present { value: t } =>
+      let pin = provisioned_pin_fixture(install_attempt: "attempt-1", install_client_mac: client)
+      match anchored_host_transport_provisioned(
+        pin: pin,
+        current_install: current_install_unestablished(why: "no selection of the latest complete install exists for this host yet" as NonEmptyStr),
+        transport: t,
+        presented_key_line: known_hosts_line(k: pin),
+      ) {
+      AnchoredBindingCurrentInstallUnestablished { why: why } =>
+        string_contains(s: why, pattern: "latest complete install")
+      _ => false
+    }
   }
 }

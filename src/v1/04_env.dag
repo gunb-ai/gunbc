@@ -39,6 +39,7 @@ type TypeEnv {
   module_path: String
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
   unit_variant_index_observed: Bool
+  equality_by_target: Map<String, Bool>
 }
 
 // `alias_rhs` is the alias's RIGHT-HAND-SIDE REFERENCE, retained when this binding is a transparent alias
@@ -257,7 +258,8 @@ fn empty_type_env() -> TypeEnv {
     source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: empty_symbol_index(),
     unit_variant_index: empty_map(),
-    unit_variant_index_observed: false
+    unit_variant_index_observed: false,
+    equality_by_target: empty_map()
   }
 }
 
@@ -292,10 +294,17 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
 // resolve_type_decl_routed and v1.compiler.emit_rust is_host_optional_carrier_type read it, and it is
 // deleted when those bodies carry Node.declaration stamped in the DECLARING scope
 // (v1.compiler.infer_emit_info referencing_module_declarer_route_dissolves_on).
+// BareOccurrenceUnbound AND BareOccurrenceUndecided ARE DIFFERENT FACTS. Unbound is positive: the
+// file declares no such name, imports none by name, and the name is not a kernel name, so the scope
+// binds nothing there. Undecided is the absence of an answer: two declarations in the file, or a
+// named import chain that does not end at a declaration within the bound. A reader that may act only
+// when the name binds nothing (v1.compiler.emit_rust phantom_marker_decision) acts on Unbound and
+// refuses on Undecided.
 type BareOccurrenceBinding
   = BareOccurrenceDeclaredInItsFile { declaration: Node }
   | BareOccurrenceImportedByName { module_path: String, declaration: Node }
   | BareOccurrenceIsKernelName
+  | BareOccurrenceUnbound
   | BareOccurrenceUndecided
 
 fn symbol_index_bare_declarations(index: SymbolIndex, name: String) -> List<Node> {
@@ -367,7 +376,7 @@ fn bare_occurrence_binding(index: SymbolIndex, name: String, reference: Node) ->
   else {
     match bare_occurrence_import(index: index, name: name, reference: reference) {
       Present { value: imported } => imported
-      Absent => if overlay_skips_kernel_name(name: name) { BareOccurrenceIsKernelName } else { BareOccurrenceUndecided }
+      Absent => if overlay_skips_kernel_name(name: name) { BareOccurrenceIsKernelName } else { BareOccurrenceUnbound }
     }
   }
 }
@@ -1007,6 +1016,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
       } else {
         let qname = concat(mp, ".", name)
         Node {
+          ident: Absent,
           occurrence_identity: OccurrenceSynthetic, name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
           children: qualified_children, connective: n.connective, params: n.params,
           inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
@@ -1100,9 +1110,27 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   if is_kernel_type(name: name) { none } else { global_bare_lookup_candidates(env: env, name: name) }
 }
 
+// A pool entry declared once corpus-wide answers a bare occurrence only when its declarer sits on
+// the referencing module's containment chain, or the module IMPORTS that declarer and the name is
+// visible through the import (DESIGN 4b "names resolve"; the unique arm obeys the same chain test as
+// the homonym arm). The import arm is the author's own binding: a callee whose signature the import
+// closure cannot carry (a generic fold_list, optional_absent) still has its identity established by
+// the import, never by corpus coincidence. env.parents is built from the resolved imports, one
+// interface env per import. This gate covers the UNIQUE arm and is unconditional. The HOMONYM arm
+// under the default ImportScoped policy (global_bare_nearest_ancestor, longest shared prefix, exact ties refuse) is NOT
+// filtered here: it can still bind an off-chain, un-imported homonym. Flipping it to chain-only is the
+// NamespaceOnlyY policy, gated on namespace-resolution-design.md 13 step 4; that residue is recorded on the
+// recurring_failure_mode row bare_name_resolved_by_proximity_standing_in_for_resolution.
+fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
+  let declarer_segs = module_path_segments(path: declarer)
+  segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
+    || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
+}
+
 fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareUniqueBinding { module_path: declarer, binding: binding } } =>
+      if global_bare_declarer_in_scope(env: env, name: name, declarer: declarer) { Present { value: binding } } else { Absent }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
         match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
@@ -1536,11 +1564,33 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
+// The one write path of the equality table: an env is built, then its declarations are summarized against it
+// (build_equality_by_target), so the table is attached to a copy of the env it was computed from.
+fn type_env_with_equality_by_target(env: TypeEnv, by_target: Map<String, Bool>) -> TypeEnv {
+  TypeEnv { module_path: env.module_path,
+    bindings: env.bindings,
+    str_bindings: env.str_bindings,
+    ancestry_str_bindings: env.ancestry_str_bindings,
+    parents: env.parents,
+    recursive_types: env.recursive_types,
+    recursive_type_set: env.recursive_type_set,
+    inductive_fields: env.inductive_fields,
+    source_indices: env.source_indices,
+    intern_table: env.intern_table,
+    source_visible_names: env.source_visible_names,
+    authored_import_names: env.authored_import_names,
+    symbol_index: env.symbol_index,
+    unit_variant_index: env.unit_variant_index,
+    unit_variant_index_observed: env.unit_variant_index_observed,
+    equality_by_target: by_target
+  }
+}
+
 fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> TypeEnv {
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
+      resolved: Node { ident: Absent, occurrence_identity: OccurrenceSynthetic, name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
       provenance: SubValueUnknown, alias_rhs: none
     }
     let shadowed = effective_visible_binding(str_bindings: e.str_bindings, parents: e.parents, name: tp_name)
@@ -1559,7 +1609,8 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
       authored_import_names: e.authored_import_names,
       symbol_index: e.symbol_index,
       unit_variant_index: updated_index,
-      unit_variant_index_observed: e.unit_variant_index_observed
+      unit_variant_index_observed: e.unit_variant_index_observed,
+      equality_by_target: e.equality_by_target
     }
   )
 }
@@ -1583,7 +1634,8 @@ fn census_declaration_type_env(census: SymbolIndex, module_path: String, tp_name
     source_visible_names: empty_map(), authored_import_names: empty_map(),
     symbol_index: census,
     unit_variant_index: empty_map(),
-    unit_variant_index_observed: false
+    unit_variant_index_observed: false,
+    equality_by_target: empty_map()
   }
   env_with_type_variable_bindings(env: base, tp_names: tp_names)
 }
@@ -2124,7 +2176,7 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
       match alias_rhs_of_declaration(item_ref: d, env: env) {
         Absent =>
           match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
-            Absent => Present { value: SettledType { head: d, args: n.children } }
+            Absent => Present { value: SettledType { head: d, args: n.children |> map(ch => generic_actual_position_type(slot: ch)) } }
             // A use site the alias cannot be substituted at (arity unequal, a bare reference included) settles to the alias's own
             // declaration, exactly as before parameterized aliases settled at all. Answering none here turned every bare `List` into
             // an unrecovered reading (v1.compiler.infer optional_declaration_reading -> OptionalUnrecovered, five new refusals on the
@@ -2132,7 +2184,7 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
             Present { value: pa } =>
               match settled_parameterized_alias(alias: pa, use_args: n.children, source_indices: source_indices, env: env, fuel: fuel) {
                 Present { value: through } => Present { value: through }
-                Absent => Present { value: SettledType { head: d, args: n.children } }
+                Absent => Present { value: SettledType { head: d, args: n.children |> map(ch => generic_actual_position_type(slot: ch)) } }
               }
           }
         Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
@@ -2188,13 +2240,86 @@ fn parameterized_alias_of_declaration(item_ref: DeclarationRef, source_indices: 
   }
 }
 
+// AN UNSOLVED TYPE VARIABLE: the node's type is a variable nothing has grounded -- the empty list's
+// element, an unbound generic parameter, any deferred identity. A type read that DESCENDS into one
+// trades a named slot for an ungroundable node whose spelling the field lookup refuses; keeping the
+// node's own identity is what lets deferral proceed. All three unsolved reads -- the lambda-parameter
+// binding in v1.compiler.infer, and generic_actual_position_type below (read by unify_generics and by
+// the settle family) -- share THIS one
+// predicate; it was formerly keyed on the empty_list_element id alone (the only instance the corpus
+// surfaced), which made the same defect invisible at the arm (work item adhoc-b5f23a5d-052 re-measure
+// on 14750 head 9706e5b48ea: descending into an empty-list element slot refused m.declarations,
+// m.path, d.label, d.target at ten corpus sites).
+fn is_unsolved_type_variable(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+}
+
+// (MOVED WITH THE PREDICATE FROM v1.compiler.infer, where only unify_generics could reach it: the
+// settle reads use-site arguments with it too, and v1.compiler.infer imports this module, not the
+// reverse -- import v1.compiler.types already reaches into infer_env, so keeping it below would cycle.)
+// THE ACTUAL IS NOT THE FORMAL, AND ONLY THE FORMAL IS READ RAW. An actual child in this position is the
+// application's ELEMENT SLOT: resolve_node_bounded and the kernel container builders name it by the
+// CONTAINER DECLARATION'S OWN PARAMETER (FreeMonoid's `T`) and carry the argument's type in its inferred.
+// Bound raw, the substitution handed every reader a node NAMED `T`, so a reader keyed on the bound node's
+// name or spelling saw an unbound `T` although the slot's resolution was established: `fn(h) { h.digest }`
+// over `xs: List<Hash>` (`type Hash = Payload`) refused "no field 'digest' on type 'T'", because the
+// field-access alias chain looks its next declaration up by that name, and `skip(split(..), n: 1) |> first`
+// left its Present arm undecided, because a kernel-built slot is also SPELLED `T`. A record element only
+// escaped by accident: its slot's inferred is the record itself, which the field read finds structurally
+// before it reaches the name. So the actual position is read through child_type_node, the total read of a
+// type position that unify_callable_generics already applies to both sides, and only where it IS a leaf
+// position (no children, its type in inferred): an application such as `List<X>` keeps its own node, since
+// its inferred is its EXPANSION and binding that would trade the nominal type for its structure.
+// (gunbc.recurring_failure_mode type_alias_identity_decided_by_spelling_at_each_check; work item
+// adhoc-b5f23a5d-052, with smart-tern-402's kernel-container RED.)
+// THE DESCENT IS INTO AN ESTABLISHED READ ONLY. Descending trades the slot for its resolution, so the
+// resolution must be something a reader can act on. When the resolved node is an UNSOLVED TYPE VARIABLE
+// -- the empty list's element (the corpus instance), an ungrounded parameter, any deferred identity --
+// the trade loses: the slot carried the container-declared name a reader can key on, the resolution is
+// an ungroundable node the field lookup refuses (measured on 14750 head 9706e5b48ea before this guard:
+// fold_list element readers m.declarations, m.path at source_root_eval.dag and d.label, d.target at
+// type_declaration_use_census.dag over an empty [] refused 'no field on type empty_list_element', ten
+// sites). Keep the slot then, as the pre-arm code did for every shape, and let deferral proceed; the
+// is_unsolved_type_variable guard is the SAME predicate v1.compiler.infer uses at its lambda-parameter
+// binding for the same purpose, so one rule governs both unsolved reads (DESIGN 6b, no second leaf).
+// THE MOVE CHANGED NO BEHAVIOUR: the infer-side body called child_type_node(ch: slot) (v1.compiler.
+// infer_types); this one reads r directly, and they are the same value. child_type_node answers
+// resolved_type(ch) when ch.inferred != none && ch.connective != Arrow, and resolved_type answers the
+// node carried by Present { value: Resolved { node: rt } } => rt. This arm's own guards establish all
+// three conditions -- no children, NoConnective, inferred = Present { value: Resolved { node: r } } --
+// so the direct read returns what the infer-side call returned. The one import that would have kept
+// the call (v1.compiler.types) cannot be taken: it imports this module (import line 8), so the call
+// would close a module cycle the move exists to avoid.
+fn generic_actual_position_type(slot: Node) -> Node {
+  if (slot.children |> count == 0 && slot.connective == NoConnective) {
+    match slot.inferred {
+      Present { value: Resolved { node: r } } =>
+        if is_unsolved_type_variable(n: r) { slot } else { r }
+      _ => slot
+    }
+  } else { slot }
+}
+
 fn settled_parameterized_alias(alias: ParameterizedAlias, use_args: List<Node>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
   if (alias.params |> count) != (use_args |> count) || fuel <= 0 { none }
   else {
     let slot_seed: Map<String, Node> = empty_map()
+    // THE ARGUMENT READ IS ROUTED, NOT RAW, AND IT IS THE ONLY SUCH READ IN THIS SETTLE. A use-site
+    // argument here is the application's ELEMENT SLOT when the use site was built by resolve_node_bounded
+    // or a kernel container builder: named by the container declaration's own parameter, carrying the
+    // argument's type in its inferred. Bound raw, the substitution handed every downstream reader -- the
+    // SettledType arguments the join comparator compares -- a node NAMED `T`, and a reader keyed on that
+    // name settled an established argument to an unbound parameter (measured: a branch over a rebuilt
+    // alias list joined List<FreeMonoid<String>> against FreeMonoid<FreeMonoid<String>> and refused,
+    // recurring failure mode type_alias_identity_decided_by_spelling_at_each_check, because the THEN element settled args=[T]). The same one
+    // function unify_generics applies at its actual position; see that function's comment above for when
+    // a position is a slot and when it must stay the node itself.
     let slot_bindings = alias.params |> enumerate |> fold(init: slot_seed, f: (acc, pair) =>
       match use_args |> skip(pair.first) |> first {
-        Present { value: arg } => map_insert(acc, pair.second, arg)
+        Present { value: arg } => map_insert(acc, pair.second, generic_actual_position_type(slot: arg))
         Absent => acc
       })
     let substituted = substitute_type_slots_mode(n: alias.rhs, slot_bindings: slot_bindings, decl_name: "", source_indices: source_indices, bind_type_variables: false, resolved_slots: true)
@@ -2244,6 +2369,7 @@ fn substitute_type_slots_mode(n: Node, slot_bindings: Map<String, Node>, decl_na
           substitute_type_slots_mode(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables, resolved_slots: resolved_slots)
         )
         Node {
+          ident: Absent,
           occurrence_identity: child.occurrence_identity, name: child.name, span: child.span, ident_span: child.ident_span, children: substituted_args,
           connective: child.connective, params: child.params,
           inferred: child.inferred, return_cardinality: child.return_cardinality,
@@ -2262,6 +2388,7 @@ fn substitute_type_slots_mode(n: Node, slot_bindings: Map<String, Node>, decl_na
       _ => n.inferred
     }
     Node {
+      ident: Absent,
       occurrence_identity: n.occurrence_identity, name: n.name, span: n.span, ident_span: n.ident_span, children: new_children,
       connective: n.connective, params: n.params,
       inferred: new_inferred, return_cardinality: n.return_cardinality,
@@ -2302,13 +2429,13 @@ fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, Newl
   match alias_rhs_of_declaration(item_ref: head, env: env) {
     Absent =>
       match parameterized_alias_of_declaration(item_ref: head, source_indices: source_indices, env: env) {
-        Absent => Present { value: SettledType { head: head, args: rhs.children } }
+        Absent => Present { value: SettledType { head: head, args: rhs.children |> map(ch => generic_actual_position_type(slot: ch)) } }
         Present { value: pa } =>
           if fuel <= 0 { none }
           else {
             match settled_parameterized_alias(alias: pa, use_args: rhs.children, source_indices: source_indices, env: env, fuel: fuel - 1) {
               Present { value: through } => Present { value: through }
-              Absent => Present { value: SettledType { head: head, args: rhs.children } }
+              Absent => Present { value: SettledType { head: head, args: rhs.children |> map(ch => generic_actual_position_type(slot: ch)) } }
             }
           }
       }
@@ -2342,6 +2469,22 @@ fn transparent_alias_rhs(pre: Node) -> Node? {
 // An alias declared outside the module and its direct imports (a record field typed by an alias a transitive module owns) is not in
 // any reachable env binding; its item is read from the symbol index by its exact module path and name, and its right-hand side is
 // admitted only when the resolver already recorded the head's identity there. No spelling is re-resolved.
+// THE REFINEMENT RIGHT-HAND SIDE OF A DECLARED REFINEMENT TYPE (`type EpochMs = Int where range(min: 0)`), read from the
+// declaring item in the symbol index. Kept APART from alias_rhs_of_declaration on purpose: a refinement is not a transparent
+// alias (transparent_alias_rhs refuses it), so EpochMs never agrees with Int at an assignment through this reader. It exists for
+// readings that legitimately see through the refinement to its base, the arithmetic carrier (v1.compiler.infer_types
+// operand_carrier_reading_settled): a refinement narrows the value set, not the algebra.
+fn refinement_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
+  match symbol_index_lookup(index: env.symbol_index, qualified_name: concat(item_ref.module_path as String, ".", item_ref.decl_name as String)) {
+    Absent => none
+    Present { value: item } =>
+      match item.inferred {
+        Present { value: Resolved { node: rhs } } => if is_where_refinement_node(n: rhs) { Present { value: rhs } } else { none }
+        _ => none
+      }
+  }
+}
+
 fn alias_rhs_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Node? {
   let declaring = if env.module_path == (item_ref.module_path as String) {
     Present { value: env }
@@ -2382,7 +2525,7 @@ fn alias_rhs_with_index_identity(rhs: Node, owner_module: String, env: TypeEnv) 
   match declaration_named_in_module(name: spelled, module_path: owner_module, env: env) {
     Absent => none
     Present { value: d } =>
-      Present { value: Node { occurrence_identity: rhs.occurrence_identity, name: rhs.name, span: rhs.span, ident_span: rhs.ident_span, children: rhs.children, connective: rhs.connective, params: rhs.params, inferred: rhs.inferred, return_cardinality: rhs.return_cardinality, uses: rhs.uses, body: rhs.body, transport: rhs.transport, properties: rhs.properties, type_annotation: rhs.type_annotation, is_self_recursive: rhs.is_self_recursive, has_non_tail_self_call: rhs.has_non_tail_self_call, match_pattern: rhs.match_pattern, module_item_kind: rhs.module_item_kind, declaration_marker: rhs.declaration_marker, declaration: Present { value: d }, expr_data: rhs.expr_data } }
+      Present { value: Node { ident: Absent, occurrence_identity: rhs.occurrence_identity, name: rhs.name, span: rhs.span, ident_span: rhs.ident_span, children: rhs.children, connective: rhs.connective, params: rhs.params, inferred: rhs.inferred, return_cardinality: rhs.return_cardinality, uses: rhs.uses, body: rhs.body, transport: rhs.transport, properties: rhs.properties, type_annotation: rhs.type_annotation, is_self_recursive: rhs.is_self_recursive, has_non_tail_self_call: rhs.has_non_tail_self_call, match_pattern: rhs.match_pattern, module_item_kind: rhs.module_item_kind, declaration_marker: rhs.declaration_marker, declaration: Present { value: d }, expr_data: rhs.expr_data } }
   }
 }
 
@@ -2578,5 +2721,38 @@ fn alias_rhs_head_of_declaration(item_ref: DeclarationRef, env: TypeEnv) -> Decl
   match alias_rhs_of_declaration(item_ref: item_ref, env: env) {
     Present { value: rhs } => rhs.declaration
     Absent => none
+  }
+}
+
+// THE HEAD-ONLY FACE OF THE CHAIN WALK, FOR A SEAM THAT HAS A NAME AND NO ARGUMENTS.
+// `alias_rhs_head_of_declaration` reads a TRANSPARENT alias's head; `settled_type_of_declaration`
+// chases the chain but CARRIES use-site arguments, which a name-only seam does not have -- and
+// substituting none is not neutral there, it hands every downstream reader an unbound parameter
+// where the use site had established an argument (the failure mode `settled_parameterized_alias`
+// records at its own comment). So a PARAMETERIZED alias (`type KcAlias<T> = FreeMonoid<T>`) stops at
+// itself in the name-only read, and a check whose whole question is WHICH DECLARATION DOES THIS NAME
+// DENOTE is left without an answer -- measured: a module-local alias of a carrier settled to the
+// alias, so the kernel container gate could not see the carrier behind it and the carrier's own
+// constructor was refused at that spelling. Following the chain to its head fabricates nothing, so
+// this face asks only that: the same two hop-readers as the chain walk (`alias_rhs_of_declaration`
+// for a transparent link, `parameterized_alias_of_declaration` for a parameterized one, dispatched
+// at EVERY hop exactly as `settled_rhs` does), the same fuel, the arguments deliberately not had.
+fn settled_head_of_declaration(d: DeclarationRef, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> DeclarationRef? {
+  if fuel <= 0 { return none }
+  match alias_rhs_of_declaration(item_ref: d, env: env) {
+    Present { value: rhs } =>
+      match rhs.declaration {
+        Present { value: head } => settled_head_of_declaration(d: head, source_indices: source_indices, env: env, fuel: fuel - 1)
+        Absent => Present { value: d }
+      }
+    Absent =>
+      match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
+        Absent => Present { value: d }
+        Present { value: pa } =>
+          match pa.rhs.declaration {
+            Present { value: head } => settled_head_of_declaration(d: head, source_indices: source_indices, env: env, fuel: fuel - 1)
+            Absent => Present { value: d }
+          }
+      }
   }
 }

@@ -1,0 +1,31 @@
+module test.claim.fabric.fabric_allocation_witness_store
+
+import extdeps.shell
+import std.types { Bool, NonEmptyStr, String, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.host_state_root { isolated_host_state_tree }
+import gunbc.fabric.fabric_allocation_store { FabricAllocationStore, fabric_allocation_store, fabric_allocation_store_path, FabricAllocationStoreReady, FabricAllocationStoreUnready }
+
+// ONE ALLOCATION STORE PER CLAIM, AND A REFUSED MINT FAILS THE CLAIM. Every witness that hands the sealed
+// allocation store to production code reaches it here: a throwaway host-state tree (gunbc.host_state_root
+// isolated_host_state_tree, the recorded witness route), the store's directory created where the substrate would
+// create it, and the production mint (gunbc.fabric.fabric_allocation_store fabric_allocation_store) over it. A mint
+// that answers Unready is never projected into an empty grant list, a zero, a false or an invented refusal, any of
+// which a claim can expect: it ends the claim with ExitFailure naming the mint's own detail. The body is handed
+// the tree directory as well, so its readbacks can open the derived path through the library as an independent
+// referent for what the sealed store wrote. The tree is removed after the body, and a failed removal fails the
+// claim.
+fn allocation_witness_run(template: String, claim: String, body: fn(NonEmptyStr, FabricAllocationStore) -> Bool) -> ProcessExit {
+  let dir = shell.Mktemp.DirWithTemplate(template: template).path as NonEmptyStr
+  let _made = shell.Mkdir.Parents(path: fabric_allocation_store_path(tree: isolated_host_state_tree(dir: dir)) as String as FilePath)
+  let verdict = allocation_witness_over(dir: dir, claim: claim, body: body)
+  let removed = shell.Remove.RecursiveForce(path: dir as String)
+  if removed.success { verdict } else { exit_failure(reason: concat(claim, ": the throwaway host-state tree could not be removed")) }
+}
+
+fn allocation_witness_over(dir: NonEmptyStr, claim: String, body: fn(NonEmptyStr, FabricAllocationStore) -> Bool) -> ProcessExit {
+  match fabric_allocation_store(tree: isolated_host_state_tree(dir: dir)) {
+    FabricAllocationStoreUnready { detail } => exit_failure(reason: concat(concat(claim, ": the allocation store mint refused, so nothing was observed: "), detail as String))
+    FabricAllocationStoreReady { store } => if body(dir, store) { ExitSuccess } else { exit_failure(reason: concat(claim, ": the claim did not hold over the minted store")) }
+  }
+}

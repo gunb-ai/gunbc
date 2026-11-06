@@ -79,6 +79,7 @@ import gunbc.machine_intake.pre_os_bringup_verdict {
   sel_window_after_cursor,
   sol_capture_reading,
 }
+import std.algebra { length }
 
 // MT. COLLINS UNIT 1 AFTER THE 16-TO-32 DIMM CHANGE, 2026-09-11: THE REGRESSION CORPUS FOR THE
 // PRE-OS BRING-UP MODEL. The unit went from 16 to 32 DIMMs and entered a ~5-minute restart loop
@@ -661,7 +662,7 @@ fn check_opaque_oem_stays_opaque() -> ProcessExit {
       }
     OemPayloadAbsentFromWindow { payload: _ } => exit_failure(reason: "opaque-oem: 0fde70330102 was reported absent from a window that carries it sixteen times")
   }
-  let never_beside = if list_length(items: assoc.never_within_same_cycle_as) == 2 && list_length(items: assoc.candidates_absent_from_window) == 0 {
+  let never_beside = if length(xs: assoc.never_within_same_cycle_as) == 2 && length(xs: assoc.candidates_absent_from_window) == 0 {
     ExitSuccess
   } else {
     exit_failure(reason: "opaque-oem: the completed-boot OEM pair -- present in the window at 0x3ec/0x3ed -- was found in a cycle beside 0fde70330102, or a candidate was dropped or reported absent")

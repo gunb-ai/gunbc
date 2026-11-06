@@ -1,0 +1,351 @@
+module test.claim.auth.auth_store_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
+import std.process { ProcessExit }
+
+// AN AUTH RECORD STORE IS MINTED FROM ITS DECLARATION AND CANNOT BE SPELLED OR MINTED FROM A PATH.
+// gunbc.auth.session_store_root SessionStore, gunbc.auth.profile_store_root ProfileStore and
+// gunbc.auth.login_transaction_store_root LoginTransactionStore are sole_constructor; each business module takes
+// its own type, which only its root module's mint builds, from the instance alone. Each RED hands the compiler a
+// module outside the defining files and asserts the refusal on the real acceptance path:
+//   - a forged literal (fields copied from a lawful store), a forged cast, and a store whose operations close over
+//     a LITERAL PATH: each EXACTLY ONE SoleConstructorViolation on its subject;
+//   - the deleted path-taking route (the old layout record handed to the business function), another store's type
+//     where this one is required, and a root read out of the store: each at least one blocking diagnostic beyond a
+//     baseline importing the same closure (gunbc.compile_diagnostic_census).
+// The GREEN per store is the lawful route, the mint into a business function: no blocking diagnostic beyond the
+// baseline and no seal violation. The discriminating control is the same probes over a tree with sole_constructor
+// stripped from the three records (the receipts in the change): the literal, cast and literal-path REDs go to 0.
+// NOT witnessed, because it is not expressible: a store minted for instance A refused where B is required (one
+// type per store, not per instance). NOT closed here: any module can still build its own file operations over a
+// literal path, because Filesystem.* is ambient (gunbc.recurring_failure_mode
+// a_slot_store_is_built_over_a_literal_path_by_any_module); that is not one of these stores.
+
+fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn blocking_delta(hostile: String, safe: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_delta_verdict(red: total_blocking_census(source: hostile), control: total_blocking_census(source: safe), holds: holds)
+}
+
+// A deleted callable is attributed by name: exactly one blocking MissingExport keyed on it, never a delta.
+fn deleted_callable_is_gone(source: String, deleted_callable: String) -> CensusVerdict {
+  census_verdict(census: blocking_subject_census(source: source, wanted_class: "MissingExport", wanted_subject: deleted_callable), holds: fn(n) { n == 1 })
+}
+
+// Every probe imports the same closure, so a delta counts only what its body adds.
+fn probe(name: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { String, NonEmptyStr, FilePath, Timestamp }\n",
+    "import extdeps.filesystem.filesystem_io { Filesystem }\n",
+    "import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }\n",
+    "import gunbc.principal_projection { PrincipalRef }\n",
+    "import gunbc.auth.session { AuthenticatedSession, SessionCookieStanding, SessionCookieUnread }\n",
+    "import extdeps.auth.oidc { OidcLoginTransaction }\n",
+    "import gunbc.auth.session_store_root { SessionStore, SessionStoreReady, SessionStoreUnready, session_store }\n",
+    "import gunbc.auth.session_store { SessionStoreLookup, SessionStoreUnread, session_store_lookup }\n",
+    "import gunbc.auth.profile_store_root { ProfileStore, ProfileStoreReady, ProfileStoreUnready, profile_store }\n",
+    "import gunbc.auth.profile_projection { ProfileStoreReadAll, ProfileStoreUnread, profile_store_read_all }\n",
+    "import gunbc.auth.login_transaction_store_root { LoginTransactionStore, LoginTransactionStoreReady, LoginTransactionStoreUnready, login_transaction_store }\n",
+    "import gunbc.auth.login_transaction_store { LoginTransactionStoreSave, LoginTransactionSaveRefused, login_transaction_store_save }\n",
+    body,
+  ], "")
+}
+
+fn baseline_source() -> String {
+  probe(name: "probe_auth_store_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+}
+
+// ── session store ──────────────────────────────────────────────────────────────────────────────
+
+fn session_forged_literal_source() -> String {
+  probe(name: "probe_session_store_literal", body: "fn f(s: SessionStore) -> SessionStore {\n  SessionStore { instance: s.instance, root: s.root }\n}\n")
+}
+
+fn session_forged_cast_source() -> String {
+  probe(name: "probe_session_store_cast", body: "fn f(r: NonEmptyStr) -> SessionStore {\n  r as SessionStore\n}\n")
+}
+
+fn session_literal_path_source() -> String {
+  probe(name: "probe_session_store_literal_path", body: "fn f() -> SessionStore {\n  SessionStore { instance: \"srv1-lab\", root: \"/tmp/forged-auth-sessions\" }\n}\n")
+}
+
+fn session_path_route_source() -> String {
+  probe(name: "probe_session_store_path_route", body: "import gunbc.auth.session_store { session_store_layout_for_instance }\nfn f(i: HostDashboardInstance, id: NonEmptyStr) -> SessionStoreLookup {\n  session_store_lookup(layout: session_store_layout_for_instance(instance: i), session_id: id)\n}\n")
+}
+
+fn session_foreign_store_source() -> String {
+  probe(name: "probe_session_store_foreign", body: "fn f(p: ProfileStore, id: NonEmptyStr) -> SessionStoreLookup {\n  session_store_lookup(store: p, session_id: id)\n}\n")
+}
+
+fn session_lawful_source() -> String {
+  probe(name: "probe_session_store_lawful", body: "fn f(i: HostDashboardInstance, id: NonEmptyStr) -> SessionStoreLookup {\n  match session_store(instance: i) {\n    SessionStoreReady { store } => session_store_lookup(store: store, session_id: id)\n    SessionStoreUnready { detail } => SessionStoreUnread { session_id: id, detail: detail }\n  }\n}\n")
+}
+
+test fn a_forged_session_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: session_forged_literal_source(), subject: "SessionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_session_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: session_forged_cast_source(), subject: "SessionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_session_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: session_literal_path_source(), subject: "SessionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_path_taking_session_store_route_resolves() -> ProcessExit {
+  census_exit(deleted_callable_is_gone(source: session_path_route_source(), deleted_callable: "session_store_layout_for_instance"))
+}
+
+test fn a_profile_store_is_not_a_session_store() -> ProcessExit {
+  census_exit(blocking_delta(hostile: session_foreign_store_source(), safe: baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_session_store_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: session_lawful_source(), safe: baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: session_lawful_source(), subject: "SessionStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// ── profile store ──────────────────────────────────────────────────────────────────────────────
+
+fn profile_forged_literal_source() -> String {
+  probe(name: "probe_profile_store_literal", body: "fn f(s: ProfileStore) -> ProfileStore {\n  ProfileStore { instance: s.instance, root: s.root }\n}\n")
+}
+
+fn profile_forged_cast_source() -> String {
+  probe(name: "probe_profile_store_cast", body: "fn f(r: NonEmptyStr) -> ProfileStore {\n  r as ProfileStore\n}\n")
+}
+
+fn profile_literal_path_source() -> String {
+  probe(name: "probe_profile_store_literal_path", body: "fn f() -> ProfileStore {\n  ProfileStore { instance: \"srv1-lab\", root: \"/tmp/forged-auth-profiles\" }\n}\n")
+}
+
+fn profile_path_route_source() -> String {
+  probe(name: "probe_profile_store_path_route", body: "import gunbc.auth.profile_projection { profile_store_layout_for_instance }\nfn f(i: HostDashboardInstance) -> ProfileStoreReadAll {\n  profile_store_read_all(layout: profile_store_layout_for_instance(instance: i))\n}\n")
+}
+
+fn profile_foreign_store_source() -> String {
+  probe(name: "probe_profile_store_foreign", body: "fn f(s: SessionStore) -> ProfileStoreReadAll {\n  profile_store_read_all(store: s)\n}\n")
+}
+
+fn profile_lawful_source() -> String {
+  probe(name: "probe_profile_store_lawful", body: "fn f(i: HostDashboardInstance) -> ProfileStoreReadAll {\n  match profile_store(instance: i) {\n    ProfileStoreReady { store } => profile_store_read_all(store: store)\n    ProfileStoreUnready { detail } => ProfileStoreUnread { step: \"list\", reason: detail }\n  }\n}\n")
+}
+
+test fn a_forged_profile_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: profile_forged_literal_source(), subject: "ProfileStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_profile_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: profile_forged_cast_source(), subject: "ProfileStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_profile_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: profile_literal_path_source(), subject: "ProfileStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_path_taking_profile_store_route_resolves() -> ProcessExit {
+  census_exit(deleted_callable_is_gone(source: profile_path_route_source(), deleted_callable: "profile_store_layout_for_instance"))
+}
+
+test fn a_session_store_is_not_a_profile_store() -> ProcessExit {
+  census_exit(blocking_delta(hostile: profile_foreign_store_source(), safe: baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_profile_store_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: profile_lawful_source(), safe: baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: profile_lawful_source(), subject: "ProfileStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// ── login transaction store ────────────────────────────────────────────────────────────────────
+
+fn login_forged_literal_source() -> String {
+  probe(name: "probe_login_store_literal", body: "fn f(s: LoginTransactionStore) -> LoginTransactionStore {\n  LoginTransactionStore { instance: s.instance, root: s.root }\n}\n")
+}
+
+fn login_forged_cast_source() -> String {
+  probe(name: "probe_login_store_cast", body: "fn f(r: NonEmptyStr) -> LoginTransactionStore {\n  r as LoginTransactionStore\n}\n")
+}
+
+fn login_literal_path_source() -> String {
+  probe(name: "probe_login_store_literal_path", body: "fn f() -> LoginTransactionStore {\n  LoginTransactionStore { instance: \"srv1-lab\", root: \"/tmp/forged-auth-login-transactions\" }\n}\n")
+}
+
+fn login_path_route_source() -> String {
+  probe(name: "probe_login_store_path_route", body: "import gunbc.auth.login_transaction_store { login_transaction_store_layout_for_instance }\nfn f(i: HostDashboardInstance, t: OidcLoginTransaction) -> LoginTransactionStoreSave {\n  login_transaction_store_save(layout: login_transaction_store_layout_for_instance(instance: i), transaction: t)\n}\n")
+}
+
+fn login_foreign_store_source() -> String {
+  probe(name: "probe_login_store_foreign", body: "fn f(s: SessionStore, t: OidcLoginTransaction) -> LoginTransactionStoreSave {\n  login_transaction_store_save(store: s, transaction: t)\n}\n")
+}
+
+fn login_lawful_source() -> String {
+  probe(name: "probe_login_store_lawful", body: "fn f(i: HostDashboardInstance, t: OidcLoginTransaction) -> LoginTransactionStoreSave {\n  match login_transaction_store(instance: i) {\n    LoginTransactionStoreReady { store } => login_transaction_store_save(store: store, transaction: t)\n    LoginTransactionStoreUnready { detail } => LoginTransactionSaveRefused { step: \"store\", reason: detail }\n  }\n}\n")
+}
+
+test fn a_forged_login_transaction_store_literal_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: login_forged_literal_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_login_transaction_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: login_forged_cast_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_login_transaction_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: login_literal_path_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn no_path_taking_login_transaction_store_route_resolves() -> ProcessExit {
+  census_exit(deleted_callable_is_gone(source: login_path_route_source(), deleted_callable: "login_transaction_store_layout_for_instance"))
+}
+
+test fn a_session_store_is_not_a_login_transaction_store() -> ProcessExit {
+  census_exit(blocking_delta(hostile: login_foreign_store_source(), safe: baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_login_transaction_store_mint_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: login_lawful_source(), safe: baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: login_lawful_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// ── the two JWKS caches and the broker's host-singleton stores ─────────────────────────────────
+// Per record: a forged cast, and a literal of the record over a path the probe chose (the store "minted" from a
+// literal path), each exactly one seal violation; plus the two caches each refused where the other is required.
+
+fn broker_probe(name: String, body: String) -> String {
+  join([
+    "module ", name, "\n",
+    "import std.types { String, NonEmptyStr, Int }\n",
+    "import gunbc.host_state_root { HostStateTree }\n",
+    "import extdeps.auth.oidc { OidcIdTokenSignature, OidcIdTokenSignatureRefused }\n",
+    "import extdeps.auth.jwt { JwtCompactSerialization }\n",
+    "import gunbc.auth.oidc_id_token_verification { InstanceJwksCache, JwksCacheRoot, broker_jwks_cache_root, jwks_cache_write }\n",
+    "import extdeps.filesystem.filesystem_io { FilesystemWriteOutcome }\n",
+    "import gunbc.durable_cas_file_store { file_slot_store }\n",
+    "import gunbc.roadmap.roadmap_auth_routes { auth_token_signature }\n",
+    "import gunbc.auth.approval_device_redemption { BrokerJwksCache, BrokerJwksCacheReady, BrokerJwksCacheUnready, broker_jwks_cache, ApprovalDeviceStore }\n",
+    "import gunbc.auth.approval_device_routes { broker_token_signature_over }\n",
+    "import gunbc.auth.approval_assertion_counter { AssertionCounterStore }\n",
+    body,
+  ], "")
+}
+
+fn broker_baseline_source() -> String {
+  broker_probe(name: "probe_broker_store_baseline", body: "fn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n")
+}
+
+fn cast_source(name: String, subject: String) -> String {
+  broker_probe(name: name, body: join(["fn f(r: NonEmptyStr) -> ", subject, " {\n  r as ", subject, "\n}\n"], ""))
+}
+
+test fn a_forged_instance_jwks_cache_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_instance_jwks_cast", subject: "InstanceJwksCache"), subject: "InstanceJwksCache"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_broker_jwks_cache_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_broker_jwks_cast", subject: "BrokerJwksCache"), subject: "BrokerJwksCache"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_approval_device_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_device_store_cast", subject: "ApprovalDeviceStore"), subject: "ApprovalDeviceStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_assertion_counter_store_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_counter_store_cast", subject: "AssertionCounterStore"), subject: "AssertionCounterStore"), holds: fn(n) { n == 1 }))
+}
+
+fn literal_source(name: String, subject: String, literal: String) -> String {
+  broker_probe(name: name, body: join(["fn f() -> ", subject, " {\n  ", literal, "\n}\n"], ""))
+}
+
+test fn an_instance_jwks_cache_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_source(name: "probe_instance_jwks_literal", subject: "InstanceJwksCache", literal: "InstanceJwksCache { instance: \"srv1-lab\", cache: JwksCacheRoot { root: \"/tmp/forged-auth-jwks\" } }"), subject: "InstanceJwksCache"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_broker_jwks_cache_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_source(name: "probe_broker_jwks_literal", subject: "BrokerJwksCache", literal: "BrokerJwksCache { cache: JwksCacheRoot { root: \"/tmp/forged-approval-jwks\" } }"), subject: "BrokerJwksCache"), holds: fn(n) { n == 1 }))
+}
+
+test fn an_approval_device_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_source(name: "probe_device_store_literal", subject: "ApprovalDeviceStore", literal: "ApprovalDeviceStore { slots: file_slot_store(root: \"/tmp/forged-approval-devices\") }"), subject: "ApprovalDeviceStore"), holds: fn(n) { n == 1 }))
+}
+
+test fn an_assertion_counter_store_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: literal_source(name: "probe_counter_store_literal", subject: "AssertionCounterStore", literal: "AssertionCounterStore { slots: file_slot_store(root: \"/tmp/forged-assertion-counters\") }"), subject: "AssertionCounterStore"), holds: fn(n) { n == 1 }))
+}
+
+// THE JWKS CARRIER ITSELF IS SEALED (ruling of jolly-hawk-60, 2026-10-25): a foreign module cannot spell or cast a
+// JwksCacheRoot over a directory it chose, so no module reaches the JWKS operations (jwks_cache_write here) except
+// over a root one of the two constructors derived. The lawful control reaches the same write through
+// broker_jwks_cache_root from a supplied tree and is admitted with no violation.
+test fn a_jwks_cache_root_over_a_literal_path_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: broker_probe(name: "probe_jwks_root_literal", body: "fn f() -> FilesystemWriteOutcome {\n  jwks_cache_write(cache: JwksCacheRoot { root: \"/tmp/forged-jwks\" }, content: \"{}\")\n}\n"), subject: "JwksCacheRoot"), holds: fn(n) { n == 1 }))
+}
+
+test fn a_forged_jwks_cache_root_cast_is_refused_at_compile() -> ProcessExit {
+  census_exit(census_verdict(census: seal_violations(source: cast_source(name: "probe_jwks_root_cast", subject: "JwksCacheRoot"), subject: "JwksCacheRoot"), holds: fn(n) { n == 1 }))
+}
+
+test fn the_derived_jwks_cache_root_is_admitted() -> ProcessExit {
+  let lawful = broker_probe(name: "probe_jwks_root_lawful", body: "fn f(tree: HostStateTree) -> FilesystemWriteOutcome {\n  jwks_cache_write(cache: broker_jwks_cache_root(tree: tree), content: \"{}\")\n}\n")
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful, safe: broker_baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful, subject: "JwksCacheRoot"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+test fn an_instance_jwks_cache_is_not_the_brokers() -> ProcessExit {
+  census_exit(blocking_delta(hostile: broker_probe(name: "probe_instance_jwks_as_broker", body: "fn f(c: InstanceJwksCache, t: JwtCompactSerialization) -> OidcIdTokenSignature {\n  broker_token_signature_over(cache: c, id_token: t, epoch: 0, verify_id: \"v\")\n}\n"), safe: broker_baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn a_broker_jwks_cache_is_not_an_instances() -> ProcessExit {
+  census_exit(blocking_delta(hostile: broker_probe(name: "probe_broker_jwks_as_instance", body: "fn f(c: BrokerJwksCache, t: NonEmptyStr) -> OidcIdTokenSignature {\n  auth_token_signature(cache: c, id_token: t, epoch: 0, verify_id: \"v\")\n}\n"), safe: broker_baseline_source(), holds: fn(n) { n >= 1 }))
+}
+
+test fn the_lawful_broker_jwks_cache_mint_is_admitted() -> ProcessExit {
+  let lawful = broker_probe(name: "probe_broker_jwks_lawful", body: "fn f(tree: HostStateTree, t: JwtCompactSerialization) -> OidcIdTokenSignature {\n  match broker_jwks_cache(tree: tree) {\n    BrokerJwksCacheReady { cache } => broker_token_signature_over(cache: cache, id_token: t, epoch: 0, verify_id: \"v\")\n    BrokerJwksCacheUnready { detail } => OidcIdTokenSignatureRefused { reason: detail }\n  }\n}\n")
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: lawful, safe: broker_baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: lawful, subject: "BrokerJwksCache"), holds: fn(n) { n == 0 }),
+  ])
+}
+
+// ── no authored hold outcome buys a consume ────────────────────────────────────────────────────
+// The fold login_transaction_consume_election_of (FileHoldAcquireOutcome -> LoginTransactionConsumeElection) is
+// deleted: its match lives inside login_transaction_store_consume beside its own file_hold_acquire, so a foreign
+// module holding an authored FileHoldAcquired has no export that turns it into LoginTransactionConsumeWon.
+fn consume_laundering_source() -> String {
+  join([
+    "module probe_login_consume_laundering\n",
+    "import std.types { String, NonEmptyStr }\n",
+    "import gunbc.durable_exclusive_hold_file_store { FileHoldAcquireOutcome, FileHoldAcquired }\n",
+    "import gunbc.auth.login_transaction_store_root { LoginTransactionConsumeElection, login_transaction_consume_election_of }\n",
+    "fn f(o: FileHoldAcquireOutcome) -> LoginTransactionConsumeElection {\n  login_transaction_consume_election_of(outcome: o)\n}\n",
+  ], "")
+}
+
+fn consume_lawful_source() -> String {
+  probe(name: "probe_login_consume_lawful", body: "import gunbc.auth.login_transaction_store_root { LoginTransactionConsumeElection, LoginTransactionConsumeRefused, login_transaction_store_consume }\nimport gunbc.auth.auth_store_key { AuthStoreKey }\nfn f(i: HostDashboardInstance, k: AuthStoreKey) -> LoginTransactionConsumeElection {\n  match login_transaction_store(instance: i) {\n    LoginTransactionStoreReady { store } => login_transaction_store_consume(store: store, key: k)\n    LoginTransactionStoreUnready { detail } => LoginTransactionConsumeRefused { detail: detail }\n  }\n}\n")
+}
+
+test fn no_authored_hold_outcome_can_win_a_login_transaction_consume() -> ProcessExit {
+  census_exit(deleted_callable_is_gone(source: consume_laundering_source(), deleted_callable: "login_transaction_consume_election_of"))
+}
+
+test fn the_lawful_login_transaction_consume_is_admitted() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    blocking_delta(hostile: consume_lawful_source(), safe: baseline_source(), holds: fn(n) { n <= 0 }),
+    census_verdict(census: seal_violations(source: consume_lawful_source(), subject: "LoginTransactionStore"), holds: fn(n) { n == 0 }),
+  ])
+}

@@ -1,0 +1,256 @@
+module gunbc.durable_append_log_store
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.optional { Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.durable_cas_file_store { cas_key_generation_of_name }
+import std.durable_append_log {
+  AppendFraming, RecordPerGeneration, NewlineDelimitedStream, InPlaceRecordFile,
+  MemberWriterPolicy, HostOnly, HostCreatesThenSandboxWrites,
+}
+
+// THE APPEND-LOG / MULTI-WRITER DATA LAYER, and the per-member disposition of every row the sealed-store
+// migration left `Blocked: append-only` or `Blocked: written by the worker sandbox`.
+// Contract semantics (atomicity, order, torn tail, readback, writer windows) are std.durable_append_log's;
+// the exclusion is std.durable_exclusive_hold's, released on evidence (ReleasedOnEvidence); host-authored
+// generation logs are std.durable_compare_and_set's. This module adds only what those leave open: the carrier
+// types, the pure operations over them, the listing classification, and the census.
+//
+// UNSEALED DATA, NOT A WALL (amend to #15471: the seal moved to the declaring roadmap module; DESIGN 4b, do
+// not claim a rung you did not take). `AppendLogStore` and `AppendLogParent` carry NO `sole_constructor` here,
+// so any module can build one over a literal path -- exactly the accepted residual recorded by
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module, whose evidence names
+// gunbc.durable_cas_file_store file_slot_store as the path-taking constructor and
+// test.claim.slot_store_seal_witness a_plain_store_over_a_literal_path_is_accepted_today as the executing probe.
+// The wall is one rung up: `sole_constructor type AttemptAppendLogStore` in
+// gunbc.roadmap.roadmap_attempt_state_store, whose one mint takes the business key (instance, node, attempt_key,
+// member) and never a path. Nothing declared in this file is sealed.
+
+// A DISPOSITION ROW PER DURABLE MEMBER CLASS THIS LAYER KNOWS ABOUT. THE EIGHT ATTEMPT LOG MEMBERS ARE NOT
+// HERE ANY MORE: their slots are declared as a TOTAL function over the closed member type in the module that
+// declares them (gunbc.roadmap.roadmap_attempt_state_store attempt_append_log_member_slot), which removes both a
+// string key and the string-equality join with it (review 90246). A row keyed by a variant NAME could not say
+// that, so the eight rows were deleted rather than left beside their replacement. What remains is the disposition
+// record for member classes that do not yet have a declaring-module slot function (the attempt directory wire,
+// the create-once members, the blocked and stays rows). LIMIT STATED, NOT GATED: as of this head nothing in this
+// repository mints from those remaining rows except the one member class whose slot is still census-declared
+// (AttemptDirectoryWire, read by test.claim.durable_append_log_witness). They are otherwise the declaration a
+// later store lane takes as its input. A lane that declares its own slot function deletes its rows here instead of
+// adding a second reader.
+type AppendLogSlot {
+  member: NonEmptyStr
+  framing: AppendFraming
+  writers: MemberWriterPolicy
+}
+
+// THE UNSEALED CARRIER, both types below (the layering and its residual are stated once, in the header).
+// Data-only: no `sole_constructor`, no mint here. The seal and the ONE business-key mint live in the module
+// that declares the members -- gunbc.roadmap.roadmap_attempt_state_store, type AttemptAppendLogStore.
+type AppendLogParent {
+  directory: NonEmptyStr
+}
+
+type AppendLogStore {
+  parent: NonEmptyStr
+  slot: AppendLogSlot
+}
+
+// THE MINT REFUSES ON LEGACY. The parent directory is listed; an entry that is the slot's file under a
+// different framing (a generation file where a stream is declared, or the reverse) or a second file claiming
+// the slot is `AppendLogLegacyRefused`, never adopted and never read through. Bytes written under the
+// unchanged literal name by the pre-seal path are NOT legacy for a stream slot: sealing is in place, and the
+// old-bytes readback is a required control. An unlisted parent is Unready, not an empty log.
+type AppendLogLegacyCause
+  = LegacyFramingMismatch { entry: String }
+  | LegacyDuplicateClaim { entries: List<String> }
+
+type AppendLogMinting
+  = AppendLogReady { store: AppendLogStore }
+  | AppendLogUnready { detail: String }
+  | AppendLogLegacyRefused { cause: AppendLogLegacyCause }
+
+// THE ONE MINT. Pure over the listing the owning store took; the legacy decision is a fold, and the claimants
+// and the mismatched entries are DERIVED here from that listing and the slot's own member name, never
+// supplied by the caller (a caller-supplied claimant list is a laundering shape: DESIGN 5). A stream or in-place slot
+// is mismatched by any entry that is a generation file of its key (gunbc.durable_cas_file_store
+// cas_key_generation_of_name, the one recognizer of that framing); an entry equal to the member name is a claimant.
+fn append_log_entry_claims(slot: AppendLogSlot, entry: String) -> Bool {
+  entry == (slot.member as String)
+}
+
+fn append_log_entry_is_generation_file(slot: AppendLogSlot, entry: String) -> Bool {
+  match cas_key_generation_of_name(key: slot.member, name: entry) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn append_log_entry_is_other_framing(slot: AppendLogSlot, entry: String) -> Bool {
+  match slot.framing {
+    NewlineDelimitedStream => append_log_entry_is_generation_file(slot: slot, entry: entry)
+    InPlaceRecordFile => append_log_entry_is_generation_file(slot: slot, entry: entry)
+    RecordPerGeneration => entry == (slot.member as String)
+  }
+}
+
+type AppendLogListingVerdict
+  = ListingClean
+  | ListingUnlisted
+  | ListingLegacy { cause: AppendLogLegacyCause }
+
+fn append_log_listing_verdict(slot: AppendLogSlot, listing: List<String>?) -> AppendLogListingVerdict {
+  match listing {
+    Absent => ListingUnlisted
+    Present { value: entries } => append_log_listed_verdict(slot: slot, entries: entries)
+  }
+}
+
+fn append_log_listed_verdict(slot: AppendLogSlot, entries: List<String>) -> AppendLogListingVerdict {
+  let mismatched = filter(entries, e => append_log_entry_is_other_framing(slot: slot, entry: e))
+  let claimants = filter(entries, e => append_log_entry_claims(slot: slot, entry: e))
+  match mismatched {
+    Cons { head: entry, tail: _ } => ListingLegacy { cause: LegacyFramingMismatch { entry: entry } }
+    Empty {} => match claimants {
+      Cons { head: _, tail: Cons { head: _, tail: _ } } => ListingLegacy { cause: LegacyDuplicateClaim { entries: claimants } }
+      _ => ListingClean
+    }
+  }
+}
+
+fn append_log_store_mint(parent: AppendLogParent, slot: AppendLogSlot, listing: List<String>?) -> AppendLogMinting {
+  match append_log_listing_verdict(slot: slot, listing: listing) {
+    ListingUnlisted => AppendLogUnready { detail: "parent directory did not list" }
+    ListingLegacy { cause: c } => AppendLogLegacyRefused { cause: c }
+    ListingClean => AppendLogReady { store: AppendLogStore { parent: parent.directory, slot: slot } }
+  }
+}
+
+// ── THE DISPOSITION CENSUS, at identity grain ─────────────────────────────────────────────────────
+// Identity is (inventory row_id, member name). The rows below come from three sources, named rather than
+// counted (the list is the count): Seeadecb2 (the per-attempt dispatch state: the directory wire member, the
+// `*RequestScratch` members, the verdict members), S88241eea (gcp_iam_bootstrap intent/elected/closed/retired)
+// and approval_decision_store (the decision store and its receipt, StaysSharedByAgreement). #15576 deleted the
+// attempt log members' rows together with the census-key join they fed, because their slots now come from
+// the total `AttemptLogMember -> AppendLogSlot` function in the module that declares the members. What is left
+// here is exactly the set that has NO declaring-module slot function. The census read the
+// merged disposition tables of #15417, #15412, #15068, #15104, #15081, #15396 and #15414; the other
+// `Blocked` rows there (capacity store, cleanup authority root-per-call, tailnet door cutover journal,
+// transition lease) are blocked on other capabilities and are NOT this contract's: capacity store (S9892f19f), fabric cleanup authority (S703c0e8e), tailnet door cutover journal (S78f330a6), deploy transition lease (S33f05980; the ReleasedOnEvidence arm now exists, so its own trigger should be re-read by that lane).
+//
+// THE GROUNDING THAT CHANGED THE SHAPE (historic: the raw events initializer, deleted by #15576; its absence is
+// pinned by test.claim.durable_append_log_witness the_raw_events_initializer_is_gone. That callable created the
+// events file create-new group-writable under a dedicated worker account and the sandboxed worker then appended
+// it). What it established holds for the eight attempt log streams #15576 migrated (the AttemptLogMember
+// members): each is a host create followed by ONE sandbox window, so their contract is a sequence of
+// exclusive windows, not concurrent writers. It does NOT hold for AttemptDirectoryWire, whose row is still
+// MigrateToLogStore { InPlaceRecordFile }: `attempt_state_prepare_argvs_for_instance` only provisions the
+// `<events>.wire/` directory, and gunbc.harness.harness_turn writes each `<round>.{request,response}.json`
+// itself with Filesystem.Write at `harness_wire_log_path`; nothing host-creates those per-round records.
+type MemberDisposition
+  = MigrateToLogStore { framing: AppendFraming, principal: DurableHoldOwnerRef }
+  | MigrateToCreateOnceMember {}
+  | BlockedOnCapability { journal: DeclarationRef }
+  | StaysSharedByAgreement { drop: DeclarationRef }
+
+type MemberCensusRow {
+  row_id: NonEmptyStr
+  member: NonEmptyStr
+  disposition: MemberDisposition
+}
+
+fn sandbox_provider(owner: NonEmptyStr) -> DurableHoldOwnerRef {
+  owner as DurableHoldOwnerRef
+}
+
+// THE PRINCIPAL IS THE ATTEMPT'S WORKER UNIT, whose identity the attempt-state store already derives; the
+// literal here names the role the implementation lane binds, not a user name.
+data attempt_worker_principal_role: NonEmptyStr = "attempt-worker-unit" as NonEmptyStr
+
+data append_log_member_census: List<MemberCensusRow> = [
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptDirectoryWire" as NonEmptyStr,
+    disposition: MigrateToLogStore {
+      framing: InPlaceRecordFile {}, principal: sandbox_provider(owner: attempt_worker_principal_role),
+    },
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptWorkerRequestScratch" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewRequestScratch" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditRequestScratch" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorRequestScratch" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptReviewVerdict" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptAuditVerdict" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "Seeadecb2" as NonEmptyStr, member: "AttemptSupervisorVerdict" as NonEmptyStr,
+    disposition: MigrateToCreateOnceMember {},
+  },
+  MemberCensusRow {
+    row_id: "S88241eea" as NonEmptyStr, member: "gcp_iam_bootstrap_intent" as NonEmptyStr,
+    disposition: BlockedOnCapability { journal: DeclarationRef { module_path: "gunbc.auth.gcp_iam_bootstrap_journal" as NonEmptyStr, decl_name: "gcp_iam_bootstrap_journal" as NonEmptyStr, field: WholeDeclaration {} } },
+  },
+  MemberCensusRow {
+    row_id: "S88241eea" as NonEmptyStr, member: "gcp_iam_bootstrap_elected" as NonEmptyStr,
+    disposition: BlockedOnCapability { journal: DeclarationRef { module_path: "gunbc.auth.gcp_iam_bootstrap_journal" as NonEmptyStr, decl_name: "gcp_iam_bootstrap_journal" as NonEmptyStr, field: WholeDeclaration {} } },
+  },
+  MemberCensusRow {
+    row_id: "S88241eea" as NonEmptyStr, member: "gcp_iam_bootstrap_closed" as NonEmptyStr,
+    disposition: BlockedOnCapability { journal: DeclarationRef { module_path: "gunbc.auth.gcp_iam_bootstrap_journal" as NonEmptyStr, decl_name: "gcp_iam_bootstrap_journal" as NonEmptyStr, field: WholeDeclaration {} } },
+  },
+  MemberCensusRow {
+    row_id: "S88241eea" as NonEmptyStr, member: "gcp_iam_bootstrap_retired" as NonEmptyStr,
+    disposition: BlockedOnCapability { journal: DeclarationRef { module_path: "gunbc.auth.gcp_iam_bootstrap_journal" as NonEmptyStr, decl_name: "gcp_iam_bootstrap_journal" as NonEmptyStr, field: WholeDeclaration {} } },
+  },
+  MemberCensusRow {
+    row_id: "approval_decision_store" as NonEmptyStr, member: "approval_decision_store" as NonEmptyStr,
+    disposition: StaysSharedByAgreement { drop: DeclarationRef { module_path: "gunbc.rung_drop.approval_store_single_writer_by_agreement" as NonEmptyStr, decl_name: "approval_store_single_writer_by_agreement" as NonEmptyStr, field: WholeDeclaration {} } },
+  },
+  MemberCensusRow {
+    row_id: "approval_decision_store" as NonEmptyStr, member: "approval_store_receipt" as NonEmptyStr,
+    disposition: StaysSharedByAgreement { drop: DeclarationRef { module_path: "gunbc.rung_drop.approval_store_single_writer_by_agreement" as NonEmptyStr, decl_name: "approval_store_single_writer_by_agreement" as NonEmptyStr, field: WholeDeclaration {} } },
+  },
+]
+
+// THE SLOT A CENSUS ROW DECLARES. The window law is the only policy a log member can carry, so the row holds
+// the member, framing and principal and the slot is built here: a HostOnly log row has no spelling.
+// WHO READS THE CENSUS: the controls over member classes whose slot is still census-declared (today only
+// AttemptDirectoryWire, in test.claim.durable_append_log_witness). The eight attempt log members are not in this
+// list at all, so nothing here feeds them (see the header above).
+fn append_log_census_slots() -> List<AppendLogSlot> {
+  append_log_census_slots_of(rows: append_log_member_census)
+}
+
+fn append_log_census_slots_of(rows: List<MemberCensusRow>) -> List<AppendLogSlot> {
+  match rows {
+    Empty {} => []
+    Cons { head: r, tail: rest } => match append_log_census_slot(row: r) {
+      Present { value: slot } => Cons { head: slot, tail: append_log_census_slots_of(rows: rest) }
+      Absent => append_log_census_slots_of(rows: rest)
+    }
+  }
+}
+
+fn append_log_census_slot(row: MemberCensusRow) -> AppendLogSlot? {
+  match row.disposition {
+    MigrateToLogStore { framing: f, principal: p } => Present { value: AppendLogSlot { member: row.member, framing: f, writers: HostCreatesThenSandboxWrites { principal: p } } }
+    _ => Absent
+  }
+}
+

@@ -40,9 +40,10 @@ import gunbc.machine_intake.ampere_dram_console_observation {
 }
 import gunbc.machine_intake.ampere_checkpoint_console_observation {
   AmpereCheckpointConsoleObservation, AmpereCheckpointSpan, AmpereCheckpointRelation, AmpereCheckpointToken,
-  ampere_checkpoint_relation_text, ampere_checkpoint_last_token, ampere_console_span_lines,
+  ampere_checkpoint_relation_text, ampere_checkpoint_last_token,
 }
-import gunbc.machine_intake.mtcollins1_console_milestone_observation {
+import gunbc.host.boot_console_observation {
+  SpanConsoleReading,
   ConsoleMilestone, ConsoleMilestoneObservation, ConsoleMilestoneSighting, ConsoleFailureLine, ConsoleFailureSighting,
   FirmwareErrorStatementLine, GrubFailureLine, InitrdLoadFailureLine, KernelPanicLine, ModuleDecompressionRefusalLine,
   DramFirmwareBannerObserved, FirmwareSummaryObserved, UefiConsolePromptObserved, UefiShellObserved, GrubBannerObserved, EfiStubLineObserved, KernelBannerObserved,
@@ -183,22 +184,6 @@ type SmproPassEvidence {
   observation: SmproPassObservation
 }
 
-// WHAT ONE CONSOLE SPAN STATED, by the owning readers run over that span's lines alone (the bundle runs
-// them over gunbc.machine_intake.ampere_checkpoint_console_observation ampere_console_span_lines), so a
-// statement printed in two spans is two statements, each in its own span.
-type SpanConsoleReading {
-  span: Int
-  firmware: FirmwareConsoleReport
-  loader: GrubConsoleReport
-  modules: KernelModuleDecompressionObservation
-}
-
-fn span_console_readings(lines: List<String>) -> List<SpanConsoleReading> {
-  map(ampere_console_span_lines(lines: lines), g => SpanConsoleReading {
-    span: g.span, firmware: firmware_console_report(lines: g.lines), loader: grub_console_report(lines: g.lines), modules: kernel_module_decompression_observation(lines: g.lines),
-  })
-}
-
 type ConsoleEvidence
   = ConsoleRead {
       capture: Sha256FileDigest,
@@ -313,8 +298,9 @@ type MilestoneEvidence {
 }
 
 // THE READER, NAMED BY DECLARATION: a citation the namespace tree can resolve, so a renamed reader is
-// a resolution defect rather than a stale string.
-data mtcollins1_console_milestone_reader: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.mtcollins1_console_milestone_observation", decl_name: "mtcollins1_console_milestones")
+// a resolution defect rather than a stale string. The 4d-ii re-home moved the milestone fold to
+// gunbc.host.boot_console_observation (node://adhoc-18598508-4f4); the citation follows it.
+data mtcollins1_console_milestone_reader: DeclarationRef = decl_ref(module_path: "gunbc.host.boot_console_observation", decl_name: "mtcollins1_console_milestones")
 
 type BootCycleAccount {
   index: Int

@@ -1,0 +1,18 @@
+module product.p4261.e1_design
+
+import std.types { NonEmptyStr }
+import product.electrical.connectivity {
+  component_instance_identity,
+  ComponentInstanceIdentity,
+  ElectricalDesignIdentity,
+}
+
+// THE E1 UNIT'S DESIGN IDENTITY, AND HOW A SPECIMEN OF IT IS NAMED. Declared once, here, and imported by
+// both product.p4261.e1_b (the board's rows) and product.p4261.e1_board_sightings (the roster of what the
+// atlas attributes). It lives below both because e1_b hands the roster to the marking mints, so the roster
+// cannot import e1_b; two modules each spelling "p4261-e1-b" would be two authorities for one identity.
+data e1_design: ElectricalDesignIdentity = "p4261-e1-b" as ElectricalDesignIdentity
+
+fn e1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
+  component_instance_identity(design: e1_design, local_identity: local)
+}

@@ -22,7 +22,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.transports.shell { ShellProcessExited }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, filesystem_bindings }
 import gunbc.process_environment_model { ModeledVariable, environment_binding }
-import gunbc.host.managed_host_unit_hold { unit_hold_store_root, maintenance_hold_take, maintenance_hold_release }
+import gunbc.host.managed_host_unit_hold { unit_hold_store_path, maintenance_hold_take, maintenance_hold_release }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -95,7 +96,7 @@ fn hold_host_frame(world: HoldHostWorld) -> WitnessEvaluationFrame<HoldHostWorld
 }
 
 fn empty_store() -> ModeledFilesystem {
-  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_root as String], files: [], refused_reads: [], stats: [] }
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", unit_hold_store_path(tree: host_state_tree()) as String], files: [], refused_reads: [], stats: [] }
 }
 
 // A machine with the given short hostname, the operator's reason exported, and the given store.
@@ -120,7 +121,7 @@ fn store_writes(route: List<DispatchRecord>) -> Int {
 }
 
 fn store_files(fs: ModeledFilesystem) -> List<ModeledFile> {
-  filter(fs.files, f => starts_with(s: f.path, prefix: unit_hold_store_root as String))
+  filter(fs.files, f => starts_with(s: f.path, prefix: unit_hold_store_path(tree: host_state_tree()) as String))
 }
 
 fn refused_as_off_the_store_host(e: ProcessExit, observed: String) -> Bool {

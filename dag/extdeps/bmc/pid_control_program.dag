@@ -3,7 +3,7 @@ module extdeps.bmc.pid_control_program
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decimal { ExactDecimal, exact_decimal_equal }
 import std.measure { Measure, Milli, One, Temperature, TemperatureDifference, Time }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Https, Uri }
 
@@ -172,6 +172,32 @@ type DemandCurvePoint {
   index: Int
   reading: Measure<Temperature, One, ExactDecimal>
   output: ZoneDemandValue
+}
+
+// THE NUMBER OF STEPWISE POINTS THE UPSTREAM SOURCE CONSUMES, owned here beside the type whose list it
+// bounds so that every producer of this program checks against one place. At phosphor-pid-control
+// commit 60fafd1c568efc578d4592e0f272ca3a4f1c9033, pid/ec/stepwise.hpp declares maxStepwisePoints = 20
+// and pid/buildjson.cpp consumes only the indices below it, so a point at index 20 or beyond is
+// dropped without error and the controller holds the previous point's output past it.
+//
+// WHAT THIS ESTABLISHES AND WHAT IT DOES NOT. The citation grounds the figure for THAT upstream
+// source revision, which is the contract this model targets. That the firmware installed on a given
+// host (butch: OpenBMC 3.22.00) was built from that contract is a different fact, not claimed here:
+// it is the deployment and inhabitance obligation of the consuming projection's frontier, to be
+// discharged by reading the running zone back.
+data phosphor_stepwise_max_points: Int = 20
+
+data phosphor_stepwise_max_points_standing: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https,
+      locator: "github.com/openbmc/phosphor-pid-control/blob/60fafd1c568efc578d4592e0f272ca3a4f1c9033/pid/ec/stepwise.hpp",
+    },
+  },
+}
+
+fn stepwise_point_count_fits_upstream(count: Int) -> Bool {
+  count <= phosphor_stepwise_max_points
 }
 
 // HYSTERESIS IS A TEMPERATURE DIFFERENCE AND THE SETPOINT IS A TEMPERATURE, which are different

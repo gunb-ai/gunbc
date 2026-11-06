@@ -1,17 +1,6 @@
 module gunbc.auth.profile_projection
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Timestamp, Email }
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  filesystem_read_outcome,
-  filesystem_listing_observation,
-  filesystem_listing_entry_names,
-  FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
-  filesystem_file_observation,
-  FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
-  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
-  FilesystemReadOutcome, FilesystemReadRefused, FilesystemReadSucceeded,
-}
 import extdeps.languages.json.emit {
   serialize_json, json_object, json_kv, json_string, JsonValue, JsonKeyValue,
 }
@@ -22,8 +11,12 @@ import extdeps.languages.json.parse {
 import extdeps.uri { Uri, Https, Http, uri_wire }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import gunbc.principal_projection { PrincipalRef, principal_ref_label, principal_ref_parse_label }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_private_directory }
-import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_path }
+import gunbc.auth.profile_store_root {
+  ProfileStore, ProfileStoreReading, ProfileStoreReady, ProfileStoreUnready, profile_store_file_suffix,
+  profile_store_list, profile_store_read_record, profile_store_write_record, profile_store_read_listed,
+  ProfileRecordRead, ProfileRecordAbsent, ProfileRecordUnreadable, ProfileRecordWritten, ProfileRecordWriteRefused,
+  ProfileStoreEntriesListed, ProfileStoreEntriesRefused, ProfileListedEntryRead, ProfileListedEntryUnreadable,
+}
 import gunbc.auth.session { AuthenticatedSession }
 
 // THE PROFILE PROJECTION (Cut 4 plan, docs/plans/google-workspace-identity-convergence.md
@@ -50,27 +43,6 @@ type PrincipalProfile {
   picture: Uri?
   updated_at: Timestamp
   source: ProfileSource
-}
-
-type ProfileStoreLayout {
-  root: FilePath
-}
-
-// THE DIRECTORY THIS STORE DEMANDS; the layout's root is read off it (gunbc.owned_directory).
-fn profile_store_directory(instance: HostDashboardInstance) -> OwnedDirectoryTarget {
-  dashboard_instance_private_directory(instance: instance, member: "auth-profiles" as NonEmptyStr, child: "auth-profiles")
-}
-
-fn profile_store_layout_for_instance(instance: HostDashboardInstance) -> ProfileStoreLayout {
-  ProfileStoreLayout {
-    root: owned_directory_path(t: profile_store_directory(instance: instance)),
-  }
-}
-
-// THE FILE NAME is the sha256 of the principal's ruling label: deterministic and
-// filesystem-safe (the label itself carries ':' and '/').
-fn profile_store_file_name(digest_hex: String) -> String {
-  join([digest_hex, ".json"], "")
 }
 
 data profile_file_schema: String = "gunbc-auth-profile/v1"
@@ -257,49 +229,30 @@ type ProfileStoreUpsert
 // advances to the session's authenticated_at. A prior file that exists but is unreadable or
 // malformed REFUSES the upsert with the step named — the projection never clobbers an
 // observation it cannot read — and the login that produced the session is never touched.
-fn profile_store_upsert_from_session(layout: ProfileStoreLayout, session: AuthenticatedSession) -> ProfileStoreUpsert {
+fn profile_store_upsert_from_session(store: ProfileStore, session: AuthenticatedSession) -> ProfileStoreUpsert {
   let label = principal_ref_label(p: session.principal)
   match sha256sum_stdin_digest_via_shell(content: label) {
     Sha256FileDigestUnavailable { path: _, reason: r } =>
       ProfileStoreUpsertRefused { step: "digest", reason: r }
     Sha256FileDigest { digest: d } =>
-      let name = profile_store_file_name(digest_hex: d.hex as String)
-      let path = join([layout.root as String, "/", name], "")
-      let listing_result = Filesystem.List(path: layout.root as String)
-      let listing = filesystem_listing_observation(
-        directory: layout.root as String,
-        success: listing_result.success,
-        entries: listing_result.entries,
-        error: listing_result.error,
-      )
-      let read_result = Filesystem.Read(path: path)
-      let observation = filesystem_file_observation(
-        listing: listing,
-        name: name,
-        path: path,
-        read: filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error),
-      )
-      match observation {
-        FilesystemFileIndeterminate { cause: c } =>
+      let digest_hex = d.hex as String
+      match profile_store_read_record(store: store, digest_hex: digest_hex) {
+        ProfileRecordUnreadable { detail: c } =>
           ProfileStoreUpsertRefused { step: "read", reason: c }
-        FilesystemFileObservationsDisagree { path: _, cause: c } =>
-          ProfileStoreUpsertRefused { step: "read", reason: c }
-        FilesystemFileSubjectRefused { directory: _, name: _, cause: c } =>
-          ProfileStoreUpsertRefused { step: "read", reason: c }
-        FilesystemFileAbsent(absence) =>
-          profile_store_upsert_write(path: path, session: session, prior: none)
-        FilesystemFileRead { path: _, content: c } =>
+        ProfileRecordAbsent =>
+          profile_store_upsert_write(store: store, digest_hex: digest_hex, session: session, prior: none)
+        ProfileRecordRead { content: c } =>
           match principal_profile_of_json(text: c) {
             ProfileFileMalformed { detail: d2 } =>
               ProfileStoreUpsertRefused { step: "decode", reason: d2 }
             ProfileFileDecoded { profile: prior } =>
-              profile_store_upsert_write(path: path, session: session, prior: Present { value: prior })
+              profile_store_upsert_write(store: store, digest_hex: digest_hex, session: session, prior: Present { value: prior })
           }
       }
   }
 }
 
-fn profile_store_upsert_write(path: String, session: AuthenticatedSession, prior: PrincipalProfile?) -> ProfileStoreUpsert {
+fn profile_store_upsert_write(store: ProfileStore, digest_hex: String, session: AuthenticatedSession, prior: PrincipalProfile?) -> ProfileStoreUpsert {
   let merged = PrincipalProfile {
     principal: session.principal,
     name: match session.profile.name {
@@ -326,11 +279,9 @@ fn profile_store_upsert_write(path: String, session: AuthenticatedSession, prior
     updated_at: session.authenticated_at,
     source: ProfileSourceGoogleOidcLogin,
   }
-  let written = Filesystem.WriteOwnerOnly(path: path, content: principal_profile_json(profile: merged))
-  if written.success {
-    ProfileStoreUpserted { principal: session.principal }
-  } else {
-    ProfileStoreUpsertRefused { step: "write", reason: written.error }
+  match profile_store_write_record(store: store, digest_hex: digest_hex, content: principal_profile_json(profile: merged)) {
+    ProfileRecordWritten => ProfileStoreUpserted { principal: session.principal }
+    ProfileRecordWriteRefused { error: e } => ProfileStoreUpsertRefused { step: "write", reason: e }
   }
 }
 
@@ -350,13 +301,11 @@ type ProfileStoreReadAll
 // that will not decode is SKIPPED, not fatal — one hand-edited file must not blank the
 // assignee picker (the never-blocks law at the read side; the malformed file stays on disk for
 // inspection).
-fn profile_store_read_all(layout: ProfileStoreLayout) -> ProfileStoreReadAll {
-  let listing_result = Filesystem.List(path: layout.root as String)
-  match filesystem_listing_observation(directory: layout.root as String, success: listing_result.success, entries: listing_result.entries, error: listing_result.error) {
-    FilesystemDirectorySubjectRefused { directory: _, cause: c } => ProfileStoreUnread { step: "list", reason: c }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => ProfileStoreUnread { step: "list", reason: e }
-    FilesystemDirectoryListed(listing) => {
-      let decoded = profile_store_decode_entries(layout: layout, entries: filesystem_listing_entry_names(listing: listing), acc: [], skipped_acc: [])
+fn profile_store_read_all(store: ProfileStore) -> ProfileStoreReadAll {
+  match profile_store_list(store: store) {
+    ProfileStoreEntriesRefused { reason: r } => ProfileStoreUnread { step: "list", reason: r }
+    ProfileStoreEntriesListed { entries: names } => {
+      let decoded = profile_store_decode_entries(store: store, entries: names, acc: [], skipped_acc: [])
       ProfileStoreRead {
         profiles: decoded.profiles,
         skipped: decoded.skipped,
@@ -365,8 +314,17 @@ fn profile_store_read_all(layout: ProfileStoreLayout) -> ProfileStoreReadAll {
   }
 }
 
+// THE ROSTER OF A MINT'S READING: a store whose directory did not list reads as Unread, the same answer a
+// listing refused inside the read gives, so a consumer under the never-blocks law degrades once for both.
+fn profile_store_roster(reading: ProfileStoreReading) -> ProfileStoreReadAll {
+  match reading {
+    ProfileStoreUnready { detail: d } => ProfileStoreUnread { step: "list", reason: d }
+    ProfileStoreReady { store: profiles } => profile_store_read_all(store: profiles)
+  }
+}
+
 fn profile_store_decode_entries(
-  layout: ProfileStoreLayout,
+  store: ProfileStore,
   entries: List<String>,
   acc: List<PrincipalProfile>,
   skipped_acc: List<ProfileStoreSkipped>,
@@ -377,16 +335,15 @@ fn profile_store_decode_entries(
       done
     }
     Present { value: entry } =>
-      let stepped = if !ends_with(s: entry, suffix: ".json") {
+      let stepped = if !ends_with(s: entry, suffix: profile_store_file_suffix) {
         { profiles: acc, skipped: skipped_acc }
       } else {
-        let read_result = Filesystem.Read(path: join([layout.root as String, "/", entry], ""))
-        match filesystem_read_outcome(content: read_result.content, success: read_result.success, error: read_result.error) {
-          FilesystemReadRefused { error } => {
+        match profile_store_read_listed(store: store, entry: entry) {
+          ProfileListedEntryUnreadable { error } => {
             let refused_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["read failed: ", error], "") }]) }
             refused_file
           }
-          FilesystemReadSucceeded { content } =>
+          ProfileListedEntryRead { content } =>
             match principal_profile_of_json(text: content) {
               ProfileFileMalformed { detail } => {
                 let skipped_file = { profiles: acc, skipped: concat(skipped_acc, [ProfileStoreSkipped { entry: entry, reason: join(["malformed: ", detail], "") }]) }
@@ -399,6 +356,6 @@ fn profile_store_decode_entries(
             }
         }
       }
-      profile_store_decode_entries(layout: layout, entries: entries.skip(n: 1), acc: stepped.profiles, skipped_acc: stepped.skipped)
+      profile_store_decode_entries(store: store, entries: entries.skip(n: 1), acc: stepped.profiles, skipped_acc: stepped.skipped)
   }
 }
