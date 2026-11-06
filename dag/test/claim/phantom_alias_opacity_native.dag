@@ -65,7 +65,8 @@ fn opacity_env(bindings: List<TypeBinding>) -> TypeEnv {
     intern_table: e.intern_table, source_visible_names: e.source_visible_names,
     authored_import_names: e.authored_import_names,
     symbol_index: fold(bindings, init: e.symbol_index, f: (i, b) => symbol_index_insert_decl(index: i, module_path: "test.opacity", binding: b)),
-    unit_variant_index: e.unit_variant_index, unit_variant_index_observed: e.unit_variant_index_observed
+    unit_variant_index: e.unit_variant_index, unit_variant_index_observed: e.unit_variant_index_observed,
+    equality_by_target: e.equality_by_target
   }
 }
 
