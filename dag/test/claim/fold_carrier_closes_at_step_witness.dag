@@ -1,0 +1,46 @@
+module test.claim.fold_carrier_closes_at_step_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: an open fold carrier (`init: []`) closes at the type the step produces, in BOTH fold forms,
+// so the emitted step closure types its accumulator and never renders `|acc: _, ..|` (rustc E0282).
+// ROUTE: compile_dag_rust_emit_check runs the seed's real compile and checks the emitted text.
+// RED (expected at main, to be measured on a host, not in-container): the declared-generic call
+// `list_push(acc, x)` as the step of a `fold(init: [], ..)`. Positive controls: a closed init (unchanged)
+// and the FreeMonoid `Empty` init (fold_accumulator_is_unapplied_generic).
+
+fn w_free_call_fold_closes_open_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.free\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [], f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_free.rs",
+    ["fn gather"],
+    ["acc: _"]
+  )
+}
+
+fn w_method_call_fold_closes_open_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.method\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { xs.fold(init: [], f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_method.rs",
+    ["fn gather"],
+    ["acc: _"]
+  )
+}
+
+fn w_closed_init_is_unchanged() -> Bool {
+  compile_dag_rust_emit_check(
+    "module foldcarrier.closed\n\nimport std.algebra { list_push }\nimport std.types { Int }\n\nfn gather(xs: List<Int>) -> List<Int> { fold(xs, init: [0], f: (acc, x) => list_push(acc, x)) }\n",
+    "src/foldcarrier_closed.rs",
+    ["fn gather"],
+    ["acc: _"]
+  )
+}
+
+test fn free_call_fold_closes_open_carrier_at_the_step() -> Bool { w_free_call_fold_closes_open_carrier() }
+
+test fn method_call_fold_closes_open_carrier_at_the_step() -> Bool { w_method_call_fold_closes_open_carrier() }
+
+test fn closed_init_carrier_is_unchanged() -> Bool { w_closed_init_is_unchanged() }
