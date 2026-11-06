@@ -20,7 +20,8 @@ import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefus
 import extdeps.numeric.base16 { base16_decode_any }
 import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, second_count }
+import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AdmittedUiAssetPath,
@@ -68,6 +69,11 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   MegaRacUiAssetAttempt,
   ui_octets_slice,
   mtcollins1_ui_page_web_root,
+  mtcollins1_ui_page_candidates,
+  mtcollins1_ui_page_viewer_html,
+  mtcollins1_ui_page_index_html,
+  mtcollins1_ui_status_asset_probe_bound,
+  megarac_ui_asset_fetch_limit,
   ui_page_line,
   ui_page_reading_of,
   ui_receipt_text,
@@ -1381,4 +1387,15 @@ test fn w_an_attribute_is_read_only_on_a_start_tag() -> Bool {
     count(ui_asset_refs_of_page(page_text: "<script> x=\"</scripture><img src='/ui/fake.js'>\" </script>")) == 0 &&
     witness_single_ref(page: "<script> x=1 </script><img src=\"/ui/real.js\">") == "/ui/real.js" &&
     witness_single_ref(page: "<script> x=\"</scripture>\" </SCRIPT ><img src=\"/ui/real.js\">") == "/ui/real.js"
+}
+
+// The page ladder reads "/", "/index.html" and "/viewer.html" in that order, every candidate cites its
+// evidence, and the step's wall-clock bound counts one read per candidate (login, each page, each
+// asset up to the fetch limit, logout): adding a page moves the bound, not a second literal.
+test fn w_the_page_ladder_names_viewer_html_and_the_probe_bound_counts_one_read_per_page() -> Bool {
+  let paths = map(mtcollins1_ui_page_candidates, c => c.path as String)
+  paths == ["/", "/index.html", "/viewer.html"] &&
+    string_contains(s: mtcollins1_ui_page_viewer_html.why as String, pattern: "37102391062") &&
+    string_contains(s: mtcollins1_ui_page_index_html.why as String, pattern: "42219034455") &&
+    (second_count(s: mtcollins1_ui_status_asset_probe_bound()) as Int) == (second_count(s: megarac_media_read_max_time) as Int) * (1 + count(mtcollins1_ui_page_candidates) + megarac_ui_asset_fetch_limit + 1)
 }
