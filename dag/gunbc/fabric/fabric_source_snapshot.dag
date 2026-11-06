@@ -579,7 +579,7 @@ fn capture_source_snapshot(
 // AN IDENTITY MANIFEST OF DIGESTS, NOT THE STORED CAPTURE'S REF: capture stores file bytes as leaves,
 // this function leaves a digest per file (snapshot_digest_leaf_body), so the two refs are different
 // values by design and the derived one does not carry the bytes. Moving bytes to an executor is the
-// snapshot/transport obligation of PRs 5 and 7 (recorded on durable_work_program_boundaries), and any
+// snapshot/transport obligation of PRs 5 and 7 (gunbc.plans.durable_work_program_boundaries), and any
 // claim relating a stored capture to a derived identity is owed to that wet route.
 //
 // A NEW UNTRACKED FILE IS IN THE IDENTITY BY THE SAME ROUTE as a tracked one: the inclusion list is

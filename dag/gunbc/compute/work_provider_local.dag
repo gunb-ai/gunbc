@@ -304,7 +304,7 @@ type SubjectResolution
 // gunbc.fabric.fabric_source_snapshot snapshot_manifest_identity, which keeps no notion of tracked,
 // commit or path. Every file, empty or binary included, is one digest leaf (ruling B), so no file kind
 // refuses. LIMIT: the identity NAMES bytes by digest and does not carry them; moving bytes to an
-// executor is PRs 5 and 7 (durable_work_program_boundaries).
+// executor is PRs 5 and 7 (gunbc.plans.durable_work_program_boundaries).
 type SubjectManifestReading
   = SubjectManifestRead { manifest: SourceManifestRef, files: Int, toolchain_file: String }
   | SubjectManifestRefused { detail: String }
