@@ -1,0 +1,65 @@
+module gunbc.ci.ci_run_step_target
+
+import std.types { NonEmptyStr }
+
+// THE CLOSURE BOUNDARY: repository_ci_profile reads three of these rows and nothing else of ci_spec,
+// and ci_spec imports roughly 1600 modules. Declared here, the type and those rows cost a reader
+// two modules instead of that world (every private witness resolved it through repository_ci_profile).
+
+// This module holds the type and the three rows repository_ci_profile reads. The roster that joins every
+// `gunbc run` step target is `gunbc_run_step_targets` in ci_spec, and it stays the single roster.
+//
+// The pair was previously two string literals at each call site, and that cost a real defect: a
+// merge conflict resolution in gunbc#8377 re-authored two of them by hand, guessing paths from
+// module names, and produced `dag/gunbc/spark/grant_install.dag` (never existed at any commit) and
+// `dag/gunbc/spark/serving_durability.dag` (exists but does not define the named function, nor
+// import the module that does). Nothing refused, because a path in a string is not a symbol — the
+// DESIGN section 3 stale-citation class, landing in an emitted argv rather than prose. Both steps
+// were unrunnable on main from the day they landed. One roster gives one population to join
+// against, instead of pairs scattered across call sites where two strings could disagree unnoticed.
+//
+// NO CHECK ENFORCES THIS ROSTER TODAY, stated plainly because an earlier revision named one: it
+// promised `test.claim.ci_run_step_target_resolution` joined every row against decl_facts — a
+// witness written, measured, then REMOVED from this PR along with a second attempt at an emit-time
+// wall. Leaving that sentence would have been the DESIGN section 3 stale-citation defect in the
+// very comment diagnosing it, and it had already misled one reviewer into reading coverage that
+// does not exist. The roster buys single authority, not enforcement.
+//
+// WHY BOTH ATTEMPTS WERE WITHDRAWN, so nobody rebuilds them: "does file F declare symbol G" is
+// answered by decl_facts, which walks POOL ROOTS — directories, recursively, ~3833 modules, ~8s. By
+// controlled A/B, an emit-time wall cost 180s across 22 call sites and took SEVEN pre-existing
+// witness claims below verdict, because two witness modules render workflow steps and inherited the
+// walk. The fast-lane ceiling is 5000ms, so the binding constraint is that NO CORPUS WALK MAY BE
+// REACHABLE FROM A FAST-LANE CLAIM AT ALL — one walk breaches it.
+//
+// THE WALL IS OWED at the generated-artifact gate rather than the argv crossing — a re-scoping of
+// the hazard, not a weaker wall: a bad argv built in memory by a witness harms nothing, while a bad
+// argv reaching a COMMITTED workflow is what CI runs, and is the route both defects above took. The
+// gate sits upstream of every emitter producing a committed artifact and already returns
+// ArtifactGenerationRefused { reason }.
+//
+// SO THE RUNG THIS ROSTER REACHES IS MITIGATABLE, NOT MECHANICALLY PREVENTABLE. An earlier revision
+// claimed the higher rung on the strength of the witness no longer here; with nothing enforcing it,
+// the consolidation is a cost-of-error reduction, not a wall. NEXT-RUNG TRIGGER: the artifact-gate
+// refusal above. The rung ABOVE that — structural — is a resolved symbol reference (a
+// DeclarationRef the substrate resolves) with the entry path derived from the module index rather
+// than authored beside it, at which point a wrong target cannot be written.
+type GunbcRunStepTarget {
+  entry: NonEmptyStr
+  function: NonEmptyStr
+}
+
+data gunbc_ci_tier_o_drift_check_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/instruments/tier_o_drift_check.dag",
+  function: "main",
+}
+
+data gunbc_ci_heal_publication_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_publication.dag",
+  function: "heal_publication_admit_wet",
+}
+
+data gunbc_ci_heal_publication_publish_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/heal_publication.dag",
+  function: "heal_publication_publish_wet",
+}
