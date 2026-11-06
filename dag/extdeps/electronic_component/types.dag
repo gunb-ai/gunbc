@@ -542,38 +542,52 @@ type MarkLine {
   segments: List<MarkSegment>
 }
 
+/// Whether the modelled lines account for the vendor's whole published marking. `Complete`: they do.
+/// `ListedOnly`: further marking content is known to exist (a logo, plant or date line, a trace code)
+/// or is not excluded by the cited figure. A source's omission is not evidence of absence, so a
+/// complete-mark comparison may rest only on `Complete`, and the default for a row is `ListedOnly`.
+type MarkCoverage
+  = Complete
+  | ListedOnly
+
 /// A top mark as the cited document PUBLISHES it. `MarkStructured` lists the lines the document
-/// prints, in order; a line or position the document does not describe is omitted, so the absence of a
-/// further line is NOT a claim that none is printed. `MarkDescribedNotStructured` is the honest standing
-/// of a document that describes the mark in prose, lists alternatives, or does not say which positions
+/// prints, in order, with `coverage` saying whether that is the whole marking; a line or position the
+/// document does not describe is omitted. `MarkDescribedNotStructured` is the honest standing of a
+/// document that describes the mark in prose, lists alternatives, or does not say which positions
 /// are fixed or variable: the text is kept, `why` names what keeps it from being structured, and a
 /// comparison against it can only be `Undecidable` (consumed by the board-reading-to-published-mark join).
 type PublishedMark
-  = MarkStructured { lines: List<MarkLine> }
+  = MarkStructured { lines: List<MarkLine>, coverage: MarkCoverage }
   | MarkDescribedNotStructured { text: NonEmptyStr, why: NonEmptyStr }
 
-// The glyphs of a mark whose LISTED structure is exactly one line holding exactly one fixed run; any
-// other shape, and any mark that is only described, has no such run. It reads the list as listed: a
-// row whose document names further lines without printing them is MarkDescribedNotStructured, never
-// a one-line MarkStructured, so this never reports a described mark's one printed run as its only run. Consumed by the FSV20100V device-code join and the
-// fsv row witnesses; the general comparison of a reading with a published mark is the join PR's.
+// A line is a whole FixedGlyphs run when it has exactly one segment and that segment is FixedGlyphs.
+fn line_sole_fixed_glyphs(line: MarkLine) -> NonEmptyStr? {
+  if line.segments.length() == 1 {
+    match line.segments.first() {
+      Absent => Absent
+      Present { value: seg } => match seg {
+        FixedGlyphs { text } => Present { value: text }
+        VariableField { legend: _, width: _ } => Absent
+      }
+    }
+  } else { Absent }
+}
+
+// The glyphs of a mark that is COMPLETE and whose listed structure is exactly one line holding exactly
+// one fixed run. A ListedOnly mark has no such run: a source's omission is not evidence of absence, so
+// the one line it lists is never reported as the mark's only run. A described mark has none either.
 fn mark_sole_fixed_glyphs(m: PublishedMark) -> NonEmptyStr? {
   match m {
     MarkDescribedNotStructured { text: _, why: _ } => Absent
-    MarkStructured { lines } => if lines.length() == 1 {
-      match lines.first() {
-        Absent => Absent
-        Present { value: line } => if line.segments.length() == 1 {
-          match line.segments.first() {
-            Absent => Absent
-            Present { value: seg } => match seg {
-              FixedGlyphs { text } => Present { value: text }
-              VariableField { legend: _, width: _ } => Absent
-            }
-          }
-        } else { Absent }
-      }
-    } else { Absent }
+    MarkStructured { lines, coverage } => match coverage {
+      ListedOnly => Absent
+      Complete => if lines.length() == 1 {
+        match lines.first() {
+          Absent => Absent
+          Present { value: line } => line_sole_fixed_glyphs(line: line)
+        }
+      } else { Absent }
+    }
   }
 }
 
@@ -581,6 +595,22 @@ fn row_sole_fixed_glyphs(row: ElectronicComponentRow) -> NonEmptyStr? {
   match row.top_marking {
     Absent => Absent
     Present { value: m } => mark_sole_fixed_glyphs(m: m)
+  }
+}
+
+// True iff `code` equals a whole FixedGlyphs-only line among the lines the row lists. It says only that
+// the document prints that line; it is NOT a full-mark match under any coverage (the FSV20100V
+// device-code join is its consumer, and FSV20100V's own diagram has a further logo/plant/date line).
+fn published_fixed_line_contains(row: ElectronicComponentRow, code: NonEmptyStr) -> Bool {
+  match row.top_marking {
+    Absent => false
+    Present { value: m } => match m {
+      MarkDescribedNotStructured { text: _, why: _ } => false
+      MarkStructured { lines, coverage: _ } => lines.any(l => match line_sole_fixed_glyphs(line: l) {
+        Absent => false
+        Present { value: t } => (t as String) == (code as String)
+      })
+    }
   }
 }
 

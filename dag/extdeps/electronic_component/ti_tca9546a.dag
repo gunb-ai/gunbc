@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import std.measure { millivolt }
-import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs,
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs,
   ElectronicComponentRow,
   BusMultiplexerSpec,
   BusMultiplexerSpecification,
@@ -58,7 +58,7 @@ data tca9546a_pw: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "TCA9546APWR",
   package: "TSSOP (PW), 16 pins",
-  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "PW546A" }] }] } },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "PW546A" }] }], coverage: ListedOnly } },
   specification: BusMultiplexerSpec { multiplexer: BusMultiplexerSpecification {
     channels: 4,
     // One candidate per channel: this is a 1:1 translating switch per bus, not a 2:1 mux. It is the

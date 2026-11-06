@@ -20,7 +20,7 @@ module test.claim.product.p4261_photograph_witness
 //
 // (unset GUNBC_RESOLVED_GRAPH_CACHE_DIR and GUNBC_NATIVE_CACHE_ROOT first).
 
-import extdeps.electronic_component.types { row_sole_fixed_glyphs }
+import extdeps.electronic_component.types { published_fixed_line_contains }
 import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
 import std.list { distinct_by_key, duplicated_by_key, first_where }
 import std.nat { Nat }
@@ -335,10 +335,7 @@ fn joins_vendor_mark(designator: NonEmptyStr) -> Bool {
     Absent => false
     Present { value: reading } => match fsv20100v_device_code(reading: reading) {
       Absent => false
-      Present { value: code } => match row_sole_fixed_glyphs(row: onsemi_schottky_fsv20100v) {
-        Absent => false
-        Present { value: printed } => code == printed
-      }
+      Present { value: code } => published_fixed_line_contains(row: onsemi_schottky_fsv20100v, code: code)
     }
   }
 }

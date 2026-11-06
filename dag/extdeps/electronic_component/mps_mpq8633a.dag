@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.monolithic_power_systems { monolithic_power_systems }
 import std.measure { millivolt, ampere }
-import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs, VariableField,
+import extdeps.electronic_component.types { MarkStructured, Complete, MarkLine, FixedGlyphs, VariableField,
   ElectronicComponentRow, SwitchingRegulatorSpec, SwitchingRegulatorSpecification, MillivoltRange, RegulatorPin,
   BiasSupply, BootstrapSupply, CurrentSense, EnableInput, FeedbackInput, RegulatorModeSelect, PowerGoodOpenDrain, PowerGround, RegulatorGround, RegulatorSupplyInput, RemoteSenseGround, SwitchNode, TrackingReference,
 }
@@ -55,7 +55,7 @@ data mpq8633agle: ElectronicComponentRow = ElectronicComponentRow {
   vendor: monolithic_power_systems,
   ordering_code: "MPQ8633AGLE",
   package: "QFN-21 (3 mm x 4 mm)",
-  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "MP" }, VariableField { legend: "Y = year", width: Absent }, VariableField { legend: "W = week", width: Absent }] }, MarkLine { segments: [FixedGlyphs { text: "8633" }] }, MarkLine { segments: [FixedGlyphs { text: "A" }, VariableField { legend: "LLL = lot number", width: Present { value: 3 } }] }, MarkLine { segments: [FixedGlyphs { text: "E" }] }] } },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "MP" }, VariableField { legend: "Y = year", width: Absent }, VariableField { legend: "W = week", width: Absent }] }, MarkLine { segments: [FixedGlyphs { text: "8633" }] }, MarkLine { segments: [FixedGlyphs { text: "A" }, VariableField { legend: "LLL = lot number", width: Present { value: 3 } }] }, MarkLine { segments: [FixedGlyphs { text: "E" }] }], coverage: Complete } },
   specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
     pins: [
       RegulatorPin { number: 1, name: "BST", role: BootstrapSupply },

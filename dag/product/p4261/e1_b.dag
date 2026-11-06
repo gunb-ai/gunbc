@@ -28,7 +28,7 @@ import extdeps.electronic_component.nxp_pca9617a { pca9617adp }
 import extdeps.electronic_component.mps_mp2333c { mp2333cgtl }
 import extdeps.electronic_component.micron_mt25qu01g { mt25qu01gbbb8e12 }
 import extdeps.electronic_component.micron_mt25qu02g { mt25qu02gcbb8e12 }
-import extdeps.electronic_component.types { ElectronicComponentRow, row_sole_fixed_glyphs }
+import extdeps.electronic_component.types { ElectronicComponentRow, published_fixed_line_contains }
 import extdeps.electronic_component.infineon_ipb017n10n5lf { ipb017n10n5lf }
 import extdeps.electronic_component.diodes_bss138 { bss138 }
 import extdeps.electronic_component.panasonic_eeh_zu1j151 { eeh_zu1j151 }
@@ -2694,15 +2694,11 @@ fn fsv20100v_identification(subject: ComponentInstanceIdentity, marking: Marking
   match fsv20100v_device_code(reading: marking) {
     Absent => MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
       discriminator: "the print we read is not one of the two receipt transcriptions, so no device code joins the vendor mark" }
-    Present { value: code } => match row_sole_fixed_glyphs(row: onsemi_schottky_fsv20100v) {
-      Absent => MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
-        discriminator: "the vendor row carries no printed mark to join" }
-      Present { value: printed } => if code == printed {
-        identify_by_marking(roster: e1_board_sightings, row: onsemi_schottky_fsv20100v, readings: MarkingReadingSet { subject: subject, relied_on: marking, others: [] }, discriminator: "the roster does not attribute this reading's frame and box to this part")
-      } else {
-        MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
-          discriminator: "the observed device code is not the mark the vendor row prints" }
-      }
+    Present { value: code } => if published_fixed_line_contains(row: onsemi_schottky_fsv20100v, code: code) {
+      identify_by_marking(roster: e1_board_sightings, row: onsemi_schottky_fsv20100v, readings: MarkingReadingSet { subject: subject, relied_on: marking, others: [] }, discriminator: "the roster does not attribute this reading's frame and box to this part")
+    } else {
+      MarkingCandidate { row: onsemi_schottky_fsv20100v, marking: marking,
+        discriminator: "the observed device code is not a fixed line the vendor row lists; this joins one listed line, not the whole mark (FSV20100V's diagram has a further logo/plant/date line)" }
     }
   }
 }

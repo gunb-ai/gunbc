@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.onsemi { onsemi }
-import extdeps.electronic_component.types { MarkStructured, MarkLine, FixedGlyphs, ElectronicComponentRow, RectifierSpec, RectifierSpecification }
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs, ElectronicComponentRow, RectifierSpec, RectifierSpecification }
 
 // onsemi's FSV20100V datasheet, publication order number FSV20100V/D, Rev. 4, September 2024, read
 // 2026-11-04 from the vendor copy (fsv20100v-d.pdf, sha256
@@ -43,7 +43,7 @@ data onsemi_schottky_fsv20100v: ElectronicComponentRow = ElectronicComponentRow 
   vendor: onsemi,
   ordering_code: "FSV20100V",
   package: "TO-277 3L",
-  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "FSV20100V" }] }] } },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "FSV20100V" }] }], coverage: ListedOnly } },
   specification: RectifierSpec { rectifier: RectifierSpecification {
     reverse_repetitive_peak: volt(count: 100),
   } },
