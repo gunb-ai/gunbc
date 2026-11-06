@@ -15,7 +15,7 @@ import v2.std.text {
   string_head,
   string_join
 }
-import std.nat { Nat, nat_compare }
+import std.nat { Nat }
 import std.measure { Ampere, Volt, volt_count }
 import extdeps.electronic_component.types {
   CapacitorRatedVoltage,
