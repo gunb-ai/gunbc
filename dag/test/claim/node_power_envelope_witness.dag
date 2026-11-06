@@ -112,6 +112,7 @@ import product.node_power_envelope {
   RefreshBandBeyondSpecification,
   TemperatureBeyondExtendedBand,
   RefreshBandLimitUnestablished,
+  RefreshBandLimitObservedOnly,
   DimmPowerEvidence,
   DimmPowerFromClassBound,
   DimmPowerFromPartCurrents,
@@ -1091,7 +1092,7 @@ data fixture_cited_extended_row: RowField<Ddr4RefreshBand> = FromCitedFigure {
 // standing; beyond the real (TranscribedUncited) edge it is RefreshBandLimitUnestablished and the obligation survives.
 test fn the_standing_of_the_extended_edge_decides_what_beyond_it_means() -> Bool {
   (match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: fixture_cited_extended_row) {
-    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _, extended_band_standing: g } } => !uncited_standing(g: g)
+    DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: _, extended_band_authority: _ } } => true
     _ => false
   })
     && (match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: ddr4_extended_refresh_band) {
@@ -1111,4 +1112,18 @@ test fn the_extended_row_is_required_only_above_the_normal_edge() -> Bool {
       RefreshBandNotRead { read_obligation: _ } => true
       _ => false
     })
+}
+
+data fixture_observed_extended_row: RowField<Ddr4RefreshBand> = FromCitedFigure {
+  value: Ddr4RefreshBand { upper_tcase: celsius(count: 95), refresh_interval: nanosecond(count: 3900) },
+  standing: fs_nvidia_eth_leg_coding_standing(),
+}
+
+// An OBSERVED extended edge is a reading, not the JEDEC specification: beyond it the refusal is the distinct
+// observed-only result and never the spec-wall TemperatureBeyondExtendedBand.
+test fn an_observed_extended_edge_never_produces_the_spec_wall() -> Bool {
+  match dimm_power_over_bands(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_at(temp: 100, read: 0, write: 0), normal_row: ddr4_normal_refresh_band, extended_row: fixture_observed_extended_row) {
+    DimmPowerRefused { cause: RefreshBandLimitObservedOnly { tcase: _, observed: _ } } => true
+    _ => false
+  }
 }

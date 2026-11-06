@@ -40,6 +40,8 @@ import std.measure {
 }
 import extdeps.external_authority {
   CitedFigureStanding,
+  ExternalAuthority,
+  ObservedReceipt,
   CitedToAuthority, ObservedByReceipt,
   TranscribedUncited,
 }
@@ -345,7 +347,8 @@ type DimmPowerRefusalCause
   = NoPartEvidenceAndNoClassBound { part_number: NonEmptyStr }
   | AmbiguousPartEvidence { part_number: NonEmptyStr, candidate_count: Nat }
   | TrafficExceedsModulePeak { demanded: Bandwidth, peak: Bandwidth }
-  | TemperatureBeyondExtendedBand { tcase: Celsius, extended_band_standing: CitedFigureStanding }
+  | TemperatureBeyondExtendedBand { tcase: Celsius, extended_band_authority: ExternalAuthority }
+  | RefreshBandLimitObservedOnly { tcase: Celsius, observed: ObservedReceipt }
   | RefreshBandLimitUnestablished { tcase: Celsius, read_obligation: NonEmptyStr }
   | RefreshBandUnread { read_obligation: NonEmptyStr }
   | UnsupportedDramGeneration { part_number: NonEmptyStr }
@@ -572,10 +575,10 @@ fn dimm_power_over_bands(
     match refresh_band_from_rows(case_temperature: load.case_temperature, normal_row: normal_row, extended_row: extended_row) {
       RefreshBandBeyondSpecification { tcase: t, extended_standing: es } =>
         match es {
-          CitedToAuthority { authority: _ } =>
-            DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t, extended_band_standing: es } }
-          ObservedByReceipt { observed: _ } =>
-            DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t, extended_band_standing: es } }
+          CitedToAuthority { authority: a } =>
+            DimmPowerRefused { cause: TemperatureBeyondExtendedBand { tcase: t, extended_band_authority: a } }
+          ObservedByReceipt { observed: ob } =>
+            DimmPowerRefused { cause: RefreshBandLimitObservedOnly { tcase: t, observed: ob } }
           TranscribedUncited { read_obligation: o } =>
             DimmPowerRefused { cause: RefreshBandLimitUnestablished { tcase: t, read_obligation: o } }
         }
