@@ -6,13 +6,14 @@ import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_dispatch_attempt_state_root, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { WorktreeClaimStoreReading, WorktreeClaimStoreReady, WorktreeClaimStoreUnready, worktree_claim_store, worktree_claim_slots_path }
 import std.types { Bool, String, List, NonEmptyStr, EpochSecs, FilePath }
-import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown }
+import gunbc.compute.attempt_lifecycle { UnitLifecycle, UnitTerminatedCauseUnknown, AttemptAdvanced, AttemptTransitionRefused, AttemptLostRace }
 import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive }
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
   worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
+  worktree_claim_read, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_close, worktree_claim_reopen_settled,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -297,4 +298,53 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
   }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && ran_only(p: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
+}
+
+// THE REOPEN (the restore's durable half). A claim the old settlement closed (terminal, generation line kept) reopens
+// on the SAME slot at the next generation under a CAS on the observed generation. RED CONTROLS: a LIVE (reserved)
+// claim refuses a reopen -- a resume never displaces a live placement -- and a stale generation loses the race.
+test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation_and_a_live_one_refuses() -> Bool {
+  let cd = fresh_dir(tag: "w13c")
+  let td = fresh_dir(tag: "w13t")
+  let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
+  let reference = worktree_claim_reference(node_id: node_a, attempt_key: key_a) as NonEmptyStr
+  let fresh = worktree_claim_new(node_id: node_a, attempt_key: key_a, worktree_path: tree_path(td: td, n: node_a, k: key_a), opened_at: 5000, launch_deadline: 5300)
+  let verdict = match claims_at(cd: cd) {
+    WorktreeClaimStoreUnready { detail: _ } => false
+    WorktreeClaimStoreReady { store: claims } =>
+      match worktree_claim_read(claims: claims, reference: reference) {
+        WorktreeClaimHeld { claim: _, generation: g0 } =>
+          let live_refused = match worktree_claim_reopen_settled(claims: claims, reference: reference, expected: g0, claim: fresh) {
+            AttemptTransitionRefused { detail: _ } => true
+            _ => false
+          }
+          let closed = match worktree_claim_close(claims: claims, reference: reference, expected: g0, detail: "the attempt ended and its capture is committed") {
+            AttemptAdvanced { state: _, generation: _ } => true
+            _ => false
+          }
+          let stale_lost = match worktree_claim_reopen_settled(claims: claims, reference: reference, expected: g0, claim: fresh) {
+            AttemptLostRace { expected: _, observed: _ } => true
+            _ => false
+          }
+          let reopened = match worktree_claim_read(claims: claims, reference: reference) {
+            WorktreeClaimHeld { claim: _, generation: g1 } =>
+              match worktree_claim_reopen_settled(claims: claims, reference: reference, expected: g1, claim: fresh) {
+                AttemptAdvanced { state: _, generation: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+          let again_refused = match worktree_claim_read(claims: claims, reference: reference) {
+            WorktreeClaimHeld { claim: _, generation: g2 } =>
+              match worktree_claim_reopen_settled(claims: claims, reference: reference, expected: g2, claim: fresh) {
+                AttemptTransitionRefused { detail: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+          live_refused && closed && stale_lost && reopened && again_refused
+        _ => false
+      }
+  }
+  cleaned(dirs: [cd, td], verdict: opened && verdict)
 }
