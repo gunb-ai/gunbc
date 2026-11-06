@@ -203,8 +203,12 @@ fn worktree_claim_close(claims: WorktreeClaimStore, reference: NonEmptyStr, expe
 // SETTLEMENT (which read 'capture committed' as 'the attempt ended'). The caller supplies the same
 // fresh-timed claim it would open -- the fold commits it back to reserved at generation n+1 under a CAS
 // on the observed generation, keeping the whole generation line (§3b), admitting only a terminal claim
-// at that exact generation and refusing a live (reserved/launching) one. It is one transition with the
-// session-placement slot reopen: both call attempt_reopen_settled_payload, differing only by codec (§2).
+// at that exact generation and refusing a live (reserved/launching) one. It is the codec-generic
+// attempt_reopen_settled_payload specialised to WorktreeClaim (§2); the session-placement slot reopen is a
+// second codec of the same payload and does not exist yet -- it lands with the settle-before-acquire work
+// (adhoc-128c25f2, M4), which must call the payload, not redefine it. CONSUMER: the belt's same-key worktree
+// restore (PR 15943, the Restore plan arm) reopens a wrongly-released claim through this; until that lands the
+// only caller is attempt_worktree_claim_wet_witness.
 fn worktree_claim_reopen_settled(claims: WorktreeClaimStore, reference: NonEmptyStr, expected: CasGeneration, claim: WorktreeClaim) -> AttemptTransition {
   attempt_reopen_settled_payload(
     store: claims.slots,
