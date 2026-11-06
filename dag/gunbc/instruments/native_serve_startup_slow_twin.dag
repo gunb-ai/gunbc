@@ -1,7 +1,7 @@
 module gunbc.instruments.native_serve_startup_slow_twin
 
-import std.types { String, Int, List, CommitSha }
-import extdeps.http.server { ServeWireResponse }
+import std.types { String, Int, List }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader }
 import gunbc.native_serve { native_serve_text_plain, NativeServeStartup, NativeServeStartupRefused }
 
 // THE HOMONYM TWIN of gunbc.instruments.native_serve_startup_slow_fixture's handler and startup: the same bare names in
@@ -14,6 +14,6 @@ fn slow_startup(executable_octets: List<Int>) -> NativeServeStartup<String> {
   NativeServeStartupRefused { reason: "the homonym twin's startup ran; the main resolved the startup by bare name" }
 }
 
-fn slow_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha, note: String) -> ServeWireResponse {
+fn slow_handle(path: String, request_headers: List<ServeRequestHeader>, note: String) -> ServeWireResponse {
   ServeWireResponse { status: 418, content_type_label: native_serve_text_plain, body: "the homonym twin's handler answered\n", headers: [] }
 }

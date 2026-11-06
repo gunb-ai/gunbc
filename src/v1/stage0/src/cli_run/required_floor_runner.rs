@@ -1175,13 +1175,8 @@ pub(crate) fn floor_ts() -> String {
 /// witnesses, touched entries, changed-interface consumers) are NOT here: they are a fact about one run's
 /// diff, and this is the part of the subject that holds for every run.
 ///
-/// ONE PRODUCER, TWO CONSUMERS, and that is the reason it is a function rather than a block in
-/// `run_required_floor`. The floor consumes it to seed preparation; the required-lane resolution
-/// census (`gunbc.required_lane_resolution_census`, `gunbc test
-/// //gunbc/instruments:required-lane-resolution-census`) consumes it to answer, for every module
-/// under the source roots, whether the floor's nominal subject resolves it. A census that
-/// re-derived the seed list from the roster would be a second authority for what the floor
-/// prepares, and it would drift the first time a seed kind was added here and not there.
+/// A function rather than a block in `run_required_floor`, so the seed list has one authority for
+/// what the floor prepares.
 pub struct RequiredFloorNominalSubjectSeeds {
     pub required_gate_prefixes: Vec<String>,
     pub required_gate_authored_modules: Vec<String>,

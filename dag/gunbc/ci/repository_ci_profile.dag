@@ -5,7 +5,7 @@ import std.measure { ByteSize, Minute, minute, minute_count }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
-import gunbc.ci.ci_spec {
+import gunbc.ci.ci_run_step_target {
   gunbc_ci_tier_o_drift_check_target,
   gunbc_ci_heal_publication_admit_target,
   gunbc_ci_heal_publication_publish_target,

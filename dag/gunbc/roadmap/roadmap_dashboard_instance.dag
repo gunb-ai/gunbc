@@ -32,7 +32,7 @@ import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_frame_root,
@@ -41,7 +41,6 @@ import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
   MacbookLocal, Srv2Deploy,
 }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
@@ -145,6 +144,10 @@ type DashboardProvisionTransport
 // (gunbc.live_deploy.serve_binary_build). Optional<FilePath> hid this choice in an Absent.
 type DashboardServeBinaryOrigin
   = DeclaredBuiltBinary { path: FilePath }
+  // The cargo release output OF THIS INSTANCE'S OWN CHECKOUT, staged under its apply workdir.
+  // Constructed only where the ExistingRepo origin is derived (below): the construction site IS
+  // the fact -- provenance is named by the arm, never inferred from where the path sits.
+  | CargoReleaseOfInstanceCheckout { path: FilePath }
   | BuildInPlaceFromAdmittedRevision
 
 type DashboardSourceSeed
@@ -615,14 +618,14 @@ fn dashboard_instance_serve_binary_origin(instance: HostDashboardInstance) -> Da
   match instance.source_seed {
     DashboardSeededByConvergence { serve_binary_origin, apply_workdir: _ } => serve_binary_origin
     DashboardExistingRepo { anchor_ref: _ } =>
-      DeclaredBuiltBinary {
+      CargoReleaseOfInstanceCheckout {
         path: dashboard_instance_child(
           root: dashboard_instance_apply_workdir(instance: instance),
           child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
         ),
       }
     DashboardGitBundle { controller_repo, staged_bundle: _, anchor_ref: _, history_remote: _ } =>
-      DeclaredBuiltBinary {
+      CargoReleaseOfInstanceCheckout {
         path: dashboard_instance_child(
           root: controller_repo,
           child: join([cargo_default_release_dir_rel, "/gunbc"], ""),
@@ -719,8 +722,9 @@ type DashboardToolchain {
 // system /bin/ln would fail that probe BEFORE it could fail the flag at spawn time. That is the
 // difference between a typed preflight refusal naming the capability and a dispatch that dies
 // mid-attempt on an illegal option.
-// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY, DERIVED FROM THE SLOT AUTHORITY RATHER THAN
-// AUTHORED HERE. The first cut of this row was `byte_size(count: 17179869184)` with a hand
+// THE CEILING ONE DISPATCHED ATTEMPT MAY OCCUPY. HISTORY: IT WAS DERIVED FROM THE SLOT AUTHORITY, AND
+// IS AUTHORED AGAIN SINCE 2026-11-04 (see the row below); the paragraphs that follow are the reasoning
+// of the derived form, retained as method. The first cut of this row was `byte_size(count: 17179869184)` with a hand
 // justification about observed peaks, and that was the section 3 violation in its purest form: the
 // number is EXACTLY gunbc_runner_slot_desired().memory_max, which is not a coincidence to be
 // noted but an authority to be consumed. That row carries an operator ruling derived from 186
@@ -747,7 +751,13 @@ type DashboardToolchain {
 // the runner slots use, at which point this row stops being a per-attempt ceiling standing alone
 // and becomes one term in an allocation the fabric can express. Until then it is honest about being
 // a ceiling with no width beside it.
-data dispatch_worker_memory_ceiling: ByteSize = gunbc_runner_slot_desired().memory_max
+// CUT LOOSE FROM THE RUNNER SLOT 2026-11-04 (review 90824 on #15850). This row was the CI runner slot
+// reused as the agent-session lease; the slot rose to 25 GiB (gunbc.design_ruling
+// slot_memory_overrun_crashes_not_throttles), and the operator's belt ruling says workers get "a much
+// smaller memory allocation, if any" -- so a slot ruling must not move them. It is authored at the 22 GiB
+// it carried when srv1-lab's belt width of 6 was justified (6 x 22 fits, 7 does not), and a later
+// worker-specific ruling lowers it; it no longer tracks the slot.
+data dispatch_worker_memory_ceiling: ByteSize = byte_size(23622320128)
 
 // THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
 // belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
@@ -3581,6 +3591,7 @@ fn dashboard_instance_provision_op_row(
         detail: join([
           match serve_binary_origin {
             DeclaredBuiltBinary { path: v } => join(["copy the declared built seed from ", v as String, "; atomic move, never a build"], "")
+            CargoReleaseOfInstanceCheckout { path: v } => join(["copy this checkout's cargo release output from ", v as String, "; atomic move, never a build"], "")
             BuildInPlaceFromAdmittedRevision => "build in place from the admitted revision (staged, previous kept, one rename)"
           },
         ], ""),

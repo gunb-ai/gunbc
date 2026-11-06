@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.diodes_incorporated { diodes_incorporated }
 import std.measure { millivolt }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkDescribedNotStructured,
   ElectronicComponentRow,
   ClockFanoutSpec,
   ClockFanoutSpecification,
@@ -59,7 +59,7 @@ data pi6c49x0208_zhie: ElectronicComponentRow = ElectronicComponentRow {
   vendor: diodes_incorporated,
   ordering_code: "PI6C49X0208ZHIEX",
   package: "W-QFN5050-32 (ZH), 32 pins",
-  top_marking: Present { value: "PI6C49X / 0208ZHIE / YYWWXX" },
+  top_marking: Present { value: MarkDescribedNotStructured { text: "PI6C49X / 0208ZHIE / YYWWXX", why: "the document's legend for the third line was not read" } },
   specification: ClockFanoutSpec { clock: ClockFanoutSpecification {
     inputs: 3,
     outputs: 8,

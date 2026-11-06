@@ -38,6 +38,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
   DashboardServeBinaryOrigin,
   DeclaredBuiltBinary,
+  CargoReleaseOfInstanceCheckout,
   BuildInPlaceFromAdmittedRevision,
   WorkerIsServiceUser,
   dispatch_base_branch,
@@ -1374,6 +1375,7 @@ test fn the_lab_serve_binary_input_is_a_named_in_place_build() -> Bool {
       match serve_binary_origin {
         BuildInPlaceFromAdmittedRevision => true
         DeclaredBuiltBinary { path: _ } => false
+        CargoReleaseOfInstanceCheckout { path: _ } => false
       }
     _ => false
   })
