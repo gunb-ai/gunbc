@@ -25,6 +25,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
 import v2.std.diagnostic {
   Accepted,
+  DeclarerRefused,
   Diagnostic,
   NonEmptyDiagnostics,
   Outcome,
@@ -365,7 +366,12 @@ fn dpo_is_module_unavailable(outcomes: List<ModuleOutcome>, module: QualifiedNam
 // The refusal is the HEADER's (the file's fatal link is parse_g0_tokens_remain at line 2, the second module
 // line), broken.X is not available, and the importer refuses as NativeModuleResolveImportTargetFileRefused naming broken's row, its
 // resolver chain naming resolve_imported_module_refused.
-// broken itself has no roster row today: that absence is acceptance residue C of the node, not asserted here.
+// broken itself is PUBLISHED as ModuleUnavailable carrying the front end's own refusal, whose fatal reason is
+// the header's parse_g0_tokens_remain (residue C of the node). Before that row existed broken.X read
+// unavailable only because no row named it, so `!declaration_available` alone could not tell a published
+// refusal from an absence; dpo_broken_published_with_header_refusal is the assertion that can.
+// The importer's chain reaches that cause by JOIN, not by copy: its resolve_imported_module_refused link
+// names broken as DeclarerRefused { declarer }, and that declarer's published row is the one asserted here.
 fn dpo_is_header_refusal_of_broken(path: Symbol, fatal: FileRefusalLink) -> Bool {
   path == ^dpo_broken && fatal.reason == ^parse_g0_tokens_remain && match fatal.at {
     FileRefusalAtLine { line: n, byte_column: _ } => n == 2
@@ -394,15 +400,55 @@ fn dpo_import_target_is_broken(v: NativeModuleResolveVerdict) -> Bool {
   }
 }
 
+fn dpo_published_refusal(outcomes: List<ModuleOutcome>, module: QualifiedName) -> Optional<NonEmptyDiagnostics> {
+  fold(outcomes, init: optional_absent(), f: fn(found, o) {
+    match found {
+      Present { value: _ } => found
+      Absent => match o {
+        ModuleUnavailable { module: m, refusal: r } => if m == module { optional_present(value: r) } else { found }
+        ModuleObserved { module: _, declarations: _ } => found
+      }
+    }
+  })
+}
+
+fn dpo_broken_published_with_header_refusal(outcomes: List<ModuleOutcome>) -> Bool {
+  match dpo_published_refusal(outcomes: outcomes, module: dpo_path(dotted: "v2.test.dpo.broken")) {
+    Absent => false
+    Present { value: r } => diagnostics_fatal_reason(d: r) == ^parse_g0_tokens_remain
+  }
+}
+
+// Does this importer link name `declarer` as the refused module it depends on?
+fn dpo_link_names_declarer(d: Diagnostic, declarer: QualifiedName) -> Bool {
+  d.reason == ^resolve_imported_module_refused && match d.correction {
+    Unavailable { reason: DeclarerRefused { declarer: m } } => m == declarer
+    _ => false
+  }
+}
+
+// The importer's resolve_imported_module_refused link joins, by its declarer, to a published row.
+fn dpo_importer_joins_published_row(v: NativeModuleResolveVerdict, outcomes: List<ModuleOutcome>) -> Bool {
+  let broken = dpo_path(dotted: "v2.test.dpo.broken")
+  match v {
+    NativeModuleResolveImportTargetFileRefused { target: _, first: d, rest: _, observation: _ } =>
+      (dpo_link_names_declarer(d: d.head, declarer: broken)
+        || fold(d.tail, init: false, f: fn(found, l) { found || dpo_link_names_declarer(d: l, declarer: broken) }))
+        && dpo_broken_published_with_header_refusal(outcomes: outcomes)
+    _ => false
+  }
+}
+
 test fn dpo_ambiguous_header_makes_every_declaration_unavailable() -> Bool {
   dpo_broken_refused_at_header()
     && match dpo_outcomes() {
       Absent => false
       Present { value: outcomes } =>
         !declaration_available(outcomes: outcomes, path: dpo_path(dotted: "v2.test.dpo.broken.X"))
+          && dpo_broken_published_with_header_refusal(outcomes: outcomes)
           && match dpo_verdict(module: "v2.test.dpo.broken_user", path: ^dpo_broken_user) {
             Absent => false
-            Present { value: v } => dpo_import_target_is_broken(v: v)
+            Present { value: v } => dpo_import_target_is_broken(v: v) && dpo_importer_joins_published_row(v: v, outcomes: outcomes)
           }
     }
 }
