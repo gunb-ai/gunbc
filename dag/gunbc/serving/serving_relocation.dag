@@ -38,12 +38,10 @@ import std.decision {
   SelectedWithin, SelectionNeedsEvidence, SelectionNeedsPolicy, RealizationSelectionRefused,
   NoFeasibleRealization, CandidateFieldUnestablished, DecisionVariable, ContextParameter,
   DecisionConstraint, ObjectiveTerm, ObjectiveMeasure, ChoiceDomain, DecisionSubject, DecisionRegion,
-  VariesAlong, MonotoneDecreasing, ConstraintSatisfied, ParameterBound, DecisionAssessment,
-  PhysicalModelEstablished, PhysicalModelUnestablished, CausalModelEstablished, FleetObservedCoupling,
+  DecisionAssessment, PhysicalModelUnestablished, CausalModelUnestablished,
   select_realization, policy_identity_of,
 }
-import extdeps.external_authority { ExternalAuthority, CitedToAuthority }
-import extdeps.uri { Uri, Https }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.serving.turn_admission {
   ServingSessionRecord, ServingSessionResidency, ServingSessionPlacement, ServingHostTierStanding,
   ServingGpuPrefixStanding, serving_session_standing, serving_session_placement,
@@ -116,9 +114,12 @@ fn admit_state_method(method: StateEstablishmentMethod, evidence: Reconstruction
 // prefill beside active decoding) is EXCLUDED before Pareto, never ranked. Missing performance
 // evidence is never zero: an unread net axis is a gap, so the economic move is NOT ESTABLISHED
 // (SelectionNeedsEvidence), never free.
-data rloc_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri { scheme: Https, locator: "gunb.ai/plan/fabric-serving-router#relocation" },
-}
+// THE EVIDENCE IS AN INPUT, NEVER MINTED HERE (DESIGN 4d, 5). No relocation performance has been read
+// on the fleet, so this module owns only the honest arm, rloc_unread_assessment: the objective term is
+// TranscribedUncited and the physical and causal models are Unestablished, so select_realization
+// answers SelectionNeedsEvidence and nothing moves. A caller that HAS readings supplies its own
+// DecisionAssessment (built over rloc_subject with the ground it actually holds); the witnesses supply
+// a fixture one at their boundary. No Bool is ever promoted to established evidence.
 data ax_net: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_net")
 data ax_service_class: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "ax_service_class")
 data id_subject: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_subject")
@@ -132,40 +133,33 @@ data id_policy_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.servi
 data id_term: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_term")
 data id_var: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_var")
 data id_region: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_region")
-data id_coupling: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_coupling")
 data id_stay: DeclarationRef = decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "rloc_candidate_stay")
 
 data rloc_variable: DecisionVariable = DecisionVariable { identity: id_var }
-data rloc_term: ObjectiveTerm = ObjectiveTerm { identity: id_term, ground: CitedToAuthority { authority: rloc_authority } }
 data rloc_constraint: DecisionConstraint = DecisionConstraint { identity: id_constraints }
 data rloc_parameter: ContextParameter = ContextParameter { identity: id_parameter }
 data rloc_decision_region: DecisionRegion = DecisionRegion { identity: id_region }
-data rloc_objective: ObjectiveMeasure = ObjectiveMeasure { identity: id_objective, goal: HigherIsBetter, terms: [rloc_term] }
 data rloc_domain: ChoiceDomain = ChoiceDomain { identity: id_domain, variables: [rloc_variable] }
-data rloc_subject_value: DecisionSubject = DecisionSubject {
-  identity: id_subject,
-  question: "relocate this conversation's continuation to the most admissible placement, or stay" as NonEmptyStr,
-  parameters: [rloc_parameter], constraints: [rloc_constraint], objective: rloc_objective, choice_domain: rloc_domain,
+
+// The relocation decision subject, over the ground its one objective term actually holds.
+fn rloc_subject(term_ground: CitedFigureStanding) -> DecisionSubject {
+  DecisionSubject {
+    identity: id_subject,
+    question: "relocate this conversation's continuation to the most admissible placement, or stay" as NonEmptyStr,
+    parameters: [rloc_parameter], constraints: [rloc_constraint],
+    objective: ObjectiveMeasure { identity: id_objective, goal: HigherIsBetter, terms: [ObjectiveTerm { identity: id_term, ground: term_ground }] },
+    choice_domain: rloc_domain,
+  }
 }
 
-fn rloc_assessment(closed: Bool) -> DecisionAssessment {
-  if closed {
-    DecisionAssessment {
-      subject: rloc_subject_value,
-      sensitivities: [VariesAlong { term: id_term, variable: id_var, region: rloc_decision_region, relation: MonotoneDecreasing, coupling: CitedToAuthority { authority: rloc_authority } }],
-      constraints: [ConstraintSatisfied { constraint: id_constraints, evidence: "affected source-and-destination schedule over the known ready backlog" as NonEmptyStr }],
-      parameters: [ParameterBound { parameter: id_parameter, evidence: "fixed resource grant" as NonEmptyStr }],
-      selected_candidate: Absent, term_drops: [],
-      physical_model: PhysicalModelEstablished { terms: [id_term] },
-      causal_model: CausalModelEstablished { couplings: [FleetObservedCoupling { receipt: id_coupling, term: id_term, variable: id_var, subject: id_subject }] },
-    }
-  } else {
-    DecisionAssessment {
-      subject: rloc_subject_value, sensitivities: [], constraints: [], parameters: [],
-      selected_candidate: Absent, term_drops: [],
-      physical_model: PhysicalModelUnestablished { subject: id_subject, read_obligation: "fleet performance for this move is unread" as NonEmptyStr },
-      causal_model: CausalModelEstablished { couplings: [] },
-    }
+// The only assessment this module asserts: nothing about relocation performance has been read.
+fn rloc_unread_assessment() -> DecisionAssessment {
+  DecisionAssessment {
+    subject: rloc_subject(term_ground: TranscribedUncited { read_obligation: "relocation net benefit (throughput gain minus transition, destination harm and starvation cost) is unread on the fleet" as NonEmptyStr }),
+    sensitivities: [], constraints: [], parameters: [],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelUnestablished { subject: id_subject, read_obligation: "fleet performance for this move is unread" as NonEmptyStr },
+    causal_model: CausalModelUnestablished { subject: id_subject, read_obligation: "how relocation net benefit varies with placement is unread" as NonEmptyStr },
   }
 }
 
@@ -209,16 +203,8 @@ fn move_candidate_unknown_gain(id: DeclarationRef, label: NonEmptyStr, service_c
   }
 }
 
-// A candidate excluded BEFORE Pareto: its service-class reading exceeds the hard bound, so a
-// service-class or capacity violation never reaches the ranking.
-fn excluded_candidate(id: DeclarationRef, label: NonEmptyStr) -> ParetoEntry {
-  ParetoEntry {
-    identity: id, display_label: label,
-    readings: [ax_reading(axis: ax_net, v: 100000), ax_reading(axis: ax_service_class, v: 2000000)],
-    missing_inputs: [],
-  }
-}
-
+// The hard service-class bound: a candidate whose service-class reading exceeds it (cold prefill beside
+// active decoding) is EXCLUDED before Pareto, never ranked.
 fn capacity_bound() -> HardConstraint {
   HardConstraint { identity: id_constraints, axis: ax_service_class, bound_micro: 1000, denomination: NonMoneyConstraint }
 }
@@ -232,9 +218,9 @@ type RelocationDecision
   | Evacuate { destination_label: NonEmptyStr, receipt: SelectionReceipt }
   | ReconciliationRequired { obligation: NonEmptyStr }
 
-fn decide_relocation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
+fn decide_relocation(field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
   match select_realization(
-    assessment: rloc_assessment(closed: closed),
+    assessment: assessment,
     candidate_field_identity: id_field,
     field: field,
     axes: rloc_axes(),
@@ -266,8 +252,8 @@ fn decide_relocation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecisi
 // transition satisfies the drain, and it is answered by the same std.decision selection over the same
 // funded axes and hard bound, with the stay candidate removed from the field. Mandatory evacuation follows
 // feasibility, never an economic margin: a destination worse than staying is still selected.
-fn decide_evacuation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
-  match decide_relocation(field: filter(field, e => !declaration_ref_eq(a: e.identity, b: id_stay)), closed: closed) {
+fn decide_evacuation(field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  match decide_relocation(field: filter(field, e => !declaration_ref_eq(a: e.identity, b: id_stay)), assessment: assessment) {
     Move { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
     Stay => NoAdmissibleTransition
     NotEstablished { reason: why } => NotEstablished { reason: why }
@@ -282,17 +268,17 @@ fn decide_evacuation(field: List<ParetoEntry>, closed: Bool) -> RelocationDecisi
 // move is DEFERRED regardless of how attractive its economics look — re-evaluate at the next
 // re-evaluation event. This is a boundary guard, not a Pareto outcome: the stay-preference policy
 // would otherwise resolve the field to a move. Removing this guard is the discriminating mutation.
-fn defer_when_demand_not_ready(ready: Bool, field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
-  if ready { decide_relocation(field: field, closed: closed) } else { DeferredToPolicy }
+fn defer_when_demand_not_ready(ready: Bool, field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  if ready { decide_relocation(field: field, assessment: assessment) } else { DeferredToPolicy }
 }
 
 // A source over its retained-capacity promise is an obligation to reconcile, never "moving is free": the
 // guard runs before the economic decision, which is reached only when the source is within its promise.
-fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry>, closed: Bool) -> RelocationDecision {
+fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
   if source_over_promise {
     ReconciliationRequired { obligation: "the source is over its retained-capacity promise; reconcile the obligation, do not treat relocation as free" as NonEmptyStr }
   } else {
-    decide_relocation(field: field, closed: closed)
+    decide_relocation(field: field, assessment: assessment)
   }
 }
 
@@ -336,9 +322,9 @@ fn render_move_intent(
   allowance: TransitionAllowance,
   method: StateEstablishmentMethod,
   field: List<ParetoEntry>,
-  closed: Bool,
+  assessment: DecisionAssessment,
 ) -> RenderedIntent {
-  match decide_relocation(field: field, closed: closed) {
+  match decide_relocation(field: field, assessment: assessment) {
     Move { destination_label: dest, receipt: r } =>
       intent_payload(i: MoveIntent {
         conversation: conversation,
