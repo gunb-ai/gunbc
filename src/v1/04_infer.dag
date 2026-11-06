@@ -3995,7 +3995,7 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
   // leaf is a parameter"), never looked up by spelling in the use-site scope where the name means
   // nothing. Each argument is then judged exactly where its parameter OCCURS, so a phantom parameter
   // imposes no equality obligation (gunbc#15175 re-land; shape per silent-bee-845's ruling after
-  #15952).
+  // #15952).
   let basis = if applied && (parameter_names |> count) > 0 { declaration_substitution_basis(n: rt, env: scope.type_env, generic_names: parameter_names) } else { rt }
   let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
   if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, depth: depth + 1) {
