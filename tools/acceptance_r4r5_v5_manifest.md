@@ -1,4 +1,4 @@
-# R4–R6 acceptance execution packets — v4, hardened srv1 frame (PREPARE ONLY)
+# R4–R6 acceptance execution packets — v5, hardened srv1 frame (PREPARE ONLY)
 
 Prepared by `fierce-wren-19` for `calm-eagle-670`, re-framed on keen-otter's hardened srv1 frame
 (templates: #15938's `rdpo.sh` aaf32964184a30d66f6320de707bfb03975f0df683cccd1133dcf2d024ed9366 and rrc a1de55aa).
@@ -26,16 +26,39 @@ via sleek-owl-397.
 | 5 | header states plainly that R4/R5 discriminate nothing | header line: `THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed.` plus the CLASSIFIER section's expectation list | self-check greps the header statement, and rejects any executable mention of `mutation` other than `mutation_legs=0` in the verdict line |
 | 6 | wall accounting: capped sum of per-step timeouts vs the outer wall; size RuntimeMaxSec for the scope and the driver from it | R4/R5: clone 300 + fetch 300 + checkout 120 + build 2400 (×2 pins) + 3 legs × 900 = **8940 s capped sum**; scope `RuntimeMaxSec=9900`, driver `RuntimeMaxSec=10500`. R6: 300+300+120+2400+900 = **4020 s**; scope 4800, driver 5400. Every step runs under its own `timeout` | self-check recomputes the sum from the packets' timeout constants and compares against the header's stated scope/driver walls (arithmetic, not prose); packet self-structure requires the `timeout "$T_LEG"` / `"$T_BUILD"` / `"$T_SETUP_FETCH"` call sites to be present |
 
+## v4 → v5 — one blocker: the completion gate read the WRONG STREAM (manager msg_1c5a519f, found by sleek-owl)
+
+v4 ran `pp_check` (the completion-record gate) on the leg **stdout** capture while `claim_batch` writes the
+record to **stderr**. Confirmed at both pins: `src/v1/stage0/src/bin/claim_batch.rs:1460` is
+`eprintln!("{}", partition.render(&timings));` — identical bytes at `db56530f…` and `dff57af7…`, blob
+`12a71786bd92f683dbd0aec2ae5d6f426e651a44` — while every `PASS`/`FAIL` line is a `println!` on stdout. Every
+leg would have shown `completion records: 0`, NO_OBSERVATIONed a full-green row and spent the grant: #15695 G1
+by another route. What landed, in BOTH packets:
+
+| change | detail | asserted by |
+|---|---|---|
+| the gate moved to the right stream | `leg()` now runs `pc=$(pp_check "$OUT/logs/$L.err")`; `claim_classify` and `stray_verdict_lines` stay on `$OUT/$L.out`, which is where the verdicts are | the packet's self-structure counts the stderr call site exactly once and requires **zero** `pp_check "$OUT/$L.out"`; the self-test greps both packets the same way |
+| the producer pinned, not assumed | `claim_batch.rs` is now blob-gated per pin checkout (`blob_gate "$W" "$PROD" "$PRODBLOB"`, `PRODBLOB=12a71786…`) and re-read by `producer_gate`, which refuses unless the file has exactly one `partition.render(&timings)` site and that site is an `eprintln!` | the packet gates each pin (2 in R4/R5, 1 in R6); the self-test runs the packet's own `producer_gate` on the byte-identical pinned bytes, `git grep`s the render site at each pin (`:1460:`), and requires the packet's `PRODBLOB` to equal what git reports at the pin |
+| end-to-end through the real `leg()` | fixture mode substitutes a stub for the binary and drives the packet's own `leg()`: bare `PASS w_x` on stdout + the real 259 B record on stderr must give `AS_EXPECTED` and a receipt line; the record on **stdout only** must give NO_OBSERVATION; two records on stderr must give NO_OBSERVATION | three `ck e2e-*` assertions per packet, plus self-structure needles so deleting the controls trips the packet's own checks |
+| vacuity guards | `pp_check` refuses if either predicate is empty (an empty pattern matches every line, so a "count == 1" gate becomes "count every line"); the record fixture's 259-byte length and digest are re-verified on every call | `completion-predicates-empty-refuses` in each packet, plus two self-test checks that drive the shipped gate with `PP_PREFIX=` and `PP_SHAPE=` empty |
+| fixture ordering, honestly stated | `nox`, `producer_gate` and `leg` were **moved above** the fixture section (bash only knows a function after the line that defines it), and the fixture mode is now two parts: part 1 (pure helpers) and part 2 (the leg-level controls). Nothing on the run path moved, so the gate-order control keeps its v4 meaning, and no probe is spent before part 2 either | the self-test's `bounds-precedes-fetch` and `gate-order-*` controls still bite, unchanged from v4 |
+
+The frozen command inventory is **byte-identical to v4**: 11 commands in the R4/R5 packet, 5 in R6, same
+bytes, same digests (diffing `--predict-only` output shows only the added `completion_record_stream=…` line
+and the manifest filename).
+
 ## Files
 
 | path | bytes | sha256 |
 |---|---|---|
-| `tools/acceptance_r4_r5_claim_run_v4.sh` | 57478 | `f99f1a8f9cd4ddb93cce979218afde682a006b44129e8967cb1989fded31dd54` |
-| `tools/acceptance_r6_live_read_claim_run_v4.sh` | 52544 | `5de7bb674d07553c32fb4e6eb4dcf471b941809f016ff63d40134ad68a9d195c` |
-| `tools/acceptance_r4r5_selfcheck_v4.sh` | 54381 | `c121009fda7a2953b0222bc89526e683e6463e535c08a3a6999d7a01abd0f7ea` |
+| `tools/acceptance_r4_r5_claim_run_v5.sh` | 65008 | `371420e7f13ae80b076ad2d19181230c23dcad9d6c4594f773a9b61ce630bacf` |
+| `tools/acceptance_r6_live_read_claim_run_v5.sh` | 59810 | `e21d3f2af58d9cd0302cdb110c4d23e889c3df32b2a44c88eeba7b6955b54720` |
+| `tools/acceptance_r4r5_selfcheck_v5.sh` | 60255 | `fafc901f6ad12bb4960409c4f80f0ed557594ffce1aa1ef931aeb3207a5065b5` |
 
-v3 (`176234a9…`, `92da138e…`, `32caff2f…`) is superseded and removed from the branch: sleek-owl's three
-blockers. v2 was never forwarded (`e70ea470…`).
+v4 (`f99f1a8f…`, `5de7bb67…`, `c121009f…`) is superseded and removed from the branch: the stream blocker.
+v3 (`176234a9…`, `92da138e…`, `32caff2f…`) was superseded by sleek-owl's three blockers; v2 was never
+forwarded (`e70ea470…`). The v4 packet that carried the defect is quoted in the v5 section above so the
+fix can be audited without checking out a superseded commit.
 
 A script cannot contain its own hash: the launcher stages the file and compares its sha256 against this
 manifest, and each packet prints `script_sha256=$(sha256sum "$0")` into its receipt as its first act.
@@ -72,7 +95,7 @@ manifest, and each packet prints `script_sha256=$(sha256sum "$0")` into its rece
 * **One attempt.** Each pin is cloned, fetched, checked out, built and legged exactly once; there is no retry
   path in either packet.
 
-## Row R4 + R5 (one packet, two pins) — `acceptance_r4_r5_claim_run_v4.sh`
+## Row R4 + R5 (one packet, two pins) — `acceptance_r4_r5_claim_run_v5.sh`
 
 * R4 pin `db56530fcb186370e3dbf1aa3c69ded324daa25d`, tree `48be84d8b18a9530e3a5c42adf8c24b19e1aa4dc`.
   Chosen as current `gunbc` main when the brief was issued. `origin/main` has since moved to
@@ -135,7 +158,7 @@ cmd CMD_LEG_R5 bytes=397 sha256=c5f7fe87f6130cc3ad2cf1f60dc99be4457f0e81a419b702
   "$BIN5" --source-root dag --source-root src/v1 --source-root src/v2 --entry "dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag" --functions "witness_inbox_load_refused_is_refused_not_empty,witness_inbox_unreplayable_history_is_refused_not_empty,witness_inbox_live_receipt_removes_node_from_rows,witness_inbox_revoked_receipt_reappears_with_prior,witness_inbox_stale_live_receipt_refuses"
 ```
 
-## Row R6 — HELD — `acceptance_r6_live_read_claim_run_v4.sh`
+## Row R6 — HELD — `acceptance_r6_live_read_claim_run_v5.sh`
 
 The read-path audit at pin `dff57af7…` (its header, lines 14–40):
 `roadmap_acceptance_event_history_load` → `fabric_state_storage_binding`
@@ -186,7 +209,7 @@ cmd CMD_LEG_R6 bytes=207 sha256=0053be34fb87d635cd5664cccd7880bd014a18417ca24bfc
   "$BIN6" --source-root dag --source-root src/v1 --source-root src/v2 --entry "dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag" --functions "witness_inbox_on_authority_projects_on_live_corpus"
 ```
 
-## The completion record this packet gates on (v4 blocker 2)
+## The completion record this packet gates on (v4 blocker 2, stream fixed in v5)
 
 Producer: `ProcessPartition::render` in `src/v1/stage0/src/bin/claim_batch.rs` (blob `12a71786bd92f683dbd0aec2ae5d6f426e651a44`
 at BOTH pins and at current main — the self-test verifies byte-identity), one `eprintln!` on the Ok path, so
@@ -203,6 +226,11 @@ and calm-crab-645 and re-hashed here:
   a trailing LF: `7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2`.** The same text with one
   LF (260 B) is `d9e50eb2ec6352ed32d2cb4788057fb3f91f8da766e0ee2d999ae3c531b3fa50` — the manifest pins the
   first; the packet re-verifies it in its fixture block on every run, so a fixture whose bytes drift refuses.
+* **Which stream.** The record is emitted by `eprintln!` at line 1460 — STDERR; the verdicts are `println!`
+  — STDOUT. `leg()` therefore gates the record on `logs/<leg>.err` and classifies verdicts from `<leg>.out`.
+  `--predict-only` prints this as `completion_record_stream=stderr(leg capture logs/<leg>.err) …`, and the
+  packet refuses if the pinned `claim_batch.rs` blob is not `12a71786…` or its single render site is not an
+  `eprintln!`.
 * A second genuine record, from a different run, is kept as an accepted sample (249 B, gunbc#14075):
   `total_ms=67069 … entries_witness_ms=908`.
 * Three hazards, all of which have bitten someone, are encoded as fixtures: whole-line anchoring
@@ -219,11 +247,13 @@ and the same five plus `memory.events` under the run scope; `https://github.com/
 frozen pins (shallow, `--depth 1`, by sha); the pinned tree's `Cargo.lock`/workspace manifests for
 `cargo build --locked --release -j 32 -p v1-compiler --bin claim_batch`; the three (R4/R5) / one (R6) entry
 `.dag` files, byte-checked against the frozen blob ids and re-checked for the `test fn <name>` lines before
-any claim is attempted. Nothing else: no live partition, no operator state, no roster.
+any claim is attempted; `src/v1/stage0/src/bin/claim_batch.rs`, blob-gated at each pin and re-read for its
+`partition.render(&timings)` site so the record's stream and arity are read from the pinned code, not assumed.
+Nothing else: no live partition, no operator state, no roster.
 
 ## Self-test result
 
-* `bash tools/acceptance_r4r5_selfcheck_v4.sh <repo>` → **461 passed, 0 failed, 0 skipped** (exit 0; also run
+* `bash tools/acceptance_r4r5_selfcheck_v5.sh <repo>` → **510 passed, 0 failed, 0 skipped** (exit 0; also run
   from `tools/` with a relative repo argument). It
   reads both packets' constants by name, runs each packet's embedded fixtures, extracts the helper region
   verbatim from the packet text (so it tests the shipped code, not a copy), and checks every v3 item in both
@@ -231,11 +261,17 @@ any claim is attempted. Nothing else: no live partition, no operator state, no r
   end-to-end up to the first gate (they refuse here at the tooling gate, creating nothing) and requires a
   relaxed copy to reach the scope gate, write a receipt with `VERDICT=NO_OBSERVATION reason=scope`, publish
   zero memory snapshots, create no clone, and refuse a reused `OUT` with exit 2.
-* Embedded fixtures: **155 pass / 0 fail** in the R4/R5 packet, **157 pass / 0 fail** in the R6 packet
+* Embedded fixtures: **173 pass / 0 fail** in the R4/R5 packet, **174 pass / 0 fail** in the R6 packet
   (classifier shapes, stray-line detection, leg-state precedence, name gate, CSV shape, argv vs the pinned
-  parser, OOM publication and parse contract, bounds comparison, scope gate, wall arithmetic, self-structure).
-* Negative controls — eleven, and each mutated copy must fail its **own** embedded fixtures, or the checks are
-  decorative. Every one bites:
+  parser, OOM publication and parse contract, bounds comparison, scope gate, wall arithmetic, self-structure,
+  and — new in v5 — the completion record driven end-to-end through the packet's own `leg()` with a stub in
+  place of the binary, plus the producer render-site gate on synthetic sources).
+* Skips are named, not silent. The self-test has exactly two conditional skips, both labelled:
+  `claim_batch.rs at the pin is not byte-identical to the working copy: parser checks skipped` and
+  `no repo with the pinned commits: the pinned render-site grep was not run`. Neither fired in the recorded
+  run (repo = this session's worktree at the pins): **0 skipped**.
+* Negative controls — **fifteen**, and each mutated copy must fail its **own** embedded fixtures, or the
+  checks are decorative. Every one bites:
 
 | mutation | first fixture failure |
 |---|---|
@@ -250,6 +286,10 @@ any claim is attempted. Nothing else: no live partition, no operator state, no r
 | the completion prefix count relaxed from exactly-one to at-least-one | `FIXTURE FAIL completion-duplicate …` |
 | the one-outcome-line-per-name rule neutered | `FIXTURE FAIL verdict-bare-pass-plus-qualified-fail …` |
 | a qualified FAIL accepted as a falsification (bare prefix, unanchored) | `FIXTURE FAIL verdict-qualified-fail-is-not-falsified …` |
+| the completion gate pointed back at the leg stdout (the v5 defect) | `FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture … expected 1 got 0`, and 5 more |
+| …the same defect in the R6 packet | `FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture …` |
+| the producer render-site gate deleted from a pin setup | `FIXTURE FAIL self-structure: every pin proves the pinned producer emits the record to stderr expected 2 got 1` |
+| the end-to-end leg controls deleted from the fixtures | `FIXTURE FAIL self-structure: the fixtures drive a real leg and require the stderr record to be an observation expected 1 got 0` |
 
 ## What was NOT done
 

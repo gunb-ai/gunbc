@@ -1,4 +1,4 @@
-# script.sh (frozen copy for fierce-wren-19-r6-dff57af7, v3): acceptance grant set row R6, gunbc.
+# script.sh (frozen copy for fierce-wren-19-r6-dff57af7, v5): acceptance grant set row R6, gunbc.
 # HELD — NOT AUTHORIZED FOR EXECUTION. PREPARE ONLY: this file has not been RUN anywhere, and the live
 # fabric store has not been contacted. Same hardened srv1 frame as the R4/R5 packet (template:
 # wise-moth-707-rdpo's rdpo.sh, sha256 aaf32964184a30d66f6320de707bfb03975f0df683cccd1133dcf2d024ed9366,
@@ -8,7 +8,9 @@
 # THE ONE CLAIM (row R6):
 #   dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag
 #     witness_inbox_on_authority_projects_on_live_corpus
-# WHAT v4 ADDS (sleek-owl's three blockers on v3 176234a92458c5a6, verified by sunny-bee-153):
+# WHAT v5 ADDS: the completion gate read the WRONG STREAM (manager msg_1c5a519f, found by sleek-owl).
+#   Everything below under "WHAT v4 ADDS" is kept from v4 unchanged (sleek-owl's three blockers
+#   on v3 176234a92458c5a6, verified by sunny-bee-153); every v4 gate, fixture and control still runs.
 #   (1) the launcher argv is calmcrab-udrv.sh <JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%>
 #       <STAGED_SCRIPT> <SCRIPT_SHA> OUT — seconds, GiB, %, the PACKET's own sha, literal OUT — and the R
 #       ledger row is booked in GiB (keen-otter msg_c9d1df56); the bounds gate DERIVES its byte values from
@@ -74,7 +76,7 @@ BOOKED="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)
 # LAUNCHER (calmcrab-udrv.sh, v4 form) — no bare systemd-run. Full argv, in the launcher's order:
 #   calmcrab-udrv.sh <JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%> <STAGED_SCRIPT> <SCRIPT_SHA> OUT
 # For THIS row the call is literally:
-#   calmcrab-udrv.sh fierce-wren-19-r6-dff57af7 4800 32 28 4096 3200% <STAGED_SCRIPT> <v4 packet sha256> OUT
+#   calmcrab-udrv.sh fierce-wren-19-r6-dff57af7 4800 32 28 4096 3200% <STAGED_SCRIPT> <v5 packet sha256> OUT
 # Units are the launcher's: RUNTIME in SECONDS (the scope's wall, sized from the capped per-step timeouts
 # below), memory in GiB, CPU with the %% sign, SCRIPT_SHA is the PACKET'S OWN sha256 (NOT the source commit),
 # and OUT is passed LITERALLY — the script derives JOB as basename(dirname(OUT)), so OUT must be
@@ -173,6 +175,15 @@ oom_snap() { # $1=event file $2=tag; publishes the raw bytes by exclusive create
 #   is what spent #15695's G1 attempt (15/15 bare PASS and still NO_OBSERVATION). The neighbour line
 #   `[process-partition-exit] run_returned_ms=... main_end_ms=...` does NOT start with `[process-partition]`
 #   and must not be counted -- hence the `]` in the prefix.
+#   WHICH STREAM, checked at the pin: that record goes to STDERR, not stdout. The pinned source renders it with
+#   eprintln! at line 1460 of src/v1/stage0/src/bin/claim_batch.rs (blob 12a71786bd92f683dbd0aec2ae5d6f426e651a44
+#   -- the same bytes at dff57af7 and at db56530f), while every PASS/FAIL verdict goes to stdout. So the
+#   completion gate reads the leg stderr capture (logs/<leg>.err) and the classifier reads the leg stdout
+#   (<leg>.out). Pointing that gate at stdout reads 0 records on every leg and NO_OBSERVATIONs a full-green
+#   row: the #15695 G1 shape by another route. The pinned source is therefore blob-gated like every other
+#   input and re-read for its render site (producer_gate), and the fixtures drive THIS packet's own leg() with
+#   a stub standing in for the binary: record on stderr plus verdict on stdout is an observation, record only
+#   on stdout is not, and two records on stderr is not.
 claim_classify() { # $1=output file $2=rc $3=name -> HELD | FAILED | NO_OBSERVATION
   local f=$1 rc=$2 n=$3 p q
   [ -f "$f" ] || { echo NO_OBSERVATION; return; }
@@ -190,8 +201,11 @@ claim_classify() { # $1=output file $2=rc $3=name -> HELD | FAILED | NO_OBSERVAT
 # COMPLETION RECORD GATE: two stages on purpose (see the header). Prefix count first, then shape on that one.
 PP_PREFIX='^[[]process-partition[]] total_ms'
 PP_SHAPE='^[[]process-partition[]] total_ms=[0-9]+( |$)'
+PROD=src/v1/stage0/src/bin/claim_batch.rs
+PRODBLOB=12a71786bd92f683dbd0aec2ae5d6f426e651a44
 pp_check() { # $1=output file -> "OK <the record>" or the reason it is not an observation
   local f=$1 n line
+  [ -n "$PP_PREFIX" ] && [ -n "$PP_SHAPE" ] || { echo "the completion predicates are empty; a vacuous pattern would count every line"; return; }
   [ -r "$f" ] || { echo "unreadable leg output"; return; }
   n=$(grep -c "$PP_PREFIX" "$f" 2>/dev/null)
   [ "$n" = 1 ] || { echo "completion records: $n matched the prefix, exactly 1 is required"; return; }
@@ -229,6 +243,50 @@ grant_gate() { # $1 = the second positional argument: executing a HELD row needs
     *[![:graph:]]*) echo "row R6: an execution-grant reference must be one printable token, not blank or padded"; return 1;;
   esac
   printf '%s' "$g"; }
+
+# ---- three run-path helpers lifted ABOVE the fixture controls, on purpose: bash only knows a function
+# ---- after the line that defines it, and fixture part 2 drives the real leg() with a stub standing in for the
+# ---- claim_batch binary, so the fixtures cannot drift from the wiring they are meant to check. Nothing here
+# ---- runs at parse time; the run path calls these further down, exactly as in v4. The clone and blob-gate
+# ---- helpers were left in place so the gate-order control keeps its v4 meaning.
+nox() { echo "$1" >> "$O"; echo "VERDICT=NO_OBSERVATION reason=$2" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"; echo "NO_OBSERVATION: $1 (reason=$2)" >&2; exit 2; }
+
+producer_gate() { # $1 = a checked-out claim_batch.rs: the completion record MUST be rendered to stderr
+  local f=$1 n line
+  [ -r "$f" ] || { echo "the pinned claim_batch.rs is unreadable: $f"; return; }
+  n=$(grep -cF 'partition.render(&timings)' "$f" 2>/dev/null)
+  [ "$n" = 1 ] || { echo "expected exactly one completion-record render site, found $n in $f"; return; }
+  line=$(grep -m1 -F 'partition.render(&timings)' "$f")
+  case "$line" in
+    *'eprintln!("{}", partition.render(&timings));'*) echo OK ;;
+    *) echo "the completion record is NOT emitted to stderr (eprintln) at the render site: $line"; return ;;
+  esac; }
+
+leg() { # $1=leg name $2=CMD variable name $3=name list
+  local L=$1 rc k0 k1 LO st cl sv
+  cmd=${2}
+  k0=$(oom_snap "$EV" "$L-leg-before")
+  timeout "$T_LEG" bash -c "$2" > "$OUT/$L.out" 2> "$OUT/logs/$L.err"; rc=$?
+  k1=$(oom_snap "$EV" "$L-leg-after"); LO=$(oom_pair_verdict "$k0" "$k1"); LASTOOM=$k1
+  echo "== $L rc=$rc oom=$LO ($k0 -> $k1) $(tm "$OUT/logs/$L.err")" >> "$O"
+  if [ "$LO" != none ]; then
+    echo "$L oom=$LO" >> "$O"; nox "leg $L: memory.events moved $k0 -> $k1" "$([ "$LO" = OOM_KILLED ] && echo leg-oom || echo counter-incoherent)"
+  fi
+  sv=$(stray_verdict_lines "$OUT/$L.out" "$3")
+  if [ "$sv" != 0 ]; then
+    grep -E '^(PASS|FAIL|UNOBSERVED|PANICKED) ' "$OUT/$L.out" 2>/dev/null | head -6 | cut -c1-300 | sed 's/^/  | /' >> "$O"
+    nox "leg $L is not exactly bare verdict lines: $sv" classifier
+  fi
+  : > "$OUT/$L.classes"
+  pc=$(pp_check "$OUT/logs/$L.err")
+  echo "== $L completion_record: $pc" >> "$O"
+  # a leg without exactly one well-formed completion record never finished the producer's reporting path,
+  # so its verdict lines are not an observation; leg_state reads this line and the leg becomes NOOBS (exit 2).
+  [ "${pc%% *}" = OK ] || echo "completion NO_OBSERVATION" >> "$OUT/$L.classes"
+  for cl in $3; do echo "$cl $(claim_classify "$OUT/$L.out" "$rc" "$cl")" >> "$OUT/$L.classes"; done
+  cat "$OUT/$L.classes" | sed 's/^/  /' >> "$O"
+  st=$(leg_state "$OUT/$L.classes" "$3")
+  echo "== $L state=$st" >> "$O"; echo "$st" > "$OUT/$L.state"; }
 
 # ---------------------------------------------------------------- fixture mode: run BEFORE any probe is spent
 if [ "${1:-}" = "--classifier-fixtures" ]; then
@@ -413,7 +471,14 @@ oom 0' oom)"
   inv 'timeout "$T_LE' 'G"' 'a leg runs under its own capped timeout' 1
   inv 'timeout "$T_BUIL' 'D"' 'the build runs under its own capped timeout' 1
   inv 'timeout "$T_SETUP_FETC' 'H"' 'the fetch runs under its own capped timeout' 1
-  inv 'pc=$(pp_che' 'ck' 'the completion-record gate runs on every leg' 1
+  inv 'pc=$(pp_che' 'ck "$OUT/logs/$L.err")' 'the completion gate reads the leg stderr capture, where the record is emitted' 1
+  inv 'pp_check "$OUT/$L.o' 'ut' 'no completion gate reads the leg stdout, which carries only the verdicts' 0
+  inv 'claim_classify "$OUT/$L.o' 'ut' 'the verdict classifier reads the leg stdout' 1
+  inv 'm=$(producer_ga' 'te' 'the pin proves the pinned producer emits the record to stderr' 1
+  inv 'blob_gate "$W" "$PROD" "$PRODBL' 'OB")' 'the pinned claim_batch.rs is blob-gated like the parser flag set' 1
+  inv 'ck e2e-record-on-std' 'err-is-an-observation AS_EXPECTED' 'the fixtures drive a real leg and require the stderr record to be an observation' 1
+  inv 'ck e2e-record-only-on-std' 'out-is-not-an-observation NOOBS' 'the fixtures require a stdout-only record to be no observation' 1
+  inv 'ck e2e-two-records-is-not-an-observat' 'ion NOOBS' 'the fixtures reject a duplicated record' 1
   inv 'pp_check() ' '{' 'the completion-record gate is defined' 1
   inv 'PP_PRE' "FIX='^[[]process-partition" 'the completion prefix keeps the closing bracket (the -exit neighbour must not count)' 1
   inv 'any=$(grep -cE "' '^(PASS|FAIL' 'each expected name needs exactly one outcome line of any keyword' 1
@@ -466,6 +531,7 @@ oom 0' oom)"
   ck completion-unreadable "unreadable leg output" "$(pp_check "$T/pp_missing.txt")"
   ck completion-wholeline-anchor-is-wrong 0 "$(printf '%s\n' "$PP_REAL" | grep -cE '^[[]process-partition[]] total_ms=[0-9]+$')"
   ck completion-shape-accepts-real 1 "$(printf '%s\n' "$PP_REAL" | grep -cE "$PP_SHAPE")"
+  # fixture part 1 of 2: the leg-level controls run once leg() is defined (see part 2)
   # -------- verdict rules (v4 blocker 3): bare lines count, one outcome line per name, qualified refuses
   ck verdict-bare-pass-rc0 HELD "$(claim_classify "$T/v_pass.txt" 0 w_x)"
   ck verdict-bare-fail-rc1 FAILED "$(claim_classify "$T/v_fail.txt" 1 w_x)"
@@ -481,6 +547,69 @@ oom 0' oom)"
   ck verdict-bare-pass-rc124 NO_OBSERVATION "$(claim_classify "$T/v_pass.txt" 124 w_x)"
   ck verdict-prefix-name-not-matched NO_OBSERVATION "$(claim_classify "$T/v_other.txt" 0 w_x)"
 
+  echo "fixture part 1 ok=$okn fail=$badn so far"
+fi
+
+# ---------------------------------------------------------------- fixture part 2: the leg-level controls
+# need leg(), producer_gate and nox DEFINED, so they run here rather than in the block above -- in the same
+# shell as part 1 (the scratch dir, the counters and the pinned record fixture carry over), and still BEFORE
+# any probe is spent and BEFORE the held-row grant gate: no clone, no fetch, no build, no claim, and nothing
+# written outside the scratch dir.
+if [ "${1:-}" = "--classifier-fixtures" ]; then
+  # ---- THE COMPLETION RECORD REACHES THE GATE, end to end through this packet's own leg(). The producer
+  # ---- emits the record with eprintln! (stderr) and the verdicts with println! (stdout); leg() sends stdout
+  # ---- to <leg>.out and stderr to logs/<leg>.err. A stub stands in for the claim_batch binary, so a gate
+  # ---- pointed at the wrong stream, or a duplicated record, fails HERE and not on srv1.
+  EOUT=$T/e2e; mkdir -p "$EOUT/mem" "$EOUT/logs"
+  OUT=$EOUT; O=$EOUT/receipt.txt; MEMDIR=$EOUT/mem; EV=$EOUT/events
+  printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > "$EV"
+  cat > "$T/stub_stderr.sh" <<STUBE2E
+#!/bin/sh
+printf 'PASS w_x\n'
+printf '%s\n' '$PP_REAL' >&2
+exit 0
+STUBE2E
+  cat > "$T/stub_stdout.sh" <<STUBE2E
+#!/bin/sh
+printf 'PASS w_x\n'
+printf '%s\n' '$PP_REAL'
+exit 0
+STUBE2E
+  cat > "$T/stub_dup.sh" <<STUBE2E
+#!/bin/sh
+printf 'PASS w_x\n'
+printf '%s\n' '$PP_REAL' >&2
+printf '%s\n' '$PP_REAL' >&2
+exit 0
+STUBE2E
+  chmod +x "$T/stub_stderr.sh" "$T/stub_stdout.sh" "$T/stub_dup.sh"
+  BIN4=$T/stub_stderr.sh; BIN5=$T/stub_stderr.sh; BIN6=$T/stub_stderr.sh; export BIN4 BIN5 BIN6
+  leg E2E_STDERR "\"\$BIN4\" --source-root dag --entry x.dag --functions w_x" w_x
+  ck e2e-record-on-stderr-is-an-observation AS_EXPECTED "$(cat "$OUT/E2E_STDERR.state")"
+  ck e2e-record-on-stderr-counted-in-the-receipt 1 "$(grep -c 'E2E_STDERR completion_record: OK' "$O")"
+  ck e2e-record-on-stderr-holds-the-name 1 "$(grep -c 'w_x HELD' "$OUT/E2E_STDERR.classes")"
+  BIN4=$T/stub_stdout.sh
+  leg E2E_STDOUT "\"\$BIN4\" --source-root dag --entry x.dag --functions w_x" w_x
+  ck e2e-record-only-on-stdout-is-not-an-observation NOOBS "$(cat "$OUT/E2E_STDOUT.state")"
+  BIN4=$T/stub_dup.sh
+  leg E2E_DUP "\"\$BIN4\" --source-root dag --entry x.dag --functions w_x" w_x
+  ck e2e-two-records-is-not-an-observation NOOBS "$(cat "$OUT/E2E_DUP.state")"
+  # ---- the producer render site, on synthetic sources
+  cat > "$T/pb_ok.rs" <<'STUBPB'
+    eprintln!("{}", partition.render(&timings));
+STUBPB
+  cat > "$T/pb_stdout.rs" <<'STUBPB'
+    println!("{}", partition.render(&timings));
+STUBPB
+  cat > "$T/pb_two.rs" <<'STUBPB'
+    eprintln!("{}", partition.render(&timings));
+    let _ = partition.render(&timings);
+STUBPB
+  ck producer-stderr-render-site OK "$(producer_gate "$T/pb_ok.rs")"
+  ck producer-stdout-render-site-refuses "the completion record is NOT emitted to stderr (eprintln) at the render site" "$(producer_gate "$T/pb_stdout.rs" | cut -d: -f1)"
+  ck producer-two-render-sites-refuses "expected exactly one completion-record render site, found 2" "$(producer_gate "$T/pb_two.rs" | cut -d' ' -f1-8)"
+  ck producer-unreadable-refuses "the pinned claim_batch.rs is unreadable: $T/nope.rs" "$(producer_gate "$T/nope.rs")"
+  ck completion-predicates-empty-refuses "the completion predicates are empty; a vacuous pattern would count every line" "$(PP_PREFIX= ; pp_check "$T/pp_real.txt")"
   echo "FIXTURES pass=$okn fail=$badn"; [ $badn -eq 0 ]; exit $?
 fi
 
@@ -499,6 +628,7 @@ if [ "${1:-}" = "--predict-only" ]; then
   echo "launcher_call=calmcrab-udrv.sh $J $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT> <this packet sha256> OUT"
   echo "ledger_rows=$J-res(cap ${MEMMAX_G}GiB) $J-drv(cap 1) $J(cap 0)"
   echo "completion_record_gate=exactly-one-prefix-count-then-shape sha_pinned=7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2"
+  echo "completion_record_stream=stderr(leg capture logs/<leg>.err) verdict_stream=stdout(<leg>.out) render_site=claim_batch.rs:1460 via eprintln blob=$PRODBLOB"
   echo "verdict_rules=bare_only;one_outcome_line_per_name_any_keyword;qualified_is_NO_OBSERVATION"
   echo "timeouts_s setup_clone=$T_SETUP_CLONE setup_fetch=$T_SETUP_FETCH setup_checkout=$T_SETUP_CHECKOUT build=$T_BUILD leg=$T_LEG"
   echo "wall_capped_sum_s=$(( T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT + T_BUILD + T_LEG )) scope_RuntimeMaxSec=4800 driver_RuntimeMaxSec=5400"
@@ -531,7 +661,6 @@ mkdir -- "$OUT/logs" || { echo "NO_OBSERVATION: cannot make $OUT/logs" >&2; exit
 export TMPDIR=$OUT/tmp; mkdir -- "$TMPDIR" || { echo "NO_OBSERVATION: cannot make $TMPDIR" >&2; exit 2; }
 O=$OUT/receipt.txt
 echo "job=$JOB booked_job=$J state=executing-under-grant host=$(hostname 2>/dev/null || echo unreadable) machine_id=$(cat /etc/machine-id 2>/dev/null || echo unreadable) start=$(date -u +%FT%TZ)" > "$O"
-nox() { echo "$1" >> "$O"; echo "VERDICT=NO_OBSERVATION reason=$2" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"; echo "NO_OBSERVATION: $1 (reason=$2)" >&2; exit 2; }
 S=$(bin_sha "$0") || nox "cannot hash the staged script at $0" script-hash
 echo "script_sha256=$S (compare with the published frozen value; a file cannot gate its own hash)" >> "$O"
 echo "$GRANT" > "$OUT/grant-ref.txt"
@@ -548,7 +677,6 @@ GA=$(oom_snap "$EV" gate-a); GB=$(oom_snap "$EV" gate-b)
 BM=$(bounds_check "/sys/fs/cgroup$CG") || nox "booked bounds: $BM" bounds
 echo "scope=$CG bounds_ok=$BOOKED oom_gate=$GA->$GB" >> "$O"
 echo "host recorded, not gated: the booking is enforced by the launcher's ledger rows and the bounds gate above, not by a hostname string" >> "$O"
-
 blob_gate() { # $1=clone $2=path $3=blob
   local have; have=$(git -C "$1" rev-parse "HEAD:$2" 2>/dev/null) || { echo "missing"; return 1; }
   [ "$have" = "$3" ] || { echo "$2 is blob $have at HEAD, this packet freezes $3"; return 1; }
@@ -564,7 +692,9 @@ gotT=$(git -C "$W" rev-parse 'HEAD^{tree}' 2>/dev/null || echo unreadable)
 [ "$gotT" = "$T" ] || nox "$W tree is $gotT, this packet freezes $T for $H" tree
 m=$(blob_gate "$W" "$E6" "$B6") || nox "blob gate: $m" blob
 m=$(names_gate "$W" "$E6" "$N6") || nox "names gate: $m" names
-echo "cloned wt-r6 head=$gotH tree=$gotT blobs+names gated" >> "$O"
+m=$(blob_gate "$W" "$PROD" "$PRODBLOB") || nox "blob gate: $m" blob
+m=$(producer_gate "$W/$PROD") || nox "producer stream gate: $m" producer
+echo "cloned wt-r6 head=$gotH tree=$gotT blobs+names+producer gated" >> "$O"
 
 cd "$W" || nox "cannot cd into $W" clone
 k0=$(oom_snap "$EV" wt-r6-build-before)
@@ -580,32 +710,6 @@ echo "binary $BIN6 sha256=$(bin_sha "$BIN6" || echo unreadable)" >> "$O"
 export BIN6
 
 LASTOOM=""
-leg() { # $1=leg name $2=CMD variable name $3=name list
-  local L=$1 rc k0 k1 LO st cl sv
-  cmd=${2}
-  k0=$(oom_snap "$EV" "$L-leg-before")
-  timeout "$T_LEG" bash -c "$2" > "$OUT/$L.out" 2> "$OUT/logs/$L.err"; rc=$?
-  k1=$(oom_snap "$EV" "$L-leg-after"); LO=$(oom_pair_verdict "$k0" "$k1"); LASTOOM=$k1
-  echo "== $L rc=$rc oom=$LO ($k0 -> $k1) $(tm "$OUT/logs/$L.err")" >> "$O"
-  if [ "$LO" != none ]; then
-    echo "$L oom=$LO" >> "$O"; nox "leg $L: memory.events moved $k0 -> $k1" "$([ "$LO" = OOM_KILLED ] && echo leg-oom || echo counter-incoherent)"
-  fi
-  sv=$(stray_verdict_lines "$OUT/$L.out" "$3")
-  if [ "$sv" != 0 ]; then
-    grep -E '^(PASS|FAIL|UNOBSERVED|PANICKED) ' "$OUT/$L.out" 2>/dev/null | head -6 | cut -c1-300 | sed 's/^/  | /' >> "$O"
-    nox "leg $L is not exactly bare verdict lines: $sv" classifier
-  fi
-  : > "$OUT/$L.classes"
-  pc=$(pp_check "$OUT/$L.out")
-  echo "== $L completion_record: $pc" >> "$O"
-  # a leg without exactly one well-formed completion record never finished the producer's reporting path,
-  # so its verdict lines are not an observation; leg_state reads this line and the leg becomes NOOBS (exit 2).
-  [ "${pc%% *}" = OK ] || echo "completion NO_OBSERVATION" >> "$OUT/$L.classes"
-  for cl in $3; do echo "$cl $(claim_classify "$OUT/$L.out" "$rc" "$cl")" >> "$OUT/$L.classes"; done
-  cat "$OUT/$L.classes" | sed 's/^/  /' >> "$O"
-  st=$(leg_state "$OUT/$L.classes" "$3")
-  echo "== $L state=$st" >> "$O"; echo "$st" > "$OUT/$L.state"; }
-
 leg R6 "$CMD_LEG_R6" "$N6"
 
 FA=$(oom_snap "$EV" final)

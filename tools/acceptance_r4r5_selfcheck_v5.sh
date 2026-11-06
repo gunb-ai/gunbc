@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# acceptance_r4r5_selfcheck_v3 — the fixture self-test for the two v3 packets (rows R4/R5, and row R6 held).
+# acceptance_r4r5_selfcheck_v5 — the fixture self-test for the two v5 packets (rows R4/R5, and R6 held).
 # NOTHING FROM EITHER REPOSITORY IS EXECUTED and nothing is run on srv1: it feeds synthetic claim logs,
 # synthetic cgroup and memory.events files, synthetic run dirs and the packets' OWN tokenized command lines
 # to the packets' own functions (extracted verbatim from between the markers), runs each packet's embedded
@@ -8,9 +8,13 @@
 # host (before any clone, fetch, build or store contact), and checks the frozen constants against local git
 # objects and against the pinned claim_batch parser.
 #
-# Each v3 item the acceptance check named gets an assertion in BOTH directions, with negative controls at the
+# Each item the acceptance checks named gets an assertion in BOTH directions, with negative controls at the
 # end: (1) the launcher frame, (2) the pre-work bounds gate, (3) the strict OOM contract, (4) the three-code
-# exit contract, (5) the "discriminates nothing" statement, (6) wall accounting.
+# exit contract, (5) the "discriminates nothing" statement, (6) wall accounting, (7) the completion record and
+# the verdict exactness rules, and (8, v5) WHICH STREAM carries the completion record: the producer emits it
+# with eprintln! (stderr) at line 1460 of the pinned claim_batch.rs while verdicts go to stdout, so the gate
+# must read logs/<leg>.err and the classifier <leg>.out. Getting that wrong is #15695 G1 by another route:
+# every leg reports 0 records, a full-green row NO_OBSERVATIONs, and the grant is spent.
 #
 # Content checks are byte-identity gated, never proximate: a working-tree file stands in for the pinned bytes
 # only when `git hash-object` of it equals the blob id AT the pin; otherwise the check reports SKIPPED, never
@@ -21,8 +25,8 @@
 # usage: acceptance_r4r5_selfcheck_v3.sh [repo-with-pinned-commits]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-P45="$HERE/acceptance_r4_r5_claim_run_v4.sh"
-P6="$HERE/acceptance_r6_live_read_claim_run_v4.sh"
+P45="$HERE/acceptance_r4_r5_claim_run_v5.sh"
+P6="$HERE/acceptance_r6_live_read_claim_run_v5.sh"
 REPO="${1:-}"
 [ -f "$P45" ] && [ -f "$P6" ] || { echo "packets not found next to the self-check" >&2; exit 1; }
 g() { git "$@" < /dev/null; }
@@ -41,7 +45,7 @@ check_out() { local name="$1" want="$2" pat="$3"; shift 3
 grep_in() { local name="$1" f="$2" pat="$3"; grep -qF -- "$pat" "$f" && ok || bad "$name: '$pat' not found in $(basename "$f")"; }
 grep_not() { local name="$1" f="$2" pat="$3"; grep -qF -- "$pat" "$f" && bad "$name: '$pat' IS in $(basename "$f")" || ok; }
 
-SB="$(mktemp -d "${TMPDIR:-/tmp}/r4r5-selfcheck-v3-XXXXXX")"
+SB="$(mktemp -d "${TMPDIR:-/tmp}/r4r5-selfcheck-v5-XXXXXX")"
 chmod 700 "$SB"
 trap 'rm -rf "$SB"' EXIT
 S4="$SB/fake/wt-r4/target/release/claim_batch"; S5="$SB/fake/wt-r5/target/release/claim_batch"; S6="$SB/fake/wt-r6/target/release/claim_batch"
@@ -245,7 +249,7 @@ for f in "$P45" "$P6"; do
   want="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)) memory.swap.max=0 pids.max=$TASKS_MAX cpu.max=$((CPU_PCT*1000))_100000"
   [ "$BOOKED" = "$want" ] && ok || bad "$b freezes bounds ($BOOKED) that are not the GiB/pids/cpu booking it states ($want)"
   grep_in "$b passes RUNTIME in seconds" "$f" "calmcrab-udrv.sh $(grep -m1 '^J=' "$f" | cut -d= -f2) $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT>"
-  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v4 packet sha256> OUT"
+  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v5 packet sha256> OUT"
 done
 for f in "$P45" "$P6"; do
   b=$(basename "$f")
@@ -294,6 +298,11 @@ if [ -n "$REPO" ] && g -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
     done
     grep_in "parser splits --functions on a comma" "$REPO/$RBIN" "csv.split(',')"
     grep_in "parser rejects an unknown argument with exit 2" "$REPO/$RBIN" "unknown argument"
+    grep_in "the pinned runner renders the completion record with eprintln (stderr)" "$REPO/$RBIN" 'eprintln!("{}", partition.render(&timings));'
+    n=$(grep -cF 'partition.render(&timings)' "$REPO/$RBIN"); [ "$n" = 1 ] && ok || bad "the pinned claim_batch.rs renders the completion record at $n sites, expected exactly 1"
+    check_out "the packet's own producer_gate accepts the pinned claim_batch.rs bytes" 0 OK bash -c "source '$H'; producer_gate '$REPO/$RBIN'"
+    grep_in "the R4/R5 packet pins the producer blob id that git reports at the pin" "$P45" "PRODBLOB=$RB"
+    grep_in "the R6 packet pins the same producer blob id" "$P6" "PRODBLOB=$RB"
     skip_if=0
   else
     skip "claim_batch.rs at the pin is not byte-identical to the working copy: parser checks skipped"
@@ -496,6 +505,44 @@ grep_in "the R6 header states the hold and the gate" "$P6" "msg_3407a188"
 grep_in "the R6 header states a refusal of the subject is a finding" "$P6" "fails"
 grep_in "both packets record the row exit as an observation, not a tool status" "$P45" "VERDICT="
 
+echo "== WHICH STREAM carries the completion record (v5): the gate reads the leg stderr capture"
+# claim_batch.rs:1460 renders the record with eprintln!, i.e. on stderr; PASS/FAIL go to stdout. leg() sends
+# stdout to <leg>.out and stderr to logs/<leg>.err. A gate on the wrong stream reads 0 records and
+# NO_OBSERVATIONs a full-green row, so both the wiring and the packets' own end-to-end controls are checked.
+for f in "$P45" "$P6"; do
+  b=$(basename "$f")
+  grep_in "$b runs the completion gate on the leg stderr capture" "$f" 'pc=$(pp_check "$OUT/logs/$L.err")'
+  grep_not "$b never runs the completion gate on the leg stdout" "$f" 'pp_check "$OUT/$L.out"'
+  grep_in "$b keeps the verdict classifier on the leg stdout" "$f" 'claim_classify "$OUT/$L.out"'
+  grep_in "$b counts stray verdict lines on the leg stdout" "$f" 'stray_verdict_lines "$OUT/$L.out"'
+  grep_in "$b states the stream in its header" "$f" 'WHICH STREAM'
+  grep_in "$b names the stream in --predict-only output" "$f" 'completion_record_stream=stderr(leg capture logs/<leg>.err)'
+  grep_in "$b drives a REAL leg with a stub in place of the binary (fixture mode)" "$f" 'leg E2E_STDERR '
+  grep_in "$b: record on stderr plus verdict on stdout must be an observation" "$f" 'ck e2e-record-on-stderr-is-an-observation AS_EXPECTED'
+  grep_in "$b: that record must reach the receipt" "$f" 'ck e2e-record-on-stderr-counted-in-the-receipt 1'
+  grep_in "$b: a record only on stdout must NOT be an observation" "$f" 'ck e2e-record-only-on-stdout-is-not-an-observation NOOBS'
+  grep_in "$b: two records must NOT be an observation" "$f" 'ck e2e-two-records-is-not-an-observation NOOBS'
+  grep_in "$b gates the pinned render site in the checkout" "$f" 'm=$(producer_gate "$W/$PROD")'
+  grep_in "$b blob-gates claim_batch.rs like the parser flag set" "$f" 'blob_gate "$W" "$PROD" "$PRODBLOB"'
+  want=2; [ "$b" = "acceptance_r6_live_read_claim_run_v5.sh" ] && want=1
+  np=$(grep -c 'm=$(producer_gate "$W/$PROD")' "$f"); nb=$(grep -c 'm=$(blob_gate "$W" "$PROD" "$PRODBLOB")' "$f")
+  [ "$np" = "$want" ] && ok || bad "$b gates the render site $np times, expected $want (one per pin checkout)"
+  [ "$nb" = "$want" ] && ok || bad "$b blob-gates claim_batch.rs $nb times, expected $want"
+  grep_in "$b refuses an empty completion predicate instead of counting every line" "$f" 'the completion predicates are empty; a vacuous pattern would count every line'
+  grep_in "$b refuses an unset completion-record fixture" "$f" 'completion-real-bytes 259'
+done
+check_out "the shipped gate refuses an empty prefix rather than matching every line" 0 refused bash -c "source '$H'; PP_PREFIX= ; pp_check '$SB/pp_ok.txt' | grep -q vacuous && echo refused"
+check_out "…and the guard is in the gate itself, not only in the fixtures" 0 refused bash -c "source '$H'; PP_SHAPE= ; pp_check '$SB/pp_ok.txt' | grep -q vacuous && echo refused"
+check_out "the shipped producer_gate refuses a stdout render site" 0 refused bash -c "source '$H'; printf '    println!(\"{}\", partition.render(&timings));\n' > '$SB/pb_out.rs'; producer_gate '$SB/pb_out.rs' | grep -q 'NOT emitted to stderr' && echo refused"
+check_out "…and accepts the stderr render site" 0 OK bash -c "source '$H'; printf '    eprintln!(\"{}\", partition.render(&timings));\n' > '$SB/pb_err.rs'; producer_gate '$SB/pb_err.rs'"
+if [ -n "$REPO" ] && g -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  for pin in "$H4" "$H5"; do
+    check_out "the pinned producer renders the record to stderr at ${pin:0:8}" 0 '1460' bash -c "git -C '$REPO' grep -n -e 'partition.render(&timings)' '$pin' -- '$RBIN' < /dev/null"
+  done
+else
+  skip "no repo with the pinned commits: the pinned render-site grep was not run"
+fi
+
 # ---------------------------------------------------------------- negative controls: mutate a copy, expect failure
 echo "== the completion record (v4 blocker 2) and the verdict rules (v4 blocker 3), on the shipped helpers"
 PPREAL_B64='W3Byb2Nlc3MtcGFydGl0aW9uXSB0b3RhbF9tcz0zNDAxODggcHJlX3J1bl9tcz0wIGFyZ3NfbXM9MjIgaW5kZXhfYnVpbGRfbXM9MTU0MzYyIGVkZ2VfaW5kZXhfd2FybV9tcz0zNTYxNyBvdXRwdXRfcG9saWN5X21zPTEyNTA5IHJvc3Rlcl9tcz0wIHB1Ymxpc2hlZF9tb2NrX3ByZWNvbXB1dGVfbXM9MTc2MSBlbnRyaWVzX21zPTEzNTkxMSByZXBvcnRpbmdfbXM9MiBlbnRyaWVzX3Jlc29sdmVfbXM9MTEzOTU1IGVudHJpZXNfd2l0bmVzc19tcz0yMDYyMg=='
@@ -545,6 +592,23 @@ check_out "a bare PASS with rc 0 still holds" 0 "HELD" bash -c "source '$H'; pri
 check_out "a bare FAIL with rc 1 is still a falsification" 0 "FAILED" bash -c "source '$H'; printf 'FAIL w_x\\n' > '$SB/v_fals.txt'; claim_classify '$SB/v_fals.txt' 1 w_x"
 
 echo "== negative controls (a mutated packet must FAIL, or the checks are decorative)"
+cat > "$SB/mut13.py" <<'PY13'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'm=$(producer_gate "$W/$PROD") || nox "producer stream gate: $m" producer'
+assert old in s
+open(p,"w").write(s.replace(old,"",1))
+PY13
+
+cat > "$SB/mut14.py" <<'PY14'
+import sys
+p=sys.argv[1]; s=open(p).read()
+a = s.index("  # ---- THE COMPLETION RECORD REACHES THE GATE")
+b = s.index("  ck completion-predicates-empty-refuses", a)
+b = s.index(chr(10), b)
+open(p,"w").write(s[:a] + "  # (control removed by the mutation)\n" + s[b:])
+PY14
+
 negctl() { # negctl <label> <base packet> <mutation script>: the mutated copy must fail its OWN fixtures
   local label=$1 base=$2 mut=$3
   cp "$base" "$SB/neg.sh"
@@ -612,7 +676,7 @@ PY7
 cat > "$SB/mut8.py" <<'PY8'
 import sys
 p=sys.argv[1]; s=open(p).read()
-old = 'pc=$(pp_check "$OUT/$L.out")'
+old = 'pc=$(pp_check "$OUT/logs/$L.err")'
 assert old in s
 open(p,"w").write(s.replace(old,'pc="OK skipped by the mutation"',1))
 PY8
@@ -630,6 +694,14 @@ old = 'q=$(grep -c "^FAIL $n\\$" "$f" 2>/dev/null)'
 assert old in s
 open(p,"w").write(s.replace(old,'q=$(grep -c "^FAIL $n" "$f" 2>/dev/null)',1))
 PY10
+cat > "$SB/mut12.py" <<'PY12'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'pc=$(pp_check "$OUT/logs/$L.err")'
+assert old in s
+open(p,"w").write(s.replace(old,'pc=$(pp_check "$OUT/$L.out")',1))
+PY12
+
 cat > "$SB/mut11.py" <<'PY11'
 import sys
 p=sys.argv[1]; s=open(p).read()
@@ -648,6 +720,10 @@ negctl "the completion-record gate removed from a leg (v4 blocker 2)" "$P45" "$S
 negctl "the one-outcome-line-per-name rule neutered (v4 blocker 3)" "$P45" "$SB/mut9.py"
 negctl "a qualified FAIL accepted as a falsification (v4 blocker 3)" "$P45" "$SB/mut10.py"
 negctl "the completion prefix count relaxed from exactly-one to at-least-one (v4 blocker 2)" "$P45" "$SB/mut11.py"
+negctl "the completion gate pointed back at the leg stdout (the v5 defect)" "$P45" "$SB/mut12.py"
+negctl "…the same defect in the R6 packet" "$P6" "$SB/mut12.py"
+negctl "the producer render-site gate deleted from the pin setup" "$P45" "$SB/mut13.py"
+negctl "the end-to-end leg control deleted from the packet fixtures" "$P45" "$SB/mut14.py"
 # mut3 and mut5 change the run path rather than a helper; the packet's self-structure section is what
 # notices, so they are exercised as fixture controls too. The greps below are a second, independent signal.
 cp "$P45" "$SB/neg3.sh"; python3 "$SB/mut3.py" "$SB/neg3.sh" && ok || bad "bounds-gate mutation did not apply"
