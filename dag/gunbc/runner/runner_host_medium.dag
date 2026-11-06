@@ -44,7 +44,7 @@ import gunbc.machine_intake.host_capture_envelope {
   HostCaptureSectionReading, SectionAbsent, SectionPending, SectionComplete, SectionMalformed,
   host_capture_program, host_capture_bind, host_capture_section_reading, host_capture_run_identity_value,
 }
-import gunbc.host.per_boot_console_pin { per_boot_console_marker, AnchoredHostRow, PerBootHostPin, per_boot_pin_from_console_line }
+import gunbc.host.per_boot_console_pin { AnchoredHostRow, PerBootHostPin, host_key_console_line_checked, per_boot_pin_from_host_key_line }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
 import extdeps.tools.shadow_utils { useradd_system_nologin_command }
 import extdeps.ssh.openssh_client_commands { ssh_keygen_generate_command, ssh_keygen_fingerprint_command, ssh_keygen_ed25519_type }
@@ -520,8 +520,8 @@ fn runner_host_up_readback_of(capture: String, machine: NonEmptyStr, label: NonE
 // the kernel boot id the markers carry. The pin is composed from the host-key-pub and host-key-fingerprint sections only when
 // every host-key section EXITED 0 -- a key the daemon was never started with is not a pin.
 // An open envelope observes nothing (the program's END is its own statement that it wrote everything), and a
-// section that printed none, or a malformed one, is not observed. The line grammar is built here from the
-// producers' own outputs (per_boot_console_marker is imported), never retyped as a shell string.
+// section that printed none, or a malformed one, is not observed. The pin is built here from the
+// producers' own outputs through host_key_console_line_checked (the console grammar is not composed and re-parsed).
 type RunnerHostKeyObservation
   = RunnerHostKeyObserved { boot_id: NonEmptyStr, pin: PerBootHostPin }
   | RunnerHostKeyNotObserved { cause: String }
@@ -546,7 +546,7 @@ fn runner_host_key_observation(capture: String, machine: NonEmptyStr, row: Ancho
         n => runner_host_section_refusal(read: runner_host_section_read(envelope: e, name: n)),
       )
       if count(refusals) != 0 {
-        RunnerHostKeyNotObserved { cause: "a host-key section is absent, failed or malformed in this boot's envelope" }
+        RunnerHostKeyNotObserved { cause: join(map(refusals, r => runner_host_up_refusal_text(refusal: r)), "; ") }
       } else {
         let pub_read = runner_host_section_output(read: runner_host_section_read(envelope: e, name: runner_host_section_host_key_pub))
         let fp_read = runner_host_section_output(read: runner_host_section_read(envelope: e, name: runner_host_section_host_key_fingerprint))
@@ -558,10 +558,13 @@ fn runner_host_key_observation(capture: String, machine: NonEmptyStr, row: Ancho
             Present { value: key_b64 } => match runner_host_nth_field(output: fp_read, n: 1) {
               Absent => RunnerHostKeyNotObserved { cause: "the host-key-fingerprint section printed no fingerprint" }
               Present { value: fingerprint } => {
-                let line = join([per_boot_console_marker, join(["boot_id=", boot_id], ""), key_type, key_b64, fingerprint], " ")
-                match per_boot_pin_from_console_line(row: row, line: line) {
-                  Absent => RunnerHostKeyNotObserved { cause: "the key and fingerprint sections did not form a per-boot pin" }
-                  Present { value: pin } => RunnerHostKeyObserved { boot_id: boot_id as NonEmptyStr, pin: pin }
+                if boot_id == "" {
+                  RunnerHostKeyNotObserved { cause: "the envelope carries no boot id" }
+                } else {
+                  match host_key_console_line_checked(boot_id: boot_id as NonEmptyStr, key_type: key_type, key_b64: key_b64, fingerprint: fingerprint) {
+                    Absent => RunnerHostKeyNotObserved { cause: "the key type, blob or fingerprint printed by the key sections did not check" }
+                    Present { value: checked } => RunnerHostKeyObserved { boot_id: boot_id as NonEmptyStr, pin: per_boot_pin_from_host_key_line(row: row, parsed: checked) }
+                  }
                 }
               }
             }
