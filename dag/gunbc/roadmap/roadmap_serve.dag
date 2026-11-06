@@ -240,6 +240,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   srv2_deploy_dashboard_instance,
   dashboard_actuation_posture_label,
   dashboard_provision_transport_label,
+  dashboard_provision_transport,
   dashboard_instance_provision_plan_rows,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
@@ -1677,7 +1678,7 @@ fn dashboard_instance_json_members(instance: HostDashboardInstance) -> List<Json
     json_kv(
       key: "provision_transport",
       value: json_string(s: dashboard_provision_transport_label(
-        transport: instance.provision_transport,
+        transport: dashboard_provision_transport(instance: instance),
       )),
     ),
     json_kv(
