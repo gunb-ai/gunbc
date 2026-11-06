@@ -117,8 +117,8 @@ fn e1_part(designator: NonEmptyStr, row: ElectronicComponentRow) -> P4261DesignP
 // A claim can owe more than NVIDIA's bill of materials. Where the vendor's own document left a table
 // unread, the gap is carried HERE -- on the reconstruction that uses the row -- and not as a placeholder
 // inside the upstream row (DESIGN §3: an unread source is a downstream coverage obligation). The four
-// PI3CH480 positions are the case today: this document's customer-marking table did not extract, so the
-// row publishes no mark and the Q-body attribution rests on the ordering-code field and the observed body.
+// PI3CH480 positions are the case today: the row now publishes the vendor's Q-package mark (gunbc#15915),
+// and what each claim still owes is its own marking reading compared with that published mark.
 fn e1_part_owing(designator: NonEmptyStr, row: ElectronicComponentRow, owes: NonEmptyStr) -> P4261DesignPosition {
   P4261DesignPosition {
     position: p4261_position(revision: p4261_e1, designator: designator),

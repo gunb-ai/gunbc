@@ -24,6 +24,8 @@ import product.electrical.identification {
   PrintedFuseRating,
   RatingPrintedOnBody,
   seen_unordered,
+  GlyphSpan,
+  Transcribed,
 }
 import extdeps.electronic_component.ti_lm5066i { lm5066i_pwp }
 import extdeps.electronic_component.ti_tmp275 { tmp275_dgk }
@@ -294,7 +296,7 @@ fn removed_by(i: InstallationSnapshot, key: NonEmptyStr) -> Bool {
 }
 
 fn identified(c: ComponentInstanceIdentity, row: ElectronicComponentRow) -> InstalledComponent {
-  InstalledComponent { seen: seen_unordered(), component: c, terminals: [], identification: IdentifiedByMarking { row: row, marking: MarkingReading { text: "supplied", evidence: photo() } } }
+  InstalledComponent { seen: seen_unordered(), component: c, terminals: [], identification: IdentifiedByMarking { row: row, marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "supplied", sighting: Absent }, rest: [], followed_by: "" }, evidence: photo() } } }
 }
 
 fn reseen(cs: List<InstalledComponent>, c: ComponentInstanceIdentity) -> List<InstalledComponent> {
@@ -306,7 +308,7 @@ fn rating(amperes: Nat, volts: Nat?) -> PrintedFuseRating {
 }
 
 fn with_rating(cs: List<InstalledComponent>, c: ComponentInstanceIdentity, amperes: Nat, volts: Nat?) -> List<InstalledComponent> {
-  map(cs, x => if component_identity_eq(a: x.component, b: c) { InstalledComponent { seen: x.seen, component: x.component, terminals: x.terminals, identification: RatingPrintedOnBody { rating: rating(amperes: amperes, volts: volts), marking: MarkingReading { text: "supplied", evidence: photo() } } } } else { x })
+  map(cs, x => if component_identity_eq(a: x.component, b: c) { InstalledComponent { seen: x.seen, component: x.component, terminals: x.terminals, identification: RatingPrintedOnBody { rating: rating(amperes: amperes, volts: volts), marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "supplied", sighting: Absent }, rest: [], followed_by: "" }, evidence: photo() } } } } else { x })
 }
 
 fn rated(amperes: Nat, volts: Nat?) -> PopulatedPart {
@@ -612,7 +614,7 @@ test fn a_contradictory_order_places_nothing() -> Bool {
 test fn a_removal_is_now_only_with_nothing_fitted_after_it() -> Bool {
   let k1 = p4261_k1_layout
   let later_part = component_instance_identity(design: k1.design, local_identity: "supplied part seen at U10_P2 after the lift")
-  let seen_later = InstalledComponent { seen: AfterIncidents { keys: [k1_u10p2_lift.key] }, component: later_part, terminals: [], identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { text: "supplied", evidence: photo() } } }
+  let seen_later = InstalledComponent { seen: AfterIncidents { keys: [k1_u10p2_lift.key] }, component: later_part, terminals: [], identification: IdentifiedByMarking { row: mp2333cgtl, marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "supplied", sighting: Absent }, rest: [], followed_by: "" }, evidence: photo() } } }
   let replaced = with_parts(base: k1, components: concat(k1.components, [seen_later]), readings: concat(k1.designator_readings, [read(c: later_part, d: "U10_P2")]))
   let empty_pad = component_instance_identity(design: e1_design, local_identity: "supplied empty footprint read at U1_P5")
   let both = with_parts(base: p4261_e1_layout, components: concat(p4261_e1_layout.components, [InstalledComponent { seen: seen_unordered(), component: empty_pad, terminals: [], identification: FootprintUnpopulated { evidence: photo() } }]), readings: concat(p4261_e1_layout.designator_readings, [read(c: empty_pad, d: "U1_P5")]))
@@ -631,8 +633,8 @@ test fn ratings_must_agree_too() -> Bool {
   let e1 = p4261_e1_layout
   let second = component_instance_identity(design: e1_design, local_identity: "supplied second rating read at F300")
   let claim = claimed(p: e1_at(d: "F300"), part: rated(amperes: 100, volts: Absent))
-  let other_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Present { value: 125 }), marking: MarkingReading { text: "supplied", evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
-  let unread_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Absent), marking: MarkingReading { text: "supplied", evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
+  let other_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Present { value: 125 }), marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "supplied", sighting: Absent }, rest: [], followed_by: "" }, evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
+  let unread_volts = with_parts(base: e1, components: concat(e1.components, [InstalledComponent { seen: seen_unordered(), component: second, terminals: [], identification: RatingPrintedOnBody { rating: rating(amperes: 100, volts: Absent), marking: MarkingReading { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: "supplied", sighting: Absent }, rest: [], followed_by: "" }, evidence: photo() } } }]), readings: concat(e1.designator_readings, [read(c: second, d: "F300")]))
   conflicting(o: assess_on(layout: other_volts, p: claim))
     && supported(o: assess_on(layout: unread_volts, p: claim))
 }
