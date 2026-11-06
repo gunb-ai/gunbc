@@ -134,9 +134,13 @@ import v2.std.demand_engine {
   demand_identity_eq,
   demand_identity_key,
 }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present,
+}
 import v2.std.provenance {
   SpanIndex,
   node_authored_span_optional,
@@ -320,9 +324,28 @@ import std.types {
   List,
   Map,
 }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, string_contains, trim, list_append, list_snoc_item, fold_list, is_empty, length, list_at_optional, list_find_first, list_map, list_reverse, empty_map, map_contains_key, map_insert, map_lookup, map_support_keys, map_values_eq, zip_eq }
+import std.algebra {
+  Cons,
+  Empty,
+  FreeMonoid,
+  FreeSemigroup,
+  string_contains,
+  trim,
+  list_append,
+  list_snoc_item,
+  fold_list,
+  is_empty,
+  length,
+  list_at_optional,
+  list_find_first,
+  list_map,
+  list_reverse,
+  empty_map,
+  map_contains_key,
+  map_insert,
+  map_lookup,
+  map_support_keys,
+}
 import v2.std.integer {
   Int,
 }

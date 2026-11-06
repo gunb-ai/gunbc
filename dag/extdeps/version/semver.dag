@@ -1,9 +1,7 @@
 module extdeps.version.semver
 
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Ordering, Less, Equal, Greater, trim, zip_eq }
+import std.algebra { Ordering, Less, Equal, Greater, trim }
 import std.integer { NonNegativeInt }
 import std.types { List }
 import std.coercion { unicode_scalar_fold }

@@ -2,9 +2,7 @@ module v2.compiler.reference_site_collector
 
 import std.types { List, Map }
 
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, FreeMonoid, list_head, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert, map_values_eq, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, list_head, list_snoc_item, fold_list, is_empty, list_init, list_map, empty_map, map_contains_key, map_insert }
 
 import v2.std.diagnostic { Accepted, Locus, Rejected, node_locus }
 import v2.std.integer { Int }

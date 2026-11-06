@@ -2,12 +2,8 @@ module v2.std.type_binder
 
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, list_snoc_item, zip_map, collection_concat_shape, collection_count_shape, zip_eq }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Optional, Present, Absent, optional_present, optional_absent, optional_eq }
+import std.algebra { Cons, Empty, list_snoc_item, zip_map, collection_concat_shape, collection_count_shape }
+import std.optional { Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.arrow_contract { arrow_contract_conforms }
 import v2.std.arrow_signature { signature_order_edge, arrow_signature_order_head_is_list_introduction }
 import v2.std.node_query { binder_node_parts, find_labeled_child, find_named_child, named_child_lookup, NamedChildFound, NamedChildMissing, NamedChildAmbiguous }

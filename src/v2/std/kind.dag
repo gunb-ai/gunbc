@@ -1,9 +1,7 @@
 module v2.std.kind
 
 import std.occurrence_identity { OccurrenceSynthetic }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { fold_list, list_flat_map, empty_map, map_insert, map_lookup, collection_concat_shape, map_values_eq, zip_eq }
+import std.algebra { fold_list, list_flat_map, empty_map, map_insert, map_lookup, collection_concat_shape }
 
 import std.types { Map, List }
 import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Atom, Node, Symbol, TypeNode, arrow_signature_order_edge }

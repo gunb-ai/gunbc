@@ -3,9 +3,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 import std.types { List }
 import v2.std.arrow_signature { declared_signature_arrow }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Empty, list_snoc_item, list_at_optional, collection_concat_shape, collection_count_shape, zip_eq }
+import std.algebra { Empty, list_snoc_item, list_at_optional, collection_concat_shape, collection_count_shape }
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, bind_outcome, node_locus, outcome_accepted, outcome_rejected }
 import v2.std.node { positional_child_target_nodes, Arrow, Conj, Node, TypeNode, all_edges_named, all_edges_positional }
 import std.optional { Absent, Present }

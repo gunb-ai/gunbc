@@ -834,3 +834,32 @@ test fn a_nested_application_over_the_parents_parameter_is_admitted_at_a_by_targ
 test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_bearing_argument() -> Bool {
   eq_wall_refusal_count(source: generic_nested_fn_red_source) > 0
 }
+
+// HELPER BINDING IS DECLARING IDENTITY (closes integration concern
+// equality_synthesis_helper_binding_is_import_authority). The synthesized equality body binds its
+// step helpers by the qualified name the resolver reads through declared-module ownership, and the
+// emitter writes crate::<declaring>::::<fn> - the holder's import table is consulted at none of
+// gate, resolution, or emission. These cells pin the ADMISSION invariance of that re-base: holders
+// of container members stay admitted with no std.algebra/std.optional import at all, in-module and
+// across modules alike. The executed proof of the binding itself is the v2-bootstrap compile of
+// the emitted units with zero equality-only imports in the corpus (the census instruments do not
+// read emitted bytes by design); the skipped-body refusal at use is fail-closed by construction and
+// is guarded here through the walk door, since every pool-declared helper makes an undeclared
+// helper unconstructible inside a census fixture.
+data identity_cross_module_container_eq_green_source: String = "module eq_probe_identity_foreign\nimport std.types { String, List, Map }\nimport v2.std.node { Edge }\nfn same_edge(a: Edge, b: Edge) -> Bool { a == b }\n"
+
+data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+
+data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
+
+test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+  eq_admitted(source: identity_same_module_container_eq_green_source)
+}
+
+test fn cross_module_holder_comparison_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+  eq_admitted(source: identity_cross_module_container_eq_green_source)
+}
+
+test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container_member() -> Bool {
+  eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
+}

@@ -15,9 +15,7 @@ import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Optional, optional_eq }
+import std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.source_position { SourceByteColumn }
 import std.types { List }

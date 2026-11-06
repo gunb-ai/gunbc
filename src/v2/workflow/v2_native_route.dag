@@ -1,17 +1,13 @@
 module v2.workflow.v2_native_route
 
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { list_append, list_snoc_item, count_where, fold_list, is_empty, length, list_find_first, zip_eq }
+import std.algebra { list_append, list_snoc_item, count_where, fold_list, is_empty, length, list_find_first }
 import std.integer { Int }
 // This module's v2 imports (node.Symbol first at acquisition, then native_test_vocabulary, diagnostic,
 // compile_door_cause_ownership, floor_expected_red, floor_route_gap) are a NAMESPACE-XL layering question,
 // not a local re-point.
 // Int is std.integer because the counts on this receipt inhabit algebraic Int.
 import v2.std.node { Symbol }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Absent, Optional, Present, optional_eq }
+import std.optional { Absent, Optional, Present }
 import std.types { List }
 import extdeps.bazel.label { LabelParse, LabelParsed, LabelRefused }
 import extdeps.bazel.target_pattern { target_pattern_matches }

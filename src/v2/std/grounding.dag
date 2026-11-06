@@ -2,9 +2,7 @@ module v2.std.grounding
 
 import v2.std.witness { map_get_checked }
 import std.types { Map }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { empty_map, map_insert, map_values_eq, zip_eq }
+import std.algebra { empty_map, map_insert }
 import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
 import v2.std.diagnostic {
   Accepted,

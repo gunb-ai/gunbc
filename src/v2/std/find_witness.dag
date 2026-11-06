@@ -1,9 +1,7 @@
 module v2.std.find_witness
 
 import std.types { List }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { contains, zip_eq }
+import std.algebra { contains }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

@@ -4448,42 +4448,42 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
 // only in the emitted build, and two rules answering one question there is the fork that produced
 // the E0425 in v2-emitted-policy-unit-2 (derived:v2.std.diagnostic NonEmptyDiagnostics skipped its
 // body while the by-target judgment still emitted the call).
-// The answer reads the declaring module's named imports (the symbol index's own reading, so symbol
-// resolution and this share one authority): every helper the declaration's OWN structure names must
-// arrive from the helper's module. A foreign declaration's helpers belong to ITS declaring module,
-// gated there where its body is emitted; the whole plan is never checked, so no unrelated holder's
-// import set decides whether this declaration has a derived ==. A module that lacks a helper its
-// own structure names fails CLOSED at use with the typed refusal below - never a dangling call,
-// never a fabricated admission. A whole-module import of a helper module is not recorded by the
-// index today (no such import exists in the corpus; if one appears this predicate fails closed for
-// it, the same answer at both doors).
-// INTERIM, named: making the declaring module's import set the authority over whether its type has
-// a derived == is an accident of imports, not of equality (the symbol_index/node asymmetry is that
-// accident). The compiler's own construction should bind these helpers by declaring identity, like
-// the derived equality itself binds `==`. Recorded as integration concern
-// equality_synthesis_helper_binding_is_import_authority; trigger: "synthesized equality binds
-// helpers by declaring identity" - when that lands, delete this predicate and exercise it through
-// self_host_equality_admission_witness.
-fn equality_derived_body_emitted(structure: EqualityStructure, declaring_module: String, index: SymbolIndex) -> Bool {
-  let named = match map_get(index.module_named_imports, declaring_module) {
-    Absent => empty_map()
-    Present { value: m } => m
+// The answer is DECLARING IDENTITY, not imports: every helper the structure names must be
+// declared at the qualified name the synthesized body binds it to (symbol_index_lookup is the
+// census; equality_synth_qcall binds through it, and the emitter writes crate::<declaring>::::<fn>).
+// Every `==` a body carries - authored or synthesized - is itself guarded by the use door, so a
+// use reaching a skipped body is REFUSED at its own site with a located reason: no dangling call
+// at any depth, and admission never depends on a module's import set.
+// (integration concern equality_synthesis_helper_binding_is_import_authority: the declaring
+// module's import set was the authority over body existence - an accident of imports, not of
+// equality. Identity binding at all three sites - gate, resolution, emission - closes it.)
+fn equality_helper_declared(helper: EqualitySynthHelper, index: SymbolIndex) -> Bool {
+  match symbol_index_lookup(index: index, qualified_name: concat(helper.module_path, ".", helper.fn_name)) {
+    Present { value: _ } => true
+    Absent => false
   }
-  // A helper the declaring module declares by hand (zip_eq inside std.algebra, optional_eq inside
-  // std.optional) is visible in that module by definition - the module's own symbol table, not its
-  // imports, is the authority there (silent-bee-845 ruling; import self-loops are forbidden by the
-  // acyclicity law main enforces). Foreign helpers must arrive as named imports from the helper's
-  // module, as before. Only FOREIGN helpers can be missing here: nested structural comparisons
-  // compile inline (the EqualityThroughPlan step emits Eq directly), so no body names a sibling's
-  // derived helper - the one call site a derived helper ever has is an authored `==`, and that door
-  // asks THIS predicate the same question before emitting the call.
-  let missing = equality_structure_helpers(structure: structure) |> filter(h =>
-    h.module_path != declaring_module &&
-    match map_get(named, h.fn_name) {
-      Present { value: origin } => origin != h.module_path
-      Absent => true
-    })
-  (missing |> count) == 0
+}
+
+// The located reason a body is not emitted, or Absent when it is. One answer serves both doors:
+// equality_derived_body_emitted is its no-cause projection and the use door quotes the reason
+// verbatim, so the refusal and the skip can never disagree. Nesting is NOT traversed here on
+// purpose: every `==` a synthesized body carries descends through the SAME by-target use door as
+// an authored one, so each nested call to a skipped sibling is refused at its own use site, at
+// its own location - a parent body never needs to pre-refuse its members, and no cross-module
+// composite loses admission for lack of a plan row it was never required to carry.
+fn equality_body_block_reason(row: DeclarationEqualityPlan, index: SymbolIndex) -> String? {
+  match equality_structure_helpers(structure: row.structure) |> filter(h => !equality_helper_declared(helper: h, index: index)) |> first {
+    Present { value: h } =>
+      Present { value: concat("no module declares the helper ", h.module_path, ".", h.fn_name, " that the synthesized body binds it to") }
+    Absent => Absent
+  }
+}
+
+fn equality_derived_body_emitted(row: DeclarationEqualityPlan, index: SymbolIndex) -> Bool {
+  match equality_body_block_reason(row: row, index: index) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 fn equality_derived_target(plan: EqualityPlan, index: SymbolIndex) -> EqualityDerivedTarget {
@@ -4497,8 +4497,11 @@ fn equality_derived_target(plan: EqualityPlan, index: SymbolIndex) -> EqualityDe
           } else {
             match d.reading {
               DeclarationRead { reference: r } =>
-                if !equality_derived_body_emitted(structure: d.structure, declaring_module: r.module_path as String, index: index) {
-                  EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " is not emitted in ", r.module_path as String, ": its own structure names a helper its declaring module does not import (family-2 interim, fail-closed at use)") }
+                if !equality_derived_body_emitted(row: d, index: index) {
+                  match equality_body_block_reason(row: d, index: index) {
+                    Present { value: why } => EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " in ", r.module_path as String, " is not emitted: ", why) }
+                    Absent => EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " in ", r.module_path as String, " is not emitted") }
+                  }
                 } else {
                   EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
                 }
@@ -20545,7 +20548,7 @@ fn equality_synthesized_for(item: Node, scope: InferScope, imports: List<Node>) 
             match plan.declarations |> filter(d => d.declaration == identity) |> first {
               Absent => []
               Present { value: dp } =>
-                if !equality_derived_body_emitted(structure: dp.structure, declaring_module: scope.module_name, index: scope.type_env.symbol_index) { [] } else {
+                if !equality_derived_body_emitted(row: dp, index: scope.type_env.symbol_index) { [] } else {
                   [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
                 }
             }
@@ -20616,14 +20619,17 @@ fn equality_synth_binop(m: String, op: BinOp, l: Node, r: Node) -> Node {
   make_expr_node(occurrence_identity: OccurrenceSynthetic, expr_data: ExprBinOp { op: op, algebra_field: none, operand: none, derived: none }, children: [l, r], inferred: none, span: equality_synthetic_span(module_name: m, name: "=="))
 }
 
-// A QUALIFIED CALL in the shape the parser gives `a.b.f(x, y)`: a method call named by the last segment
-// whose receiver is the module path as a field-access chain, which the checker's qualified resolution
-// reads (qualified_or_service_projection). Arguments are positional.
+// A helper call inside a synthesized body binds by DECLARING IDENTITY, never by spelling in the
+// holder's import table: the node is a direct call named by its QUALIFIED name, which the resolver
+// reads through declared-module ownership (call_target_for_direct_call: declared_module_owner plus
+// the global declaration census) and the emitter writes as crate::<declaring>::::<fn> through the
+// SourceDeclarationCall route. The holder's import set plays no part at gate, resolution or
+// emission (equality_synthesis_helper_binding_is_import_authority, closed by this construction).
+// Arguments are positional.
 fn equality_synth_qcall(m: String, module_path: String, fn_name: String, args: List<Node>) -> Node {
-  let segments = module_path |> split(delimiter: ".")
-  let receiver = fold(segments |> skip(1), init: equality_synth_var(m: m, name: (segments |> first).value), f: (acc, seg) => equality_synth_field(m: m, base: acc, field: seg))
-  let sp = equality_synthetic_span(module_name: m, name: fn_name)
-  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: fn_name, expr_data: ExprMethodCall { method_semantics: none }, children: concat([receiver], args |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: sp, name_span: sp))), inferred: none, span: sp, name_span: sp)
+  let qualified = concat(module_path, ".", fn_name)
+  let sp = equality_synthetic_span(module_name: m, name: qualified)
+  make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: qualified, expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: sp, name_span: sp)), inferred: none, span: sp, name_span: sp)
 }
 
 fn equality_synth_lambda(m: String, p: String, q: String, body: Node) -> Node {

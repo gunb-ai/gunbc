@@ -2,9 +2,7 @@ module v2.cli.parse_verdict_reuse
 
 import std.types { Bool, Char, Int, List, Map, String }
 import std.algebra { FreeMonoid, Empty, FreeSemigroup, empty_map, fold_list, list_head, list_map, map_insert }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Absent, Optional, Present, optional_eq }
+import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 import v2.std.text { string_split }

@@ -6,13 +6,9 @@ import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.layout { Doc, DocText, DocLine, DocConcat, LayoutProtocol, render, doc_nest_by }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, Equal, Greater, Less, Ordering, fold_list, fold_list_right, is_empty, length, list_tail, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_map, map_values_eq, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, Equal, Greater, Less, Ordering, fold_list, fold_list_right, is_empty, length, list_tail, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_map }
 import v2.std.text { String, string_replace, Char }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Outcome, Rejected, Unavailable, bind_outcome, diagnostics_merge, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, rejected_with_pending, None, outcome_with_diagnostics }
 import v2.std.arrow_signature { ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, arrow_declared_parameter_order }
 import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, LexRule, LexRules, LexicalPhrase, LiteralPattern, ModeledLexRules, TokenRule, ModeTransitionTokenRule, NotFollowedByPattern, lex_rule_set_matching_rules, lex_rule_token_class_optional, TriviaRule, VoidLexRules, CharClassPattern, CharPattern, ChoicePattern, DelimitedPattern, EmptyPattern, OneOrMorePattern, OptionalPattern, RepeatPattern, SequencePattern }

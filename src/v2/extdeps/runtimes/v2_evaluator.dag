@@ -5,9 +5,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import std.types { List, Map }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Present }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { empty_map, list_at_optional, map_insert, collection_count_shape, map_values_eq, zip_eq }
+import std.algebra { empty_map, list_at_optional, map_insert, collection_count_shape }
 import v2.std.compilers.target_model {
   canonical_operation_op_add,
   canonical_operation_wire_matches_operation,

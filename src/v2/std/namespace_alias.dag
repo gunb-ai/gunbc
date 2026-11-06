@@ -1,8 +1,6 @@
 module v2.std.namespace_alias
 
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list, zip_eq }
+import std.algebra { Empty, FreeMonoid, list_snoc_item, fold_list }
 import v2.std.diagnostic { Locus }
 import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName }

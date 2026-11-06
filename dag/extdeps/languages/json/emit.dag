@@ -8,9 +8,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
 import std.coercion { unicode_scalar_unfold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_reverse, zip_eq }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, collection_join_shape, list_reverse }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

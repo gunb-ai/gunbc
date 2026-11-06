@@ -1,8 +1,6 @@
 module v2.std.map_introduction
 
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { list_snoc_item, empty_map, map_insert, map_lookup, map_values_eq, zip_eq }
+import std.algebra { list_snoc_item, empty_map, map_insert, map_lookup }
 import std.types { List, Map, String }
 
 import std.optional { Absent, Optional, Present, optional_absent }

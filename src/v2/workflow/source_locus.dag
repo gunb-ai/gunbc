@@ -1,9 +1,7 @@
 module v2.workflow.source_locus
 
 import std.types { String, Int, List }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { fold_list, list_snoc_item, zip_eq }
+import std.algebra { fold_list, list_snoc_item }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 

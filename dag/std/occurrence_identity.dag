@@ -3,9 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { FreeMonoid, collection_concat_shape, map_lookup, list_reverse, map_values_eq, zip_eq }
+import std.algebra { FreeMonoid, collection_concat_shape, map_lookup, list_reverse }
 import std.content_hash { Fnv1a64Structural }
 import std.types { Bool, Int, String, SourceSpan, List, Map }
 

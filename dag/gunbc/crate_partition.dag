@@ -1,9 +1,7 @@
 module gunbc.crate_partition
 
 import std.types { Bool, Int, List, NonEmptyStr, String, brand }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Absent, Optional, Present, optional_present, optional_eq }
+import std.optional { Absent, Optional, Present, optional_present }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
@@ -20,9 +18,7 @@ import gunbc.rust_emitted_edge {
   EmittedModuleTarget,
   EmittedCrateRootTarget
 }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push, map_lookup, map_values_eq, zip_eq }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, list_push, map_lookup }
 
 // THE PARTITION OF A MODULE GRAPH INTO COMPILATION UNITS, OVER ITS MODULES AND EDGES ALONE.
 //

@@ -2,9 +2,7 @@ module v2.std.integer
 
 import std.coercion { unicode_scalar_unfold }
 import std.occurrence_identity { OccurrenceSynthetic }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, list_snoc_item, fold_list, length, list_map, list_at_optional, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, TotalOrder, Ordering, Less, Equal, Greater, list_snoc_item, fold_list, length, list_map, list_at_optional }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, invariant_port_locus, port_refusal_locus, Unavailable, AmbiguousIntent }

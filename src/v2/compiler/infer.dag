@@ -9,9 +9,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.std.provenance { node_occurrence_id_optional }
 import std.integer { int_to_decimal_string, Signedness, Signed, Unsigned }
 import v2.std.kind { Kind, RosterKindIndex, TypeDenotationKind, kind_denoted_by_node, kind_node, roster_kind_index, roster_kind_index_lookup }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape, map_values_eq, zip_eq }
+import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty, length, list_map, list_snoc_item, list_tail, skip, zip_map, empty_map, list_at_optional, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_count_shape }
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -50,9 +48,13 @@ import v2.std.optional_layers {
   wrap_type_node_occupancy
 }
 import v2.std.integer { integer_decimal_digit_type_node, integer_decimal_digits_type_node, integer_int_type_node }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
+import std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
 import v2.std.node_query { find_core_child, is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain, field_projection_optional, named_child_lookup, pattern_wildcard_name }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }

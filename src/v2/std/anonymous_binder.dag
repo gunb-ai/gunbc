@@ -1,9 +1,7 @@
 module v2.std.anonymous_binder
 
 import std.types { List }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
-// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
-import std.algebra { Cons, Empty, list_reverse, zip_eq }
+import std.algebra { Cons, Empty, list_reverse }
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }
 import v2.std.node { Edge, Authored, Positional, Symbol, symbol_intern_lexeme, symbol_lexeme, StructuralLabel }
