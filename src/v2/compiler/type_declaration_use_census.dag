@@ -1,6 +1,6 @@
 module v2.compiler.type_declaration_use_census
 
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length, list_at_optional, map_keys }
 import std.types { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }

@@ -35,7 +35,7 @@ module v2.compiler.value_use_dependency
 // consumed (DESIGN section 3).
 //
 // ONE DISPOSITION PER ENTRY, NEVER A SILENT SKIP (DESIGN section 5). The fold's domain is
-// map_support_keys(tree.occurrence_resolutions) — the records' own support — and every arm of
+// map_keys(tree.occurrence_resolutions) — the records' own support — and every arm of
 // value_use_dispose returns a population, so no key is dropped. The three lengths therefore sum to
 // the domain's length, which is the totaliser a claim states over each fixture.
 //
@@ -45,7 +45,7 @@ module v2.compiler.value_use_dependency
 // O(K x N) and quadratic once resolve records an entry per reference, which it does. The consumer checks whole resolved programs,
 // so whole-corpus scale is the intended input, not a hypothetical.
 
-import std.algebra { empty_map, fold_list, int_total_order, list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_support_keys }
+import std.algebra { empty_map, fold_list, int_total_order, list_snoc_item, list_sort_by_key, map_insert, map_lookup, map_keys }
 import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present }
 import std.types { List, Map }
@@ -208,7 +208,7 @@ fn value_use_dispositions(tree: ResolvedTree) -> ValueUseDependencies {
 
 fn value_use_ordered_keys(tree: ResolvedTree) -> List<OccurrenceId> {
   list_sort_by_key(
-    xs: map_support_keys(m: tree.occurrence_resolutions),
+    xs: map_keys(m: tree.occurrence_resolutions),
     key: fn(id) { id.value },
     order: int_total_order()
   )

@@ -23,6 +23,7 @@ import v2.workflow.emitted_closure_crate_partition {
   derived_policy_partition,
   module_dag_from_dependency_facts
 }
+import std.algebra { map_keys }
 
 // THE INHABITANCE CLAIM FOR THE DERIVED CRATE PARTITION: the real fact producers, the real DAG
 // derivation and the real policy resolver, run over a source tree rather than handed a DAG. The

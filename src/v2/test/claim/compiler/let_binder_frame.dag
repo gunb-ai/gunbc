@@ -5,7 +5,7 @@ import v2.test.claim.compiler.callback_argument_formal { caf_correction_type, ca
 import v2.compiler.infer { infer, infer_entries_for_tree, infer_settled_type_at }
 import v2.std.diagnostic { Accepted, Diagnostic, None, Rejected, Some, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
 import v2.std.node { positional_child_target_nodes, Bind, ComputationNode, Node, Symbol }
-import std.algebra { fold_list, list_at_optional, map_support_keys }
+import std.algebra { fold_list, list_at_optional, map_keys }
 import v2.std.integer { Int }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -112,7 +112,7 @@ fn lbf_let_types(body: String) -> LbfLetTypes {
       match infer_entries_for_tree(tree: tree) {
         Rejected { diagnostics: _ } => lbf_no_types()
         Accepted { value: entries, diagnostics: _ } =>
-          fold_list(xs: map_support_keys(m: entries), empty: lbf_no_types(), cons: fn(acc, key) {
+          fold_list(xs: map_keys(m: entries), empty: lbf_no_types(), cons: fn(acc, key) {
             if lbf_is_bind(n: key) {
               LbfLetTypes {
                 value: lbf_child_type(bind: key, index: 1, entries: entries),

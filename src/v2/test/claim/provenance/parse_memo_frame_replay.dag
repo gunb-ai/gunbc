@@ -1,5 +1,7 @@
 module v2.test.claim.provenance.parse_memo_frame_replay
 
+import std.algebra { map_keys }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // EVERY NODE A PARSE RETURNS RESOLVES TO ITS OWN SURVIVING-PATH PROVENANCE. Backtracking restores

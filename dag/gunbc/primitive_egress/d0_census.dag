@@ -3,6 +3,7 @@ module gunbc.primitive_egress.d0_census
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.optional { Absent, Present }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
 import std.primitive_identity {
   AlgebraTemplate,
   BuiltinRegistry,
@@ -30,7 +31,6 @@ import std.primitive_identity {
   primitive_identity_for_symbol,
   primitive_identity_is_declared,
   primitive_identity_slug,
-  primitive_map_keys,
   primitive_projection_for_declaration_in,
   PrimitiveRuntimeBodyCensus,
   PrimitiveRuntimeBodiesObserved,
@@ -51,7 +51,7 @@ import std.primitive_identity {
   emit_contains_symbol,
   algebra_contains_template_name,
 }
-import std.primitive_projection { PrimitiveProjectionAnswer }
+import std.primitive_projection { PrimitiveProjectionAnswer, primitive_map_keys }
 import gunbc.v1.v1_interpreter_primitive_surface {
   v1_interpreter_primitive_arms,
   v1_interpreter_row_count,
@@ -203,12 +203,22 @@ fn primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveSurfaceAuth
     })
 }
 
-fn primitive_d0_map_keys_five_surface_join_holds() -> Bool {
+// map_keys joins four surfaces at one identity, and the PrimitiveContractRow surface carries no map_keys row:
+// its std.primitives contract is retired for the declared home std.algebra map_keys, so a row reappearing there
+// is an ambient second authority and reds this join.
+fn primitive_d0_map_keys_four_surface_join_holds() -> Bool {
   primitive_d0_authority_map_keys_rows_coherent(authority: BuiltinRegistry)
-    && primitive_d0_authority_map_keys_rows_coherent(authority: PrimitiveContractRow)
+    && count(primitive_d0_surface_census() |> filter(fn(row) {
+      row.authority == PrimitiveContractRow && (row.authored_symbol as String) == "map_keys"
+    })) == 0
     && primitive_d0_authority_map_keys_rows_coherent(authority: AlgebraTemplate)
     && primitive_d0_authority_map_keys_rows_coherent(authority: EmitHandler)
     && primitive_d0_authority_map_keys_rows_coherent(authority: InterpreterDispatch)
+}
+
+// The join as a run's verdict: exit 0 when it holds, 1 when it does not, so a gunbc run of this entry is an observation.
+fn primitive_d0_map_keys_four_surface_join_exit() -> ProcessExit {
+  if primitive_d0_map_keys_four_surface_join_holds() { ExitSuccess } else { exit_failure(reason: "map_keys four-surface identity join does not hold") }
 }
 
 fn primitive_d0_interpreter_rows_are_from_authority() -> Bool {

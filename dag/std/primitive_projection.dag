@@ -124,6 +124,7 @@ fn never_type_qualified_path() -> String {
 }
 data primitive_list_push: PrimitiveIdentity = primitive_identity_slug(name: "list_push")
 data primitive_shell_materialize_operation_argv: PrimitiveIdentity = primitive_identity_slug(name: "shell_materialize_operation_argv")
+data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_keys")
 data primitive_string_contains: PrimitiveIdentity = primitive_identity_slug(name: "string_contains")
 data primitive_chars: PrimitiveIdentity = primitive_identity_slug(name: "chars")
 data primitive_string_length: PrimitiveIdentity = primitive_identity_slug(name: "string_length")
@@ -173,6 +174,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_list_push, module_path: "std.algebra", decl_name: "list_push", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_shell_materialize_operation_argv, module_path: "std.operation_argv", decl_name: "shell_materialize_operation_argv", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_map_keys, module_path: "std.algebra", decl_name: "map_keys_primitive_delegate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_string_contains, module_path: "std.algebra", decl_name: "string_contains", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_chars, module_path: "std.host_text", decl_name: "chars", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_char_at, module_path: "std.host_text", decl_name: "char_at", fidelity: HostRealizedSeam),
@@ -188,6 +190,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_length, module_path: "std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_string_length, module_path: "std.host_text", decl_name: "string_length", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "std.algebra", decl_name: "map_insert", fidelity: ModeledProjection),
+    primitive_projection_row(primitive: primitive_map_keys, module_path: "std.algebra", decl_name: "map_keys", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_lookup, module_path: "std.algebra", decl_name: "map_lookup", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_get, module_path: "std.algebra", decl_name: "list_at_optional", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "std.algebra", decl_name: "empty_map", fidelity: ModeledProjection),

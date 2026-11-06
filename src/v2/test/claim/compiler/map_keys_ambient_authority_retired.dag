@@ -1,0 +1,75 @@
+module v2.test.claim.compiler.map_keys_ambient_authority_retired
+
+import v2.compiler.resolve { ResolvedTree }
+import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_source, bla_q_artifact }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import extdeps.filesystem.filesystem_io
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE map_keys AMBIENT AUTHORITY IS RETIRED (NAMESPACE-XL, the list_push #14751 and chars precedents). The
+// one authority for the name `map_keys` is the declared import of its home (std.algebra `fn map_keys<K, V>`,
+// the map's key support); the std.primitives `map_keys_contract` row that let the last resolve tier admit the
+// name with no import is DELETED, not aliased. THIS CLAIM READS THE REAL std.primitives CLOSURE FROM DISK, so
+// it is RED against a tree where the ambient row still exists: a module using `map_keys` WITHOUT the declared
+// import refuses AT RESOLVE with resolve_reason_unbound_symbol. The control keeps the ambient tier honest (a
+// name whose contract row stands, `map_values`, still binds), and the positive proves the declared import
+// binds.
+
+fn mkr_peer(path: String) -> DagSourceReadWitness {
+  bla_source(src: filesystem_read(path: path).content, artifact: bla_q_artifact, cu: ^body_let_annotation_q_cu)
+}
+
+fn mkr_primitives_closure() -> List<DagSourceReadWitness> {
+  [
+    mkr_peer(path: "dag/std/primitives.dag"),
+    mkr_peer(path: "dag/std/types.dag"),
+    mkr_peer(path: "dag/std/algebra.dag"),
+    mkr_peer(path: "dag/std/optional.dag"),
+    mkr_peer(path: "dag/std/error_primitives.dag"),
+    mkr_peer(path: "dag/std/unicode/types.dag")
+  ]
+}
+
+fn mkr_resolve_reason(p_src: String) -> Symbol {
+  match bla_assemble_with_peers(p_src: p_src, peers: mkr_primitives_closure()) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d)
+    Accepted { value: tree, diagnostics: _ } => ^accepted
+  }
+}
+
+// THE RED: no import of std.algebra, so no tier declares the name.
+test fn map_keys_without_the_declared_import_refuses_at_resolve() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m: m)\n}\n")
+    == ^resolve_reason_unbound_symbol
+}
+
+// THE CONTROL: the ambient tier is intact for the sibling contract row that stands (map_values_contract).
+test fn surviving_sibling_contract_row_still_binds_at_resolve() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\n\nfn f(m: Map<String, Int>) -> List<Int> {\n  map_values(m)\n}\n")
+    == ^accepted
+}
+
+// THE POSITIVE: the declared import binds to the real std.algebra declaration (read from disk).
+test fn declared_import_of_the_home_binds_where_ambient_refuses() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\nimport std.algebra { map_keys }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m: m)\n}\n")
+    == ^accepted
+}
+
+// THE CONSUMER'S CALL SHAPES: the gate tip's instruments (gunbc.instruments.namespace_wave_binding_diff and its
+// siblings) call map_keys positionally and through a pipe, never by label. Both shapes bind through the declared
+// import and both refuse without it, so the RED above is not an artifact of the labelled spelling.
+test fn consumer_call_shapes_bind_through_the_declared_import() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\nimport std.algebra { map_keys }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m)\n}\n\nfn g(m: Map<String, Int>) -> List<String> {\n  m |> map_keys\n}\n")
+    == ^accepted
+}
+
+test fn consumer_call_shapes_refuse_without_the_declared_import() -> Bool {
+  mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\n\nfn f(m: Map<String, Int>) -> List<String> {\n  map_keys(m)\n}\n")
+    == ^resolve_reason_unbound_symbol
+    && mkr_resolve_reason(p_src: "module p\n\nimport std.types { Int, List, Map, String }\n\nfn g(m: Map<String, Int>) -> List<String> {\n  m |> map_keys\n}\n")
+      == ^resolve_reason_unbound_symbol
+}

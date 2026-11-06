@@ -179,3 +179,26 @@ test fn w_homonym_list_push_keeps_authored_body() -> Bool {
     ["v1_rt::rc_list_push("]
   )
 }
+
+// std.algebra map_keys (the map's key support) reaches its Rust realization BY DECLARATION: the imported
+// HostRealizedSeam is emitted as the v1_rt::map_keys bridge, selected by its projection row, and is NOT
+// emitted as a self-recursive call to itself.
+test fn w_algebra_map_keys_reaches_the_bridge() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.algebra_map_keys_probe\nimport std.types { Int, List, Map, String }\nimport std.algebra { map_keys }\nfn probe(m: Map<String, Int>) -> List<String> { map_keys(m: m) }\n",
+    "src/test_claim_algebra_map_keys_probe.rs",
+    ["v1_rt::map_keys("],
+    []
+  )
+}
+
+// A same-named ordinary fn keeps its authored body: the bridge is keyed by std.algebra's declaration
+// through its projection row, never by the spelling `map_keys`.
+test fn w_homonym_map_keys_keeps_authored_body() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.homonym_map_keys_probe\nimport std.integer { Int }\nfn map_keys(m: Int) -> Int { 424247 }\nfn probe() -> Int { map_keys(m: 1) }\n",
+    "src/test_claim_homonym_map_keys_probe.rs",
+    ["424247"],
+    ["v1_rt::map_keys("]
+  )
+}

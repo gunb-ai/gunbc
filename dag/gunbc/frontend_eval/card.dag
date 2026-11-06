@@ -3,6 +3,7 @@ module gunbc.frontend_eval.card
 import std.types { String, Bool, Int, List }
 import std.syntax { ItemForm, OperatorSpec, BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody, ServiceBody, ResourceBody, AliasBody }
 import extdeps.languages.dag.syntax { dag_syntax_spec }
+import std.algebra { map_keys }
 
 // THE LANGUAGE CARD IS A PROJECTION OF THE SYNTAX AUTHORITY, NOT A SECOND ONE. The arm that hands
 // the model a card must hand it something derived from extdeps.languages.dag.syntax at the

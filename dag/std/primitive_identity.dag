@@ -31,7 +31,7 @@ import std.primitive_projection {
   PrimitiveProjection, PrimitiveProjectionAnswer,
   DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive, DeclarationPrimitiveUndisposed,
   primitive_projection_roster, primitive_projection_row_for_declaration,
-  primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_get, primitive_empty_map,
+  primitive_length, primitive_map_insert, primitive_map_get, primitive_lookup, primitive_get, primitive_empty_map, primitive_map_keys,
   primitive_decl_facts, primitive_decl_facts_at, primitive_export_signature_facts, primitive_data_decl_type_facts,
   primitive_concept_decl_facts, primitive_concept_decl_facts_live,
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
@@ -463,7 +463,6 @@ fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> B
   left.slug == right.slug
 }
 
-data primitive_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "map_keys")
 data primitive_sorted_map_keys: PrimitiveIdentity = primitive_identity_slug(name: "sorted_map_keys")
 data primitive_map_values: PrimitiveIdentity = primitive_identity_slug(name: "map_values")
 data primitive_fold_list: PrimitiveIdentity = primitive_identity_slug(name: "fold_list")

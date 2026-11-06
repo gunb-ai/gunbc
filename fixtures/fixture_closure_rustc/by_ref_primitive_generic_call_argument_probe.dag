@@ -1,0 +1,14 @@
+module fixture.closure.rustc_by_ref_primitive_generic_call_argument_probe
+
+import std.algebra { FreeMonoid, fold_list, empty_map, map_insert, map_keys }
+import std.types { Int, List, Map }
+
+// THE RED ARM of gunbc.recurring_failure_mode by_ref_primitive_over_a_generic_call_argument_infers_from_the_borrow.
+// `map_keys` is a by-ref primitive, so this call emits as `v1_rt::map_keys(&fold_list(..))`; rustc
+// then infers fold_list's accumulator from the borrowed `&HashMap` parameter and refuses the
+// `rc_empty_map` initializer (`Rc<HashMap>`) as E0308. The .dag is type-correct; only the emitted
+// crate is not. Do not bind the fold to a `let` here: that is the control's shape and would delete
+// the subject.
+fn by_ref_generic_argument_keys(ids: List<Int>) -> FreeMonoid<Int> {
+  map_keys(m: fold_list(xs: ids, empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))
+}
