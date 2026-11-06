@@ -4447,8 +4447,15 @@ fn equality_helper_visible(imp: Node, source_indices: Map<String, NewlineIndex>,
     (import_is_all(n: imp) || ((import_specific_names_at(n: imp, source_indices: source_indices) |> filter(nm => nm == helper.fn_name)) |> count) > 0)
 }
 
-fn equality_helpers_visible(plan: EqualityPlan, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let missing = equality_plan_helpers(plan: plan) |> filter(h =>
+// NARROWED (silent-bee-845 ruling): the skip covers exactly the bodies whose OWN structure names a
+// helper the declaring module does not import — the shape main was red on (derived:v2.std.symbol_index
+// emits map_values_eq; std.algebra there lacks that name; the node/symbol_index asymmetry). A plan
+// spans every declaration the equality walk reaches, but a foreign declaration's helpers belong to
+// ITS declaring module's imports and are gated there, where that body is synthesized; checking the
+// whole plan here would let an unrelated holder's import set decide whether THIS declaration has a
+// derived ==. One body, its own helpers, one door.
+fn equality_body_helpers_visible(structure: EqualityStructure, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let missing = equality_structure_helpers(structure: structure) |> filter(h =>
     imports |> filter(imp => equality_helper_visible(imp: imp, source_indices: source_indices, helper: h)) |> count == 0)
   (missing |> count) == 0
 }
@@ -20503,10 +20510,13 @@ fn equality_synthesized_for(item: Node, scope: InferScope, imports: List<Node>) 
       match equality_plan_of_walk(w: w) {
         Absent => []
         Present { value: plan } =>
-          if !equality_plan_synthesizable(plan: plan) { [] } else if !equality_helpers_visible(plan: plan, imports: imports, source_indices: si) { [] } else {
+          if !equality_plan_synthesizable(plan: plan) { [] } else {
             match plan.declarations |> filter(d => d.declaration == identity) |> first {
               Absent => []
-              Present { value: dp } => [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+              Present { value: dp } =>
+                if !equality_body_helpers_visible(structure: dp.structure, imports: imports, source_indices: si) { [] } else {
+                  [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+                }
             }
           }
       }
