@@ -121,10 +121,13 @@ fn nat_ceil_div_by_succ(a: Nat, divisor_prev: Nat) -> Nat {
   a / divisor + carry
 }
 
-// SUBTRACTION FLOORED AT ZERO, staying in the naturals: `a - b` is an Int, so the clamp is written as
-// max(a, b) - b, whose minuend can never be below the subtrahend.
+// SUBTRACTION FLOORED AT ZERO, folded over nat_sub so that nat_sub stays the one place a difference
+// re-enters the naturals: an underflow is nat_sub's typed arm, answered here as Zero.
 fn nat_saturating_sub(a: Nat, b: Nat) -> Nat {
-  nat_max(a: a, b: b) - b
+  match nat_sub(a: a, b: b) {
+    NatDifference { value: v } => v
+    NatSubtrahendExceedsMinuend => Zero
+  }
 }
 
 // THE SEMIRING IS INHABITANCE. These two values are the witnesses that the naturals inhabit the

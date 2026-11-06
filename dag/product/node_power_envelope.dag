@@ -18,6 +18,7 @@ import std.measure {
   Milliwatt,
   Percent,
   Permille,
+  permille,
   Watt,
   bandwidth_count,
   bit_width_count,
@@ -367,11 +368,33 @@ type DimmPowerReading
 // intervals are the canonical rows, and the refresh multiplier is their interval ratio. The band's own
 // standing travels with the answer; above the extended band the part is out of specification and no
 // band exists, so the reading is a refusal, never an extrapolated multiplier.
-type SelectedRefreshBand {
-  extended: Bool
-  multiplier: Nat
-  normal_standing: CitedFigureStanding
-  extended_standing: CitedFigureStanding?
+type SelectedRefreshBand
+  = NormalBand { normal_standing: CitedFigureStanding }
+  | ExtendedBand {
+      multiplier: Nat
+      normal_standing: CitedFigureStanding
+      extended_standing: CitedFigureStanding
+    }
+
+fn band_multiplier(band: SelectedRefreshBand) -> Nat {
+  match band {
+    NormalBand { normal_standing: _ } => 1
+    ExtendedBand { multiplier: m, normal_standing: _, extended_standing: _ } => m
+  }
+}
+
+fn band_normal_standing(band: SelectedRefreshBand) -> CitedFigureStanding {
+  match band {
+    NormalBand { normal_standing: n } => n
+    ExtendedBand { multiplier: _, normal_standing: n, extended_standing: _ } => n
+  }
+}
+
+fn band_extended_standing(band: SelectedRefreshBand) -> CitedFigureStanding? {
+  match band {
+    NormalBand { normal_standing: _ } => Absent
+    ExtendedBand { multiplier: _, normal_standing: _, extended_standing: e } => Present { value: e }
+  }
 }
 
 // THE GROUNDS OF A DIMM POWER ARE SEVERAL INDEPENDENT FACTS, each with its own standing, and none is
@@ -388,8 +411,8 @@ type DimmPowerGrounds {
 fn grounds_of(base: CitedFigureStanding, band: SelectedRefreshBand, activation: CitedFigureStanding?) -> DimmPowerGrounds {
   DimmPowerGrounds {
     profile_or_class: base,
-    normal_band: band.normal_standing,
-    extended_band: band.extended_standing,
+    normal_band: band_normal_standing(band: band),
+    extended_band: band_extended_standing(band: band),
     activation: activation,
   }
 }
@@ -412,18 +435,17 @@ fn refresh_band_from_rows(
     NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
     FromCitedFigure { value: normal, standing: ns } =>
       if celsius_count(c: case_temperature.tcase) <= celsius_count(c: normal.upper_tcase) {
-        RefreshBandSelected { band: SelectedRefreshBand { extended: false, multiplier: 1, normal_standing: ns, extended_standing: Absent } }
+        RefreshBandSelected { band: NormalBand { normal_standing: ns } }
       } else {
         match extended_row {
           NeedsReading { read_obligation: o } => RefreshBandNotRead { read_obligation: o }
           FromCitedFigure { value: extended, standing: es } =>
             if celsius_count(c: case_temperature.tcase) <= celsius_count(c: extended.upper_tcase) {
               RefreshBandSelected {
-                band: SelectedRefreshBand {
-                  extended: true,
+                band: ExtendedBand {
                   multiplier: nanosecond_count(n: normal.refresh_interval) / nanosecond_count(n: extended.refresh_interval),
                   normal_standing: ns,
-                  extended_standing: Present { value: es },
+                  extended_standing: es,
                 },
               }
             } else {
@@ -450,10 +472,10 @@ fn dimm_power_from_currents(
   let peak = bandwidth_count(b: module_peak_bandwidth(module: module))
   match nat_ceil_div(a: bandwidth_count(b: traffic.read) * 1000, b: peak) {
     Absent => Absent
-    Present { value: read_pm } =>
+    Present { value: read_nat } =>
       match nat_ceil_div(a: bandwidth_count(b: traffic.write) * 1000, b: peak) {
         Absent => Absent
-        Present { value: write_pm } => Present { value: dimm_power_over_shares(module: module, profile: profile, activate_duty: activate_duty, refresh_multiplier: refresh_multiplier, read_pm: read_pm, write_pm: write_pm) }
+        Present { value: write_nat } => Present { value: dimm_power_over_shares(module: module, profile: profile, activate_duty: activate_duty, refresh_multiplier: refresh_multiplier, read_share: permille(count: read_nat), write_share: permille(count: write_nat)) }
       }
   }
 }
@@ -463,16 +485,16 @@ fn dimm_power_over_shares(
   profile: DramCurrentProfile,
   activate_duty: Permille,
   refresh_multiplier: Nat,
-  read_pm: Nat,
-  write_pm: Nat,
+  read_share: Permille,
+  write_share: Permille,
 ) -> Milliwatt {
   let active_dies = dram_chips_per_rank(module: module)
   let all_dies = active_dies * module.rank_count
   let idd3n = milliampere_count(i: profile.idd3n)
   let background = all_dies * idd3n
   let activate = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd0), b: idd3n) * permille_count(p: activate_duty))
-  let read = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4r), b: idd3n) * read_pm)
-  let write = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4w), b: idd3n) * write_pm)
+  let read = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4r), b: idd3n) * permille_count(p: read_share))
+  let write = per_mille_ceil(a: active_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd4w), b: idd3n) * permille_count(p: write_share))
   let refresh = per_mille_ceil(
     a: all_dies * nat_saturating_sub(a: milliampere_count(i: profile.idd5b), b: idd3n)
       * permille_count(p: profile.refresh_duty) * refresh_multiplier,
@@ -491,7 +513,10 @@ fn per_mille_ceil(a: Nat) -> Nat {
 
 fn dimm_power_from_class_bound(bound: DramClassPowerBound, band: SelectedRefreshBand) -> DimmPowerReading {
   DimmPowerFromClassBound {
-    power: if band.extended { bound.extended_milliwatts } else { bound.normal_milliwatts },
+    power: match band {
+      NormalBand { normal_standing: _ } => bound.normal_milliwatts
+      ExtendedBand { multiplier: _, normal_standing: _, extended_standing: _ } => bound.extended_milliwatts
+    },
     grounds: grounds_of(base: bound.standing, band: band, activation: Absent),
   }
 }
@@ -553,7 +578,7 @@ fn part_currents_reading(
   duty: Permille,
   activation: CitedFigureStanding,
 ) -> DimmPowerReading {
-  match dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: duty, refresh_multiplier: band.multiplier) {
+  match dimm_power_from_currents(module: module, profile: part.profile, traffic: load.traffic, activate_duty: duty, refresh_multiplier: band_multiplier(band: band)) {
     Absent => DimmPowerRefused { cause: ModulePeakBandwidthZero { part_number: module.part_number } }
     Present { value: power } =>
       DimmPowerFromPartCurrents {

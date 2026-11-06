@@ -108,6 +108,7 @@ import product.node_power_envelope {
   refresh_band_for,
   RefreshBandSelected,
   refresh_band_from_rows,
+  band_multiplier,
   RefreshBandNotRead,
   RefreshBandBeyondSpecification,
   TemperatureBeyondExtendedBand,
@@ -832,15 +833,15 @@ test fn the_part_current_path_refuses_beyond_the_extended_band_too() -> Bool {
 // with the interval-ratio multiplier, 96 C no band.
 test fn the_band_edges_come_from_the_canonical_rows() -> Bool {
   let at85 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 85) }) {
-    RefreshBandSelected { band: b } => b.multiplier == 1 && !b.extended
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 1
     _ => false
   }
   let at86 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 86) }) {
-    RefreshBandSelected { band: b } => b.multiplier == 2 && b.extended
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 2
     _ => false
   }
   let at95 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 95) }) {
-    RefreshBandSelected { band: b } => b.extended
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 2
     _ => false
   }
   let at96 = match refresh_band_for(case_temperature: DramCaseTemperature { tcase: celsius(count: 96) }) {
@@ -1105,7 +1106,7 @@ test fn the_standing_of_the_extended_edge_decides_what_beyond_it_means() -> Bool
 // normal band at 40 C (extended_band Absent) and refuses as unread at 90 C.
 test fn the_extended_row_is_required_only_above_the_normal_edge() -> Bool {
   (match refresh_band_from_rows(case_temperature: DramCaseTemperature { tcase: celsius(count: 40) }, normal_row: ddr4_normal_refresh_band, extended_row: NeedsReading { read_obligation: "extended unread" as NonEmptyStr }) {
-    RefreshBandSelected { band: b } => !b.extended && b.extended_standing == Absent
+    RefreshBandSelected { band: b } => band_multiplier(band: b) == 1
     _ => false
   })
     && (match refresh_band_from_rows(case_temperature: DramCaseTemperature { tcase: celsius(count: 90) }, normal_row: ddr4_normal_refresh_band, extended_row: NeedsReading { read_obligation: "extended unread" as NonEmptyStr }) {
@@ -1126,4 +1127,30 @@ test fn an_observed_extended_edge_never_produces_the_spec_wall() -> Bool {
     DimmPowerRefused { cause: RefreshBandLimitObservedOnly { tcase: _, observed: _ } } => true
     _ => false
   }
+}
+
+// A zero module peak bandwidth, otherwise on the established part-current path (cited profile, cited activation
+// duty, cited band), has no per-mille share to divide into: it refuses as ModulePeakBandwidthZero, never defaults.
+data zero_peak_module: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: mod_2rx4_32g.part_number,
+  manufacturer: mod_2rx4_32g.manufacturer,
+  generation: mod_2rx4_32g.generation,
+  capacity_bytes: mod_2rx4_32g.capacity_bytes,
+  data_rate_mts: 0,
+  ecc: mod_2rx4_32g.ecc,
+  buffering: mod_2rx4_32g.buffering,
+  die_stacking: mod_2rx4_32g.die_stacking,
+  chip_width: mod_2rx4_32g.chip_width,
+  rank_count: mod_2rx4_32g.rank_count,
+}
+
+test fn a_zero_peak_bandwidth_module_refuses_instead_of_defaulting() -> Bool {
+  (match dimm_power(module: zero_peak_module, evidence: fixture_part_only_evidence, load: load_with_duty(duty: 100, standing: fixture_profile_standing)) {
+    DimmPowerRefused { cause: ModulePeakBandwidthZero { part_number: _ } } => true
+    _ => false
+  })
+    && (match dimm_power(module: mod_2rx4_32g, evidence: fixture_part_only_evidence, load: load_with_duty(duty: 100, standing: fixture_profile_standing)) {
+      DimmPowerFromPartCurrents { power: _, grounds: _ } => true
+      _ => false
+    })
 }
