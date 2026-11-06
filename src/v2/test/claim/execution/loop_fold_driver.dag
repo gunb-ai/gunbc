@@ -1,0 +1,28 @@
+module v2.test.claim.execution.loop_fold_driver
+
+import v2.compiler.eval { eval_loop_admit }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme, ComputationNode, Loop, Node }
+
+// ADMISSION CONTROL C3 OF THE FOLD-FIRST LOOP DRIVER (PR-1). ENROLLED, NOT EXECUTED: CI evaluates no
+// witness, so this claim has not run. C4 (role absent), C5 (direction absent) and C-admitted (a proven,
+// fold-realized, directed Loop refuses as semantics_deferred at the step, showing admission passed) need a
+// Loop fixture with a proven bound and a realized edge; they are NOT written here and are owed. C1 and C2
+// (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is std.algebra
+// fold_list_right, NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2.
+
+fn bare_loop() -> Node {
+  Node { kind: ComputationNode { behavior: Loop }, occurrence_id: OccurrenceSynthetic, children: [] }
+}
+
+fn admit_reason(n: Node) -> String {
+  match eval_loop_admit(node: n) {
+    Accepted { value: _, diagnostics: _ } => "executed"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+test fn a_loop_with_no_bound_is_refused_requires_termination_proof_holds() -> Bool {
+  admit_reason(n: bare_loop()) == "v2_eval_loop_requires_termination_proof"
+}
