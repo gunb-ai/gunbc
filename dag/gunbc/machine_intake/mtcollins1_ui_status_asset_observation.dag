@@ -44,6 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_encode_lower }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references, html_fold_ascii_octet }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
@@ -321,9 +322,9 @@ fn ui_octets_are_ascii(octets: List<Int>) -> Bool {
 // ---------------------------------------------------------------------------------------------
 // THE PAGE → ASSET PATHS. Purely syntactic, and deliberately not a JavaScript or HTML model: it
 // collects the values of `src` and `href` attributes, and keeps a value only when an attribute NAME
-// (ASCII case-folded) follows ASCII whitespace and is itself followed by `=`. The attribute spellings
-// are the WHATWG HTML tokenizer's (HTML Living Standard 13.2.5, the attribute-name and attribute-value
-// states): whitespace is TAB, LF, FF, CR or SPACE; the value is double-quoted, single-quoted, or
+// (ASCII case-folded) follows ASCII whitespace and is itself followed by `=`. The reading is
+// extdeps.whatwg.html_attribute_tokenization (HTML Living Standard 13.2.5, the attribute-name and
+// attribute-value states); this module supplies only the names it asks for. Whitespace is TAB, LF, FF, CR or SPACE; the value is double-quoted, single-quoted, or
 // unquoted up to whitespace or `>`; whitespace may surround `=`. The first version took only the
 // canonical writer spelling (a space, a double quote), so a script written with single quotes, an
 // unquoted value, an uppercase SRC or a newline before the attribute produced `refs=0`, which the
@@ -336,160 +337,12 @@ fn ui_octets_are_ascii(octets: List<Int>) -> Bool {
 // every path the page did not name and every shape the guard rejects.
 // ---------------------------------------------------------------------------------------------
 
-type MegaRacUiQuoteStyle
-  = DoubleQuoted
-  | SingleQuoted
-  | Unquoted
-
-type MegaRacUiAttrRef {
-  value: List<Int>
-  style: MegaRacUiQuoteStyle
-}
-
-type MegaRacUiAttrValue
-  = AttrValueRead { reference: MegaRacUiAttrRef, after: Int }
-  | AttrValueAbsent
-
-data megarac_ui_single_quote_octets: Int = 39
-
-data megarac_ui_equals_octets: Int = 61
-
-data megarac_ui_greater_than_octets: Int = 62
-
-data megarac_ui_form_feed_octets: Int = 12
-
-data megarac_ui_carriage_return_octets: Int = 13
-
 data megarac_ui_src_name_octets: List<Int> = ui_octets_of("src")
 
 data megarac_ui_href_name_octets: List<Int> = ui_octets_of("href")
 
-fn ui_fold_ascii_octet(o: Int) -> Int {
-  if o >= 65 && o <= 90 { o + 32 } else { o }
-}
-
-fn ui_octet_is_html_space(o: Int) -> Bool {
-  o == megarac_ui_space_octets || o == megarac_ui_tab_octets || o == megarac_ui_newline_octets
-    || o == megarac_ui_form_feed_octets || o == megarac_ui_carriage_return_octets
-}
-
-fn ui_skip_html_space(octets: List<Int>, at: Int) -> Int {
-  match ui_octet_at(octets, at) {
-    Absent => at
-    Present { value: o } => if ui_octet_is_html_space(o) { ui_skip_html_space(octets, at + 1) } else { at }
-  }
-}
-
-// Index of the first octet equal to `target` at or after `at`, or Absent.
-fn ui_index_of_octet(octets: List<Int>, target: Int, at: Int) -> Int? {
-  match ui_octet_at(octets, at) {
-    Absent => none
-    Present { value: o } => if o == target { Present { value: at } } else { ui_index_of_octet(octets, target, at + 1) }
-  }
-}
-
-// End (exclusive) of an unquoted value: the first whitespace or `>`, or the end of the page.
-fn ui_unquoted_value_end(octets: List<Int>, at: Int) -> Int {
-  match ui_octet_at(octets, at) {
-    Absent => at
-    Present { value: o } => if ui_octet_is_html_space(o) || o == megarac_ui_greater_than_octets {
-      at
-    } else {
-      ui_unquoted_value_end(octets, at + 1)
-    }
-  }
-}
-
-// The value starting at `at` (already past `=` and whitespace). An opening quote never closed is
-// AttrValueAbsent: a truncated page must not be read as "the value is the rest of the page".
-fn ui_attr_value_at(octets: List<Int>, at: Int) -> MegaRacUiAttrValue {
-  match ui_octet_at(octets, at) {
-    Absent => AttrValueAbsent
-    Present { value: o } => if o == megarac_ui_quote_octets {
-      ui_quoted_attr_value(octets, at, DoubleQuoted, o)
-    } else if o == megarac_ui_single_quote_octets {
-      ui_quoted_attr_value(octets, at, SingleQuoted, o)
-    } else if o == megarac_ui_greater_than_octets {
-      AttrValueAbsent
-    } else {
-      let end = ui_unquoted_value_end(octets, at)
-      AttrValueRead {
-        reference: MegaRacUiAttrRef { value: ui_octets_slice(octets, at, end - at), style: Unquoted },
-        after: end,
-      }
-    }
-  }
-}
-
-fn ui_quoted_attr_value(octets: List<Int>, open_at: Int, style: MegaRacUiQuoteStyle, quote: Int) -> MegaRacUiAttrValue {
-  match ui_index_of_octet(octets, quote, open_at + 1) {
-    Absent => AttrValueAbsent
-    Present { value: close_at } => AttrValueRead {
-      reference: MegaRacUiAttrRef { value: ui_octets_slice(octets, open_at + 1, close_at - open_at - 1), style: style },
-      after: close_at + 1,
-    }
-  }
-}
-
-// `name` (already folded) at `at` in the folded page, then optional whitespace, `=`, optional
-// whitespace: the index where the value begins, or Absent. The value itself is read from the
-// ORIGINAL octets, so its case is kept; only the NAME is case-insensitive.
-fn ui_value_start_after_name(folded: List<Int>, name: List<Int>, at: Int) -> Int? {
-  let name_length = count(name)
-  if !ui_octets_match_at(folded, name, name_length, at, 0) {
-    none
-  } else {
-    let equals_at = ui_skip_html_space(folded, at + name_length)
-    match ui_octet_at(folded, equals_at) {
-      Absent => none
-      Present { value: o } => if o == megarac_ui_equals_octets {
-        Present { value: ui_skip_html_space(folded, equals_at + 1) }
-      } else {
-        none
-      }
-    }
-  }
-}
-
-fn ui_attr_value_of_name(orig: List<Int>, folded: List<Int>, name: List<Int>, at: Int) -> MegaRacUiAttrValue {
-  match ui_value_start_after_name(folded, name, at) {
-    Absent => AttrValueAbsent
-    Present { value: start } => ui_attr_value_at(orig, start)
-  }
-}
-
-fn ui_ref_attr_at(orig: List<Int>, folded: List<Int>, at: Int) -> MegaRacUiAttrValue {
-  match ui_attr_value_of_name(orig, folded, megarac_ui_src_name_octets, at) {
-    AttrValueRead { reference: r, after: a } => AttrValueRead { reference: r, after: a }
-    AttrValueAbsent => ui_attr_value_of_name(orig, folded, megarac_ui_href_name_octets, at)
-  }
-}
-
-fn ui_attr_refs_scan(orig: List<Int>, folded: List<Int>, length: Int, at: Int, acc: List<MegaRacUiAttrRef>) -> List<MegaRacUiAttrRef> {
-  if at >= length {
-    acc
-  } else {
-    match ui_octet_at(folded, at) {
-      Absent => acc
-      Present { value: o } => if ui_octet_is_html_space(o) {
-        match ui_ref_attr_at(orig, folded, at + 1) {
-          AttrValueRead { reference: r, after: a } => ui_attr_refs_scan(
-            orig, folded, length, a,
-            if count(r.value) > 0 { list_push(acc, r) } else { acc },
-          )
-          AttrValueAbsent => ui_attr_refs_scan(orig, folded, length, at + 1, acc)
-        }
-      } else {
-        ui_attr_refs_scan(orig, folded, length, at + 1, acc)
-      }
-    }
-  }
-}
-
-fn ui_attr_refs_of_page(page_text: String) -> List<MegaRacUiAttrRef> {
-  let orig = ui_octets_of(page_text)
-  let folded = orig |> map(o => ui_fold_ascii_octet(o))
-  ui_attr_refs_scan(orig, folded, count(orig), 0, [])
+fn ui_attr_refs_of_page(page_text: String) -> List<HtmlAttributeReference> {
+  html_attribute_references(ui_octets_of(page_text), [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
 }
 
 fn ui_asset_refs_of_page(page_text: String) -> List<NonEmptyStr> {
@@ -1004,22 +857,22 @@ fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, h
   }
 }
 
-fn ui_refs_with_style(refs: List<MegaRacUiAttrRef>, style: MegaRacUiQuoteStyle) -> Int {
-  count(refs |> filter(r => r.style == style))
+fn ui_refs_with_style(refs: List<HtmlAttributeReference>, quoting: HtmlAttributeQuoting) -> Int {
+  count(refs |> filter(r => r.quoting == quoting))
 }
 
 fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
   let orig = ui_octets_of(body)
-  let folded = orig |> map(o => ui_fold_ascii_octet(o))
+  let folded = orig |> map(o => html_fold_ascii_octet(o))
   let length = count(folded)
-  let refs = ui_attr_refs_scan(orig, folded, length, 0, [])
+  let refs = html_attribute_references(orig, [megarac_ui_src_name_octets, megarac_ui_href_name_octets])
   MegaRacUiPageShape {
     body_length: byte_size(count: length),
     body_sha256: sha256_hex_of_text(text: body),
     script_tags: ui_count_token(folded, length, "<script"),
-    ref_double_quoted: ui_refs_with_style(refs, DoubleQuoted),
-    ref_single_quoted: ui_refs_with_style(refs, SingleQuoted),
-    ref_unquoted: ui_refs_with_style(refs, Unquoted),
+    ref_double_quoted: ui_refs_with_style(refs, AttributeValueDoubleQuoted),
+    ref_single_quoted: ui_refs_with_style(refs, AttributeValueSingleQuoted),
+    ref_unquoted: ui_refs_with_style(refs, AttributeValueUnquoted),
     js_substrings: ui_count_token(folded, length, ".js"),
     refresh_markers: ui_count_token(folded, length, "refresh"),
     frames: ui_count_token(folded, length, "<frame") + ui_count_token(folded, length, "<iframe"),
