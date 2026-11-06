@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # =====================================================================
-# acceptance_r4r5_selfcheck_v5 — the fixture self-test for the two v5 packets (rows R4/R5, and R6 held).
+# acceptance_r4_r5_r6_selfcheck_v6 — the fixture self-test for the three v6 packets: one job per row (R4,
+# R5, and R6 held). Item 8 is the v5 stream fix (the completion record is the runner's stderr, not stdout).
 # NOTHING FROM EITHER REPOSITORY IS EXECUTED and nothing is run on srv1: it feeds synthetic claim logs,
 # synthetic cgroup and memory.events files, synthetic run dirs and the packets' OWN tokenized command lines
 # to the packets' own functions (extracted verbatim from between the markers), runs each packet's embedded
@@ -25,10 +26,17 @@
 # usage: acceptance_r4r5_selfcheck_v3.sh [repo-with-pinned-commits]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-P45="$HERE/acceptance_r4_r5_claim_run_v5.sh"
-P6="$HERE/acceptance_r6_live_read_claim_run_v5.sh"
+# acceptance_r4_r5_r6_selfcheck_v6 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
+# because the installed calmcrab-udrv v4 (855920ac) refuses any RUNTIME_S above 7200 in its own preflight
+# (sleek-owl-397 via calm-eagle-670 msg_384bca0f; same shape as #15695 diag-v2 booked at 11700). So each
+# row is its own job: its own clone/fetch/checkout/build, its own legs, its own launcher line, and its own
+# wall_gate that refuses a booking over the cap BEFORE any fetch. Every v5 gate stays, in all three.
+P4="$HERE/acceptance_r4_claim_run_v6.sh"
+P5="$HERE/acceptance_r5_claim_run_v6.sh"
+P6="$HERE/acceptance_r6_live_read_claim_run_v6.sh"
+PKTS="$P4 $P5 $P6"
 REPO="${1:-}"
-[ -f "$P45" ] && [ -f "$P6" ] || { echo "packets not found next to the self-check" >&2; exit 1; }
+for f in "$P4" "$P5" "$P6"; do [ -f "$f" ] || { echo "packet $f not found next to the self-check" >&2; exit 1; }; done
 g() { git "$@" < /dev/null; }
 
 PASS_N=0; FAIL_N=0; SKIP_N=0; FAILED=()
@@ -45,7 +53,7 @@ check_out() { local name="$1" want="$2" pat="$3"; shift 3
 grep_in() { local name="$1" f="$2" pat="$3"; grep -qF -- "$pat" "$f" && ok || bad "$name: '$pat' not found in $(basename "$f")"; }
 grep_not() { local name="$1" f="$2" pat="$3"; grep -qF -- "$pat" "$f" && bad "$name: '$pat' IS in $(basename "$f")" || ok; }
 
-SB="$(mktemp -d "${TMPDIR:-/tmp}/r4r5-selfcheck-v5-XXXXXX")"
+SB="$(mktemp -d "${TMPDIR:-/tmp}/r4r5r6-selfcheck-v6-XXXXXX")"
 chmod 700 "$SB"
 trap 'rm -rf "$SB"' EXIT
 S4="$SB/fake/wt-r4/target/release/claim_batch"; S5="$SB/fake/wt-r5/target/release/claim_batch"; S6="$SB/fake/wt-r6/target/release/claim_batch"
@@ -54,11 +62,11 @@ S4="$SB/fake/wt-r4/target/release/claim_batch"; S5="$SB/fake/wt-r5/target/releas
 # the packets' own constants, read out by NAME (an open-ended assignment grep would also pick up runtime
 # lines like `O=$OUT/receipt.txt`, which is not a constant and would explode here)
 csv() { local s; s=$(printf '%s,' $1); printf '%s' "${s%,}"; }
-CONSTS='J|U|H|H4|H5|T|T4|T5|E4A|E4B|E5|E6|B4A|B4B|B5|B6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|BOOKED|RUNTIME_S|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG'
-eval "$(cat "$P45" "$P6" | grep -E "^($CONSTS)=")"
+CONSTS='J|U|H|H4|H5|T|T4|T5|E4A|E4B|E5|E6|B4A|B4B|B5|B6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|BOOKED|RUNTIME_S|DRIVER_S|LAUNCHER_CAP|N_LEGS|WALL_SUM|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG'
+eval "$(cat "$P4" "$P5" "$P6" | grep -E "^($CONSTS)=")"
 export BOOKED   # a bash -c probe must see the booked string the packet freezes
 load_cmds() { eval "$(grep -E "^CMD_[A-Z0-9_]+=" "$1")"; }
-load_cmds "$P45"; load_cmds "$P6"
+load_cmds "$P4"; load_cmds "$P5"; load_cmds "$P6"
 for v in J H4 H5 T4 T5 E4A E4B E5 E6 B4A B4B B5 B6 N4A N4B N5 N6 C4A C4B C5 C6 BOOKED \
          T_SETUP_CLONE T_SETUP_FETCH T_SETUP_CHECKOUT T_BUILD T_LEG \
          CMD_CLONE_4 CMD_FETCH_4 CMD_CHECKOUT_4 CMD_BUILD_4 CMD_LEG_R4A CMD_LEG_R4B \
@@ -68,10 +76,13 @@ for v in J H4 H5 T4 T5 E4A E4B E5 E6 B4A B4B B5 B6 N4A N4B N5 N6 C4A C4B C5 C6 B
 done
 # the two packets must agree on the shared vocabulary, not merely resemble each other
 for v in BOOKED T_SETUP_CLONE T_SETUP_FETCH T_SETUP_CHECKOUT T_BUILD T_LEG; do :; done
-[ "$(grep -m1 '^BOOKED=' "$P45")" = "$(grep -m1 '^BOOKED=' "$P6")" ] && ok || bad "the two packets freeze different bounds"
+b4=$(grep -m1 '^BOOKED=' "$P4"); b5=$(grep -m1 '^BOOKED=' "$P5"); b6=$(grep -m1 '^BOOKED=' "$P6")
+[ "$b4" = "$b5" ] && [ "$b5" = "$b6" ] && ok || bad "the three packets freeze different bounds: $b4 | $b5 | $b6"
+# v6: every packet must also freeze the same launcher cap, and the per-row wall constants must be its own
+for f in $PKTS; do grep -q 'LAUNCHER_CAP=7200' "$f" && ok || bad "$(basename "$f") does not freeze the installed launcher cap"; done
 
 # ---------------------------------------------------------------- each packet's embedded fixtures must pass
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   out=$(bash "$f" --classifier-fixtures 2>&1); rc=$?
   np=$(printf '%s\n' "$out" | grep -c '^FIXTURE PASS'); nf=$(printf '%s\n' "$out" | grep -c '^FIXTURE FAIL')
   if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 60 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf"; fi
@@ -80,13 +91,33 @@ done
 
 # ---------------------------------------------------------------- the helpers, verbatim, fed synthetic input
 helpers() { sed -n '/# ---------------------------------------------------------------- gates and helpers/,/# ---------------------------------------------------------------- fixture mode/p' "$1" | sed '$d'; }
-helpers "$P45" > "$SB/h45.sh"; helpers "$P6" > "$SB/h6.sh"
-for f in "$SB/h45.sh" "$SB/h6.sh"; do
+helpers "$P4" > "$SB/h4.sh"; helpers "$P5" > "$SB/h5.sh"; helpers "$P6" > "$SB/h6.sh"
+# one gate, three jobs: the GATE SECTION of the three packets has to be the same code. Row-specific lines
+# (the pins, entry paths, CSVs, worktree names, the runner variable) and R6's grant gate are excluded BY
+# NAME; everything else -- the scope gate, the booked-bounds gate, the wall gate, the OOM readers, the
+# completion-record gate, the verdict classifier, the leg runner -- must be identical, or the three jobs are
+# three dialects and one of them is silently weaker than the others.
+gatesection() { sed -n '/# ---------------------------------------------------------------- gates and helpers/,/# ---------------------------------------------------------------- fixture mode/p' "$1" \
+  | grep -vE '^[[:space:]]*#' | grep -vE '^[[:space:]]*$' \
+  | grep -vE '\b(E4A|E4B|E5|E6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|wt-r[456]|BIN[456]|WT[456]|grant_gate|GRANT)\b' \
+  | sed -e 's/LEG_R[0-9A-B]*/LEGL/g'; }
+gs4=$(gatesection "$P4"); gs5=$(gatesection "$P5"); gs6=$(gatesection "$P6")
+ngs=$(printf '%s\n' "$gs4" | grep -c .)
+[ "$ngs" -ge 100 ] && ok || bad "the gate-section extraction found only $ngs lines: the drift check would be vacuous"
+[ "$gs4" = "$gs5" ] && ok || bad "the R4 and R5 packets' gate sections drifted apart: $(diff <(printf '%s\n' "$gs4") <(printf '%s\n' "$gs5") | head -4 | tr '\n' '|')"
+d6=$(diff <(printf '%s\n' "$gs4") <(printf '%s\n' "$gs6"))
+[ "$(printf '%s\n' "$d6" | grep -c '^<')" = 0 ] && ok || bad "the R6 packet is missing gate code the R4 packet has: $(printf '%s\n' "$d6" | grep '^<' | head -3 | tr '\n' '|')"
+printf '%s\n' "$d6" | grep '^>' | grep -qi 'execution-grant' && ok || bad "the only code R6 adds over R4 is not its grant gate"
+printf '%s\n' "$d6" | grep '^>' | grep -qE 'pp_check|claim_classify|wall_gate|bounds_check|scope_gate|oom_' && bad "R6 adds a second dialect of a gate R4 already has" || ok
+grep -q 'grant_gate' "$P4" && bad "the grantable R4 packet grew a grant gate of its own" || ok
+grep -q 'grant_gate' "$P6" && ok || bad "the held R6 packet lost its grant gate"
+for f in $PKTS; do grep_in "$(basename "$f") carries the wall gate" "$f" 'wall_gate() {'; done
+for f in "$SB/h4.sh" "$SB/h5.sh" "$SB/h6.sh"; do
   for fn in scope_gate bounds_check out_absent bin_sha oom_parse oom_key oom_pair oom_verdict oom_pair_verdict oom_snap claim_classify leg_state stray_verdict_lines names_gate tm; do
     grep -q "^$fn()" "$f" && ok || bad "$(basename "$f") does not define $fn"
   done
 done
-H="$SB/h45.sh"
+H="$SB/h4.sh"
 
 echo "== the classifier: bare PASS/FAIL only, one per name, and the runner's exit code checked apart"
 printf 'PASS witness_inbox_stale_live_receipt_refuses\n' > "$SB/p"
@@ -161,7 +192,7 @@ printf '0\n' > "$SB/cg/memory.swap.max"; printf '4096\n' > "$SB/cg/pids.max"; pr
 check "bounds gate accepts the booked cgroup" 0 bash -c "source $H; bounds_check '$SB/cg' >/dev/null"
 for k in memory.max memory.high memory.swap.max pids.max cpu.max; do
   printf '9\n' > "$SB/cg/$k"
-  check_out "bounds gate refuses a wrong $k with the value in the message" 2 "booked bounds" bash -c "source $H; BOOKED=\"\$(grep -m1 '^BOOKED=' $P45 | cut -d= -f2-)\"; m=\$(bounds_check '$SB/cg') || { echo \"booked bounds: \$m\"; exit 2; }; exit 0"
+  check_out "bounds gate refuses a wrong $k with the value in the message" 2 "booked bounds" bash -c "source $H; BOOKED=\"\$(grep -m1 '^BOOKED=' $P4 | cut -d= -f2-)\"; m=\$(bounds_check '$SB/cg') || { echo \"booked bounds: \$m\"; exit 2; }; exit 0"
   case "$k" in memory.max) printf '34359738368\n' > "$SB/cg/$k";; memory.high) printf '30064771072\n' > "$SB/cg/$k";; memory.swap.max) printf '0\n' > "$SB/cg/$k";; pids.max) printf '4096\n' > "$SB/cg/$k";; cpu.max) printf '3200000 100000\n' > "$SB/cg/$k";; esac
 done
 printf 'max\n' > "$SB/cg/memory.max"
@@ -169,8 +200,8 @@ check "an unlimited cgroup (memory.max is the literal 'max') is refused, not ada
 printf '34359738368\n' > "$SB/cg/memory.max"; mv "$SB/cg/cpu.max" "$SB/cg/cpu.gone"
 check "an unreadable counter is refused" 0 bash -c "source $H; ! bounds_check '$SB/cg' >/dev/null"
 mv "$SB/cg/cpu.gone" "$SB/cg/cpu.max"
-check "the bounds gate is a gate, not a dump: bounds_check output decides the exit" 0 bash -c "grep -q 'BM=\$(bounds_check' '$P45' && grep -q 'booked bounds' '$P45'"
-check "and it runs before the first fetch" 0 bash -c "a=\$(grep -n 'BM=\$(bounds_check' '$P45' | cut -d: -f1); b=\$(grep -n 'CMD_FETCH_4\"' '$P45' | head -1 | cut -d: -f1); [ -n \"\$a\" ] && [ -n \"\$b\" ] && [ \"\$a\" -lt \"\$b\" ]"
+check "the bounds gate is a gate, not a dump: bounds_check output decides the exit" 0 bash -c "grep -q 'BM=\$(bounds_check' '$P4' && grep -q 'booked bounds' '$P4'"
+check "and it runs before the first fetch" 0 bash -c "a=\$(grep -n 'BM=\$(bounds_check' '$P4' | cut -d: -f1); b=\$(grep -n 'CMD_FETCH_4\"' '$P4' | head -1 | cut -d: -f1); [ -n \"\$a\" ] && [ -n \"\$b\" ] && [ \"\$a\" -lt \"\$b\" ]"
 check "…same in the held R6 packet" 0 bash -c "a=\$(grep -n 'BM=\$(bounds_check' '$P6' | cut -d: -f1); b=\$(grep -n 'CMD_FETCH\"' '$P6' | head -1 | cut -d: -f1); [ -n \"\$a\" ] && [ -n \"\$b\" ] && [ \"\$a\" -lt \"\$b\" ]"
 
 echo "== the scope gate: end-anchored on the booked <JOB>.scope"
@@ -184,7 +215,7 @@ sg not-cgroup-v2 "1::/x/fierce-wren-19-r4r5-db56530f.scope" fierce-wren-19-r4r5-
 sg two-cgroup-lines "$(printf '0::/x/y.scope\n1::/z')" y
 
 echo "== the launcher frame (item 1): argv, ledger rows, units, and no bare systemd-run"
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   grep_in "$b names the calmcrab-udrv.sh launcher" "$f" "calmcrab-udrv.sh"
   grep_in "$b states the full argv tuple" "$f" "<JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%> <STAGED_SCRIPT> <SCRIPT_SHA> OUT"
@@ -199,15 +230,20 @@ for f in "$P45" "$P6"; do
   grep_in "$b states the driver ledger row" "$f" "$(grep -m1 '^J=' "$f" | cut -d= -f2)-drv"
   grep_in "$b books the R row in GiB, not bytes" "$f" "-res   cap 32 (GiB"
   grep_not "$b does not book the R row in bytes" "$f" "-res            cap ="
+# DESIGN 3 style rule, enforced on the packets: a line number in a file this size is a second naming
+# scheme that any edit above it silently invalidates. Name the symbol, and let a run log hold the line.
+for f in $PKTS; do grep -qE 'claim_batch\.rs:[0-9]+' "$f" && bad "$(basename "$f") cites claim_batch.rs by line number instead of by symbol" || ok; done
   grep_in "$b states the driver unit" "$f" "calmcrab-drv-$(grep -m1 "^J=" "$f" | cut -d= -f2).service"
 done
-check "the R4/R5 job token is the row name" 0 bash -c "[ \"\$(grep -m1 '^J=' '$P45' | cut -d= -f2)\" = fierce-wren-19-r4r5-db56530f ]"
+check "the R4 job token names its own row job" 0 bash -c "[ \"\$(grep -m1 '^J=' '$P4' | cut -d= -f2)\" = fierce-wren-19-r4-db56530f ]"
+check "the R5 job token names its own row job" 0 bash -c "[ \"\$(grep -m1 '^J=' '$P5' | cut -d= -f2)\" = fierce-wren-19-r5-dff57af7 ]"
+check "the split is real: no job clones or builds the other row's pin" 0 bash -c "grep -q 'pin_clone \"\$WT4\"' '$P5' && exit 1; grep -q 'pin_clone \"\$WT5\"' '$P4' && exit 1; exit 0"
 check "the R6 job token is the row name" 0 bash -c "[ \"\$(grep -m1 '^J=' '$P6' | cut -d= -f2)\" = fierce-wren-19-r6-dff57af7 ]"
-check "JOB is derived from the launcher's OUT, not assumed" 0 bash -c "grep -q 'JOB=\$(basename \"\$(dirname \"\$OUT\")\"' '$P45' && grep -q 'JOB=\$(basename \"\$(dirname \"\$OUT\")\"' '$P6'"
+check "JOB is derived from the launcher's OUT, not assumed" 0 bash -c "grep -q 'JOB=\$(basename \"\$(dirname \"\$OUT\")\"' '$P4' && grep -q 'JOB=\$(basename \"\$(dirname \"\$OUT\")\"' '$P6'"
 check "and the derivation is enforced: a job dir mismatch refuses the run" 0 bash -c "source $H; ! scope_gate '0::/x/wrong-job.scope' wrong-job2 >/dev/null"
 
 echo "== the exit contract (item 4): 0 held, 1 falsified, 2 everything else"
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   code=$(grep -vE '^[[:space:]]*#' "$f")
   n1=$(printf '%s\n' "$code" | grep -cE '\bexit 1\b'); [ "$n1" = 1 ] && ok || bad "$b has $n1 executable 'exit 1' (want exactly 1: the falsified branch)"
@@ -216,10 +252,10 @@ for f in "$P45" "$P6"; do
   grep_in "$b routes every gate refusal through the nox helper" "$f" "nox() {"
   check "$b's nox helper can only exit 2" 0 bash -c "grep 'nox() {' '$f' | grep -q 'exit 2; }' || grep -A3 'nox() {' '$f' | grep -q 'exit 2'"
 done
-check_out "usage with no argument is NO_OBSERVATION (exit 2)" 2 "NO_OBSERVATION" bash "$P45"
-check_out "usage with two arguments is NO_OBSERVATION (exit 2)" 2 "NO_OBSERVATION" bash "$P45" a b
-check_out "an unknown flag is not swallowed as a path (exit 2)" 2 "NO_OBSERVATION" bash "$P45" --nope
-check_out "a run dir that is not a job's out dir is refused (exit 2)" 2 "does not end in /out" bash "$P45" "$SB/notout"
+check_out "usage with no argument is NO_OBSERVATION (exit 2)" 2 "NO_OBSERVATION" bash "$P4"
+check_out "usage with two arguments is NO_OBSERVATION (exit 2)" 2 "NO_OBSERVATION" bash "$P4" a b
+check_out "an unknown flag is not swallowed as a path (exit 2)" 2 "NO_OBSERVATION" bash "$P4" --nope
+check_out "a run dir that is not a job's out dir is refused (exit 2)" 2 "does not end in /out" bash "$P4" "$SB/notout"
 check "…and nothing was created for it" 0 bash -c "[ ! -e '$SB/notout' ]"
 check_out "held R6 with no argument is NO_OBSERVATION (exit 2)" 2 "NO_OBSERVATION" bash "$P6"
 check_out "held R6 with OUT but no grant reference refuses (exit 2)" 2 "msg_3407a188" bash "$P6" "$SB/r6job/out"
@@ -231,7 +267,7 @@ check "…and --predict-only creates nothing" 0 bash -c "[ ! -e '$SB/predict' ] 
 check "the grant gate refuses blank, whitespace and flag-like references" 0 bash -c "source $(helpers "$P6" > $SB/h6b.sh; echo $SB/h6b.sh); grant_gate '' >/dev/null && exit 1; grant_gate '  ' >/dev/null && exit 1; grant_gate '--x' >/dev/null && exit 1; grant_gate 'keen-otter-cleared' >/dev/null"
 
 echo "== the frame's own claims are testable: timeouts, wall arithmetic, no mutation"
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   n=$(grep -cE 'timeout "\$T_(SETUP_CLONE|SETUP_FETCH|SETUP_CHECKOUT|BUILD|LEG)"' "$f")
   [ "$n" -ge 5 ] && ok || bad "$b wraps only $n steps in a frozen timeout"
@@ -243,31 +279,51 @@ for f in "$P45" "$P6"; do
   done
 done
 echo "== the booked bounds are the launcher's numbers, in the launcher's units (v4 blocker 1)"
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   eval "$(grep -E '^(RUNTIME_S|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|BOOKED)=' "$f")"
   want="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)) memory.swap.max=0 pids.max=$TASKS_MAX cpu.max=$((CPU_PCT*1000))_100000"
   [ "$BOOKED" = "$want" ] && ok || bad "$b freezes bounds ($BOOKED) that are not the GiB/pids/cpu booking it states ($want)"
   grep_in "$b passes RUNTIME in seconds" "$f" "calmcrab-udrv.sh $(grep -m1 '^J=' "$f" | cut -d= -f2) $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT>"
-  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v5 packet sha256> OUT"
+  grep_in "$b hashes the PACKET, not a commit, in the launcher argv" "$f" "<STAGED_SCRIPT> <v6 packet sha256> OUT"
 done
-for f in "$P45" "$P6"; do
+
+for f in $PKTS; do
   b=$(basename "$f")
-  eval "$(grep -E '^(RUNTIME_S|T_SETUP_|T_BUILD|T_LEG)=' "$f")"
-  grep -Fq "scope_RuntimeMaxSec=$RUNTIME_S" "$f" && ok || bad "$b's launcher RUNTIME_S ($RUNTIME_S) is not the scope wall it states"
-  sum=$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG ))
-  [ "$f" = "$P6" ] && sum=$(( T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT + T_BUILD + T_LEG ))
-  [ "$RUNTIME_S" -ge "$sum" ] && ok || bad "$b's launcher wall $RUNTIME_S is below its capped step sum $sum"
+  eval "$(grep -E '^(RUNTIME_S|DRIVER_S|LAUNCHER_CAP|N_LEGS|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG)=' "$f")"
+  sum=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG ))
+  pr=$(bash "$f" --predict-only)
+  printf '%s\n' "$pr" | grep -qF "scope_RuntimeMaxSec=$RUNTIME_S" && ok || bad "$b's launcher RUNTIME_S ($RUNTIME_S) is not the scope wall its manifest states"
+  printf '%s\n' "$pr" | grep -qF "wall_capped_sum_s=$sum " && ok || bad "$b states a capped step sum that is not the sum of its own frozen timeouts ($sum)"
+  printf '%s\n' "$pr" | grep -qF "driver_RuntimeMaxSec=$((RUNTIME_S+300))" && ok || bad "$b's manifest does not size the driver unit at RUNTIME_S plus 300"
+  case "$b" in
+    acceptance_r4_*) exp="5400 4920 2";;
+    acceptance_r5_*) exp="4500 4020 1";;
+    acceptance_r6_*) exp="4800 4020 1";;
+  esac
+  set -- $exp
+  [ "$RUNTIME_S" = "$1" ] && [ "$sum" = "$2" ] && [ "$N_LEGS" = "$3" ] && [ "$DRIVER_S" = "$(( $1 + 300 ))" ] \
+    && ok || bad "$b's booking is not the v6 split's: want RUNTIME_S $1, sum $2, legs $3, driver $(( $1 + 300 )); got $RUNTIME_S, $sum, $N_LEGS, $DRIVER_S"
+  [ "$RUNTIME_S" -le "$LAUNCHER_CAP" ] && ok || bad "$b books RUNTIME_S $RUNTIME_S above the installed launcher cap $LAUNCHER_CAP"
+  [ "$sum" -le "$RUNTIME_S" ] && ok || bad "$b's capped step sum $sum exceeds its scope wall $RUNTIME_S"
+  [ "$DRIVER_S" = "$((RUNTIME_S+300))" ] && ok || bad "$b sizes its driver unit at $DRIVER_S, not RUNTIME_S plus 300"
+  grep_in "$b refuses an over-cap booking at its own pre-work gate" "$f" 'WM=$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S")'
+  grep_in "$b freezes the installed launcher cap as a constant" "$f" 'LAUNCHER_CAP=7200'
 done
-check "the R6 header states the launcher's full argv and its own ledger rows" 0 bash -c "grep -q 'fierce-wren-19-r6-dff57af7-res' '$P6' && grep -q 'fierce-wren-19-r6-dff57af7-drv' '$P6'"
-check "the R4/R5 header's stated capped sum equals its timeouts" 0 bash -c "source <(grep -E '^T_(SETUP|BUILD|LEG)' '$P45'); [ 8940 = \$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG )) ]"
-check "the R6 header's stated capped sum equals its timeouts" 0 bash -c "source <(grep -E '^T_(SETUP|BUILD|LEG)' '$P6'); [ 4020 = \$(( T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT + T_BUILD + T_LEG )) ]"
-check "scope RuntimeMaxSec is at least the capped sum in both packets" 0 bash -c "grep -q 'wall_capped_sum_s=\$((.*)) scope_RuntimeMaxSec=9900' '$P45' && grep -q 'scope_RuntimeMaxSec=4800' '$P6'"
-check "the driver wall is sized from the scope wall" 0 bash -c "grep -q 'driver_RuntimeMaxSec=10500' '$P45' && grep -q 'driver_RuntimeMaxSec=5400' '$P6'"
-check "10500 > 9900 and 5400 > 4800" 0 bash -c "[ 10500 -gt 9900 ] && [ 5400 -gt 4800 ]"
+# the three bookings, restated here independently of the packets' own arithmetic, so a packet cannot
+# satisfy this file by moving a constant around inside itself
+check "the v6 arithmetic, restated: R4 4920<=5400, R5 4020<=4500, R6 4020<=4800, each <= 7200, driver +300" 0 bash -c '
+  for spec in "5400 4920 5700" "4500 4020 4800" "4800 4020 5100"; do
+    set -- $spec
+    [ "$2" -le "$1" ] || exit 1
+    [ "$1" -le 7200 ] || exit 1
+    [ "$3" = "$(( $1 + 300 ))" ] || exit 1
+  done
+  exit 0'
+check "the R6 header still states the launcher's full argv and its own ledger rows" 0 bash -c "grep -q 'fierce-wren-19-r6-dff57af7-res' '$P6' && grep -q 'fierce-wren-19-r6-dff57af7-drv' '$P6'"
 
 echo "== the OOM contract as written: exclusive publication before parse, no grep-judged counters"
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   grep_in "$b publishes the snapshot by exclusive create" "$f" "set -C"
   grep_not "$b never judges memory.events with a grep pattern" "$f" "grep -E '^(oom_kill|max) [1-9]"
@@ -275,9 +331,9 @@ for f in "$P45" "$P6"; do
   ns=$(grep -c 'oom_snap ' "$f"); nv=$(grep -c 'oom_pair_verdict' "$f")
   [ "$nv" -ge 2 ] && ok || bad "$b has $ns snapshots but only $nv verdicts"
 done
-for f in "$P45" "$P6"; do nv=$(grep -c 'oom_pair_verdict' "$f"); [ "$nv" -ge 4 ] && ok || bad "$(basename "$f") compares snapshots only $nv times (gate, build, legs, final)"; done
-check "memory.peak is printed, never judged" 0 bash -c "grep -q 'memory.peak (printed, never judged)' '$P45' && grep -q 'memory.peak (printed, never judged)' '$P6'"
-check "the R4/R5 packet compares the FINAL snapshot against the last leg" 0 bash -c "grep -q 'oom_pair_verdict \"\$LASTOOM\" \"\$FA\"' '$P45' && grep -q 'oom_pair_verdict \"\$LASTOOM\" \"\$FA\"' '$P6'"
+for f in $PKTS; do nv=$(grep -c 'oom_pair_verdict' "$f"); [ "$nv" -ge 4 ] && ok || bad "$(basename "$f") compares snapshots only $nv times (gate, build, legs, final)"; done
+check "memory.peak is printed, never judged" 0 bash -c "grep -q 'memory.peak (printed, never judged)' '$P4' && grep -q 'memory.peak (printed, never judged)' '$P6'"
+check "the R4/R5 packet compares the FINAL snapshot against the last leg" 0 bash -c "grep -q 'oom_pair_verdict \"\$LASTOOM\" \"\$FA\"' '$P4' && grep -q 'oom_pair_verdict \"\$LASTOOM\" \"\$FA\"' '$P6'"
 
 echo "== the classifier matches what the PINNED runner actually prints"
 RBIN=src/v1/stage0/src/bin/claim_batch.rs
@@ -301,8 +357,7 @@ if [ -n "$REPO" ] && g -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
     grep_in "the pinned runner renders the completion record with eprintln (stderr)" "$REPO/$RBIN" 'eprintln!("{}", partition.render(&timings));'
     n=$(grep -cF 'partition.render(&timings)' "$REPO/$RBIN"); [ "$n" = 1 ] && ok || bad "the pinned claim_batch.rs renders the completion record at $n sites, expected exactly 1"
     check_out "the packet's own producer_gate accepts the pinned claim_batch.rs bytes" 0 OK bash -c "source '$H'; producer_gate '$REPO/$RBIN'"
-    grep_in "the R4/R5 packet pins the producer blob id that git reports at the pin" "$P45" "PRODBLOB=$RB"
-    grep_in "the R6 packet pins the same producer blob id" "$P6" "PRODBLOB=$RB"
+    for f in $PKTS; do grep_in "$(basename "$f") pins the producer blob id that git reports at its pin" "$f" "PRODBLOB=$RB"; done
     skip_if=0
   else
     skip "claim_batch.rs at the pin is not byte-identical to the working copy: parser checks skipped"
@@ -415,41 +470,73 @@ for pair in "CMD_LEG_R4A:C4A" "CMD_LEG_R4B:C4B" "CMD_LEG_R5:C5" "CMD_LEG_R6:C6";
   got=$(flag_value "$v" --functions)
   [ "$got" = "${!c}" ] && ok || bad "$v's --functions is '$got', not the frozen ${c}"
 done
-for b in "$P45" "$P6"; do
+for b in $PKTS; do
   for v in $(grep -oE '^CMD_[A-Z0-9_]+' "$b"); do
     grep -q "\"\$$v\"" "$b" && ok || bad "$(basename "$b") never uses \$$v — the manifest would print a string the run does not execute"
   done
   grep -q 'leg R4a "\$CMD_LEG_R4A"' "$b" && ok || true
 done
-grep -q 'leg R4a "\$CMD_LEG_R4A"' "$P45" && ok || bad "the R4/a leg does not pass the manifest string to the leg runner"
-grep -q 'leg R4b "\$CMD_LEG_R4B"' "$P45" && ok || bad "the R4/b leg does not pass the manifest string to the leg runner"
-grep -q 'leg R5  "\$CMD_LEG_R5"' "$P45" && ok || bad "the R5 leg does not pass the manifest string to the leg runner"
+grep -q 'leg R4a "\$CMD_LEG_R4A"' "$P4" && ok || bad "the R4/a leg does not pass the manifest string to the leg runner"
+grep -q 'leg R4b "\$CMD_LEG_R4B"' "$P4" && ok || bad "the R4/b leg does not pass the manifest string to the leg runner"
+grep -q 'leg R5  "\$CMD_LEG_R5"' "$P5" && ok || bad "the R5 leg does not pass the manifest string to the leg runner"
 grep -q 'leg R6 "\$CMD_LEG_R6"' "$P6" && ok || bad "the R6 leg does not pass the manifest string to the leg runner"
-check "the built runner's directory is EXPORTED to the child shell a bash -c leg runs in" 0 bash -c "grep -q 'export OUT BIN4 BIN5' '$P45' && grep -q 'export BIN6' '$P6'"
+check "the built runner's path is EXPORTED to the child shell a bash -c leg runs in" 0 bash -c "grep -q 'export OUT BIN4' '$P4' && grep -q 'export OUT BIN5' '$P5' && grep -q 'export OUT' '$P6' && grep -q 'export BIN6' '$P6'"
 check "…because a plain assignment does not reach a child shell (a latent v2 defect this rewrite fixes)" 0 bash -c "[ -z \"\$(v=1; bash -c 'printf %s \"\$v\"')\" ]"
 
 echo "== the manifest: bytes and sha256 for every command string, printed by the packet itself"
-M45=$(bash "$P45" --predict-only); M6=$(bash "$P6" --predict-only)
-n=$(printf '%s\n' "$M45" | grep -c '^cmd '); [ "$n" = 11 ] && ok || bad "the R4/R5 manifest prints $n cmd lines (want 11)"
+M4=$(bash "$P4" --predict-only); M5=$(bash "$P5" --predict-only); M6=$(bash "$P6" --predict-only)
+n=$(printf '%s\n' "$M4" | grep -c '^cmd '); [ "$n" = 6 ] && ok || bad "the R4 manifest prints $n cmd lines (want 6: setup x4 + R4a + R4b)"
+n=$(printf '%s\n' "$M5" | grep -c '^cmd '); [ "$n" = 5 ] && ok || bad "the R5 manifest prints $n cmd lines (want 5)"
 n=$(printf '%s\n' "$M6" | grep -c '^cmd '); [ "$n" = 5 ] && ok || bad "the R6 manifest prints $n cmd lines (want 5)"
-n=$(printf '%s\n' "$M45" | grep -c '^blob '); [ "$n" = 3 ] && ok || bad "the R4/R5 manifest prints $n blob lines (want 3)"
+n=$(printf '%s\n' "$M4" | grep -c '^blob '); [ "$n" = 2 ] && ok || bad "the R4 manifest prints $n blob lines (want 2 entry blobs)"
+n=$(printf '%s\n' "$M5" | grep -c '^blob '); [ "$n" = 1 ] && ok || bad "the R5 manifest prints $n blob lines (want 1)"
 n=$(printf '%s\n' "$M6" | grep -c '^blob '); [ "$n" = 1 ] && ok || bad "the R6 manifest prints $n blob lines (want 1)"
-printf '%s\n' "$M45" | grep -qE "^pin_r4=$H4( |$)" && ok || bad "the R4/R5 manifest does not print the frozen R4 pin"
-printf '%s\n' "$M45" | grep -qE "^pin_r5=$H5( |$)" && ok || bad "the R4/R5 manifest does not print the frozen R5 pin"
-printf '%s\n' "$M45" | grep -qE "tree_r4=$T4" && ok || bad "the R4/R5 manifest does not print the frozen R4 tree"
-printf '%s\n' "$M45" | grep -qE "tree_r5=$T5" && ok || bad "the R4/R5 manifest does not print the frozen R5 tree"
-printf '%s\n' "$M6" | grep -qE "^pin=$H5( |$)" && ok || bad "the R6 manifest does not print its frozen pin"
-printf '%s\n' "$M6" | grep -qE "tree=$T5" && ok || bad "the R6 manifest does not print its frozen tree"
-printf '%s\n' "$M45" | grep -q '^cmd CMD_LEG_R4A bytes=[0-9]* sha256=[0-9a-f]\{64\}$' && ok || bad "a manifest line lacks bytes+sha256"
-printf '%s\n' "$M45" | grep -q '^bounds=memory.max=34359738368' && ok || bad "the manifest does not print the booked bounds"
-printf '%s\n' "$M45" | grep -q 'scope_RuntimeMaxSec=9900' && ok || bad "the manifest does not state the scope wall"
-printf '%s\n' "$M6" | grep -q 'state=HELD' && ok || bad "the R6 manifest does not state the hold"
-d=$(diff <(printf '%s\n' "$M45" | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit)') <(cd "$SB" && bash "$P45" --predict-only | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit)'))
-[ -z "$d" ] && ok || bad "the manifest is not reproducible across cwds: $(printf '%s' "$d" | head -3)"
-printf '%s\n' "$M45" | grep -A1 '^cmd CMD_LEG_R4A' | tail -1 | grep -qF -- "--functions \"$C4A\"" && ok || bad "the printed R4/a command lost the frozen CSV"
-printf '%s\n' "$M45" | grep -A1 '^cmd CMD_LEG_R4A' | tail -1 | grep -qF 'claim_batch --source-root' && bad "the printed R4/a command carries the subcommand token again" || ok
-printf '%s\n' "$M6" | grep -A1 '^cmd CMD_LEG_R6' | tail -1 | grep -qF -- "--entry \"$E6\" --functions \"$C6\"" && ok || bad "the printed R6 command lost its entry or CSV"
-check "predict-only writes nothing anywhere under the run root" 0 bash -c "cd '$SB' && before=\$(find '$SB' -type f | wc -l) && bash '$P45' --predict-only >/dev/null && bash '$P6' --predict-only >/dev/null && after=\$(find '$SB' -type f | wc -l); [ \"\$before\" = \"\$after\" ] || { find '$SB' -type f -newer '$P45' | head; exit 1; }"
+printf '%s\n' "$M4" | grep -qE "^pin_r4=$H4( |$)" && ok || bad "the R4 manifest does not print the frozen R4 pin"
+printf '%s\n' "$M4" | grep -qE "tree_r4=$T4" && ok || bad "the R4 manifest does not print the frozen R4 tree"
+printf '%s\n' "$M5" | grep -qE "^pin_r5=$H5( |$)" && ok || bad "the R5 manifest does not print the frozen R5 pin"
+printf '%s\n' "$M5" | grep -qE "tree_r5=$T5" && ok || bad "the R5 manifest does not print the frozen R5 tree"
+HPIN6=$(sed -n 's/^H=\([0-9a-f]\{40\}\).*/\1/p' "$P6" | head -1)
+TPIN6=$(sed -n 's/.*; T=\([0-9a-f]\{40\}\).*/\1/p' "$P6" | head -1)
+[ -n "$HPIN6" ] && [ -n "$TPIN6" ] && ok || bad "the R6 packet's pin/tree constants could not be read: the two checks below would be vacuous"
+printf '%s\n' "$M6" | grep -qE "^pin=$HPIN6( |$)" && ok || bad "the R6 manifest does not print its frozen pin"
+printf '%s\n' "$M6" | grep -qE "tree=$TPIN6" && ok || bad "the R6 manifest does not print its frozen tree"
+# v6: the per-row command inventory must be BYTE-IDENTICAL to v4/v5's, row by row. These digests are the
+# v4 digests, recorded from the v4 run of this self-test; a changed command string here is a changed leg.
+check "the R4 row's six command strings are byte-identical to v4/v5's" 0 env PKT="$P4" bash -c '
+  want="f256a1da5244bfd6b62af2e05eb608b6b15e99fda2deda43df961af728917fe5 4a0ac69f9b81df39536466bb77e843488984137f853bbcf1b90f32dad9d78cab fdb0ba1965609f46b72f4eb4ead4fb3a870a897c6bd01bb4bbdc88b6e4331911 b9eb7b3c3870d6bcc728886a54201223fa01f449790eec91d096ce35766769a5 453568e5420cb9f95c34f54a7ddc1c8b252a7a531d29e60b6d0b358bcd741e05 98211ed70494ef8c9b85eed3b1e39e4cfd29b975d8b059cf185a11c92231d652"
+  got=$(bash "$PKT" --predict-only | grep "^cmd " | cut -d= -f3 | tr "\\n" " " | sed "s/ *$//")
+  [ "$got" = "$want" ] || { echo "want $want"; echo "got  $got"; exit 1; }'
+check "the R5 row's five command strings are byte-identical to v4/v5's" 0 env PKT="$P5" bash -c '
+  want="1c90e94474e67011795be02913ba5cb6c341346f03365a96bb884aea6e82d586 1b03a85fa7cfa0244152c9a52bae422b10db9905ed5214bf92a1f8ab7f8ade19 220bd6bb5942cb5467d4099b7d8c749ede44667d978ac32d54099a4d2809fca4 b9eb7b3c3870d6bcc728886a54201223fa01f449790eec91d096ce35766769a5 c5f7fe87f6130cc3ad2cf1f60dc99be4457f0e81a419b7025f8bb81c674ceda7"
+  got=$(bash "$PKT" --predict-only | grep "^cmd " | cut -d= -f3 | tr "\\n" " " | sed "s/ *$//")
+  [ "$got" = "$want" ] || { echo "want $want"; echo "got  $got"; exit 1; }'
+check "the R6 row's five command strings are byte-identical to v4/v5's" 0 env PKT="$P6" bash -c '
+  want="995b533e654e1c8b6aa68add106d1df71e57699aa2be4dfd6516a793cf9e9de2 4500968dca5ab55989dd67fb8468a8ebd3749074fc85674f964cdda4e68db56a 85a784694b36535a3df3822daf36611aecca3a4d12163bb96910c6228a40eff0 b9eb7b3c3870d6bcc728886a54201223fa01f449790eec91d096ce35766769a5 0053be34fb87d635cd5664cccd7880bd014a18417ca24bfcc1c9b61cd512be7a"
+  got=$(bash "$PKT" --predict-only | grep "^cmd " | cut -d= -f3 | tr "\\n" " " | sed "s/ *$//")
+  [ "$got" = "$want" ] || { echo "want $want"; echo "got  $got"; exit 1; }'
+for m in M4 M5 M6; do
+  printf '%s\n' "${!m}" | grep -qE '^cmd CMD_[A-Z0-9_]+ bytes=[0-9]* sha256=[0-9a-f]{64}$' && ok || bad "$m has a cmd line without bytes+sha256"
+  printf '%s\n' "${!m}" | grep -qE '^launcher_preflight_cap=7200' && ok || bad "$m does not state the installed launcher cap"
+  printf '%s\n' "${!m}" | grep -qE '^driver_service=[^ ]* RuntimeMaxSec=[0-9]+ \(RUNTIME_S plus 300 s\)' && ok || bad "$m does not size the driver unit from RUNTIME_S"
+  printf '%s\n' "${!m}" | grep -qE '^bounds=memory.max=34359738368' && ok || bad "$m does not print the booked bounds"
+  printf '%s\n' "${!m}" | grep -qE '^wall_capped_sum_s=[0-9]+ scope_RuntimeMaxSec=[0-9]+ driver_RuntimeMaxSec=[0-9]+ launcher_cap=7200 legs=[0-9]+$' && ok || bad "$m's wall line is not the arithmetic its own gate checks"
+  printf '%s\n' "${!m}" | grep -qE -- '--source-root dag --source-root src/v1 --source-root src/v2 --entry' && ok || bad "$m lost the frozen argv shape"
+  printf '%s\n' "${!m}" | grep -qE 'cmd CMD_LEG[^=]*=[^\n]*claim_batch --source-root' && bad "$m's leg command carries the subcommand token again" || ok
+done
+printf '%s\n' "$M6" | grep -qE '^PREDICT-ONLY row=R6 .* state=HELD gate=keen-otter-msg_3407a188' && ok || bad "the R6 manifest does not state the hold and its gate"
+printf '%s\n' "$M4" | grep -qE '^PREDICT-ONLY row=R4 job=fierce-wren-19-r4-db56530f host_booked=srv1' && ok || bad "the R4 manifest does not name its own row and job"
+printf '%s\n' "$M5" | grep -qE '^PREDICT-ONLY row=R5 job=fierce-wren-19-r5-dff57af7 host_booked=srv1' && ok || bad "the R5 manifest does not name its own row and job"
+for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v6_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
+for m in M4 M5 M6; do
+  f=$(eval printf '%s' "\${P${m#M}}")
+  d=$(diff <(printf '%s\n' "${!m}" | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)') <(cd "$SB" && bash "$f" --predict-only | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)'))
+  [ -z "$d" ] && ok || bad "$m is not reproducible across cwds: $(printf '%s' "$d" | head -3)"
+done
+printf '%s\n' "$M4" | grep -A1 '^cmd CMD_LEG_R4A' | tail -1 | grep -qF -- "--functions \"$C4A\"" && ok || bad "the printed R4/a command lost the frozen CSV"
+printf '%s\n' "$M4" | grep -A1 '^cmd CMD_LEG_R4A' | tail -1 | grep -qF 'claim_batch --source-root' && bad "the printed R4/a command carries the subcommand token again" || ok
+printf '%s\n' "$M5" | grep -A1 '^cmd CMD_LEG_R5' | tail -1 | grep -qF -- "--functions \"$C5\"" && ok || bad "the printed R5 command lost the frozen CSV"
+printf '%s\n' "$M6" | grep -A1 '^cmd CMD_LEG_R6' | tail -1 | grep -qF -- "--entry \"$E6\" --functions \"$C6\"" && ok || bad "the printed R6 command lost its entry and CSV"
+check "predict-only writes nothing anywhere under the run root" 0 bash -c "cd '$SB' && before=\$(find '$SB' -type f | wc -l) && bash '$P4' --predict-only >/dev/null && bash '$P5' --predict-only >/dev/null && bash '$P6' --predict-only >/dev/null && after=\$(find '$SB' -type f | wc -l) && [ \"\$before\" = \"\$after\" ]"
 
 echo "== end-to-end on THIS host: every gate must refuse before any clone, fetch or build"
 run_probe() { # run_probe <packet> <extra args…> — exercises the main flow until a gate refuses
@@ -461,20 +548,22 @@ run_probe() { # run_probe <packet> <extra args…> — exercises the main flow u
 }
 # /usr/bin/time is absent in this container (it is booked to exist on srv1), so the earliest local refusal is
 # that tooling gate; everything below it is exercised with a copy whose tooling check is relaxed.
-check_out "the shipped packet stops at a named missing-tool gate before creating OUT" 2 "/usr/bin/time" bash "$P45" "$SB/tooljob/out"
-check "…and it created nothing" 0 bash -c "[ ! -e '$SB/tooljob/out' ]"
-cp "$P45" "$SB/relaxed45.sh"; cp "$P6" "$SB/relaxed6.sh"
+check_out "the shipped R4 packet stops at a named missing-tool gate before creating OUT" 2 "/usr/bin/time" bash "$P4" "$SB/tooljob4/out"
+check_out "…the R5 packet likewise" 2 "/usr/bin/time" bash "$P5" "$SB/tooljob5/out"
+check_out "…and the held R6 packet stops there too, even with a grant reference in hand" 2 "/usr/bin/time" bash "$P6" "$SB/tooljob6/out" keen-otter-msg_3407a188-cleared
+check "…and none of the three created an evidence dir on the way to that refusal" 0 bash -c "[ ! -e '$SB/tooljob4/out' ] && [ ! -e '$SB/tooljob5/out' ] && [ ! -e '$SB/tooljob6/out' ]"
+cp "$P4" "$SB/relaxed4.sh"; cp "$P5" "$SB/relaxed5.sh"; cp "$P6" "$SB/relaxed6.sh"
 python3 - "$SB" <<'PY'
 import sys,re
 sb=sys.argv[1]
-for f in (sb+"/relaxed45.sh", sb+"/relaxed6.sh"):
+for f in (sb+"/relaxed4.sh", sb+"/relaxed5.sh", sb+"/relaxed6.sh"):
     s=open(f).read()
     s2=s.replace('[ -x /usr/bin/time ]','[ -x /bin/true ]')
     s2=s2.replace('/usr/bin/time -v bash -c','bash -c')
     assert s2!=s, f
     open(f,'w').write(s2)
 PY
-for pair in "$SB/relaxed45.sh:" "$SB/relaxed6.sh:grantish"; do
+for pair in "$SB/relaxed4.sh:" "$SB/relaxed5.sh:" "$SB/relaxed6.sh:grantish"; do
   f=${pair%%:*}; extra=${pair##*:}
   jb=$SB/probe-$(basename "$f")-job; mkdir -p "$jb"
   if [ -n "$extra" ]; then out=$(bash "$f" "$jb/out" "keen-otter-msg_3407a188-cleared" 2>&1); else out=$(bash "$f" "$jb/out" 2>&1); fi
@@ -498,18 +587,21 @@ for pair in "$SB/relaxed45.sh:" "$SB/relaxed6.sh:grantish"; do
 done
 
 echo "== item 5: the packets say plainly what these rows do NOT show"
-grep_in "the R4/R5 header states the row discriminates nothing" "$P45" "DISCRIMINATES NOTHING"
-grep_in "the R4/R5 header says presence observations" "$P45" "PRESENCE observations"
-grep_in "the R4/R5 header says no mutation leg is run or proposed" "$P45" "NO mutation leg is run or proposed"
+for f in "$P4" "$P5"; do
+  grep_in "$(basename "$f") header states the row discriminates nothing" "$f" "DISCRIMINATES NOTHING"
+  grep_in "$(basename "$f") header says presence observations" "$f" "PRESENCE observations"
+  grep_in "$(basename "$f") header says no mutation leg is run or proposed" "$f" "NO mutation leg is run or proposed"
+done
 grep_in "the R6 header states the hold and the gate" "$P6" "msg_3407a188"
 grep_in "the R6 header states a refusal of the subject is a finding" "$P6" "fails"
-grep_in "both packets record the row exit as an observation, not a tool status" "$P45" "VERDICT="
+for f in $PKTS; do grep_in "$(basename "$f") records the row exit as an observation, not a tool status" "$f" "VERDICT="; done
 
 echo "== WHICH STREAM carries the completion record (v5): the gate reads the leg stderr capture"
-# claim_batch.rs:1460 renders the record with eprintln!, i.e. on stderr; PASS/FAIL go to stdout. leg() sends
+# the single eprintln!("{}", partition.render(&timings)) emission in claim_batch.rs's run() path writes
+# the record to stderr; PASS/FAIL go to stdout. leg() sends
 # stdout to <leg>.out and stderr to logs/<leg>.err. A gate on the wrong stream reads 0 records and
 # NO_OBSERVATIONs a full-green row, so both the wiring and the packets' own end-to-end controls are checked.
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   grep_in "$b runs the completion gate on the leg stderr capture" "$f" 'pc=$(pp_check "$OUT/logs/$L.err")'
   grep_not "$b never runs the completion gate on the leg stdout" "$f" 'pp_check "$OUT/$L.out"'
@@ -524,7 +616,7 @@ for f in "$P45" "$P6"; do
   grep_in "$b: two records must NOT be an observation" "$f" 'ck e2e-two-records-is-not-an-observation NOOBS'
   grep_in "$b gates the pinned render site in the checkout" "$f" 'm=$(producer_gate "$W/$PROD")'
   grep_in "$b blob-gates claim_batch.rs like the parser flag set" "$f" 'blob_gate "$W" "$PROD" "$PRODBLOB"'
-  want=2; [ "$b" = "acceptance_r6_live_read_claim_run_v5.sh" ] && want=1
+  want=1  # v6: one pin checkout per job, so one render-site gate and one claim_batch.rs blob gate each
   np=$(grep -c 'm=$(producer_gate "$W/$PROD")' "$f"); nb=$(grep -c 'm=$(blob_gate "$W" "$PROD" "$PRODBLOB")' "$f")
   [ "$np" = "$want" ] && ok || bad "$b gates the render site $np times, expected $want (one per pin checkout)"
   [ "$nb" = "$want" ] && ok || bad "$b blob-gates claim_batch.rs $nb times, expected $want"
@@ -549,7 +641,7 @@ PPREAL_B64='W3Byb2Nlc3MtcGFydGl0aW9uXSB0b3RhbF9tcz0zNDAxODggcHJlX3J1bl9tcz0wIGFy
 PPREAL=$(printf '%s' "$PPREAL_B64" | base64 -d)
 [ "$(printf '%s' "$PPREAL" | wc -c | tr -d ' ')" = 259 ] && ok || bad "this self-test's copy of the real completion record is not 259 bytes"
 [ "$(printf '%s' "$PPREAL" | sha256sum | cut -d' ' -f1)" = 7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2 ] && ok || bad "…and not the pinned digest 7ac24cf2…"
-for f in "$P45" "$P6"; do
+for f in $PKTS; do
   b=$(basename "$f")
   same=$(bash -c "source <(sed -n '/^  PP_REAL=/,/^  PP_REAL_SHA=/p' '$f' | sed 's/^  //'); printf '%s' \"\$PP_REAL\" | sha256sum | cut -d' ' -f1")
   [ "$same" = 7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2 ] && ok || bad "$b freezes a completion-record fixture whose bytes are not the pinned 259-byte record"
@@ -592,6 +684,15 @@ check_out "a bare PASS with rc 0 still holds" 0 "HELD" bash -c "source '$H'; pri
 check_out "a bare FAIL with rc 1 is still a falsification" 0 "FAILED" bash -c "source '$H'; printf 'FAIL w_x\\n' > '$SB/v_fals.txt'; claim_classify '$SB/v_fals.txt' 1 w_x"
 
 echo "== negative controls (a mutated packet must FAIL, or the checks are decorative)"
+cat > "$SB/mut15.py" <<'PY15'
+import sys,re
+p=sys.argv[1]; s=open(p).read()
+s2 = re.sub(r"^RUNTIME_S=[0-9]+;", "RUNTIME_S=9900;", s, count=1, flags=re.M)
+assert s2 != s, "no RUNTIME_S assignment to inflate"
+assert "RUNTIME_S=9900" in s2
+open(p,"w").write(s2)
+PY15
+
 cat > "$SB/mut13.py" <<'PY13'
 import sys
 p=sys.argv[1]; s=open(p).read()
@@ -709,30 +810,27 @@ old = '[ "$n" = 1 ] || { echo "completion records:'
 assert old in s
 open(p,"w").write(s.replace(old,'[ "$n" -ge 1 ] || { echo "completion records:',1))
 PY11
-negctl "defect (1) reintroduced: a literal claim_batch token after the binary" "$P45" "$SB/mut1.py"
-negctl "defect (2) reintroduced: a space-separated name in the CSV" "$P45" "$SB/mut2.py"
-negctl "the booked-bounds gate deleted from the run path (item 2)" "$P45" "$SB/mut3.py"
-negctl "noclobber removed from the OOM publication (item 3)" "$P45" "$SB/mut4.py"
-negctl "the no-observation refusal switched to a fourth exit code (item 4)" "$P45" "$SB/mut5.py"
-negctl "the last-leg OOM pair faked as unchanged (item 3)" "$P45" "$SB/mut6.py"
+for mu in 3 4 5 6 8 9 10 11 12 13; do negctl "mutation $mu applied to the R4 job" "$P4" "$SB/mut$mu.py"; done
+for mu in 3 4 5 6 8 9 10 11 12 13; do negctl "mutation $mu applied to the R5 job" "$P5" "$SB/mut$mu.py"; done
+for mu in 3 4 5 6 8 9 11 12 13; do negctl "mutation $mu applied to the R6 job" "$P6" "$SB/mut$mu.py"; done
+negctl "defect (1) reintroduced: a literal claim_batch token after the binary" "$P4" "$SB/mut1.py"
+negctl "defect (2) reintroduced: a space-separated name in the CSV" "$P4" "$SB/mut2.py"
 negctl "defect (1) in the R6 packet as well" "$P6" "$SB/mut7.py"
-negctl "the completion-record gate removed from a leg (v4 blocker 2)" "$P45" "$SB/mut8.py"
-negctl "the one-outcome-line-per-name rule neutered (v4 blocker 3)" "$P45" "$SB/mut9.py"
-negctl "a qualified FAIL accepted as a falsification (v4 blocker 3)" "$P45" "$SB/mut10.py"
-negctl "the completion prefix count relaxed from exactly-one to at-least-one (v4 blocker 2)" "$P45" "$SB/mut11.py"
-negctl "the completion gate pointed back at the leg stdout (the v5 defect)" "$P45" "$SB/mut12.py"
-negctl "…the same defect in the R6 packet" "$P6" "$SB/mut12.py"
-negctl "the producer render-site gate deleted from the pin setup" "$P45" "$SB/mut13.py"
-negctl "the end-to-end leg control deleted from the packet fixtures" "$P45" "$SB/mut14.py"
+negctl "the end-to-end leg control deleted from the packet fixtures" "$P4" "$SB/mut14.py"
+negctl "the end-to-end leg control deleted from the R5 job too" "$P5" "$SB/mut14.py"
+# v6's own new rule: a wall booked above the installed launcher cap must be refused by the packet's own gate
+negctl "RUNTIME_S booked at 9900, above the installed launcher cap (v6)" "$P4" "$SB/mut15.py"
+negctl "…the same over-cap booking in the R5 job" "$P5" "$SB/mut15.py"
+negctl "…and in the R6 job" "$P6" "$SB/mut15.py"
 # mut3 and mut5 change the run path rather than a helper; the packet's self-structure section is what
 # notices, so they are exercised as fixture controls too. The greps below are a second, independent signal.
-cp "$P45" "$SB/neg3.sh"; python3 "$SB/mut3.py" "$SB/neg3.sh" && ok || bad "bounds-gate mutation did not apply"
+cp "$P4" "$SB/neg3.sh"; python3 "$SB/mut3.py" "$SB/neg3.sh" && ok || bad "bounds-gate mutation did not apply"
 grep -q 'BM=""' "$SB/neg3.sh" && ok || bad "the bounds gate is still present in the mutated copy"
 grep -q 'BM=\$(bounds_check' "$SB/neg3.sh" && bad "the mutated copy still gates on bounds_check in its run path" || ok
-cp "$P45" "$SB/neg5.sh"; python3 "$SB/mut5.py" "$SB/neg5.sh" && ok || bad "exit-code mutation did not apply"
+cp "$P4" "$SB/neg5.sh"; python3 "$SB/mut5.py" "$SB/neg5.sh" && ok || bad "exit-code mutation did not apply"
 n3=$(grep -vE '^[[:space:]]*#' "$SB/neg5.sh" | grep -cE '\bexit 3\b'); [ "$n3" = 1 ] && ok || bad "expected the mutated copy to reintroduce an exit 3, got $n3"
-check "…which is the rule the self-test applies to the shipped packets (no exit 3 anywhere)" 0 bash -c "[ \$(grep -vE '^[[:space:]]*#' '$P45' | grep -cE '\bexit 3\b') = 0 ] && [ \$(grep -vE '^[[:space:]]*#' '$P6' | grep -cE '\bexit 3\b') = 0 ]"
-check "…and exactly one executable exit 1 per shipped packet" 0 bash -c "[ \$(grep -vE '^[[:space:]]*#' '$P45' | grep -cE '\bexit 1\b') = 1 ] && [ \$(grep -vE '^[[:space:]]*#' '$P6' | grep -cE '\bexit 1\b') = 1 ]"
+check "…which is the rule the self-test applies to the shipped packets (no exit 3 anywhere)" 0 bash -c "[ \$(grep -vE '^[[:space:]]*#' '$P4' | grep -cE '\bexit 3\b') = 0 ] && [ \$(grep -vE '^[[:space:]]*#' '$P6' | grep -cE '\bexit 3\b') = 0 ]"
+check "…and exactly one executable exit 1 per shipped packet" 0 bash -c "[ \$(grep -vE '^[[:space:]]*#' '$P4' | grep -cE '\bexit 1\b') = 1 ] && [ \$(grep -vE '^[[:space:]]*#' '$P6' | grep -cE '\bexit 1\b') = 1 ]"
 
 echo
 echo "SELF-TEST: $PASS_N passed, $FAIL_N failed, $SKIP_N skipped"

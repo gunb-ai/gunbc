@@ -1,9 +1,13 @@
-# script.sh (frozen copy for fierce-wren-19-r4r5-db56530f, v5): acceptance grant set rows R4 and R5,
-# gunbc. PREPARE ONLY: this file has not been RUN anywhere. It is the staged script a booked calmcrab-udrv
-# v4 row would execute on srv1, re-framed on keen-otter's hardened srv1 frame (template:
+# script.sh (frozen copy for fierce-wren-19-r6-dff57af7, v6): acceptance grant set row R6, gunbc.
+# HELD — NOT AUTHORIZED FOR EXECUTION. PREPARE ONLY: this file has not been RUN anywhere, and the live
+# fabric store has not been contacted. Same hardened srv1 frame as the R4/R5 packet (template:
 # wise-moth-707-rdpo's rdpo.sh, sha256 aaf32964184a30d66f6320de707bfb03975f0df683cccd1133dcf2d024ed9366,
-# gunbc#15938 comment 6672252712). No claim execution, no ssh, no partition write happened here.
+# gunbc#15938 comment 6672252712); the gates, helpers, classifier, OOM contract and fixtures here are the
+# SAME text as that packet's, so one review covers both.
 #
+# THE ONE CLAIM (row R6):
+#   dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag
+#     witness_inbox_on_authority_projects_on_live_corpus
 # WHAT v5 ADDS: the completion gate read the WRONG STREAM (manager msg_1c5a519f, found by sleek-owl).
 #   Everything below under "WHAT v4 ADDS" is kept from v4 unchanged (sleek-owl's three blockers
 #   on v3 176234a92458c5a6, verified by sunny-bee-153); every v4 gate, fixture and control still runs.
@@ -11,181 +15,115 @@
 #       <STAGED_SCRIPT> <SCRIPT_SHA> OUT — seconds, GiB, %, the PACKET's own sha, literal OUT — and the R
 #       ledger row is booked in GiB (keen-otter msg_c9d1df56); the bounds gate DERIVES its byte values from
 #       those same GiB constants so the argv, the manifest and the gate cannot disagree.
-#   (2) a completion-record gate per leg (see COMPLETION RECORD above), keyed on ProcessPartition::render.
-#   (3) verdict exactness per name (see VERDICT RULES above).
+#   (2) a completion-record gate on the leg (see COMPLETION RECORD in the classifier section).
+#   (3) verdict exactness per name (see VERDICT RULES). R6 stays HELD: without a cleared execution-grant
+#       reference the packet refuses with exit 2 before creating anything.#
+# Expected: a bare PASS. A refusal is a FINDING for the grant set, not a runner failure: this claim fails
+# closed on an unreadable tail, on history that will not replay, and on a refused placement.
 #
-# THIS ROW DISCRIMINATES NOTHING (v3 requirement). R4 and R5 are PRESENCE observations: each claim is a
-# witness that must hold on the pinned tree, and NO mutation leg is run or proposed — there is no edit,
-# no rebuild-and-recompare, and no `mutation` boundary anywhere in this file. So a full-green row proves
-# only that the pinned tree still answers "yes" to those twelve witnesses; it cannot localize a cause,
-# and it must not be recorded as discriminating anything. A bare FAIL is a falsified expectation (exit 1),
-# which is a FINDING for the grant set, not a diagnosis.
+# WHY IT IS ITS OWN PACKET, AND WHY IT IS HELD (the read-path audit, at this pin):
+#   roadmap_acceptance_inbox_on_authority        dag/gunbc/roadmap/roadmap_acceptance_inbox.dag:140
+#     -> roadmap_acceptance_event_history_load   dag/gunbc/roadmap/roadmap_authority.dag:5070
+#        -> fabric_state_storage_binding         dag/gunbc/fabric/fabric_storage_binding.dag:36
+#           -> roadmap_operator_close_history    dag/gunbc/roadmap/roadmap_operator_acceptance.dag:644
+#              -> roadmap_operator_acceptance_history_load  same file:197
+#                 -> roadmap_operator_acceptance_read       same file:132
+#                    -> event_log_read_partition_with      dag/gunbc/fabric/fabric_event_log.dag:164
+#                       -> fabric_storage_closure           dag/gunbc/fabric/fabric_storage_client.dag:193
+# NO WRITES in that closure: the append primitive (event_log_append_with) is reached only through
+# roadmap_operator_acceptance_close / _close_append, which this claim never touches; the closure walk and
+# chain replay mutate nothing on the store.
+# WHICH BRANCH A BARE srv1 CHECKOUT BINDS: `data prod_role_selection: ProdRoleSelection = ProdRoleHeldBy
+# { deployment: srv1_daily_workspace_deployment }` is a committed constant (dag/gunbc/deployment_risk.dag:71)
+# and srv1_live_dashboard_instance carries exactly that deployment
+# (dag/gunbc/roadmap/roadmap_dashboard_instance.dag:1262-1264). So the prod role resolves,
+# fabric_storage_placement returns FabricStoragePlaced, and fabric_state_storage_binding maps EVERY placed
+# realization — including the host's own placed branch, whose door_socket it discards — to
+# FabricStorageServed { <instance endpoint>/state }, which takes served_post: a live network round trip
+# (fabric_storage_client.dag:203-207). The SEED is read only under FabricStorageBindingUnplaced, i.e. where
+# the runtime identity store is missing; a REFUSED placement yields HistoryLoadRefused ->
+# AcceptanceInboxRefused, so the claim's InboxLoaded arm fails — a FAIL, not a seed read. There is no
+# seed-only form of this claim without editing the claim or the store binding, and no grant in this set
+# authorizes that. A claim runner starting a NEW read of the live acceptance partition is not the "existing
+# rostered reader" keen-otter's msg_3407a188 admits, so the row is HELD.
+# THE HOLD IS ENFORCED, NOT DOCUMENTED: the second positional argument must be an execution-grant reference
+# that has cleared msg_3407a188. Without it the packet refuses with exit 2 (v3 exit contract: every refusal
+# is NO_OBSERVATION; there is no gate-only code) and creates NOTHING — no OUT, no clone. With one, it records
+# the reference in OUT/grant-ref.txt. Clearing that gate is keen-otter's decision, not this packet's, and
+# naming a reference that was never published is a violation of the grant set, not a workaround.
 #
-# ROWS (eleven claims, three claim_batch invocations; every claim expected to hold):
-#   R4/a  5 claims  entry src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag
-#   R4/b  1 claim   entry src/v2/test/claim/rust_crate_partition_witness.dag          (separate --entry)
-#   R5    5 claims  entry dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag
-# Row R6 (one live-corpus claim) is NOT here: it reads the live fabric store and is held behind
-# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v3.sh.
+# STEPS (every one wrapped in timeout; the CAPPED SUM is this row's worst case):
+#   setup   git init 300 s, shallow fetch of the pin 300 s, checkout 120 s                              =   720 s
+#   build   cargo build --locked --release -j 32 -p v1-compiler --bin claim_batch, 2400 s (a cold srv1
+#           release build of this crate took ~2100 s, rdpo; nonzero / timeout / missing binary is 2)    =  2400 s
+#   legs    one leg, 900 s, one claim_batch invocation carrying the single claim                        =   900 s
+#   CAPPED SUM = 720 + 2400 + 900 = 4020 s, an admitted ceiling, not a prediction of the wall.
+# WALL ACCOUNTING: scope RuntimeMaxSec 4800 s (the capped sum 4020 s plus a 780 s margin); the driver
+#   service calmcrab-drv-<JOB>.service RuntimeMaxSec 5400 s, sized FROM the scope (4800 + 600 s for staging,
+#   the ledger write and teardown). If the launcher books different numbers, the bounds gate refuses rather
+#   than adapting to them.
 #
-# PINS (fetched from the hard-coded origin by sha; HEAD and the tree must both match, and the entry
-# files must be the frozen blobs, before anything is built):
-#   R4  3ddaefb5-style pair, here: db56530fcb186370e3dbf1aa3c69ded324daa25d  tree 48be84d8b18a9530e3a5c42adf8c24b19e1aa4dc
-#   R5  dff57af790f923066d61721e89ff751a91021278  tree 356f2894a60edda51cdbe79879b2fb3b7aea75c4   (the #15936 squash)
-#   entry blobs (identical at both pins and at current origin/main):
-#     332cc981fd194bb9f02f16ff6e3c14d81b874e2b  src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag
-#     abc6313eb8c4d49ad74a7bcafad36b895ea32f76  src/v2/test/claim/rust_crate_partition_witness.dag
-#     adfeb29426eac9d4da67630a12d89f8eabe8754b  dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag
-#
-# STEPS (every one is wrapped in timeout; the CAPPED SUM is the row's worst case):
-#   setup   per pin: clone 300 s, shallow fetch of the pin 300 s, checkout 120 s          = 2 x 720  = 1440 s
-#   build   cargo build --locked --release -j 32 -p v1-compiler --bin claim_batch, 2400 s each pin. A cold
-#           srv1 release build of this crate took ~2100 s (N7, rdpo); the binary is claim_batch, built from
-#           the same crate, so the same budget. A nonzero exit, a timeout or a missing binary is 2.  2 x 2400 = 4800 s
-#   legs    900 s each: R4/a (5 claims), R4/b (1), R5 (5). One claim_batch invocation per leg; claims in a
-#           leg are evaluated in one process, so a leg that times out loses all its claims at once.  3 x 900  = 2700 s
-#   CAPPED SUM = 1440 + 4800 + 2700 = 8940 s. That capped sum is NOT a prediction of the wall: it is the
-#   ceiling the timeouts admit.
-# WALL ACCOUNTING (v3): the scope's RuntimeMaxSec is 9900 s — the capped sum (8940 s) plus a 960 s margin
-#   for process startup, the two builds' cargo-network stall allowance and evidence writing; a row that
-#   RuntimeMaxSec cuts off is incomplete, which is NO_OBSERVATION (2). The driver row
-#   calmcrab-drv-<JOB>.service is sized FROM the scope: RuntimeMaxSec 10500 s = the scope's 9900 plus 600 s
-#   for staging, the ledger write and teardown. If the launcher books different numbers, the bounds gate
-#   below refuses the run rather than adapting to them.
-#
-# BOOKED BOUNDS (keen-otter (1)); the bounds gate (v3 item 2) reads its OWN cgroup's memory.max,
-#   memory.high, memory.swap.max, pids.max and cpu.max AFTER the scope gate and BEFORE any fetch or build,
-#   and refuses with 2 on any mismatch or unreadable file. Dumping these is not a gate:
-#   memory.max=34359738368 (32G), memory.high=30064771072 (28G, a CEILING and UNMEASURED: no -j 32 build
-#   peak exists for this binary, and an OOM wastes the attempt), memory.swap.max=0, pids.max=4096
-#   (pids.max counts THREADS: 32 rustc jobs, their linkers and cargo, then one claim_batch at a time),
-#   cpu.max="3200000 100000" (CPUQuota=3200% at the default 100 ms period, PAIRED with -j 32: srv1 has
-#   nproc=128 and the ~2100 s cold build was uncapped, so 32 jobs on 32 CPUs stays inside the 2400 s cap).
-#   These are separate reads, NOT an atomic snapshot; no atomicity is claimed.
+# BOOKED BOUNDS (identical to the R4/R5 row: the same -j 32 build of the same crate on the same host):
 # Bounds are booked in the LAUNCHER'S units (GiB, seconds, CPU %, tasks) and the byte values the cgroup
 # files carry are DERIVED from them here, so the launcher argv, the manifest and the gate cannot drift.
 # cpu.max's period is the default 100000 us, so the quota is CPU_PCT/100 * 100000 = CPU_PCT*1000 us.
-RUNTIME_S=9900; MEMMAX_G=32; MEMHIGH_G=28; TASKS_MAX=4096; CPU_PCT=3200
+RUNTIME_S=4800; DRIVER_S=5100; LAUNCHER_CAP=7200; N_LEGS=1; MEMMAX_G=32; MEMHIGH_G=28; TASKS_MAX=4096; CPU_PCT=3200
 BOOKED="memory.max=$((MEMMAX_G*1073741824)) memory.high=$((MEMHIGH_G*1073741824)) memory.swap.max=0 pids.max=$TASKS_MAX cpu.max=$((CPU_PCT*1000))_100000"
+#
+# (The BOOKED string is the same as the R4/R5 row's: memory.max 32G, memory.high 28G UNMEASURED,
+#  memory.swap.max 0, pids.max 4096 (threads), cpu.max "3200000 100000" paired with -j 32.)
 #
 # LAUNCHER (calmcrab-udrv.sh, v4 form) — no bare systemd-run. Full argv, in the launcher's order:
 #   calmcrab-udrv.sh <JOB> <RUNTIME_S> <MEMMAX_G> <MEMHIGH_G> <TASKS> <CPU%> <STAGED_SCRIPT> <SCRIPT_SHA> OUT
 # For THIS row the call is literally:
-#   calmcrab-udrv.sh fierce-wren-19-r4r5-db56530f 9900 32 28 4096 3200% <STAGED_SCRIPT> <v5 packet sha256> OUT
+#   calmcrab-udrv.sh fierce-wren-19-r6-dff57af7 4800 32 28 4096 3200% <STAGED_SCRIPT> <v6 packet sha256> OUT
 # Units are the launcher's: RUNTIME in SECONDS (the scope's wall, sized from the capped per-step timeouts
 # below), memory in GiB, CPU with the %% sign, SCRIPT_SHA is the PACKET'S OWN sha256 (NOT the source commit),
 # and OUT is passed LITERALLY — the script derives JOB as basename(dirname(OUT)), so OUT must be
-# $HOME/runs/fierce-wren-19-r4r5-db56530f/out. MEMMAX_G/MEMHIGH_G/TASKS/CPU%% are the same numbers the bounds gate below re-derives.
+# $HOME/runs/fierce-wren-19-r6-dff57af7/out. MEMMAX_G/MEMHIGH_G/TASKS/CPU%% are the same numbers the bounds gate below re-derives.
 # LEDGER ROWS (R/S/D), three of them, named by the launcher's convention:
-#   fierce-wren-19-r4r5-db56530f-res   cap 32 (GiB — the R row is booked in GiB, not bytes, per keen-otter msg_c9d1df56)
-#   fierce-wren-19-r4r5-db56530f-drv   cap 1
-#   fierce-wren-19-r4r5-db56530f       cap 0
-# UNITS: fierce-wren-19-r4r5-db56530f.scope (the row's own scope; the scope gate requires this process's cgroup path to END in
-#   "/fierce-wren-19-r4r5-db56530f.scope") and calmcrab-drv-fierce-wren-19-r4r5-db56530f.service (the driver service). R is written before the scope
+#   fierce-wren-19-r6-dff57af7-res   cap 32 (GiB — the R row is booked in GiB, not bytes, per keen-otter msg_c9d1df56)
+#   fierce-wren-19-r6-dff57af7-drv   cap 1
+#   fierce-wren-19-r6-dff57af7       cap 0
+# UNITS: fierce-wren-19-r6-dff57af7.scope (the row's own scope; the scope gate requires this process's cgroup path to END in
+#   "/fierce-wren-19-r6-dff57af7.scope") and calmcrab-drv-fierce-wren-19-r6-dff57af7.service (the driver service). R is written before the scope
 #   starts; S starts the scope and the driver service under those bookings; D writes the row's exit code
 #   back to the ledger. This script books nothing and writes no ledger: it REFUSES (2) when the environment
 #   it was started in does not match the booking.
 #
-# EXIT CONTRACT (v3 item 4). THREE codes, no others:
-#   0  every claim in every leg printed a bare PASS and the runner's own exit agreed (expectations held)
-#   1  a claim printed a bare FAIL (expectation FALSIFIED — a finding, and the reason for the row)
-#   2  NO_OBSERVATION: any setup, usage, scope, bounds, clone, checkout, blob, name, build, timeout,
-#      OOM, counter-incoherence, classifier or return-code failure — every gate refusal is 2, including
-#      a run dir that already exists and a leg whose output is not exactly bare verdict lines.
-# There is deliberately NO "couldn't run" code and no gate-only code: a leg that cannot run, a build that
-# fails and a refusal at any gate are all 2, because none of them produced an observation.
-#
-# OOM (v3 item 3, keen-otter (1)/(4) as rdpo hardened it): ONE snapshot per boundary through oom_snap,
-#   which reads memory.events ONCE and publishes those exact raw bytes, sequence-numbered and timestamped,
-#   under OUT/memevents/ by EXCLUSIVE CREATE (set -C) BEFORE any number is returned; a failed read or a
-#   failed write returns UNKNOWN/UNKNOWN, and every caller turns UNKNOWN into exit 2. Each key must occur
-#   EXACTLY ONCE as a whole line `^key [0-9]+$`; an extra field, a duplicate key, a tab-separated record or
-#   a non-digit value is UNKNOWN. oom AND oom_kill are both compared, boundary by boundary: a rise is
-#   OOM_KILLED (2), a FALL cannot happen inside one cgroup's life so it is COUNTER_INCOHERENT (2), an
-#   unreadable counter is UNKNOWN (2). Boundaries: gate-a/gate-b before any work, build-before/build-after
-#   for each pin, leg-before/leg-after for each leg, and a FINAL snapshot compared against the last leg's
-#   after-snapshot (a kill in evidence writing or teardown is caught there). No `grep '^oom_kill [1-9]'`,
-#   no silent `cat`: memory.peak and the time/RSS lines are PRINTED for the reader and never judged.
-#
-# CLASSIFIER (what counts as an observation). claim_batch's own contract at this pin
-#   (src/v1/stage0/src/bin/claim_batch.rs, blob 12a71786bd92f683dbd0aec2ae5d6f426e651a44 at BOTH pins):
-#   `ClaimOutcome::Pass => println!("PASS {}", function)`; a plain Fail prints `FAIL <function>`; every
-#   other outcome prints a QUALIFIED line — `FAIL <fn> (runtime error …)`, `FAIL <fn> (returned … code N…)`,
-#   `UNOBSERVED <fn> (…)`, `PANICKED <fn> (…)` — and its own process exit is 0 if everything passed and the
-#   run's cost-accounting partition reconciled, 1 if anything failed, 2 if anything was unobserved.
-#   VERDICT RULES (v4, sleek-owl blocker 3). Only a BARE `^PASS <name>$` counts as held and only a BARE
-#   `^FAIL <name>$` counts as falsified. Each expected name must also have EXACTLY ONE outcome line of ANY
-#   keyword -- PASS/FAIL/UNOBSERVED/PANICKED, bare or qualified: zero outcome lines for a name, or two, is
-#   NO_OBSERVATION, and a QUALIFIED line (`FAIL <fn> (reason)`) is NO_OBSERVATION, never a falsification.
-#   Anything else is also NO_OBSERVATION: a contradiction, an indented line, a name that is not one of this
-#   row's, an empty or missing log, or a timeout (rc 124).
-# COMPLETION RECORD (v4, sleek-owl blocker 2, keen-otter msg_a9e94d36). The runner's exit 1 ALSO covers
-#   setup/resolve refusals, so bare verdict lines alone cannot prove a leg completed. claim_batch's
-#   ProcessPartition::render emits EXACTLY ONE `[process-partition] total_ms=...` record per process, on the
-#   Ok path only. Per leg the gate therefore does TWO stages: (a) count lines with the PREFIX
-#   `^[process-partition] total_ms` and require exactly one -- a single-stage filter-and-count cannot see a
-#   malformed competitor sitting next to a good one; (b) test the SHAPE `^\[process-partition\] total_ms=[0-9]+( |$)`
-#   on that one line. Zero, two, or one valid plus one malformed is NO_OBSERVATION. Whole-line anchoring
-#   (`...total_ms=[0-9]+$`) is WRONG: render pushes the span fields unconditionally, and that exact mistake
-#   is what spent #15695's G1 attempt (15/15 bare PASS and still NO_OBSERVATION). The neighbour line
-#   `[process-partition-exit] run_returned_ms=... main_end_ms=...` does NOT start with `[process-partition]`
-#   and must not be counted -- hence the `]` in the prefix. The process exit
-#   code is checked SEPARATELY from the text, as rdpo does: all-HELD requires rc 0, one-or-more FAILED
-#   requires rc 1; rc 2 with only bare verdict lines, rc 124, a signal 128+N or a missing status is
-#   NO_OBSERVATION — including the case where every claim passed but the run's cost-accounting partition
-#   refused, which this runner reports as exit 1 with no FAIL line.
-#   WHICH STREAM, checked at both pins: that record goes to STDERR, not stdout. The pinned source renders it
-#   with eprintln! at line 1460 of src/v1/stage0/src/bin/claim_batch.rs (blob
-#   12a71786bd92f683dbd0aec2ae5d6f426e651a44, the same bytes at db56530f and at dff57af7), while every PASS/FAIL
-#   verdict goes to stdout. So the completion gate reads the leg stderr capture (logs/<leg>.err) and the
-#   classifier reads the leg stdout (<leg>.out). Pointing that gate at stdout reads 0 records on every leg and
-#   NO_OBSERVATIONs a full-green row - the #15695 G1 shape by another route. The pinned source is therefore
-#   blob-gated like every other input and re-read for its render site (producer_gate), and the fixtures drive
-#   THIS packet's own leg() with a stub standing in for the binary: record on stderr plus verdict on
-#   stdout is an observation, record only on stdout is not, and two records on stderr is not.
-# BEFORE ANY LEG: the names gate. validate_explicit_functions in that same binary refuses a stale or
-#   typoed --function name, which would spend the leg's 900 s for nothing; so each expected name is
-#   grepped for `^test fn <name>(` in the CHECKED-OUT entry file first, and a missing name exits 2.
-#
-# NO MUTATION, NO WRITES OUTSIDE OUT, NO HIDDEN STATE: no rm, no push, no commit, no git checkout of a
-#   patch, no process matching, no /opt/gunbc or other instance root; the origin is hard-coded as
-#   https://github.com/gunb-ai/gunbc and no other tree or home path is read. Every write is under OUT,
-#   made after OUT was created by an exclusive quoted `mkdir --` (no -p) following an absence precheck
-#   that refuses ANY existing entry — file, directory, symlink or dangling symlink.
+# EXIT CONTRACT (v3 item 4, identical to the R4/R5 packet plus the hold). THREE codes, no others:
+#   0  the claim printed a bare PASS and the runner's own exit agreed (expectation held)
+#   1  the claim printed a bare FAIL (expectation FALSIFIED — a finding for the grant set)
+#   2  NO_OBSERVATION: the HELD refusal when no cleared execution-grant reference is named, and every other
+#      usage, setup, scope, bounds, clone, checkout, tree, blob, name, build, timeout, OOM, counter,
+#      classifier or return-code failure. The hold refusal happens BEFORE anything is created.
+
 set -u
 
-J=fierce-wren-19-r4r5-db56530f
+J=fierce-wren-19-r6-dff57af7
 U=https://github.com/gunb-ai/gunbc
-H4=db56530fcb186370e3dbf1aa3c69ded324daa25d; T4=48be84d8b18a9530e3a5c42adf8c24b19e1aa4dc
-H5=dff57af790f923066d61721e89ff751a91021278; T5=356f2894a60edda51cdbe79879b2fb3b7aea75c4
-E4A=src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag; B4A=332cc981fd194bb9f02f16ff6e3c14d81b874e2b
-E4B=src/v2/test/claim/rust_crate_partition_witness.dag;            B4B=abc6313eb8c4d49ad74a7bcafad36b895ea32f76
-E5=dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag;    B5=adfeb29426eac9d4da67630a12d89f8eabe8754b
+H=dff57af790f923066d61721e89ff751a91021278; T=356f2894a60edda51cdbe79879b2fb3b7aea75c4
+E6=dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag; B6=969b980b189dafa81df4045f62f7d2e70dcc50ad
 
-# name lists (space-separated: classification, the names gate, and leg_state)
-N4A="witness_duplicate_owner_refuses_holds witness_unowned_mirror_refuses_holds witness_shell_partition_duplicate_owner_refuses_holds witness_leaf_edit_compiles_owner_and_downstream_holds witness_leaf_edit_excludes_unrelated_packages_holds"
-N4B="witness_r4_refuses_unit_graph_cycle_holds"
-N5="witness_inbox_load_refused_is_refused_not_empty witness_inbox_unreplayable_history_is_refused_not_empty witness_inbox_live_receipt_removes_node_from_rows witness_inbox_revoked_receipt_reappears_with_prior witness_inbox_stale_live_receipt_refuses"
-# the SAME names as one comma-separated --functions argument (the parser does csv.split(',') then trims)
+# the one claim name (a space-separated list of one: classification, the names gate, leg_state)
+N6="witness_inbox_on_authority_projects_on_live_corpus"
+# the SAME name as one comma-separated --functions argument (the parser does csv.split(',') then trims)
 csv() { local s; s=$(printf '%s,' $1); printf '%s' "${s%,}"; }
-C4A=$(csv "$N4A"); C4B=$(csv "$N4B"); C5=$(csv "$N5")
+C6=$(csv "$N6")
 
 T_SETUP_CLONE=300; T_SETUP_FETCH=300; T_SETUP_CHECKOUT=120; T_BUILD=2400; T_LEG=900
+# the row's CAPPED SUM: one clone + one shallow fetch + one checkout + one build + N_LEGS legs
+WALL_SUM=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG ))
 
-# FROZEN COMMAND STRINGS: what --predict-only prints (bytes + sha256 over the literal string) and what
-# the run executes are the SAME variables. Expansion points named in the manifest: $OUT (the one argument),
-# $BIN4 / $BIN5 (the runner built inside each pinned clone), $U and the pins (already expanded here).
-CMD_CLONE_4='git init -q "$OUT/wt-r4"'
-CMD_FETCH_4='git -C "$OUT/wt-r4" fetch -q --depth 1 '"$U"' '"$H4"''
-CMD_CHECKOUT_4='git -C "$OUT/wt-r4" checkout -q --detach FETCH_HEAD'
-CMD_BUILD_4='cargo build --locked --release -j 32 -p v1-compiler --bin claim_batch'
-CMD_LEG_R4A='"$BIN4" --source-root dag --source-root src/v1 --source-root src/v2 --entry "'"$E4A"'" --functions "'"$C4A"'"'
-CMD_LEG_R4B='"$BIN4" --source-root dag --source-root src/v1 --source-root src/v2 --entry "'"$E4B"'" --functions "'"$C4B"'"'
-CMD_CLONE_5='git init -q "$OUT/wt-r5"'
-CMD_FETCH_5='git -C "$OUT/wt-r5" fetch -q --depth 1 '"$U"' '"$H5"''
-CMD_CHECKOUT_5='git -C "$OUT/wt-r5" checkout -q --detach FETCH_HEAD'
-CMD_BUILD_5='cargo build --locked --release -j 32 -p v1-compiler --bin claim_batch'
-CMD_LEG_R5='"$BIN5" --source-root dag --source-root src/v1 --source-root src/v2 --entry "'"$E5"'" --functions "'"$C5"'"'
+# FROZEN COMMAND STRINGS: what --predict-only prints (bytes + sha256 over the literal string) and what the
+# run executes are the SAME variables. Expansion points named in the manifest: $OUT (the launcher's evidence
+# dir, the one positional argument) and $BIN6 (the runner built inside the pinned clone); the origin, the
+# pin, the entry path and the CSV are already expanded here, at definition time.
+CMD_CLONE='git init -q "$OUT/wt-r6"'
+CMD_FETCH='git -C "$OUT/wt-r6" fetch -q --depth 1 https://github.com/gunb-ai/gunbc dff57af790f923066d61721e89ff751a91021278'
+CMD_CHECKOUT='git -C "$OUT/wt-r6" checkout -q --detach FETCH_HEAD'
+CMD_BUILD='cargo build --locked --release -j 32 -p v1-compiler --bin claim_batch'
+CMD_LEG_R6='"$BIN6" --source-root dag --source-root src/v1 --source-root src/v2 --entry "dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag" --functions "witness_inbox_on_authority_projects_on_live_corpus"'
 
 # ---------------------------------------------------------------- gates and helpers (tested by --classifier-fixtures)
 scope_gate() { # $1=/proc/self/cgroup content $2=JOB; prints the cgroup path, or fails
@@ -221,7 +159,41 @@ oom_snap() { # $1=event file $2=tag; publishes the raw bytes by exclusive create
     if ( set -C; printf '%s\n' "$t" > "$f" ) 2>/dev/null; then echo "$(oom_parse "$t" oom_kill)/$(oom_parse "$t" oom)"
     else echo UNKNOWN/UNKNOWN; fi
   else ( set -C; : > "$f.unreadable" ) 2>/dev/null; echo UNKNOWN/UNKNOWN; fi; }
-# CLAIM CLASSIFIER: bare lines only, one per expected name, plus the runner's own exit code checked apart.
+# CLAIM CLASSIFIER (v4; the contract is identical to the R4/R5 packet):
+#   VERDICT RULES (v4, sleek-owl blocker 3). Only a BARE `^PASS <name>$` counts as held and only a BARE
+#   `^FAIL <name>$` counts as falsified. Each expected name must also have EXACTLY ONE outcome line of ANY
+#   keyword -- PASS/FAIL/UNOBSERVED/PANICKED, bare or qualified: zero outcome lines for a name, or two, is
+#   NO_OBSERVATION, and a QUALIFIED line (`FAIL <fn> (reason)`) is NO_OBSERVATION, never a falsification.
+#   Anything else is also NO_OBSERVATION: a contradiction, an indented line, a name that is not one of this
+#   row's, an empty or missing log, or a timeout (rc 124).
+# COMPLETION RECORD (v4, sleek-owl blocker 2, keen-otter msg_a9e94d36). The runner's exit 1 ALSO covers
+#   setup/resolve refusals, so bare verdict lines alone cannot prove a leg completed. claim_batch's
+#   ProcessPartition::render emits EXACTLY ONE `[process-partition] total_ms=...` record per process, on the
+#   Ok path only. Per leg the gate therefore does TWO stages: (a) count lines with the PREFIX
+#   `^[process-partition] total_ms` and require exactly one -- a single-stage filter-and-count cannot see a
+#   malformed competitor sitting next to a good one; (b) test the SHAPE `^\[process-partition\] total_ms=[0-9]+( |$)`
+#   on that one line. Zero, two, or one valid plus one malformed is NO_OBSERVATION. Whole-line anchoring
+#   (`...total_ms=[0-9]+$`) is WRONG: render pushes the span fields unconditionally, and that exact mistake
+#   is what spent #15695's G1 attempt (15/15 bare PASS and still NO_OBSERVATION). The neighbour line
+#   `[process-partition-exit] run_returned_ms=... main_end_ms=...` does NOT start with `[process-partition]`
+#   and must not be counted -- hence the `]` in the prefix.
+#   WHICH STREAM, checked at the pin: that record goes to STDERR, not stdout. The pinned source has exactly
+#   one emission of the record -- the single eprintln!("{}", partition.render(&timings)) call site in the
+#   run() path of src/v1/stage0/src/bin/claim_batch.rs (blob 12a71786bd92f683dbd0aec2ae5d6f426e651a44
+#   -- the same bytes at dff57af7 and at db56530f), while every PASS/FAIL verdict goes to stdout. So the
+#   completion gate reads the leg stderr capture (logs/<leg>.err) and the classifier reads the leg stdout
+#   (<leg>.out). Pointing that gate at stdout reads 0 records on every leg and NO_OBSERVATIONs a full-green
+#   row: the #15695 G1 shape by another route. The pinned source is therefore blob-gated like every other
+#   input and re-read for its render site (producer_gate), and the fixtures drive THIS packet's own leg() with
+#   a stub standing in for the binary: record on stderr plus verdict on stdout is an observation, record only
+#   on stdout is not, and two records on stderr is not.
+wall_gate() { # $1=capped per-step sum $2=scope RuntimeMaxSec $3=installed launcher cap $4=driver RuntimeMaxSec
+  local s=$1 r=$2 cap=$3 d=$4
+  [ "$r" -le "$cap" ] || { echo "RUNTIME_S $r exceeds the installed calmcrab-udrv v4 preflight cap of $cap; the launcher would refuse before any scope exists (PRE_SCOPE_REFUSAL, the #15695 diag-v2 shape at 11700)"; return; }
+  [ "$s" -le "$r" ] || { echo "the capped per-step sum $s s exceeds the scope RuntimeMaxSec $r; a cut-off leg is NO_OBSERVATION"; return; }
+  [ "$d" = "$((r+300))" ] || { echo "the driver service must be RuntimeMaxSec $((r+300)), the scope's $r plus 300 s; the packet says $d"; return; }
+  echo OK; }
+
 claim_classify() { # $1=output file $2=rc $3=name -> HELD | FAILED | NO_OBSERVATION
   local f=$1 rc=$2 n=$3 p q
   [ -f "$f" ] || { echo NO_OBSERVATION; return; }
@@ -273,11 +245,20 @@ names_gate() { # $1=checkout dir $2=entry file $3=name list: every name must be 
   [ -z "$miss" ] || { echo "not a test fn in $e:$miss"; return 1; }; }
 tm() { grep -hE 'Maximum resident|Elapsed' "$1" 2>/dev/null | tr -s ' ' | tr '\n' ' '; }
 
+grant_gate() { # $1 = the second positional argument: executing a HELD row needs a grant reference
+  local g=${1-}
+  case "$g" in
+    "") echo "row R6 is HELD behind keen-otter's msg_3407a188: a claim runner starting a NEW read of the live acceptance partition is not the existing rostered reader that message admits. Run as: script.sh <OUT> <execution-grant-ref>, where the reference is the one keen-otter published when that gate was cleared; this packet cannot decide that for itself."; return 1;;
+    --*) echo "row R6: the second argument must be an execution-grant reference, not the flag '$g'"; return 1;;
+    *[![:graph:]]*) echo "row R6: an execution-grant reference must be one printable token, not blank or padded"; return 1;;
+  esac
+  printf '%s' "$g"; }
+
 # ---- three run-path helpers lifted ABOVE the fixture controls, on purpose: bash only knows a function
-# ---- after the line that defines it, and fixture part 2 drives the real leg() with a stub standing in for
-# ---- the claim_batch binary, so the fixtures cannot drift from the wiring they are meant to check. Nothing
-# ---- here runs at parse time; the run path calls these further down, exactly as in v4. The clone, blob-gate
-# ---- and build helpers were left in place so that the gate-order control below keeps its v4 meaning.
+# ---- after the line that defines it, and fixture part 2 drives the real leg() with a stub standing in for the
+# ---- claim_batch binary, so the fixtures cannot drift from the wiring they are meant to check. Nothing here
+# ---- runs at parse time; the run path calls these further down, exactly as in v4. The clone and blob-gate
+# ---- helpers were left in place so the gate-order control keeps its v4 meaning.
 nox() { echo "$1" >> "$O"; echo "VERDICT=NO_OBSERVATION reason=$2" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"; echo "NO_OBSERVATION: $1 (reason=$2)" >&2; exit 2; }
 
 producer_gate() { # $1 = a checked-out claim_batch.rs: the completion record MUST be rendered to stderr
@@ -363,12 +344,15 @@ if [ "${1:-}" = "--classifier-fixtures" ]; then
   names_gate $T/wt dag/e.dag 'a_holds b_holds' >/dev/null && ck names-typo refused accepted || ck names-typo refused refused
   names_gate $T/wt dag/nope.dag 'a_holds' >/dev/null && names_gate $T/wt dag/nope.dag 'a_holds'; ck names-missing-entry refused refused
   # the CSV the legs pass, and its arity (the parser splits on ',' and trims)
-  ck csv-r4a 5 "$(printf '%s' "$C4A" | awk -F',' '{print NF}')"
-  ck csv-r4b 1 "$(printf '%s' "$C4B" | awk -F',' '{print NF}')"
-  ck csv-r5 5 "$(printf '%s' "$C5" | awk -F',' '{print NF}')"
-  ck csv-no-spaces 0 "$(printf '%s%s%s' "$C4A" "$C4B" "$C5" | grep -c ' ')"
-  ck names-match-csv 0 "$( ( IFS=','; set -f; for x in $C4A $C4B $C5; do case " $N4A $N4B $N5 " in *" $x "*) ;; *) echo bad;; esac; done ) | grep -c bad)"
-  ck name-shape 0 "$(printf '%s\n' $N4A $N4B $N5 | grep -cvE '^[a-z0-9_]+$')"
+  ck csv-r6 1 "$(printf '%s' "$C6" | awk -F',' '{print NF}')"
+  ck csv-is-the-one-name "$N6" "$C6"
+  ck csv-no-spaces 0 "$(printf '%s' "$C6" | grep -c ' ')"
+  ck names-match-csv 0 "$( ( IFS=','; set -f; for x in $C6; do case " $N6 " in *" $x "*) ;; *) echo bad;; esac; done ) | grep -c bad)"
+  ck name-shape 0 "$(printf '%s\n' $N6 | grep -cvE '^[a-z0-9_]+$')"
+  grant_gate "" >/dev/null && ck grant-empty refused accepted || ck grant-empty refused refused
+  grant_gate "   " >/dev/null && ck grant-blank refused accepted || ck grant-blank refused refused
+  grant_gate "--yes" >/dev/null && ck grant-flaglike refused accepted || ck grant-flaglike refused refused
+  grant_gate "keen-otter-msg_3407a188-cleared-2026-11-06" >/dev/null && ck grant-named accepted accepted || ck grant-named accepted refused
   # OOM: one read, exact keys, publish-before-parse, rise/fall/unknown
   mkdir -p $T/mem; MEMDIR=$T/mem
   printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > $T/ev
@@ -407,14 +391,14 @@ oom 0' oom)"
   bounds_check $T/cg >/dev/null && ck bounds-unreadable refused accepted || ck bounds-unreadable refused refused
   mv $T/cg/cpu.gone $T/cg/cpu.max
   # scope gate
-  ck scope-ok /user.slice/user-1000.slice/x/fierce-wren-19-r4r5-db56530f.scope "$(scope_gate "0::/user.slice/user-1000.slice/x/fierce-wren-19-r4r5-db56530f.scope" fierce-wren-19-r4r5-db56530f)"
+  ck scope-ok /user.slice/user-1000.slice/x/fierce-wren-19-r6-dff57af7.scope "$(scope_gate "0::/user.slice/user-1000.slice/x/fierce-wren-19-r6-dff57af7.scope" fierce-wren-19-r6-dff57af7)"
   sg() { scope_gate "$1" "$2" >/dev/null && ck "$3" refused accepted || ck "$3" refused refused; }
-  sg "0::/" fierce-wren-19-r4r5-db56530f scope-root
-  sg "0::/x/other.scope" fierce-wren-19-r4r5-db56530f scope-foreign
-  sg "0::/x/fierce-wren-19-r4r5-db56530f.scope.d" fierce-wren-19-r4r5-db56530f scope-trailing
-  sg "0::/x/prefierce-wren-19-r4r5-db56530f.scope" fierce-wren-19-r4r5-db56530f scope-prefix-hit
-  sg "0::/x/fierce-wren-19-r4r5-db56530f.scope/sub" fierce-wren-19-r4r5-db56530f scope-nested
-  sg "1::/x/fierce-wren-19-r4r5-db56530f.scope" fierce-wren-19-r4r5-db56530f scope-not-v2
+  sg "0::/" fierce-wren-19-r6-dff57af7 scope-root
+  sg "0::/x/other.scope" fierce-wren-19-r6-dff57af7 scope-foreign
+  sg "0::/x/fierce-wren-19-r6-dff57af7.scope.d" fierce-wren-19-r6-dff57af7 scope-trailing
+  sg "0::/x/prefierce-wren-19-r6-dff57af7.scope" fierce-wren-19-r6-dff57af7 scope-prefix-hit
+  sg "0::/x/fierce-wren-19-r6-dff57af7.scope/sub" fierce-wren-19-r6-dff57af7 scope-nested
+  sg "1::/x/fierce-wren-19-r6-dff57af7.scope" fierce-wren-19-r6-dff57af7 scope-not-v2
   sg "$(printf '0::/x/y.scope\n1::/z')" y scope-two-lines
   sg "0::/x/y.scope" "" scope-empty-job
   # OUT freshness: any existing entry refuses; a fresh path is accepted
@@ -428,25 +412,27 @@ oom 0' oom)"
   ( bin_sha $T/no-such-file; bin_sha $T/no-such-other ) >/dev/null 2>&1; a=$(bin_sha $T/no-such-file); ra=$?; b=$(bin_sha $T/no-such-other); rb=$?
   [ $ra != 0 ] && [ $rb != 0 ] && ck hash-two-failures-not-equal refused refused || ck hash-two-failures-not-equal refused accepted
   # wall accounting must be arithmetic a reader can check, not prose
-  ck capped-sum 8940 "$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG ))"
-  ck scope-wall-gte-sum ok "$([ 9900 -ge $(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG )) ] && echo ok || echo short)"
-  ck driver-wall-gte-scope ok "$([ 10500 -ge 9900 ] && echo ok || echo short)"
+  ck capped-sum 4020 "$WALL_SUM"
+  ck wall-gate-accepts-this-row OK "$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S")"
+  ck runtime-s-within-installed-launcher-cap ok "$([ "$RUNTIME_S" -le "$LAUNCHER_CAP" ] && echo ok || echo over-cap)"
+  ck driver-wall-is-scope-plus-300 ok "$([ "$DRIVER_S" = "$((RUNTIME_S+300))" ] && echo ok || echo short)"
+  ck wall-gate-refuses-over-launcher-cap "RUNTIME_S 9900 exceeds the installed calmcrab-udrv v4 preflight cap of 7200" "$(wall_gate "$WALL_SUM" 9900 "$LAUNCHER_CAP" 10200 | cut -d';' -f1)"
+  ck wall-gate-refuses-sum-above-scope 1 "$(wall_gate 99999 "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S" | grep -c 'exceeds the scope RuntimeMaxSec')"
+  ck wall-gate-refuses-wrong-driver-offset 1 "$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$((DRIVER_S+300))" | grep -c 'plus 300 s')"
   # ---------------- the frozen argv, tokenized exactly as bash -c will tokenize it ----------------
   # A leg is executed as: timeout <t> bash -c "<the frozen string>". So what claim_batch's arg loop sees is
   # that string AFTER bash has expanded it. eval "set -- <string>" reproduces that expansion here, in this
-  # container, without running a claim: it turns the packet's own argv into data and checks it. This is the
-  # assertion that would have caught v1's two fatal argv defects.
-  # PARSER_FLAGS is the flag set accepted by src/v1/stage0/src/bin/claim_batch.rs at both pins (blob
+  # container, without running a claim: it turns the packet's own argv into data and checks it.
+  # PARSER_FLAGS is the flag set accepted by src/v1/stage0/src/bin/claim_batch.rs at the pin (blob
   # 12a71786bd92f683dbd0aec2ae5d6f426e651a44); anything else makes that file print
   # "claim_batch: unknown argument: ..." and exit 2, which this packet scores NO_OBSERVATION, not FAIL.
   PARSER_FLAGS='--source-root --entry --function --functions --claim-run --wet --hermetic --record --eval-budget-ms --fixture-store --pre-push --print-entry-closure --outcomes-out'
-  BIN4=${BIN4:-/fixture/wt-r4/target/release/claim_batch}
-  BIN5=${BIN5:-/fixture/wt-r5/target/release/claim_batch}
+  BIN6=${BIN6:-/fixture/wt-r6/target/release/claim_batch}
   argv_check() { # argv_check <label> <frozen string> <entry> <names...>: prints one line per defect, silent if sound
     local label=$1 cmd=$2 ent=$3; shift 3; local names="$*"; local i j x fv='' nf nn
     eval "set -- $cmd" 2>/dev/null || { echo "$label: the frozen string does not tokenize as a command"; return; }
     [ "$#" -gt 1 ] || { echo "$label: nothing follows the binary path"; return; }
-    [ "$1" = "$BIN4" ] || [ "$1" = "$BIN5" ] || { echo "$label: argv[0] is '$1', not the pinned runner path"; return; }
+    [ "$1" = "$BIN6" ] || { echo "$label: argv[0] is '$1', not the pinned runner path"; return; }
     case " $* " in *" claim_batch "*) echo "$label: argv carries a literal 'claim_batch' token after the binary"; return;; esac
     for i in "$@"; do case "$i" in --*) case " $PARSER_FLAGS " in *" $i "*) ;; *) echo "$label: '$i' is not a flag the pinned parser accepts";; esac;; esac; done
     local ne=0 nfn=0
@@ -466,23 +452,18 @@ oom 0' oom)"
     ( IFS=','; set -f; for x in $fv; do case " $names " in *" $x "*) ;; *) echo "$label: --functions field '$x' is not one of the leg's names";; esac; done )
     for x in $names; do case ",$fv," in *",$x,"*) ;; *) echo "$label: '$x' is missing from --functions";; esac; done
     return 0; }
-  ck argv-R4a-sound "" "$(argv_check R4a "$CMD_LEG_R4A" "$E4A" $N4A)"
-  ck argv-R4b-sound "" "$(argv_check R4b "$CMD_LEG_R4B" "$E4B" $N4B)"
-  ck argv-R5-sound  "" "$(argv_check R5  "$CMD_LEG_R5"  "$E5"  $N5)"
+  ck argv-R6-sound "" "$(argv_check R6 "$CMD_LEG_R6" "$E6" $N6)"
   # the checker itself, in the other direction: each defect the manager named must be reported
-  ck argv-ctl-subcommand 1 "$(argv_check ctl "\"$BIN4\" claim_batch --source-""root dag --entry x --functions a" x a | grep -c "literal 'claim_batch'")"
-  ck argv-ctl-spaces     1 "$(argv_check ctl "\"$BIN4\" --source-root dag --entry x --functions \"a b\"" x a b | grep -c 'contains a space')"
-  ck argv-ctl-badflag    1 "$(argv_check ctl "\"$BIN4\" --entry x --functions a --frobnicate" x a | grep -c 'not a flag')"
-  ck argv-ctl-typo       1 "$(argv_check ctl "\"$BIN4\" --entry x --functions \"a,zzz\"" x a b | grep -c 'not one of the leg' )"
-  ck argv-ctl-missing    1 "$(argv_check ctl "\"$BIN4\" --entry x --functions \"a\"" x a b | grep -c 'missing from --functions')"
-  ck argv-ctl-double     1 "$(argv_check ctl "\"$BIN4\" --entry x --entry y --functions a" x a | grep -c 'appears 2 times')"
-  ck argv-ctl-noentry    1 "$(argv_check ctl "\"$BIN4\" --source-root dag --functions a" x a | grep -c -- '--entry appears 0 times')"
-  ck argv-ctl-wrongentry 1 "$(argv_check ctl "\"$BIN4\" --entry other.dag --functions a" "${E4A:-x}" a | grep -c 'entry value is')"
+  ck argv-ctl-subcommand 1 "$(argv_check ctl "\"$BIN6\" claim_batch --source-""root dag --entry x --functions a" x a | grep -c "literal 'claim_batch'")"
+  ck argv-ctl-spaces     1 "$(argv_check ctl "\"$BIN6\" --source-root dag --entry x --functions \"a b\"" x a b | grep -c 'contains a space')"
+  ck argv-ctl-badflag    1 "$(argv_check ctl "\"$BIN6\" --entry x --functions a --frobnicate" x a | grep -c 'not a flag')"
+  ck argv-ctl-typo       1 "$(argv_check ctl "\"$BIN6\" --entry x --functions \"a,zzz\"" x a b | grep -c 'not one of the leg' )"
+  ck argv-ctl-missing    1 "$(argv_check ctl "\"$BIN6\" --entry x --functions \"a\"" x a b | grep -c 'missing from --functions')"
+  ck argv-ctl-double     1 "$(argv_check ctl "\"$BIN6\" --entry x --entry y --functions a" x a | grep -c 'appears 2 times')"
+  ck argv-ctl-noentry    1 "$(argv_check ctl "\"$BIN6\" --source-root dag --functions a" x a | grep -c -- '--entry appears 0 times')"
+  ck argv-ctl-wrongentry 1 "$(argv_check ctl "\"$BIN6\" --entry other.dag --functions a" "${E6:-x}" a | grep -c 'entry value is')"
   # ---------------- self-structure: the packet refuses to run if its own frozen text lost an invariant --
-  # These are the assertions that hold the hardened frame in place AFTER the packet is staged: the packet
-  # reads its own text (comment lines stripped) and refuses if a required construct is absent or an
-  # excluded one has appeared. The needle is written split across two quotes so this call site can never
-  # match the pattern it is looking for.
+  # The needle is written split across two quotes so this call site can never match the pattern it seeks.
   inv() { local a=$1 b=$2 lbl=$3 want=$4 got
     got=$(grep -vE '^[[:space:]]*#' "$0" | grep -cF -- "$a$b"); ck "self-structure: $lbl" "$want" "$got"; }
   invmin() { local a=$1 b=$2 lbl=$3 want=$4 got
@@ -503,13 +484,14 @@ oom 0' oom)"
   invmin 'memory.eve' 'nts' 'the evidence source is the cgroup counter file' 1
   inv 'timeout "$T_LE' 'G"' 'a leg runs under its own capped timeout' 1
   inv 'timeout "$T_BUIL' 'D"' 'the build runs under its own capped timeout' 1
+  inv 'WM=$(wall_ga' 'te' 'the packet refuses a booked wall above the installed launcher cap, before any fetch' 1
+  inv 'LAUNCHER_CA' 'P=7200' 'the installed calmcrab-udrv v4 cap is frozen as a constant, not prose' 1
   inv 'timeout "$T_SETUP_FETC' 'H"' 'the fetch runs under its own capped timeout' 1
   inv 'pc=$(pp_che' 'ck "$OUT/logs/$L.err")' 'the completion gate reads the leg stderr capture, where the record is emitted' 1
-  inv 'pc=$(pp_check "$OUT/logs/$L.er' 'r")' 'the completion gate reads the leg stderr capture, where the record is emitted' 1
   inv 'pp_check "$OUT/$L.o' 'ut' 'no completion gate reads the leg stdout, which carries only the verdicts' 0
   inv 'claim_classify "$OUT/$L.o' 'ut' 'the verdict classifier reads the leg stdout' 1
-  inv 'm=$(producer_ga' 'te' 'every pin proves the pinned producer emits the record to stderr' 2
-  inv 'blob_gate "$W" "$PROD" "$PRODBL' 'OB")' 'the pinned claim_batch.rs is blob-gated like the parser flag set' 2
+  inv 'm=$(producer_ga' 'te' 'the pin proves the pinned producer emits the record to stderr' 1
+  inv 'blob_gate "$W" "$PROD" "$PRODBL' 'OB")' 'the pinned claim_batch.rs is blob-gated like the parser flag set' 1
   inv 'ck e2e-record-on-std' 'err-is-an-observation AS_EXPECTED' 'the fixtures drive a real leg and require the stderr record to be an observation' 1
   inv 'ck e2e-record-only-on-std' 'out-is-not-an-observation NOOBS' 'the fixtures require a stdout-only record to be no observation' 1
   inv 'ck e2e-two-records-is-not-an-observat' 'ion NOOBS' 'the fixtures reject a duplicated record' 1
@@ -517,6 +499,7 @@ oom 0' oom)"
   inv 'PP_PRE' "FIX='^[[]process-partition" 'the completion prefix keeps the closing bracket (the -exit neighbour must not count)' 1
   inv 'any=$(grep -cE "' '^(PASS|FAIL' 'each expected name needs exactly one outcome line of any keyword' 1
   inv 'MEMMAX_G*' '1073741824' 'the booked byte bounds are derived from the launcher GiB values' 1
+  inv 'grant_gate "$GRA' 'NT"' 'the held-row grant gate is on the run path' 1
   ln_b=$(grep -nF -- 'BM=$(bounds_che'ck "$0" | tail -1 | cut -d: -f1)
   nf1='T_SETUP_FETC'; nf2='H"'; ln_f=$(grep -nF -- "$nf1$nf2" "$0" | head -1 | cut -d: -f1)
   ck bounds-precedes-fetch ok "$([ -n "$ln_b" ] && [ -n "$ln_f" ] && [ "$ln_b" -lt "$ln_f" ] && echo ok || echo out-of-order)"
@@ -586,12 +569,13 @@ fi
 # ---------------------------------------------------------------- fixture part 2: the leg-level controls
 # need leg(), producer_gate and nox DEFINED, so they run here rather than in the block above -- in the same
 # shell as part 1 (the scratch dir, the counters and the pinned record fixture carry over), and still BEFORE
-# any probe is spent: no clone, no fetch, no build, no claim, nothing written outside the scratch dir.
+# any probe is spent and BEFORE the held-row grant gate: no clone, no fetch, no build, no claim, and nothing
+# written outside the scratch dir.
 if [ "${1:-}" = "--classifier-fixtures" ]; then
-  # ---- THE COMPLETION RECORD REACHES THE GATE, end to end through this packet's own leg(). The
-  # ---- producer emits the record with eprintln! (stderr) and the verdicts with println! (stdout); leg()
-  # ---- sends stdout to <leg>.out and stderr to logs/<leg>.err. A stub stands in for the claim_batch binary,
-  # ---- so a gate pointed at the wrong stream, or a duplicated record, fails HERE and not on srv1.
+  # ---- THE COMPLETION RECORD REACHES THE GATE, end to end through this packet's own leg(). The producer
+  # ---- emits the record with eprintln! (stderr) and the verdicts with println! (stdout); leg() sends stdout
+  # ---- to <leg>.out and stderr to logs/<leg>.err. A stub stands in for the claim_batch binary, so a gate
+  # ---- pointed at the wrong stream, or a duplicated record, fails HERE and not on srv1.
   EOUT=$T/e2e; mkdir -p "$EOUT/mem" "$EOUT/logs"
   OUT=$EOUT; O=$EOUT/receipt.txt; MEMDIR=$EOUT/mem; EV=$EOUT/events
   printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > "$EV"
@@ -649,49 +633,56 @@ fi
 sha_of() { printf '%s' "$1" | sha256sum | awk '{print $1}'; }
 bytes_of() { printf '%s' "$1" | wc -c | tr -d ' '; }
 if [ "${1:-}" = "--predict-only" ]; then
-  # Writes NOTHING, contacts nothing: no run dir, no clone, no build, no store. The bytes and sha256 below
-  # are over the LITERAL frozen string, before $OUT / $BIN4 / $BIN5 are expanded at run time.
-  echo "PREDICT-ONLY row=R4+R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4r5_v5_manifest.md"
-  echo "THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed."
-  echo "pin_r4=$H4 tree_r4=$T4"
-  echo "pin_r5=$H5 tree_r5=$T5"
-  printf 'blob %s %s\n' "$E4A" "$B4A"; printf 'blob %s %s\n' "$E4B" "$B4B"; printf 'blob %s %s\n' "$E5" "$B5"
+  # Writes NOTHING, contacts NOTHING — no OUT, no clone, no build, no store. The live partition is not
+  # touched by printing this manifest. Bytes and sha256 are over the LITERAL frozen string, before $OUT and
+  # $BIN6 are expanded at run time.
+  echo "PREDICT-ONLY row=R6 job=$J state=HELD gate=keen-otter-msg_3407a188 host_booked=srv1"
+  echo "pin=$H tree=$T"
+  printf 'blob %s %s\n' "$E6" "$B6"
   echo "bounds=$BOOKED"
   echo "launcher_units runtime_s=$RUNTIME_S memmax_gib=$MEMMAX_G memhigh_gib=$MEMHIGH_G tasks=$TASKS_MAX cpu=$CPU_PCT%"
   echo "launcher_call=calmcrab-udrv.sh $J $RUNTIME_S $MEMMAX_G $MEMHIGH_G $TASKS_MAX $CPU_PCT% <STAGED_SCRIPT> <this packet sha256> OUT"
   echo "ledger_rows=$J-res(cap ${MEMMAX_G}GiB) $J-drv(cap 1) $J(cap 0)"
   echo "completion_record_gate=exactly-one-prefix-count-then-shape sha_pinned=7ac24cf28973511b7902ce3ba621e8c46b060ad7855ea895b1f5a157bf1835b2"
-  echo "completion_record_stream=stderr(leg capture logs/<leg>.err) verdict_stream=stdout(<leg>.out) render_site=claim_batch.rs:1460 via eprintln blob=$PRODBLOB"
+  echo "completion_record_stream=stderr(leg capture logs/<leg>.err) verdict_stream=stdout(<leg>.out) render=the single eprintln partition.render(&timings) emission in run() blob=$PRODBLOB"
   echo "verdict_rules=bare_only;one_outcome_line_per_name_any_keyword;qualified_is_NO_OBSERVATION"
   echo "timeouts_s setup_clone=$T_SETUP_CLONE setup_fetch=$T_SETUP_FETCH setup_checkout=$T_SETUP_CHECKOUT build=$T_BUILD leg=$T_LEG"
-  echo "wall_capped_sum_s=$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG )) scope_RuntimeMaxSec=9900 driver_RuntimeMaxSec=10500"
-  echo "claims_r4a=$(printf '%s' "$C4A" | awk -F',' '{print NF}') claims_r4b=$(printf '%s' "$C4B" | awk -F',' '{print NF}') claims_r5=$(printf '%s' "$C5" | awk -F',' '{print NF}')"
-  echo "exit_contract: 0=expectations_held 1=falsified_bare_FAIL 2=NO_OBSERVATION(every refusal)"
-  for c in CMD_CLONE_4 CMD_FETCH_4 CMD_CHECKOUT_4 CMD_BUILD_4 CMD_LEG_R4A CMD_LEG_R4B CMD_CLONE_5 CMD_FETCH_5 CMD_CHECKOUT_5 CMD_BUILD_5 CMD_LEG_R5; do
+  echo "wall_capped_sum_s=$WALL_SUM scope_RuntimeMaxSec=$RUNTIME_S driver_RuntimeMaxSec=$DRIVER_S launcher_cap=$LAUNCHER_CAP legs=$N_LEGS"
+  echo "driver_service=calmcrab-drv-$J.service RuntimeMaxSec=$DRIVER_S (RUNTIME_S plus 300 s)"
+  echo "launcher_preflight_cap=7200 (calmcrab-udrv v4, 855920ac): a RUNTIME_S above it is a PRE_SCOPE_REFUSAL, so this packet refuses it itself"
+  echo "claims_r6=$(printf '%s' "$C6" | awk -F',' '{print NF}')"
+  echo "execute form: script.sh <OUT> <execution-grant-ref>   (no reference = refused, exit 2, nothing created)"
+  echo "exit_contract: 0=expectations_held 1=falsified_bare_FAIL 2=NO_OBSERVATION(every refusal, incl. the hold)"
+  for c in CMD_CLONE CMD_FETCH CMD_CHECKOUT CMD_BUILD CMD_LEG_R6; do
     v="${!c}"; printf 'cmd %s bytes=%s sha256=%s\n  %s\n' "$c" "$(bytes_of "$v")" "$(sha_of "$v")" "$v"
   done
   exit 0
 fi
 
-# ---------------------------------------------------------------- usage: ONE argument, the launcher's OUT
-[ $# -eq 1 ] && [ -n "$1" ] && [ "${1#-}" = "$1" ] || { echo "NO_OBSERVATION: usage: script.sh <OUT> — one argument, the launcher's fresh evidence dir (<RUNTIME>/out); a leading dash is a flag, never a path" >&2; exit 2; }
+# ---------------------------------------------------------------- usage: <OUT> [<execution-grant-ref>]
+[ $# -ge 1 ] && [ $# -le 2 ] && [ -n "$1" ] && [ "${1#-}" = "$1" ] || { echo "NO_OBSERVATION: usage: script.sh <OUT> [<execution-grant-ref>] — the launcher's fresh evidence dir (<RUNTIME>/out) plus, for execution, the grant reference that cleared msg_3407a188; a leading dash is never a path" >&2; exit 2; }
 OUT=$1
-export OUT
+GRANT=${2:-}
 case "$OUT" in */out) ;; *) echo "NO_OBSERVATION: OUT '$OUT' does not end in /out (calmcrab-udrv v4 maps the row's evidence dir to <RUNTIME>/out)" >&2; exit 2;; esac
 JOB=$(basename "$(dirname "$OUT")" 2>/dev/null || echo "")
 [ -n "$JOB" ] || { echo "NO_OBSERVATION: cannot derive the booked JOB from OUT '$OUT' (expected <RUNTIME>/<JOB>/out)" >&2; exit 2; }
+# THE HOLD, checked BEFORE anything is created: an ungranted execution leaves no directory behind.
+g=$(grant_gate "$GRANT") || { echo "NO_OBSERVATION: $g" >&2; exit 2; }
 command -v timeout >/dev/null || { echo "NO_OBSERVATION: timeout(1) is missing and every step would be unbounded" >&2; exit 2; }
 [ -x /usr/bin/time ] || { echo "NO_OBSERVATION: /usr/bin/time is missing; elapsed and peak-RSS evidence could not be recorded" >&2; exit 2; }
 out_absent "$OUT" || { echo "NO_OBSERVATION: OUT $OUT already exists (any entry — file, directory, symlink or dangling symlink — refuses; a row's evidence dir is never reused)" >&2; exit 2; }
 mkdir -- "$OUT" || { echo "NO_OBSERVATION: exclusive mkdir of $OUT failed (an entry appeared, or no permission)" >&2; exit 2; }
 chmod 700 "$OUT"
+export OUT
 MEMDIR=$OUT/memevents; mkdir -- "$MEMDIR" || { echo "NO_OBSERVATION: cannot make $MEMDIR" >&2; exit 2; }
 mkdir -- "$OUT/logs" || { echo "NO_OBSERVATION: cannot make $OUT/logs" >&2; exit 2; }
 export TMPDIR=$OUT/tmp; mkdir -- "$TMPDIR" || { echo "NO_OBSERVATION: cannot make $TMPDIR" >&2; exit 2; }
 O=$OUT/receipt.txt
-echo "job=$JOB booked_job=$J host=$(hostname 2>/dev/null || echo unreadable) machine_id=$(cat /etc/machine-id 2>/dev/null || echo unreadable) start=$(date -u +%FT%TZ)" > "$O"
+echo "job=$JOB booked_job=$J state=executing-under-grant host=$(hostname 2>/dev/null || echo unreadable) machine_id=$(cat /etc/machine-id 2>/dev/null || echo unreadable) start=$(date -u +%FT%TZ)" > "$O"
 S=$(bin_sha "$0") || nox "cannot hash the staged script at $0" script-hash
 echo "script_sha256=$S (compare with the published frozen value; a file cannot gate its own hash)" >> "$O"
+echo "$GRANT" > "$OUT/grant-ref.txt"
+echo "grant_ref=$GRANT (the reference this row was executed under; its clearance is keen-otter's, not this packet's)" >> "$O"
 
 # FIXTURES BEFORE ANY WORK IS SPENT: a misfired classifier ends the row with no claim attempted.
 bash "$0" --classifier-fixtures > "$OUT/logs/selfcheck.log" 2>&1 || nox "the packet's own classifier fixtures misfired; no claim attempted (see logs/selfcheck.log)" fixtures
@@ -702,6 +693,8 @@ EV=/sys/fs/cgroup$CG/memory.events
 GA=$(oom_snap "$EV" gate-a); GB=$(oom_snap "$EV" gate-b)
 [ "$(oom_pair_verdict "$GA" "$GB")" = none ] || nox "memory.events at $EV unreadable or already OOM-marked at the gate: $GA -> $GB" "$([ "$(oom_pair_verdict "$GA" "$GB")" = UNKNOWN ] && echo counter-incoherent || echo oom-before-work)"
 BM=$(bounds_check "/sys/fs/cgroup$CG") || nox "booked bounds: $BM" bounds
+WM=$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S") || nox "wall gate: $WM" wall
+echo "wall sum=${WALL_SUM}s scope_RuntimeMaxSec=${RUNTIME_S} driver_RuntimeMaxSec=${DRIVER_S} launcher_cap=${LAUNCHER_CAP} legs=${N_LEGS}" >> "$O"
 echo "scope=$CG bounds_ok=$BOOKED oom_gate=$GA->$GB" >> "$O"
 echo "host recorded, not gated: the booking is enforced by the launcher's ledger rows and the bounds gate above, not by a hostname string" >> "$O"
 blob_gate() { # $1=clone $2=path $3=blob
@@ -709,66 +702,35 @@ blob_gate() { # $1=clone $2=path $3=blob
   [ "$have" = "$3" ] || { echo "$2 is blob $have at HEAD, this packet freezes $3"; return 1; }
   printf 'blob %s %s\n' "$2" "$have" >> "$OUT/blob-gate.txt"; }
 
-pin_clone() { # $1=worktree name $2=pin $3=tree; fetches, checks out, gates HEAD/tree/blobs/names
-  local W=$OUT/$1 H T n
-  H=$( [ "$1" = wt-r4 ] && printf '%s' "$H4" || printf '%s' "$H5" )
-  T=$( [ "$1" = wt-r4 ] && printf '%s' "$T4" || printf '%s' "$T5" )
-  timeout "$T_SETUP_CLONE" bash -c "$([ "$1" = wt-r4 ] && printf '%s' "$CMD_CLONE_4" || printf '%s' "$CMD_CLONE_5")" > "$OUT/logs/$1-init.log" 2>&1 \
-    || nox "git init of $W failed or exceeded ${T_SETUP_CLONE}s" clone
-  timeout "$T_SETUP_FETCH" bash -c "$([ "$1" = wt-r4 ] && printf '%s' "$CMD_FETCH_4" || printf '%s' "$CMD_FETCH_5")" > "$OUT/logs/$1-fetch.log" 2>&1 \
-    || nox "shallow fetch of $H into $W failed or exceeded ${T_SETUP_FETCH}s" clone
-  timeout "$T_SETUP_CHECKOUT" bash -c "$([ "$1" = wt-r4 ] && printf '%s' "$CMD_CHECKOUT_4" || printf '%s' "$CMD_CHECKOUT_5")" > "$OUT/logs/$1-checkout.log" 2>&1 \
-    || nox "checkout of FETCH_HEAD in $W failed or exceeded ${T_SETUP_CHECKOUT}s" clone
-  local gotH gotT
-  gotH=$(git -C "$W" rev-parse HEAD 2>/dev/null || echo unreadable)
-  gotT=$(git -C "$W" rev-parse 'HEAD^{tree}' 2>/dev/null || echo unreadable)
-  [ "$gotH" = "$H" ] || nox "$W HEAD is $gotH, this packet freezes $H" pin
-  [ "$gotT" = "$T" ] || nox "$W tree is $gotT, this packet freezes $T for $H" tree
-  if [ "$1" = wt-r4 ]; then
-    m=$(blob_gate "$W" "$E4A" "$B4A") || nox "blob gate: $m" blob
-    m=$(blob_gate "$W" "$E4B" "$B4B") || nox "blob gate: $m" blob
-    m=$(names_gate "$W" "$E4A" "$N4A") || nox "names gate: $m" names
-    m=$(names_gate "$W" "$E4B" "$N4B") || nox "names gate: $m" names
-    m=$(blob_gate "$W" "$PROD" "$PRODBLOB") || nox "blob gate: $m" blob
-    m=$(producer_gate "$W/$PROD") || nox "producer stream gate: $m" producer
-  else
-    m=$(blob_gate "$W" "$E5" "$B5") || nox "blob gate: $m" blob
-    m=$(names_gate "$W" "$E5" "$N5") || nox "names gate: $m" names
-    m=$(blob_gate "$W" "$PROD" "$PRODBLOB") || nox "blob gate: $m" blob
-    m=$(producer_gate "$W/$PROD") || nox "producer stream gate: $m" producer
-  fi
-  echo "cloned $1 head=$gotH tree=$gotT blobs+names+producer gated" >> "$O"; }
+W=$OUT/wt-r6
+timeout "$T_SETUP_CLONE" bash -c "$CMD_CLONE" > "$OUT/logs/wt-r6-init.log" 2>&1 || nox "git init of $W failed or exceeded ${T_SETUP_CLONE}s" clone
+timeout "$T_SETUP_FETCH" bash -c "$CMD_FETCH" > "$OUT/logs/wt-r6-fetch.log" 2>&1 || nox "shallow fetch of $H into $W failed or exceeded ${T_SETUP_FETCH}s" clone
+timeout "$T_SETUP_CHECKOUT" bash -c "$CMD_CHECKOUT" > "$OUT/logs/wt-r6-checkout.log" 2>&1 || nox "checkout of FETCH_HEAD in $W failed or exceeded ${T_SETUP_CHECKOUT}s" clone
+gotH=$(git -C "$W" rev-parse HEAD 2>/dev/null || echo unreadable)
+gotT=$(git -C "$W" rev-parse 'HEAD^{tree}' 2>/dev/null || echo unreadable)
+[ "$gotH" = "$H" ] || nox "$W HEAD is $gotH, this packet freezes $H" pin
+[ "$gotT" = "$T" ] || nox "$W tree is $gotT, this packet freezes $T for $H" tree
+m=$(blob_gate "$W" "$E6" "$B6") || nox "blob gate: $m" blob
+m=$(names_gate "$W" "$E6" "$N6") || nox "names gate: $m" names
+m=$(blob_gate "$W" "$PROD" "$PRODBLOB") || nox "blob gate: $m" blob
+m=$(producer_gate "$W/$PROD") || nox "producer stream gate: $m" producer
+echo "cloned wt-r6 head=$gotH tree=$gotT blobs+names+producer gated" >> "$O"
 
-build_pin() { # $1=worktree; builds claim_batch under the booked bounds, OOM judged across the build
-  local W=$OUT/$1 k0 k1 BO B
-  cd "$W" || nox "cannot cd into $W" clone
-  k0=$(oom_snap "$EV" "$1-build-before")
-  timeout "$T_BUILD" /usr/bin/time -v bash -c "$([ "$1" = wt-r4 ] && printf '%s' "$CMD_BUILD_4" || printf '%s' "$CMD_BUILD_5")" > "$OUT/logs/$1-build.log" 2>&1; BX=$?
-  k1=$(oom_snap "$EV" "$1-build-after"); BO=$(oom_pair_verdict "$k0" "$k1")
-  echo "== build $1 exit=$BX oom=$BO $(tm "$OUT/logs/$1-build.log")" >> "$O"
-  [ "$BX" = 124 ] && nox "$1 build timed out at ${T_BUILD}s" build-timeout
-  [ "$BX" = 0 ] || { tail -10 "$OUT/logs/$1-build.log" >> "$O"; nox "$1 build exit=$BX" build; }
-  [ "$BO" = none ] || nox "$1 build oom=$BO ($k0 -> $k1)" "$([ "$BO" = OOM_KILLED ] && echo build-oom || echo counter-incoherent)"
-  B=$W/target/release/claim_batch
-  [ -x "$B" ] || nox "$1 build produced no executable at $B" build
-  echo "binary $B sha256=$(bin_sha "$B" || echo unreadable)" >> "$O"; }
+cd "$W" || nox "cannot cd into $W" clone
+k0=$(oom_snap "$EV" wt-r6-build-before)
+timeout "$T_BUILD" /usr/bin/time -v bash -c "$CMD_BUILD" > "$OUT/logs/wt-r6-build.log" 2>&1; BX=$?
+k1=$(oom_snap "$EV" wt-r6-build-after); BO=$(oom_pair_verdict "$k0" "$k1")
+echo "== build wt-r6 exit=$BX oom=$BO $(tm "$OUT/logs/wt-r6-build.log")" >> "$O"
+[ "$BX" = 124 ] && nox "wt-r6 build timed out at ${T_BUILD}s" build-timeout
+[ "$BX" = 0 ] || { tail -10 "$OUT/logs/wt-r6-build.log" >> "$O"; nox "wt-r6 build exit=$BX" build; }
+[ "$BO" = none ] || nox "wt-r6 build oom=$BO ($k0 -> $k1)" "$([ "$BO" = OOM_KILLED ] && echo build-oom || echo counter-incoherent)"
+BIN6=$W/target/release/claim_batch
+[ -x "$BIN6" ] || nox "wt-r6 build produced no executable at $BIN6" build
+echo "binary $BIN6 sha256=$(bin_sha "$BIN6" || echo unreadable)" >> "$O"
+export BIN6
 
 LASTOOM=""
-pin_clone wt-r4
-build_pin wt-r4
-pin_clone wt-r5
-build_pin wt-r5
-# The leg commands are executed with bash -c on the FROZEN string, so the variables that string names
-# must be EXPORTED: a child shell does not inherit a plain shell assignment, and a lost BIN would make
-# argv[0] empty — a defect that reads as a runner failure rather than as what it is.
-BIN4=$OUT/wt-r4/target/release/claim_batch; BIN5=$OUT/wt-r5/target/release/claim_batch
-[ -x "$BIN4" ] || nox "runner missing at $BIN4" build
-[ -x "$BIN5" ] || nox "runner missing at $BIN5" build
-export OUT BIN4 BIN5
-
-leg R4a "$CMD_LEG_R4A" "$N4A"
-leg R4b "$CMD_LEG_R4B" "$N4B"
-leg R5  "$CMD_LEG_R5"  "$N5"
+leg R6 "$CMD_LEG_R6" "$N6"
 
 FA=$(oom_snap "$EV" final)
 FV=$(oom_pair_verdict "$LASTOOM" "$FA")
@@ -776,15 +738,15 @@ echo "== final oom vs last leg after: $LASTOOM -> $FA verdict=$FV" >> "$O"
 [ "$FV" = none ] || nox "memory events moved between the last leg and the final snapshot: $LASTOOM -> $FA ($FV)" "$([ "$FV" = OOM_KILLED ] && echo oom-in-teardown || echo counter-incoherent)"
 echo "memory.peak (printed, never judged): $(cat "/sys/fs/cgroup$CG/memory.peak" 2>/dev/null || echo unreadable)" >> "$O"
 
-S4A=$(cat "$OUT/R4a.state"); S4B=$(cat "$OUT/R4b.state"); S5=$(cat "$OUT/R5.state")
-echo "row R4+R5 states: R4a=$S4A R4b=$S4B R5=$S5 (presence only; this row discriminates nothing)" >> "$O"
-if [ "$S4A" = NOOBS ] || [ "$S4B" = NOOBS ] || [ "$S5" = NOOBS ]; then
-  echo "VERDICT=NO_OBSERVATION reason=one-or-more-legs-had-no-observation" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
-  echo "NO_OBSERVATION: a leg produced no clean bare-verdict observation (R4a=$S4A R4b=$S4B R5=$S5)" >&2; exit 2
+S6=$(cat "$OUT/R6.state")
+echo "row R6 state: R6=$S6 (one live-corpus projection; a refusal of the SUBJECT is a finding)" >> "$O"
+if [ "$S6" = NOOBS ]; then
+  echo "VERDICT=NO_OBSERVATION reason=the-leg-had-no-observation" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
+  echo "NO_OBSERVATION: the R6 leg produced no clean bare-verdict observation" >&2; exit 2
 fi
-if [ "$S4A" = FALSIFIED ] || [ "$S4B" = FALSIFIED ] || [ "$S5" = FALSIFIED ]; then
-  echo "VERDICT=FALSIFIED R4a=$S4A R4b=$S4B R5=$S5" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
-  echo "FALSIFIED: a claim printed a bare FAIL (R4a=$S4A R4b=$S4B R5=$S5)" >&2; exit 1
+if [ "$S6" = FALSIFIED ]; then
+  echo "VERDICT=FALSIFIED R6=$S6" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
+  echo "FALSIFIED: the R6 claim printed a bare FAIL (a finding for the grant set)" >&2; exit 1
 fi
-echo "VERDICT=AS_EXPECTED claims=11 legs=3 mutation_legs=0" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
+echo "VERDICT=AS_EXPECTED claims=1 legs=1 mutation_legs=0" >> "$O"; echo "DONE $(date -u +%FT%TZ)" >> "$O"
 exit 0
