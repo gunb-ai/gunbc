@@ -56,10 +56,11 @@ import gunbc.serving.caller_backlog {
 type ConversationId = NonEmptyStr where brand("ConversationId")
 type PlacementRevision = Int
 
-// ── THE THREE SEPARATE STANDINGS (amendment 2) — never collapse into one "idle" flag ────────────
-// "No tokens arriving" does not establish completion: unresolved is its own arm, never folded into
-// completed. A tool return and a person typing are different readiness events.
-type ExecutionStanding = Executing | QueuedNotDispatched | Completed | UnresolvedAfterTimeout
+// ── DEMAND STANDING (amendment 2) — never collapsed into one "idle" flag ───────────────────────
+// A tool return and a person typing are different readiness events, and a finished conversation has
+// no next turn at all. Consumed by defer_when_demand_not_ready, which carries the standing into its
+// deferral so the cause is never lost. (Execution standing -- executing, queued, completed, unresolved
+// after timeout -- is NOT declared here: no decision reads it yet; R-S3 declares it with its reader.)
 type DemandStanding = NextTurnReady | AwaitingTool | AwaitingPerson | Finished
 
 // RETAINED STATE is carried by ServingSessionResidency from turn_admission (what usable state exists,
@@ -213,7 +214,8 @@ type RelocationDecision
   = Move { destination_label: NonEmptyStr, receipt: SelectionReceipt }
   | Stay
   | NotEstablished { reason: NonEmptyStr }
-  | DeferredToPolicy
+  | CompetingMovesNeedPolicy
+  | DeferredDemandNotReady { demand: DemandStanding }
   | NoAdmissibleTransition
   | Evacuate { destination_label: NonEmptyStr, receipt: SelectionReceipt }
   | ReconciliationRequired { obligation: NonEmptyStr }
@@ -240,8 +242,8 @@ fn decide_relocation(field: List<ParetoEntry>, assessment: DecisionAssessment) -
     SelectionNeedsEvidence { needs: _ } => NotEstablished { reason: "economic move not established: a funded axis has no reading" as NonEmptyStr }
     // The arm already resolved stay-vs-move (it prefers stay among survivors). SelectionNeedsPolicy is
     // reached only when several survivors EXCLUDE stay — competing moves with no stay survivor — which
-    // defers rather than pick one arbitrarily.
-    SelectionNeedsPolicy { survivors: _ } => DeferredToPolicy
+    // needs a policy rather than picking one arbitrarily. It is NOT a dormancy deferral.
+    SelectionNeedsPolicy { survivors: _ } => CompetingMovesNeedPolicy
     RealizationSelectionRefused { defects: _ } => NoAdmissibleTransition
     NoFeasibleRealization { causes: _, scope: _ } => NoAdmissibleTransition
     CandidateFieldUnestablished { causes: _ } => NotEstablished { reason: "candidate field unestablished" as NonEmptyStr }
@@ -257,7 +259,8 @@ fn decide_evacuation(field: List<ParetoEntry>, assessment: DecisionAssessment) -
     Move { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
     Stay => NoAdmissibleTransition
     NotEstablished { reason: why } => NotEstablished { reason: why }
-    DeferredToPolicy => DeferredToPolicy
+    CompetingMovesNeedPolicy => CompetingMovesNeedPolicy
+    DeferredDemandNotReady { demand: d } => DeferredDemandNotReady { demand: d }
     NoAdmissibleTransition => NoAdmissibleTransition
     Evacuate { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
     ReconciliationRequired { obligation: o } => ReconciliationRequired { obligation: o }
@@ -268,8 +271,20 @@ fn decide_evacuation(field: List<ParetoEntry>, assessment: DecisionAssessment) -
 // move is DEFERRED regardless of how attractive its economics look — re-evaluate at the next
 // re-evaluation event. This is a boundary guard, not a Pareto outcome: the stay-preference policy
 // would otherwise resolve the field to a move. Removing this guard is the discriminating mutation.
-fn defer_when_demand_not_ready(ready: Bool, field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
-  if ready { decide_relocation(field: field, assessment: assessment) } else { DeferredToPolicy }
+fn defer_when_demand_not_ready(demand: DemandStanding, field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
+  match demand {
+    NextTurnReady => decide_relocation(field: field, assessment: assessment)
+    _ => DeferredDemandNotReady { demand: demand }
+  }
+}
+
+fn demand_not_ready_reason(demand: DemandStanding) -> NonEmptyStr {
+  match demand {
+    NextTurnReady => "deferred: the next turn is ready (not a dormancy deferral)" as NonEmptyStr
+    AwaitingTool => "deferred: awaiting a tool return; re-evaluate when it arrives" as NonEmptyStr
+    AwaitingPerson => "deferred: awaiting the person; re-evaluate at their next turn" as NonEmptyStr
+    Finished => "deferred: the conversation is finished; there is no next turn to place" as NonEmptyStr
+  }
 }
 
 // A source over its retained-capacity promise is an obligation to reconcile, never "moving is free": the
@@ -338,7 +353,8 @@ fn render_move_intent(
       })
     Stay => NoIntent { reason: "stay preferred: no move intent" as NonEmptyStr }
     NotEstablished { reason: reason } => NoIntent { reason: reason }
-    DeferredToPolicy => NoIntent { reason: "deferred: no runnable demand at this boundary" as NonEmptyStr }
+    CompetingMovesNeedPolicy => NoIntent { reason: "several moves survive and stay is not among them; a policy must choose" as NonEmptyStr }
+    DeferredDemandNotReady { demand: d } => NoIntent { reason: demand_not_ready_reason(demand: d) }
     NoAdmissibleTransition => NoIntent { reason: "no admissible transition" as NonEmptyStr }
     Evacuate { destination_label: _, receipt: _ } => NoIntent { reason: "evacuation is a separate mandatory-drain path, not an economic move intent" as NonEmptyStr }
     ReconciliationRequired { obligation: o } => NoIntent { reason: o }
@@ -425,15 +441,21 @@ fn prepare_handoff(record: ServingSessionRecord, current_launch: NonEmptyStr, ho
   }
 }
 
-// Execute: send the next real request ONCE. A second dispatch of a recorded attempt RECOVERS it rather
-// than blindly sending the turn elsewhere. There is no speculative warm-up.
-type DispatchOutcome = SentOnce { dispatch_count: Int } | RecoveredRecordedAttempt
+// Execute: send the next real request ONCE, and only from a Prepared handoff. A recorded attempt
+// (already dispatched, or interrupted mid-dispatch) is RECOVERED rather than blindly sent elsewhere; a
+// committed or retired handoff is never dispatched again; an unprepared or refused one never dispatches.
+// There is no speculative warm-up.
+type DispatchOutcome = SentOnce { dispatch_count: Int } | RecoveredRecordedAttempt | DispatchNotPrepared | DispatchAfterCommitRefused
 
 fn attempt_dispatch(record: HandoffRecord) -> DispatchOutcome {
-  if record.dispatch_count > 0 {
-    RecoveredRecordedAttempt
-  } else {
-    SentOnce { dispatch_count: 1 }
+  match record.phase {
+    Prepared => if record.dispatch_count > 0 { RecoveredRecordedAttempt } else { SentOnce { dispatch_count: 1 } }
+    Dispatched => RecoveredRecordedAttempt
+    Interrupted => RecoveredRecordedAttempt
+    Selecting => DispatchNotPrepared
+    Refused => DispatchNotPrepared
+    Committed => DispatchAfterCommitRefused
+    Retired => DispatchAfterCommitRefused
   }
 }
 

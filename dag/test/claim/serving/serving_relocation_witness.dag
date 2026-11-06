@@ -20,9 +20,10 @@ import std.algebra { string_contains }
 import gunbc.serving.serving_relocation {
   decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, decide_evacuation,
   decide_with_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
-  Move, Stay, DeferredToPolicy, Evacuate, ReconciliationRequired,
+  Move, Stay, DeferredDemandNotReady, AwaitingPerson, AwaitingTool, Evacuate, ReconciliationRequired,
+  Prepared, Interrupted, Committed, SentOnce, DispatchAfterCommitRefused,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
-  HandoffRecord, Dispatched, ConversationId, ReconstructFromCompleteRequest,
+  HandoffRecord, HandoffPhase, Dispatched, ConversationId, ReconstructFromCompleteRequest,
   IntentPayload, NoIntent, NotEstablished,
   rloc_subject, rloc_unread_assessment, rloc_decision_region, id_subject, id_term, id_var, id_constraints, id_parameter,
 }
@@ -98,8 +99,12 @@ test fn a_compaction_or_prefix_change_voids_the_incumbent_advantage_moves() -> B
 //    decide_relocation directly) -> the economic decision runs and moves -> red.
 test fn dormant_state_blocking_runnable_demand_defers() -> Bool {
   let move = move_candidate(id: w_move_id, label: "cross" as NonEmptyStr, net: 90, service_class: 0)
-  match defer_when_demand_not_ready(ready: false, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
-    DeferredToPolicy => true
+  let person = match defer_when_demand_not_ready(demand: AwaitingPerson, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    DeferredDemandNotReady { demand: d } => match d { AwaitingPerson => true  _ => false }
+    _ => false
+  }
+  person && match defer_when_demand_not_ready(demand: AwaitingTool, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    DeferredDemandNotReady { demand: d } => match d { AwaitingTool => true  _ => false }
     _ => false
   }
 }
@@ -147,19 +152,24 @@ test fn drain_right_after_a_move_evacuates() -> Bool {
 }
 
 // 7. A retry, tool return, or controller crash mid-handoff -> the recorded attempt is RECOVERED, never
-//    blindly re-sent elsewhere. MUTATION: drop the dispatch_count guard -> a second send is counted as
-//    a new dispatch -> red.
-test fn a_retry_or_crash_mid_handoff_recovers_the_recorded_attempt() -> Bool {
-  let rec = HandoffRecord {
+//    blindly re-sent elsewhere; a Prepared handoff with no recorded attempt sends exactly once; a
+//    committed handoff is never dispatched again. MUTATION: drop the phase/dispatch_count guard (always
+//    SentOnce) -> the interrupted retry and the post-commit dispatch are counted as new sends -> red.
+fn w_handoff(phase: HandoffPhase, dispatch_count: Int) -> HandoffRecord {
+  HandoffRecord {
     conversation: "conv-1" as ConversationId, revision: 3,
     source_seat: SeatRef { partition: "p" as PartitionId, reservation: "r-a" as ReservationRef },
     destination_seat: SeatRef { partition: "p" as PartitionId, reservation: "r-b" as ReservationRef },
-    phase: Dispatched, method: ReconstructFromCompleteRequest, dispatch_count: 1,
+    phase: phase, method: ReconstructFromCompleteRequest, dispatch_count: dispatch_count,
   }
-  match attempt_dispatch(record: rec) {
-    RecoveredRecordedAttempt => true
-    _ => false
-  }
+}
+
+test fn a_retry_or_crash_mid_handoff_recovers_the_recorded_attempt() -> Bool {
+  let retried = match attempt_dispatch(record: w_handoff(phase: Dispatched, dispatch_count: 1)) { RecoveredRecordedAttempt => true  _ => false }
+  let interrupted = match attempt_dispatch(record: w_handoff(phase: Interrupted, dispatch_count: 1)) { RecoveredRecordedAttempt => true  _ => false }
+  let first = match attempt_dispatch(record: w_handoff(phase: Prepared, dispatch_count: 0)) { SentOnce { dispatch_count: n } => n == 1  _ => false }
+  let after_commit = match attempt_dispatch(record: w_handoff(phase: Committed, dispatch_count: 1)) { DispatchAfterCommitRefused => true  _ => false }
+  retried && interrupted && first && after_commit
 }
 
 // 8. Cold prefill beside active decoding -> the move candidate violates the service-class hard bound
