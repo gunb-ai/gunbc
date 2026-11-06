@@ -4020,7 +4020,7 @@ fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String,
   if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: decl_scope, depth: depth + 1) {
     w
   } else {
-    equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+    equality_walk_refused(r: equality_refused(carrier: name, member: concat(concat(concat("DBGid=", identity), "|roster="), join(decl_scope.enclosing_declared_type_param_names, ",")), member_judged: false))
   }
 }
 
