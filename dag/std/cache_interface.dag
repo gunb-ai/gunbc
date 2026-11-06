@@ -22,6 +22,9 @@ import std.realization_schedule {
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind }
 
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { zip_eq }
 type StorageSurface = NonEmptyStr where brand("StorageSurface")
 
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree

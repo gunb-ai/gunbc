@@ -3,7 +3,9 @@ module v2.std.compilers.body_lowering
 import std.types { List }
 import v2.std.compilers.lowered_shape { LoweredShape }
 import v2.std.type_binder { edge_is_cast_target, type_annotation_edge }
-import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, contains, fold_list, list_at_optional, collection_count_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item, contains, fold_list, list_at_optional, collection_count_shape, zip_eq }
 
 import v2.std.diagnostic {
   Accepted,

@@ -4,7 +4,9 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
 
-import std.algebra { Empty, BooleanAlgebra, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert, collection_concat_shape, map_contains_key }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Empty, BooleanAlgebra, list_append, list_snoc_item, fold_list, PointwisePower, empty_map, map_insert, collection_concat_shape, map_contains_key, zip_eq }
 import v2.std.grammar {
   StampClass,
   StampBinding,

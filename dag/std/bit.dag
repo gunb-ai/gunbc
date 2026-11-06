@@ -2,6 +2,9 @@ module std.bit
 
 import std.types { Bool, List }
 
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { zip_eq }
 type Bit = Bool
 
 type Nibble { bits: List<Bit> }

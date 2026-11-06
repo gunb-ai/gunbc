@@ -1,7 +1,9 @@
 module v2.std.arrow_signature
 
 import std.types { List, Map }
-import std.algebra { Cons, Empty, list_snoc_item, empty_map, list_at_optional, map_insert, map_lookup, collection_count_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, list_snoc_item, empty_map, list_at_optional, map_insert, map_lookup, collection_count_shape, map_values_eq, zip_eq }
 import v2.std.anonymous_binder { anonymous_binder_mint_parameter_list }
 import std.optional { Absent, Present }
 import v2.std.list_introduction { list_introduction_head_path, lower_list_introduction }

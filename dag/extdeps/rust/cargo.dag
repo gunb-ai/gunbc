@@ -7,6 +7,9 @@ import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, Footprint
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { zip_eq }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

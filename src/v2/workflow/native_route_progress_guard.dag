@@ -1,10 +1,14 @@
 module v2.workflow.native_route_progress_guard
 
 import std.types { List, Map }
-import std.algebra { list_append, count_where, fold_list, is_empty, length, list_flat_map, list_map, empty_map, map_insert, map_lookup }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { list_append, count_where, fold_list, is_empty, length, list_flat_map, list_map, empty_map, map_insert, map_lookup, zip_eq }
 
 import v2.std.integer { Int }
-import std.optional { Optional, Present, Absent, optional_present, optional_absent }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Optional, Present, Absent, optional_present, optional_absent, optional_eq }
 import v2.compiler.native_test_vocabulary {
   NativeTestStage, NativeTestStagePrepare, NativeTestStageContext, NativeTestStageEntry, NativeTestStageEval,
   NativeRouteTestIdentity, native_route_identity_eq, native_route_identity_qualified

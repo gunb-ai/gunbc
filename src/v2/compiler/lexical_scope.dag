@@ -2,7 +2,9 @@ module v2.compiler.lexical_scope
 
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { length, list_snoc_item, list_map, collection_concat_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { length, list_snoc_item, list_map, collection_concat_shape, zip_eq }
 import v2.std.integer { Int }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {

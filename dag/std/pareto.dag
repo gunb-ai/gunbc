@@ -2,7 +2,9 @@ module std.pareto
 
 import std.types { Int, List, NonEmptyStr }
 import std.logic { Bool }
-import std.algebra { Ordering, Equal, Greater, Less }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Ordering, Equal, Greater, Less, zip_eq }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { OrderedClosedInterval, interval_low, interval_high }
 

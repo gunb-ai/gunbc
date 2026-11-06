@@ -2,7 +2,9 @@ module v2.workflow.native_frontier_ratchet
 
 import std.types { List, Map }
 import v2.std.node { symbol_lexeme }
-import std.algebra { list_append, fold_list, is_empty, length, list_flat_map, list_map, map_lookup }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { list_append, fold_list, is_empty, length, list_flat_map, list_map, map_lookup, zip_eq }
 
 import v2.std.integer { Int }
 import std.integer { int_to_decimal_string }

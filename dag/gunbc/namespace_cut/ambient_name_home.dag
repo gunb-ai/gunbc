@@ -1,7 +1,9 @@
 module gunbc.namespace_cut.ambient_name_home
 
 import std.types { List, NonEmptyStr, String }
-import std.optional { Optional, optional_present }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Optional, optional_present, optional_eq }
 
 // THE ONE ROSTER OF AMBIENT NAMES AND THEIR DECLARED HOMES (NAMESPACE-XL waves; operator ruling
 // 2026-10-15: every name the corpus uses, the seed's "built-ins" included, is an ordinary declaration

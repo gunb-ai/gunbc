@@ -2,7 +2,9 @@ module v2.std.provenance
 
 import std.types { List, Map }
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
-import std.algebra { fold_list, empty_map, map_insert }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { fold_list, empty_map, map_insert, map_values_eq }
 import std.content_hash { Fnv1a64Structural }
 import v2.std.diagnostic {
   ByteRange,
@@ -14,7 +16,9 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { Node, NodeOccurrenceIdentity, Symbol }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
 import std.occurrence_identity {
   OccurrenceId,
   OccurrenceMinted,

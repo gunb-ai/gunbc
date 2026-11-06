@@ -2,6 +2,9 @@ module std.syntax
 
 import std.types { List }
 
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { map_values_eq, zip_eq }
 type BinOp
   = Add | Sub | Mul | Div | Mod
   | Eq | Ne | Lt | Gt | Le | Ge

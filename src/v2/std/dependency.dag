@@ -1,7 +1,9 @@
 module v2.std.dependency
 
 import std.types { List }
-import std.algebra { FreeSemigroup, list_append, list_snoc_item }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { FreeSemigroup, list_append, list_snoc_item, zip_eq }
 import v2.std.node { node_equal_ignoring_provenance,
   Bind,
   ComputationNode,

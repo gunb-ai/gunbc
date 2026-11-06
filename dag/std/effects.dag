@@ -7,7 +7,9 @@ import extdeps.uri_path {
   has_path_params, last_path_param
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, CONNECT, TRACE }
-import std.algebra { collection_map_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { collection_map_shape, zip_eq }
 type EffectShape<K>
   = ReadEffect
   | UpsertEffect { key_source: K }

@@ -3,7 +3,9 @@ module v2.std.witness
 import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, outcome_accepted, invariant_port_locus }
 import v2.std.node { Node, Symbol }
 import std.optional { Absent, Optional, Present }
-import std.algebra { fold_list, map_lookup }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { fold_list, map_lookup, zip_eq }
 import std.types { List, Map }
 
 type Witness<C>

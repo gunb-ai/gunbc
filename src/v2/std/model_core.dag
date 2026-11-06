@@ -10,11 +10,9 @@ import v2.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
-import std.algebra {
-  fold_list,
-  empty_map,
-  map_insert
-}
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { fold_list, empty_map, map_insert, map_values_eq, zip_eq }
 import v2.std.algebra_structure_signature { bool_boolean_algebra_node, bool_boolean_algebra_type_node, field_reciprocal_nonzero_precondition_node, field_reciprocal_operation_node }
 import v2.std.logic {
   BoolPrimitiveFacts,

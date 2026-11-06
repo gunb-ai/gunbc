@@ -26,7 +26,9 @@ import extdeps.languages.c.emit {
 import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
-import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push, zip_eq }
 import std.graph {
   CallGraph,
   GraphEdge,

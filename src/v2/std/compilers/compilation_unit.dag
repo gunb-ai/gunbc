@@ -18,7 +18,9 @@ import gunbc.crate_partition {
   list_unique_sorted_ids
 }
 
-import std.algebra { Empty, fold_list, length, list_push }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Empty, fold_list, length, list_push, map_values_eq, zip_eq }
 import std.types { NonEmptyStr, List, Bool, String, Int, brand }
 import std.content_hash { Fnv1a64StructuralDigestHex }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

@@ -5,9 +5,13 @@ import v2.std.witness { map_get_checked }
 import v2.std.service_realization_labels { realization_root_label }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Empty, FreeMonoid, list_append, list_snoc_item, fold_list, is_empty, length, empty_map, map_insert, map_values_eq, zip_eq }
 import v2.std.node_query { binder_node_parts }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Instantiation, Atom, Arrow, ComputationNode, Conj, Disj, Edge, FirstPositionalAbsent, FirstPositionalFound, Authored, Node, Positional, Symbol, TypeNode, arrow_first_positional_target, node_subtree_nodes, StructuralLabel, label_sort_key }
 import v2.std.qualified_name { QualifiedName, qualified_name_snoc }

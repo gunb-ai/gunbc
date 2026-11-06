@@ -1,7 +1,9 @@
 module v2.std.language_model
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.algebra { PointwisePower }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { PointwisePower, map_values_eq, zip_eq }
 import v2.std.grammar {
   ParseGrammar,
   VoidGrammar,

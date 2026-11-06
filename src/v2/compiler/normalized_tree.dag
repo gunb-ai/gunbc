@@ -21,10 +21,14 @@ import v2.std.diagnostic {
   UserInputBoundary,
   Unavailable
 }
-import std.optional { Absent, Optional, Present }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Absent, Optional, Present, optional_eq }
 import std.types { Map }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, empty_map, map_insert, map_lookup }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, empty_map, map_insert, map_lookup, map_values_eq, zip_eq }
 import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.declaration_marker { TestMarkerChannel, test_marker_channel_empty }
 import v2.std.member_declaration_kind { DeclaredMember }

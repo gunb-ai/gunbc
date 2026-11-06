@@ -2,7 +2,9 @@ module v2.compiler.resolution_provenance
 
 import std.types { List }
 
-import std.algebra { Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_map }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Empty, FreeMonoid, list_snoc_item, contains, fold_list, is_empty, length, list_map, zip_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { NonEmptyStr }
 import v2.std.diagnostic { Accepted, Rejected }

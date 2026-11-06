@@ -1,7 +1,9 @@
 module v2.cli.if_arm_reader_differential
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, collection_concat_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, list_reverse, collection_concat_shape, zip_eq }
 import std.occurrence_identity { occurrence_id_eq }
 import v2.std.compilers.sugar { sugar_deep_unwrap_optional, sugar_unwrap_surface_shell }
 import v2.compiler.body_lowering_fold {

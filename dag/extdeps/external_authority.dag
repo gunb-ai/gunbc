@@ -5,7 +5,9 @@ import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { declaration_ref_eq }
 import extdeps.uri { Uri, File }
-import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape, zip_eq }
 
 type ExternalAuthority {
   uri: Uri

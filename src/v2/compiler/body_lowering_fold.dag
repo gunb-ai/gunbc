@@ -17,7 +17,9 @@ import v2.std.service_realization_labels {
 }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, list_map, length, zip_eq, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, map_values_eq }
 import v2.compiler.fold_lowering {
   CallbackCallOperands,
   CallbackStepRow,
@@ -100,13 +102,9 @@ import v2.std.node { node_same_occurrence, positional_child_target_nodes, conten
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
 import v2.std.compilers.body_lowering {
   BodyTerm,
   Lowered,

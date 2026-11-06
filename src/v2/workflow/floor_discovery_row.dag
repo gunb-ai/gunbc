@@ -3,6 +3,9 @@ module v2.workflow.floor_discovery_row
 import std.types { String, Bool, List }
 import std.live_tree { LiveTreeDisposition }
 
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { zip_eq }
 // THE DISCOVERY ROW VOCABULARY AND THE WIRE-CONTRACT PLACEMENT VERDICT: what discovery enrols, and
 // where a wire-contract declaration is allowed to live.
 //

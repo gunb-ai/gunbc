@@ -10,13 +10,9 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional
 }
 import v2.std.text { String }
-import std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Absent, Optional, Present, optional_absent, optional_present, optional_eq }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -28,38 +24,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra {
-  AlgebraFieldTemplate,
-  Cons,
-  Empty,
-  collection_all_shape,
-  collection_any_shape,
-  collection_filter_shape,
-  collection_concat_shape,
-  collection_count_shape,
-  collection_fold_shape,
-  collection_map_shape,
-  contains,
-  template_accumulator_position,
-  template_receiver_position,
-  template_step_position,
-  fold_list,
-  length,
-  list_snoc_item,
-  AlgebraTypeTemplate,
-  AlgebraTypeVariable,
-  CallableOf,
-  ContainerOf,
-  NamedTemplate,
-  OptionalOf,
-  ReceiverElement,
-  ReceiverKey,
-  ReceiverSelf,
-  ReceiverValue,
-  TupleOf,
-  WitnessOf,
-  list_at_optional
-}
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { AlgebraFieldTemplate, Cons, Empty, collection_all_shape, collection_any_shape, collection_filter_shape, collection_concat_shape, collection_count_shape, collection_fold_shape, collection_map_shape, contains, template_accumulator_position, template_receiver_position, template_step_position, fold_list, length, list_snoc_item, AlgebraTypeTemplate, AlgebraTypeVariable, CallableOf, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey, ReceiverSelf, ReceiverValue, TupleOf, WitnessOf, list_at_optional, zip_eq }
 import v2.std.compilers.body_lowering { lower_bind }
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 

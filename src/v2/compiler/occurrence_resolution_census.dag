@@ -1,7 +1,11 @@
 module v2.compiler.occurrence_resolution_census
 
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys, map_contains_key }
-import std.optional { Optional, Present, Absent }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys, map_contains_key, map_values_eq, zip_eq }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Optional, Present, Absent, optional_eq }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
 import std.types { List, Map }
 import v2.std.source_position { SourceLineCol }

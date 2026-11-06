@@ -4,8 +4,12 @@ import std.types { List, Map }
 import v2.std.cardinality { TerminationProof }
 
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
-import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup }
-import std.optional { Absent, Optional, Present }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { list_snoc_item, PartialFunction, empty_map, map_insert, map_lookup, zip_eq }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.optional { Absent, Optional, Present, optional_eq }
 import v2.std.constraints { CanonicalGrounding }
 import v2.std.node { node_same_occurrence, Node }
 import std.optional { Optional, optional_absent }

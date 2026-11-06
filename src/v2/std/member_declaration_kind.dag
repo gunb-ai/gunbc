@@ -1,7 +1,9 @@
 module v2.std.member_declaration_kind
 
 import std.types { List, Map }
-import std.algebra { FreeMonoid, fold_list, empty_map, map_contains_key, map_insert }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { FreeMonoid, fold_list, empty_map, map_contains_key, map_insert, map_values_eq }
 
 import v2.std.integer { Int }
 import v2.std.node { Symbol }

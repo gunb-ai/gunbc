@@ -13,7 +13,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init, collection_concat_shape, collection_count_shape }
+// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): FOREIGN helpers for the
+// compiler's synthesized equality bodies only — hand-written code here needs none of these names.
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, fold_list_right, is_empty, is_prefix_of, length, list_head, list_init, collection_concat_shape, collection_count_shape, zip_eq }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.optional {
