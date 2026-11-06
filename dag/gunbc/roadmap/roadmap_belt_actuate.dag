@@ -9824,13 +9824,19 @@ fn belt_verify_capture_gate(node_id: String, capture: SubmissionCaptureObservati
   }
 }
 
-fn belt_verify_attempt_for_instance(
+// The roadmap node is SUPPLIED at this interface: belt_lookup_node reads the runtime task roster from
+// fabric state, a host fact, so a witness that derived it through the real lookup passed or failed with
+// the host it ran on (verify_without_observable_subject_defers_instead_of_rerunning, red on main).
+// belt_verify_attempt_for_instance owns the real lookup and the not-yet-terminal deferral; this function
+// is the verification given a decided lookup.
+fn belt_verify_terminal_attempt(
   instance: HostDashboardInstance,
   progress: WorkflowAttemptProgress,
+  lookup: BeltNodeLookup,
 ) -> BeltVerifyOutcome {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
-  if belt_provider_is_terminal(provider: progress.provider) {
-      match belt_lookup_node(node_id: progress.node_id) {
+  {
+      match lookup {
         AuthorityProjectionRefused { detail: detail } =>
           VerifyDeferred {
             node_id: progress.node_id,
@@ -10001,6 +10007,19 @@ fn belt_verify_attempt_for_instance(
           }
         }
       }
+  }
+}
+
+fn belt_verify_attempt_for_instance(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> BeltVerifyOutcome {
+  if belt_provider_is_terminal(provider: progress.provider) {
+    belt_verify_terminal_attempt(
+      instance: instance,
+      progress: progress,
+      lookup: belt_lookup_node(node_id: progress.node_id),
+    )
   } else {
     VerifyDeferred {
       node_id: progress.node_id,
