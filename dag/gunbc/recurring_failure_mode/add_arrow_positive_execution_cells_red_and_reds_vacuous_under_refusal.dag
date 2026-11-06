@@ -17,6 +17,10 @@ data add_arrow_positive_execution_cells_red_and_reds_vacuous_under_refusal: Recu
 
     "THE REDS ARE VACUOUS UNDER REFUSAL, which is why this is a class and not one failing test. add_arrow_eval_swapped_operands_red_holds, add_arrow_eval_wrong_value_red_holds, add_arrow_excess_signature_red_holds and add_arrow_excess_body_red_holds assert add_arrow_eval_run_passes(...) == false, and add_arrow_excess_actual_red_holds asserts executes_to_five() == false. Each is true for ANY Rejected outcome, non-Pass verdict or value other than 5, so a blanket refusal of add-arrow eval passes all five. Their PASS at either pin does not show they discriminate a wrong value; pairing a red with a positive that is itself red removes the pairing obligation (DESIGN section 3, witness inhabitance).",
 
+    "BARE-BOOL INFORMATION LOSS: each cell collapses eval's outcome (Rejected with which reason symbols, Accepted with diagnostics not None, a value other than 5, or a non-Pass verdict arm) to one Bool, so a receipt cannot say WHY a cell is false. The red controls' observed non-discrimination is framed as a POSSIBLE broad-refusal confound only: a red 'X == false' is true under any refusal, and source has not proven the exact refusal reason, so it is not claimed to be the reason.",
+
+    "NON-COMPARABLE CELL: add_arrow_eval_lazy_arm_loop_suppression_holds is inverted between the pins (base expects Accepted 5; 62cf283d expects Rejected with v2_eval_loop_requires_termination_proof, gunbc#15997), so its two receipts do not compare and say nothing about regression for that cell.",
+
     "NEXT TRIGGER (capability): a cell that surfaces eval's Rejected reason for add_arrow_eval_direct_runtime (the refusal diagnostic's reason symbol or the returned value, compared to a named expectation) so the failure is located, and a red that fails on the right value. Scope of this row: git grep and the two receipts above; no run was made by the author, and no assertion is made about other fixtures.",
   ],
 
