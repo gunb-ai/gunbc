@@ -403,3 +403,40 @@ test fn witness_tighter_operand_is_not_grouped() -> Bool {
     && serialize_expression(expression: LogicalAnd { left: Equals { left: a, right: b }, right: c }) == "github.a == github.b && github.c"
 }
 
+
+// .dag reads `{name` inside a string as an interpolation, so the bare-delimiter spellings are
+// authored with << >> and swapped for the writer's delimiters with their spaces trimmed.
+fn braced(t: String) -> String {
+  replace(replace(t, "<<", trim(s: default_expression_spellings.interp_open)), ">>", trim(s: default_expression_spellings.interp_close))
+}
+
+fn template_is(src: String, want: List<TemplateSegment>) -> Bool {
+  match ingest_template(src: src) {
+    Present { value: t } => t.segments == want
+    Absent => false
+  }
+}
+
+// Upstream's delimiters are the bare `${{` and `}}`; inner whitespace is the tokenizer's.
+test fn witness_interpolation_delimiters_tolerate_inner_whitespace() -> Bool {
+  let want = [ Interpolation { expression: ctx(c: Steps, path: ["wif_auth", "outputs", "x"]) } ]
+  template_is(src: braced(t: "<<steps.wif_auth.outputs.x>>"), want: want)
+    && template_is(src: braced(t: "<<  steps.wif_auth.outputs.x >>"), want: want)
+    && template_is(src: braced(t: "<<steps.wif_auth.outputs.x >>"), want: want)
+    && template_is(src: braced(t: "<< steps.wif_auth.outputs.x >>"), want: want)
+}
+
+test fn witness_close_inside_string_literal_does_not_close() -> Bool {
+  template_is(src: braced(t: "<< 'a}}b' >>"), want: [ Interpolation { expression: StringLiteral { value: "a}}b" } } ])
+    && template_is(src: braced(t: "pre << 'a}}b' >> post"), want: [ LiteralText { text: "pre " }, Interpolation { expression: StringLiteral { value: "a}}b" } }, LiteralText { text: " post" } ])
+}
+
+test fn witness_unclosed_interpolation_refuses() -> Bool {
+  match ingest_template(src: braced(t: "echo << github.a")) {
+    Absent => true
+    Present { value: _ } => false
+  } && match ingest_template(src: braced(t: "<< 'unterminated >>")) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
