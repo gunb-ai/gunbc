@@ -110,27 +110,6 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "generic-identity-census".to_string(),
-            },
-            TargetProducer::GenericIdentityCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "interpolation-hole-census".to_string(),
-            },
-            TargetProducer::InterpolationHoleCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
-                target: "shared-type-leaf-collision-census".to_string(),
-            },
-            TargetProducer::SharedTypeLeafCollisionCensus,
-        ),
-        (
-            Label {
-                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "cardinality-realization".to_string(),
             },
             TargetProducer::CardinalityRealization,
@@ -447,6 +426,15 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
             },
             TargetProducer::NativeServeProgram {
                 entry: "dag/gunbc/instruments/native_serve_startup_overrun_fixture.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "native-serve-unix".to_string(),
+            },
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_unix_fixture.dag",
             },
         ),
         (

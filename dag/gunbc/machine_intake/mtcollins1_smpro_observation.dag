@@ -15,6 +15,14 @@ import gunbc.machine_intake.ampere_smpro_observation { SmproSiteStanding, SmproT
 // holds, and the bus TYPE is not stated there at all: private is this row's bet, because the SMpros
 // are not IPMB devices. The manufacturer-ID control is what tests the bet: a NAK or bus error on the
 // control says the bus or address is wrong, and the dossier says so rather than trying others.
+//
+// THOSE SPELLINGS AND THE WIRE'S AGREE, and the folds below are why: the two addresses are 7-bit and
+// pass through master_write_read_slave_byte, which doubles them into the 8-bit write-address form
+// (extdeps.bmc.ipmi_master_write_read, §22.11 byte 2), so the brief's 0x4F and 0x4E leave as 0x9E and
+// 0x9C; and the bus passes through master_write_read_bus_byte, which packs bus_id into bits 3:1 and the
+// bus type into bit 0 (§22.11 byte 1), so "bus 2, private" leaves as the single byte 0x05. A hand-run
+// pass that spells the address in the 8-bit form and the bus as 0x05 — as the operator's capture in
+// gunbc.machine_intake.mtcollins1_smpro_error_reading does — is this same target, not a second one.
 fn mtcollins1_smpro_site() -> SmproSiteStanding {
   smpro_site_admit(
     endpoint: mtcollins1_endpoint,
