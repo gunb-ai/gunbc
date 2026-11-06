@@ -169,13 +169,6 @@ fn k1_component(local: NonEmptyStr) -> ComponentInstanceIdentity {
   component_instance_identity(design: k1_design, local_identity: local)
 }
 
-// THE K1 HAS NO ROSTER, and that is the point. The roster is generated from an atlas receipt that attributes
-// frames to specimens; the K1 has no atlas yet (its photographs are the operator's to supply), and its
-// readings cite bench uploads whose bytes were never stored and a seller's listing. With no rows, no K1
-// reading is attributed to any specimen, so every K1 marking resolves to a candidate: the model fails
-// closed instead of the rows asserting what no one checked.
-data k1_board_sightings: BoardSightings = BoardSightings { rows: [] }
-
 // One recorded line of seller-listing text, as a rev-6 reading. The listing carries no pixels, so the glyph
 // span is unboxed -- recorded evidence debt, which the mint will not let anything rely on.
 fn k1_marking(text: NonEmptyStr) -> MarkingReading {
@@ -184,6 +177,13 @@ fn k1_marking(text: NonEmptyStr) -> MarkingReading {
     evidence: k1_listing
   }
 }
+
+// THE K1 HAS NO ROSTER, and that is the point. The roster is generated from an atlas receipt that attributes
+// frames to specimens; the K1 has no atlas yet (its photographs are the operator's to supply), and its
+// readings cite bench uploads whose bytes were never stored and a seller's listing. With no rows, no K1
+// reading is attributed to any specimen, so every K1 marking resolves to a candidate: the model fails
+// closed instead of the rows asserting what no one checked.
+data k1_board_sightings: BoardSightings = BoardSightings { rows: [] }
 
 // THE K1 ON THE BENCH (2026-10-19, unpowered, with nothing wired to it). Read with the probe held on the
 // leads, for comparison with the E1 at U1_P5. The K1 is an earlier revision (694-24261-0000-100, PCB
