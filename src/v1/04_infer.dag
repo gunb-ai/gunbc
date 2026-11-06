@@ -3986,41 +3986,65 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // generic application the plan does not model, the same cause a container whose shape is unmodeled gives. A declaration the
 // table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
 // nothing refuses rather than comparing by the target.
-// A SCOPE COPY CARRYING THE WALKED DECLARATION'S OWN TYPE PARAMETER ROSTER. The roster is already
-// an InferScope fact (enclosing_declared_type_param_names — set from fn_type_param_names when a
-// generic fn body is checked); this only swaps the roster for the generic whose members are being
-// walked, so the walk sees the one fact it needs through its existing carrier (DESIGN §3: one door).
-fn scope_with_declared_type_params(scope: InferScope, names: List<String>) -> InferScope {
-  InferScope {
-    type_env: scope.type_env,
-    func_env: scope.func_env,
-    locals: scope.locals,
-    body_locals: scope.body_locals,
-    match_bound_names: scope.match_bound_names,
-    module_name: scope.module_name,
-    service_registry: scope.service_registry,
-    item_registry: scope.item_registry,
-    lambda_param_provenance: scope.lambda_param_provenance,
-    caller_decl_name: scope.caller_decl_name,
-    in_flight_lambda_param_names: scope.in_flight_lambda_param_names,
-    enclosing_declared_type_param_names: names
+fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
+  let si = scope.type_env.source_indices
+  let applied = equality_reference_applies_arguments(peeled: peeled)
+  let parameter_names = rt.params |> map(p => authored_name_at(source_indices: si, node: p))
+  // AN APPLIED GENERIC IS WALKED WITH ITS PARAMETERS BOUND: the declaration's own parameters are read
+  // as type variables in ITS body (declaration_substitution_basis, the corpus's one authority for "this
+  // leaf is a parameter"), never looked up by spelling in the use-site scope where the name means
+  // nothing. Each argument is then judged exactly where its parameter OCCURS, so a phantom parameter
+  // imposes no equality obligation (gunbc#15175 re-land; shape per silent-bee-845's ruling after
+  #15952).
+  let basis = if applied && (parameter_names |> count) > 0 { declaration_substitution_basis(n: rt, env: scope.type_env, generic_names: parameter_names) } else { rt }
+  let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, depth: depth + 1) {
+    w
+  } else {
+    equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
   }
 }
 
-fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  // Walking a declaration happens with its own type parameters in scope. A type ARGUMENT child carries
-  // no resolve-time binding (only field references were ever bound — v1.compiler.resolve's
-  // field_inferred_with_declaration), so a nested application like EffectShape's member
-  // CreateEffect { cause: CreateCause<K> } reaches the argument judgment as a bare parameter spelling.
-  // The roster makes it readable as that parameter — the instantiation-blind, compared-by-the-target
-  // reading the table's own comment has always promised ("a declaration's entry is true exactly when
-  // its own equality walk, with its type parameters comparing by the target, reaches no routed step").
-  let decl_scope = scope_with_declared_type_params(scope: scope, names: fn_type_param_names(item: rt, source_indices: scope.type_env.source_indices))
-  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: decl_scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: decl_scope, depth: depth + 1) {
-    w
-  } else {
-    equality_walk_refused(r: equality_refused(carrier: name, member: concat(concat(concat("DBGid=", identity), "|roster="), join(decl_scope.enclosing_declared_type_param_names, ",")), member_judged: false))
+// AN ARGUMENT IS JUDGED WHERE ITS PARAMETER OCCURS. Walking the body with each parameter bound to its
+// argument means an argument matters exactly when the body mentions its parameter: a phantom parameter
+// (Measure's Q and S, std.measure) imposes no equality obligation and its argument is never judged. A
+// parameter with no matching argument position refuses (an unjudged argument is never admitted); an
+// argument beyond the parameters likewise.
+fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
+  match parameter_names |> first {
+    Absent => (arguments |> count) == 0
+    Present { value: pn } =>
+      match arguments |> first {
+        Absent => false
+        Present { value: a } =>
+          (!equality_type_variable_occurs(n: basis, id: pn) || equality_argument_by_target(n: a, scope: scope, depth: depth))
+            && equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names |> skip(1), arguments: arguments |> skip(1), scope: scope, depth: depth)
+      }
+  }
+}
+
+fn equality_type_variable_occurs(n: Node, id: String) -> Bool {
+  (match n.inferred {
+    Present { value: TypeVariable { id: v } } => v == id
+    _ => false
+  }) || (n.children |> any(ch => equality_type_variable_occurs(n: ch, id: id)))
+}
+
+// THE TABLE BRANCH APPLIES THE SAME RULE: a table hit judges the applied arguments through the
+// declaration's own parameter occurrences, read from the symbol index at the use (the table itself
+// stores only the Bool). A declaration the index does not name keeps the positional reading — the
+// rule never widens what is judged.
+fn equality_table_arguments_by_target(n: Node, source_indices: Map<String, NewlineIndex>, arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      match declaration_node_of_ref(d: d, env: scope.type_env) {
+        Present { value: decl } =>
+          let parameter_names = decl.params |> map(pp => authored_name_at(source_indices: source_indices, node: pp))
+          let basis = if (parameter_names |> count) > 0 { declaration_substitution_basis(n: decl, env: scope.type_env, generic_names: parameter_names) } else { decl }
+          equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: arguments, scope: scope, depth: depth)
+        Absent => equality_arguments_by_target(arguments: arguments, scope: scope, depth: depth)
+      }
+    _ => equality_arguments_by_target(arguments: arguments, scope: scope, depth: depth)
   }
 }
 
@@ -4048,7 +4072,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
         Absent =>
           match map_get(scope.type_env.equality_by_target, identity) {
             Present { value: declaration_by_target } =>
-              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1))
+              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_table_arguments_by_target(n: peeled, source_indices: source_indices, arguments: peeled.children, scope: scope, depth: depth + 1))
             Absent =>
               if peeled.connective == Arrow {
                 false
@@ -4064,32 +4088,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
                     if resolved.connective != NoConnective || type_reference_identity(n: resolved, source_indices: source_indices) != identity {
                       equality_argument_by_target(n: resolved, scope: scope, depth: depth + 1)
                     } else {
-                      // The spelling names no declaration at the position the resolver left it. Two doors
-                      // remain, in scope order. FIRST the walked declaration's own parameter roster: a
-                      // nested application argument that is one of its parameters is instantiated per
-                      // application and compares by the target — the concrete spellings are re-judged as
-                      // real arguments at the enclosing application's guard, so this widens nothing.
-                      // SECOND the symbol index: the same bare name naming a declared type is judged by
-                      // its DECLARING identity, the key form the table hit above reads. Cross-module
-                      // arguments the module's own table does not name, and any qualified spelling, stay
-                      // refused — fail-closed, no widened default.
-                      if name_is_enclosing_declared_type_parameter(name: authored_name_at(source_indices: source_indices, node: peeled), scope: scope) {
-                        true
-                      } else {
-                        match type_reference_declaration_reading(n: peeled, source_indices: source_indices, env: scope.type_env) {
-                          TypeReferenceNamesDeclaration { declaration: d } =>
-                            match declaration_node_of_ref(d: d, env: scope.type_env) {
-                              Present { value: decl } =>
-                                match map_get(scope.type_env.equality_by_target, node_declaration_identity(n: decl, source_indices: source_indices)) {
-                                  Present { value: declared_by_target } =>
-                                    declared_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1))
-                                  Absent => false
-                                }
-                              Absent => false
-                            }
-                          _ => false
-                        }
-                      }
+                      false
                     }
                 }
               }
