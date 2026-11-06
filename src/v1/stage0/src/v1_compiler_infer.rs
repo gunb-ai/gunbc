@@ -6189,7 +6189,7 @@ pub fn equality_resolved_declaration_structure(
             name.clone(),
             identity,
             scope.clone(),
-            visited,
+            visited.clone(),
             depth.clone(),
             at_root,
         );
@@ -6199,6 +6199,7 @@ pub fn equality_resolved_declaration_structure(
                 parameter_names.clone(),
                 peeled.children.clone(),
                 scope.clone(),
+                visited.clone(),
                 v1_rt::int_add(depth.clone(), 1),
             ))
         {
@@ -6214,6 +6215,7 @@ pub fn equality_applied_arguments_by_target(
     parameter_names: Rc<Vec<String>>,
     arguments: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
     depth: i64,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -6223,12 +6225,18 @@ pub fn equality_applied_arguments_by_target(
                 std::option::Option::None => false,
                 Some(a) => {
                     ((!equality_type_variable_occurs(basis.clone(), pn.clone())
-                        || equality_argument_by_target(a.clone(), scope.clone(), depth.clone()))
+                        || equality_applied_argument_is_structural(
+                            a.clone(),
+                            scope.clone(),
+                            visited.clone(),
+                            depth.clone(),
+                        ))
                         && equality_applied_arguments_by_target(
                             basis.clone(),
                             Rc::new(v1_rt::list_skip(&parameter_names.clone(), 1)),
                             Rc::new(v1_rt::list_skip(&arguments.clone(), 1)),
                             scope.clone(),
+                            visited.clone(),
                             depth.clone(),
                         ))
                 }
@@ -6253,6 +6261,69 @@ pub fn equality_type_variable_occurs(n: Rc<Node>, id: String) -> bool {
             __found
         })
     })
+}
+
+pub fn equality_applied_argument_is_structural(
+    n: Rc<Node>,
+    scope: Rc<InferScope>,
+    visited: Rc<HashMap<String, bool>>,
+    depth: i64,
+) -> bool {
+    if (depth.clone() > 64) {
+        false
+    } else {
+        if (equality_operand_is_type_variable(n.clone(), scope.clone())
+            || equality_operand_is_type_variable(
+                crate::v1_compiler_infer_types::child_type_node(n.clone()),
+                scope.clone(),
+            ))
+        {
+            true
+        } else {
+            {
+                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
+                let si = scope.type_env.source_indices.clone();
+                let identity = type_reference_identity(peeled.clone(), si.clone());
+                match equality_route_for(identity) {
+                    Some(_) => false,
+                    std::option::Option::None => {
+                        if (peeled.connective.clone() == Connective::Arrow) {
+                            false
+                        } else {
+                            if crate::v1_compiler_coercion::provenance_realizes_natively(
+                                crate::v1_std_core::type_reference_provenance(peeled.clone()),
+                            ) {
+                                false
+                            } else {
+                                if (crate::std_types::is_kernel_type(
+                                    crate::v1_std_core::qualified_last_segment(
+                                        crate::v1_std_core::authored_name_at(
+                                            si.clone(),
+                                            peeled.clone(),
+                                        ),
+                                    ),
+                                ) && ((peeled.children.clone().len() as i64) == 0))
+                                {
+                                    true
+                                } else {
+                                    {
+                                        let w = equality_operand_walk(
+                                            n.clone(),
+                                            scope.clone(),
+                                            visited,
+                                            v1_rt::int_add(depth.clone(), 1),
+                                            false,
+                                        );
+                                        (w.refusal.clone() == std::option::Option::None)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn equality_table_arguments_by_target(
@@ -6300,6 +6371,7 @@ pub fn equality_table_arguments_by_target(
                     parameter_names.clone(),
                     arguments.clone(),
                     scope.clone(),
+                    v1_rt::rc_empty_map::<String, bool>(),
                     depth.clone(),
                 )
             }
