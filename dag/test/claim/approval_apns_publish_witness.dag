@@ -11,7 +11,7 @@ import extdeps.google.fcm { FcmProjectId, FcmRegistrationToken }
 import extdeps.apple.apns {
   ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsDevelopment, ApnsProduction, apns_provider_token_claims_json, apns_payload_json,
   apns_send_outcome_of, ApnsAccepted, ApnsRefused, ApnsUnreached, ApnsUndecodable, ApnsTokenUnregistered,
-  ApnsRequest, ApnsAps, ApnsAlert, ApnsDeviceToken, ApnsTopic, ApnsCollapseId, apns_collapse_id_max_size, PushTypeAlert, PriorityImmediate, InterruptionActive,
+  ApnsRequest, ApnsAps, ApnsAlert, ApnsDeviceToken, ApnsTopic, ApnsCollapseId, apns_collapse_id, apns_collapse_id_max_size, PushTypeAlert, PriorityImmediate, InterruptionActive,
 }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.measure { byte_size_count }
@@ -140,6 +140,15 @@ test fn an_escalation_id_longer_than_the_collapse_cap_is_sent_under_its_digest()
         && length(xs: bytes_octets(b: utf8_encode_bytes(s: r.collapse_id as String))) <= byte_size_count(apns_collapse_id_max_size)
         && contains(apns_payload_json(r: r), join(["\"notification_id\": \"", id, "\""], ""))
   }
+}
+
+// APPLE'S CAP IS JUDGED IN ONE PLACE (extdeps.apple.apns apns_collapse_id): 64 bytes fits, 65 has no
+// collapse id.
+test fn the_collapse_id_constructor_admits_64_bytes_and_refuses_65() -> Bool {
+  let at_cap = "0123456789012345678901234567890123456789012345678901234567890123"
+  let over = "01234567890123456789012345678901234567890123456789012345678901234"
+  match apns_collapse_id(value: at_cap as NonEmptyStr) { Present { value: c } => (c as String) == at_cap  Absent => false }
+    && match apns_collapse_id(value: over as NonEmptyStr) { Absent => true  Present { value: _ } => false }
 }
 
 // THE CONFIG ON STDIN: the sandbox host for a development token, HTTP/2, the bearer as a header line

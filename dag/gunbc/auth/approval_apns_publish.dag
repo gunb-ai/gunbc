@@ -25,7 +25,7 @@ import extdeps.auth.jws {
   JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
 }
 import extdeps.apple.apns {
-  ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsTopic, ApnsCollapseId, apns_payload_max_size,
+  ApnsProviderIdentity, AppleTeamId, ApnsKeyId, ApnsTopic, ApnsCollapseId, apns_collapse_id, apns_payload_max_size,
   apns_provider_token_max_age, apns_provider_token_min_refresh, apns_provider_token_claims_json,
   ApnsRequest, ApnsAps, ApnsAlert, PushTypeAlert, PriorityImmediate, InterruptionActive,
   ApnsHeader, apns_request_url, apns_request_headers, apns_authorization_header, apns_id_header_name, apns_payload_json,
@@ -376,7 +376,8 @@ fn read_device_push_targets() -> DevicePushTargets admit_callers: [
 // than the locator itself because Apple caps it at 64 bytes (extdeps.apple.apns
 // apns_collapse_id_max_size) while a locator has no such bound -- a printer request's escalation id
 // is a prefix plus a 64-hex digest, 78 to 85 bytes -- and a digest is exactly 64 lowercase hex
-// octets for every locator, so no locator is left unsendable and no length arm is owed.
+// octets for every locator, so no locator is left unsendable; the fit itself is still judged against
+// Apple's cap by extdeps.apple.apns apns_collapse_id, the one constructor every producer uses.
 type DevicePushNotice {
   locator: NonEmptyStr
   title: NonEmptyStr
@@ -406,8 +407,8 @@ type ApprovalPushRequest
   = ApprovalPushRequestReady { request: ApnsRequest }
   | ApprovalPushRequestRefused { detail: NonEmptyStr }
 
-fn apns_collapse_id_of(locator: NonEmptyStr) -> ApnsCollapseId {
-  sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: locator as String))).hex as NonEmptyStr as ApnsCollapseId
+fn apns_collapse_id_of(locator: NonEmptyStr) -> ApnsCollapseId? {
+  apns_collapse_id(value: sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: locator as String))).hex as NonEmptyStr)
 }
 
 fn utf8_octet_count(s: String) -> Int {
@@ -423,14 +424,16 @@ fn approval_push_request(registration: PushRegistration, notice: DevicePushNotic
     FcmRegistration { project: _, token: _ } => ApprovalPushRequestRefused { detail: "an FCM registration has no publish here (gunbc.auth.approval_device_redemption android_realization_frontier)" }
     ApnsRegistration { environment: env, topic: topic, token: token } =>
       if (topic as String) != (approval_app_bundle_id as String) { ApprovalPushRequestRefused { detail: join(["the registration's topic ", topic as String, " is not this app's bundle ", approval_app_bundle_id as String], "") as NonEmptyStr } }
-      else {
+      else { match apns_collapse_id_of(locator: notice.locator) {
+       Absent => ApprovalPushRequestRefused { detail: "the locator's digest is longer than APNs admits for a collapse id" }
+       Present { value: collapse_id } => {
         let request = ApnsRequest {
           environment: env,
           device_token: token,
           topic: topic,
           push_type: PushTypeAlert,
           priority: PriorityImmediate,
-          collapse_id: apns_collapse_id_of(locator: notice.locator),
+          collapse_id: collapse_id,
           aps: ApnsAps {
             alert: ApnsAlert { title: notice.title, subtitle: none, body: notice.body },
             mutable_content: false,
@@ -441,7 +444,8 @@ fn approval_push_request(registration: PushRegistration, notice: DevicePushNotic
         }
         if utf8_octet_count(s: apns_payload_json(r: request)) > byte_size_count(apns_payload_max_size) { ApprovalPushRequestRefused { detail: "the payload is larger than APNs admits" } }
         else { ApprovalPushRequestReady { request: request } }
-      }
+       }
+      } }
   }
 }
 
