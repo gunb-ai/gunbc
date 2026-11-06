@@ -629,7 +629,7 @@ import gunbc.roadmap.roadmap_attempt_worktree_claim {
   ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits, ClaimContentUnobserved,
   ClaimCapture, ClaimCaptureSettled, ClaimCaptureOwed, ClaimCaptureUnknown, ClaimRemoval, ClaimRemoved, ClaimRemoveDeclined, ClaimRemoveUnexecuted,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_pass_wire, worktree_claim_outcome_is_red,
-  LineageStanding, LineageEnded, LineageOpen, LineageUnknown,
+  LineageStanding, LineageStandingEnded, LineageStandingOpen, LineageStandingUnknown,
 }
 import gunbc.roadmap.roadmap_workflow_command {
   WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
@@ -2867,31 +2867,31 @@ fn belt_continuation_decision_for_progress(instance: HostDashboardInstance, node
 
 // THE ONE 'IS THIS ATTEMPT'S LINEAGE ENDED' DERIVATION, read by the claim release (operator ruling M3). It is
 // derived in EXACTLY this one place, over the single ContinuationPlan (belt_continuation_decision_for_progress)
-// -- never a second rule (DESIGN §2, one derivation). A claim may be released ONLY when this reads LineageEnded
+// -- never a second rule (DESIGN §2, one derivation). A claim may be released ONLY when this reads LineageStandingEnded
 // (plan AlreadyComplete, or NextAttempt: the lineage ENDED without a candidate and the operator chose a fresh
 // attempt). Every other standing -- a live attempt (AlreadyRunning), a resumable session (Resume), a
-// reaped-but-resumable attempt (Restore), a fresh lineage (StartInitial) -- reads LineageOpen, so its claim is
+// reaped-but-resumable attempt (Restore), a fresh lineage (StartInitial) -- reads LineageStandingOpen, so its claim is
 // KEPT even after its UNIT finishes: a unit ending is NOT a lineage ending, and releasing it would reclaim a
 // resumable worker's tree (the defect M3 forbids). A ledger that cannot be read, a missing attempt row, or an
-// undecidable plan (Refuse) reads LineageUnknown -- which the release ALSO keeps, with a typed reason, never
+// undecidable plan (Refuse) reads LineageStandingUnknown -- which the release ALSO keeps, with a typed reason, never
 // fabricating an ending over uncertainty (DESIGN §5, fail closed).
 fn belt_lineage_standing(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> LineageStanding {
   match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsRefused { reason } =>
-      LineageUnknown { detail: join(["the attempts ledger is unobservable, so lineage-endedness cannot be established; the claim is kept (", reason, ")"], "") }
+      LineageStandingUnknown { detail: join(["the attempts ledger is unobservable, so lineage-endedness cannot be established; the claim is kept (", reason, ")"], "") }
     WorkflowAttemptsObserved { attempts } => {
       let mine = attempts |> filter(p => p.node_id == node_id as String && p.attempt_key == attempt_key)
       match mine.first() {
-        Absent => LineageUnknown { detail: join(["no attempt row for ", attempt_key, " was observed on this node, so its lineage-endedness is unknown; the claim is kept"], "") }
+        Absent => LineageStandingUnknown { detail: join(["no attempt row for ", attempt_key, " was observed on this node, so its lineage-endedness is unknown; the claim is kept"], "") }
         Present { value: p } =>
           match belt_continuation_decision_for_progress(instance: instance, node_id: node_id, progress: p) {
-            AlreadyComplete { reason: _ } => LineageEnded
-            NextAttempt { reason: _, from_branch: _ } => LineageEnded
-            StartInitial { reason: _ } => LineageOpen
-            AlreadyRunning { reason: _, attempt_key: _ } => LineageOpen
-            Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageOpen
-            Restore { reason: _, attempt_key: _, from_branch: _ } => LineageOpen
-            Refuse { cause: _, reason } => LineageUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
+            AlreadyComplete { reason: _ } => LineageStandingEnded
+            NextAttempt { reason: _, from_branch: _ } => LineageStandingEnded
+            StartInitial { reason: _ } => LineageStandingOpen
+            AlreadyRunning { reason: _, attempt_key: _ } => LineageStandingOpen
+            Resume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageStandingOpen
+            Restore { reason: _, attempt_key: _, from_branch: _ } => LineageStandingOpen
+            Refuse { cause: _, reason } => LineageStandingUnknown { detail: join(["the continuation decision refused, so lineage-endedness is unknown; the claim is kept (", reason, ")"], "") }
           }
       }
     }

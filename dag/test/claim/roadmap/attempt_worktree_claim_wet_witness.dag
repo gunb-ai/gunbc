@@ -11,7 +11,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { AttemptUnitObservation, Attempt
 import gunbc.roadmap.roadmap_attempt_worktree_claim {
   WorktreeClaimOutcome, WorktreeClaimNoop, WorktreeClaimRemoved, WorktreeClaimClosed, WorktreeClaimKept, WorktreeClaimRed,
   WorktreeClaimPass, WorktreeClaimPassRan, WorktreeClaimPassRefused, worktree_claim_ensure_pass_at, worktree_claim_new, worktree_claim_open,
-  LineageStanding, LineageEnded, LineageOpen, LineageUnknown,
+  LineageStanding, LineageStandingEnded, LineageStandingOpen, LineageStandingUnknown,
   worktree_claim_record_before_add, WorktreeClaimRecorded, WorktreeClaimNotRecorded,
   ClaimTree, ClaimTreePresent, ClaimTreeAbsent, ClaimContent, ClaimContentDirty, ClaimContentPushed, ClaimContentUnpushedCommits,
   worktree_claim_read, WorktreeClaimHeld, WorktreeClaimAbsent, WorktreeClaimUnreadable, worktree_claim_reference, worktree_claim_close, worktree_claim_reopen_settled,
@@ -90,7 +90,7 @@ fn pass(
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => content,
     remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
-    capture_of: (n, k) => capture, ended_of: (n, k) => LineageEnded)
+    capture_of: (n, k) => capture, ended_of: (n, k) => LineageStandingEnded)
   }
   }
 }
@@ -168,7 +168,7 @@ fn ensure_pass_without_mkdir(dir: String, cd: String, td: String) -> WorktreeCla
             path_of: (n, k) => tree_path(td: td, n: n, k: k),
             loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 5000,
             tree_of: p => ClaimTreeAbsent, content_of: p => ClaimContentPushed,
-            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageEnded)
+            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageStandingEnded)
       }
   }
 }
@@ -296,7 +296,7 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => ClaimContentPushed,
     remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
-    capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageEnded)
+    capture_of: (n, k) => ClaimCaptureSettled, ended_of: (n, k) => LineageStandingEnded)
   }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && ran_only(p: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
@@ -363,7 +363,7 @@ test fn a_reclaimed_claim_reopens_on_the_same_slot_at_the_next_generation_and_a_
 // witness's placement root `dir`, so the wet session_placement_observe_at in the claim pass reads
 // SessionPlacementObserved for node_a/key_a (not Absent). Without this the classifier would never reach the
 // gated arm -- it would read a lingering-finished unit with no placement record as Unknown and keep the tree
-// unconditionally, so the LineageEnded control below could never observe a release (the fail-loud reachability
+// unconditionally, so the LineageStandingEnded control below could never observe a release (the fail-loud reachability
 // check). Mirrors the proven wet planting in session_placement_wet_witness CONTROL 3.
 fn plant_placement(dir: String) -> Bool {
   match stores_at(dir: dir) {
@@ -412,7 +412,7 @@ test fn a_finished_unit_keeps_the_claim_while_the_lineage_is_open() -> Bool {
   let planted = plant(td: td, n: node_a, k: key_a)
   let placed = plant_placement(dir: dir)
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let p = pass_gate(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "0" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: LineageOpen)
+  let p = pass_gate(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "0" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: LineageStandingOpen)
   cleaned(dirs: [dir, cd, td], verdict: planted && placed && opened && ran_only(p: p, check: is_noop) && tree_there(td: td, n: node_a, k: key_a))
 }
 
@@ -427,6 +427,6 @@ test fn a_finished_unit_releases_the_claim_only_once_the_lineage_has_ended() -> 
   let planted = plant(td: td, n: node_a, k: key_a)
   let placed = plant_placement(dir: dir)
   let opened = open_claim(cd: cd, td: td, n: node_a, k: key_a, opened: 1000)
-  let p = pass_gate(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "0" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: LineageEnded)
+  let p = pass_gate(dir: dir, cd: cd, td: td, others: AttemptUnitFinished { exit_status: "0" }, content: ClaimContentPushed, capture: ClaimCaptureSettled, now: 1302, ended: LineageStandingEnded)
   cleaned(dirs: [dir, cd, td], verdict: planted && placed && opened && ran_only(p: p, check: is_removed) && !tree_there(td: td, n: node_a, k: key_a))
 }

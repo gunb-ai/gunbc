@@ -292,9 +292,9 @@ type ClaimCapture
 // derived in exactly one place (belt_lineage_standing over the single ContinuationPlan), and the release reads
 // ONLY this -- no second 'is it ended' rule lives in the claim classifier.
 type LineageStanding
-  = LineageEnded
-  | LineageOpen
-  | LineageUnknown { detail: String }
+  = LineageStandingEnded
+  | LineageStandingOpen
+  | LineageStandingUnknown { detail: String }
 
 fn worktree_claim_worker_standing(
   observation: SessionPlacementObservation,
@@ -309,9 +309,9 @@ fn worktree_claim_worker_standing(
   // is in flight (kept); when the lineage is UNKNOWN (unreadable ledger / missing row) the claim is kept with
   // a typed reason, never released on a guess (operator ruling M3).
   let ended_gate = match standing {
-    LineageEnded => ClaimWorkerEnded
-    LineageOpen => ClaimWorkerInFlight
-    LineageUnknown { detail } => ClaimWorkerUnknown { detail: detail }
+    LineageStandingEnded => ClaimWorkerEnded
+    LineageStandingOpen => ClaimWorkerInFlight
+    LineageStandingUnknown { detail } => ClaimWorkerUnknown { detail: detail }
   }
   match observation {
     SessionPlacementUnreadable { unit: _, detail } => ClaimWorkerUnknown { detail: detail }
