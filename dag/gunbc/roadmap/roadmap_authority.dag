@@ -2985,7 +2985,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_BNEYWCR707T5D0BRH8G6VZKGY5",
       id: "literal-elaboration",
-      owner: "self-host",
+      owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Record, map and construct literals elaborate from what the author wrote",
@@ -3001,7 +3001,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     roadmap_node(
       identity: "rn_5E5PRY6BBZP5EQSMXJ7AZV102T",
       id: "shared-check-lets-and-matches",
-      owner: "self-host",
+      owner: "namespace",
       carriers: carrier(path: "src/v2/compiler/infer.dag"),
       line: ticket(t: updated(t: fields(
           headline: "Lets and match binders are judged by the one relation",

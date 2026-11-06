@@ -1,9 +1,9 @@
 module gunbc.instruments.native_serve_startup_slow_fixture
 
-import std.types { String, Int, List, CommitSha }
+import std.types { String, Int, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.compiler_entry { CompilerEntryDriver, NativeIngressDriver, NativeIngressProgram, NativeIngressStartup }
-import extdeps.http.server { ServeWireResponse }
+import extdeps.http.server { ServeWireResponse, ServeRequestHeader }
 import extdeps.clock { Clock }
 import gunbc.http_ingress { HttpIngressAdmission, http_ingress_binding }
 import gunbc.native_serve { native_serve_text_plain, native_serve_startup_deadline, NativeServeStartup, NativeServeStartupPassed }
@@ -60,8 +60,18 @@ fn slow_startup(executable_octets: List<Int>) -> NativeServeStartup<String> {
   NativeServeStartupPassed { line: concat("slow startup finished after a spin of ", note), value: note }
 }
 
-fn slow_handle(method: String, path: String, body: String, tailscale_identity: String, authorization: String, release_revision: CommitSha, note: String) -> ServeWireResponse {
-  ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: concat("served after a startup that spun ", concat(note, "\n")), headers: [] }
+// STARTUP COMPOSED WITH REQUEST FACTS (gunbc.plans.converged_ingress M2b): the handler's request parameters are not the
+// legacy set -- the path and the request's header list -- and the startup value follows them, so the door plans the
+// request facts from these names and appends the startup value from the exact startup declaration.
+fn slow_header(headers: List<ServeRequestHeader>) -> String {
+  match headers |> filter(h => h.name == "x-probe") |> first {
+    Present { value: h } => h.value
+    Absent => "(absent)"
+  }
+}
+
+fn slow_handle(path: String, request_headers: List<ServeRequestHeader>, note: String) -> ServeWireResponse {
+  ServeWireResponse { status: 200, content_type_label: native_serve_text_plain, body: concat("served ", concat(path, concat(" with x-probe=", concat(slow_header(headers: request_headers), concat(" after a startup that spun ", concat(note, "\n")))))), headers: [] }
 }
 
 // Read only so the twin module is in this closure; see the twin controls above.

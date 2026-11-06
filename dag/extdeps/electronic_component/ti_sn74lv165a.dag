@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import std.measure { millivolt }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs,
   ElectronicComponentRow, ShiftRegisterSpec, ShiftRegisterSpecification, MillivoltRange, LogicPin,
   ParallelInput, SerialOutput, SerialInput, ShiftLoadControl, ClockInput, ClockInhibit, LogicGround, LogicSupply,
 }
@@ -38,7 +38,7 @@ data sn74lv165a_pw: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "SN74LV165APWR",
   package: "TSSOP-16 (PW)",
-  top_marking: Present { value: "LV165A" },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "LV165A" }] }], coverage: ListedOnly } },
   specification: ShiftRegisterSpec { register: ShiftRegisterSpecification {
     bits: 8,
     supply: MillivoltRange { minimum: millivolt(count: 2000), maximum: millivolt(count: 5500) },

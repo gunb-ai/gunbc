@@ -24,11 +24,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // an absent descriptor, a descriptor whose declared type is a homonym of NativeIngressProgram, a reference to a field
 // rather than a whole declaration, a reference that names the descriptor itself where a function is owed (the only
 // way a reference cycle can be written, refused as the wrong kind), a constructor returning a homonym admission, an
-// effectful constructor, a constructor argument argv cannot supply, a handler whose request facts are not the M2a
-// contract, a startup whose payload is not the handler's trailing parameter, and a module outside the closure. The
+// effectful constructor, a constructor argument argv cannot supply, a handler request parameter whose type no request
+// fact carries, a startup whose payload is not the handler's trailing parameter, and a module outside the closure. The
 // admissions are the positive controls: a minimal program, an unrelated effectful declaration in the binding module
-// that neither the handler nor the startup reaches (neither admitted nor bound), and a pure handler whose startup
-// alone demands an admitted effect. An AMBIGUOUS reference (two whole declarations of one kind under one qualified
+// that neither the handler nor the startup reaches (neither admitted nor bound), a pure handler whose startup
+// alone demands an admitted effect, and a handler whose request parameters are not the legacy set -- a path and the
+// request's header list, followed by the startup value -- because which fact a name means is the start's fact plan
+// (gunbc.http_ingress http_ingress_native_contract) and emission only types each parameter's carrier
+// (gunbc.plans.converged_ingress M2b). An AMBIGUOUS reference (two whole declarations of one kind under one qualified
 // identity) is refused by the same function but is not authorable here: a module cannot declare one name twice.
 //
 // The fixtures are isolated, so the declarations the resolution judges BY IDENTITY are stubbed at their owning
@@ -41,7 +44,7 @@ fn nipw_stub_sources() -> List<FixtureSource> {
     fixture_source("std/optional.dag", "module std.optional\ntype Optional<T> = Absent | Present \{ value: T \}\n"),
     fixture_source("std/decl_ref.dag", "module std.decl_ref\ntype DeclField = WholeDeclaration | NamedField \{ field_name: String \}\ntype DeclarationRef \{ module_path: String, decl_name: String, field: DeclField \}\n"),
     fixture_source("std/compiler_entry.dag", "module std.compiler_entry\nimport std.decl_ref \{ DeclarationRef \}\ntype CompilerEntryDriver = NativeCliDriver | NativeClaimDriver | NativeIngressDriver \{ program: DeclarationRef \}\ntype NativeIngressStartup \{ fold: DeclarationRef, bound: Int \}\ntype NativeIngressProgram \{ binding: DeclarationRef, handler: DeclarationRef, startup: NativeIngressStartup? \}\n"),
-    fixture_source("extdeps/http/server.dag", "module extdeps.http.server\ntype ServeWireResponse \{ status: Int, body: String \}\n"),
+    fixture_source("extdeps/http/server.dag", "module extdeps.http.server\ntype ServeWireResponse \{ status: Int, body: String \}\ntype ServeRequestHeader \{ name: String, value: String \}\n"),
     fixture_source("gunbc/http_ingress.dag", "module gunbc.http_ingress\ntype HttpIngressAdmission = HttpIngressBound \{ handler: String \} | HttpIngressRefused \{ reason: String \}\n"),
     fixture_source("gunbc/native_serve.dag", "module gunbc.native_serve\ntype NativeServeStartup<S> = NativeServeStartupPassed \{ line: String, value: S \} | NativeServeStartupRefused \{ reason: String \}\n")
   ]
@@ -204,10 +207,18 @@ test fn a_constructor_argument_argv_cannot_supply_refuses() -> Bool {
     marker: "binding constructor argument verbose is Bool")
 }
 
-test fn a_handler_whose_request_facts_are_not_the_m2a_contract_refuses() -> Bool {
-  let handler = "fn handle(method: String, target: String, body: String, tailscale_identity: String, authorization: String, release_revision: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: target \}\n\}\n"
+test fn a_handler_whose_request_parameters_are_not_the_legacy_set_composes_with_a_startup() -> Bool {
+  let startup = concat("Present \{ value: NativeIngressStartup \{ fold: ", concat(nipw_ref(module_path: "nipw.serve", decl_name: "boot"), ", bound: 30 \} \}"))
+  let descriptor = nipw_descriptor(module_path: "nipw.serve", binding: nipw_ref(module_path: "nipw.serve", decl_name: "ingress"), handler: nipw_ref(module_path: "nipw.serve", decl_name: "handle"), startup: startup)
+  let handler = "fn handle(path: String, request_headers: List<ServeRequestHeader>, note: String) -> ServeWireResponse \{\n  ServeWireResponse \{ status: 200, body: path \}\n\}\n"
+  let boot = "fn boot(executable_octets: List<Int>) -> NativeServeStartup<String> \{\n  NativeServeStartupPassed \{ line: \"ok\", value: \"ok\" \}\n\}\n"
+  nipw_admitted(o: nipw_run(entry_source: nipw_with(descriptor: descriptor, driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: boot, imports: "import extdeps.http.server \{ ServeRequestHeader \}\n"), peers: []))
+}
+
+test fn a_handler_request_parameter_whose_type_no_fact_carries_refuses() -> Bool {
+  let handler = "fn handle(method: String, path: String, attempt: Int) -> ServeWireResponse \{\n  ServeWireResponse \{ status: attempt, body: path \}\n\}\n"
   nipw_refused_naming(o: nipw_run(entry_source: nipw_with(descriptor: nipw_default_descriptor(module_path: "nipw.serve"), driver_program: nipw_program_ref(), ingress: nipw_ingress, handler: handler, extra: "", imports: ""), peers: []),
-    marker: "the handler's leading parameters are [method, target, body, tailscale_identity, authorization, release_revision]")
+    marker: "handler parameter attempt is Int; a request fact is text")
 }
 
 test fn a_startup_whose_payload_is_not_the_handlers_trailing_parameter_refuses() -> Bool {

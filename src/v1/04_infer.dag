@@ -63,7 +63,7 @@ import v1.std.core { leaf_node_with_span, make_pattern_binder_declaration_node, 
   expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
   qualified_last_segment, type_name_compatible,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value,
-  service_config_field_for_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
+  service_config_field_for_property_name, service_config_field_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
@@ -225,6 +225,7 @@ import v1.compiler.infer_items {
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
   is_typed_service_call_receiver, extract_typed_service_name,
+  service_endpoint_supply, service_endpoint_answer, EndpointOperationParameter, service_operation_items, service_data_values,
   collect_typed_service_calls,
   expand_transitive_services,
   EffectIncompleteness, UnresolvedCalleeEdge, ExpansionBudgetExhausted,
@@ -3986,11 +3987,98 @@ fn equality_declaration_walk(rt: Node, peeled: Node, name: String, identity: Str
 // table does not name (a kernel type, an extensional container, an alias) is read from its own shape; one that resolves to
 // nothing refuses rather than comparing by the target.
 fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, identity: String, scope: InferScope, visited: Map<String, Bool>, depth: Int, at_root: Bool) -> EqualityWalk {
-  let w = equality_resolved_declaration_structure_core(rt: rt, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
-  if w.refusal != none || !equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1) {
+  let si = scope.type_env.source_indices
+  let applied = equality_reference_applies_arguments(peeled: peeled)
+  let parameter_names = rt.params |> map(p => authored_name_at(source_indices: si, node: p))
+  // AN APPLIED GENERIC IS WALKED WITH ITS PARAMETERS BOUND: the declaration's own parameters are read
+  // as type variables in ITS body (declaration_substitution_basis, the corpus's one authority for "this
+  // leaf is a parameter"), never looked up by spelling in the use-site scope where the name means
+  // nothing. Each argument is then judged exactly where its parameter OCCURS, so a phantom parameter
+  // imposes no equality obligation (gunbc#15175 re-land; shape per silent-bee-845's ruling after
+  // #15952).
+  let basis = if applied && (parameter_names |> count) > 0 { declaration_substitution_basis(n: rt, env: scope.type_env, generic_names: parameter_names) } else { rt }
+  let w = equality_resolved_declaration_structure_core(rt: basis, peeled: peeled, name: name, identity: identity, scope: scope, visited: visited, depth: depth, at_root: at_root)
+  if w.refusal != none || !applied || equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: peeled.children, scope: scope, visited: visited, depth: depth + 1) {
     w
   } else {
     equality_walk_refused(r: equality_refused(carrier: name, member: "a routed member inside a generic application whose shape the equality plan does not model", member_judged: false))
+  }
+}
+
+// AN ARGUMENT IS JUDGED WHERE ITS PARAMETER OCCURS. Walking the body with each parameter bound to its
+// argument means an argument matters exactly when the body mentions its parameter: a phantom parameter
+// (Measure's Q and S, std.measure) imposes no equality obligation and its argument is never judged. A
+// parameter with no matching argument position refuses (an unjudged argument is never admitted); an
+// argument beyond the parameters likewise.
+fn equality_applied_arguments_by_target(basis: Node, parameter_names: List<String>, arguments: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
+  match parameter_names |> first {
+    Absent => (arguments |> count) == 0
+    Present { value: pn } =>
+      match arguments |> first {
+        Absent => false
+        Present { value: a } =>
+          (!equality_type_variable_occurs(n: basis, id: pn) || equality_applied_argument_is_structural(n: a, scope: scope, visited: visited, depth: depth))
+            && equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names |> skip(1), arguments: arguments |> skip(1), scope: scope, visited: visited, depth: depth)
+      }
+  }
+}
+
+fn equality_type_variable_occurs(n: Node, id: String) -> Bool {
+  (match n.inferred {
+    Present { value: TypeVariable { id: v } } => v == id
+    _ => false
+  }) || (n.children |> any(ch => equality_type_variable_occurs(n: ch, id: id)))
+}
+
+// AN OCCURRING APPLIED ARGUMENT MUST BE STRUCTURAL. A routed native (a Node-style declaration whose
+// equality is hand-written, realized natively), a routed route, or a function type is NOT structural
+// at argument position, even though the by-target table may answer true for it at MEMBER position
+// (the routed-Node-leaf doctrine of #15175: a declaration may compare a Node member by the target
+// without a generic application being built on top of one). Kernel scalars are structural; a type
+// variable is instantiation-blind and stays admitted; everything else is judged by the same walk the
+// plan uses (one question, one walk): refusal means not structural (gunbc#15175 re-land, ruling
+// silent-bee-845 after the 10-row classification).
+fn equality_applied_argument_is_structural(n: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> Bool {
+  if depth > 64 {
+    false
+  } else if equality_operand_is_type_variable(n: n, scope: scope) || equality_operand_is_type_variable(n: child_type_node(ch: n), scope: scope) {
+    true
+  } else {
+    let peeled = normalize_access_type_node(n: n)
+    let si = scope.type_env.source_indices
+    let identity = type_reference_identity(n: peeled, source_indices: si)
+    match equality_route_for(identity: identity) {
+      Present { value: _ } => false
+      Absent =>
+        if peeled.connective == Arrow {
+          false
+        } else if provenance_realizes_natively(p: type_reference_provenance(n: peeled)) {
+          false
+        } else if is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: si, node: peeled))) && (peeled.children |> count) == 0 {
+          true
+        } else {
+          let w = equality_operand_walk(n: n, scope: scope, visited: visited, depth: depth + 1, at_root: false)
+          w.refusal == none
+        }
+    }
+  }
+}
+
+// THE TABLE BRANCH APPLIES THE SAME RULE: a table hit judges the applied arguments through the
+// declaration's own parameter occurrences, read from the symbol index at the use (the table itself
+// stores only the Bool). A declaration the index does not name keeps the positional reading — the
+// rule never widens what is judged.
+fn equality_table_arguments_by_target(n: Node, source_indices: Map<String, NewlineIndex>, arguments: List<Node>, scope: InferScope, depth: Int) -> Bool {
+  match type_reference_declaration_reading(n: n, source_indices: source_indices, env: scope.type_env) {
+    TypeReferenceNamesDeclaration { declaration: d } =>
+      match declaration_node_of_ref(d: d, env: scope.type_env) {
+        Present { value: decl } =>
+          let parameter_names = decl.params |> map(pp => authored_name_at(source_indices: source_indices, node: pp))
+          let basis = if (parameter_names |> count) > 0 { declaration_substitution_basis(n: decl, env: scope.type_env, generic_names: parameter_names) } else { decl }
+          equality_applied_arguments_by_target(basis: basis, parameter_names: parameter_names, arguments: arguments, scope: scope, visited: empty_map(), depth: depth)
+        Absent => equality_arguments_by_target(arguments: arguments, scope: scope, depth: depth)
+      }
+    _ => equality_arguments_by_target(arguments: arguments, scope: scope, depth: depth)
   }
 }
 
@@ -4018,7 +4106,7 @@ fn equality_argument_by_target(n: Node, scope: InferScope, depth: Int) -> Bool {
         Absent =>
           match map_get(scope.type_env.equality_by_target, identity) {
             Present { value: declaration_by_target } =>
-              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_arguments_by_target(arguments: peeled.children, scope: scope, depth: depth + 1))
+              declaration_by_target && (!equality_reference_applies_arguments(peeled: peeled) || equality_table_arguments_by_target(n: peeled, source_indices: source_indices, arguments: peeled.children, scope: scope, depth: depth + 1))
             Absent =>
               if peeled.connective == Arrow {
                 false
@@ -4306,7 +4394,85 @@ fn equality_plan_synthesizable(plan: EqualityPlan) -> Bool {
   plan.declarations |> all(d => !d.generic && equality_reading_is_read(reading: d.reading))
 }
 
-fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
+// A synthesized helper call the derived body will carry: the (module, fn) pair the step spells at
+// 20392/20404. One row per helper the body names.
+type EqualitySynthHelper { module_path: String, fn_name: String }
+
+// Every helper a plan's steps will name, innermost first. Every arm of EqualityStep is listed:
+// a new step form must decide here whether its body names a helper, rather than inherit a default.
+fn equality_step_helpers(s: EqualityStep) -> List<EqualitySynthHelper> {
+  match s {
+    EqualityPresence { inner: i } => concat([EqualitySynthHelper { module_path: "std.optional", fn_name: "optional_eq" }], equality_step_helpers(s: i))
+    EqualityElements { element: e } => concat([EqualitySynthHelper { module_path: "std.algebra", fn_name: "zip_eq" }], equality_step_helpers(s: e))
+    EqualityMapValues { value: v } => concat([EqualitySynthHelper { module_path: "std.algebra", fn_name: "map_values_eq" }], equality_step_helpers(s: v))
+    EqualityRouted { function: _ } => []
+    EqualityThroughPlan { declaration: _ } => []
+    EqualityByTarget => []
+  }
+}
+
+// Every helper a structure's steps will name. Both structure shapes are listed by hand — a new
+// shape decides its helpers rather than inheriting one (no silent widen).
+fn equality_structure_helpers(structure: EqualityStructure) -> List<EqualitySynthHelper> {
+  match structure {
+    ProductPlan { fields: fs } => fs |> flat_map(f => equality_step_helpers(s: f.step))
+    CoproductPlan { first: f, rest: r } =>
+      concat(f.fields |> flat_map(fd => equality_step_helpers(s: fd.step)),
+             r |> flat_map(arm => arm.fields |> flat_map(fd => equality_step_helpers(s: fd.step))))
+  }
+}
+
+fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
+  plan.declarations |> flat_map(d => equality_structure_helpers(structure: d.structure))
+}
+
+// THE ONE PREDICATE (silent-bee-845 ruling): "is a derived equality body emitted for this
+// declaration in its declaring module?" - consumed by BOTH doors: the definition emitter
+// (equality_synthesized_for, which synthesizes the body exactly when it holds) and the by-target
+// `==` judgment (equality_derived_target, which calls the body exactly when it holds and refuses
+// at use otherwise). A second agreeing check at either door is forbidden: definition and call meet
+// only in the emitted build, and two rules answering one question there is the fork that produced
+// the E0425 in v2-emitted-policy-unit-2 (derived:v2.std.diagnostic NonEmptyDiagnostics skipped its
+// body while the by-target judgment still emitted the call).
+// The answer reads the declaring module's named imports (the symbol index's own reading, so symbol
+// resolution and this share one authority): every helper the declaration's OWN structure names must
+// arrive from the helper's module. A foreign declaration's helpers belong to ITS declaring module,
+// gated there where its body is emitted; the whole plan is never checked, so no unrelated holder's
+// import set decides whether this declaration has a derived ==. A module that lacks a helper its
+// own structure names fails CLOSED at use with the typed refusal below - never a dangling call,
+// never a fabricated admission. A whole-module import of a helper module is not recorded by the
+// index today (no such import exists in the corpus; if one appears this predicate fails closed for
+// it, the same answer at both doors).
+// INTERIM, named: making the declaring module's import set the authority over whether its type has
+// a derived == is an accident of imports, not of equality (the symbol_index/node asymmetry is that
+// accident). The compiler's own construction should bind these helpers by declaring identity, like
+// the derived equality itself binds `==`. Recorded as integration concern
+// equality_synthesis_helper_binding_is_import_authority; trigger: "synthesized equality binds
+// helpers by declaring identity" - when that lands, delete this predicate and exercise it through
+// self_host_equality_admission_witness.
+fn equality_derived_body_emitted(structure: EqualityStructure, declaring_module: String, index: SymbolIndex) -> Bool {
+  let named = match map_get(index.module_named_imports, declaring_module) {
+    Absent => empty_map()
+    Present { value: m } => m
+  }
+  // A helper the declaring module declares by hand (zip_eq inside std.algebra, optional_eq inside
+  // std.optional) is visible in that module by definition - the module's own symbol table, not its
+  // imports, is the authority there (silent-bee-845 ruling; import self-loops are forbidden by the
+  // acyclicity law main enforces). Foreign helpers must arrive as named imports from the helper's
+  // module, as before. Only FOREIGN helpers can be missing here: nested structural comparisons
+  // compile inline (the EqualityThroughPlan step emits Eq directly), so no body names a sibling's
+  // derived helper - the one call site a derived helper ever has is an authored `==`, and that door
+  // asks THIS predicate the same question before emitting the call.
+  let missing = equality_structure_helpers(structure: structure) |> filter(h =>
+    h.module_path != declaring_module &&
+    match map_get(named, h.fn_name) {
+      Present { value: origin } => origin != h.module_path
+      Absent => true
+    })
+  (missing |> count) == 0
+}
+
+fn equality_derived_target(plan: EqualityPlan, index: SymbolIndex) -> EqualityDerivedTarget {
   match plan.root {
     EqualityRouted { function: f } => EqualityCallsDeclared { function: f }
     EqualityThroughPlan { declaration: key } =>
@@ -4316,7 +4482,12 @@ fn equality_derived_target(plan: EqualityPlan) -> EqualityDerivedTarget {
             EqualityRootRefused { member: concat("a generic or unidentified declaration reaches a routed equality, so no derived equality is synthesized for it: ", join(plan.declarations |> filter(x => x.generic || !equality_reading_is_read(reading: x.reading)) |> map(x => concat(x.declaration, if x.generic { " generic" } else { " unreadable" })), ", ")) }
           } else {
             match d.reading {
-              DeclarationRead { reference: r } => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+              DeclarationRead { reference: r } =>
+                if !equality_derived_body_emitted(structure: d.structure, declaring_module: r.module_path as String, index: index) {
+                  EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " is not emitted in ", r.module_path as String, ": its own structure names a helper its declaring module does not import (family-2 interim, fail-closed at use)") }
+                } else {
+                  EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+                }
               DeclarationUnreadable { declaration_name: unread } => EqualityRootRefused { member: concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ", unread) }
             }
           }
@@ -4481,7 +4652,7 @@ fn equality_admission(op: BinOp, left_typed: Node, right_typed: Node, scope: Inf
                 match plan {
                   Absent => EqualityAdmission { diags: [], derived: none }
                   Present { value: p } =>
-                    match equality_derived_target(plan: p) {
+                    match equality_derived_target(plan: p, index: scope.type_env.symbol_index) {
                       EqualityCallsDeclared { function: f } => EqualityAdmission { diags: [], derived: Present { value: f } }
                       EqualityRootRefused { member: m } =>
                         equality_admission_refused(diags: [make_error_node(diagnostic: EqualityMemberUnjudgeable { type_name: authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: lt)), member: concat(m, " [compared in ", equality_census_declaration(scope: scope), "]"), span: span }, module_name: scope.module_name)])
@@ -16241,25 +16412,74 @@ fn service_config_property_referenced_name(p: Node, scope: InferScope) -> String
   authored_name_at(source_indices: scope.type_env.source_indices, node: field_init_node_value(n: p))
 }
 
-fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
+// BOTH FOLDS REBUILD THE SAME PROPERTY NODE, so the field-by-field copy that a fold has to do --
+// replace the single value child, keep everything else -- is written once here rather than at each
+// call site, where a drift between the two copies would silently drop a field of the property.
+fn with_judged_property_value(p: Node, value: Node) -> Node {
+  Node {
+    ident: Absent,
+    occurrence_identity: OccurrenceSynthetic, name: p.name, span: p.span, ident_span: p.ident_span,
+    children: [value], connective: p.connective,
+    params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
+    uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
+    type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
+    has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
+    module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
+  }
+}
+
+// The value node of a config field whose reference was bound to a declaration this lens has
+// already established. Only `inferred` changes; the authored shape the emitter and every later
+// pass read is the author's own node, untouched.
+fn with_resolved_type_node(value: Node, declared: Node) -> Node {
+  Node {
+    ident: value.ident,
+    occurrence_identity: value.occurrence_identity, name: value.name, span: value.span, ident_span: value.ident_span,
+    children: value.children, connective: value.connective,
+    params: value.params, inferred: Present { value: Resolved { node: declared } }, return_cardinality: value.return_cardinality,
+    uses: value.uses, body: value.body, transport: value.transport, properties: value.properties,
+    type_annotation: value.type_annotation, is_self_recursive: value.is_self_recursive,
+    has_non_tail_self_call: value.has_non_tail_self_call, match_pattern: value.match_pattern,
+    module_item_kind: value.module_item_kind, declaration_marker: value.declaration_marker, declaration: value.declaration, expr_data: value.expr_data
+  }
+}
+
+fn infer_service_config_properties(props: List<Node>, scope: InferScope, service: Node, data_values: List<Node>) -> InferPropertiesResult {
   let results = props |> map(p =>
     let field = field_init_node_name_at(n: p, source_indices: scope.type_env.source_indices)
     match service_config_field_judgment(field: field) {
       FieldJudged =>
         let val = field_init_node_value(n: p)
-        let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-        PropertyInferenceResult {
-          prop: Node {
-            ident: Absent,
-            occurrence_identity: OccurrenceSynthetic, name: p.name, span: p.span, ident_span: p.ident_span,
-            children: [val_result.typed], connective: p.connective,
-            params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
-            uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
-            type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
-            has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-            module_item_kind: p.module_item_kind, declaration_marker: p.declaration_marker, declaration: p.declaration, expr_data: p.expr_data
-          },
-          emissions: val_result.emissions
+        // THE ONE ENDPOINT ANSWER, READ THROUGH THE ONE AUTHORITY. An `endpoint:` value that is a
+        // bare identifier naming a `String` input of every rest operation of this service is bound
+        // to that INPUT, because that is what the reference interpreter does with it: `dispatch_rest`
+        // evaluates `svc_endpoint` with `find_service_config_string(..., param_env, ctx)`, i.e. in the
+        // called operation's parameter environment. Judging it here in module scope -- which is all
+        // this arm could do before -- reported `undefined variable` for a spelling the interpreter
+        // honours: two checks for one fact, disagreeing, the lens weaker. Its type is the annotation
+        // the author wrote on that input, read by `operation_input_string_type`; this arm mints no
+        // type and emits no diagnostic, because there is nothing to refuse.
+        let bound_input_type =
+          if field == service_config_field_property_name(field: SvcEndpoint) {
+            match service_endpoint_answer(service: service, operations: service_operation_items(service: service), data_values: data_values, imported_data_values: [], source_indices: scope.type_env.source_indices) {
+              EndpointOperationParameter { name: input_name, declared_type: declared } =>
+                if authored_name_at(source_indices: scope.type_env.source_indices, node: val) == input_name { Present { value: declared } } else { none }
+              _ => none
+            }
+          } else { none }
+        match bound_input_type {
+          Present { value: declared } => PropertyInferenceResult {
+            prop: with_judged_property_value(p: p, value: with_resolved_type_node(value: val, declared: declared)),
+            emissions: infer_emissions_empty()
+          }
+          // Every other spelling, in this field or any other judged field, keeps the judgment it
+          // has today: inferred in module scope, diagnostics included. No refusal is invented here.
+          Absent =>
+            let val_result = infer_expr(texpr: val, scope: scope, expected: none)
+            PropertyInferenceResult {
+              prop: with_judged_property_value(p: p, value: val_result.typed),
+              emissions: val_result.emissions
+            }
         }
       FieldDeferred { trigger: t } =>
         PropertyInferenceResult {
@@ -16360,7 +16580,7 @@ fn parameter_default_emissions(item: Node, scope: InferScope) -> InferEmissions 
     }))
 }
 
-fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
+fn infer_item(item: Node, scope: InferScope, data_values: List<Node>) -> TypedItemResult {
   let typed_anno = item.type_annotation
   let transport_scope = if item.params |> count > 0 {
     build_params_scope(scope: scope, params: item.params)
@@ -16368,14 +16588,14 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let transport_result = infer_transport_node(transport: item.transport, scope: transport_scope)
   let typed_transport = transport_result.transport
   let transport_emissions = transport_result.emissions
-  let props_result = infer_service_config_properties(props: item.properties, scope: scope)
+  let props_result = infer_service_config_properties(props: item.properties, scope: scope, service: item, data_values: data_values)
   let typed_properties = props_result.props
   let props_emissions = props_result.emissions
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: Present { value: Resolved { node: unit_type } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16422,7 +16642,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: inferred_ret, return_cardinality: item.return_cardinality, uses: item.uses, body: Present { value: annotated_body },
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16455,7 +16675,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: NoConnective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16468,7 +16688,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     TypedItemResult {
       item: Node {
         ident: Absent,
-        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope).item), params: item.params,
+        occurrence_identity: item.occurrence_identity, name: item.name, span: item.span, ident_span: item.ident_span, children: item.children |> map(c => infer_item(item: c, scope: scope, data_values: data_values).item), params: item.params,
         inferred: if item.inferred != none { item.inferred } else { Present { value: Resolved { node: unit_type } } }, return_cardinality: item.return_cardinality, uses: item.uses, body: none,
         connective: item.connective, transport: typed_transport,
                properties: typed_properties, type_annotation: typed_anno,
@@ -16480,8 +16700,13 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
 }
 
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
+  // THE SAME DATA THE EMITTER SHOWS THE AUTHORITY. One filter, from this module's own items, is
+  // what `service_endpoint_supply` asks about -- the emitter hands over the very same population
+  // through `service_data_values`, because two consumers filtering their item lists differently is
+  // the endpoint fork again, one level down.
+  let data_values = service_data_values(items: items)
   map(items, item =>
-    let r = infer_item(item: item, scope: scope)
+    let r = infer_item(item: item, scope: scope, data_values: data_values)
     TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) })
 }
 
@@ -20269,9 +20494,9 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
 // an optional, sequence or map member. A coproduct matches both operands on the same arm. Only the
 // declaring module synthesizes for a declaration (3c: one derived equality per Node-reaching declaration,
 // the type's own derived capability, used or not). The v2 front end owes the same semantics.
-fn equality_synthesized_items(items: List<Node>, module_name: String, env: TypeEnv) -> List<Node> {
+fn equality_synthesized_items(items: List<Node>, module_name: String, env: TypeEnv, imports: List<Node>) -> List<Node> {
   let scope = equality_synthesis_scope(env: env, module_name: module_name)
-  items |> flat_map(item => equality_synthesized_for(item: item, scope: scope))
+  items |> flat_map(item => equality_synthesized_for(item: item, scope: scope, imports: imports))
 }
 
 fn equality_synthesis_scope(env: TypeEnv, module_name: String) -> InferScope {
@@ -20291,7 +20516,7 @@ fn equality_synthesis_scope(env: TypeEnv, module_name: String) -> InferScope {
   }
 }
 
-fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
+fn equality_synthesized_for(item: Node, scope: InferScope, imports: List<Node>) -> List<Node> {
   let is_type_decl = (item.connective == Conj || item.connective == Disj) && item.transport == none
   if !is_type_decl { [] } else {
     let si = scope.type_env.source_indices
@@ -20305,7 +20530,10 @@ fn equality_synthesized_for(item: Node, scope: InferScope) -> List<Node> {
           if !equality_plan_synthesizable(plan: plan) { [] } else {
             match plan.declarations |> filter(d => d.declaration == identity) |> first {
               Absent => []
-              Present { value: dp } => [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+              Present { value: dp } =>
+                if !equality_derived_body_emitted(structure: dp.structure, declaring_module: scope.module_name, index: scope.type_env.symbol_index) { [] } else {
+                  [equality_derived_declaration(module_name: scope.module_name, decl_name: name, dp: dp)]
+                }
             }
           }
       }
@@ -20463,7 +20691,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
 
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
-  let synthesized_items = equality_synthesized_items(items: module_items(n: resolved.module), module_name: resolved_module_name, env: env)
+  let synthesized_items = equality_synthesized_items(items: module_items(n: resolved.module), module_name: resolved_module_name, env: env, imports: module_imports(n: resolved.module))
   let contributions = map(concat(module_items(n: resolved.module), synthesized_items), item =>
     analyze_item(item: item, env: env, module_name: resolved_module_name)
   )
