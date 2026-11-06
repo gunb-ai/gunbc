@@ -123,7 +123,7 @@ import std.materialization_ladder { DemandNature, PureComputation, IdempotentEff
 // gunbc.compute.work_request, and restating it here would fork it. That module imports nothing that
 // reaches this one, so the edge is acyclic, which is the import graph's only law (DESIGN section 3).
 import gunbc.compute.work_request {
-  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
+  WorkSubject, AdmittedToolchain, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, WorkToolchainIdentity,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name,
   CargoRelease, CargoDebug,
 }
@@ -180,7 +180,7 @@ type ArtifactRequest
   | NativeCompilerArtifactRequest { generation: PreMaterializationIdentity }
   | UniverseArtifactRequest { tested_tree_identity: ContentHash, route_binary: DeclaredInput }
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
-  | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: WorkToolchainIdentity }
+  | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: AdmittedToolchain }
   | FabricBlobRequest { address: FabricBlobAddress }
 
 // THE NATIVE ROUTE'S THREE REQUEST FAMILIES (operator rulings 2026-09-11: the replacement native CI
@@ -963,9 +963,7 @@ fn module_verdict_bundle_judgment_contract(subject: NativeModuleVerdictBundleSub
 data compute_work_provider_revision_ref: NonEmptyStr = "compute_work.execution.provider_revision"
 
 fn compute_work_subject_component(subject: WorkSubject) -> IdentityComponent {
-  match subject {
-    ExactTree { tree } => git_object_identity_component(oid: tree)
-  }
+  identity_text_component(content: subject.manifest as NonEmptyStr)
 }
 
 // THE OPERATION'S KEY PREIMAGE IS STRUCTURAL, NOT ITS DISPLAY TEXT (ruling on gunbc#13072, item 1).
@@ -1037,7 +1035,7 @@ fn compute_work_demand_nature(operation: WorkOperation) -> DemandNature {
 fn compute_work_judgment_contract(
   subject: WorkSubject,
   operation: WorkOperation,
-  toolchain: WorkToolchainIdentity
+  toolchain: AdmittedToolchain
 ) -> JudgmentContract {
   JudgmentContract {
     demand_identity: DemandIdentity {
@@ -1049,11 +1047,13 @@ fn compute_work_judgment_contract(
           component: identity_text_component(content: compute_work_operation_preimage(operation: operation))
         },
         DeclaredInput { ref: "compute_work.operation.claim_diff_window", component: compute_work_window_component(operation: operation) },
-        DeclaredInput { ref: "compute_work.execution.rustc_verbose", component: identity_text_component(content: toolchain.rustc_verbose) },
-        DeclaredInput { ref: "compute_work.execution.target_triple", component: identity_text_component(content: toolchain.target_triple) },
-        DeclaredInput { ref: "compute_work.execution.cargo_version", component: identity_text_component(content: toolchain.cargo_version) },
-        DeclaredInput { ref: "compute_work.execution.cache_release", component: identity_text_component(content: toolchain.cache_release) },
-        DeclaredInput { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: toolchain.provider_revision) }
+        DeclaredInput { ref: "compute_work.requirement.target_triple", component: identity_text_component(content: toolchain.requirement.target_triple) },
+        DeclaredInput { ref: "compute_work.requirement.rustc_release_prefix", component: identity_text_component(content: toolchain.requirement.rustc_release_prefix) },
+        DeclaredInput { ref: "compute_work.execution.rustc_verbose", component: identity_text_component(content: toolchain.observed.rustc_verbose) },
+        DeclaredInput { ref: "compute_work.execution.target_triple", component: identity_text_component(content: toolchain.observed.target_triple) },
+        DeclaredInput { ref: "compute_work.execution.cargo_version", component: identity_text_component(content: toolchain.observed.cargo_version) },
+        DeclaredInput { ref: "compute_work.execution.cache_release", component: identity_text_component(content: toolchain.observed.cache_release) },
+        DeclaredInput { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: toolchain.observed.provider_revision) }
       ]
     },
     result: ResultContract {
@@ -1125,7 +1125,7 @@ fn request_fold<T>(
   native_compiler: fn(PreMaterializationIdentity) -> T,
   universe: fn(ContentHash, DeclaredInput) -> T,
   module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T,
-  compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T,
+  compute_work: fn(WorkSubject, WorkOperation, AdmittedToolchain) -> T,
   fabric_blob: fn(FabricBlobAddress) -> T
 ) -> T {
   match req {

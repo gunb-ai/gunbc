@@ -26,6 +26,11 @@ import extdeps.languages.json.emit { json_object, json_kv, json_string, json_arr
 import extdeps.gunbc
 import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
+import gunbc.fabric.fabric_source_snapshot {
+  SnapshotSourceFile, SnapshotIdentityRefused, SnapshotIdentified, snapshot_manifest_identity, source_manifest_ref,
+  snapshot_identity_refusal_detail, admit_relative_source_path, RelativePathRefused, RelativePathAdmitted, snapshot_path_inside_composition,
+}
+import product.fabric.work { SourceManifestRef }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_null_sha1_object_id, git_object_id_wire_hex }
 import extdeps.systemd { ExecStopProperty, BindPathsProperty, systemd_unit_property_wire }
 import extdeps.systemd.systemd_run {
@@ -129,7 +134,7 @@ import gunbc.materialization_store_budgets { materialization_store_durable_famil
 import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
 import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
-  WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_declared_toolchain_requirement, work_unresolved_subject, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
   GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
@@ -289,13 +294,124 @@ type SubjectResolution
   = SubjectResolved { subject: WorkSubject }
   | SubjectResolutionRefused { detail: String }
 
+// THE DIRECTORY ADAPTER: ONE CAPTURE OVER A DIRECTORY, whichever way the bytes got there. The clean-tree
+// adapter (compute_resolve_subject) materializes a commit and calls this; a dirty worker worktree calls
+// it directly. Candidates are git's own list of the directory -- tracked plus untracked-not-ignored,
+// minus deleted -- so a NEW UNTRACKED FILE is in the identity and a deleted tracked file is not. The
+// bytes are READ through Filesystem (no exec per file) and handed to
+// gunbc.fabric.fabric_source_snapshot snapshot_manifest_identity, which keeps no notion of tracked,
+// commit or path. DECLARED LIMIT (trigger: a fabric object body that admits empty and non-UTF-8
+// bytes): Filesystem reads host text and a leaf body is NonEmptyStr, so an empty or non-text file under
+// a declared root refuses, typed and located, rather than hashing as something it is not.
+type SubjectManifestReading
+  = SubjectManifestRead { manifest: SourceManifestRef, files: Int }
+  | SubjectManifestRefused { detail: String }
+
+type SubjectFileReading
+  = SubjectFileRead { file: SnapshotSourceFile }
+  | SubjectFileRefused { detail: String }
+
+fn compute_listed_paths(listing: String) -> List<String> {
+  split(s: listing, delimiter: "\n") |> filter(l => trim(s: l) != "")
+}
+
+fn compute_subject_file(directory: String, path: String) -> SubjectFileReading {
+  let parts = path.split(sep: "/")
+  let name = compute_basename(path: path)
+  let dir = if count(parts) == 1 { "." } else { join(take_prefix(parts, count(parts) - 1), "/") }
+  let read = Filesystem.Read(path: join([directory, "/", path], ""))
+  if !read.success {
+    SubjectFileRefused { detail: join(["declared source file ", path, " is unreadable: ", read.error], "") }
+  } else if read.content == "" {
+    SubjectFileRefused { detail: join(["declared source file ", path, " is empty; the snapshot leaf cannot hold an empty body (declared limit)"], "") }
+  } else {
+    SubjectFileRead { file: SnapshotSourceFile { directory: dir as NonEmptyStr, name: name as NonEmptyStr, content: read.content as NonEmptyStr } }
+  }
+}
+
+fn compute_subject_in_declared_source(path: String) -> Bool {
+  match admit_relative_source_path(text: path) {
+    RelativePathRefused { text: _, cause: _ } => false
+    RelativePathAdmitted { path: relative } => snapshot_path_inside_composition(composition: work_declared_source, path: relative)
+  }
+}
+
+fn compute_directory_manifest(instance: HostDashboardInstance, directory: String) -> SubjectManifestReading {
+  let git = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  match compute_exec(program: git, workdir: directory, args: ["ls-files", "--cached", "--others", "--exclude-standard"]) {
+    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectManifestRefused { detail: join(["git ls-files exited ", to_string(value: exit_code), ": ", stderr], "") }
+    ComputeExecOk { stdout: listed, stderr: _ } =>
+      match compute_exec(program: git, workdir: directory, args: ["ls-files", "--deleted"]) {
+        ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectManifestRefused { detail: join(["git ls-files --deleted exited ", to_string(value: exit_code), ": ", stderr], "") }
+        ComputeExecOk { stdout: deleted, stderr: _ } => {
+          let gone = compute_listed_paths(listing: deleted)
+          let wanted = compute_listed_paths(listing: listed)
+            |> filter(p => compute_subject_in_declared_source(path: p) && !any(gone, g => g == p))
+            |> sort_by(p => p)
+          compute_manifest_of_files(directory: directory, paths: wanted)
+        }
+      }
+  }
+}
+
+fn compute_manifest_of_files(directory: String, paths: List<String>) -> SubjectManifestReading {
+  let readings = map(paths, p => compute_subject_file(directory: directory, path: p))
+  match readings |> filter(r => match r { SubjectFileRefused { detail: _ } => true  SubjectFileRead { file: _ } => false }) |> first() {
+    Present { value: SubjectFileRefused { detail } } => SubjectManifestRefused { detail: detail }
+    Present { value: SubjectFileRead { file: _ } } => SubjectManifestRefused { detail: "internal: a read file was selected as a refusal" }
+    Absent =>
+      match snapshot_manifest_identity(
+        composition: work_declared_source,
+        files: readings |> flat_map(r => match r { SubjectFileRead { file } => [file]  SubjectFileRefused { detail: _ } => [] }),
+      ) {
+        SnapshotIdentityRefused { cause } => SubjectManifestRefused { detail: join(["manifest identity refused: ", snapshot_identity_refusal_detail(cause: cause)], "") }
+        SnapshotIdentified { manifest, files, composition: _ } => SubjectManifestRead { manifest: source_manifest_ref(manifest: manifest), files: files }
+      }
+  }
+}
+
+// THE DIRTY-WORKTREE ADAPTER: a worker's worktree path, hashed where it stands. Provenance records the
+// path and is never part of the key.
+fn compute_resolve_worktree_subject(instance: HostDashboardInstance, worktree: String) -> SubjectResolution {
+  match compute_directory_manifest(instance: instance, directory: worktree) {
+    SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
+    SubjectManifestRead { manifest, files: _ } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: WorktreeProvenance { path: worktree } } }
+  }
+}
+
+// THE CLEAN-TREE ADAPTER (option A of the PR 2 ruling): the commit is checked out detached into a
+// throwaway directory keyed by its tree, that directory is hashed by the same capture, and the
+// directory is removed. The identity-keyed checkout the run uses later comes from the same commit, so
+// the bytes hashed are the bytes that run. KNOWN DUPLICATE MATERIALIZATION: the provider checks the
+// commit out twice. Its dissolution trigger is PR 5's executor extraction, which computes identity
+// from the executor's own single materialization (recorded on
+// gunbc.plans.durable_work_program_boundaries).
 fn compute_resolve_subject(instance: HostDashboardInstance, commit: String) -> SubjectResolution {
-  match compute_exec(program: compute_program(instance: instance, cap: GitWorkspaceCapability), workdir: instance.repo_root as String, args: ["show", "-s", "--format=%T", commit]) {
+  let git = compute_program(instance: instance, cap: GitWorkspaceCapability)
+  match compute_exec(program: git, workdir: instance.repo_root as String, args: ["show", "-s", "--format=%T", commit]) {
     ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git show ", commit, " exited ", to_string(value: exit_code), ": ", stderr], "") }
     ComputeExecOk { stdout, stderr: _ } =>
       match git_object_id_from_untagged_hex(hex: trim(s: stdout)) {
         Absent => SubjectResolutionRefused { detail: join(["git show printed no tree object id for ", commit, ": ", trim(s: stdout)], "") }
-        Present { value: tree } => SubjectResolved { subject: ExactTree { tree: tree } }
+        Present { value: tree } => {
+          let scratch = join([compute_root(instance: instance) as String, "/subject/", git_object_id_wire_hex(oid: tree) as String], "")
+          let added = compute_exec(program: git, workdir: instance.repo_root as String, args: shape_git_worktree_add_detached_argv(path: scratch as FilePath, commit: commit as GitRef))
+          match added {
+            ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["git worktree add (subject scratch) exited ", to_string(value: exit_code), ": ", stderr], "") }
+            ComputeExecOk { stdout: _, stderr: _ } => {
+              let reading = compute_directory_manifest(instance: instance, directory: scratch)
+              let removed = compute_exec(program: git, workdir: instance.repo_root as String, args: ["worktree", "remove", "--force", scratch])
+              match reading {
+                SubjectManifestRefused { detail } => SubjectResolutionRefused { detail: detail }
+                SubjectManifestRead { manifest, files: _ } =>
+                  match removed {
+                    ComputeExecFailed { exit_code, stdout: _, stderr } => SubjectResolutionRefused { detail: join(["the subject scratch checkout could not be removed (git worktree remove exited ", to_string(value: exit_code), "): ", stderr], "") }
+                    ComputeExecOk { stdout: _, stderr: _ } => SubjectResolved { subject: WorkSubject { manifest: manifest, provenance: GitTreeProvenance { tree: tree } } }
+                  }
+              }
+            }
+          }
+        }
       }
   }
 }
@@ -2338,7 +2454,7 @@ fn compute_store_commit_refusal_detail(r: StoreCommitRefusal) -> String {
 // store address carries when the request is admitted to a store. It names work that is never
 // stored too -- a windowed claim run is a fresh effect with no persistent address -- which is why
 // it is the request's digest and not the admission's.
-fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> String {
+fn compute_work_identity(subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> String {
   request_canonical_digest(req: ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }).hex as String
 }
 
@@ -2368,7 +2484,7 @@ fn compute_provide_leaf(
   commit: String,
   subject: WorkSubject,
   op: WorkOperation,
-  toolchain: WorkToolchainIdentity,
+  toolchain: AdmittedToolchain,
   dependency: ComputeDependency,
 ) -> ProvideResult {
   let request = ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }
@@ -2886,11 +3002,15 @@ fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit:
 fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
   match compute_observe_toolchain(instance: instance) {
     ToolchainObservationRefused { detail } =>
-      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
-    ToolchainObserved { toolchain } =>
+      compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainUnobserved { detail: detail } }, subject: work_unresolved_subject, op: op)
+    ToolchainObserved { toolchain: observed } =>
+      match work_toolchain_admit(requirement: work_declared_toolchain_requirement, observed: observed) {
+        ToolchainMismatch { field, declared, observed: seen } =>
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: ToolchainMismatchRefused { field: toolchain_mismatch_field_wire(field: field), declared: declared as String, observed: seen as String } }, subject: work_unresolved_subject, op: op)
+        ToolchainAdmitted { admitted: toolchain } =>
       match compute_resolve_subject(instance: instance, commit: commit) {
         SubjectResolutionRefused { detail } =>
-          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: ExactTree { tree: compute_null_tree() }, op: op)
+          compute_fresh(outcome: WorkRefusedByInfrastructure { identity: "", cause: SubjectUnresolved { detail: detail } }, subject: work_unresolved_subject, op: op)
         SubjectResolved { subject } =>
           match compute_store(instance: instance) {
             Absent =>
@@ -2904,6 +3024,7 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
               }
           }
       }
+      }
   }
 }
 
@@ -2912,7 +3033,7 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
-fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: WorkToolchainIdentity) -> ProvideResult {
+fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> ProvideResult {
   let build = compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
@@ -2933,12 +3054,6 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
       r: compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: DependencyNotSucceeded { dependency_identity: provide_result_identity(r: build), ending: provide_result_ending(r: build) } }, subject: subject, op: op),
       carried: provide_result_host_record(r: build))
   }
-}
-
-// git's null object id: the subject of a refusal that happened before any subject could be read, so
-// the document still has the field and a reader cannot mistake it for a real tree.
-fn compute_null_tree() -> GitObjectId {
-  git_null_sha1_object_id
 }
 
 // THE CLI A WORKER RUNS. Arguments are strings because that is what `gunbc run --arg` carries; the

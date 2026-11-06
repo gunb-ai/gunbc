@@ -1,0 +1,87 @@
+module test.claim.compute.work_source_identity_witness
+
+// CANONICAL WORK AND SOURCE IDENTITY (remote-build PR 2). Each claim has a RED control inside it.
+// What these supply: file sets and toolchain fixtures at the pure boundary. What they do NOT show: that
+// the provider's git listing (ls-files --cached --others --exclude-standard) yields the file set; that
+// route is the provider's wet run. The pure half is the identity rule both adapters share.
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.algebra { join }
+import std.optional { Optional, Present, Absent }
+import product.fabric.work { SourceManifestRef }
+import extdeps.git.object_store { git_null_sha1_object_id }
+import gunbc.compute.work_request {
+  WorkSubject, GitTreeProvenance, WorktreeProvenance, work_default_build, work_declared_source, work_declared_toolchain_requirement,
+  WorkToolchainRequirement, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, AdmittedToolchain,
+}
+import gunbc.fabric.fabric_source_snapshot {
+  SnapshotSourceFile, SnapshotIdentity, SnapshotIdentified, SnapshotIdentityRefused, snapshot_manifest_identity, source_manifest_ref,
+}
+import test.claim.compute.work_request_witness { key_with, tc_default }
+
+fn file(directory: String, name: String, content: String) -> SnapshotSourceFile {
+  SnapshotSourceFile { directory: directory as NonEmptyStr, name: name as NonEmptyStr, content: content as NonEmptyStr }
+}
+
+fn clean_files() -> List<SnapshotSourceFile> {
+  [file(directory: "dag", name: "a.dag", content: "module a"), file(directory: "src", name: "main.rs", content: "fn main() {}"), file(directory: ".", name: "Cargo.toml", content: "[package]")]
+}
+
+fn manifest_of(files: List<SnapshotSourceFile>) -> String {
+  match snapshot_manifest_identity(composition: work_declared_source, files: files) {
+    SnapshotIdentified { manifest: m, files: _, composition: _ } => source_manifest_ref(manifest: m) as String
+    SnapshotIdentityRefused { cause: _ } => "refused"
+  }
+}
+
+fn git_subject(manifest: String) -> WorkSubject {
+  WorkSubject { manifest: manifest as SourceManifestRef, provenance: GitTreeProvenance { tree: git_null_sha1_object_id } }
+}
+
+fn worktree_subject(manifest: String) -> WorkSubject {
+  WorkSubject { manifest: manifest as SourceManifestRef, provenance: WorktreeProvenance { path: "/work/dirty" } }
+}
+
+fn identity_key(s: WorkSubject) -> String {
+  key_with(subject: s, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.93.0"))
+}
+
+// (1) Equal bytes, different representation (listing order; clean tree vs dirty worktree provenance) are
+// ONE identity. RED control: a one-byte content change is a different manifest and key.
+test fn clean_and_dirty_representations_of_equal_bytes_share_one_identity() -> Bool {
+  let files = clean_files()
+  let reordered = [file(directory: ".", name: "Cargo.toml", content: "[package]"), file(directory: "src", name: "main.rs", content: "fn main() {}"), file(directory: "dag", name: "a.dag", content: "module a")]
+  let m = manifest_of(files: files)
+  let changed = manifest_of(files: [file(directory: "dag", name: "a.dag", content: "module b"), file(directory: "src", name: "main.rs", content: "fn main() {}"), file(directory: ".", name: "Cargo.toml", content: "[package]")])
+  m != "refused" && m == manifest_of(files: reordered)
+    && identity_key(s: git_subject(manifest: m)) == identity_key(s: worktree_subject(manifest: m))
+    && m != changed && identity_key(s: git_subject(manifest: m)) != identity_key(s: git_subject(manifest: changed))
+}
+
+// (2) A changed declared input changes the identity: operation, and a declared root.
+test fn a_changed_declared_input_changes_the_identity() -> Bool {
+  let m = manifest_of(files: clean_files())
+  let s = git_subject(manifest: m)
+  let base = identity_key(s: s)
+  base == identity_key(s: s)
+    && base != key_with(subject: s, op: work_default_build(), toolchain: tc_default(rustc: "rustc 1.93.1"))
+    && manifest_of(files: clean_files()) != manifest_of(files: concat(clean_files(), [file(directory: ".", name: "rust-toolchain.toml", content: "x")]))
+}
+
+// (3) An observed toolchain that differs from the declared requirement refuses; the matching one is admitted.
+test fn an_observed_toolchain_mismatch_refuses() -> Bool {
+  let req = WorkToolchainRequirement { target_triple: "aarch64-unknown-linux-gnu" as NonEmptyStr, rustc_release_prefix: "1.93.0" as NonEmptyStr }
+  let observed = tc_default(rustc: "rustc 1.93.0 (abc)").observed
+  let wrong_release = tc_default(rustc: "rustc 1.90.0 (abc)").observed
+  (match work_toolchain_admit(requirement: req, observed: observed) { ToolchainAdmitted { admitted: _ } => true  ToolchainMismatch { field: _, declared: _, observed: _ } => false })
+    && (match work_toolchain_admit(requirement: req, observed: wrong_release) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+    && (match work_toolchain_admit(requirement: work_declared_toolchain_requirement, observed: observed) { ToolchainAdmitted { admitted: _ } => false  ToolchainMismatch { field: _, declared: _, observed: _ } => true })
+}
+
+// (4) A new untracked file under a declared root is in the identity; one outside the roots refuses typed.
+test fn a_new_untracked_file_is_in_the_identity() -> Bool {
+  let base = manifest_of(files: clean_files())
+  let with_new = manifest_of(files: concat(clean_files(), [file(directory: "dag", name: "new_untracked.dag", content: "module n")]))
+  let outside = manifest_of(files: concat(clean_files(), [file(directory: "docs", name: "n.md", content: "x")]))
+  with_new != "refused" && with_new != base && outside == "refused"
+}

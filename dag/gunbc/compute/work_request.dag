@@ -5,7 +5,10 @@ import std.algebra { trim }
 import std.measure { Kibibyte, kibibyte_count }
 import std.content_hash { Fnv1a64Structural }
 import extdeps.systemd.systemd_run { SystemdRunOptionWordsRefusedCause, systemd_run_option_words_refused_cause_detail }
-import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
+import product.fabric.work { SourceManifestRef }
+import std.decl_ref { decl_ref }
+import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_null_sha1_object_id }
+import gunbc.fabric.fabric_source_snapshot { SourceComposition, DeclaredRootsComposition }
 import extdeps.languages.json.emit {
   JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json,
 }
@@ -26,10 +29,88 @@ import extdeps.languages.json.parse {
 // toolchain) is what lets two callers share one build and lets a host cap how many cold builds it
 // carries; the identity is content, so a branch name or a working directory can never be a subject.
 
-// A subject is a git TREE, never a commit message, branch or path: two commits with the same tree
-// are the same work. The provider resolves the tree from the commit a caller holds and checks the
-// commit out, but the identity is the tree's.
-type WorkSubject = ExactTree { tree: GitObjectId }
+// A SUBJECT IS AN EXACT SOURCE CONTENT MANIFEST (product.fabric.work SourceManifestRef), never a
+// commit, branch, path or git tree oid. A clean git tree and a dirty worker worktree are two ADAPTERS
+// that capture the same manifest from a directory (gunbc.fabric.fabric_source_snapshot), so equal
+// bytes under equal declared roots are the same work however they were held. WHERE the bytes came
+// from is provenance: kept beside the identity for the outcome document and the belt's readers, and
+// never read by the key (compute_work_subject_component reads `manifest` only).
+type SourceProvenance
+  = GitTreeProvenance { tree: GitObjectId }
+  | WorktreeProvenance { path: String }
+
+type WorkSubject {
+  manifest: SourceManifestRef
+  provenance: SourceProvenance
+}
+
+// THE DECLARED TOOLCHAIN REQUIREMENT is what the request ASKS for; the WorkToolchainIdentity below is
+// what a host OBSERVED. They are two facts. Observation never rewrites the request: the only way to
+// hold both in one request is AdmittedToolchain, whose sole constructor refuses a mismatch, so a
+// request whose observed host differs from its declared requirement has no representation.
+type WorkToolchainRequirement {
+  target_triple: NonEmptyStr
+  rustc_release_prefix: NonEmptyStr
+}
+
+type ToolchainMismatchField = TargetTripleMismatch | RustcReleaseMismatch
+
+fn toolchain_mismatch_field_wire(field: ToolchainMismatchField) -> String {
+  match field {
+    TargetTripleMismatch => "target_triple"
+    RustcReleaseMismatch => "rustc_release"
+  }
+}
+
+type AdmittedToolchain sole_constructor {
+  requirement: WorkToolchainRequirement
+  observed: WorkToolchainIdentity
+}
+
+type ToolchainAdmission
+  = ToolchainAdmitted { admitted: AdmittedToolchain }
+  | ToolchainMismatch { field: ToolchainMismatchField, declared: NonEmptyStr, observed: NonEmptyStr }
+
+fn work_toolchain_admit(requirement: WorkToolchainRequirement, observed: WorkToolchainIdentity) -> ToolchainAdmission {
+  if observed.target_triple != requirement.target_triple {
+    ToolchainMismatch { field: TargetTripleMismatch, declared: requirement.target_triple, observed: observed.target_triple }
+  } else {
+    if starts_with(s: observed.rustc_verbose as String, prefix: join(["rustc ", requirement.rustc_release_prefix as String], "")) {
+      ToolchainAdmitted { admitted: work_toolchain_admitted(requirement: requirement, observed: observed) }
+    } else {
+      ToolchainMismatch { field: RustcReleaseMismatch, declared: requirement.rustc_release_prefix, observed: observed.rustc_verbose }
+    }
+  }
+}
+
+fn work_toolchain_admitted(requirement: WorkToolchainRequirement, observed: WorkToolchainIdentity) -> AdmittedToolchain
+  admit_callers: [
+    decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_admit"),
+    decl_ref(module_path: "test.claim.compute.work_request_witness", decl_name: "tc"),
+    decl_ref(module_path: "test.claim.compute.attempt_lifecycle_wet_witness", decl_name: "fixture_toolchain"),
+  ]
+  = AdmittedToolchain { requirement: requirement, observed: observed }
+
+// THE DECLARED SOURCE: which paths of a tree are the work's subject. A ROW, not a literal in either
+// adapter, so the clean-tree adapter and the dirty-worktree adapter cannot disagree about it and a
+// declared root is a fact of the identity (the roots are in the manifest body). Build inputs outside
+// dag/ and src/ are the files named here.
+data work_declared_source: SourceComposition = DeclaredRootsComposition {
+  directory_roots: ["dag" as NonEmptyStr, "src" as NonEmptyStr],
+  file_paths: ["Cargo.toml" as NonEmptyStr, "Cargo.lock" as NonEmptyStr, "rust-toolchain.toml" as NonEmptyStr],
+}
+
+// THE DECLARED TOOLCHAIN the fleet asks for: rust-toolchain.toml's channel and the fleet's host triple.
+data work_declared_toolchain_requirement: WorkToolchainRequirement = WorkToolchainRequirement {
+  target_triple: "x86_64-unknown-linux-gnu" as NonEmptyStr,
+  rustc_release_prefix: "1.93.0" as NonEmptyStr,
+}
+
+// A refusal before any subject exists still has a document; its manifest says so and cannot be a real one.
+data work_unresolved_subject: WorkSubject = WorkSubject {
+  manifest: "unresolved" as SourceManifestRef,
+  provenance: GitTreeProvenance { tree: git_null_sha1_object_id },
+}
 
 type CargoProfile = CargoRelease | CargoDebug
 
@@ -247,6 +328,7 @@ type WorkInfrastructureRefusal
   | ToolchainUnobserved { detail: String }
   | DependencyNotSucceeded { dependency_identity: String, ending: String }
   | SubjectUnresolved { detail: String }
+  | ToolchainMismatchRefused { field: String, declared: String, observed: String }
   | UnitMemoryGrantExceeded { class: String, granted: Kibibyte, peak_upper: Kibibyte?, grant_was_ceiling: Bool }
   | UnitEndingUnclassifiable { exit_code: Int, cause: String }
   | UnitLaunchRefused { cause: SystemdRunOptionWordsRefusedCause }
@@ -317,6 +399,7 @@ fn work_refusal_detail(r: WorkInfrastructureRefusal) -> String {
     ToolchainUnobserved { detail } => join(["toolchain unobserved: ", detail], "")
     DependencyNotSucceeded { dependency_identity, ending } => join(["dependency ", dependency_identity, " ended ", ending], "")
     SubjectUnresolved { detail } => join(["subject unresolved: ", detail], "")
+    ToolchainMismatchRefused { field, declared, observed } => join(["the observed toolchain does not meet the declared requirement (", field, "): declared ", declared, ", observed ", observed], "")
     UnitEndingUnclassifiable { exit_code, cause } =>
       join(["the unit exited ", to_string(value: exit_code), " and its ending could not be classified, so it is neither reported as failed nor as grant-exceeded: ", cause], "")
     UnitLaunchRefused { cause } =>
@@ -337,13 +420,16 @@ fn work_output_json(o: WorkOutput) -> JsonValue {
 
 // The durable outcome document: what the store keeps beside the outputs and what the CLI prints.
 fn work_outcome_json(o: WorkOutcome, subject: WorkSubject, op: WorkOperation) -> JsonValue {
-  let tree = match subject { ExactTree { tree } => git_object_id_wire_hex(oid: tree) as String }
-  let base = [
+  let provenance = match subject.provenance {
+    GitTreeProvenance { tree } => [json_kv(key: "subject_tree", value: json_string(s: git_object_id_wire_hex(oid: tree) as String))]
+    WorktreeProvenance { path } => [json_kv(key: "subject_worktree", value: json_string(s: path))]
+  }
+  let base = concat([
     json_kv(key: "ending", value: json_string(s: work_outcome_ending(o: o))),
     json_kv(key: "identity", value: json_string(s: work_outcome_identity(o: o))),
-    json_kv(key: "subject_tree", value: json_string(s: tree)),
+    json_kv(key: "subject_manifest", value: json_string(s: subject.manifest as String)),
     json_kv(key: "operation", value: json_string(s: work_operation_canonical(op: op))),
-  ]
+  ], provenance)
   json_object(members: concat(base, match o {
     WorkSucceeded { identity: _, outputs, log_path } => [
       json_kv(key: "outputs", value: json_array(elements: map(outputs, x => work_output_json(o: x)))),
