@@ -7400,52 +7400,27 @@ pub fn equality_plan_helpers(plan: Rc<EqualityPlan>) -> Rc<Vec<Rc<EqualitySynthH
     })
 }
 
-pub fn equality_helper_visible(
-    imp: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    helper: Rc<EqualitySynthHelper>,
-) -> bool {
-    ((import_module_path_at(imp.clone(), source_indices.clone()) == helper.module_path.clone())
-        && (crate::v1_std_core::import_is_all(imp.clone())
-            || ((Rc::new({
-                let mut __result = Vec::new();
-                for nm in crate::v1_std_core::import_specific_names_at(
-                    imp.clone(),
-                    source_indices.clone(),
-                )
-                .iter()
-                .cloned()
-                {
-                    if (nm.clone() == helper.fn_name.clone()) {
-                        __result.push(nm);
-                    }
-                }
-                __result
-            })
-            .len() as i64)
-                > 0)))
-}
-
-pub fn equality_body_helpers_visible(
+pub fn equality_derived_body_emitted(
     structure: Rc<EqualityStructure>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    declaring_module: String,
+    index: Rc<SymbolIndex>,
 ) -> bool {
     {
+        let named = match v1_rt::map_get(
+            &index.module_named_imports.clone(),
+            declaring_module.clone(),
+        ) {
+            std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
+            Some(m) => m.clone(),
+        };
         let missing = Rc::new({
             let mut __result = Vec::new();
             for h in equality_structure_helpers(structure).iter().cloned() {
-                if ((Rc::new({
-                    let mut __result = Vec::new();
-                    for imp in imports.iter().cloned() {
-                        if equality_helper_visible(imp.clone(), source_indices.clone(), h.clone()) {
-                            __result.push(imp);
-                        }
-                    }
-                    __result
-                })
-                .len() as i64)
-                    == 0)
+                if ((h.module_path.clone() != declaring_module.clone())
+                    && match v1_rt::map_get(&named, h.fn_name.clone()) {
+                        Some(origin) => (origin.clone() != h.module_path.clone()),
+                        std::option::Option::None => true,
+                    })
                 {
                     __result.push(h);
                 }
@@ -7456,7 +7431,10 @@ pub fn equality_body_helpers_visible(
     }
 }
 
-pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarget> {
+pub fn equality_derived_target(
+    plan: Rc<EqualityPlan>,
+    index: Rc<SymbolIndex>,
+) -> Rc<EqualityDerivedTarget> {
     match (*plan.root.clone()).clone() {
     EqualityStep::EqualityRouted { function: f, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: f.clone(),
@@ -7472,9 +7450,15 @@ pub fn equality_derived_target(plan: Rc<EqualityPlan>) -> Rc<EqualityDerivedTarg
 })
     } else {
         match (*d.reading.clone()).clone() {
-    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
+    EqualityDeclarationReading::DeclarationRead { reference: r, .. } => if !equality_derived_body_emitted(d.structure.clone(), r.module_path.clone(), index) {
+            Rc::new(EqualityDerivedTarget::EqualityRootRefused {
+    member: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("the derived equality body for ".to_string(), r.decl_name.clone()), " is not emitted in ".to_string()), r.module_path.clone()), ": its own structure names a helper its declaring module does not import (family-2 interim, fail-closed at use)".to_string()),
+})
+        } else {
+            Rc::new(EqualityDerivedTarget::EqualityCallsDeclared {
     function: crate::std_decl_ref::decl_ref(r.module_path.clone(), equality_derived_name(r.decl_name.clone())),
-}),
+})
+        },
     EqualityDeclarationReading::DeclarationUnreadable { declaration_name: unread, .. } => Rc::new(EqualityDerivedTarget::EqualityRootRefused {
     member: v1_rt::concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ".to_string(), unread.clone()),
 }),
@@ -7907,7 +7891,7 @@ equality_admission_refused(Rc::new(vec![crate::v1_std_core::make_error_node(Rc::
     diags: Rc::new(vec![]),
     derived: std::option::Option::None,
 }),
-    Some(p) => match (*equality_derived_target(p.clone())).clone() {
+    Some(p) => match (*equality_derived_target(p.clone(), scope.type_env.symbol_index.clone())).clone() {
     EqualityDerivedTarget::EqualityCallsDeclared { function: f, .. } => Rc::new(EqualityAdmission {
     diags: Rc::new(vec![]),
     derived: Some(f.clone()),
@@ -38086,10 +38070,10 @@ pub fn equality_synthesized_for(
                                 {
                                     std::option::Option::None => Rc::new(vec![]),
                                     Some(dp) => {
-                                        if !equality_body_helpers_visible(
+                                        if !equality_derived_body_emitted(
                                             dp.structure.clone(),
-                                            imports,
-                                            si.clone(),
+                                            scope.module_name.clone(),
+                                            scope.type_env.symbol_index.clone(),
                                         ) {
                                             Rc::new(vec![])
                                         } else {
