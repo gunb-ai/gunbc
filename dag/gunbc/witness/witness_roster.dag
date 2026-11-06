@@ -8,7 +8,8 @@ import v2.std.node { Node }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_command_with_words, bash_build_stmt_list_from_nodes,
   bash_build_assign, bash_build_assign_lit, bash_build_word_cmdsubst, bash_build_pipe, bash_build_or_else,
-  bash_build_if, bash_build_if_else, bash_build_negation, bash_build_test_bracket, bash_build_with_redir
+  bash_build_if, bash_build_if_else, bash_build_negation, bash_build_test_bracket, bash_build_with_redir,
+  bash_build_subshell_from_stmts
 }
 
 // THE ROSTER ROW TYPES, AND WHY THEY ARE GUNBC'S RATHER THAN ONE REPOSITORY'S.
