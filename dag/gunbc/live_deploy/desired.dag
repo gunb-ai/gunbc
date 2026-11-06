@@ -1,6 +1,7 @@
 module gunbc.live_deploy.desired
 
 import std.types { String, NonEmptyStr, List, Bool }
+import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_path }
@@ -280,7 +281,11 @@ fn spec_same_host_surface_collision(
     deployment_plan_listen_port(spec: a) == deployment_plan_listen_port(spec: b)
       || a.service.unit_name == b.service.unit_name
       || a.service.repo_root == b.service.repo_root
-      || a.service.serve_binary == b.service.serve_binary
+      // The collision axis is the serve binary's PATH -- two deployments driving one binary is
+      // the hazard this law prevents. PROVENANCE is not a collision axis: it is judged by the
+      // grammar gate (live_deploy_serve_grammar_refusal), so the compare reads the path field,
+      // never the whole record.
+      || fixed_serve_binary_path(binary: a.service.serve_binary) == fixed_serve_binary_path(binary: b.service.serve_binary)
       || a.service.serve_function == b.service.serve_function
       || a.names.tree_sync_unit_name == b.names.tree_sync_unit_name
       || a.names.tree_sync_env_path == b.names.tree_sync_env_path
