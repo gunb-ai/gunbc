@@ -15,10 +15,28 @@ module v2.test.claim.namespace_xl0.wc_verdict_probe
 // i64 bound of int_to_decimal_string is 19 digits). It carries no symbol text, no file text and no
 // host string: lexemes are compared to frozen candidate tags and COUNTED, never rendered.
 // Widest layout, per verdict field: "X{"(2) + "r=23"(4) + ","(1) + "a=?"(3) + ",s=F"(4) + ",al="(4)
-// + <=19 digits + "}"(1) = 38 characters. Head "WCVERIFY ctx=OK"(15) + separators " arm="(5),
-// " field="(7), " binder="(8), " body="(6) = 41. Stated maximum: 41 + 4*38 = 193 characters. The
+// + <=19 digits + "}"(1) = 38 characters. Head "WCVERIFY ctx=OK"(15) + control fields " ctl_ok="(8)
+// + "r=23"(4) and " ctl_out="(9) + "r=23"(4) = 25 + separators " arm="(5),
+// " field="(7), " binder="(8), " body="(6) = 26. Stated maximum: 15 + 25 + 26 + 4*38 = 218
+// characters (the ctx=RF row is 15 + 25 + 30 = 70). The
 // guard re-counts and, on violation, replaces the payload with 'WCVERIFY BOUND_VIOLATED len=<digits>'
 // (<= 28 + 19 = 47 characters), so BOTH arms are bounded and nothing is ever truncated silently.
+// CONTROL FIELDS (parent msg_02bc6f7c B2): ctl_ok is reason_token applied to a symbol the chain
+// MUST match (^resolve_reason_unbound_symbol, so the declared value is 0), and ctl_out is
+// reason_token applied to a symbol outside the 24 compared names (^resolve_reason_binder_duplicate_
+// in_frame, so the declared value is X). Both are computed UNCONDITIONALLY, before any outcome is
+// known, and ride on BOTH row shapes as data: neither is asserted by this probe. Their purpose is to
+// settle whether '==' against caret symbols discriminates at all: ctl_ok = X while every field is
+// also X is the signature of a broken comparison, not of an outside-table reason. 'r=X' alone means
+// ONLY 'matched none of the 24 compared caret symbols (outside-table OR comparison failure); loses
+// which reason, and whether comparison works'.
+// CHARACTERS: every character above comes from a fixed literal in THIS file, from bool_token's
+// "T"/"F", or from int_to_decimal_string, whose only glyphs are the ten literals "0".."9" of
+// decimal_digit_glyph (dag/std/nat.dag:219-231) concatenated by int_digits_to_decimal_string
+// (dag/std/integer.dag:316-335; the leading "-" branch is unreachable here because atom_len is a
+// fold_list count starting at 0, so it is never negative). No lexeme, file text or host string
+// enters the reason, so it cannot contain a newline, ')', '{', '}' outside the payload braces or
+// ',' outside the payload separators.
 
 import v2.test.claim.namespace_xl0.wildcard_arm_resolve {
   WcAbsent,
@@ -107,15 +125,23 @@ fn verdict_text(v: WcVerdict) -> String {
   }
 }
 
+// CONTROL: both tokens are produced by the SAME reason_token whose discrimination is in question,
+// applied to two fixed caret symbols with declared values (0 and X). Computed unconditionally so a
+// refused context still carries the control. Data, never asserted here; the reading table in the
+// packet interprets it.
+fn ctl_text() -> String {
+  " ctl_ok=" + reason_token(r: ^resolve_reason_unbound_symbol) + " ctl_out=" + reason_token(r: ^resolve_reason_binder_duplicate_in_frame)
+}
+
 fn outcomes_text(o: WcOutcomes) -> String {
   match o {
-    WcContextRefused => "WCVERIFY ctx=RF arm=- field=- binder=- body=-"
+    WcContextRefused => "WCVERIFY ctx=RF" + ctl_text() + " arm=- field=- binder=- body=-"
     WcOutcomesDecided { arm: arm, field: field, binder: binder, body: body } =>
-      "WCVERIFY ctx=OK arm=" + verdict_text(v: arm) + " field=" + verdict_text(v: field) + " binder=" + verdict_text(v: binder) + " body=" + verdict_text(v: body)
+      "WCVERIFY ctx=OK" + ctl_text() + " arm=" + verdict_text(v: arm) + " field=" + verdict_text(v: field) + " binder=" + verdict_text(v: binder) + " body=" + verdict_text(v: body)
   }
 }
 
-data reason_bound: Int = 193
+data reason_bound: Int = 218
 
 test fn wc_verdict_probe_reports() -> ProcessExit {
   let reason = outcomes_text(o: wc_outcomes())
