@@ -6154,60 +6154,6 @@ pub fn equality_declaration_walk(
     )
 }
 
-pub fn scope_with_declared_type_params(
-    scope: Rc<InferScope>,
-    names: Rc<Vec<String>>,
-) -> Rc<InferScope> {
-    {
-        let __rb_0_0 = scope.type_env.clone();
-        let __rb_1_0 = scope.func_env.clone();
-        let __rb_2_0 = scope.locals.clone();
-        let __rb_3_0 = scope.body_locals.clone();
-        let __rb_4_0 = scope.match_bound_names.clone();
-        let __rb_5_0 = scope.module_name.clone();
-        let __rb_6_0 = scope.service_registry.clone();
-        let __rb_7_0 = scope.item_registry.clone();
-        let __rb_8_0 = scope.lambda_param_provenance.clone();
-        let __rb_9_0 = scope.caller_decl_name.clone();
-        let __rb_10_0 = scope.in_flight_lambda_param_names.clone();
-        let __rb_11_0 = names.clone();
-        let mut __rb_h = scope;
-        match Rc::get_mut(&mut __rb_h) {
-            Some(__rb_r) => {
-                __rb_r.type_env = __rb_0_0;
-                __rb_r.func_env = __rb_1_0;
-                __rb_r.locals = __rb_2_0;
-                __rb_r.body_locals = __rb_3_0;
-                __rb_r.match_bound_names = __rb_4_0;
-                __rb_r.module_name = __rb_5_0;
-                __rb_r.service_registry = __rb_6_0;
-                __rb_r.item_registry = __rb_7_0;
-                __rb_r.lambda_param_provenance = __rb_8_0;
-                __rb_r.caller_decl_name = __rb_9_0;
-                __rb_r.in_flight_lambda_param_names = __rb_10_0;
-                __rb_r.enclosing_declared_type_param_names = __rb_11_0;
-            }
-            None => {
-                __rb_h = Rc::new(InferScope {
-                    type_env: __rb_0_0,
-                    func_env: __rb_1_0,
-                    locals: __rb_2_0,
-                    body_locals: __rb_3_0,
-                    match_bound_names: __rb_4_0,
-                    module_name: __rb_5_0,
-                    service_registry: __rb_6_0,
-                    item_registry: __rb_7_0,
-                    lambda_param_provenance: __rb_8_0,
-                    caller_decl_name: __rb_9_0,
-                    in_flight_lambda_param_names: __rb_10_0,
-                    enclosing_declared_type_param_names: __rb_11_0,
-                });
-            }
-        }
-        __rb_h
-    }
-}
-
 pub fn equality_resolved_declaration_structure(
     rt: Rc<Node>,
     peeled: Rc<Node>,
@@ -6219,48 +6165,149 @@ pub fn equality_resolved_declaration_structure(
     at_root: bool,
 ) -> Rc<EqualityWalk> {
     {
-        let decl_scope = scope_with_declared_type_params(
-            scope.clone(),
-            crate::v1_compiler_infer_resolve::fn_type_param_names(
+        let si = scope.type_env.source_indices.clone();
+        let applied = equality_reference_applies_arguments(peeled.clone());
+        let parameter_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in rt.params.clone().iter().cloned() {
+                __result.push(crate::v1_std_core::authored_name_at(si.clone(), p.clone()));
+            }
+            __result
+        });
+        let basis = if (applied.clone() && ((parameter_names.clone().len() as i64) > 0)) {
+            crate::v1_compiler_infer_env::declaration_substitution_basis(
                 rt.clone(),
-                scope.type_env.source_indices.clone(),
-            ),
-        );
+                scope.type_env.clone(),
+                parameter_names.clone(),
+            )
+        } else {
+            rt.clone()
+        };
         let w = equality_resolved_declaration_structure_core(
-            rt.clone(),
+            basis.clone(),
             peeled.clone(),
             name.clone(),
-            identity.clone(),
-            decl_scope.clone(),
+            identity,
+            scope.clone(),
             visited,
             depth.clone(),
             at_root,
         );
-        if (((w.refusal.clone() != std::option::Option::None)
-            || !equality_reference_applies_arguments(peeled.clone()))
-            || equality_arguments_by_target(
+        if (((w.refusal.clone() != std::option::Option::None) || !applied.clone())
+            || equality_applied_arguments_by_target(
+                basis.clone(),
+                parameter_names.clone(),
                 peeled.children.clone(),
-                decl_scope.clone(),
+                scope.clone(),
                 v1_rt::int_add(depth.clone(), 1),
             ))
         {
             w
         } else {
-            equality_walk_refused(equality_refused(
-                name.clone(),
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat("DBGid=".to_string(), identity.clone()),
-                        "|roster=".to_string(),
-                    ),
-                    decl_scope
-                        .enclosing_declared_type_param_names
-                        .clone()
-                        .join(&",".to_string()),
-                ),
-                false,
-            ))
+            equality_walk_refused(equality_refused(name.clone(), "a routed member inside a generic application whose shape the equality plan does not model".to_string(), false))
         }
+    }
+}
+
+pub fn equality_applied_arguments_by_target(
+    basis: Rc<Node>,
+    parameter_names: Rc<Vec<String>>,
+    arguments: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match parameter_names.clone().first().cloned() {
+            std::option::Option::None => ((arguments.clone().len() as i64) == 0),
+            Some(pn) => match arguments.clone().first().cloned() {
+                std::option::Option::None => false,
+                Some(a) => {
+                    ((!equality_type_variable_occurs(basis.clone(), pn.clone())
+                        || equality_argument_by_target(a.clone(), scope.clone(), depth.clone()))
+                        && equality_applied_arguments_by_target(
+                            basis.clone(),
+                            Rc::new(v1_rt::list_skip(&parameter_names.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&arguments.clone(), 1)),
+                            scope.clone(),
+                            depth.clone(),
+                        ))
+                }
+            },
+        }
+    })
+}
+
+pub fn equality_type_variable_occurs(n: Rc<Node>, id: String) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        (match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: v, .. }) => (v.clone() == id.clone()),
+            _ => false,
+        } || {
+            let mut __found = false;
+            for ch in n.children.clone().iter().cloned() {
+                if equality_type_variable_occurs(ch.clone(), id.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+    })
+}
+
+pub fn equality_table_arguments_by_target(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    arguments: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        n,
+        source_indices.clone(),
+        scope.type_env.clone(),
+    ))
+    .clone()
+    {
+        TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d, ..
+        } => match crate::v1_compiler_infer_env::declaration_node_of_ref(
+            d.clone(),
+            scope.type_env.clone(),
+        ) {
+            Some(decl) => {
+                let parameter_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for pp in decl.params.clone().iter().cloned() {
+                        __result.push(crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            pp.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let basis = if ((parameter_names.clone().len() as i64) > 0) {
+                    crate::v1_compiler_infer_env::declaration_substitution_basis(
+                        decl.clone(),
+                        scope.type_env.clone(),
+                        parameter_names.clone(),
+                    )
+                } else {
+                    decl.clone()
+                };
+                equality_applied_arguments_by_target(
+                    basis,
+                    parameter_names.clone(),
+                    arguments.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                )
+            }
+            std::option::Option::None => {
+                equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone())
+            }
+        },
+        _ => equality_arguments_by_target(arguments.clone(), scope.clone(), depth.clone()),
     }
 }
 
@@ -6332,7 +6379,9 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
                                             (declaration_by_target.clone()
                                                 && (!equality_reference_applies_arguments(
                                                     peeled.clone(),
-                                                ) || equality_arguments_by_target(
+                                                ) || equality_table_arguments_by_target(
+                                                    peeled.clone(),
+                                                    source_indices.clone(),
                                                     peeled.children.clone(),
                                                     scope.clone(),
                                                     v1_rt::int_add(depth.clone(), 1),
@@ -6377,20 +6426,7 @@ pub fn equality_argument_by_target(n: Rc<Node>, scope: Rc<InferScope>, depth: i6
 if ((resolved.connective.clone() != Connective::NoConnective) || (type_reference_identity(resolved.clone(), source_indices.clone()) != identity.clone())) {
                                                 equality_argument_by_target(resolved.clone(), scope.clone(), v1_rt::int_add(depth.clone(), 1))
                                             } else {
-                                                if name_is_enclosing_declared_type_parameter(crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone()), scope.clone()) {
-                                                    true
-                                                } else {
-                                                    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(peeled.clone(), source_indices.clone(), scope.type_env.clone())).clone() {
-    TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration { declaration: d, .. } => match crate::v1_compiler_infer_env::declaration_node_of_ref(d.clone(), scope.type_env.clone()) {
-    Some(decl) => match v1_rt::map_get(&scope.type_env.equality_by_target.clone(), crate::v1_compiler_infer_types::node_declaration_identity(decl.clone(), source_indices.clone())) {
-    Some(declared_by_target) => (declared_by_target.clone() && (!equality_reference_applies_arguments(peeled.clone()) || equality_arguments_by_target(peeled.children.clone(), scope.clone(), v1_rt::int_add(depth.clone(), 1)))),
-    std::option::Option::None => false,
-},
-    std::option::Option::None => false,
-},
-    _ => false,
-}
-                                                }
+                                                false
                                             }
 },
 }
