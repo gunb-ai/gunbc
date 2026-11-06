@@ -45,7 +45,7 @@ data fan65004c: ElectronicComponentRow = ElectronicComponentRow {
   vendor: onsemi,
   ordering_code: "FAN65004C",
   package: "PQFN35 6 mm x 6 mm, CASE 483BE",
-  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "FAN" }] }, MarkLine { segments: [FixedGlyphs { text: "65004C" }] }, MarkLine { segments: [VariableField { legend: "A = assembly", width: Absent }, VariableField { legend: "WL = wafer lot", width: Absent }, VariableField { legend: "YY = year", width: Present { value: 2 } }, VariableField { legend: "WW = week", width: Present { value: 2 } }, VariableField { legend: "G = Pb-free", width: Absent }] }] } },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "FAN" }] }, MarkLine { segments: [FixedGlyphs { text: "65004C" }] }, MarkLine { segments: [VariableField { legend: "A = assembly", width: Absent }, VariableField { legend: "WL = wafer lot", width: Absent }, VariableField { legend: "YY = year", width: Present { value: 2 } }, VariableField { legend: "WW = week", width: Present { value: 2 } }, FixedGlyphs { text: "G" }] }] } },
   specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
     pins: [
       RegulatorPin { number: 1, name: "VIN", role: RegulatorSupplyInput },
