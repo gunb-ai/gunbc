@@ -1429,8 +1429,8 @@ fn sort_keyed_runs<T, K>(xs: FreeMonoid<SortKeyed<T, K>>, n: Int, order: TotalOr
     xs
   } else {
     sort_merge_runs(
-      left: sort_keyed_runs(xs: take_prefix(xs: xs, n: n / 2), n: n / 2, order: order),
-      right: sort_keyed_runs(xs: skip(xs: xs, n: n / 2), n: n - n / 2, order: order),
+      left: sort_keyed_runs(xs: xs.take(n: n / 2), n: n / 2, order: order),
+      right: sort_keyed_runs(xs: xs.skip(n: n / 2), n: n - n / 2, order: order),
       order: order
     )
   }
