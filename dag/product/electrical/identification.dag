@@ -772,10 +772,12 @@ type MarkingReadingSet {
 
 type OnlyReadingWitness sole_constructor {
   subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
 }
 
 type NoDissentWitness sole_constructor {
   subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
 }
 
 // The one basis the contract allows. A fourth kind arrives with a consumer that reads it, not before.
@@ -783,6 +785,7 @@ type PreferenceKind = CheckablePreferredOverUncheckable { }
 
 type ConflictSelectionBasis sole_constructor {
   subject: ComponentInstanceIdentity
+  relied_on: MarkingReading
   basis: PreferenceKind
 }
 
@@ -886,7 +889,7 @@ fn only_reading(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingR
   ) {
     Absent
   } else {
-    Present { value: OnlyReading { witness: OnlyReadingWitness { subject: readings.subject } } }
+    Present { value: OnlyReading { witness: OnlyReadingWitness { subject: readings.subject, relied_on: readings.relied_on } } }
   }
 }
 
@@ -906,7 +909,7 @@ fn no_dissent(roster: BoardSightings, readings: MarkingReadingSet) -> MarkingRel
   } else if !is_empty(xs: disputed_glyphs(relied: readings.relied_on, others: readings.others)) {
     Absent
   } else {
-    Present { value: NoDissent { witness: NoDissentWitness { subject: readings.subject } } }
+    Present { value: NoDissent { witness: NoDissentWitness { subject: readings.subject, relied_on: readings.relied_on } } }
   }
 }
 
@@ -935,6 +938,7 @@ fn prefer_checkable(roster: BoardSightings, readings: MarkingReadingSet) -> Mark
       value: PreferredUnderDissent {
         basis: ConflictSelectionBasis {
           subject: readings.subject,
+          relied_on: readings.relied_on,
           basis: CheckablePreferredOverUncheckable { }
         }
       }
@@ -942,15 +946,20 @@ fn prefer_checkable(roster: BoardSightings, readings: MarkingReadingSet) -> Mark
   }
 }
 
-// Whether an observation's own witness was minted for its own subject. The seal stops a stranger minting
+// Whether an observation's own witness was minted for its own subject AND for this exact relied-on reading
+// (compared whole, `==`, so a reading that reduces to the same glyphs under other evidence or other span
+// content is a different reading). The seal stops a stranger minting
 // a standing; this catches the subtler paste -- a witness genuinely minted for D2, carried into U49's row,
-// where every field still type-checks. It is a required row of the witness, because the mints cannot see
+// or minted for one reading and paired with another of the same subject, where every field still type-checks. It is a required row of the witness, because the mints cannot see
 // the observation they were not given.
-fn reliance_matches_subject(o: MarkingObservation) -> Bool {
+fn reliance_matches_observation(o: MarkingObservation) -> Bool {
   match o.reliance {
-    OnlyReading { witness } => component_identity_eq(a: witness.subject, b: o.subject)
-    NoDissent { witness } => component_identity_eq(a: witness.subject, b: o.subject)
-    PreferredUnderDissent { basis } => component_identity_eq(a: basis.subject, b: o.subject)
+    OnlyReading { witness } =>
+      component_identity_eq(a: witness.subject, b: o.subject) && witness.relied_on == o.relied_on
+    NoDissent { witness } =>
+      component_identity_eq(a: witness.subject, b: o.subject) && witness.relied_on == o.relied_on
+    PreferredUnderDissent { basis } =>
+      component_identity_eq(a: basis.subject, b: o.subject) && basis.relied_on == o.relied_on
   }
 }
 
