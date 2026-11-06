@@ -1957,16 +1957,41 @@ pub fn global_bare_declarer_in_scope(env: Rc<TypeEnv>, name: String, declarer: S
             declarer_segs.clone(),
             crate::v1_std_core::module_path_segments(env.module_path.clone()),
         ) == (declarer_segs.clone().len() as i64))
-            || (import_visible_name(env.clone(), name) && {
-                let mut __found = false;
-                for p in env.parents.clone().iter().cloned() {
-                    if (p.module_path.clone() == declarer.clone()) {
-                        __found = true;
-                        break;
+            || (import_visible_name(env.clone(), name.clone())
+                && ({
+                    let mut __found = false;
+                    for p in env.parents.clone().iter().cloned() {
+                        if (p.module_path.clone() == declarer.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
-                }
-                __found
-            }))
+                    __found
+                } || named_import_chain_declares(env.clone(), name.clone(), declarer.clone()))))
+    }
+}
+
+pub fn named_import_chain_declares(env: Rc<TypeEnv>, name: String, declarer: String) -> bool {
+    match symbol_index_named_import_source(
+        env.symbol_index.clone(),
+        env.module_path.clone(),
+        name.clone(),
+    ) {
+        std::option::Option::None => false,
+        Some(from_module) => match (*bare_occurrence_import_terminal(
+            env.symbol_index.clone(),
+            from_module.clone(),
+            name.clone(),
+            16,
+        ))
+        .clone()
+        {
+            BareOccurrenceBinding::BareOccurrenceImportedByName {
+                module_path: declaring,
+                ..
+            } => (declaring.clone() == declarer.clone()),
+            _ => false,
+        },
     }
 }
 
