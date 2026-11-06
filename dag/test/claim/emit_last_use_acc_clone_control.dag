@@ -1,0 +1,117 @@
+// dag/test/claim/emit_last_use_acc_clone_control.dag — THE LAST-USE-BY-VALUE-ARGUMENT MOVE,
+// GREEN OR RED BY EXECUTION.
+//
+// WHAT THIS POOLS. `v1.compiler.ownership` `build_moved_argument_occurrences` grants, for a literal
+// lambda bound to a declared callee, that a parameter whose ONLY use is a by-value call argument is
+// MOVED at that occurrence; `emit_rust_expr_var` in v1.compiler.emit_rust consumes the grant and
+// `emit_var_ref` then omits the language's clone template for that one emission. The corpus state
+// that opened this slice: `std_algebra` `string_concat_join` still emits
+// `|acc, field| v1_rt::concat(acc.clone(), field.clone())` although each parameter is used exactly
+// once, by value — the proof exists, the move does not. Reading the .dag rule is not evidence
+// (§5: a grep over the seed is not a consumer), so every cell here COMPILES a fixture through the
+// host builtin `compile_dag_rust_emit_check` and asserts on the EMITTED TEXT, in BOTH directions:
+// the expected spelling present, the wrong spelling forbidden, at the named site.
+//
+// WHY A MARKER LINE TRAVELS IN EVERY `includes` (§5, no silent collapse). The builtin answers Bool;
+// a false could mean refused, file-not-found, or emitted-but-different. Each cell therefore also
+// requires the fixture's OWN `fn <name>(` signature line: if emission did not happen, that line is
+// absent and the cell reads red AS a failure — never as evidence of the behaviour — while a green
+// can only be read from text that really came out of the emitter.
+//
+// MIRROR CAVEAT, stated so no receipt claims more than it reads (§4b): the builtin runs the emitter
+// COMPILED INTO THE BINARY IN USE — the generated stage0 mirror. At a head whose mirror has not yet
+// been regenerated for a seed emitter edit, these cells read the PREVIOUS emitter. They are
+// therefore evidence at the head where the mirror matches the seed, which is the head that lands
+// because the candidate mirror bytes ride in the PR.
+//
+// EXPECTED AT OPENING (this is the probe, so the readings are predictions): the two MOVE cells are
+// RED — the corpus shows both motivating spellings still cloned — while every RETAIN cell is green
+// for the honest reason: the clone is correct there. `the_shadowed_parameter_keeps_its_clone` is
+// the falsifiable one for the frozen pattern's shadow clause: it is green today only because the
+// route may be silent altogether, and it pins the guard a repair must carry.
+module test.claim.emit_last_use_acc_clone_control
+
+import std.types { String }
+import test.claim.emit_last_use_acc_clone_fixtures {
+  move_case_source,
+  retain_second_use_source,
+  move_vec_accumulator_source,
+  retain_capture_source,
+  retain_branch_arms_source,
+  retain_shadowed_source
+}
+
+// THE ONE-USE PARAMETER MOVES. `join_pair`'s lambda passes `acc` exactly once, by value, to the
+// GENERIC declared callee `apply_combine` — the `string_concat_join`/`join_separated` statement
+// reproduced. Red before the repair: the emitted closure carried `acc.clone()` (and `x.clone()`),
+// the redundant copy this slice removes.
+test fn the_last_use_by_value_parameter_emits_bare_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    move_case_source,
+    "src/test_claim_lastuse_move.rs",
+    ["fn join_pair(", "v1_rt::concat(acc, x)"],
+    ["acc.clone()", "x.clone()"]
+  )
+}
+
+// A NON-LAST USE KEEPS ITS CLONE. `acc` is read twice in `join_twice`; a repair that moved it would
+// be blanket elision. The cell asserts the clone is THERE — the retain half of the control pair, so
+// a green on the move cell alone proves nothing.
+test fn the_second_use_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_second_use_source,
+    "src/test_claim_lastuse_retain_second_use.rs",
+    ["fn join_twice(", "acc.clone()"],
+    []
+  )
+}
+
+// THE RULE IS NOT TEXT-ONLY: a non-Copy owned accumulator (`List<String>`, emitted as an `Rc<Vec<_>>`)
+// used exactly once by value takes the same answer as String — the already-moved `rc_list_push(xs,
+// item)` corpus case says this shape CAN move, so a red here while `join_pair` moves would show the
+// repair keyed on the type instead of on the use.
+test fn the_last_use_vec_accumulator_emits_bare_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    move_vec_accumulator_source,
+    "src/test_claim_lastuse_vec.rs",
+    ["fn collect_one(", "rc_list_push(acc, x)"],
+    ["acc.clone()"]
+  )
+}
+
+// A CAPTURED PARAMETER KEEPS ITS CLONE. The single by-value read of `acc` sits inside an inner
+// lambda, so `acc` is captured, not consumed: the proof surfaces it as a capture read and the clone
+// must survive. Green before and after — it pins that the repair does not widen past capture.
+test fn the_captured_parameter_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_capture_source,
+    "src/test_claim_lastuse_capture.rs",
+    ["fn join_captured(", "acc.clone()"],
+    []
+  )
+}
+
+// A PARAMETER USED ON BOTH BRANCH ARMS KEEPS ITS CLONE. Once per path is not once: the proof sees
+// two edges, and the fold-only branch-end admission (`fold_body_branch_ends_move_acc`) is NOT
+// re-derived for plain lambda arguments. Green before and after — it pins the per-path boundary.
+test fn the_both_arms_parameter_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_branch_arms_source,
+    "src/test_claim_lastuse_branch.rs",
+    ["fn join_branch(", "acc.clone()"],
+    []
+  )
+}
+
+// A SHADOWED PARAMETER KEEPS ITS CLONE. The parameter `acc` is shadowed by an inner `let` before
+// its use; the only by-value edge under the spelling is the shadow's own, and the move would be
+// granted to the parameter name on the shadow's occurrence. The frozen pattern refuses a move on a
+// shadowed parameter, so the emitted closure must still carry the clone.
+test fn the_shadowed_parameter_keeps_its_clone_holds() -> Bool {
+  compile_dag_rust_emit_check(
+    retain_shadowed_source,
+    "src/test_claim_lastuse_shadow.rs",
+    ["fn join_shadowed(", "acc.clone()"],
+    []
+  )
+}
