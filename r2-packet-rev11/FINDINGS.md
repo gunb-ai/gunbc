@@ -94,8 +94,9 @@ dot-named walk on a REAL cgroup (incl. whether an unprivileged child can mkdir a
 
 Repeated on rev11's FINAL bytes (the published ones): the same inversion (`all-pass` 0 -> 2) in a scratch copy, the five
 run_entry jobs started under the harness: J1, J1B1, J1B2, J1B3, J1B4 each `startup exit=2; join fixture all-pass: exit 0,
-required 2`. rev10's run is kept below for the record. Separately on rev11: restoring rev10's ALLCAPS pattern `[ \t:]` in a
-scratch copy makes all five exit 2 on `unknown-caps-tab`.
+required 2`. rev10's run is kept below for the record. Separately, on an EARLIER rev11 draft (before the
+J8/J9/R1/R2 edits, not these final bytes): restoring rev10's ALLCAPS pattern `[ \t:]` in a scratch copy made all five exit 2
+on `unknown-caps-tab`.
 
 Scratch copy only, never shipped: `join_fixture`'s `all-pass` case expectation changed from 0 to 2, packet regenerated,
 the five jobs that call run_entry started under the local harness. Each exits 2 at startup:
