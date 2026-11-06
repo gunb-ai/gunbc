@@ -40,6 +40,11 @@ fn lef_marker_bytes() -> List<Byte> {
   [Byte { bits: [true] }]
 }
 
+// A DIFFERENT byte, for the wrong-value red: it must never equal what the Completed read returns.
+fn lef_other_marker_bytes() -> List<Byte> {
+  [Byte { bits: [false] }]
+}
+
 fn lef_marker_value() -> RuntimeValue {
   RuntimePrimitive { value: RuntimePrimitiveValue { primitive_type: lef_value_type(), bytes: lef_marker_bytes() } }
 }
@@ -72,6 +77,8 @@ fn lef_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: Evalua
   outcome_accepted(value: env)
 }
 
+// STUB: step_loop answers Completed or Iterate directly. The loop BODY is not exercised; only the route
+// eval_loop_node -> control_transfer_value -> v2_eval_terminal_value is real.
 fn lef_completed_step(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   outcome_accepted(value: Completed { value: lef_marker_value() })
 }
