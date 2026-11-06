@@ -37,3 +37,12 @@ data forged_split_boot_source: String = "module forge_split_boot\nimport std.typ
 test fn a_pin_whose_outer_boot_id_differs_from_its_anchors_cannot_be_constructed() -> Bool {
   violation_count(source: forged_split_boot_source) >= 1
 }
+
+// the checked line is sealed too: a HostKeyConsoleLine whose fingerprint was never derived from its blob cannot be
+// written, so no reader can reach a pin through an unverified line (positive control: the 29-claim
+// anchored_host_transport_witness pins through host_key_console_line_checked via per_boot_pin_from_console_line).
+data forged_unchecked_line_source: String = "module forge_unchecked_line\nimport std.types { NonEmptyStr, String }\nimport gunbc.host.per_boot_console_pin { HostKeyConsoleLine }\nfn forged(boot: NonEmptyStr, blob: String, fingerprint: String) -> HostKeyConsoleLine { HostKeyConsoleLine { boot_id: boot, key_type: \"ssh-ed25519\", public_key_base64: blob, sha256_fingerprint: fingerprint } }\n"
+
+test fn a_console_line_that_was_never_checked_cannot_be_constructed() -> Bool {
+  violation_count(source: forged_unchecked_line_source) >= 1
+}
