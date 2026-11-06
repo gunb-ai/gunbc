@@ -29,7 +29,7 @@ import v2.std.node { Atom, ComputationNode, Edge, Authored, Node, Symbol, TypeNo
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
-  Continue,
+  Completed,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationEnvironment,
@@ -187,7 +187,7 @@ fn effect_choose_branch(
 }
 
 fn effect_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: effect_runtime_unit(node: node) }, diagnostics: None }
+  Accepted { value: Completed { value: effect_runtime_unit(node: node) }, diagnostics: None }
 }
 
 fn effect_bind_value(

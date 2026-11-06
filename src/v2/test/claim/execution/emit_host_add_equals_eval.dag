@@ -57,7 +57,7 @@ import v2.std.node {
 import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual,
   BindInterpreter,
   BranchInterpreter,
-  Continue,
+  Completed,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationEnvironment,
@@ -150,7 +150,7 @@ fn emit_eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEn
 }
 
 fn emit_eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: emit_eval_oct5_value(n: 5) }, diagnostics: None }
+  Accepted { value: Completed { value: emit_eval_oct5_value(n: 5) }, diagnostics: None }
 }
 
 fn emit_eval_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: EvaluationEnvironment) -> Outcome<EvaluationEnvironment> {

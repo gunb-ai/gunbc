@@ -93,7 +93,7 @@ import v2.std.node_query { pattern_wildcard_name, binder_edge }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
-  Continue,
+  Completed,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationEnvironment,
@@ -820,7 +820,7 @@ test fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
 }
 
 fn add_arrow_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_accepted(value: Continue { value: add_arrow_eval_int_runtime_value(n: 5) })
+  outcome_accepted(value: Completed { value: add_arrow_eval_int_runtime_value(n: 5) })
 }
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {

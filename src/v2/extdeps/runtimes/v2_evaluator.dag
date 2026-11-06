@@ -62,7 +62,8 @@ import v2.std.runtime {
   BranchInterpreter,
   CallSemantics,
   ControlSemantics,
-  Continue,
+  Completed,
+  Iterate,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationCall,
@@ -177,6 +178,17 @@ fn v2_eval_effect_signature_node() -> Node {
 fn v2_eval_runtime_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^v2_eval_semantics_deferred,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// A refusal the fold-first Loop driver (v2.compiler.eval eval_loop_node) and the terminal reader raise,
+// located at the node that refused. The reason is a bare symbol at its constructor site, the same form as
+// ^v2_eval_semantics_deferred above; reasons have no declaration and readers compare them as strings.
+fn v2_eval_loop_refusal(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -477,7 +489,9 @@ fn v2_eval_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome
 
 fn v2_eval_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
-    Continue { value: v } =>
+    Iterate { carrier: v } =>
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+    Completed { value: v } =>
       outcome_rejected(d: v2_eval_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
     Return { value: v } =>
       outcome_rejected(d: v2_eval_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
@@ -490,7 +504,9 @@ fn v2_eval_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome
 
 fn v2_eval_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
   match control {
-    Continue { value: v } =>
+    Iterate { carrier: v } =>
+      outcome_rejected(d: v2_eval_loop_refusal(reason: ^v2_eval_loop_iterate_at_terminal, node: frame.current))
+    Completed { value: v } =>
       Accepted { value: v, diagnostics: None }
     Return { value: v } =>
       Accepted { value: v, diagnostics: None }

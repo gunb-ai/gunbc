@@ -52,7 +52,7 @@ import v2.std.node { positional_child_target_nodes, Edge, Node, Symbol }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
-  Continue,
+  Completed,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationEnvironment,
@@ -187,7 +187,7 @@ fn emit_loop_eval_step_loop(
       bind_outcome(
         o: emit_loop_eval_allocate_literal(node: body, _env: env),
         f: fn(value) {
-          outcome_accepted(value: Continue { value: value })
+          outcome_accepted(value: Completed { value: value })
         }
       )
     Absent =>
