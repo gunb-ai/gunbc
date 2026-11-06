@@ -694,6 +694,34 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
   },
 }
 
+// THE NEIGHBOUR, not a second row: this concern stands beside
+// equality_synthesis_helper_binding_is_import_authority (same family) and covers only what that row
+// cannot witness - the census-absent refusal arm of the gate. Filed from the independent review of
+// the root fix (2026-11-06): the function-member red cell counts EqualityOnFunctionMember and
+// EqualityMemberUnjudgeable wall classes and so does NOT discriminate this arm; fail-closed holds
+// by source construction only.
+data equality_missing_helper_census_refusal_unwitnessed: IntegrationConcern = IntegrationConcern {
+  identity: "gunbc.integration_concern.equality_missing_helper_census_refusal_unwitnessed",
+  kind: SuspectedCapabilityGap {
+    model: Declared { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason") },
+    requirement: "When a derived equality body needs a helper that no module declares, the closure REFUSES at the use door with the located reason naming the helper, and no call to the undeclared helper is emitted - witnessed by execution, not by construction alone",
+    standing: RequirementUnestablished { decided_by: "the independent exact-tree review of the #15992 root fix (2026-11-06) found no discriminating witness for this arm: no census fixture can make a pool-declared helper census-absent by omission, because omission also drops realization" },
+  },
+  affected: AffectedScope {
+    head: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helper_declared")],
+    tail: [decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_body_block_reason"), decl_ref(module_path: "gunbc.instruments.multi_module_compile_fixture", decl_name: "MultiModuleCompileFixture")],
+  },
+  question: "Can the census-absent refusal be witnessed? DESIGN ONLY (instrument implementation is a separate scope decision): the fixture denies the helper by REMOVING the actual std.algebra.map_values_eq declaration from the fixture pool BEFORE the production census is built - never by faking a census answer; the fixture carries (a) a same-source positive control that keeps the declaration and is admitted, proving the population otherwise reaches the new arm, (b) the refusing cell located at the Map-bearing subject with the exact helper reason, (c) an irrelevant-zip_eq control showing a Map-only subject produces no zip_eq reason, and (d) a zero-competing-wall requirement: the census shows no other blocking class at the subject. A pool-local helper declaration cannot serve as the positive control, because the gate looks up std.algebra.map_values_eq by that exact qualified name.",
+  sightings: [
+    ConcernSighting {
+      revision: "02569a6da785",
+      evidence: FreeSemigroup(head: SightingEvidence(artifact: CitesArtifact(path: "src/v1/04_infer.dag", locator: "equality_helper_declared false branch")), tail: FreeSemigroup(head: SightingEvidence(artifact: CitesArtifact(path: "dag/test/claim/self_host_equality_admission_witness.dag", locator: "unexecuted-obligation comment above nested_skipped_sibling_via_container_red_source")), tail: FreeSemigroupEmpty())),
+      account: "Filed by the author at the consolidated-correction revision, from the independent review finding that the function-member red does not discriminate the census-absent arm. UNEXECUTED: no run exists for this refusal, and none is claimed. Instrument change (fixture denylist) awaits its own scope decision.",
+    },
+  ],
+  disposition: Open,
+}
+
 // srv13 AND srv15 NAME ONE BOARD (recorded 2026-11-05; the operator keeps srv15, "bobo"). Both slots read
 // ASRock Rack ALTRAD8UD-1L2T board serial BR80S6102300049 with host NIC 9c:6b:00:e7:ca:63. srv13's first
 // contact (2026-10-07) found the controller at 192.168.1.247, MAC 9c:6b:00:e7:c9:83, on BMC 2.07.00, and
@@ -705,6 +733,7 @@ data byte_sequence_search_reimplemented_per_module: IntegrationConcern = Integra
 // way to name an endpoint a board HAD. Repointing them at srv15 (.248) would assert the captures came from
 // an address they did not.
 data srv13_srv15_sighting_revision: CommitSha = "64671d19744d133e78e2e9af35602833cfa07dc5"
+
 
 data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
   identity: "srv13_and_srv15_name_one_board",
@@ -917,7 +946,7 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
         head: CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall") },
         tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_derived_body_emitted") }],
       },
-      account: "ROOT FIX SOURCE-INTEGRATED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND); executed validation of the re-base is OPEN and recorded below. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through declared-module ownership (call_target_for_direct_call) and emitted as crate::<declaring-module>::<helper>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared) reads the symbol-index census at the qualified name. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof REQUIRED before this row may close as Integrated, and none exists at this revision - this sighting records SOURCE INTEGRATION ONLY, per review 91653 and DESIGN sections 5 and 6 (a shorter ledger is not evidence of integration): v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus, with real run IDs and conclusions recorded as RetainedExecutionResults against witness controls container_holder_stays_admitted_with_no_helper_import_by_identity and sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag. Until then the disposition stays Open.",
+      account: "ROOT FIX SOURCE-INTEGRATED AT 4f581cb5f3ca70a97fe31b369d8e82bf17b0437a (#15992 RE-LAND); executed validation of the re-base is OPEN and recorded below. Context: #16000 reverted #15972 (the interim import batch and the definition-door gate) on operator decision, and this re-base takes the root fix instead of restoring that scaffold. The synthesized body's helper node is a qualified direct call (equality_synth_qcall) resolved through the resolver's declared-identity arm (call_target_for_direct_call, the census branch added at this revision - the import-key arm declared_module_owner remains for the import route and is no longer the path for synthesized helpers) and emitted as crate::<declaring-module>::<helper>; the body-existence gate (equality_derived_body_emitted via equality_helper_declared, which now also requires the census entry to be a declared callable) reads the SAME symbol-index census record, so gate acceptance and resolvability share one authority. The declaring module's import set answers no equality question at gate, resolution or emission; no INTERIM import is reintroduced anywhere (main is without them post-#16000), the three-module interim list and the whole-closure list above are mechanically deletable, and the predicate equality_helpers_visible no longer exists. Every `==`, authored or synthesized, descends the same by-target use door, so a use reaching a skipped body is refused at its own site with the located reason (equality_body_block_reason) - never a dangling call. Per-case delivery for the end-state family (adhoc-a166f310-af0): (a) a skipped sibling reached through a nested == is REFUSED at that nested use site with a located reason; (b) a same-module == to a skipped body is REFUSED at use, typed and located, by the same door; (c) the cross-module case COMPUTES through the identity-bound call (symbol_index/NonEmptyDiagnostics class - no holder import needed); (d) the by-target generic structural member (DemandEngine class) is REFUSED at use by the applied-arguments predicate, refusal-absorbed as residue-C, never a raw ==. Executed proof REQUIRED before this row may close as Integrated, and none exists at this revision - this sighting records SOURCE INTEGRATION ONLY, per review 91653 and DESIGN sections 5 and 6 (a shorter ledger is not evidence of integration): v2-bootstrap green at the heal-published mirror head of #15992 with zero equality-only imports in the corpus, with real run IDs and conclusions recorded as RetainedExecutionResults against witness controls container_holder_stays_admitted_with_no_helper_import_by_identity and sibling_with_function_member_refuses_at_its_own_name_through_a_container_member in dag/test/claim/self_host_equality_admission_witness.dag. Until then the disposition stays Open.",
     }],
   },
   disposition: Open,
@@ -996,7 +1025,7 @@ data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern 
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board]
+data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, equality_missing_helper_census_refusal_unwitnessed, srv13_and_srv15_name_one_board]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

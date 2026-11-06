@@ -835,19 +835,39 @@ test fn a_nested_application_over_the_parents_parameter_refuses_at_a_function_be
   eq_wall_refusal_count(source: generic_nested_fn_red_source) > 0
 }
 
-// HELPER BINDING IS DECLARING IDENTITY (closes integration concern
-// equality_synthesis_helper_binding_is_import_authority). The synthesized equality body binds its
-// step helpers by the qualified name the resolver reads through declared-module ownership, and the
-// emitter writes crate::<declaring>::::<fn> - the holder's import table is consulted at none of
-// gate, resolution, or emission. These cells pin the ADMISSION invariance of that re-base: holders
-// of container members stay admitted with no std.algebra/std.optional import at all, in-module and
-// across modules alike. The executed proof of the binding itself is the v2-bootstrap compile of
-// the emitted units with zero equality-only imports in the corpus (the census instruments do not
-// read emitted bytes by design); the skipped-body refusal at use is fail-closed by construction and
-// is guarded here through the walk door, since every pool-declared helper makes an undeclared
-// helper unconstructible inside a census fixture.
+// HELPER BINDING IS DECLARING IDENTITY (integration concern
+// equality_synthesis_helper_binding_is_import_authority, source-integrated; disposition Open until
+// the executed validation named on the row lands). The synthesized equality body binds its step
+// helpers by the helper's own qualified name; the resolver's declared-identity arm
+// (call_target_for_direct_call, census branch) locates the declaration in the symbol-index census -
+// the SAME record the body-existence gate reads (equality_helper_declared) - and the emitter writes
+// crate::<module-to-filename-of-the-declaring-module>::<helper-name>. The holder's import table is
+// consulted at none of gate, resolution, or emission; the import-key arm
+// (declared_module_owner over module_named_imports) remains for the import route and is no longer
+// the path for synthesized helpers. These cells pin the ADMISSION invariance of that re-base for
+// the case they run: a same-module holder of container members stays admitted with no
+// std.algebra/std.optional import at all. The cross-module positive is DESIGNED below, not
+// executed - it is NOT claimed by these cells. The executed proof of the binding itself is the
+// v2-bootstrap compile of the emitted units with zero equality-only imports in the corpus (the
+// census instruments do not read emitted bytes by design). The census-absent refusal arm is
+// UNEXECUTED and recorded on its own typed concern row, gunbc.integration_concern
+// .equality_missing_helper_census_refusal_unwitnessed - a comment is not that record and does not
+// substitute for it.
 data identity_same_module_container_eq_green_source: String = "module eq_probe_identity_same\nimport std.types { String, List, Map }\ntype Bag {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
 
+// UNEXECUTED OBLIGATION (independent review, 2026-11-06): what this instrument CANNOT witness is
+// the refusal of a body whose helper is genuinely absent from the census. That obligation is
+// recorded on its typed carrier - gunbc.integration_concern
+// .equality_missing_helper_census_refusal_unwitnessed (disposition Open, RequirementUnestablished) -
+// whose question field carries the fixture DESIGN: deny the helper by REMOVING the actual std.algebra
+// .map_values_eq declaration from the fixture pool before the production census is built (never by
+// faking a census answer), with (a) a same-source positive that keeps the declaration and is
+// admitted, (b) the refusal located at the Map-bearing subject with the exact helper reason, (c) an
+// irrelevant-zip_eq control that must not fire for a Map-only subject, and (d) zero competing walls.
+// A pool-local helper declaration cannot serve as the positive control, because the gate looks up
+// std.algebra.map_values_eq by that exact qualified name. Instrument implementation is a separate
+// scope decision; nothing here runs it. This cell pins only the sibling-skip refusal through the
+// by-target use door.
 data nested_skipped_sibling_via_container_red_source: String = "module eq_probe_nested_skipped_sibling\ntype Broken {\n  f: fn(Int) -> Int\n}\ntype Host {\n  list: List<Broken>\n}\nfn same(a: Host, b: Host) -> Bool { a == b }\n"
 
 test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
@@ -855,5 +875,38 @@ test fn container_holder_stays_admitted_with_no_helper_import_by_identity() -> B
 }
 
 test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container_member() -> Bool {
-  eq_wall_refusal_count(source: nested_skipped_sibling_via_container_red_source) >= 1
+  // Subject- AND class-pinned, restoring the original specificity: the refusal must be of class
+  // EqualityOnFunctionMember AT the sibling subject Broken - the by-target descent reaches the
+  // sibling through Host's List<Broken> member and refuses it at its own name. The wall counter
+  // alone could be satisfied from either counted class (EqualityOnFunctionMember or
+  // EqualityMemberUnjudgeable) at ANY member of the closure, so it is not used. The
+  // zero-competing-wall conjunct requires no OTHER blocking class anywhere in the closure; the
+  // not-admitted conjunct pins the subject's overall refusal. An unrunnable census yields -1 for
+  // the counted conjunct (fails); a closure the equality walk never reached yields 0 (fails); so
+  // this predicate cannot pass from an unrelated closure or instrument failure.
+  eq_blocking_count_at_subject(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityOnFunctionMember", subject: "Broken") >= 1
+    && eq_blocking_count(source: nested_skipped_sibling_via_container_red_source, wanted: "EqualityMemberUnjudgeable") == 0
+    && !eq_admitted(source: nested_skipped_sibling_via_container_red_source)
 }
+
+// CROSS-MODULE POSITIVE, DESIGN ONLY (not executed; not claimed by any cell above).
+// Identities: COMPARISON module eq_probe_identity_cross, declaring fn same(a: Sack, b: Sack) ->
+// Bool { a == b }; HOLDER type Sack in eq_probe_identity_cross, members tags: List<String> and
+// counts: Map<String, Int>; HELPER-DECLARATING module std.algebra (zip_eq, map_values_eq), reached
+// by the holder's only import statement (import std.types { String, List, Map } plus no
+// std.algebra/std.optional import at all - admission must not depend on those imports existing).
+// What it would pin: admission of the holder despite the helpers being foreign, i.e. the resolver
+// arm func_env_declared_func_sig missing and func_sig_from_global_bare / census_declaration_identity
+// resolving by declaring identity. UNTESTED ARMS this design separates: (i) holder IMPORTS the
+// helper's module by name (import-key arm path - the arm this re-base removed from the equality
+// route, exercised corpus-wide by the bootstrap), (ii) holder IS the helper's module (local arm).
+// The prior cross-module cell (v2.std.node Edge) was deleted, not replaced: its subject carried
+// target: Node, and Node is equality-inadmissible corpus-wide (src/v2/std/node.dag:613; seed fold
+// at :679-680 via equality_route_for / equality_root_refused_leaf_names), so the cell could only
+// pass by the instrument ignoring the member. Lost coverage stated: positive cross-module census
+// admission remains unexecuted until the bootstrap and this fixture run under a granted workload.
+// Prepared cell (commented out; do not enable without an executed validation grant):
+// data identity_cross_module_container_eq_design_source: String = "module eq_probe_identity_cross\nimport std.types { String, List, Map }\ntype Sack {\n  tags: List<String>\n  counts: Map<String, Int>\n}\nfn same(a: Sack, b: Sack) -> Bool { a == b }\n"
+// test fn cross_module_holder_stays_admitted_with_no_helper_import_by_identity() -> Bool {
+//   eq_admitted(source: identity_cross_module_container_eq_design_source)
+// }
