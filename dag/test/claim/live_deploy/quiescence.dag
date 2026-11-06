@@ -246,7 +246,7 @@ test fn an_unreadable_serve_load_state_refuses_quiescence() -> Bool {
     serve_load_state: SystemdPropertyCaptureRefused { reason: "transport closed" },
     serve_sub_state: SystemdPropertyCaptured { value: "dead" },
   ))
-  any_reason_says(reasons: reasons, needle: "absence must be observed, not unproven")
+  any_reason_says(reasons: reasons, needle: "the serve unit's LoadState read was refused")
 }
 
 // THE MARK: absent refuses even against an otherwise quiet state (no identity was recorded, so no

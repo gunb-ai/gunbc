@@ -41,6 +41,7 @@ import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import std.types { CommitSha }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_full_install_plan }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_valid_until_epoch }
 
 fn observed(code: Int, err: String) -> RunArgvTransportOutcome {
   RunArgvTransportObserved { observed: ShellExecObserved { exit_code: code, success: code == 0, stdout: "", stderr: err } }
@@ -364,7 +365,10 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
 }
 
 // THE UNIT FAMILY. The selected attempt-worker sandbox (slice, then the launcher's root-owned grant) is
-// installed before the serve unit, and the restart follows the unit it restarts.
+// installed before the serve unit, and the restart follows the unit it restarts. The unit emission
+// carries the OIDC config readback since the Stage OAuth delivery, so these witnesses bind the real
+// observer clock as production does: an Absent clock here is a fixture gap, not a behaviour, and the
+// refusal case itself is the separate claim below (an_unreadable_oidc_clock_refuses_the_unit_plan).
 fn step_index_from(legs: List<DeployApplyLeg>, step: String, i: Int) -> Int {
   match legs {
     Empty => 0 - 1
@@ -378,15 +382,19 @@ fn step_index(legs: List<DeployApplyLeg>, step: String) -> Int {
 
 test fn the_unit_plan_installs_the_sandbox_grant_before_the_unit_and_restarts_after() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Absent) {
-    ApplyPlanReady { legs: legs } => {
-      let slice = step_index(legs: legs, step: "attempt-worker-slice")
-      let grant = step_index(legs: legs, step: "attempt-unit-helper-snapshot")
-      let unit = step_index(legs: legs, step: "serve-unit")
-      let restart = step_index(legs: legs, step: "serve-restart")
-      slice >= 0 && slice < grant && grant < unit && unit < restart
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: now } =>
+      match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Present { value: now }) {
+      ApplyPlanReady { legs: legs } => {
+        let slice = step_index(legs: legs, step: "attempt-worker-slice")
+        let grant = step_index(legs: legs, step: "attempt-unit-helper-snapshot")
+        let unit = step_index(legs: legs, step: "serve-unit")
+        let restart = step_index(legs: legs, step: "serve-restart")
+        slice >= 0 && slice < grant && grant < unit && unit < restart
+      }
+      ApplyPlanRefused { step: _, reason: _ } => false
     }
-    ApplyPlanRefused { step: _, reason: _ } => false
   }
 }
 
@@ -403,14 +411,18 @@ test fn an_unreadable_oidc_clock_refuses_the_unit_plan() -> Bool {
 // The launcher grant's port refusal stops the run at that leg, and no later leg is dispatched.
 test fn a_refused_launcher_grant_stops_the_run_before_the_serve_unit() -> Bool {
   let spec = deployment_spec_srv1()
-  match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Absent) {
-    ApplyPlanReady { legs: legs } =>
-      match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 0, stdin_code: 0)) {
-        ApplyRunFailed { step: s, reason: r, legs_run: n } =>
-          s == "attempt-unit-helper-snapshot" && r == "root-grant-boom" && n == step_index(legs: legs, step: "attempt-unit-helper-snapshot")
-        ApplyRunOk { legs_run: _, reports: _ } => false
-      }
-    ApplyPlanRefused { step: _, reason: _ } => false
+  match tracker_web_test_console_readback_valid_until_epoch {
+    Absent => false
+    Present { value: now } =>
+      match deploy_apply_unit_plan(spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src", oidc_now: Present { value: now }) {
+      ApplyPlanReady { legs: legs } =>
+        match deploy_apply_run_legs(legs: legs, ports: ports(command_code: 0, stdin_code: 0)) {
+          ApplyRunFailed { step: s, reason: r, legs_run: n } =>
+            s == "attempt-unit-helper-snapshot" && r == "root-grant-boom" && n == step_index(legs: legs, step: "attempt-unit-helper-snapshot")
+          ApplyRunOk { legs_run: _, reports: _ } => false
+        }
+      ApplyPlanRefused { step: _, reason: _ } => false
+    }
   }
 }
 
