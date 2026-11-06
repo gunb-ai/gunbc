@@ -3793,6 +3793,23 @@ fn dashboard_source_seed_ready(
   }
 }
 
+// WHETHER THE SEED LEAVES A LOCAL ORIGIN BEHIND. The convergence-seeded source has none: convergence (R3) writes the
+// admitted ref into the source repo itself and `dashboard_reset_converged_source_repo` never clones, so an origin
+// directory is neither created nor expected. Demanding it made every convergence-seeded instance replan the same
+// operations forever (the readback could never read converged).
+fn dashboard_source_seed_has_origin(instance: HostDashboardInstance) -> Bool {
+  match instance.source_seed {
+    DashboardExistingRepo { anchor_ref: _ } => true
+    DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
+    DashboardGitBundle {
+      controller_repo: _,
+      staged_bundle: _,
+      anchor_ref: _,
+      history_remote: _,
+    } => true
+  }
+}
+
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
   | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
@@ -3844,7 +3861,7 @@ fn dashboard_instance_reconcile(
   } else if observed.root_present
       && observed.ownership_marker_present
       && dashboard_source_seed_ready(instance: instance, observed: observed)
-      && observed.origin_present
+      && (!dashboard_source_seed_has_origin(instance: instance) || observed.origin_present)
       && observed.source_present
       && observed.directories_converged
       && observed.provider_runtime_ready
