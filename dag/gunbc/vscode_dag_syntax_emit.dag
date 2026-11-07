@@ -1,0 +1,21 @@
+module gunbc.vscode_dag_syntax_emit
+
+import std.types { String }
+import extdeps.languages.json.emit {
+    serialize_json,
+    json_array,
+    json_kv,
+    json_object,
+    json_string
+}
+
+fn expected_vscode_dag_tm_language_json() -> String {
+    concat(
+        serialize_json(v: json_object(members: [
+            json_kv(key: "name", value: json_string(s: "Dag")),
+            json_kv(key: "scopeName", value: json_string(s: "source.dag")),
+            json_kv(key: "patterns", value: json_array(elements: []))
+        ])),
+        "\n",
+    )
+}

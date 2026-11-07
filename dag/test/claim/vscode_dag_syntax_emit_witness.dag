@@ -1,0 +1,62 @@
+module test.claim.vscode_dag_syntax_emit_witness
+
+import std.types { Bool }
+
+import extdeps.languages.json.emit {
+    JsonArray,
+    JsonString,
+    JsonValue
+    json_array,
+    json_kv,
+    json_object
+}
+
+import extdeps.languages.json.parse {
+    parse_json_document,
+    JsonDocumentParsed,
+    JsonDocumentUnreadable,
+    json_object_unique_member,
+    JsonMemberFound,
+    JsonMemberAbsent,
+    JsonMemberDuplicated,
+    JsonMemberNotAnObject
+}
+
+import gunbc.vscode_dag_syntax_emit {
+    expected_vscode_dag_tm_language_json
+}
+
+fn grammar_has_required_textmate_fields(document: JsonValue) -> Bool {
+    match json_object_unique_member(v: document, key: "scopeName") {
+        JsonMemberFound { value: JsonString { value: scope } } =>
+            (scope == "source.dag")
+            && (match json_object_unique_member(v: document, key: "patterns") {
+                JsonMemberFound { value: JsonArray { elements: _ } } => true
+                JsonMemberFound { value: _ } => false
+                JsonMemberAbsent => false
+                JsonMemberDuplicated { count: _ } => false
+                JsonMemberNotAnObject => false
+            })
+        JsonMemberFound { value: _ } => false
+        JsonMemberAbsent => false
+        JsonMemberDuplicated { count: _ } => false
+        JsonMemberNotAnObject => false
+    }
+}
+
+test fn emitted_textmate_grammar_is_parseable_and_has_required_fields() -> Bool {
+    match parse_json_document(s: expected_vscode_dag_tm_language_json()) {
+        JsonDocumentParsed { value } =>
+            grammar_has_required_textmate_fields(document: value)
+        JsonDocumentUnreadable { gap: _ } => false
+    }
+}
+
+test fn grammar_missing_scope_name_is_refused() -> Bool {
+    !grammar_has_required_textmate_fields(document: json_object(members: [
+        json_kv(
+            key: "patterns",
+            value: json_array(elements: [])
+        )
+    ]))
+}
