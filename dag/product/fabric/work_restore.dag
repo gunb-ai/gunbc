@@ -228,35 +228,35 @@ fn rd_text(fields: List<String>) -> Decoded<String> {
 }
 
 fn rd_named(fields: List<String>, field: NonEmptyStr) -> Decoded<NonEmptyStr> {
-  decoded_then(rd_text(fields: fields), (t, rest) =>
+  decoded_then(rd_text(fields: fields), fn(t, rest) {
     if t == "" {
       DecodedRefused { cause: RestoreFieldInvalid { field: field } }
     } else {
       DecodedOk { value: t as NonEmptyStr, rest: rest }
     }
-  )
+  })
 }
 
 fn find_wire<T>(candidates: List<T>, wire: fn(T) -> String, text: String) -> T? {
-  fold(candidates, init: none, f: (acc, c) =>
+  fold(candidates, init: none, f: fn(acc, c) {
     match acc {
       Present { value: _ } => acc
       Absent => if wire(c) == text { Present { value: c } } else { none }
     }
-  )
+  })
 }
 
 fn rd_tagged<T>(fields: List<String>, field: NonEmptyStr, candidates: List<T>, wire: fn(T) -> String) -> Decoded<T> {
-  decoded_then(rd_text(fields: fields), (t, rest) =>
+  decoded_then(rd_text(fields: fields), fn(t, rest) {
     match find_wire(candidates: candidates, wire: wire, text: t) {
       Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
       Present { value: v } => DecodedOk { value: v, rest: rest }
     }
-  )
+  })
 }
 
 fn rd_nat(fields: List<String>, field: NonEmptyStr) -> Decoded<Nat> {
-  decoded_then(rd_text(fields: fields), (t, rest) =>
+  decoded_then(rd_text(fields: fields), fn(t, rest) {
     match parse_int(s: t) {
       Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
       Present { value: n } =>
@@ -269,11 +269,11 @@ fn rd_nat(fields: List<String>, field: NonEmptyStr) -> Decoded<Nat> {
           }
         }
     }
-  )
+  })
 }
 
 fn rd_count(fields: List<String>, field: NonEmptyStr) -> Decoded<Int> {
-  decoded_then(rd_text(fields: fields), (t, rest) =>
+  decoded_then(rd_text(fields: fields), fn(t, rest) {
     match parse_int(s: t) {
       Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
       Present { value: n } =>
@@ -283,11 +283,11 @@ fn rd_count(fields: List<String>, field: NonEmptyStr) -> Decoded<Int> {
           DecodedOk { value: n, rest: rest }
         }
     }
-  )
+  })
 }
 
 fn rd_flag(fields: List<String>, field: NonEmptyStr) -> Decoded<Bool> {
-  decoded_then(rd_text(fields: fields), (t, rest) =>
+  decoded_then(rd_text(fields: fields), fn(t, rest) {
     if t == "0" {
       DecodedOk { value: false, rest: rest }
     } else if t == "1" {
@@ -295,18 +295,18 @@ fn rd_flag(fields: List<String>, field: NonEmptyStr) -> Decoded<Bool> {
     } else {
       DecodedRefused { cause: RestoreFieldInvalid { field: field } }
     }
-  )
+  })
 }
 
 fn rd_list<T>(fields: List<String>, n: Int, item: fn(List<String>) -> Decoded<T>) -> Decoded<List<T>> {
   if n == 0 {
     DecodedOk { value: [], rest: fields }
   } else {
-    decoded_then(item(fields), (x, r1) =>
-      decoded_then(rd_list(fields: r1, n: n - 1, item: item), (xs, r2) =>
+    decoded_then(item(fields), fn(x, r1) {
+      decoded_then(rd_list(fields: r1, n: n - 1, item: item), fn(xs, r2) {
         DecodedOk { value: concat([x], xs), rest: r2 }
-      )
-    )
+      })
+    })
   }
 }
 
@@ -320,57 +320,57 @@ data all_isolation_guarantees: List<IsolationGuarantee> = [
 data all_architectures: List<Architecture> = [X86_64 {}, X86 {}, Aarch64 {}, Arm {}, Armv7 {}, Mips {}, Mipsel {}, Mips64 {}, Mips64el {}, Riscv64 {}, Wasm32 {}]
 
 fn rd_execution(fields: List<String>) -> Decoded<WorkExecution> {
-  decoded_then(rd_text(fields: fields), (tag, r0) =>
+  decoded_then(rd_text(fields: fields), fn(tag, r0) {
     if tag == "program" {
-      decoded_then(rd_named(fields: r0, field: "program"), (program, r1) =>
-        decoded_then(rd_named(fields: r1, field: "source"), (source, r2) =>
-          decoded_then(rd_named(fields: r2, field: "runtime_closure"), (closure, r3) =>
+      decoded_then(rd_named(fields: r0, field: "program"), fn(program, r1) {
+        decoded_then(rd_named(fields: r1, field: "source"), fn(source, r2) {
+          decoded_then(rd_named(fields: r2, field: "runtime_closure"), fn(closure, r3) {
             DecodedOk {
               value: MaterializedProgram { program: program as ProgramRef, source: source as SourceManifestRef, runtime_closure: closure as ArtifactManifestRef },
               rest: r3,
             }
-          )
-        )
-      )
+          })
+        })
+      })
     } else if tag == "service" {
-      decoded_then(rd_named(fields: r0, field: "interface"), (interface, r1) =>
+      decoded_then(rd_named(fields: r0, field: "interface"), fn(interface, r1) {
         DecodedOk { value: OfferedService { interface: interface as ServiceInterfaceRef }, rest: r1 }
-      )
+      })
     } else {
       DecodedRefused { cause: RestoreFieldInvalid { field: "execution" } }
     }
-  )
+  })
 }
 
 fn rd_step(fields: List<String>) -> Decoded<WorkStep> {
-  decoded_then(rd_named(fields: fields, field: "step_id"), (id, r0) =>
-    decoded_then(rd_text(fields: r0), (tag, r1) =>
+  decoded_then(rd_named(fields: fields, field: "step_id"), fn(id, r0) {
+    decoded_then(rd_text(fields: r0), fn(tag, r1) {
       if tag == "receipt" {
         DecodedOk { value: WorkStep { step_id: id, resumability: ReceiptSatisfiable {} }, rest: r1 }
       } else if tag == "idempotent" {
-        decoded_then(rd_text(fields: r1), (k, r2) =>
+        decoded_then(rd_text(fields: r1), fn(k, r2) {
           match parse_content_hash(wire: k) {
             Absent => DecodedRefused { cause: RestoreFieldInvalid { field: "idempotency_key" } }
             Present { value: h } => DecodedOk { value: WorkStep { step_id: id, resumability: IdempotentUnderKey { idempotency_key: h } }, rest: r2 }
           }
-        )
+        })
       } else if tag == "opaque" {
-        decoded_then(rd_named(fields: r1, field: "opaque_reason"), (reason, r2) =>
+        decoded_then(rd_named(fields: r1, field: "opaque_reason"), fn(reason, r2) {
           DecodedOk { value: WorkStep { step_id: id, resumability: OpaqueEffects { reason: reason } }, rest: r2 }
-        )
+        })
       } else {
         DecodedRefused { cause: RestoreFieldInvalid { field: "resumability" } }
       }
-    )
-  )
+    })
+  })
 }
 
 fn rd_obligation(fields: List<String>) -> Decoded<OutputObligation> {
-  decoded_then(rd_named(fields: fields, field: "obligation_id"), (id, r0) =>
-    decoded_then(rd_tagged(fields: r0, field: "obligation_kind", candidates: all_obligation_kinds, wire: k => output_obligation_kind_material(kind: k) as String), (kind, r1) =>
+  decoded_then(rd_named(fields: fields, field: "obligation_id"), fn(id, r0) {
+    decoded_then(rd_tagged(fields: r0, field: "obligation_kind", candidates: all_obligation_kinds, wire: k => output_obligation_kind_material(kind: k) as String), fn(kind, r1) {
       DecodedOk { value: OutputObligation { id: id as OutputObligationId, kind: kind }, rest: r1 }
-    )
-  )
+    })
+  })
 }
 
 fn rd_isolation(fields: List<String>) -> Decoded<IsolationGuarantee> {
@@ -378,35 +378,35 @@ fn rd_isolation(fields: List<String>) -> Decoded<IsolationGuarantee> {
 }
 
 fn rd_cpu(fields: List<String>) -> Decoded<CpuRequirement?> {
-  decoded_then(rd_flag(fields: fields, field: "cpu"), (has, r0) =>
+  decoded_then(rd_flag(fields: fields, field: "cpu"), fn(has, r0) {
     if has {
-      decoded_then(rd_nat(fields: r0, field: "cpu_min_threads"), (threads, r1) =>
-        decoded_then(rd_flag(fields: r1, field: "cpu_architecture"), (has_arch, r2) =>
+      decoded_then(rd_nat(fields: r0, field: "cpu_min_threads"), fn(threads, r1) {
+        decoded_then(rd_flag(fields: r1, field: "cpu_architecture"), fn(has_arch, r2) {
           if has_arch {
-            decoded_then(rd_tagged(fields: r2, field: "architecture", candidates: all_architectures, wire: a => architecture_diagnostic_name(arch: a) as String), (arch, r3) =>
+            decoded_then(rd_tagged(fields: r2, field: "architecture", candidates: all_architectures, wire: a => architecture_diagnostic_name(arch: a) as String), fn(arch, r3) {
               DecodedOk { value: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: threads), architecture: Present { value: arch } } }, rest: r3 }
-            )
+            })
           } else {
             DecodedOk { value: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: threads), architecture: none } }, rest: r2 }
           }
-        )
-      )
+        })
+      })
     } else {
       DecodedOk { value: none, rest: r0 }
     }
-  )
+  })
 }
 
 fn rd_memory(fields: List<String>) -> Decoded<MemoryRequirement?> {
-  decoded_then(rd_flag(fields: fields, field: "memory"), (has, r0) =>
+  decoded_then(rd_flag(fields: fields, field: "memory"), fn(has, r0) {
     if has {
-      decoded_then(rd_nat(fields: r0, field: "memory_min_bytes"), (bytes, r1) =>
+      decoded_then(rd_nat(fields: r0, field: "memory_min_bytes"), fn(bytes, r1) {
         DecodedOk { value: Present { value: MemoryRequirement { min_bytes: byte_size(count: bytes) } }, rest: r1 }
-      )
+      })
     } else {
       DecodedOk { value: none, rest: r0 }
     }
-  )
+  })
 }
 
 type DecodedRequirements {
@@ -415,18 +415,18 @@ type DecodedRequirements {
 }
 
 fn rd_requirements(fields: List<String>) -> Decoded<DecodedRequirements> {
-  decoded_then(rd_tagged(fields: fields, field: "capacity_class", candidates: all_capacity_classes, wire: c => capacity_class_wire(c: c) as String), (capacity, r0) =>
-    decoded_then(rd_named(fields: r0, field: "capabilities"), (capabilities, r1) =>
-      decoded_then(rd_named(fields: r1, field: "trust_domain"), (trust, r2) =>
-        decoded_then(rd_count(fields: r2, field: "isolation_count"), (n_iso, r3) =>
-          decoded_then(rd_list(fields: r3, n: n_iso, item: rd_isolation), (guarantees, r4) =>
-            decoded_then(rd_tagged(fields: r4, field: "revocation", candidates: all_revocation_standings, wire: s => revocation_standing_wire(s: s) as String), (revocation, r5) =>
-              decoded_then(rd_nat(fields: r5, field: "threads"), (threads, r6) =>
-                decoded_then(rd_cpu(fields: r6), (cpu, r7) =>
-                  decoded_then(rd_memory(fields: r7), (memory, r8) =>
-                    decoded_then(rd_flag(fields: r8, field: "gpu"), (gpu, r9) =>
-                      decoded_then(rd_flag(fields: r9, field: "storage"), (storage, r10) =>
-                        decoded_then(rd_flag(fields: r10, field: "network"), (network, r11) =>
+  decoded_then(rd_tagged(fields: fields, field: "capacity_class", candidates: all_capacity_classes, wire: c => capacity_class_wire(c: c) as String), fn(capacity, r0) {
+    decoded_then(rd_named(fields: r0, field: "capabilities"), fn(capabilities, r1) {
+      decoded_then(rd_named(fields: r1, field: "trust_domain"), fn(trust, r2) {
+        decoded_then(rd_count(fields: r2, field: "isolation_count"), fn(n_iso, r3) {
+          decoded_then(rd_list(fields: r3, n: n_iso, item: rd_isolation), fn(guarantees, r4) {
+            decoded_then(rd_tagged(fields: r4, field: "revocation", candidates: all_revocation_standings, wire: s => revocation_standing_wire(s: s) as String), fn(revocation, r5) {
+              decoded_then(rd_nat(fields: r5, field: "threads"), fn(threads, r6) {
+                decoded_then(rd_cpu(fields: r6), fn(cpu, r7) {
+                  decoded_then(rd_memory(fields: r7), fn(memory, r8) {
+                    decoded_then(rd_flag(fields: r8, field: "gpu"), fn(gpu, r9) {
+                      decoded_then(rd_flag(fields: r9, field: "storage"), fn(storage, r10) {
+                        decoded_then(rd_flag(fields: r10, field: "network"), fn(network, r11) {
                           DecodedOk {
                             value: DecodedRequirements {
                               requirements: ExecutionRequirements {
@@ -444,18 +444,18 @@ fn rd_requirements(fields: List<String>) -> Decoded<DecodedRequirements> {
                             },
                             rest: r11,
                           }
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+                        })
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+      })
+    })
+  })
 }
 
 type DecodedWork {
@@ -466,21 +466,21 @@ type DecodedWork {
 }
 
 fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
-  decoded_then(rd_text(fields: fields), (schema, s0) =>
+  decoded_then(rd_text(fields: fields), fn(schema, s0) {
     if schema != (work_restore_schema_tag as String) {
       DecodedRefused { cause: RestoreSchemaUnknown { found: schema } }
     } else {
-      decoded_then(rd_text(fields: s0), (principal, s1) =>
-        decoded_then(rd_text(fields: s1), (key, s2) =>
-          decoded_then(rd_execution(fields: s2), (execution, s3) =>
-            decoded_then(rd_count(fields: s3, field: "step_count"), (n_steps, s4) =>
-              decoded_then(rd_list(fields: s4, n: n_steps, item: rd_step), (steps, s5) =>
-                decoded_then(rd_named(fields: s5, field: "inputs"), (inputs, s6) =>
-                  decoded_then(rd_named(fields: s6, field: "effect_contract"), (effect, s7) =>
-                    decoded_then(rd_named(fields: s7, field: "output_contract"), (output, s8) =>
-                      decoded_then(rd_count(fields: s8, field: "obligation_count"), (n_ob, s9) =>
-                        decoded_then(rd_list(fields: s9, n: n_ob, item: rd_obligation), (obligations, s10) =>
-                          decoded_then(rd_requirements(fields: s10), (decoded, s11) =>
+      decoded_then(rd_text(fields: s0), fn(principal, s1) {
+        decoded_then(rd_text(fields: s1), fn(key, s2) {
+          decoded_then(rd_execution(fields: s2), fn(execution, s3) {
+            decoded_then(rd_count(fields: s3, field: "step_count"), fn(n_steps, s4) {
+              decoded_then(rd_list(fields: s4, n: n_steps, item: rd_step), fn(steps, s5) {
+                decoded_then(rd_named(fields: s5, field: "inputs"), fn(inputs, s6) {
+                  decoded_then(rd_named(fields: s6, field: "effect_contract"), fn(effect, s7) {
+                    decoded_then(rd_named(fields: s7, field: "output_contract"), fn(output, s8) {
+                      decoded_then(rd_count(fields: s8, field: "obligation_count"), fn(n_ob, s9) {
+                        decoded_then(rd_list(fields: s9, n: n_ob, item: rd_obligation), fn(obligations, s10) {
+                          decoded_then(rd_requirements(fields: s10), fn(decoded, s11) {
                             DecodedOk {
                               value: DecodedWork {
                                 stored_principal: principal,
@@ -497,19 +497,19 @@ fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
                               },
                               rest: s11,
                             }
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
+                          })
+                        })
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+      })
     }
-  )
+  })
 }
 
 fn work_restore_decoded(w: DecodedWork, expected_principal: NonEmptyStr) -> WorkRestoration {
