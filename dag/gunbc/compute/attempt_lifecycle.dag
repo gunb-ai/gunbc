@@ -851,6 +851,8 @@ type AttemptFencedCodec<P> {
   payload: AttemptPayloadCodec<P>
   claim_of: fn(P) -> DurableHoldSubject?
   with_claim: fn(P, DurableHoldSubject?) -> P
+  change: fn(P) -> P?
+  advance: fn(P, AttemptState) -> P?
 }
 
 type AttemptFencedAction
@@ -858,6 +860,7 @@ type AttemptFencedAction
   | AttemptClaimRelease { lease: HeldLease }
   | AttemptClaimRecover { report: DurableHoldHolderReport }
   | AttemptOwnerAdvance { lease: HeldLease, next: AttemptState }
+  | AttemptOwnerChange { lease: HeldLease }
 
 type AttemptFenceRefusal
   = AttemptFenceNoClaim
@@ -978,10 +981,20 @@ fn attempt_fenced_decide<P>(store: SlotStore, reference: NonEmptyStr, revision: 
         }
       }
     }
+    AttemptOwnerChange { lease } => match attempt_fence_owner_refusal(claim: claim, hold: hold, lease: lease) {
+      Present { value: cause } => AttemptFenceRefused { cause: cause }
+      Absent => match codec.change(record) {
+        Absent => AttemptFenceRefused { cause: AttemptFenceStateRefused }
+        Present { value: changed } => attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: changed, codec: codec)
+      }
+    }
     AttemptOwnerAdvance { lease, next } => match attempt_fence_owner_refusal(claim: claim, hold: hold, lease: lease) {
       Present { value: cause } => AttemptFenceRefused { cause: cause }
       Absent => if attempt_state_transition_admitted(prior: codec.payload.state_of(record), next: next) {
-        attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: codec.payload.with_state(record, next), codec: codec)
+        match codec.advance(record, next) {
+          Absent => AttemptFenceRefused { cause: AttemptFenceStateRefused }
+          Present { value: changed } => attempt_fenced_proposal(store: store, reference: reference, revision: revision, record: changed, codec: codec)
+        }
       } else { AttemptFenceRefused { cause: AttemptFenceStateRefused } }
     }
   }

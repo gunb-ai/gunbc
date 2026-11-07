@@ -183,3 +183,63 @@ test fn restart_reattaches_the_same_attempt_without_resetting_its_claim() -> Boo
     }
   }
 }
+
+import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldCompletionReport, SectionObservedComplete }
+import std.durable_compare_and_set { cas_generation_first }
+import gunbc.compute.durable_attempt_controller {
+  controller_event_prepare, ControllerCancel, ControllerCapacityWaiting, ControllerCapacityReleased,
+  controller_next_obligation, ControllerAwaitCapacity, ControllerRequestGrant, ControllerRequestTermination, ControllerObserveQuiescence,
+}
+
+fn wake_source() -> DurableHoldSubject {
+  DurableHoldSubject { hold: "capacity-pool" as DurableHoldRef, holder: "prior-cell" as DurableHoldOwnerRef, generation: cas_generation_first() }
+}
+
+test fn capacity_wait_survives_reopen_and_exact_release_wakes_once() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      let waited = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityWaiting { source: wake_source() }))
+      let reopened = controller_attempt_open(delegation: d)
+      let blocked_launch = !committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+      let wrong = DurableHoldSubject { hold: "unrelated-pool" as DurableHoldRef, holder: "prior-cell" as DurableHoldOwnerRef, generation: cas_generation_first() }
+      let wrong_wake = !committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: DurableHoldCompletionReport { hold: wrong, completion: SectionObservedComplete { observation: "released" as NonEmptyStr } } }))
+      let still_waiting = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerAwaitCapacity { source: _ } => true _ => false } _ => false }
+      let report = DurableHoldCompletionReport { hold: wake_source(), completion: SectionObservedComplete { observation: "released" as NonEmptyStr } }
+      let woke = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: report }))
+      let duplicate = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCapacityReleased { report: report }))
+      let ready = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerRequestGrant { reference } => (reference as String) == "reservation-one" _ => false } _ => false }
+      a && waited && (match reopened { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && blocked_launch && wrong_wake && still_waiting && woke && !duplicate && ready
+    } }
+  } }
+}
+
+test fn cancellation_winning_the_slot_prevents_a_prepared_launch() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      match controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }) {
+        AttemptFenceRefused { cause: _ } => false
+        AttemptFencePrepared { write } => {
+          let cancelled = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCancel { reason: "user cancelled" as NonEmptyStr }))
+          let resumed = attempt_fenced_commit(write: write)
+          let needs_quiescence = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerObserveQuiescence { reference: _ } => true _ => false } _ => false }
+          a && cancelled && (match resumed { AttemptLostRace { expected: _, observed: _ } => true _ => false }) && needs_quiescence && !launching(d: d)
+        }
+      }
+    } }
+  } }
+}
+
+test fn launch_winning_before_cancel_requires_termination_reconciliation() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    let a = acquire(d: d, owner: "A")
+    match lease(d: d) { Absent => false Present { value: held } => {
+      let launched = committed(prepared: controller_attempt_prepare(delegation: d, action: AttemptOwnerAdvance { lease: held, next: AttemptLaunching }))
+      let cancelled = committed(prepared: controller_event_prepare(delegation: d, lease: held, event: ControllerCancel { reason: "user cancelled" as NonEmptyStr }))
+      let reopened = controller_attempt_open(delegation: d)
+      let terminate = match controller_attempt_read(delegation: d) { AttemptPayloadHeld { record, generation: _ } => match controller_next_obligation(r: record) { ControllerRequestTermination { reference, reason } => (reference as String) == "reservation-one" && (reason as String) == "user cancelled" _ => false } _ => false }
+      a && launched && cancelled && (match reopened { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && terminate && launching(d: d)
+    } }
+  } }
+}

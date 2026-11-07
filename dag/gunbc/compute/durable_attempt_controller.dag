@@ -8,17 +8,19 @@ import std.durable_compare_and_set {
   CasCommitted, CasPreconditionFailed, CasStoreRefused,
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
 }
-import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef }
+import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldCompletionReport, SectionObservedComplete, durable_hold_ref_equal, durable_hold_owner_equal }
+import std.temporal_effect { HeldLease }
+import gunbc.compute.work_request { WorkEndedCancelled }
 import gunbc.durable_cas_file_store { SlotStore, file_slot_store, slot_observe, slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
 import std.durable_compare_and_set { cas_attempt }
 import gunbc.durable_handoff_host { HostAcceptedRequest, host_request_identity_wire }
 import product.fabric.work { Work }
 import product.fabric.work_restore { work_restore, work_persist, WorkRestored, WorkRestoreRefused, WorkPersisted, WorkPersistRefused }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptState, AttemptReserved, AttemptPayloadCodec, AttemptFencedCodec,
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptWorkEnded, AttemptPayloadCodec, AttemptFencedCodec,
   AttemptPayloadReading, AttemptPayloadHeld, AttemptPayloadAbsent, AttemptPayloadUnreadable,
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
-  AttemptFencedAction, AttemptFencedPreparation, attempt_fenced_prepare,
+  AttemptFencedAction, AttemptFencedPreparation, AttemptOwnerChange, attempt_fenced_prepare,
   attempt_record_wire, attempt_record_decode, attempt_record_with_state,
   attempt_member, attempt_member_int, attempt_payload_read, attempt_open_payload,
 }
@@ -34,6 +36,8 @@ type ControllerAttempt sole_constructor {
   work_wire: NonEmptyStr
   record: AttemptRecord
   claim: DurableHoldSubject?
+  waiting: DurableHoldSubject?
+  cancellation: NonEmptyStr?
 }
 
 // The service supplies principal independently of bytes being restored. Root is
@@ -65,6 +69,8 @@ fn controller_attempt_wire(r: ControllerAttempt) -> String {
     json_kv(key: "claim_hold", value: json_string(s: match r.claim { Absent => "" Present { value: c } => c.hold as String })),
     json_kv(key: "claim_owner", value: json_string(s: match r.claim { Absent => "" Present { value: c } => c.holder as String })),
     json_kv(key: "claim_epoch", value: json_int(n: match r.claim { Absent => 0 Present { value: c } => cas_generation_count(g: c.generation) })),
+    json_kv(key: "waiting", value: json_string(s: controller_wait_wire(waiting: r.waiting))),
+    json_kv(key: "cancellation", value: json_string(s: match r.cancellation { Absent => "" Present { value: why } => why as String })),
   ]))
 }
 
@@ -96,6 +102,13 @@ fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> Controller
       match attempt_member_int(doc: doc, key: "claim_epoch") {
         Absent => none
         Present { value: epoch } =>
+      match attempt_member(doc: doc, key: "waiting") {
+        Absent => none
+        Present { value: wait_wire } => match controller_wait_decode(text: wait_wire) {
+          Absent => none
+          Present { value: waiting } => match attempt_member(doc: doc, key: "cancellation") {
+            Absent => none
+            Present { value: cancellation } =>
       if schema != "gunbc.controller_attempt/1" || request == "" { none } else {
         match work_restore(wire: wire, expected_principal: principal) {
           WorkRestoreRefused { cause: _ } => none
@@ -103,11 +116,11 @@ fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> Controller
             Absent => none
             Present { value: record } =>
               if kind == "free" && hold == "" && owner == "" && epoch == 0 {
-                Present { value: ControllerAttempt { request: request as NonEmptyStr, work_wire: wire as NonEmptyStr, record: record, claim: none } }
+                Present { value: ControllerAttempt { request: request as NonEmptyStr, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } }, claim: none } }
               } else if kind == "held" && hold != "" && owner != "" {
                 match cas_generation(n: epoch) {
                   Absent => none
-                  Present { value: generation } => Present { value: ControllerAttempt { request: request as NonEmptyStr, work_wire: wire as NonEmptyStr, record: record,
+                  Present { value: generation } => Present { value: ControllerAttempt { request: request as NonEmptyStr, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } },
                     claim: Present { value: DurableHoldSubject { hold: hold as DurableHoldRef, holder: owner as DurableHoldOwnerRef, generation: generation } } } }
                 }
               } else { none }
@@ -122,6 +135,7 @@ fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> Controller
       }
       }
       }
+      } } }
   }
 }
 
@@ -131,10 +145,10 @@ fn controller_opened(r: ControllerAttempt) -> EpochSecs { r.record.opened_at }
 fn controller_deadline(r: ControllerAttempt) -> EpochSecs { r.record.launch_deadline }
 fn controller_claim(r: ControllerAttempt) -> DurableHoldSubject? { r.claim }
 fn controller_with_state(r: ControllerAttempt, state: AttemptState) -> ControllerAttempt {
-  ControllerAttempt { request: r.request, work_wire: r.work_wire, record: attempt_record_with_state(r: r.record, state: state), claim: r.claim }
+  ControllerAttempt { request: r.request, work_wire: r.work_wire, record: attempt_record_with_state(r: r.record, state: state), claim: r.claim, waiting: r.waiting, cancellation: r.cancellation }
 }
 fn controller_with_claim(r: ControllerAttempt, claim: DurableHoldSubject?) -> ControllerAttempt {
-  ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: claim }
+  ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: claim, waiting: r.waiting, cancellation: r.cancellation }
 }
 fn controller_payload_codec(principal: NonEmptyStr) -> AttemptPayloadCodec<ControllerAttempt> {
   AttemptPayloadCodec {
@@ -149,7 +163,7 @@ fn controller_bound_codec(delegation: ControllerDelegation) -> AttemptPayloadCod
     encode: controller_attempt_wire,
     decode: fn(text) { match controller_attempt_decode(text: text, principal: delegation.store.principal) {
       Absent => none
-      Present { value: r } => if controller_attempt_wire(r: controller_with_claim(r: controller_with_state(r: r, state: AttemptReserved), claim: none)) == controller_attempt_wire(r: delegation.initial) {
+      Present { value: r } => if controller_attempt_immutable_wire(r: r) == controller_attempt_immutable_wire(r: delegation.initial) {
         Present { value: r }
       } else { none }
     } },
@@ -157,8 +171,8 @@ fn controller_bound_codec(delegation: ControllerDelegation) -> AttemptPayloadCod
     with_state: controller_with_state, opened_at: controller_opened, launch_deadline: controller_deadline,
   }
 }
-fn controller_fenced_codec(delegation: ControllerDelegation) -> AttemptFencedCodec<ControllerAttempt> {
-  AttemptFencedCodec { payload: controller_bound_codec(delegation: delegation), claim_of: controller_claim, with_claim: controller_with_claim }
+fn controller_fenced_codec(delegation: ControllerDelegation, change: fn(ControllerAttempt) -> ControllerAttempt?) -> AttemptFencedCodec<ControllerAttempt> {
+  AttemptFencedCodec { payload: controller_bound_codec(delegation: delegation), claim_of: controller_claim, with_claim: controller_with_claim, change: change, advance: controller_advance }
 }
 
 // The link seals the CAS-selected initial intent. Losing a delegation race
@@ -183,7 +197,7 @@ fn controller_delegate(store: ControllerStore, request: HostAcceptedRequest, pro
     WorkRestoreRefused { cause: _ } => ControllerDelegationRefused { detail: "accepted payload is not a canonical supported Work" }
     WorkRestored { work } => {
       let initial = ControllerAttempt { request: host_request_identity_wire(identity: request.identity) as NonEmptyStr, work_wire: request.payload,
-        record: attempt_record_with_state(r: proposed, state: AttemptReserved), claim: none }
+        record: attempt_record_with_state(r: proposed, state: AttemptReserved), claim: none, waiting: none, cancellation: none }
       let bytes = controller_attempt_wire(r: initial) as NonEmptyStr
       match admit_cas_attempt(attempt: cas_attempt(key: controller_delegation_key(request: request), expected: ExpectSlotAbsent, proposed: bytes, proposed_content: content_hash_of_value(value: bytes))) {
         CasAttemptAdmitted { verified } => match slot_commit(store: store.requests, publication: DefaultAccessCreateOnly, verified: verified) {
@@ -213,7 +227,7 @@ fn controller_attempt_open(delegation: ControllerDelegation) -> AttemptTransitio
     AttemptLostRace { expected, observed } => match controller_attempt_read(delegation: d) {
       AttemptPayloadHeld { record, generation } =>
         if (record.request as String) == (d.initial.request as String) &&
-          controller_attempt_wire(r: controller_with_claim(r: controller_with_state(r: record, state: AttemptReserved), claim: none)) == controller_attempt_wire(r: d.initial) {
+          controller_attempt_immutable_wire(r: record) == controller_attempt_immutable_wire(r: d.initial) {
           AttemptAdvanced { state: record.record.state, generation: generation }
         } else { AttemptTransitionRefused { detail: "existing attempt does not match the delegated immutable intent" } }
       _ => AttemptTransitionRefused { detail: "existing delegated attempt cannot be read" }
@@ -225,7 +239,125 @@ fn controller_attempt_read(delegation: ControllerDelegation) -> AttemptPayloadRe
   attempt_payload_read(store: delegation.store.attempts, reference: delegation.initial.record.reference as NonEmptyStr,
     codec: controller_bound_codec(delegation: delegation))
 }
-fn controller_attempt_prepare(delegation: ControllerDelegation, action: AttemptFencedAction) -> AttemptFencedPreparation {
+fn controller_attempt_prepare(delegation: ControllerDelegation, action: AttemptFencedAction, event: ControllerEvent? = none) -> AttemptFencedPreparation {
   attempt_fenced_prepare(store: delegation.store.attempts, reference: delegation.initial.record.reference as NonEmptyStr,
-    codec: controller_fenced_codec(delegation: delegation), action: action)
+    codec: controller_fenced_codec(delegation: delegation, change: fn(r) { match event { Absent => none Present { value: e } => controller_event_apply(r: r, event: e) } }), action: action)
+}
+
+
+// Mutations carry a typed event, never replacement payload bytes. Authorization
+// and the resulting event update share attempt_lifecycle's sealed proposal/CAS.
+type ControllerEvent
+  = ControllerCapacityWaiting { source: DurableHoldSubject }
+  | ControllerCapacityReleased { report: DurableHoldCompletionReport<NonEmptyStr> }
+  | ControllerCancel { reason: NonEmptyStr }
+
+type ControllerObligation
+  = ControllerAwaitCapacity { source: DurableHoldSubject }
+  | ControllerRequestGrant { reference: NonEmptyStr }
+  | ControllerReconcileExecutor { reference: NonEmptyStr }
+  | ControllerRequestTermination { reference: NonEmptyStr, reason: NonEmptyStr }
+  | ControllerObserveQuiescence { reference: NonEmptyStr }
+
+fn controller_event_prepare(delegation: ControllerDelegation, lease: HeldLease, event: ControllerEvent) -> AttemptFencedPreparation {
+  controller_attempt_prepare(delegation: delegation, action: AttemptOwnerChange { lease: lease }, event: Present { value: event })
+}
+
+fn controller_attempt_immutable_wire(r: ControllerAttempt) -> String {
+  controller_attempt_wire(r: ControllerAttempt { request: r.request, work_wire: r.work_wire,
+    record: attempt_record_with_state(r: r.record, state: AttemptReserved), claim: none, waiting: none, cancellation: none })
+}
+
+fn controller_wait_wire(waiting: DurableHoldSubject?) -> String {
+  match waiting {
+    Absent => ""
+    Present { value: w } => serialize_json(v: json_object(members: [
+      json_kv(key: "hold", value: json_string(s: w.hold as String)),
+      json_kv(key: "owner", value: json_string(s: w.holder as String)),
+      json_kv(key: "epoch", value: json_int(n: cas_generation_count(g: w.generation))),
+    ]))
+  }
+}
+
+// Outer absence is decode failure; inner absence means no capacity wait.
+fn controller_wait_decode(text: String) -> (DurableHoldSubject?)? {
+  if text == "" { Present { value: none } } else {
+    match parse_json_document(s: text) {
+      JsonDocumentUnreadable { gap: _ } => none
+      JsonDocumentParsed { value: doc } => match attempt_member(doc: doc, key: "hold") {
+        Absent => none
+        Present { value: hold } => match attempt_member(doc: doc, key: "owner") {
+          Absent => none
+          Present { value: owner } => match attempt_member_int(doc: doc, key: "epoch") {
+            Absent => none
+            Present { value: epoch } => match cas_generation(n: epoch) {
+              Absent => none
+              Present { value: generation } => if hold == "" || owner == "" { none } else {
+                Present { value: Present { value: DurableHoldSubject { hold: hold as DurableHoldRef, holder: owner as DurableHoldOwnerRef, generation: generation } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn controller_event_apply(r: ControllerAttempt, event: ControllerEvent) -> ControllerAttempt? {
+  match event {
+    ControllerCapacityWaiting { source } => match r.record.state {
+      AttemptReserved => match r.cancellation {
+        Present { value: _ } => none
+        Absent => Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: Present { value: source }, cancellation: none } }
+      }
+      _ => none
+    }
+    ControllerCapacityReleased { report } => match r.waiting {
+      Absent => none
+      Present { value: w } => if durable_hold_ref_equal(left: w.hold, right: report.hold.hold) && durable_hold_owner_equal(left: w.holder, right: report.hold.holder) && cas_generation_count(g: w.generation) == cas_generation_count(g: report.hold.generation) && (match report.completion { SectionObservedComplete { observation: _ } => true _ => false }) {
+        Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: none, cancellation: r.cancellation } }
+      } else { none }
+    }
+    ControllerCancel { reason } => match r.record.state {
+      AttemptTerminal { verdict: _, detail: _ } => none
+      AttemptReserved => Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire,
+        record: attempt_record_with_state(r: r.record, state: AttemptTerminal { verdict: AttemptWorkEnded { ending: WorkEndedCancelled }, detail: reason as String }), claim: r.claim, waiting: none, cancellation: Present { value: reason } } }
+      AttemptLaunching => Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire,
+        record: r.record, claim: r.claim, waiting: none, cancellation: Present { value: reason } } }
+    }
+  }
+}
+
+// This is an obligation to the next owning authority, NOT a shell command or
+// evidence that anything launched/stopped. Lost acknowledgment and lost receipt
+// take the same durable Launching attempt back to the executor for observation.
+fn controller_next_obligation(r: ControllerAttempt) -> ControllerObligation {
+  let reference = r.record.reference as NonEmptyStr
+  match r.record.state {
+    AttemptTerminal { verdict: _, detail: _ } => ControllerObserveQuiescence { reference: reference }
+    AttemptLaunching => match r.cancellation {
+      Present { value: reason } => ControllerRequestTermination { reference: reference, reason: reason }
+      Absent => ControllerReconcileExecutor { reference: reference }
+    }
+    AttemptReserved => match r.waiting {
+      Present { value: source } => ControllerAwaitCapacity { source: source }
+      Absent => ControllerRequestGrant { reference: reference }
+    }
+  }
+}
+
+
+fn controller_advance(r: ControllerAttempt, next: AttemptState) -> ControllerAttempt? {
+  // A terminal verdict needs admitted executor evidence, not a caller-supplied
+  // state. Cancellation reaches Terminal only through its typed event.
+  match next {
+    AttemptLaunching => match r.waiting {
+      Present { value: _ } => none
+      Absent => match r.cancellation {
+        Present { value: _ } => none
+        Absent => Present { value: controller_with_state(r: r, state: next) }
+      }
+    }
+    _ => none
+  }
 }
