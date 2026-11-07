@@ -178,7 +178,7 @@ test fn tampered_key_and_toolchain_refuse() -> Bool {
 test fn trailing_bytes_refuse() -> Bool {
   let extra = base_wire() + length_prefixed_encode(s: "extra")
   refused_with(r: work_restore(wire: extra, expected_principal: principal), want: c => match c { RestoreTrailingFields { count } => count == 1  _ => false })
-    && refused_with(r: work_restore(wire: base_wire() + "junk", expected_principal: principal), want: c => is_truncated(c: c) || is_not_canonical(c: c))
+    && refused_with(r: work_restore(wire: base_wire() + "junk", expected_principal: principal), want: is_truncated)
 }
 
 // (8) RED non-canonical spelling: lengths the decoder's parse_int may read but the encoder never writes.
@@ -189,7 +189,7 @@ test fn non_canonical_length_spelling_refuses() -> Bool {
   let lead = "020#gunbc.work_restore/1"
   let plus = "+20#gunbc.work_restore/1"
   refused_with(r: work_restore(wire: lead + rest, expected_principal: principal), want: is_not_canonical)
-    && refused_with(r: work_restore(wire: plus + rest, expected_principal: principal), want: c => is_not_canonical(c: c) || is_truncated(c: c))
+    && refused_with(r: work_restore(wire: plus + rest, expected_principal: principal), want: is_not_canonical)
 }
 
 // (9) RED unsupported axes: exact list and order, at the writer and at the reader.
@@ -233,8 +233,8 @@ test fn reader_names_each_unsupported_axis_in_order() -> Bool {
 }
 
 // (10) Unicode: combining, astral and NUL values round-trip through a field; lengths are scalar counts, so a
-// byte-counted length (4 for the 1-scalar astral char) over a field followed by more framing is refused, from
-// constructed bytes, with exactly the cause the codec yields.
+// byte-counted length (4 for the 1-scalar astral char) is exercised standalone below,
+// with no following framing to consume.
 fn work_with_inputs(v: String) -> Work<NonEmptyStr> {
   work_for(
     principal: principal,
