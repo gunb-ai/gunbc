@@ -3627,7 +3627,7 @@ fn resolve_elided_construct_walk(ctx: ResolveContext, n: Node, x: ResolveExpecta
 //     included -- is a text crossing no route declares here); else
 //     resolve_anonymous_map_key_kind_mismatch at the first key;
 //   - no key may repeat, judged by the key type's equality -- for string literals, decoded text
-//     (the decoder gunbc#12759 lands; until then no key has text and the arm refuses at it) -- through the ONE key law,
+//     (keys carry decoded text since gunbc#12759) -- through the ONE key law,
 //     v2.std.map_introduction map_introduction_duplicate_key; a repeat refuses
 //     resolve_anonymous_map_duplicate_key at its SECOND occurrence. Never last-wins.
 //
