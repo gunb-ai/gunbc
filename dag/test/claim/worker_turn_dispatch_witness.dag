@@ -4,6 +4,8 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryWorker, attempt_state_directory_text }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   DispatchProviderInnerArgv,
   DispatchProviderInnerArgvReady,
@@ -12,7 +14,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   ClaudeProviderCredentialUnbound,
-  dispatch_provider_inner_argv_for_launch,
+  dispatch_provider_inner_argv_for_launch, DispatchWorkerFirst,
 }
 import gunbc.dispatch_attempt { DispatchAttempt }
 import gunbc.dispatch_attempt_launch { PreparedAttemptLaunch, SnapshotFreeLaunch, CodexWithoutSnapshot, HarnessWithoutSnapshot }
@@ -44,6 +46,8 @@ fn inner_for_launch(prepared: PreparedAttemptLaunch) -> DispatchProviderInnerArg
     worktree_path: "/tmp/w",
     brief: "brief",
     alignment_chain_fingerprint: "fp",
+    supervision_prompt: "the rendered chain",
+    run: DispatchWorkerFirst,
   )
 }
 
@@ -147,6 +151,38 @@ test fn the_emitted_worker_argv_passes_no_durable_turn() -> Bool {
         CursorProviderCredentialUnbound { reason: _ } => false
         CodexProviderOffCustodyHost { reason: _ } => false
         ClaudeProviderCredentialUnbound { reason: _ } => false
+      }
+  }
+}
+
+fn harness_inner_for(instance: HostDashboardInstance) -> DispatchProviderInnerArgv? {
+  let attempt = worker_turn_attempt(instance: instance)
+  match fx_prepared_launch(
+    requested: attempt,
+    launch: SnapshotFreeLaunch { attempt: attempt, executor: HarnessWithoutSnapshot },
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+  ) {
+    Present { value: prepared } => Present { value: inner_for_launch(prepared: prepared) }
+    none => none
+  }
+}
+
+// THE HARNESS WORKER IS SPAWNED SUPERVISED (gunbc.plans.harness_session_lifecycle, slice S1): the
+// production spawn fold hands it the rendered chain its alignment check asks about and the attempt's
+// worker directory for the check's verdicts, beside the fingerprint -- so the pause at a round
+// boundary has everything it needs in-process and nothing routes back through the belt.
+test fn a_harness_worker_on_srv1_carries_its_supervision() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  match harness_inner_for(instance: instance) {
+    Absent => false
+    Present { value: inner } =>
+      match ready_argv(inner: inner) {
+        Absent => false
+        Present { value: argv } =>
+          any(argv, a => a == "alignment_chain_fingerprint=fp")
+            && any(argv, a => a == "supervision_prompt=the rendered chain")
+            && any(argv, a => a == join(["supervision_dir=", attempt_state_directory_text(instance: instance, node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId, attempt_key: "0123456789abcdef", directory: AttemptDirectoryWorker)], ""))
       }
   }
 }

@@ -14,8 +14,8 @@ import std.measure { TokenCount, token_count, token_count_value, Second, second,
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_tool { harness_validate_worktree_call, HarnessToolEnvironment, HarnessValidationRoute, ValidationNotOffered, ValidationRoutedTo }
 import gunbc.harness.harness_turn {
-  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnAlignmentCheckpointDue, harness_tool_contract_wire,
-  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
+  HarnessTurnConfig, HarnessTurnOutcome, TurnProviderStopped, TurnCompletedByArtifact, TurnStoppedBySupervision, TurnSupervisionUnavailable, HarnessSupervision, Unsupervised, SupervisedRounds, harness_tool_contract_wire,
+  CompletesOnProviderStop, CompletesWhenEntryPresent, harness_run_turn, harness_resume_turn, TurnBackendRefusedUnexplained, TurnResumeRefused, TurnRequestPending, harness_outcome_label, TurnHostedQuotaFull, TurnHostedQuotaUnleasable, TurnHostedFailure,
   harness_outcome_detail, harness_event_placement_waiting, harness_events_append, HarnessEventsUnwritable, HarnessEventsWritten,
 }
 import gunbc.harness.harness_guidance {
@@ -26,7 +26,6 @@ import gunbc.compute.test_run {
   compile_process_receipt_path, compile_process_entry_placeholder,
 }
 import gunbc.harness.harness_review_guidance { harness_reviewer_guidance_at, review_guidance_prose }
-import gunbc.harness.harness_supervisor_guidance { supervisor_system_prompt_at }
 import gunbc.harness.harness_goal_audit_guidance { harness_auditor_guidance_at, audit_guidance_prose }
 import gunbc.roadmap.roadmap_review_role { review_verdict_shape_text }
 import gunbc.harness.harness_wire { harness_context_budget_for }
@@ -255,7 +254,7 @@ fn harness_macbook_config(backend: HarnessBoundBackend) -> HarnessTurnConfig {
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: harness_default_system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: harness_request_scratch_path,
     events_path: harness_probe_events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -285,17 +284,20 @@ fn harness_probe_outcome(backend: HarnessBoundBackend) -> HarnessTurnOutcome {
 // happened rather than whether the task succeeded. Nothing here inspects the assistant's text for
 // correctness: that is external verification's subject, and a harness that graded its own worker's
 // answer would be the same conflation DCH-2 forbids between a stop reason and a completed task.
-// CHECKPOINT-DUE IS A CONTROL TRANSFER, NOT A FAILURE (review 5358022153): it gets its own admitted
-// exit standing (3) rather than the generic failure code, so a consumer matching on 1 never reads a
-// planned adjudication handoff as a crash. The belt's authority remains the provider event stream.
+// A SUPERVISED SESSION NEVER EXITS AT A ROUND BOUNDARY (gunbc.plans.harness_session_lifecycle), so
+// there is no control-transfer exit any more; a supervision stop is the session's typed end and the
+// provider event stream stays the authority.
 fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
   match outcome {
     TurnProviderStopped { wire_stop_reason: _, assistant_text: _, steps_taken: _, input_tokens: _, output_tokens: _ } =>
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
     TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnRequestPending { re_deliveries: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnResumeRefused { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnRequestUnwritable { path: _, detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnContextWindowExhausted { input_tokens: _, budget: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTruncatedMidToolCall { output_tokens: _, ceiling: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
@@ -305,8 +307,8 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnHostedFailure { failure: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
-    TurnAlignmentCheckpointDue { steps_taken: _ } =>
-      ExitFailure { code: 3, reason: harness_outcome_label(outcome: outcome) }
+    TurnStoppedBySupervision { verdict: _, detail: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    TurnSupervisionUnavailable { cause: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
   }
 }
 
@@ -692,7 +694,7 @@ fn harness_worker_config(
   events_path: FilePath,
   backend: HarnessBoundBackend,
   system_prompt: String,
-  alignment_chain_fingerprint: String,
+  supervision: HarnessSupervision,
 ) -> HarnessTurnConfig {
   HarnessTurnConfig {
     backend_url: backend.url,
@@ -702,7 +704,7 @@ fn harness_worker_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: alignment_chain_fingerprint,
+    supervision: supervision,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -778,6 +780,26 @@ fn harness_seat_pointer_refused_exit(binding: HarnessSeatBinding, detail: String
   ExitFailure { code: 1, reason: join(["harness seat pointer write failed: ", detail, "; seat ", harness_seat_release_wire(r: released)], "") }
 }
 
+// A DISPATCHED WORKER IS ALWAYS SUPERVISED, so a missing chain is a refusal and never an unsupervised run.
+// The alignment check needs the rendered chain to ask its question and a directory under the attempt's own
+// state to leave its verdict in; the belt always resolves a chain before it dispatches, so an empty
+// fingerprint means the binding was lost upstream. A local probe that wants no supervision calls
+// harness_run_turn with Unsupervised, not this entry.
+fn harness_worker_supervision(chain_fingerprint: String, check_prompt: String, check_directory: String) -> HarnessSupervision? {
+  if chain_fingerprint == "" {
+    none
+  } else {
+    Present {
+      value: SupervisedRounds {
+        chain_fingerprint: chain_fingerprint,
+        check_prompt: check_prompt,
+        check_directory: check_directory,
+        round_steps: harness_worker_step_budget,
+      },
+    }
+  }
+}
+
 // EXIT SAYS WHETHER THE HARNESS COMPLETED A TURN, NOT WHETHER THE TASK WAS DONE. A provider
 // terminal exits zero; every harness refusal exits non-zero with its typed cause. Whether the WORK
 // satisfies the node is decided by the belt's pinned verification against the attempt head, which
@@ -840,11 +862,36 @@ fn harness_worker_cli(
   gunbc_program: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
 ) -> ProcessExit {
   harness_worker_turn_cli(
     worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
     events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
-    alignment_chain_fingerprint: alignment_chain_fingerprint, turn: none,
+    alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, turn: none, run: WorkerRunFresh,
+  )
+}
+
+// THE RESUME ENTRY THE BELT SPAWNS FOR A RECOVERY-NEEDED SESSION. The same arguments as the first run,
+// because it is the same session in the same worktree under the same attempt; it differs only in
+// reading the conversation back from the stream and wire log instead of starting one.
+fn harness_worker_resume_cli(
+  worktree: String,
+  brief: String,
+  timeout_program: String,
+  request_scratch_path: String,
+  events_path: String,
+  repo_root: String,
+  gunbc_program: String,
+  attempt_identity: String,
+  alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
+) -> ProcessExit {
+  harness_worker_turn_cli(
+    worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
+    events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
+    alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, turn: none, run: WorkerRunResume,
   )
 }
 
@@ -862,6 +909,8 @@ fn harness_durable_worker_cli(
   gunbc_program: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
   dispatch_node: String,
   turn_ordinal: Int,
   state_root: String,
@@ -871,10 +920,17 @@ fn harness_durable_worker_cli(
     Present { value: turn } => harness_worker_turn_cli(
       worktree: worktree, brief: brief, timeout_program: timeout_program, request_scratch_path: request_scratch_path,
       events_path: events_path, repo_root: repo_root, gunbc_program: gunbc_program, attempt_identity: attempt_identity,
-      alignment_chain_fingerprint: alignment_chain_fingerprint, turn: Present { value: turn },
+      alignment_chain_fingerprint: alignment_chain_fingerprint, supervision_prompt: supervision_prompt, supervision_dir: supervision_dir, turn: Present { value: turn }, run: WorkerRunFresh,
     )
   }
 }
+
+// WHICH TURN A WORKER ENTRY RUNS: the first one from the brief, or the resume of a session its own
+// stream records as recovery-needed (gunbc.harness.harness_session_recovery). One seat bind, one
+// config, one release either way; only the conversation's source differs.
+type HarnessWorkerRun
+  = WorkerRunFresh
+  | WorkerRunResume
 
 fn harness_worker_turn_cli(
   worktree: String,
@@ -886,8 +942,14 @@ fn harness_worker_turn_cli(
   gunbc_program: String,
   attempt_identity: String,
   alignment_chain_fingerprint: String,
+  supervision_prompt: String,
+  supervision_dir: String,
+  run: HarnessWorkerRun,
   turn: HarnessCallerTurn?,
 ) -> ProcessExit {
+  match harness_worker_supervision(chain_fingerprint: alignment_chain_fingerprint, check_prompt: supervision_prompt, check_directory: supervision_dir) {
+    none => ExitFailure { code: 2, reason: "harness worker refused: no alignment chain fingerprint was passed, and a dispatched worker is always supervised against its chain; a local probe runs harness_run_turn with Unsupervised instead" }
+    Present { value: supervision } => {
   let system_prompt = harness_worker_system_prompt_at(worktree: worktree)
   let binding = harness_bind_seat_waiting(role: "worker", system_prompt: system_prompt, brief: brief, actor: join(["worker:", worktree], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: turn, validation: ValidationRoutedTo { repo_root: repo_root })
   match harness_binding_answer(binding: binding) {
@@ -897,8 +959,7 @@ fn harness_worker_turn_cli(
       match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
         Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
         Absent => {
-          let outcome = harness_run_turn(
-            config: harness_worker_config(
+          let config = harness_worker_config(
               validation: ValidationRoutedTo { repo_root: repo_root },
               worktree: worktree as FilePath,
               timeout_program: timeout_program as FilePath,
@@ -906,16 +967,19 @@ fn harness_worker_turn_cli(
               events_path: events_path as FilePath,
               backend: backend,
               system_prompt: system_prompt,
-              alignment_chain_fingerprint: alignment_chain_fingerprint,
-            ),
-            prompt: brief,
-            step_budget: harness_worker_step_budget,
-          )
+              supervision: supervision,
+            )
+          let outcome = match run {
+            WorkerRunFresh => harness_run_turn(config: config, prompt: brief, step_budget: harness_worker_step_budget)
+            WorkerRunResume => harness_resume_turn(config: config, step_budget: harness_worker_step_budget)
+          }
           let completion = harness_worker_completion(turn: turn, binding: binding, outcome: outcome)
           let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
           harness_worker_exit_completed(outcome: outcome, seat: seat_release, completion: completion)
         }
       }
+    }
+  }
     }
   }
 }
@@ -956,7 +1020,7 @@ fn harness_reviewer_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -1041,7 +1105,7 @@ fn harness_auditor_config(
     reasoning_mode: backend.reasoning,
     wire_shape: harness_default_wire_shape,
     system_prompt: system_prompt,
-    alignment_chain_fingerprint: "",
+    supervision: Unsupervised,
     request_scratch_path: request_scratch_path,
     events_path: events_path,
     context_budget: harness_context_budget_for(unit: backend.unit),
@@ -1102,99 +1166,7 @@ fn harness_auditor_cli(
   }
 }
 
-// THE SUPERVISOR ENTRY: the reviewer's harness under the supervisor's own prompt
-// (gunbc.harness.harness_supervisor_guidance) and one typed output -- the verdict receipt the
-// belt's continuation decision reads on the next dispatch evaluation. Same seat admission, same
-// completion-by-artifact: the verdict file IS the session's product, so the turn completes when it
-// appears, exactly as the reviewer's does.
-//
-// THE BUDGET IS A DECLARED POLICY ROW, NOT A LITERAL (docs/plans/harness-work-lifecycle.md,
-// "Resource policy": escalation sessions run one to two magnitudes above the leaf budget they
-// supervise -- the supervisor must re-read the checkpoint, adjudicate, and still have runway to
-// act, which a same-size budget cannot do). The multiplier is the low end of the declared band,
-// applied to the worker's own row so the two budgets can never drift apart silently.
-data harness_supervisor_budget_multiplier: Int = 10
-
-data harness_supervisor_step_budget: Int = harness_worker_step_budget * harness_supervisor_budget_multiplier
-
-fn harness_supervisor_config(
-  worktree: FilePath,
-  timeout_program: FilePath,
-  request_scratch_path: FilePath,
-  events_path: FilePath,
-  verdict_dir: String,
-  verdict_name: String,
-  backend: HarnessBoundBackend,
-  system_prompt: String,
-) -> HarnessTurnConfig {
-  HarnessTurnConfig {
-    backend_url: backend.url,
-    model: backend.model as String,
-    max_tokens: harness_default_max_tokens,
-    serving_unit: backend.unit,
-    reasoning_mode: backend.reasoning,
-    wire_shape: harness_default_wire_shape,
-    system_prompt: system_prompt,
-    alignment_chain_fingerprint: "",
-    request_scratch_path: request_scratch_path,
-    events_path: events_path,
-    context_budget: harness_context_budget_for(unit: backend.unit),
-    request_deadline: harness_request_deadline,
-    environment: HarnessToolEnvironment {
-      working_directory: worktree,
-      timeout_program: timeout_program,
-      duration_limit_seconds: harness_default_duration_limit_seconds,
-      validation: ValidationNotOffered,
-    },
-    completion: CompletesWhenEntryPresent { directory: verdict_dir, name: verdict_name },
-    backend_access: backend.access,
-  }
-}
-
-fn harness_supervisor_cli(
-  worktree: String,
-  brief: String,
-  timeout_program: String,
-  request_scratch_path: String,
-  events_path: String,
-  verdict_dir: String,
-  verdict_name: String,
-  attempt_identity: String,
-) -> ProcessExit {
-  let verdict_path = join([verdict_dir, "/", verdict_name], "")
-  let system_prompt = supervisor_system_prompt_at(worktree: worktree, verdict_path: verdict_path)
-  let binding = harness_bind_seat_waiting(role: "supervisor", system_prompt: system_prompt, brief: brief, actor: join(["supervisor:", verdict_path], "") as NonEmptyStr, attempt: attempt_identity as NonEmptyStr, events_path: events_path, turn: none, validation: ValidationNotOffered)
-  match harness_binding_answer(binding: binding) {
-    BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
-    BindingPending { detail } => harness_placement_pending_exit(detail: detail)
-    BindingReady { backend } => {
-      match harness_seat_pointer_refusal(write: harness_seat_pointer_persist(events_path: events_path, binding: binding)) {
-        Present { value: pointer_detail } => harness_seat_pointer_refused_exit(binding: binding, detail: pointer_detail)
-        Absent => {
-          let outcome = harness_run_turn(
-            config: harness_supervisor_config(
-              worktree: worktree as FilePath,
-              timeout_program: timeout_program as FilePath,
-              request_scratch_path: request_scratch_path as FilePath,
-              events_path: events_path as FilePath,
-              verdict_dir: verdict_dir,
-              verdict_name: verdict_name,
-              backend: backend,
-              system_prompt: system_prompt,
-            ),
-            prompt: brief,
-            step_budget: harness_supervisor_step_budget,
-          )
-          let seat_release = harness_release_seat(binding: binding, reason: harness_outcome_label(outcome: outcome) as NonEmptyStr)
-          harness_turn_exit_released(outcome: outcome, seat: seat_release)
-        }
-      }
-    }
-  }
-}
-
-// AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall
-// with a door beside it.
+// AND THE REPORTING FORM TAKES IT TOO. Two entries reached one turn; a seat on one of them is a wall// with a door beside it.
 fn harness_probe_report() -> String {
   let binding = harness_bind_seat(short_hostname: harness_executor_short_hostname(), class: BatchQualityTolerant, requirement: AnyAdmittedModel, shape: harness_default_wire_shape, inputs: harness_model_request_inputs(role: "probe", shape: harness_default_wire_shape, system_prompt: harness_default_system_prompt, user_input: harness_probe_prompt, validation: ValidationNotOffered), actor: "probe-report" as NonEmptyStr, attempt: harness_probe_attempt(label: "probe-report"), policy: harness_seat_policy, session: none, admission: harness_cli_admission(), turn: none)
   match harness_binding_answer(binding: binding) {
@@ -1289,7 +1261,7 @@ fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_s
                 events_path: events_path as FilePath,
                 backend: backend,
                 system_prompt: harness_default_system_prompt,
-                alignment_chain_fingerprint: "",
+                supervision: Unsupervised,
               ),
               prompt: harness_probe_prompt,
               step_budget: harness_default_step_budget,

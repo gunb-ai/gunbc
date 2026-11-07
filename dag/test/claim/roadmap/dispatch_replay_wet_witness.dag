@@ -98,6 +98,7 @@ fn exit_record(status: Int) -> AttemptExitRecord {
     node_id: "n",
     attempt_key: "k",
     role: "worker",
+    worker_invocation: Present { value: 0 },
     invocation_id: "i",
     result: ServiceResultExitCode,
     end: AttemptProcessExitedWith { status: status },

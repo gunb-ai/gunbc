@@ -1,0 +1,56 @@
+module test.claim.harness_transport_retry_test
+
+import std.types { Bool, String, List }
+import gunbc.harness.harness_transport_retry_policy {
+  HarnessTransportRetryPolicy, harness_transport_retry_policy_now, transport_retry_delay_seconds, transport_retry_offset_seconds, transport_retry_next_delivery_at, transport_retry_redelivery_due,
+}
+import std.measure { second }
+
+// THE SCHEDULE DOUBLES TO ITS CAP AND ENDS NOTHING (operator direction 2026-10-27: the request is
+// delivered and waited on indefinitely; operator 2026-10-12: the engine restarts, so the first gap is
+// 15 s and doubles). The gap spaces the belt's re-deliveries; there is NO BUDGET to run out -- the
+// discriminating part is the far future: a request pending since before the old 30-minute budget died
+// still becomes DUE, at a named instant, on the same functions. A re-introduced budget or expiry is
+// visible here because these calls would refuse, stop, or never arrive.
+test fn the_schedule_doubles_to_its_cap_and_never_ends_the_request() -> Bool {
+  let p = harness_transport_retry_policy_now
+  map([0, 1, 2, 3, 4, 5, 6], n => transport_retry_delay_seconds(policy: p, re_deliveries: n)) == [15, 30, 60, 120, 240, 300, 300]
+    && transport_retry_offset_seconds(policy: p, session_key: "/state/n-a1/harness-request.json") < 7
+    // Not yet due a second before the gap has passed; due at its instant. Same function, no other input.
+    && !transport_retry_redelivery_due(policy: p, last_delivery_at: 1000, re_deliveries: 0, session_key: "s", at: 1000 + transport_retry_delay_seconds(policy: p, re_deliveries: 0) + transport_retry_offset_seconds(policy: p, session_key: "s") - 1)
+    && transport_retry_redelivery_due(policy: p, last_delivery_at: 1000, re_deliveries: 0, session_key: "s", at: 1000 + transport_retry_delay_seconds(policy: p, re_deliveries: 0) + transport_retry_offset_seconds(policy: p, session_key: "s"))
+    // TEN DAYS OUT: still only ever a named instant, never a refusal to name one. The old budget died
+    // at 1800 s; a fit test reintroduced would answer false here forever and this claim would fail.
+    && transport_retry_redelivery_due(policy: p, last_delivery_at: 1000, re_deliveries: 4000, session_key: "s", at: 1000 + 864000)
+    && transport_retry_next_delivery_at(policy: p, last_delivery_at: 1000, re_deliveries: 4000, session_key: "s") == 1000 + 300 + transport_retry_offset_seconds(policy: p, session_key: "s")
+}
+
+// THE DUE READING AND THE NAMED INSTANT ARE THE SAME FACT: Hold names exactly the instant at which
+// due flips true, so the belt's Hold "next re-delivery at T" and its later Resume cannot disagree.
+test fn the_named_instant_is_the_instant_due_flips() -> Bool {
+  let p = harness_transport_retry_policy_now
+  let at = transport_retry_next_delivery_at(policy: p, last_delivery_at: 500, re_deliveries: 3, session_key: "session-7")
+  !transport_retry_redelivery_due(policy: p, last_delivery_at: 500, re_deliveries: 3, session_key: "session-7", at: at - 1)
+    && transport_retry_redelivery_due(policy: p, last_delivery_at: 500, re_deliveries: 3, session_key: "session-7", at: at)
+}
+
+// THE SPREAD IS THE POLICY'S, NOT THE MECHANISM'S: a different policy value gives a different schedule
+// through the same functions, and an offset spread of one puts every session on the same instant --
+// which is what the spread exists to prevent, and what makes it testable.
+test fn a_different_policy_changes_the_schedule() -> Bool {
+  let patient = HarnessTransportRetryPolicy { first_delay: second(count: 60), max_delay: second(count: 600), offset_spread: 1 }
+  map([0, 1, 2, 3, 4], n => transport_retry_delay_seconds(policy: patient, re_deliveries: n)) == [60, 120, 240, 480, 600]
+    && transport_retry_offset_seconds(policy: patient, session_key: "anything") == 0
+    && transport_retry_next_delivery_at(policy: patient, last_delivery_at: 0, re_deliveries: 1, session_key: "anything") == 120
+}
+
+// THE GAP'S COST DOES NOT GROW WITH THE REQUEST'S AGE (review 91537): the walk stops at the cap, so a
+// count no recursion-per-re-delivery could ever finish (a billion) still names the cap at once, and a
+// gap that cannot grow (first_delay of zero) stops at once too. The previous recursion once per
+// re-delivery never returns on this input, so reintroducing it makes this claim not finish.
+test fn the_gap_walk_is_bounded_by_the_cap_not_by_the_requests_age() -> Bool {
+  let p = harness_transport_retry_policy_now
+  let flat = HarnessTransportRetryPolicy { first_delay: second(count: 0), max_delay: second(count: 300), offset_spread: 7 }
+  transport_retry_delay_seconds(policy: p, re_deliveries: 1000000000) == 300
+    && transport_retry_delay_seconds(policy: flat, re_deliveries: 1000000000) == 0
+}
