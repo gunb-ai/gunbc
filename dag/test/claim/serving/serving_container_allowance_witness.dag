@@ -6,7 +6,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_to_byte_size }
 import gunbc.serving.serving_container_allowance {
-  ServingContainerAllowance, srv1_serving_allowance, srv1_serving_allowance_running, srv1_inference_slice_limit, srv1_serving_non_reclaimable_demand,
+  ServingContainerAllowance, srv1_serving_allowance, srv1_serving_allowance_pre_resize, srv1_inference_slice_limit, srv1_serving_non_reclaimable_demand,
   srv1_serving_non_reclaimable_demand_resized, srv1_l1_tier_sizing, lmcache_l1_gib,
   ParentSliceLimit, ParentSliceLimitRead, ParentSliceLimitUnread,
   ContainerClaimVerdict, ContainerFitsParent, ContainerExceedsParentMax, ContainerSwapExceedsParent, ParentLimitUnread,
@@ -64,9 +64,9 @@ test fn an_allowance_the_wrapper_does_not_carry_is_a_typed_disagreement() -> Boo
 // startup receipt) disagrees with the resized allowance, and the pending state names both shas. When the
 // operator-gated relaunch records a receipt whose wrapper sha256 equals the resized body's, the state is
 // Done and this claim is the one to retire.
-test fn the_running_wrapper_is_a_typed_relaunch_obligation_not_a_red() -> Bool {
+test fn the_pinned_wrapper_is_the_pre_resize_entrypoint_a_typed_relaunch_obligation() -> Bool {
   wrapper_disagrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: srv1_serving_allowance))
-    && wrapper_agrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: srv1_serving_allowance_running))
+    && wrapper_agrees(v: wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: srv1_serving_allowance_pre_resize))
     && match srv1_wrapper_relaunch_state() {
       Srv1WrapperRelaunchPending { running_sha256: r, pending_sha256: p } =>
         r == "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
@@ -78,11 +78,11 @@ test fn the_running_wrapper_is_a_typed_relaunch_obligation_not_a_red() -> Bool {
 // INDEPENDENT ORACLE: the three figures `docker inspect lil-flash-next` returned on 2026-11-07T17:39Z
 // (HostConfig.Memory 139586437120, MemorySwap 139586437120, ShmSize 118111600640) as literals, so the
 // allowance is compared with the live container and not with a restatement of itself.
-test fn the_running_allowance_equals_what_docker_inspect_read_on_the_live_container() -> Bool {
-  byte_size_count(b: srv1_serving_allowance_running.memory) == 139586437120
-    && byte_size_count(b: srv1_serving_allowance_running.memory_swap_total) == 139586437120
-    && byte_size_count(b: srv1_serving_allowance_running.shm) == 118111600640
-    && (srv1_serving_allowance_running.cgroup_parent as String) == "srv1-inference.slice"
+test fn the_pre_resize_allowance_equals_what_docker_inspect_read_before_the_relaunch() -> Bool {
+  byte_size_count(b: srv1_serving_allowance_pre_resize.memory) == 139586437120
+    && byte_size_count(b: srv1_serving_allowance_pre_resize.memory_swap_total) == 139586437120
+    && byte_size_count(b: srv1_serving_allowance_pre_resize.shm) == 118111600640
+    && (srv1_serving_allowance_pre_resize.cgroup_parent as String) == "srv1-inference.slice"
 }
 
 // THE RESIZED ALLOWANCE IN BYTES, hand-derived: 71 * 1073741824 = 76235669504 (memory and swap total),
@@ -164,7 +164,7 @@ fn nr_shm_over(v: NonReclaimableVerdict) -> Bool {
 // container sits AT memory.max only on reclaimable page cache, which is why memory.current is not the demand.
 test fn the_non_reclaimable_floor_fits_the_live_allowance_with_a_stated_margin() -> Bool {
   byte_size_count(b: non_reclaimable_floor(d: srv1_serving_non_reclaimable_demand)) == 115491110912
-    && nr_fits_margin(v: non_reclaimable_verdict(a: srv1_serving_allowance_running, d: srv1_serving_non_reclaimable_demand), n: 24095326208)
+    && nr_fits_margin(v: non_reclaimable_verdict(a: srv1_serving_allowance_pre_resize, d: srv1_serving_non_reclaimable_demand), n: 24095326208)
 }
 
 // THE OLD READING DOES NOT FIT THE RESIZED CAP (the reason the tier shrinks), and the derived tier does.

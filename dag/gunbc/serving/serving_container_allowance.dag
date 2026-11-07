@@ -50,10 +50,11 @@ data srv1_serving_allowance: ServingContainerAllowance = ServingContainerAllowan
   cgroup_parent: "srv1-inference.slice" as NonEmptyStr,
 }
 
-// HISTORY, KEPT: what the RUNNING container lil-flash-next was launched with (docker inspect read
-// 2026-11-07: Memory 139586437120, MemorySwap 139586437120, ShmSize 118111600640). It stays the oracle of
-// the as-launched reading until the operator-gated relaunch installs srv1_serving_allowance.
-data srv1_serving_allowance_running: ServingContainerAllowance = ServingContainerAllowance {
+// HISTORY, KEPT: the PRE-RESIZE reading, what lil-flash-next was running with before the 2026-11-07T19:43:49Z
+// relaunch (docker inspect read 2026-11-07T17:39Z: Memory 139586437120, MemorySwap 139586437120, ShmSize
+// 118111600640). It is superseded as the running allowance by srv1_serving_allowance; the pinned
+// srv1_serving_wrapper body is the stale pre-relaunch entrypoint until the startup receipt records the resized sha.
+data srv1_serving_allowance_pre_resize: ServingContainerAllowance = ServingContainerAllowance {
   memory: gibibyte_to_byte_size(g: gibibyte(count: 130)),
   memory_swap_total: gibibyte_to_byte_size(g: gibibyte(count: 130)),
   shm: gibibyte_to_byte_size(g: gibibyte(count: 110)),
