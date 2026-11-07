@@ -162,8 +162,6 @@ import gunbc.host.memory_envelope {
   memory_envelope_required_ci_contract,
 }
 import gunbc.parse_verdict_restore {
-  parse_verdict_identity_restore_step,
-  parse_verdict_identity_restore_step_name,
   parse_verdict_locate_step,
   parse_verdict_locate_step_name,
   parse_verdict_receipts_restore_step,
@@ -174,8 +172,6 @@ import gunbc.parse_verdict_restore {
   parse_verdict_reuse_walk_step_name,
 }
 import gunbc.parse_verdict_publish {
-  parse_verdict_identity_blob_save_step,
-  parse_verdict_identity_blob_save_step_name,
   parse_verdict_publish_walk_step,
   parse_verdict_publish_save_step,
   parse_verdict_publish_step_name,
@@ -606,11 +602,6 @@ fn compiler_gate_parse_verdict_restore_bound_steps() -> List<CompilerGateBoundSt
             role: capability_neutral,
             step_name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
           },
-          CompilerGateBoundStep {
-            step: parse_verdict_identity_restore_step(ordinal: ordinal),
-            role: capability_neutral,
-            step_name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
-          },
         ],
       )
     },
@@ -640,11 +631,6 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
         step: parse_verdict_publish_save_step(),
         role: capability_neutral,
         step_name: parse_verdict_save_step_name(),
-      },
-      CompilerGateBoundStep {
-        step: parse_verdict_identity_blob_save_step(),
-        role: capability_neutral,
-        step_name: parse_verdict_identity_blob_save_step_name(),
       },
       CompilerGateBoundStep {
         step: compiler_gate_emit_build_notice_step(),

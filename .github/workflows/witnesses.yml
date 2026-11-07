@@ -308,174 +308,114 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         if: github.event_name == 'pull_request'
-      - name: Restore parse-verdict receipts for base ancestor 0
+      - name: Restore parse-verdict unit for base ancestor 0
         id: parse_receipts_0
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a0 }}
         if: github.event_name == 'pull_request'
-      - name: Restore parse-compiler identity for base ancestor 0
-        id: parse_identity_0
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a0 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 1
+      - name: Restore parse-verdict unit for base ancestor 1
         id: parse_receipts_1
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a1 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 1
-        id: parse_identity_1
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a1 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_1.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 2
+      - name: Restore parse-verdict unit for base ancestor 2
         id: parse_receipts_2
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a2 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 2
-        id: parse_identity_2
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a2 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_2.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 3
+      - name: Restore parse-verdict unit for base ancestor 3
         id: parse_receipts_3
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a3 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 3
-        id: parse_identity_3
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a3 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_3.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 4
+      - name: Restore parse-verdict unit for base ancestor 4
         id: parse_receipts_4
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a4 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 4
-        id: parse_identity_4
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a4 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_4.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 5
+      - name: Restore parse-verdict unit for base ancestor 5
         id: parse_receipts_5
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a5 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 5
-        id: parse_identity_5
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a5 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_5.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 6
+      - name: Restore parse-verdict unit for base ancestor 6
         id: parse_receipts_6
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a6 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 6
-        id: parse_identity_6
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a6 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_6.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 7
+      - name: Restore parse-verdict unit for base ancestor 7
         id: parse_receipts_7
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a7 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 7
-        id: parse_identity_7
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a7 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_7.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 8
+      - name: Restore parse-verdict unit for base ancestor 8
         id: parse_receipts_8
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a8 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 8
-        id: parse_identity_8
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a8 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_8.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 9
+      - name: Restore parse-verdict unit for base ancestor 9
         id: parse_receipts_9
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a9 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 9
-        id: parse_identity_9
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a9 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_9.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 10
+      - name: Restore parse-verdict unit for base ancestor 10
         id: parse_receipts_10
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a10 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 10
-        id: parse_identity_10
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a10 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_10.outputs['cache-hit'] == 'true'
-      - name: Restore parse-verdict receipts for base ancestor 11
+      - name: Restore parse-verdict unit for base ancestor 11
         id: parse_receipts_11
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ steps.parse_ancestors.outputs.a11 }}
         if: github.event_name == 'pull_request' && steps.parse_receipts_0.outputs['cache-hit'] != 'true' && steps.parse_receipts_1.outputs['cache-hit'] != 'true' && steps.parse_receipts_2.outputs['cache-hit'] != 'true' && steps.parse_receipts_3.outputs['cache-hit'] != 'true' && steps.parse_receipts_4.outputs['cache-hit'] != 'true' && steps.parse_receipts_5.outputs['cache-hit'] != 'true' && steps.parse_receipts_6.outputs['cache-hit'] != 'true' && steps.parse_receipts_7.outputs['cache-hit'] != 'true' && steps.parse_receipts_8.outputs['cache-hit'] != 'true' && steps.parse_receipts_9.outputs['cache-hit'] != 'true' && steps.parse_receipts_10.outputs['cache-hit'] != 'true'
-      - name: Restore parse-compiler identity for base ancestor 11
-        id: parse_identity_11
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ steps.parse_ancestors.outputs.a11 }}
-        if: github.event_name == 'pull_request' && steps.parse_receipts_11.outputs['cache-hit'] == 'true'
       - name: Record the restored parse-verdict ancestor
         run: |
           set -e
@@ -498,14 +438,10 @@ jobs:
       - name: Save parse-verdict receipts to Actions cache
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: gunbc-parse-verdict-receipts.tsv
+          path: |-
+            gunbc-parse-compiler-identity
+            gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      - name: Save parse-compiler identity blob for this sha
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
-        with:
-          path: gunbc-parse-compiler-identity
-          key: gunbc-parse-identity-${{ github.sha }}
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       - name: Why this lane is red, and what would be a real finding
         run: |-
