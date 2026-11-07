@@ -31,6 +31,9 @@ import v2.std.diagnostic {
   Rejected,
   diagnostics_fatal,
   diagnostics_fatal_reason,
+  diagnostics_inhabitance_position,
+  DeclaredTypePosition,
+  PositionDeclaredReturn,
   diagnostics_list_has_reason,
   Suggested
 }
@@ -417,6 +420,18 @@ fn bla_refuses_for(o: Outcome<Bool>, reason: Symbol) -> Bool {
   }
 }
 
+// The two facts a refusal carries are asserted separately: `reason` names the decision that answered no,
+// `position` is the refusal's own typed field read through the one accessor. A refusal of the same shape
+// reported at another position fails this instead of passing it.
+fn bla_refuses_at(o: Outcome<Bool>, reason: Symbol, position: DeclaredTypePosition) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == reason
+        && diagnostics_inhabitance_position(d: d) == Present { value: position }
+  }
+}
+
 test fn bla_optional_at_a_required_let_refuses_as_a_return_and_a_field_do() -> Bool {
   bla_refuses_for(o: bla_let_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
     && bla_refuses_for(o: bla_ret_optional(), reason: ^inhabitance_optional_produced_at_required_declared)
@@ -434,13 +449,13 @@ test fn bla_refinement_of_a_refinement_widens_one_step_at_a_let_a_return_and_a_f
     && bla_admits_decided(o: bla_ret_pos2_pos())
     && bla_admits_decided(o: bla_fld_pos2_pos())
     && bla_refuses_for(o: bla_let_pos2_int(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
-    && bla_refuses_for(o: bla_ret_pos2_int(), reason: ^arrow_body_does_not_inhabit_declared_return)
+    && bla_refuses_at(o: bla_ret_pos2_int(), reason: ^inhabitance_structural_roots_differ, position: PositionDeclaredReturn { argument_ordinal_path: [] })
     && bla_refuses_for(o: bla_fld_pos2_int(), reason: ^record_field_value_does_not_inhabit)
 }
 
 test fn bla_sibling_refinement_refuses_at_a_let_a_return_and_a_field() -> Bool {
   bla_refuses_for(o: bla_let_neg_pos(), reason: ^infer_reason_bound_value_does_not_inhabit_annotation)
-    && bla_refuses_for(o: bla_ret_neg_pos(), reason: ^arrow_body_does_not_inhabit_declared_return)
+    && bla_refuses_at(o: bla_ret_neg_pos(), reason: ^inhabitance_structural_roots_differ, position: PositionDeclaredReturn { argument_ordinal_path: [] })
     && bla_refuses_for(o: bla_fld_neg_pos(), reason: ^record_field_value_does_not_inhabit)
 }
 
