@@ -9,6 +9,7 @@ module product.node_power_envelope
 // atomically. See gunbc.host.memory_change_evaluation.memory_change_consumer_frontiers.
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.power.eighty_plus { EfficiencyRating, Plus80, Bronze, Silver, Gold, Platinum, Titanium }
 import std.nat { Nat, nat_ceil_div, nat_ceil_div_by_succ, nat_saturating_sub }
 import std.measure {
   Bandwidth,
@@ -722,9 +723,9 @@ fn cpu_power(cpu: CpuModelCatalogRow, load: CpuLoad, cap: Watt?) -> CpuPowerRead
 
 // --- the whole node --------------------------------------------------------------------------
 
-type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
-
-// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT. The program certifies
+// 80 PLUS IS AN EXTERNAL PROGRAM AND THIS TABLE IS A SIMPLIFICATION OF IT. Its level vocabulary is
+// extdeps.power.eighty_plus EfficiencyRating (moved there 2026-11-07 so a supply's catalog row and this
+// envelope name one level); only the one-figure-per-level table below is this module's. The program certifies
 // efficiency at FOUR load points (10, 20, 50 and 100 percent) and two input voltages, so one figure
 // per rating is at best the 50-percent-load 115 V column — the figures below arrived as uncited
 // literals with the physics relocated from the deleted product.hardware_selection.

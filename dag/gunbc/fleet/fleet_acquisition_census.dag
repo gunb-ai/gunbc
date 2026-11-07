@@ -120,6 +120,8 @@ data alloc_after_pi: InventoryLotAllocator = mint_inventory_lot_identity(alloc: 
 data cooler_srv3_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_pi).id
 data alloc_after_cooler_srv3: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_pi).alloc
 data cooler_srv4_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_cooler_srv3).id
+data alloc_after_cooler_srv4: InventoryLotAllocator = mint_inventory_lot_identity(alloc: alloc_after_cooler_srv3).alloc
+data psu_srv1_lot_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: alloc_after_cooler_srv4).id
 
 data q80_catalog_ref: DeclarationRef = DeclarationRef {
   module_path: "extdeps.cpu.ampere",
@@ -248,6 +250,22 @@ data cooler_srv4_lot: ProcurementLot = private_received_lot(
   quantity_acquired: 1,
 )
 
+// srv1's power supply (operator, 2026-11-07: an ASRock PG-1600G ordered 2026-10-23, received and
+// installed in srv1). The order and its price are held privately. Which assembled component this lot
+// supplies is gunbc.fleet.fleet_host_assembly's answer (srv_assembly_components).
+data psu_srv1_catalog_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.power.asrock_phantom_gaming",
+  decl_name: "asrock_pg_1600g_catalog",
+  field: WholeDeclaration,
+}
+
+data psu_srv1_lot: ProcurementLot = private_received_lot(
+  identity: psu_srv1_lot_identity,
+  catalog: CatalogRowExact { row: psu_srv1_catalog_ref },
+  display_label: "ASRock PG-1600G power supply for srv1" as NonEmptyStr,
+  quantity_acquired: 1,
+)
+
 data mt_collins_twenty_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: mt_collins_twenty_lot)
 data q80_processor_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: q80_processor_lot)
 data altrad8ud_board_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: altrad8ud_board_lot)
@@ -259,6 +277,7 @@ data pdu_01_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: pdu_01
 data pi_controller_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: pi_controller_lot)
 data cooler_srv3_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: cooler_srv3_lot)
 data cooler_srv4_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: cooler_srv4_lot)
+data psu_srv1_lot_ledger: List<InventoryEvent> = acquired_and_received(lot: psu_srv1_lot)
 
 data fleet_acquisition_ledgers: List<InventoryLotEvidence> = [
   InventoryLotEvidence { lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger },
@@ -275,6 +294,7 @@ data fleet_acquisition_ledgers: List<InventoryLotEvidence> = [
   InventoryLotEvidence { lot: pi_controller_lot, events: pi_controller_lot_ledger },
   InventoryLotEvidence { lot: cooler_srv3_lot, events: cooler_srv3_lot_ledger },
   InventoryLotEvidence { lot: cooler_srv4_lot, events: cooler_srv4_lot_ledger },
+  InventoryLotEvidence { lot: psu_srv1_lot, events: psu_srv1_lot_ledger },
 ]
 
 data dimm_lot_tax: LotTaxEvidence = LotTaxEvidence {
@@ -380,6 +400,7 @@ data fleet_lot_tax_evidence: List<LotTaxEvidence> = [
   unrecorded_tax(lot: pi_controller_lot_identity),
   unrecorded_tax(lot: cooler_srv3_lot_identity),
   unrecorded_tax(lot: cooler_srv4_lot_identity),
+  unrecorded_tax(lot: psu_srv1_lot_identity),
 ]
 
 fn fleet_ledger_identities() -> List<InventoryLotIdentity> {
@@ -407,6 +428,7 @@ data fleet_unread_tax_lots: List<InventoryLotIdentity> = [
   pi_controller_lot_identity,
   cooler_srv3_lot_identity,
   cooler_srv4_lot_identity,
+  psu_srv1_lot_identity,
 ]
 
 fn fleet_tax_join_covers_every_ledger() -> Bool {

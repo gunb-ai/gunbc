@@ -11,6 +11,10 @@ import product.placement_supply {
   physical_asset_identity_eq,
 }
 import gunbc.fleet.fleet_host_assembly {
+  srv_removed_assembly_components,
+  removals_are_reflected,
+  psu_srv1,
+  psu_srv1_b,
   chassis_srv1,
   chassis_srv2,
   srv_assembly_components,
@@ -25,7 +29,7 @@ import gunbc.fleet.fleet_host_assembly {
   assembly_covers_component_roster,
   assembly_containments_join,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -134,4 +138,16 @@ test fn w_missing_installed_cooler_edge_refuses() -> Bool {
   })
   assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
     && !assembly_containments_join(rows: srv_assembly_components, containments: missing)
+}
+
+// srv1's PREVIOUS SUPPLY LEFT THE HOST AND ITS SUCCESSOR IS THE ONE ASSEMBLED AND CONTAINED: one answer to
+// "which PSU supplies srv1". Restoring the old unit's containment beside the new one refuses.
+test fn w_srv1_supply_replacement_has_one_current_answer() -> Bool {
+  removals_are_reflected(removed: srv_removed_assembly_components, rows: srv_assembly_components, containments: srv_assembly_containments)
+    && !removals_are_reflected(
+      removed: srv_removed_assembly_components,
+      rows: srv_assembly_components,
+      containments: concat(srv_assembly_containments, [HostContainsComponent { host: operator_host_srv1, component: psu_srv1 }]),
+    )
+    && srv_removed_assembly_components.any(r => physical_asset_identity_eq(a: r.component, b: psu_srv1) && physical_asset_identity_eq(a: r.replaced_by, b: psu_srv1_b))
 }
