@@ -7,6 +7,7 @@ use self::BuiltinResultArguments::*;
 use self::BuiltinResultAtCall::*;
 use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
+use self::DeclarationDemand::*;
 use self::DeclaredTypePosition::*;
 use self::DescentSizeExpr::*;
 use self::EqualityDerivedTarget::*;
@@ -28987,34 +28988,286 @@ pub fn infer_item(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DeclarationDemand {
+    AllDeclarations,
+    OnlyDeclarations { names: Rc<HashMap<String, bool>> },
+}
+impl DeclarationDemand {
+    pub fn names(&self) -> Rc<HashMap<String, bool>> {
+        match self {
+            DeclarationDemand::AllDeclarations => panic!("no names on unit variant"),
+            DeclarationDemand::OnlyDeclarations { names: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn declaration_demanded(
+    demand: Rc<DeclarationDemand>,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*demand.clone()).clone() {
+        DeclarationDemand::AllDeclarations => true,
+        DeclarationDemand::OnlyDeclarations { names: names, .. } => {
+            if ((item.body.clone() != std::option::Option::None)
+                && ((item.params.clone().len() as i64) > 0))
+            {
+                v1_rt::map_has(
+                    &names,
+                    crate::v1_std_core::authored_name_at(source_indices, item.clone()),
+                )
+            } else {
+                true
+            }
+        }
+    }
+}
+
+pub fn spelled_names_into(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    acc: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, bool>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = v1_rt::rc_map_insert(
+            v1_rt::rc_map_insert(
+                acc.clone(),
+                crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone()),
+                true,
+            ),
+            n.name.clone(),
+            true,
+        );
+        let own = n.children.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.params.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.properties.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = n.uses.clone().iter().cloned().fold(
+            own.clone(),
+            |a: Rc<HashMap<String, bool>>, c: Rc<Node>| {
+                spelled_names_into(c.clone(), source_indices.clone(), a)
+            },
+        );
+        let own = match n.body.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        };
+        let own = match n.type_annotation.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        };
+        match n.transport.clone() {
+            Some(b) => spelled_names_into(b.clone(), source_indices.clone(), own.clone()),
+            std::option::Option::None => own.clone(),
+        }
+    })
+}
+
+pub fn demanded_declaration_names(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    seeds: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        let items = Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.extend(
+                    (*crate::v1_std_core::module_items(m.module.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let seeded = seeds.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        demand_closure_loop(
+            items,
+            seeded,
+            v1_rt::rc_empty_map::<String, bool>(),
+            source_indices,
+        )
+    }
+}
+
+pub fn demand_closure_loop(
+    mut __tco_loop_items: Rc<Vec<Rc<Node>>>,
+    mut __tco_loop_demanded: Rc<HashMap<String, bool>>,
+    mut __tco_loop_scanned: Rc<HashMap<String, bool>>,
+    mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut items = __tco_loop_items;
+            #[allow(unused_mut)]
+            let mut demanded = __tco_loop_demanded;
+            #[allow(unused_mut)]
+            let mut scanned = __tco_loop_scanned;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let step = items.iter().cloned().fold(
+                Rc::new(DemandStep {
+                    demanded: demanded.clone(),
+                    scanned: scanned.clone(),
+                    grew: false,
+                }),
+                |st: Rc<DemandStep>, item: Rc<Node>| {
+                    let item_name =
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+                    let is_fn = ((item.body.clone() != std::option::Option::None)
+                        && ((item.params.clone().len() as i64) > 0));
+                    let identity = v1_rt::concat(
+                        v1_rt::concat(item.span.file.clone(), ":".to_string()),
+                        (item.span.start.clone()).to_string(),
+                    );
+                    let wanted =
+                        (!is_fn.clone() || v1_rt::map_has(&st.demanded.clone(), item_name.clone()));
+                    if (wanted.clone() && !v1_rt::map_has(&st.scanned.clone(), identity.clone())) {
+                        {
+                            let spelled = spelled_names_into(
+                                item.clone(),
+                                source_indices.clone(),
+                                st.demanded.clone(),
+                            );
+                            Rc::new(DemandStep {
+                                demanded: spelled.clone(),
+                                scanned: v1_rt::rc_map_insert(
+                                    st.scanned.clone(),
+                                    identity.clone(),
+                                    true,
+                                ),
+                                grew: true,
+                            })
+                        }
+                    } else {
+                        st.clone()
+                    }
+                },
+            );
+            if step.grew.clone() {
+                {
+                    let __tco_0 = items;
+                    let __tco_1 = step.demanded.clone();
+                    let __tco_2 = step.scanned.clone();
+                    let __tco_3 = source_indices;
+                    __tco_loop_items = __tco_0;
+                    __tco_loop_demanded = __tco_1;
+                    __tco_loop_scanned = __tco_2;
+                    __tco_loop_source_indices = __tco_3;
+                    continue;
+                }
+            } else {
+                break step.demanded.clone();
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DemandStep {
+    pub demanded: Rc<HashMap<String, bool>>,
+    pub scanned: Rc<HashMap<String, bool>>,
+    pub grew: bool,
+}
+
 pub fn infer_items(
     items: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<TypedItemResult>>> {
+    infer_items_demanded(items, scope, Rc::new(DeclarationDemand::AllDeclarations))
+}
+
+pub fn infer_items_demanded(
+    items: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    demand: Rc<DeclarationDemand>,
 ) -> Rc<Vec<Rc<TypedItemResult>>> {
     {
         let data_values = crate::v1_compiler_infer_service::service_data_values(items.clone());
         Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
-                __result.push({
-                    let r = infer_item(item.clone(), scope.clone(), data_values.clone());
-                    Rc::new(TypedItemResult {
-                        item: r.item.clone(),
-                        emissions: infer_emissions_concat(
-                            r.emissions.clone(),
-                            infer_emissions_concat(
-                                infer_emissions_of_diagnostics(equality_item_collection_key_rows(
-                                    item.clone(),
-                                    scope.clone(),
-                                )),
-                                infer_emissions_of_diagnostics(equality_item_body_key_rows(
-                                    r.item.clone(),
-                                    scope.clone(),
-                                )),
-                            ),
-                        ),
-                    })
-                });
+                __result.push(
+                    if !declaration_demanded(
+                        demand.clone(),
+                        item.clone(),
+                        scope.type_env.source_indices.clone(),
+                    ) {
+                        Rc::new(TypedItemResult {
+                            item: Rc::new(Node {
+                                ident: std::option::Option::None,
+                                occurrence_identity: item.occurrence_identity.clone(),
+                                name: item.name.clone(),
+                                span: item.span.clone(),
+                                ident_span: item.ident_span.clone(),
+                                children: item.children.clone(),
+                                params: item.params.clone(),
+                                inferred: item.inferred.clone(),
+                                return_cardinality: item.return_cardinality.clone(),
+                                uses: item.uses.clone(),
+                                body: std::option::Option::None,
+                                connective: item.connective.clone(),
+                                transport: item.transport.clone(),
+                                properties: item.properties.clone(),
+                                type_annotation: item.type_annotation.clone(),
+                                is_self_recursive: false,
+                                has_non_tail_self_call: false,
+                                match_pattern: item.match_pattern.clone(),
+                                module_item_kind: item.module_item_kind.clone(),
+                                declaration_marker: item.declaration_marker.clone(),
+                                declaration: item.declaration.clone(),
+                                expr_data: Rc::new(ExprData::NoExprData),
+                            }),
+                            emissions: infer_emissions_concat_all(Rc::new(vec![])),
+                        })
+                    } else {
+                        {
+                            let r = infer_item(item.clone(), scope.clone(), data_values.clone());
+                            Rc::new(TypedItemResult {
+                                item: r.item.clone(),
+                                emissions: infer_emissions_concat(
+                                    r.emissions.clone(),
+                                    infer_emissions_concat(
+                                        infer_emissions_of_diagnostics(
+                                            equality_item_collection_key_rows(
+                                                item.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ),
+                                        infer_emissions_of_diagnostics(
+                                            equality_item_body_key_rows(
+                                                r.item.clone(),
+                                                scope.clone(),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            })
+                        }
+                    },
+                );
             }
             __result
         })
@@ -38297,6 +38550,30 @@ pub fn typecheck_module(
     global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
     equality_by_target: Rc<HashMap<String, bool>>,
 ) -> Rc<TypecheckModuleResult> {
+    typecheck_module_demanded(
+        resolved,
+        parent_index,
+        variant_surfaces,
+        source_indices,
+        intern_table,
+        symbol_index,
+        global_variant_base,
+        equality_by_target,
+        Rc::new(DeclarationDemand::AllDeclarations),
+    )
+}
+
+pub fn typecheck_module_demanded(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    symbol_index: Rc<SymbolIndex>,
+    global_variant_base: Rc<HashMap<String, Rc<TypeBinding>>>,
+    equality_by_target: Rc<HashMap<String, bool>>,
+    demand: Rc<DeclarationDemand>,
+) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
             resolved.clone(),
@@ -38426,7 +38703,8 @@ pub fn typecheck_module(
             in_flight_lambda_param_names: Rc::new(vec![]),
             enclosing_declared_type_param_names: Rc::new(vec![]),
         });
-        let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope);
+        let typed_item_results =
+            infer_items_demanded(ctx.resolved_items.clone(), infer_scope, demand);
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.iter().cloned() {

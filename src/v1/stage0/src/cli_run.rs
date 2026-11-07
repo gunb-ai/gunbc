@@ -860,6 +860,9 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
+mod demanded_typecheck_equivalence;
+
+#[cfg(test)]
 /// The erasing projection `func_sig_if_resolved` was deleted from production in the
 /// callable-candidate cut: mapping `FuncSigAmbiguous` onto the same `None` that means "no such
 /// signature" is what kept the ambiguity arm unreachable for its consumers. These tests are the
