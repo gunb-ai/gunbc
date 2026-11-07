@@ -1,7 +1,7 @@
 module gunbc.runner.runner_user_session_receipt
 
-import std.types { String, Bool, Int, List, Timestamp, list_length }
-import std.algebra { trim }
+import std.types { String, Bool, Int, List, Timestamp }
+import std.algebra { trim, length }
 import std.list { first_where }
 import std.measure { Second, second, second_count }
 import std.optional { Optional, Present, Absent }
@@ -175,7 +175,7 @@ type RunnerUserSessionRunScan
 
 fn runner_user_session_run_scan_step(scanned: List<WorkflowRun>, page_runs: List<WorkflowRun>, host: String, page: Int, max_pages: Int, page_size: Int) -> RunnerUserSessionRunScan {
   let all = concat(scanned, page_runs)
-  if list_length(items: page_runs) < page_size {
+  if length(xs: page_runs) < page_size {
     match runner_user_session_producer_run_select(runs: all, host: host) {
       ProducerRunSelected { run: r, created_at: c } => RunScanSelected { run: r, created_at: c }
       ProducerRunNone { cause: c } => RunScanNone { cause: c }

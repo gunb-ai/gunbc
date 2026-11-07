@@ -1,7 +1,7 @@
 module gunbc.runner.runner_slot_retirement
 
-import std.types { Bool, List, String, NonEmptyStr, list_length }
-import std.algebra { trim, list_head }
+import std.types { Bool, List, String, NonEmptyStr }
+import std.algebra { trim, list_head, length }
 import gunbc.host.host_axis_caps { SurplusSlotObservation, SurplusSlotsObserved, SurplusSlotsUnobserved }
 import gunbc.runner.runner_slot_population_census { unit_is_owned_by_host, desired_unit_names_range }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv4 }
@@ -467,7 +467,7 @@ fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
   match host_width_interruption_authorization(host: host) {
     WidthDecisionUnnamed => fabric_purpose_interruption_reason
     WidthDecisionNamed { authorization: a } =>
-      if list_length(items: host_fabric_interruption_scope(host: host)) == 0 {
+      if length(xs: host_fabric_interruption_scope(host: host)) == 0 {
         a.operator_reason
       } else {
         join([a.operator_reason as String, " | ", fabric_purpose_interruption_reason as String], "") as NonEmptyStr
@@ -477,7 +477,7 @@ fn host_interruption_reason(host: HostIdentity) -> NonEmptyStr {
 
 fn interruption_authorization_for_host(host: HostIdentity) -> HostInterruptionAuthorizationStanding {
   let scope = concat(host_width_interruption_scope(host: host), host_fabric_interruption_scope(host: host))
-  if list_length(items: scope) == 0 {
+  if length(xs: scope) == 0 {
     HostInterruptionAuthorizationAbsent {
       host: host,
       cause: join([host as String, " has no operator interruption authorization for this width transition, so surplus slots may be neither masked nor deleted"], ""),
@@ -617,7 +617,7 @@ fn transition_interruption_coverage(
 ) -> TransitionInterruptionCoverage {
   let permitted = required |> filter(u => interruption_authorization_covers(auth: auth, unit: u as String))
   let unpermitted = required |> filter(u => !interruption_authorization_covers(auth: auth, unit: u as String))
-  if list_length(items: unpermitted) == 0 {
+  if length(xs: unpermitted) == 0 {
     TransitionFullyPermitted { units: permitted }
   } else {
     TransitionRetireesNotPermitted { permitted: permitted, unpermitted: unpermitted }
@@ -1022,7 +1022,7 @@ fn slot_removal_realization(
         }
       } else {
         let mine = standing_for_unit(standings: ss, unit: unit)
-        if list_length(items: mine) == 0 {
+        if length(xs: mine) == 0 {
           RemovalActuationRequired { unit: unit }
         } else if any(mine, s => retirement_is_unobserved(s: s)) {
           RemovalRetirementPending {
@@ -1305,7 +1305,7 @@ fn cgroup_occupancy_from_batched_events(control_group: String, batch: CgroupEven
       CgroupEventsBatchRead { stdout: out, stderr: err } => {
         let prefix = concat(retirement_cgroup_events_path(control_group: control_group) as String, ":")
         let own = map(filter(split(s: out, delimiter: "\n"), l => starts_with(s: l, prefix: prefix)), l => substring(s: l, start: string_length(s: prefix), end: string_length(s: l)))
-        if list_length(items: own) == 0 {
+        if length(xs: own) == 0 {
           CgroupUnobserved { cause: join(["the batched read returned no line for ", prefix, " ", trim(s: err)], "") }
         } else {
           match decode_cgroup_events_populated(body: join(own, "\n")) {
@@ -1356,13 +1356,13 @@ type CgroupEventsReadRoot
 
 fn retirement_cgroup_events_read_root(control_groups: List<String>) -> CgroupEventsReadRoot {
   let live = filter(control_groups, cg => !control_group_property_means_cgroup_absent(value: cg))
-  let roots = fold(live, init: [], f: (acc, cg) => {
+  let roots: List<String> = fold(live, init: [], f: (acc, cg) => {
     let r = retirement_cgroup_unescaped_root(control_group: cg)
     if any(acc, a => a == r) { acc } else { concat(acc, [r]) }
   })
-  if list_length(items: roots) == 0 {
+  if length(xs: roots) == 0 {
     CgroupEventsReadRootNone
-  } else if list_length(items: roots) > 1 {
+  } else if length(xs: roots) > 1 {
     CgroupEventsReadRootAmbiguous { roots: roots }
   } else {
     fold(roots, init: CgroupEventsReadRootNone, f: (acc, r) => CgroupEventsReadRootOne { root: r as NonEmptyStr })

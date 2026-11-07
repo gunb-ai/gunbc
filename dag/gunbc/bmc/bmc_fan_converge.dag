@@ -150,6 +150,7 @@ import product.cooling_qualification {
   CoolingCatalogVerdict,
   CoolingCatalogCompatible,
   CoolingCatalogRefused,
+  CoolingDesignPowerUnestablished,
   InstalledCoolingUnobserved,
   InstalledCoolingAmbiguous,
   cooling_catalog_refusal_reason,
@@ -567,17 +568,20 @@ fn bmc_fan_observation_value(lines: List<String>, key: String) -> String? {
   if lines.length() == 0 {
     none
   } else {
-    let line = lines.first()
-    if starts_with(s: line, prefix: prefix) {
-      Present {
-        value: substring(
-          s: line,
-          start: prefix.length(),
-          end: line.length(),
-        ),
-      }
-    } else {
-      bmc_fan_observation_value(lines: lines.skip(n: 1), key: key)
+    match lines.first() {
+      Absent => none
+      Present { value: line } =>
+        if starts_with(s: line, prefix: prefix) {
+          Present {
+            value: substring(
+              s: line,
+              start: prefix.length(),
+              end: line.length(),
+            ),
+          }
+        } else {
+          bmc_fan_observation_value(lines: lines.skip(n: 1), key: key)
+        }
     }
   }
 }
@@ -1783,7 +1787,7 @@ fn bmc_fan_run(
           )
         BmcFanConvergeRequested =>
           match bmc_fan_installed_cooling_verdict(target: target) {
-            CoolingCatalogCompatible { host: _, cooler_asset: _ } =>
+            CoolingCatalogCompatible { host: _, cooler_asset: _, design_power_authority: _ } =>
               bmc_fan_converge_with_credential(
                 target: target,
                 credential: credential,
@@ -1792,6 +1796,12 @@ fn bmc_fan_run(
               exit_failure(
                 reason: bmc_fan_cooling_refusal_reason(
                   verdict: CoolingCatalogRefused { host: host, cause: cause },
+                ),
+              )
+            CoolingDesignPowerUnestablished { host: host, standing: standing } =>
+              exit_failure(
+                reason: bmc_fan_cooling_refusal_reason(
+                  verdict: CoolingDesignPowerUnestablished { host: host, standing: standing },
                 ),
               )
             InstalledCoolingUnobserved { host: host } =>

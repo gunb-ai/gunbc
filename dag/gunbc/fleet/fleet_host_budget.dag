@@ -45,16 +45,8 @@ import gunbc.ci.ci_floor_measurement {
   CapEffective,
   CapUnbounded,
 }
-import gunbc.host.host_memory_observation {
-  oomd_actuation_floor,
-  gunbc_fleet_oomd_floor_basis,
-  HostUsableRam,
-  HostUsableRamMeasured,
-  HostUsableRamConservativeLowerBound,
-  HostUsableRamUnmeasured,
-  gunbc_ci_host_usable_ram_for,
-  host_usable_ram_ceiling_bytes,
-}
+import gunbc.host.host_memory_observation { oomd_actuation_floor, gunbc_fleet_oomd_floor_basis, gunbc_ci_host_usable_ram_for, host_usable_ram_ceiling_bytes }
+import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.session_admission_policy {
   gunbc_session_admission_policy, session_admission_oomd_ceiling,

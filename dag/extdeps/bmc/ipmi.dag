@@ -42,7 +42,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // THE WRITE HALF OF THE IPMI CHASSIS INTERFACE was added 2026-09-05 beside the three readonly
 // operations this service already carried (IPMI v2.0 rev1.1 §28, Chassis Device Commands: Set
-// System Boot Options and Chassis Control). ChassisBootDev and ChassisPowerControl are not
+// System Boot Options and Chassis Control). ChassisBootDevWithOptions and ChassisPowerControl are not
 // `readonly`; the rest are. They exist because a converge arm that drives a host with NO
 // OPERATING SYSTEM has no other way in — every other transport in this repository reaches a machine
 // THROUGH the thing being installed.
@@ -77,7 +77,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // carrying a baked "pxe" here would be the policy leak that section names, and would need a second
 // near-identical operation the first time anything wanted `cdrom`.
 //
-// ChassisBootParamGet IS WHAT MAKES ChassisBootDev OBSERVABLE. A set command's own exit status says
+// ChassisBootParamGet IS WHAT MAKES A BOOT-FLAG WRITE OBSERVABLE. A set command's own exit status says
 // the controller ACCEPTED the request; boot parameter 5 says what it now holds, and only the second
 // distinguishes a controller that applied the override from one that ignored it. Measured on the
 // Mt. Collins unit 2026-09-05: before "No override", after "Force PXE", "Options apply to only next
@@ -329,10 +329,19 @@ service diagnostic.ipmi.Tool {
   // when a thermal round leaves undecoded rows, so the bytes answer exactly the question the refusal
   // printed. Dry lane: NO realization from invented bytes - the reply exists only once a capture is
   // committed (bmc_dry_realization carries the refusal reason).
+  // M2a binds the transport's own exit status and stderr, the way ChassisStatus does: the standalone
+  // observe mode commits these bytes as the admission rule's ground, and a receipt that carried only our
+  // PARSE of the records would let the rule be grounded on bytes nobody received. stdout stays as it was
+  // so #15562's conditional reader is unaffected.
   operation SdrElistVerbose {
     requires Network
     input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
     readonly
     transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sdr", "elist", "-v"] }
     exit {
@@ -436,14 +445,23 @@ service diagnostic.ipmi.Tool {
     }
   }
 
-  operation ChassisBootDev {
+  // SET SYSTEM BOOT OPTIONS, PARAMETER 5, THE VALID BIT CLEAR. The wire constants -- netfn 0x00 (Chassis),
+  // command 0x08 (Set System Boot Options), parameter selector 0x05, parameter revision 0x01 -- sit in the
+  // argv the way MasterWriteReadAuthenticated's do; the five boot-flag data bytes are the input, and the only
+  // spelling this repository dispatches is extdeps.bmc.ipmi_boot_selection ipmi_boot_flag_data_1_clear, whose
+  // its own fold checks decodes to bit 7 clear, and the dry world refuses any other bytes. It REPLACES `chassis bootdev none`, which cleared the
+  // selector and left the valid bit set (boot run 41573858366 read 'Boot parameter data: 8000000000' beside
+  // 'Boot Device Selector : No override' -- extdeps.bmc.ipmitool_observed_output
+  // ipmitool_bootparam5_valid_after_bootdev_none). A raw Set echoes no bytes back, so stdout is carried for the log
+  // and believed for nothing: the verdict of a clear is the parameter-5 readback.
+  operation ChassisBootOptionsClear {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, cipher_suite_argv: List<String> }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, boot_flag_data_1: String, boot_flag_data_2: String, boot_flag_data_3: String, boot_flag_data_4: String, boot_flag_data_5: String, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "raw", "0x00", "0x08", "0x05", "0x01", "{boot_flag_data_1}", "{boot_flag_data_2}", "{boot_flag_data_3}", "{boot_flag_data_4}", "{boot_flag_data_5}"] }
     exit {
       0 => Unit
-      nonzero => String "ipmitool chassis bootdev failed"
+      nonzero => String "ipmitool raw set system boot options failed"
     }
   }
 

@@ -14,15 +14,11 @@ import extdeps.external_authority { cited_figure_read_obligation }
 import extdeps.systems.asrock_rack_mecai_gh200 { asrock_rack_mecai_gh200 }
 import extdeps.systems.types { SuperchipServerCatalogRow, SuperchipCarrierBoardRow, BoardPowerInput }
 import extdeps.boards.asrock_rack_arlington_mb { asrock_rack_arlington_mb }
-import product.p4261_carrier_layout {
-  CarrierLayoutObservation,
-  p4261_k1_layout,
-  p4261_e1_layout,
-  carrier_input_reading,
-  carrier_label_text,
-  management_io_text,
-  edge_connector_text,
-}
+import product.p4261.carrier { CarrierLayoutObservation }
+import product.p4261.k1_a { p4261_k1_layout }
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.report { carrier_input_reading, carrier_label_text, management_io_text, edge_connector_text, population_comparison_text }
+import product.p4261.comparison { p4261_comparison }
 
 // GH200-1 (2026-10-03). WHAT IT TAKES TO QUALIFY ONE MODULE-ON-CARRIER ASSEMBLY. The operator bought
 // two PG530 modules and one P4261 carrier and will qualify that pair before duplicating it -- and
@@ -174,7 +170,7 @@ data gh200_dv5_second_unit: SuperchipUnitObservation = SuperchipUnitObservation 
 }
 
 // The carrier's labels, PCB code and "Rework" silkscreen are typed readings on its layout
-// (product.p4261_carrier_layout p4261_k1_layout markings), and carrier_label reads the received unit's
+// (product.p4261.k1_a p4261_k1_layout markings), and carrier_label reads the received unit's
 // label from there, so this row restates none of them. The module face is the two connectors
 // silkscreened J3 and J4, one toward each short edge, each flanked by mounting holes.
 data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
@@ -192,7 +188,7 @@ data p4261_k1_carrier: CarrierUnitObservation = CarrierUnitObservation {
 
 
 
-// The E1 carrier, the board the bench readings were taken on (product.p4261_carrier_layout
+// The E1 carrier, the board the bench readings were taken on (product.p4261.e1_b
 // p4261_e1_layout carries its label, PCB code and every reading). Its module receptacles were not
 // photographed face-on, so its face is unobserved: the K1's J3/J4 photographs are another board's.
 data p4261_e1_carrier: CarrierUnitObservation = CarrierUnitObservation {
@@ -665,6 +661,7 @@ fn power_path_obligation(a: SuperchipAssembly) -> String {
     ": rail voltages, connector pinout and orientation, standby rail, enable and power-good signals and sequencing, then AC supply, PSU, any distribution or conversion board and the exact harness, sized for this module's startup and default power behavior (not documented for this qualification sample) and the intended operating point within the cited ",
     to_string(watt_count(w: a.row.module_power_floor)), "-", to_string(watt_count(w: a.row.module_power_ceiling)),
     " W configurable range plus carrier, fan and storage load. What the photographs bound: ", carrier_input_reading(layout: a.carrier.layout),
+    ". What the two P4261 revisions held read ", population_comparison_text(c: p4261_comparison()),
     ". What the module suggests: ", module_rail_lead(unit: a.unit),
     ". ", reference_supply_pattern(server: asrock_rack_mecai_gh200),
     ". No P4261 power-input pinout or power-on sequence has been established: obtain the original system's PSU, distribution board and harness part numbers with connection photographs, connect nothing because its housing fits, and transfer no controller, pin function, signal level or timing from another NVIDIA platform",

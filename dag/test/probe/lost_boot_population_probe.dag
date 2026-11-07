@@ -1,5 +1,6 @@
 module test.probe.lost_boot_population_probe
 
+import gunbc.host.host_boot_id { HostBootId }
 // THIS MODULE MUST NOT RESOLVE. Each function below is a route by which a caller outside the
 // lost-boot sweep modules would otherwise (a) call the sweep's internals directly, (b) fabricate
 // the sealed current population -- a derived-EMPTY one in particular, which would read every
@@ -19,8 +20,7 @@ import gunbc.host.host_control_route { ControlledHost, HostControlStanding }
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution }
 import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolution }
 import gunbc.runner.runner_host_unit_slot {
-  CurrentServicePopulation, CurrentServicePopulationStanding, ServiceBootId, 
-  current_service_population_over,
+  CurrentServicePopulation, CurrentServicePopulationStanding, current_service_population_over,
 }
 import gunbc.host.managed_host { ManagedHost }
 import test.claim.runner.runner_jit_listed_registration_witness { population_over_host, population_over, derived, reg, reg5, sweep }
@@ -39,12 +39,12 @@ fn outside_sweep_over(organization: GitHubOrganizationRef, population: CurrentSe
 
 // (a2) THE SUPPLIED-WIDTH-AND-LABELS CONSTRUCTOR, CALLED FROM OUTSIDE: the only route to a population
 // over a width the offer did not derive.
-fn outside_supplied_population(host: HostControlStanding, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, boot: ServiceBootId) -> CurrentServicePopulationStanding {
+fn outside_supplied_population(host: HostControlStanding, width: RunnerWidthResolution, labels: RunnerRegistrationLabelsResolution, boot: HostBootId) -> CurrentServicePopulationStanding {
   current_service_population_over(host: host, width: width, registration_labels: labels, boot: boot)
 }
 
 // (b) A FABRICATED DERIVED-EMPTY POPULATION. Refuses at CurrentServicePopulation.
-fn fabricated_empty_population(host: ControlledHost, boot: ServiceBootId) -> CurrentServicePopulation {
+fn fabricated_empty_population(host: ControlledHost, boot: HostBootId) -> CurrentServicePopulation {
   CurrentServicePopulation { host: host, boot: boot, units: [] }
 }
 

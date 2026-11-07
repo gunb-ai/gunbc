@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_cell_converge
 
-import std.types { String, List, Bool, Int, NonEmptyStr, list_length }
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.algebra { length }
 import std.nat { Nat }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import std.optional { Optional, Present, Absent }
@@ -1202,7 +1203,7 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
       StandingExplicitlyAbsent { ref: _ } => acc
       StandingSatisfied { ref: _ } => acc
     })
-  if list_length(items: blocked) > 0 {
+  if length(xs: blocked) > 0 {
     FabricCellSubstrateObservationRefused { cell: cell, blocked: blocked }
   } else {
     let unmet = fold(standings, init: [], f: (acc, st) =>
@@ -1213,7 +1214,7 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
         StandingBlocked { disposition: d } => concat(acc, [d])
         StandingSatisfied { ref: _ } => acc
       })
-    if list_length(items: unmet) > 0 {
+    if length(xs: unmet) > 0 {
       FabricCellSubstrateUnprovisioned { cell: cell, missing_or_drifted: unmet }
     } else {
       FabricCellSubstrateProvisioned { cell: cell }

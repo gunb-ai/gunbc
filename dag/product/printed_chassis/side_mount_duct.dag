@@ -1,0 +1,266 @@
+module product.printed_chassis.side_mount_duct
+
+import std.types { Int, List, String }
+import std.measure { Micrometer, micrometer }
+import std.euclidean_geometry { Axis3X, Axis3Z }
+import product.printed_chassis.assembly_geometry {
+  AssemblyPart, MechanicalInterface, Primitive, Printed, Purchased, FixedFrame, LayOnXY, LayOnYZ, PrintPlane, print_plane_pose, Proposed,
+  M5FanScrewIntoBlowerLug, part, round, mechanical_interface, tapping_into, prism, rounded_rectangle, ProfileVertex,
+}
+import product.printed_chassis.blower_outlet_mount {
+  OutletMount, EdgeAlongX, run_for_label, housing_half, outlet_socket_adds, outlet_socket_cuts, lug_arm_adds, lug_arm_cuts,
+  opening_edge_lo, opening_edge_hi, lug_arm_protrusion, outlet_mount_note, lug_screw_part, housing_boxes,
+}
+import product.printed_chassis.printable_assembly { CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire }
+import product.printed_chassis.gpu_duct {
+  EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, CardEnvelope, PlugAndFlange,
+  um, card_interface, card_reference_parts, card_screw_holes, card_joints, connector_keepout_length,
+  insert_xs, insert_y, blower_cavity_edge, blower_reach_behind, plane_on_end_slab, face_json,
+}
+import extdeps.languages.json.emit { JsonKeyValue, json_kv, json_string, json_int }
+
+// ═══ THE SIDE-MOUNTED BLOWER DUCT ═══
+//
+// The operator's pose (2026-11-02, from a reference photograph of a blower shroud on a passive card): the
+// intact Delta BFB1012M lies with its broad face against ONE side face of the card, near the plug end, its
+// intake facing outward, and only a short chamber behind the end turns its air into the fin window. It spends
+// the space BESIDE the card -- the fan's thickness and a socket's walls -- and little behind it, the opposite
+// trade from the flat-on-end home. card_cooling_route BesideTheRow is not this pose: that home spans the
+// fan's 94.4 mm face across a lane; this one spends mainly the 33 mm thickness outward.
+//
+// SHAPE. One printed DUCT (operator, 2026-11-02: one piece, and curved like the reference shroud):
+//   socket   beside the card, above the end plane: the housing's outlet edge (the 94.4 mm DEPTH edge, cited:
+//            extdeps.fans.delta delta_bfb1012m_outlet) sits in it, and its body runs along the card's side;
+//   chamber  behind the end: the outlet blows into it, it turns, and it rises through the plug lip into the
+//            window. Over the card it stays below the 8-pin band, as every duct here does. Its back wall is
+//            part of the duct.
+// ONE PIECE, AND WHY IT PRINTS. The chamber is closed, and the recipe's supports are bed-only
+// (product.printing.process_geometry prototype_support_policy), so nothing can be supported inside it. The duct
+// therefore prints standing on its end (side_mount_duct_print_plane, LayOnYZ: the axis along the end face is
+// vertical). The turn's outline then lies in the bed plane and every chamber wall rises straight; the only
+// ceilings left are each cavity's top end, and stepped_cavity climbs those at 45 degrees in 2 mm steps. Laid
+// flat instead, the strips of ceiling between the outlet passage and the window bore would hang the length of
+// the face with nothing under them -- which is why the earlier version split off a lid.
+// THE TURN IS CURVED on the front side: the chamber's U -- down out of the socket, across behind the end, up
+// into the window -- is a profile prism (product.printed_chassis.assembly_geometry ProfilePrism) whose outer
+// and inner corners at the back wall are quarter circles, so the air turns on a radius instead of into a
+// corner. On the front side the chamber over the card runs the socket's full length: the 8-pin header and its
+// keep-out sit on the other face, so nothing stops it, and the window's top end is fed from the chamber
+// rather than open behind the flange. The back side carries the 8-pin cable crossing below and stops short of
+// the keep-out, and its turn is square-cornered: its chamber is three regions at two heights (the window
+// column, the lowered crossing over the cable channel and the socket), which one rounded outline does not
+// describe. It is one piece and printable as it stands; what it lacks is the rounded turn's lower loss.
+// TRIGGER for giving it one: the operator asks to print the back-face duct, which no fit has yet -- the
+// front face is the one printed (2026-11-02).
+//
+// THE SOCKET TAKES THE OUTLET, AND ONE SCREW HOLDS THE BLOWER (operator, 2026-11-04: the socket "is very big",
+// and "there is no screw mount"). The socket was the whole 94.4 mm edge while the outlet's place on it was
+// unread; it is now the outlet frame alone, with the lug arm on the label face
+// (product.printed_chassis.blower_outlet_mount). The label face is the one toward the card -- the intake is on the
+// other face only -- so the outlet's corner follows from the blower's handedness: one end of the edge on the
+// front side, the other on the back. The housing rests on ledges around the opening.
+//
+// THE CARD GAP holds the arm and the screw head between the blower and the card: 4.5 mm, which is the arm's
+// standing beyond the socket wall plus the head (blower_outlet_mount lug_arm_protrusion, 3.09 mm) and about
+// 1.4 mm clear of the card face.
+//
+// THE 8-PIN CABLE. The plugged head reaches about 6 mm behind the end and the cable turns inboard, parallel to
+// the end face (product.printed_chassis.chassis_clearances cable_bend_keepout). On the FRONT side nothing
+// printed crosses that region except the card flange every duct here carries. On the BACK side the chamber
+// must cross it to reach the socket, so the crossing is lowered: a channel `side_mount_cable_channel` deep is
+// left between the flange and the crossing's roof for the cable to run in, and the card screws are reached
+// through two access holes running from the back wall through that roof. On the front side the screws sit
+// beside the chamber, outside it, and are driven from behind the flange.
+//
+// The housing is modelled by its bounding rectangle (extdeps.fans.types RadialBlowerEnvelope): the real
+// housing is a rounded scroll inside it, so every clearance below is conservative for the fan itself.
+
+data side_mount_chamber_depth: Micrometer = micrometer(count: 30000)
+data side_mount_card_gap: Micrometer = micrometer(count: 4500)
+data side_mount_socket_depth: Micrometer = micrometer(count: 10000)
+data side_mount_cable_channel: Micrometer = micrometer(count: 10000)
+data side_mount_ledge: Micrometer = micrometer(count: 1500)
+data side_mount_access_bore: Micrometer = micrometer(count: 8000)
+// The radius of the curved turn at the back wall, on the outside; the inside is one wall less.
+data side_mount_turn_radius: Micrometer = micrometer(count: 16000)
+
+// The end-face plane in the part's frame: the chamber, then the flange the card seats against.
+fn side_mount_face_z(d: GpuDuctDesign) -> Int {
+  um(m: side_mount_chamber_depth) + um(m: d.flange_thickness)
+}
+
+// What the part spends BEHIND the plug end: the chamber, the flange and the back wall. One function, read by the
+// geometry below and by product.printed_chassis.card_cooling_route's admission, so the two cannot drift.
+fn side_mount_rear_spend(d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: side_mount_face_z(d: d) + um(m: d.wall))
+}
+
+// What the part spends BESIDE the card, outward from its side face: the gap to the card, two socket walls,
+// two socket clearances and the housing at its thickness tolerance. Also read by the admission.
+fn side_mount_side_spend(d: GpuDuctDesign, b: BlowerDuctDesign) -> Micrometer {
+  micrometer(count: um(m: side_mount_card_gap) + 2 * um(m: d.wall) + 2 * um(m: b.socket_clearance) + um(m: b.blower.thickness) + um(m: b.blower.thickness_tolerance))
+}
+
+// The socket's span across the card's thickness axis (y), outward from the chosen face.
+type SideSpan { lo: Int, hi: Int }
+
+fn side_span(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign, side: CardFaceSide) -> SideSpan {
+  let band = um(m: f.window_from_back)
+  let w = um(m: side_mount_side_spend(d: d, b: b)) - um(m: side_mount_card_gap)
+  match side {
+    BackFaceSide => SideSpan { lo: band + um(m: side_mount_card_gap), hi: band + um(m: side_mount_card_gap) + w }
+    FrontFaceSide => SideSpan { lo: band - um(m: f.face_thickness) - um(m: side_mount_card_gap) - w, hi: band - um(m: f.face_thickness) - um(m: side_mount_card_gap) }
+  }
+}
+
+fn side_mount_parts(f: EndFaceMeasurement, card: CardEnvelope, d: GpuDuctDesign, b: BlowerDuctDesign, side: CardFaceSide) -> List<AssemblyPart> {
+  let wall = um(m: d.wall)
+  let fl = um(m: d.flange_thickness)
+  let sc = um(m: b.socket_clearance)
+  let sd = um(m: side_mount_socket_depth)
+  let face_z = side_mount_face_z(d: d)
+  let top = um(m: f.face_length) / 2
+  let band = um(m: f.window_from_back)
+  let card_y = band - um(m: f.face_thickness) / 2
+  let wl = um(m: f.window_length)
+  let wd = um(m: f.window_depth)
+  let window_x = top - um(m: f.window_from_top) - wl / 2
+  let window_y = 0 - wd / 2
+  let pc = um(m: d.plug_clearance)
+  let plug_w = wl - 2 * pc
+  let plug_h = wd - 2 * pc
+  let interface = card_interface(f: f, d: d, mount: PlugAndFlange, face_z: face_z, window_x: window_x, window_y: window_y, card_y: card_y, top: top)
+  let hl = blower_cavity_edge(b: b)
+  let reach = blower_reach_behind(b: b)
+  let th = um(m: b.blower.thickness) + um(m: b.blower.thickness_tolerance)
+  let s = side_span(f: f, d: d, b: b, side: side)
+  let fan_y = (s.lo + s.hi) / 2
+  let sx_lo = 0 - hl / 2 - sc
+  let sx_hi = hl / 2 + sc
+  let passage_half = th / 2 - um(m: side_mount_ledge)
+  let toward_card = match side { FrontFaceSide => 1 BackFaceSide => 0 - 1 }
+  let run = run_for_label(edge: EdgeAlongX, body: 1, toward: toward_card)
+  let mount = OutletMount { edge: EdgeAlongX, corner: 0 - run * hl / 2, run: run, centre: fan_y, mouth_z: face_z, body: 1 }
+  let half = housing_half(thickness: b.blower.thickness, tolerance: b.blower.thickness_tolerance)
+  let bore_x_lo = window_x - (plug_w - 2 * wall) / 2
+  let bore_y_lo = window_y - (plug_h - 2 * wall) / 2
+  let bore_y_hi = window_y + (plug_h - 2 * wall) / 2
+  let wx_lo = bore_x_lo
+  let wx_hi = top - connector_keepout_length(f: f, d: d) - um(m: d.band_clearance) - wall
+  let chamber_top = face_z - fl
+  let crossing_top = chamber_top - um(m: side_mount_cable_channel)
+  let r_out = um(m: side_mount_turn_radius)
+  let r_in = r_out - wall
+  let back_wall: List<Primitive> = match side {
+    FrontFaceSide => []
+    BackFaceSide => [
+      plane_on_end_slab(x_lo: sx_lo - wall, x_hi: sx_hi + wall, y_lo: s.lo, y_hi: s.hi, z_lo: 0 - wall, z_hi: 0),
+      plane_on_end_slab(x_lo: sx_lo - wall, x_hi: wx_hi + wall, y_lo: bore_y_lo - wall, y_hi: s.hi, z_lo: 0 - wall, z_hi: 0),
+    ]
+  }
+  let body_adds: List<Primitive> = match side {
+    FrontFaceSide => [
+      x_prism(outline: rounded_rectangle(u_lo: s.lo, u_hi: s.hi, v_lo: 0 - wall, v_hi: face_z, r_bottom_left: r_out, r_bottom_right: 0, r_top_right: 0, r_top_left: 0), x_lo: sx_lo - wall, x_hi: sx_hi + wall),
+      x_prism(outline: rounded_rectangle(u_lo: s.lo, u_hi: bore_y_hi + wall, v_lo: 0 - wall, v_hi: face_z, r_bottom_left: r_out, r_bottom_right: r_out, r_top_right: 0, r_top_left: 0), x_lo: sx_lo - wall, x_hi: sx_hi + wall),
+    ]
+    BackFaceSide => [
+      plane_on_end_slab(x_lo: sx_lo - wall, x_hi: sx_hi + wall, y_lo: s.lo, y_hi: s.hi, z_lo: 0, z_hi: face_z),
+      plane_on_end_slab(x_lo: sx_lo - wall, x_hi: wx_hi + wall, y_lo: bore_y_lo - wall, y_hi: bore_y_hi + wall, z_lo: 0, z_hi: face_z),
+      plane_on_end_slab(x_lo: sx_lo - wall, x_hi: wx_hi + wall, y_lo: bore_y_lo - wall, y_hi: s.hi, z_lo: 0, z_hi: crossing_top),
+      plane_on_end_slab(x_lo: sx_lo - wall, x_hi: wx_hi + wall, y_lo: bore_y_hi + wall, y_hi: s.lo + wall, z_lo: chamber_top, z_hi: face_z),
+    ]
+  }
+  let chamber_cuts: List<Primitive> = match side {
+    FrontFaceSide => concat(
+      stepped_cavity(u_lo: s.lo + wall, u_hi: s.hi - wall, v_hi: chamber_top, r: r_in, x_lo: sx_lo, x_hi: sx_hi),
+      stepped_cavity(u_lo: s.lo + wall, u_hi: bore_y_hi, v_hi: chamber_top, r: r_in, x_lo: wx_lo, x_hi: sx_hi))
+    BackFaceSide => concat(concat(concat(
+      stepped_cavity(u_lo: s.lo + wall, u_hi: s.hi - wall, v_hi: chamber_top, r: 0, x_lo: sx_lo, x_hi: sx_hi),
+      stepped_cavity(u_lo: bore_y_lo, u_hi: bore_y_hi, v_hi: chamber_top, r: 0, x_lo: wx_lo, x_hi: wx_hi)),
+      stepped_cavity(u_lo: bore_y_lo, u_hi: s.hi - wall, v_hi: crossing_top - wall, r: 0, x_lo: wx_lo, x_hi: wx_hi)), map(insert_xs(f: f), x => round(diameter: um(m: side_mount_access_bore), length: crossing_top + wall + 2000, axis: Axis3Z, x: x, y: insert_y(f: f), z: (crossing_top - wall) / 2)))
+  }
+  let duct = part(id: "DUCT", name: join(["Inlet duct, one piece: BFB1012M against the card's ", card_face_side_wire(side: side), " face, socket beside the card and a turned chamber into the fin window"], ""),
+    kind: Printed, scope: FixedFrame,
+    adds: concat(concat(concat(back_wall, body_adds), interface.adds), concat(outlet_socket_adds(m: mount, half: half, clearance: b.socket_clearance, wall: d.wall, depth: side_mount_socket_depth), lug_arm_adds(m: mount, half: half, clearance: b.socket_clearance, wall: d.wall))),
+    cuts: concat(concat(concat(concat(chamber_cuts, [
+      plane_on_end_slab(x_lo: opening_edge_lo(m: mount), x_hi: opening_edge_hi(m: mount), y_lo: fan_y - passage_half, y_hi: fan_y + passage_half, z_lo: chamber_top - 1000, z_hi: face_z + 1000),
+    ]), outlet_socket_cuts(m: mount, half: half, clearance: b.socket_clearance, depth: side_mount_socket_depth)), interface.cuts), concat(card_screw_holes(f: f, d: d, face_z: face_z), lug_arm_cuts(m: mount, half: half, clearance: b.socket_clearance))),
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: side_mount_duct_print_plane,
+    notes: join(["One piece. Prints ", print_plane_pose(plane: side_mount_duct_print_plane), ", as exported: nothing inside the closed chamber needs support, and bed-only supports carry the plug lip and flange overhangs outside. Screw the blower in BEFORE the duct goes on the card: ", outlet_mount_note(), " Then drive both M3 x 4 card screws with the duct seated (front side: from behind the flange; back side: through the two access holes in the back wall). PLA for an unpowered fit prototype only; PETG or ASA for service."], ""))
+  let blower = part(id: "FAN", name: join(["Delta BFB1012M radial blower envelope, broad face against the card's ", card_face_side_wire(side: side), " face"], ""), kind: Purchased, scope: FixedFrame,
+    adds: housing_boxes(m: mount, half: th / 2, edge_length: micrometer(count: hl), rise: micrometer(count: reach)),
+    cuts: [],
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 120000, plane: LayOnXY,
+    notes: "Bounding envelope only: the housing is a rounded scroll inside it. Outlet edge down in the socket, body along the card's side, intake facing away from the card -- keep the intake face open.")
+  concat([duct, blower, lug_screw_part(m: mount, half: half, clearance: b.socket_clearance, id: "SCREW")], card_reference_parts(f: f, card: card, d: d, face_z: face_z))
+}
+
+// A CAVITY THAT PRINTS STANDING ON ITS END. The duct prints with X up, so a cavity's top end would be a flat
+// ceiling over the whole turn. Instead the cavity is cut as its full outline up to `v_hi` minus one step
+// below the top, and then in steps of `side_mount_cavity_step` each starting one step higher off the back wall
+// (v = 0): the top end climbs at 45 degrees from the back wall toward the ceiling side, where the air turns up
+// into the window, and every step is a 2 mm ledge the printer bridges. A step's rounded corners are the
+// largest that stay inside the full outline's (radius r minus the step's height, internally tangent).
+data side_mount_cavity_step: Micrometer = micrometer(count: 2000)
+
+// The duct's print pose: the one fact the part, its notes and the readme all read.
+data side_mount_duct_print_plane: PrintPlane = LayOnYZ
+
+fn stepped_cavity(u_lo: Int, u_hi: Int, v_hi: Int, r: Int, x_lo: Int, x_hi: Int) -> List<Primitive> {
+  let step = um(m: side_mount_cavity_step)
+  let n = v_hi / step - 1
+  let ramp = n * step
+  let main = x_prism(outline: rounded_rectangle(u_lo: u_lo, u_hi: u_hi, v_lo: 0, v_hi: v_hi, r_bottom_left: r, r_bottom_right: r, r_top_right: 0, r_top_left: 0), x_lo: x_lo, x_hi: x_hi - ramp)
+  concat([main], cavity_steps(remaining: n, k: 0, step: step, u_lo: u_lo, u_hi: u_hi, v_hi: v_hi, r: r, x_from: x_hi - ramp, acc: []))
+}
+
+fn cavity_steps(remaining: Int, k: Int, step: Int, u_lo: Int, u_hi: Int, v_hi: Int, r: Int, x_from: Int, acc: List<Primitive>) -> List<Primitive> {
+  if remaining <= 0 { return acc }
+  let v_lo = (k + 1) * step
+  let rk = if r - v_lo > 0 { r - v_lo } else { 0 }
+  let slice = x_prism(outline: rounded_rectangle(u_lo: u_lo, u_hi: u_hi, v_lo: v_lo, v_hi: v_hi, r_bottom_left: rk, r_bottom_right: rk, r_top_right: 0, r_top_left: 0), x_lo: x_from + k * step, x_hi: x_from + (k + 1) * step)
+  cavity_steps(remaining: remaining - 1, k: k + 1, step: step, u_lo: u_lo, u_hi: u_hi, v_hi: v_hi, r: r, x_from: x_from, acc: concat(acc, [slice]))
+}
+
+// A profile prism along X between two X bounds: the turn's (Y, Z) outline, extruded along the end face.
+fn x_prism(outline: List<ProfileVertex>, x_lo: Int, x_hi: Int) -> Primitive {
+  prism(outline: outline, axis: Axis3X, length: x_hi - x_lo, x: (x_lo + x_hi) / 2, y: 0, z: 0)
+}
+
+fn side_mount_joints() -> List<MechanicalInterface> {
+  concat(card_joints(mount: PlugAndFlange, printed_id: "DUCT"), [
+    tapping_into(i: mechanical_interface(id: "blower-to-socket", members: ["FAN", "DUCT", "SCREW"], fastener: M5FanScrewIntoBlowerLug, quantity: 1, status: Proposed,
+      requirement: "The blower's outlet frame is pushed into the socket beside the card and rests on the ledges around the opening, label face toward the card and intake facing away from it. One M5 x 10 fan screw through the arm on the label face into the lug of the hole nearer the outlet retains it."), members: ["SCREW"]),
+  ])
+}
+
+fn side_mount_presentation_members(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign, side: CardFaceSide) -> List<JsonKeyValue> {
+  [
+    json_kv(key: "axes", value: json_string(s: "z along the card's length, the card above the end plane and the chamber below it; x along the end face, the 8-pin end toward +x; y across the card's thickness, the back (power-cap) face toward +y")),
+    json_kv(key: "home", value: json_string(s: join(["AgainstCardSide: the blower's broad face against the card's ", card_face_side_wire(side: side), " face, intake outward; a short chamber behind the end turns its air into the window"], ""))),
+    json_kv(key: "card_face_side", value: json_string(s: card_face_side_wire(side: side))),
+    json_kv(key: "rear_spend_um", value: json_int(n: um(m: side_mount_rear_spend(d: d)))),
+    json_kv(key: "side_spend_um", value: json_int(n: um(m: side_mount_side_spend(d: d, b: b)))),
+    json_kv(key: "end_face", value: face_json(f: f)),
+    json_kv(key: "blower_model", value: json_string(s: b.blower.model as String)),
+  ]
+}
+
+fn mm_one_decimal(m: Micrometer) -> String {
+  join([to_string(value: um(m: m) / 1000), ".", to_string(value: (um(m: m) % 1000) / 100), " mm"], "")
+}
+
+fn side_mount_readme(d: GpuDuctDesign, b: BlowerDuctDesign, side: CardFaceSide) -> String {
+  join([
+    "A16 inlet duct for a Delta BFB1012M radial blower mounted against the card's ", card_face_side_wire(side: side), " face. Generated from product.printed_chassis.side_mount_duct.\n",
+    "One printed part: DUCT (socket beside the card, closed chamber behind the end with its back wall, plug lip and screw flange). It prints ", print_plane_pose(plane: side_mount_duct_print_plane), ", as the exported STL lies; do not lay it flat -- the chamber's ceiling would then hang with nothing under it.\n",
+    "The other face's version is the root ending in -", match side { BackFaceSide => "front" FrontFaceSide => "back" }, "-duct, and it is NOT a mirror image: ", match side {
+      FrontFaceSide => "the back-face duct crosses the 8-pin cable region, so its crossing is lowered over a cable channel, the card screws are driven through two access holes in its back wall, its chamber stops short of the keep-out, and its turn is square-cornered. This one has none of those: its turn is curved and its chamber runs the socket's full length.\n"
+      BackFaceSide => "the front-face duct has a curved turn and a chamber running the socket's full length, and its card screws sit beside the chamber. This one crosses the 8-pin cable region, so its crossing is lowered over a cable channel, the screws are driven through two access holes in the back wall, its chamber stops short of the keep-out, and its turn is square-cornered.\n"
+    },
+    "Assembly, power OFF: plug the 8-pin in; seat the DUCT's plug lip in the fin window; drive both M3 x 4 screws into the end cap's inserts", match side { BackFaceSide => " (through the two access holes in the back wall and the crossing)" FrontFaceSide => " (they sit beside the chamber, reached from behind the flange)" }, ". Before that, with the duct off the card: ", outlet_mount_note(), "\n",
+    "The socket takes only the blower's outlet frame; the rest of the housing stands free above it, and the screw arm lies on the label face between the blower and the card.\n",
+    "Spends ", mm_one_decimal(m: side_mount_side_spend(d: d, b: b)), " beside the card (product.printed_chassis.chassis_clearances single_card_side_allowance_2026_11_02 is the allowance) and ", mm_one_decimal(m: side_mount_rear_spend(d: d)), " behind the end. Check at the fit: the blower's intake has free air beyond the part; the 8-pin cable has room where it turns; the plug lip seats; the blower sits in the socket without rocking.\n",
+    "PLA for an unpowered fit prototype only; PETG or ASA for service.\n",
+  ], "")
+}

@@ -6,6 +6,7 @@ import std.measure {Micrometer, MillilitrePerSecond, Watt}
 import extdeps.standards.pcie_cem {CemHeightClass, CemBracket}
 import std.optional {Present, Absent}
 import extdeps.external_authority {CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt}
+import extdeps.cited_field {RowField, FromCitedFigure, NeedsReading, row_field_value, row_field_obligation, row_field_stands_on_authority, row_field_is_readable}
 
 // ═══ A CARD ROW: ONE DUCT DESIGN, CARDS AS DATA ═══
 //
@@ -15,37 +16,7 @@ import extdeps.external_authority {CitedFigureStanding, CitedToAuthority, Transc
 // (extdeps.gpu.nvidia_a16, nvidia_t4, nvidia_a2, nvidia_t10), and nothing in product.printed_chassis
 // branches on which card it is.
 //
-// A row's field is populated in exactly one of two ways and there is no third:
-//
-//   FromCitedFigure   it was read off a named vendor document, with the standing that document earns
-//                     (CitedToAuthority when this repository read the figure, TranscribedUncited when it
-//                     was transcribed second-hand -- which always carries the obligation to read it back).
-//   NeedsReading      no document this repository holds carries it, and no number stands here until one
-//                     does. The field names what to read and where.
-
-type RowField<V>
-  = FromCitedFigure { value: V, standing: CitedFigureStanding }
-  | NeedsReading { read_obligation: NonEmptyStr }
-
-fn row_field_value<V>(field: RowField<V>) -> V? {
-  match field { FromCitedFigure {value: v, standing: _} => Present { value: v } NeedsReading {read_obligation: _} => Absent }
-}
-
-fn row_field_is_readable<V>(field: RowField<V>) -> Bool {
-  match field { FromCitedFigure {value: _, standing: _} => true NeedsReading {read_obligation: _} => false }
-}
-
-fn row_field_obligation<V>(field: RowField<V>) -> NonEmptyStr? {
-  match field {
-    FromCitedFigure {value: _, standing: TranscribedUncited {read_obligation: o}} => Present { value: o }
-    FromCitedFigure {value: _, standing: _} => Absent
-    NeedsReading {read_obligation: o} => Present { value: o }
-  }
-}
-
-fn row_field_stands_on_authority<V>(field: RowField<V>) -> Bool {
-  match field { FromCitedFigure {value: _, standing: CitedToAuthority {authority: _}} => true FromCitedFigure {value: _, standing: _} => false NeedsReading {read_obligation: _} => false }
-}
+// A row's field is a RowField (extdeps.cited_field): cited, transcribed second-hand, or NeedsReading.
 
 // ═══ WHAT THE ROW CARRIES: THE VENDOR'S FACTS ABOUT THE CARD, AND NOTHING THIS REPOSITORY MEASURED ═══
 //

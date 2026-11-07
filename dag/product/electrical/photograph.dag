@@ -1,0 +1,370 @@
+module product.electrical.photograph
+
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.list { first_where }
+import std.measure { FiniteByteSize }
+import std.nat { Nat }
+import std.optional { Absent, Present }
+import std.types { Bool, List, NonEmptyStr }
+import v2.std.text { string_eq }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq }
+import product.placement_supply { PhysicalAssetIdentity }
+
+// WHAT A PHOTOGRAPH IS IN THE MODEL. A reading of a board is read off an image, and the image is what
+// lets someone who was not at the bench re-check the reading. So a photograph is a row identified by its
+// CONTENT -- the SHA-256 of its bytes, std.content_hash's `Sha256Digest` -- and not by the sentence
+// describing it or the name it has in a folder: a name gets reassigned, a sentence gets rewritten, and
+// the bytes are what a later reader re-hashes against the claim. A store row says the bytes exist and
+// where to get them; a citation names one by digest, so claim and artefact meet at a value rather than
+// at a paraphrase. product.p4261.evidence names exactly this as the rung its own support rises on.
+//
+// WHY THE GAP IS TYPED AND NOT LEFT OUT. Bench sessions before the store existed sent frames into a
+// chat; their bytes are not ours to hash. Deleting such a citation would quietly delete the reading it
+// carries, and minting a digest nobody computed would make an uncheckable claim look checkable -- the one
+// thing a content identity exists to prevent. So `BytesNotInStore` keeps what we do have (the date, the
+// locator, and the obligation that would close it) and stays visibly a gap. A consumer that requires
+// checkable evidence refuses it, by name, rather than trusting it.
+//
+// WHY A DRAWING WE MADE IS NOT EVIDENCE. The atlas also generated images: grid overviews, function-zone
+// drafts, a pinout, a power-path diagram. They show where a reading came from; they are not a record of
+// what the board carries, because we drew them from the readings. `GeneratedImage` keeps them addressable
+// and `citation_verdict` refuses them as grounding: an image cannot corroborate what it was drawn
+// from. This is the atlas manifest's own caveat ("derived (not evidence on its own)") in the model.
+// Each one names the atlas snapshot whose annotations it carries, and keeps two dates apart: the day
+// the view was drawn, and the capture day of the pixels underneath it, which belongs to the raw
+// capture and is not this row's to invent.
+
+// WHICH FACE OF THE CARRIER A FRAME SHOWS. Said of the frame, not of a part: which face a component sits
+// on is product.p4261.carrier's BoardSide, judged from the board. This is what the camera was pointed at.
+type PhotographSurface
+  = TopSurface
+  | BottomSurface
+  // A frame nobody has placed on a face. Batch 5's unplaced SD frames are cap tops and label-less shots;
+  // guessing a face would put a part on the wrong side of the board, so the absence is named instead, with
+  // the word that would close it. Anything that filters the store by face counts this as neither side, so a
+  // frame here can be cited and read; it simply cannot be used to say which face of the board it shows.
+  | SurfaceUnrecorded { obligation: NonEmptyStr }
+
+// WHEN THE FRAME WAS TAKEN, as the receipts record it. An atlas frame's file name carries its day; a
+// frame the registry lists as an earlier shot carries only the day it was uploaded, so its capture date
+// is a gap with what would close it. `CaptureDateUnrecorded` is not an unknown standing in for a fact:
+// it says which note would fix it.
+type PhotographDate
+  = CapturedOn { on: NonEmptyStr }
+  | CaptureDateUnrecorded { obligation: NonEmptyStr }
+
+// WHAT MADE THE FRAME. Recorded because grain follows the device: a marking legible on the microscope
+// screen and a shape in a phone frame are not read at the same resolution, and a claim should be able to
+// say which it rested on. Where the receipts are silent the device is a named gap, not a default.
+type CaptureDevice
+  = AndonstarMicroscopeScreen
+  // The Andonstar writing the frame itself, from its own sensor, onto its SD card: no screen and no phone
+  // in the path, so the frame carries the sensor's full 4032x3024 and no moire. It is a different grain
+  // from a screen capture and must not borrow its value -- a marking legible in one of these need not be
+  // legible in a picture of the screen, and a claim resting on the difference has to say which it read.
+  | AndonstarSdCardSensor
+  | PhoneCamera
+  | DeviceUnrecorded { obligation: NonEmptyStr }
+
+// WHERE THE IMAGE CAME FROM. A captured frame is the board's own evidence. A generated image is ours: it
+// depicts the board only through the readings it was drawn from, so it can locate a reading and cannot
+// ground one.
+type PhotographOrigin
+  = CapturedFrame { surface: PhotographSurface, capture: CaptureDevice, taken_on: PhotographDate }
+  | GeneratedImage {
+      depicts: NonEmptyStr,
+      drawn_by: NonEmptyStr,
+      drawn_on: NonEmptyStr,
+      atlas_revision: NonEmptyStr,
+    }
+
+// WHERE THE BYTES ARE HELD, so a row can be re-checked rather than believed: a Drive folder and the name
+// inside it. The digest is what says the file there is the file this row is about.
+type StoreLocation {
+  folder_id: NonEmptyStr,
+  folder_name: NonEmptyStr,
+  file_name: NonEmptyStr,
+}
+
+// ONE PHOTOGRAPH THE STORE HOLDS. `bytes` is kept because content identity is checked by re-hashing
+// bytes: it says how many a reader should get, and what is wrong with what they got if they get otherwise.
+// Its type is std.measure's existing `FiniteByteSize` -- a `Measure<Memory, One, PositiveMeasureCount>`,
+// the byte size that cannot be zero, which is what a row asserting "a file sits at this Drive path" needs:
+// a length of nothing is not a short file, it is no file. Minting a second positive byte carrier beside it
+// would have been a failed decomposition (DESIGN §2), and the model's other byte consumers (the grain
+// rounder) already read this one.
+type Photograph {
+  content: Sha256Digest,
+  board: PhysicalAssetIdentity,
+  origin: PhotographOrigin,
+  bytes: FiniteByteSize,
+  store: StoreLocation,
+}
+
+// A BOX INSIDE A FRAME, in the cited frame's own pixels, origin at its top-left. The atlas boxes readings
+// this way ("the label at about (175-240,120-160) px original"), so a claim can point at the part instead
+// of at the whole board the part happens to be on.
+type PixelRegion {
+  left: Nat,
+  top: Nat,
+  width: Nat,
+  height: Nat,
+}
+
+// TWO BOXES ARE THE SAME BOX when all four edges agree, in the same frame's pixels. It sits beside the
+// type so nobody re-derives it inside a join: a check that compared two of the four would let a
+// differently-sized box pass as the same label, which is the failure this relation exists to prevent.
+// The text of a stored photograph's field, for COMPARISON only. Its result is always bound to a name before
+// it is passed, which is what carried this module's witness past a refusal that only arrives at runtime. The
+// trigger behind that is NOT characterized -- the account, with the counterexamples that killed the tidy
+// explanation, is on the same helper in product.electrical.identification. Do not restate a rule from here.
+fn shown_photo_text(t: NonEmptyStr) -> String {
+  t as String
+}
+fn pixel_region_eq(a: PixelRegion, b: PixelRegion) -> Bool {
+  a.left == b.left && a.top == b.top && a.width == b.width && a.height == b.height
+}
+
+// A CITATION OF A PHOTOGRAPH FROM A CLAIM. `InStore` names bytes the store holds, and the region is
+// absent when the whole frame is what was read. `BytesNotInStore` is the typed gap for a frame whose
+// bytes never reached the store: it carries the text locator the bench recorded and the obligation that
+// would close it, and it never carries a digest somebody guessed.
+type PhotographCitation
+  = InStore { content: Sha256Digest, region: PixelRegion? }
+  | BytesNotInStore { taken_on: NonEmptyStr, locator: NonEmptyStr, obligation: NonEmptyStr }
+
+// THE STRONGEST JOIN TWO CITATIONS CAN MAKE: the same bytes AND the same pixels. Content identity alone
+// is not enough and is not pretending to be -- a frame can carry dozens of components, so agreeing on
+// which bytes a reading came from says those bytes exist, not that the marking was read off THIS part.
+// Both sides must therefore state a box and agree on it: an absent region means "the whole frame was
+// what was read", which cannot bind a reading to a part, and the unstored arm is refused rather than
+// excused, because it says the bytes were never supplied -- the very gap a citation is meant to close.
+// WHAT THIS DOES NOT DO is decide which board or which specimen a frame belongs to: a digest says which
+// bytes, not what they picture, so attribution stays where the store row is consulted (see the note
+// above `photograph_in_store`, and product.p4261.photograph_store's `store_row_judgment`). Callers that
+// need subject binding supply it as a lookup over their own board's roster, and this relation is what
+// such a lookup compares the citations with.
+fn same_boxed_frame(a: PhotographCitation, b: PhotographCitation) -> Bool {
+  match a {
+    InStore { content: ca, region: ra } =>
+      match b {
+        InStore { content: cb, region: rb } =>
+          content_hash_eq_cryptographic(left: ca, right: cb)
+            && match ra {
+                 Present { value: pa } =>
+                   match rb {
+                     Present { value: pb } => pixel_region_eq(a: pa, b: pb)
+                     Absent { } => false
+                   }
+                 Absent { } => false
+               }
+        BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+      }
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// WHETHER TWO CITATIONS DENOTE THE ONE SIGHTING. This answers the question a DUPLICATE test asks -- did
+// this row write the same reading twice, so that a frame cannot be copied into a list to give it weight --
+// and it is deliberately not `same_boxed_frame`. A frame cited without a region still DENOTES that frame,
+// so two unboxed citations of the same bytes are one sighting, and demanding a box here would let through
+// the exact inflation the duplicate test exists to stop. The join asks the other question -- that a
+// reading was read off THESE pixels -- and refuses an absent box for that reason; conflating the two
+// questions is how one of them silently stops being checked. Across arms it is false: bytes that were
+// never supplied are a sighting of nothing, and two sentences about a frame are two statements even when
+// they agree, which is why the unstored arms compare the fields a reader would compare.
+fn same_sighting(a: PhotographCitation, b: PhotographCitation) -> Bool {
+  match a {
+    InStore { content: ca, region: ra } =>
+      match b {
+        InStore { content: cb, region: rb } =>
+          content_hash_eq_cryptographic(left: ca, right: cb) && regions_agree_or_both_unstated(ra: ra, rb: rb)
+        BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+      }
+    BytesNotInStore { taken_on: ta, locator: la, obligation: oa } =>
+      match b {
+        InStore { content: _, region: _ } => false
+        BytesNotInStore { taken_on: tb, locator: lb, obligation: ob } => {
+          let taken_a = shown_photo_text(t: ta)
+          let taken_b = shown_photo_text(t: tb)
+          let here_a = shown_photo_text(t: la)
+          let here_b = shown_photo_text(t: lb)
+          let owed_a = shown_photo_text(t: oa)
+          let owed_b = shown_photo_text(t: ob)
+          string_eq(a: taken_a, b: taken_b)
+            && string_eq(a: here_a, b: here_b)
+            && string_eq(a: owed_a, b: owed_b)
+        }
+      }
+  }
+}
+
+// Two regions that both state pixels must state the same ones; two that state none agree, because the
+// absence is the same statement on both sides. Split out so `same_sighting` says what it means about
+// bytes and this says what it means about pixels.
+fn regions_agree_or_both_unstated(ra: PixelRegion?, rb: PixelRegion?) -> Bool {
+  match ra {
+    Present { value: pa } =>
+      match rb {
+        Present { value: pb } => pixel_region_eq(a: pa, b: pb)
+        Absent => false
+      }
+    Absent =>
+      match rb {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// A SIGHTING A BOARD OWNS: this specimen was seen, in this frame, at these pixels. This is the
+// board-generic half of what the marking mints consume. It is keyed by SPECIMEN, not by designator or by
+// file name, because the question a mint asks is not "do these bytes exist somewhere in the repository"
+// but "does THIS board attribute this citation to THIS part" -- an overview frame carries dozens of
+// components, so a digest shared with a neighbour's reading says the bytes are real, not that these
+// pixels are this part's marking.
+type SpecimenSighting {
+  specimen: ComponentInstanceIdentity
+  sighting: PhotographCitation
+}
+
+// The roster: what a board attributes, as rows. A list rather than a keyed map because two specimens may
+// share one frame, which a map keyed by either half would have to invent a tiebreak for, and because a
+// roster is read in the order the bench recorded it.
+type BoardSightings {
+  rows: List<SpecimenSighting>
+}
+
+// Does this board attribute this citation to this specimen? Both halves are their own layers' authorities
+// -- `component_identity_eq` for the specimen, `same_boxed_frame` for the pixels -- and nothing here
+// compares a digest as text, or infers an attribution from a file name, a caption, or which part sits
+// nearest the middle of a crop. An attribution inferred from any of those would be the board claiming a
+// reading it was never given, which is the failure this whole layer was built to make unwritable.
+fn sighting_attributed(
+  roster: BoardSightings,
+  subject: ComponentInstanceIdentity,
+  citation: PhotographCitation
+) -> Bool {
+  match first_where(roster.rows, r =>
+    component_identity_eq(a: r.specimen, b: subject) && same_boxed_frame(a: r.sighting, b: citation)) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// WHAT THE STORE MAKES OF A CITATION, in words a report can use. A Bool would say only "no"; each
+// refusal here names what is missing, so the gap is a work item rather than a mystery.
+type CitationStanding
+  = CheckableAgainstStoredBytes { surface: PhotographSurface, region: PixelRegion? }
+  | BytesNeverStored { taken_on: NonEmptyStr, locator: NonEmptyStr, obligation: NonEmptyStr }
+  | DigestNotInStore { content: Sha256Digest }
+  | FrameIsOurOwnDrawing { depicts: NonEmptyStr, obligation: NonEmptyStr }
+// WHERE THE SPECIMEN CHECK LIVES. A digest says which bytes, not what they picture, so the board a frame
+// belongs to is decided once, over the store row that holds it, in product.p4261.photograph_store's
+// `store_row_judgment`: a store row containing a frame of another board is refused there, so a digest
+// can only resolve among frames attributed to the board whose store was opened. Nothing here re-tests
+// it (DESIGN §3).
+
+// The store's lookup, and the only way a digest becomes a frame.
+fn photograph_in_store(store: List<Photograph>, content: Sha256Digest) -> Photograph? {
+  first_where(store, p => content_hash_eq_cryptographic(left: p.content, right: content))
+}
+
+// WHAT A CITATION RESTS ON. Resolved by content, never by text: two rows with the same file name are
+// still two frames, and a row we drew cannot ground a reading of the board.
+fn cite(store: List<Photograph>, citation: PhotographCitation) -> CitationStanding {
+  match citation {
+    InStore { content, region } => match photograph_in_store(store: store, content: content) {
+      // The store row this frame came from was already judged to be a picture of the board whose store was
+      // opened (product.p4261.photograph_store), so what is left to decide here is what KIND of frame it is.
+      Present { value } => match value.origin {
+        CapturedFrame { surface, capture: _, taken_on: _ } =>
+          CheckableAgainstStoredBytes { surface: surface, region: region }
+        GeneratedImage { depicts, drawn_by: _, drawn_on: _, atlas_revision: _ } =>
+          frame_is_our_own_drawing(depicts: depicts)
+      }
+      Absent => DigestNotInStore { content: content }
+    }
+    BytesNotInStore { taken_on, locator, obligation } =>
+      BytesNeverStored { taken_on: taken_on, locator: locator, obligation: obligation }
+  }
+}
+
+// The refusal for citing an image we generated. The obligation is the same at every site, so it lives
+// here instead of being re-typed where someone might make the mistake.
+fn frame_is_our_own_drawing(depicts: NonEmptyStr) -> CitationStanding {
+  FrameIsOurOwnDrawing {
+    depicts: depicts,
+    obligation: "cite the captured frame this image was drawn from; a drawing cannot corroborate the readings it was drawn from",
+  }
+}
+
+// WHAT A CITATION CAN CARRY, decided once. The store classifies the bytes and this fold is the only
+// place that decision is written: the census in product.p4261.evidence and the photograph witnesses
+// both read it, so checkability is not re-derived consumer by consumer. Checkable -- the bytes are in
+// the store, so the reading can be re-checked against the frame. Gap -- the bytes were never hashed,
+// so the reading stands on a locator and an obligation rather than on bytes. Broken -- the citation
+// points at something that cannot carry a reading: bytes we do not hold under that digest, or a frame
+// we drew ourselves.
+// EXHAUSTIVE ON PURPOSE, with no `_`: a fifth standing would have to be classified here rather than
+// silently landing in no partition, which is how a board of unread rows would come to count as fully
+// grounded.
+type CitationVerdict
+  = Checkable
+  | Gap
+  | Broken
+
+fn citation_verdict(standing: CitationStanding) -> CitationVerdict {
+  match standing {
+    CheckableAgainstStoredBytes { surface: _, region: _ } => Checkable
+    BytesNeverStored { taken_on: _, locator: _, obligation: _ } => Gap
+    DigestNotInStore { content: _ } => Broken
+    FrameIsOurOwnDrawing { depicts: _, obligation: _ } => Broken
+  }
+}
+
+// WHAT THE CITATION SAYS ABOUT ITSELF, in words. A consumer that has to name a failure reads this
+// instead of reaching into an arm, so why a citation cannot carry a reading is written down once
+// (product.p4261.report renders it, and a photograph witness asserts it). A digest prints in full: a
+// truncated one invites believing without checking, and the whole point of a digest is that a reader
+// can look it up.
+fn citation_explanation(standing: CitationStanding) -> String {
+  match standing {
+    CheckableAgainstStoredBytes { surface: _, region: region } => match region {
+      Present { value } => join(
+        ["the frame's own pixels, box (", to_string(value.left), ",", to_string(value.top), ") ", to_string(value.width), " by ", to_string(value.height), " px"],
+        ""
+      )
+      Absent => join(["the frame's own pixels, whole frame"], "")
+    }
+    BytesNeverStored { taken_on: taken_on, locator: locator, obligation: obligation } => join(
+      ["bytes never hashed; the locator says ", locator as String, " taken ", taken_on as String, ". To close it: ", obligation as String],
+      ""
+    )
+    DigestNotInStore { content: content } => join(
+      ["no stored frame carries the cited digest ", content.hex as String],
+      ""
+    )
+    FrameIsOurOwnDrawing { depicts: depicts, obligation: obligation } => join(
+      ["the cited frame is our own drawing of ", depicts as String, "; an image we drew from a reading cannot corroborate it. To close it: ", obligation as String],
+      ""
+    )
+  }
+}
+
+// How a citation reads in a sentence a person or a report can quote. The digest is printed in full: a
+// truncated one invites believing without checking, and the whole point of the digest is that it can be
+// looked up. A gap prints its locator and date, so the sentence never reads better than the claim.
+fn photograph_citation_text(citation: PhotographCitation) -> String {
+  match citation {
+    InStore { content, region } => match region {
+      Present { value } => join(
+        ["photograph ", content.hex as String, " at (", to_string(value.left), ",", to_string(value.top), ") ", to_string(value.width), " by ", to_string(value.height), " px"],
+        ""
+      )
+      Absent => join(["photograph ", content.hex as String, " (whole frame)"], "")
+    }
+    BytesNotInStore { taken_on, locator, obligation: _ } =>
+      join(["photograph ", locator as String, " (", taken_on as String, ", bytes not in the store)"], "")
+  }
+}

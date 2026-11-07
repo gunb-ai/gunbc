@@ -13,8 +13,9 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_endpoint_authority,
   UnitDiagnosisUnavailable,
 }
-import gunbc.roadmap.roadmap_static_site { roadmap_site_health_path }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
+import gunbc.roadmap.roadmap_site_surface_render { roadmap_site_health_path }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding }
 
 type TransportCurlHealthzProbe {
   health_url: NonEmptyStr
@@ -91,4 +92,17 @@ fn live_deploy_unit_status_tail_command(unit: NonEmptyStr) -> String {
     concat("systemctl status --no-pager --full ", unit as String),
     " 2>&1 | tail -n 40"
   )
+}
+// THE DEPLOY PARAMETER (prod gap 1, DeploymentIntent plan, S1). One live_deploy convergence
+// parameterized by intent is the operator-endorsed target: environments differ by data and policy
+// only, and a revision is an exact binding, never a branch name read at act time.
+//
+// FIELD DISCIPLINE: environment, entry, targets, configuration and rollout policy join this record
+// exactly when a slice reads them -- S1 consumes the instance and the revision, so S1 declares the
+// instance and the revision. An unreader field is a dangling declaration wearing a load-bearing
+// name, and the seed's refusal is the least of its problems.
+
+type DeploymentIntent {
+  instance_id: String,
+  revision: ReleaseRevisionBinding,
 }

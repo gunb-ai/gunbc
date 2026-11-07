@@ -73,25 +73,42 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     // The UN* arguments are not Sendable: these callbacks are nonisolated so they never cross the
     // main actor, and hop with at most a plain String (the tapped alert's locator).
+    //
+    // UIKit requires the completion on the main thread, and promptly: the async forms of these
+    // callbacks complete wherever the nonisolated function returns -- off the main thread -- and only
+    // after the awaited re-list, and UIKit aborted the app on a tapped alert (SIGABRT in
+    // -[UIApplication _updateSnapshotAndStateRestorationWithAction:windowScene:], 2026-11-04). So each
+    // completes on the main actor before the re-list starts, and the re-list runs after.
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                            willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        await refreshFromPush()
-        return [.banner, .sound]
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        let done = MainActorCompletion(completionHandler)
+        Task { @MainActor in
+            done.call([.banner, .sound])
+            _ = await self.state?.refresh()
+        }
     }
 
-    /// The operator tapped the alert: re-list, then the inbox opens the request the alert named.
+    /// The operator tapped the alert: the inbox opens the request the alert named, and re-lists.
     /// The hint is read here as plain text (Sendable) and only orders the list (AppState.front).
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completionHandler: @escaping () -> Void) {
         let locator = try? WireDecode.pushHint(response.notification.request.content.userInfo).notification_id
-        await openFromPush(locator)
+        let done = MainActorCompletion<Void>({ _ in completionHandler() })
+        Task { @MainActor in
+            self.state?.focused = locator
+            done.call(())
+            _ = await self.state?.refresh()
+        }
     }
+}
 
-    @MainActor private func openFromPush(_ locator: String?) async {
-        state?.focused = locator
-        _ = await state?.refresh()
-    }
-
-    @MainActor private func refreshFromPush() async {
-        _ = await state?.refresh()
-    }
+/// A UserNotifications completion handler, carried to the main actor and called there exactly as
+/// UIKit requires. The framework's block is not annotated Sendable; it is only ever invoked on the
+/// main actor, once, which is what makes moving it there sound.
+private struct MainActorCompletion<Value>: @unchecked Sendable {
+    private let body: (Value) -> Void
+    init(_ body: @escaping (Value) -> Void) { self.body = body }
+    @MainActor func call(_ value: Value) { body(value) }
 }

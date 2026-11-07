@@ -267,6 +267,7 @@ fn hv_row(id: String, title: String) -> WorkRowView {
     assignment: none,
     attempt_stale: false,
     profiles: [],
+      retired_blockers: [] as List<String>,
   }
 }
 

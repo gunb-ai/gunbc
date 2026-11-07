@@ -1,4 +1,5 @@
 module extdeps.google.userinfo
+import std.types { Bearer }
 
 import std.types { String, Email, Bool, Secret }
 import extdeps.external_authority { ExternalAuthority }

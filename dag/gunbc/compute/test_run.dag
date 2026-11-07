@@ -16,7 +16,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_capability_program }
 import gunbc.roadmap.roadmap_execution_contract { GitWorkspaceCapability }
-import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry }
+import gunbc.compute.work_request { WorkOperation, RunClaims, CompileEntry, TargetIsExecutingHost }
 import gunbc.compute.attempt_lifecycle { DirectInvocation }
 import gunbc.compute.work_provider_local {
   ProvideResult, ProvideFresh, ProvideAttached, compute_provide, provide_result_succeeded, provide_result_ending, provide_result_identity, provide_result_document,
@@ -103,7 +103,7 @@ fn run_selected_module(instance: HostDashboardInstance, worktree: String, commit
           if count(planned) == 0 {
             ModuleAllDeclined { label: render_label(l: label), module_path: module_path, declined: declined }
           } else {
-            let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true, window: none })
+            let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: RunClaims { entry: file.path as FilePath, functions: join(planned, ",") as NonEmptyStr, hermetic: true, window: none }, target: TargetIsExecutingHost)
             ModuleRan {
               label: render_label(l: label), module_path: module_path, planned: planned, declined: declined,
               ending: provide_result_ending(r: result), identity: provide_result_identity(r: result), document: provide_result_document(r: result),
@@ -215,8 +215,6 @@ fn test_run_succeeded(r: TestRunReport) -> Bool {
 // THE COMMAND A WORKER RUNS, spelled once here so the guidance that tells the worker and the CLI that
 // answers it cannot disagree. The pattern is the worker's to choose: the package under dag/test/claim
 // that mirrors what it changed, as a subtree pattern.
-data test_process_entry: String = "dag/gunbc/compute/test_run.dag"
-data test_process_function: String = "test_pattern_cli"
 data test_process_receipt_name: String = ".gunbc-test-receipt.json"
 data test_process_pattern_placeholder: String = "//dag/test/claim/<package>/..."
 
@@ -224,43 +222,14 @@ fn test_process_receipt_path(worktree: String) -> String {
   join([worktree, "/", test_process_receipt_name], "")
 }
 
-fn test_process_command(gunbc_program: String, repo_root: String, worktree: String, pattern: String) -> String {
-  join([
-    gunbc_program, " run",
-    " --source-root ", repo_root, "/dag",
-    " --source-root ", repo_root, "/src/v2",
-    " --entry ", repo_root, "/", test_process_entry,
-    " --function ", test_process_function,
-    " --arg repo_root=", repo_root,
-    " --arg worktree=", worktree,
-    " --arg pattern=", pattern,
-    " --arg receipt_path=", test_process_receipt_path(worktree: worktree),
-  ], "")
-}
-
 // COMPILING A CLOSURE IS THE SAME SHAPE: snapshot the worktree, ask the provider for CompileEntry of
 // the snapshot, hand back the outcome. The bar a worker reads from the receipt is the compiler's own:
 // zero blocking diagnostics (advisories are not the bar, and the count of them is not a score).
-data compile_process_function: String = "compile_entry_cli"
 data compile_process_receipt_name: String = ".gunbc-compile-receipt.json"
 data compile_process_entry_placeholder: String = "<entry .dag whose closure includes your change, e.g. dag/gunbc/roadmap/roadmap_serve.dag>"
 
 fn compile_process_receipt_path(worktree: String) -> String {
   join([worktree, "/", compile_process_receipt_name], "")
-}
-
-fn compile_process_command(gunbc_program: String, repo_root: String, worktree: String, entry: String) -> String {
-  join([
-    gunbc_program, " run",
-    " --source-root ", repo_root, "/dag",
-    " --source-root ", repo_root, "/src/v2",
-    " --entry ", repo_root, "/", test_process_entry,
-    " --function ", compile_process_function,
-    " --arg repo_root=", repo_root,
-    " --arg worktree=", worktree,
-    " --arg entry=", entry,
-    " --arg receipt_path=", compile_process_receipt_path(worktree: worktree),
-  ], "")
 }
 
 fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt_path: String) -> ProcessExit {
@@ -273,7 +242,7 @@ fn compile_entry_cli(repo_root: String, worktree: String, entry: String, receipt
         match snapshot_worktree(instance: instance, worktree: worktree) {
           SnapshotRefused { step, detail } => ExitFailure { code: 2, reason: join(["gunbc compile: snapshot refused at ", step, ": ", detail], "") }
           SnapshotResolved { commit } => {
-            let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: CompileEntry { entry: entry as FilePath })
+            let result = compute_provide(instance: instance, owner: DirectInvocation { why: "test_run: a local claim or compile run invoked the provider directly" }, commit: commit, op: CompileEntry { entry: entry as FilePath }, target: TargetIsExecutingHost)
             let record = provide_result_host_record(r: result)
             let receipt = Filesystem.Write(path: receipt_path, content: provide_result_document(r: result))
             let record_note = compute_write_host_record_note(receipt_path: receipt_path, record: record)

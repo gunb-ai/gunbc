@@ -52,3 +52,16 @@ fn layer_import_facts_live(
 ) -> List<LayerImportFact> {
   layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
 }
+
+// THE layer_import_facts SEAM (v2.compiler.primitive_execution_semantics relocation, M2V two-keyings). layer_import_facts is a
+// declared v1 builtin (src/v1/04_method.dag builtin_function_registry, params std_roots/extdeps_roots, returns
+// layer_import_fact_elem) whose calls resolve to the builtin directly, so no DeclarationRef resolved to it. This fn
+// IS that declaration -- self-call body, the HostRealizedSeam shape, the decl_facts pattern; the signature matches
+// the registry row exactly. std.primitive_projection carries the paired row. It lives HERE because this module's
+// header already documents this builtin as its subject and owns its live wrapper above.
+fn layer_import_facts(
+  std_roots: List<String>,
+  extdeps_roots: List<String>
+) -> List<LayerImportFact> {
+  layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
+}

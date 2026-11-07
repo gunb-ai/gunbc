@@ -16,7 +16,7 @@ import extdeps.tools.sha256sum {
 import extdeps.oasis.mqtt { MqttEndpoint, MqttTopic, MqttQos }
 import extdeps.printing.bambu_lab_lan_protocol {
   bambu_request_topic, bambu_lan_mqtt_endpoint, bambu_lan_mqtt_user,
-  bambu_start_command, bambu_start_payload_json, bambu_start_command_qos,
+  BambuAmsTray, bambu_start_command, bambu_start_payload_json, bambu_start_command_qos,
   bambu_printer_ca_bundle_source, bambu_printer_ca_bundle_sha256,
 }
 import extdeps.external_authority { ExternalAuthority }
@@ -337,6 +337,7 @@ fn publish_start_with_credential(
   serial: NonEmptyStr,
   lan_address: NonEmptyStr,
   remote_name: NonEmptyStr,
+  ams_tray: BambuAmsTray,
   credential: Secret,
 ) -> PrintStart
   admit_callers: [
@@ -367,7 +368,7 @@ fn publish_start_with_credential(
         MosquittoOptionsPlaced { binding: binding } => {
           endpoint = bambu_lan_mqtt_endpoint(host: lan_address)
           topic = bambu_request_topic(serial: serial)
-          command = bambu_start_command(remote_name: remote_name)
+          command = bambu_start_command(remote_name: remote_name, ams_tray: ams_tray)
           outcome = run_shell_command_capture(
             command: env_prefixed_command(
               bindings: mosquitto_options_env(binding: binding),
@@ -474,7 +475,7 @@ fn start_refusal(printer: PhysicalAssetIdentity, stderr: String, cleaned: Bool) 
 // THE START IS CONFINED BY CONSTRUCTION: only gunbc.fleet.printer_actuation print_claimed_project,
 // behind the approval, readiness and claim checks, may call it; any other caller is refused at
 // compile time, censused or not.
-fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmptyStr) -> PrintStart
+fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmptyStr,ams_tray:BambuAmsTray) -> PrintStart
   admit_callers: [
     decl_ref(module_path: "gunbc.fleet.printer_actuation", decl_name: "print_claimed_project"),
   ]
@@ -482,7 +483,7 @@ fn start_print_with_session(session:PrinterCredentialSession,remote_name:NonEmpt
  let printer=session_printer(s:session)
  match printer_serial(printer:printer) {
   PrinterSerialFound {serial:serial}=>match printer_endpoint_address(printer:printer) {
-   PrinterAddressFound {address:a}=>publish_start_with_credential(printer:printer,serial:serial,lan_address:a,remote_name:remote_name,credential:session_credential(s:session))
+   PrinterAddressFound {address:a}=>publish_start_with_credential(printer:printer,serial:serial,lan_address:a,remote_name:remote_name,ams_tray:ams_tray,credential:session_credential(s:session))
    PrinterAddressUnknown {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"} PrinterAddressAmbiguous {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"} PrinterAddressWrongClass {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer address absent or ambiguous"}
   }
   PrinterSerialUnknown {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"} PrinterSerialUnrecorded {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"} PrinterSerialAmbiguous {printer:_}=>PrintStartRefused {printer:printer,cause:"Printer serial absent or ambiguous"}

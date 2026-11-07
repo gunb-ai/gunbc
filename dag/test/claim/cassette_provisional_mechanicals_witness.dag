@@ -8,7 +8,7 @@ import product.printed_chassis.board_mechanical_reference {jade_image_mount_read
 import product.printed_chassis.platform_projects_review {platform_projects_review}
 import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
 import extdeps.external_authority {CitedToAuthority,TranscribedUncited}
-import extdeps.boards.asrock_rack {HoleCorrespondenceInferred,HolePositionEstimatedFromImage,HolePhysicallyConfirmedPresent,standoff_placement,StandoffAdmitted,StandoffProhibited}
+import extdeps.boards.types {HoleCorrespondenceInferred,HolePositionEstimatedFromImage,HolePhysicallyConfirmedPresent,standoff_placement,StandoffAdmitted,StandoffProhibited}
 import extdeps.languages.json.emit {serialize_json,JsonValue,JsonArray,JsonObject,JsonNull,JsonBool,JsonNumber,JsonString}
 import extdeps.languages.json.parse {json_field,json_field_string,json_field_bool,FieldRead,FieldAbsent,FieldMalformed}
 

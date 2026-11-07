@@ -1,0 +1,983 @@
+module test.claim.product.p4261_atlas_pass_witness
+
+// ==================================================================================================
+// The 2026-11-03b atlas pass, pinned.
+//
+// The atlas pass put two hundred and sixty-two E1 positions on the record, along with the readings,
+// the installed-component states, the held-unresolved rows and one ambiguous sighting that came out
+// of the corrected inventories. The pass was rebuilt after a cleanup bug merged distinct designators
+// by stripping underscores (U1_2 into U12, U2_2 into U22, U3_2 into U32).
+//
+// Completeness here is an IDENTITY JOIN, not a count: `p4261_e1_positions` is joined at designator
+// grain to `e1_position_receipts` -- the same inventory rows the pass was read from, emitted as data
+// by scripts/gen_e1_position_receipts_dag.py with its commit named -- so a position that is not a
+// certain, complete, above-the-passive-level read cannot be added without turning this red, and a
+// read that the receipts have cannot go missing silently. A count would not do that job: delete a
+// position and add a misspelling, and the count still matches (DESIGN §5, "completeness is an
+// identity join, not a count equality"). The row counts that remain below are named for what they
+// are -- a per-pass change detector -- with the join that replaces each one.
+//
+// What these tests hold is the SHAPE the pass must keep:
+//
+//   * the merged pairs stay two positions, and the merged-away spellings do not appear at all;
+//   * no placeholder, group label, thermal pad or outline-owed-a-glance became a position;
+//   * a claim names a part only where the body's own marking carries that part's printed code;
+//   * an empty footprint is an observation about THIS board and never a population claim;
+//   * the alteration ledger stays a different thing from an observed-empty footprint;
+//   * one ambiguous sighting mints no second position, and the sighting survives as read.
+//
+// A red here means the pass regressed: a position was minted from a reading that does not support it,
+// or an observation was promoted into NVIDIA's design.
+// ==================================================================================================
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.text { string_eq }
+import std.optional { Absent, Present }
+import product.electrical.connectivity { ComponentInstanceIdentity, component_identity_eq, component_local_label }
+import product.electrical.identification {
+  marking_text,
+  BodySeenMarkingUnread,
+  ComponentIdentification,
+  FootprintUnpopulated,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingCandidate,
+  observation_relied_on,
+  MarkingReading,
+  MarkingSharedByMakers,
+  MarkingUnresolved,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
+  ObservedPresence,
+  observed_presence,
+  GlyphSpan,
+  Transcribed,
+}
+import extdeps.nvidia.p4261.population {
+  PopulatedPart,
+  PopulationClaim,
+  PartRow,
+  p4261_e1_positions,
+  p4261_k1_positions,
+  p4261_position_at,
+}
+import extdeps.external_authority { TranscribedUncited }
+import extdeps.electronic_component.diodes_pi3ch480 { pi3ch480_qex }
+import extdeps.electronic_component.types { designator_eq, designator_of, designator_text }
+import product.p4261.carrier { CarrierLayoutObservation, DesignatorReading }
+
+import product.p4261.e1_position_receipts {
+  HeldReceipt,
+  LabelSighting,
+  ReceiptBasis,
+  e1_held_receipts,
+  e1_position_receipts,
+}
+import product.p4261.e1_candidate_source { same_candidate }
+// Only this is imported, and only it is used: the rows are matched by arm inside their own
+// `match`, which needs no type name, and naming the sum here to nothing would be an import that
+// lies about what this file depends on.
+import product.p4261.e1_b { p4261_e1_layout }
+import product.p4261.e1_body_sightings { BodySighting, e1_body_sightings }
+import product.p4261.e1_photographs { e1_photographs }
+import product.electrical.photograph { CitationVerdict, Checkable, Broken, citation_verdict, cite, photograph_in_store, same_boxed_frame }
+import product.electrical.continuity { OperatorPhotograph }
+import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
+
+// The one candidate the pass saw and never read is pinned BY ARM, not by a copy of a string: see
+// `is_unread_candidate` below, which matches `C3_F1 { }` out of the generated sum. An earlier shape of
+// this test held `data C3_F1_SOURCE_KEY = "merged inventory, top side, placed cell A1, photos
+// 't4_07'"` in this file -- a copy of text the generator owns, kept in step by attention, which went
+// stale the first time the key's format changed. Then it became an imported constant (better, still a
+// copy of a value). Now the identity is the arm, and a candidate renamed at the source makes this file
+// stop resolving.
+
+fn is_position(d: NonEmptyStr) -> Bool {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: _ } => true
+    Absent { } => false
+  }
+}
+
+fn claim_of(d: NonEmptyStr) -> PopulatedPart? {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: p } => p.population
+    Absent { } => Absent { }
+  }
+}
+
+fn component_rows(d: NonEmptyStr) -> List<InstalledComponent> {
+  let who = ComponentInstanceIdentity { design: p4261_e1_layout.design, local_identity: d }
+  filter(p4261_e1_layout.components, c => component_identity_eq(a: c.component, b: who))
+}
+
+fn identified_as(d: NonEmptyStr, row_name: NonEmptyStr) -> Bool {
+  any(component_rows(d), c => match c.identification {
+    IdentifiedByMarking { row, observation: _ } => (row.ordering_code as String) == (row_name as String)
+    _ => false
+  })
+}
+
+fn stated_empty(d: NonEmptyStr) -> Bool {
+  any(component_rows(d), c => match c.identification {
+    FootprintUnpopulated { evidence: _ } => true
+    _ => false
+  })
+}
+
+// Does the identification state that a body is fitted? The question is asked of the type, never of a
+// name: a body sighted in a frame and a part merely named in the session must give different answers,
+// which is the whole reason BodySeenMarkingUnread exists instead of a MarkingUnresolved with no text.
+fn presence_is_stated(i: ComponentIdentification) -> Bool {
+  match observed_presence(i: i) {
+    PartPresent => true
+    _ => false
+  }
+}
+
+fn body_seen_rows() -> List<InstalledComponent> {
+  filter(p4261_e1_layout.components, c => match c.identification {
+    BodySeenMarkingUnread { evidence: _ } => true
+    _ => false
+  })
+}
+
+fn named_without_being_seen() -> List<InstalledComponent> {
+  filter(p4261_e1_layout.components, c => match c.identification {
+    MarkingUnresolved { marking: Absent, discriminator: _ } => true
+    _ => false
+  })
+}
+
+
+fn held_unresolved(d: NonEmptyStr) -> Bool {
+  any(p4261_e1_layout.unresolved, u => match u.identity {
+    ReadDesignator { designator: v } => (v as String) == (d as String)
+    Candidate { source: _ } => false
+    Unlabelled { } => false
+  })
+}
+
+fn no_row_at_all(d: NonEmptyStr) -> Bool {
+  count(component_rows(d)) == 0 && !is_position(d)
+}
+
+// 1. The merged pairs, on the record as two positions each, with the corrected identifications
+// where the body's marking carries the code. This is the red for the underscore cleanup: if anything
+// in the pass starts normalising spellings again, one of these rows disappears into the other.
+test fn the_underscore_merges_stayed_two_positions() -> Bool {
+  is_position("U12") && is_position("U1_2")
+    && is_position("U22") && is_position("U2_2")
+    && is_position("U3_2") && is_position("U32")
+    && is_position("U3_P3")
+    && is_position("U1_P1") && is_position("U1_P5")
+}
+
+// 2. And the identification landed on the right spellings: the buffers are U12 and U22 (the operator's
+// correction), the flash is U2_2 and U3_2, and the small part U1_2 claims nothing. If the old merge
+// is reintroduced, U1_2 would carry the buffer row and U2_2 would lose the flash.
+test fn the_buffers_and_the_flash_landed_on_the_right_spellings() -> Bool {
+  identified_as("U12", "PCA9617ADP")
+    && identified_as("U22", "PCA9617ADP")
+    && identified_as("U2_2", "MT25QU01GBBB8E12-0SIT")
+    && identified_as("U3_2", "MT25QU01GBBB8E12-0SIT")
+    && !identified_as("U1_2", "PCA9617ADP")
+    && !identified_as("U22", "MT25QU01GBBB8E12-0SIT")
+    && match claim_of("U1_2") { Absent { } => true, Present { value: _ } => false }
+}
+
+// 3. A claim needs the body's marking, not the atlas's guess: U58_P2, U501, U50 and U451 name a
+// candidate part and stay candidates, and none of them may carry an identification. This is DESIGN
+// §4d's rule with an executing consumer.
+test fn a_candidate_never_became_an_identification() -> Bool {
+  any(component_rows("U501"), c => match c.identification {
+    MarkingCandidate { row: _, marking: _, discriminator: _ } => true
+    _ => false
+  })
+    && any(component_rows("U50"), c => match c.identification {
+      MarkingCandidate { row: _, marking: _, discriminator: _ } => true
+      _ => false
+    })
+    && !identified_as("U501", "PI6C49X0208ZHIEX")
+    && !identified_as("U50", "LSF0108PWR")
+    && !identified_as("U58_P2", "MPQ8633")
+    // A candidate is not a population claim either: NVIDIA's design list says nothing about these
+    // positions until a reading settles them.
+    && match claim_of("U501") { Absent { } => true, Present { value: _ } => false }
+    && match claim_of("U50") { Absent { } => true, Present { value: _ } => false }
+    && match claim_of("U58_P2") { Absent { } => true, Present { value: _ } => false }
+}
+
+// 4. Y1 keeps only what was printed on it. A frequency read off a body is not a crystal
+// identification, and no orderable may attach to it from this pass.
+// The body prints 27.000. That figure is kept verbatim in the marking reading and identifies nothing:
+// PrintedRating's only arm is a fuse rating, so the honest arm is the unresolved one, and no orderable
+// attaches to Y1 from this pass. (A crystal's maker, package and orderable are still owed.)
+test fn a_printed_frequency_is_not_an_identification() -> Bool {
+  any(component_rows("Y1"), c => match c.identification {
+    // Rev 6: a reading that yielded nothing renders as "no glyphs read ...", which cannot contain the
+    // figure. `MarkingUnresolved` carries its reading as OPTIONAL -- that arm means a body named in the
+    // session that nobody read -- so the branch here is about whether anything was transcribed at all:
+    // no reading, no figure. The figure has to have been TRANSCRIBED to appear in this test.
+    MarkingUnresolved { marking, discriminator: _ } => match marking {
+      Present { value: m } => (marking_text(r: m)).contains("27.000")
+      Absent => false
+    }
+    _ => false
+  })
+    && !identified_as("Y1", "anything")
+    && match claim_of("Y1") { Absent { } => true, Present { value: _ } => false }
+}
+
+// 5. Nothing that the pass decided against became a position: the '?' rows, the group label, the
+// duplicate rows the atlas itself struck, the bare thermal pads, and the three outlines that were
+// owed a closer look. Each of these is a position that would exist on NVIDIA's list and does not.
+// Two of these names are not like the others, and the difference is the rule rather than an exception.
+// J3 was on the design list BEFORE this pass and keeps its position -- but since 2026-11-04 it keeps it for
+// a better reason than the one it had. It used to rest on the 2026-10-20 bench read of upload 9cd281be,
+// whose bytes never reached us, and the pin here was that NO J3 reading cited a frame the store held. The
+// operator has read 'J3' in three stored frames, so the pin is now the other half of the same rule: grain
+// A allows one modelled reading per part, so J3 has exactly ONE reading and it cites a frame the store
+// holds -- the witness that J3's identity rests on pixels, not on a name asserted twice, is
+// a_stored_frame_authority_is_checkable_against_the_board. What the pass must not do is mint anything NEW
+// for it, and a second reading would be exactly that. U1_TSE is the mirror image: the corrected inventory reads its designator clear and confirmed
+// (t4_07), so it IS a position; only its body marking is unread, and an unread marking is a population gap,
+// never a reason to drop a position the silkscreen gave us.
+test fn what_the_pass_refused_to_mint_is_absent() -> Bool {
+  !is_position("DS10-DS13")
+    && !is_position("U88") && !is_position("U108") && !is_position("U138")
+    && !is_position("U1_INV")
+    && !is_position("Y2") && !is_position("Y360") && !is_position("J141")
+    && !is_position("U817") && !is_position("D5_P1") && !is_position("Q5_P1")
+    && !is_position("D17") && !is_position("Q12")
+    && !is_position("U?") && !is_position("?")
+    && is_position("U1_TSE") && is_position("U1_TSW")
+    && count(filter(p4261_e1_layout.designator_readings, r =>
+      (r.designator as String) == "J3"
+        && match r.evidence {
+          OperatorPhotograph { citation } =>
+            match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
+              Checkable { } => true
+              Gap { } => false
+              Broken { } => false
+            }
+          _ => false
+        })) == 1
+}
+
+// 6. The refusals are not silently dropped: each is on the observation side, named, with the photo
+// that would close it in its obligation. A refusal that vanishes is a coverage gap that hides.
+test fn what_was_refused_is_held_with_an_obligation() -> Bool {
+  held_unresolved("DS10-DS13")
+    && held_unresolved("U817") && held_unresolved("D5_P1") && held_unresolved("Q5_P1")
+    && held_unresolved("U88") && held_unresolved("J3")
+    // the three the body rule refused: two frames disagree about a body at D1_P1 and U3_P3, and U40's
+    // only sighting could not say what kind of thing it saw. Held, with the frames to compare.
+    && held_unresolved("D1_P1") && held_unresolved("U3_P3") && held_unresolved("U40")
+}
+
+// 6b. And the held set is not a rumour. Every designator the receipts say we read and did not
+// position is on the board as an unresolved sighting (or as the one ambiguous reading), and
+// `obligation: NonEmptyStr` means such a row cannot be written without naming what would close
+// it. The test above samples six designators; a mutant run -- D17's unresolved row deleted --
+// passed it, which is how the missing direction was found. This joins the whole held set, so a
+// held part cannot vanish from the board silently.
+test fn every_held_receipt_is_recorded_on_the_board() -> Bool {
+  // The reverse direction of the refusal side: every held receipt survives as an unresolved
+  // board row. No name is exempted -- the ambiguous U3 sighting is not a held receipt (it is a
+  // read that became a position), and its own control is
+  // `the_ambiguous_sighting_mints_no_second_position`. The obligation cannot be empty because
+  // `UnresolvedPart.obligation` is `NonEmptyStr`: the type is the authority, so re-testing it
+  // here would be a second copy of the same rule.
+  //
+  // Why the direction is written with `.all` and not `count(list, pred)`: a first version of
+  // this test used `count(e1_held_receipts, h => ...)`, and the mutant below stayed green under
+  // it -- a two-argument `count` is not the repository idiom (`count(filter(list, pred))`,
+  // `.all`, `.any` are) and does not filter. The same mutant turns this red.
+  //
+  // The two held arms are held to separately, because they hold different things. A held READ survives
+  // as an unresolved row that presents its designator. A CANDIDATE -- a label read in part, or one the
+  // pass saw and never transcribed -- survives as an unresolved row that presents NO designator and
+  // carries its proposed name in the obligation, where a reader can find it. Deleting such a row throws
+  // away the one observation the C3_F1 correction is about: that a label was seen.
+  e1_held_receipts.all(r => match r {
+    HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
+      any(p4261_e1_layout.unresolved, u => match u.identity {
+        ReadDesignator { designator: d } => designator_eq(a: designator_of(verbatim: d), b: dn)
+        Candidate { source: _ } => false
+        Unlabelled { } => false
+      })
+    // One arm, one rule, for both kinds of candidate. A candidate has no designator to present, so its
+    // board row is one that presents NOTHING. Deleting such a row throws away the one observation the
+    // C3_F1 correction is about: that a label was seen.
+    //
+    // THE ROW IS FOUND BY THE ARM, NOT BY ITS PROSE AND NOT BY ITS TEXT. The row that IS this
+    // candidate is the one whose identity is `Candidate` citing this receipt's own arm. Three shapes
+    // came before this one, and each is worth naming because each was weaker than it looked: matching
+    // `string_contains(u.obligation, proposed_name)` was an identity join over prose (reword an
+    // obligation, the observation vanishes; let an incidental mention stand in; let two receipts
+    // proposing the same spelling share one row). Matching a `candidate_source` string against a
+    // `source_key` string fixed the prose but left the identity a copy of text on both sides. Both are
+    // gone: an arm is a name the compiler resolves, and `same_candidate` is generated beside the arms,
+    // so two candidates have two ordinals and nothing a reader can type makes one candidate look like
+    // another. The proposed name stays in the obligation for a reader and carries no weight here.
+    //
+    // Counting, not `any`: a deleted row leaves none, one arm cited twice makes two, and a row flipped
+    // to `ReadDesignator` leaves none either. What the type cannot say is HOW MANY rows a candidate has,
+    // which is exactly what this counts. The reverse direction used to be a test of its own and is gone
+    // with the string: a board row citing a candidate that does not exist no longer resolves, so it
+    // never reaches a test. See `a_candidate_board_row_is_keyed_to_a_receipt` in the history.
+    DesignatorCandidate { source: k, atlas_row: _, proposed_name: _, standing: _, receipt_read: _,
+                          partly_legible_in: _, obligation: _, why: _ } =>
+      1 == count(filter(p4261_e1_layout.unresolved, u =>
+        match u.identity {
+          Candidate { source: c } => same_candidate(a: c, b: k)
+          ReadDesignator { designator: _ } => false
+          Unlabelled { } => false
+        }))
+  })
+}
+
+// 6c. THE REVERSE DIRECTION IS NO LONGER A TEST. There used to be
+// `a_candidate_board_row_is_keyed_to_a_receipt`: it asked every board row that claimed to be somebody's
+// candidate to be keyed to exactly one candidate that exists. As a STRING that was a real risk -- a key
+// typed wrong, copied onto a second row, or invented for a receipt that never existed -- and the test
+// earned its place. Now a board row names a candidate by an ARM of the generated sum, and naming an arm
+// that is not there is a resolution error at compile time: the closure does not build, so no test runs.
+// Keeping a test that could never go red would be a lie about what is checked. The forward direction
+// above still earns its keep, because "exactly one row cites this candidate" is a fact about the board
+// that no type can express.
+
+// 7. An empty footprint is a statement about THIS board. It is an observation arm, so the position
+// beside it carries no population claim at all -- there is no "unpopulated" arm in PopulatedPart, and
+// an empty footprint on our board is never a claim about NVIDIA's intent.
+test fn an_empty_footprint_claims_nothing_about_the_design() -> Bool {
+  let empties = ["U2_P5", "U3_P5", "D1_P5", "U2_P1", "F302", "U3_P1", "U523"]
+  all(empties, d => stated_empty(d) && match claim_of(d) { Absent { } => true, Present { value: _ } => false })
+}
+
+// 8. The altered board is a different thing from an empty footprint. U10_P2's MP2333 was removed
+// during the rail-short repair; recording it as observed-empty would say we found it empty.
+test fn an_alteration_is_not_recorded_as_an_observed_empty() -> Bool {
+  !stated_empty("U10_P2") && held_unresolved("U10_P2")
+}
+
+// 9. One sighting, two candidate positions, no second position. The top-side "U3" is preserved as
+// read, with U3_2 as the leading explanation and the conflict stated; it mints nothing, and the
+// canonical bottom-side U3 remains the only U3 on the design list.
+test fn the_ambiguous_sighting_mints_no_second_position() -> Bool {
+  let rows = p4261_e1_layout.ambiguous_designators
+  count(rows) == 1 && is_position("U3") && is_position("U3_2")
+    && match rows.first() {
+      Present { value: r } =>
+        (designator_text(designator: designator_of(verbatim: r.verbatim)) as String) == "U3"
+          && (r.candidate as String) == "U3_2"
+          && (r.conflict as String).contains("bottom")
+      Absent { } => false
+    }
+}
+
+// 10. EVERY reading on the board, checked against the store rather than asserted: a reading's citation
+// must resolve to a captured frame of THIS board, or name the gap that keeps it out (bytes never
+// hashed). Broken is refused -- a digest the store does not hold, a frame of another specimen, an image
+// we drew ourselves. And at least one reading must be Checkable, or this test would pass on a board of
+// gaps: the same fold evidence.dag reads, so the witness cannot drift from production.
+fn verdict_of(r: DesignatorReading) -> CitationVerdict {
+  match r.evidence {
+    OperatorPhotograph { citation } =>
+      citation_verdict(standing: cite(store: e1_photographs, citation: citation))
+    _ => Broken { }
+  }
+}
+
+test fn every_reading_cites_a_frame_or_names_a_gap() -> Bool {
+  all(p4261_e1_layout.designator_readings, r => match verdict_of(r) { Broken { } => false, _ => true })
+    && any(p4261_e1_layout.designator_readings, r => match verdict_of(r) { Checkable { } => true, _ => false })
+    // The parts the corrected inventories settled are among the checkable ones, and each is read once.
+    && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U12")) == 1
+    && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U1_2")) == 1
+    && count(filter(p4261_e1_layout.designator_readings, r => (r.designator as String) == "U2_2")) == 1
+}
+
+// ---- the positions are the receipts, joined by identity -------------------------------------------
+//
+// DESIGN §5: "Completeness is an identity join, not a count equality." The referent is not this file
+// and not the model: it is the 2026-11-03 atlas receipts, emitted as data by
+// gen_e1_position_receipts_dag.py from inventory_top.csv, inventory_bottom.csv, the per-photo
+// sightings and final_pass_corrections.json (the header of e1_position_receipts.dag names them). So
+// a reader can re-run the generator against the receipts and get this set again; and a position that
+// disappears, a spelling that drifts, or a read that never happened shows up as a refusal here rather
+// than as a number that happens to still add up. Delete U41 and add a misspelled U4l and every count
+// in this file stays where it was; these two directions do not.
+//
+// The base rule the generator applies is stated in its own header -- a designated part above the
+// passive level, its own label read in full, standing 'confirmed' or 'final-pass critic', no
+// unreadable character. The legibility is something the generator CHECKS and, on a rule row, no
+// longer stores: 'read in full' is what resting on the rule means, so the row has no field to say
+// it in. 249 of the 261 positions come from that rule alone. The other 12 are named
+// exceptions carrying the receipt that justifies them (a per-photo sighting the merged inventory
+// lost, an entry on the atlas's own anomaly list, a bench read the atlas could not repeat, the bulk
+// capacitors the handoff puts in scope), and 5 more reads the rule reaches were refused anyway and
+// are held instead -- the two duplicate bottom-side labels and the three empty footprints that need
+// a visual check. It was 262 and 13 until C3_F1 came out: the pass saw its label at t4_07 and
+// never transcribed it (no designator_read, no photo, no bbox in the merged row), and its marking
+// was copied from C1_F1, C2_F1 and C4_F1, which its own parentheses admit. A position is NVIDIA's
+// design fact, so an unread label cannot mint one; the exception was deleted and the rule holds it.
+// The excluded set, the designators whose read carries a '?' or a '*', is 81 distinct above the
+// passive level: those stay in the receipts entirely, which is why no test here can count them.
+
+test fn the_positions_are_the_receipts_and_nothing_else() -> Bool {
+  // Every position on NVIDIA's design list is a designator the receipts admitted, by the rule or by a
+  // named exception that says what it rests on.
+  p4261_e1_positions.all(p =>
+    any(e1_position_receipts, r => designator_eq(a: p.position.designator, b: r.designator)))
+    // And every designator the receipts admitted is on the list. The two directions together are the
+    // join: neither alone says the sets are the same.
+    && e1_position_receipts.all(r => match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(r.designator)) {
+      Present { value: _ } => true
+      Absent { } => false
+    })
+}
+
+test fn what_the_receipts_held_is_not_on_the_design_list() -> Bool {
+  // The other half of refusing: a read the receipts held back must not have slipped into the design
+  // facts. This is the assertion that catches a tentative read minting a position.
+  //
+  // The candidate arm is checked on the same authority, not skipped: its name is text, so the test
+  // asks the position authority directly whether that text became a designator. Leaving the arm
+  // unhandled would make the one row whose name was never read the only row this test cannot see.
+  e1_held_receipts.all(r => match r {
+    HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
+      match p4261_position_at(positions: p4261_e1_positions, verbatim: designator_text(dn)) {
+        Present { value: _ } => false
+        Absent { } => true
+      }
+    DesignatorCandidate { source: _, atlas_row: _, proposed_name: n, standing: _, receipt_read: _,
+                          partly_legible_in: _, obligation: _, why: _ } =>
+      // A name with characters missing is exactly as unadmitted as a name nobody read: both are text,
+      // and text does not enter NVIDIA's design list. One arm says it once; two arms said it twice, and
+      // a duplicate is where a future edit lands on one kind and misses the other.
+      match p4261_position_at(positions: p4261_e1_positions, verbatim: n) {
+        Present { value: _ } => false
+        Absent { } => true
+      }
+  })
+}
+
+test fn every_named_exception_reaches_the_board() -> Bool {
+  // A named exception is an admission the base rule did not make, so the exception cannot be the
+  // whole story: something on the board has to speak for that designator, a designator reading or
+  // an unresolved row. An exception admitting a designator with no observation behind it would put
+  // a position on NVIDIA's design list that nobody on the bench ever recorded, and `rests_on` would
+  // stay a field the model states and nothing reads. This is its only consumer: the 12 named
+  // exceptions are now checkable rather than merely stated.
+  //
+  // This test would NOT have caught C3_F1, and it is not offered as if it did. That designator had
+  // two board rows, exactly as this test requires; what it never had was a transcription behind the
+  // text one of those rows carried, and no test over the rows can see through a copied CSV column.
+  // The generator change is what catches it: the merged row has no designator read at all, so the
+  // base rule no longer reaches it and no exception covers it.
+  filter(e1_position_receipts, r => match r.rests_on {
+    NamedException { why: _, authority: _ } => true
+    RuleRead { } => false
+  }).all(r =>
+    any(p4261_e1_layout.designator_readings, d =>
+      designator_eq(a: designator_of(verbatim: d.designator), b: r.designator))
+      || any(p4261_e1_layout.unresolved, u => match u.identity {
+        ReadDesignator { designator: d } => designator_eq(a: designator_of(verbatim: d), b: r.designator)
+        Candidate { source: _ } => false
+        Unlabelled { } => false
+      }))
+}
+
+
+// (This is where a test used to sit which asked every rule-admitted row to state a label it had
+// read in full. It is gone, and the reason is worth keeping: `rests_on` is a `ReceiptBasis`, whose
+// `RuleRead` arm carries no field at all (e1_position_receipts.dag:67), so a row the base rule
+// reached has nowhere to write 'the label was only partly read'. The state has no constructor, so a
+// witness for it would only be checking that a record equals itself. What proves it is a mutation
+// rather than a test, and this is the version that runs: `RuleRead { why: "..." }` written into a
+// row -- `why` being a real field on the sibling `NamedException`, so the mutant is a plausible row
+// in every respect except the arm it sits on -- refused by the compiler with
+// `error: field 'why' not found in type 'RuleRead'`. Its control writes the same field on
+// `NamedException`, where it IS declared, and the tree compiles and the entry passes; without that
+// control the refusal would prove only that the name is unknown somewhere. An earlier draft of this
+// comment described a `legibility: Partial { }` being written instead; no `legibility` field exists
+// in the model any more, and justifying a current refusal with a retired field is how the next
+// reader starts hunting for a field that does not exist. The held path closed the same way, by the
+// same means:
+// an exact held row carries the authority that licenses every character of its spelling, and a row
+// only partly read is a candidate arm, which mints no `Designator` -- so 'exact name, partly read'
+// has no constructor there either. What the types cannot reach is the CROSS-ROW direction, and the
+// four tests that follow are what covers it: `the_held_arms_carry_only_what_they_may`,
+// `no_board_row_names_a_designator_the_receipts_never_saw`,
+// `every_body_sighting_is_at_a_position_the_authority_admitted`, and
+// `the_pass_row_counts_are_a_change_detector`.)
+
+test fn the_held_arms_carry_only_what_they_may() -> Bool {
+  // The two held shapes are not interchangeable, and neither is allowed to be silently true here. An
+  // EXACT read carries the label it read in full, so it carries the authority that licenses every
+  // character of it -- there is no legibility field to fail, which is the point: the state 'exact
+  // name, partly read' has no constructor. A CANDIDATE carries a proposed name as plain text, whether
+  // the receipts read it in part or not at all, because Designator is the identity the whole model
+  // joins on and a spelling that is not settled must not enter it. What the shapes cannot close is the
+  // cross-row direction: a proposed name reappearing on the board as a read designator, which would
+  // undo the correction as thoroughly as a held row that minted a name it had only half read.
+  e1_held_receipts.all(h => match h {
+    // The exact arm carries a designator, so it carries the burden that goes with one: its authority
+    // has to check out, through the same checker a position's exception uses and the same rules, with
+    // the board table named by the caller (parent's D3). Not `true`: `FromStoredFrames` is writable on
+    // this arm, and an arm that waved it through would let a held row cite frames the store has never
+    // seen. No row takes that arm today, which is exactly when the check is cheapest to have.
+    HeldExactDesignator { designator: dn, standing: _, authority: a, why: _ } =>
+      authority_is_checkable(name: designator_text(dn), authority: a, on_the_board: UnresolvedRows { })
+    DesignatorCandidate { source: _, atlas_row: _, proposed_name: n, standing: _, receipt_read: _,
+                          partly_legible_in: _, obligation: _, why: _ } =>
+      // Its frames resolve, and nothing on the board presents the label as read -- not a designator
+      // reading of any evidence kind, and not an unresolved row's designator. Stronger than the two arms
+      // it replaces, which each forbade a different half (one banned stored pixels behind a partly-read
+      // name, the other banned any presentation of an unread one). Under one arm there is one rule: the
+      // receipts hold this spelling unsettled, so the board may not say it read it.
+      held_is_checkable(h)
+        && !any(p4261_e1_layout.designator_readings, d =>
+          string_eq(a: d.designator as String, b: n as String))
+        && !any(p4261_e1_layout.unresolved, u => match u.identity {
+          ReadDesignator { designator: v } => string_eq(a: v as String, b: n as String)
+          Candidate { source: _ } => false
+          Unlabelled { } => false
+        })
+  })
+}
+
+test fn no_board_row_names_a_designator_the_receipts_never_saw() -> Bool {
+  // Nothing in the board record -- not an unresolved row, not the ambiguous sighting -- names a
+  // designator the receipts never recorded. A row with no designator at all (the unnamed clusters)
+  // is not a claim about a designator and is not checked here.
+  p4261_e1_layout.unresolved.all(u => match u.identity {
+    ReadDesignator { designator: d } =>
+      any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: d), b: r.designator))
+        // What may vouch for a presented name depends on what the board row claims. An unresolved row's
+        // designator is plain text, so a name the receipts read IN FULL vouches for it as a Designator,
+        // and a name read only in part vouches for it as the text it is: both are the board saying what
+        // it saw without settling the spelling. A name nobody ever read vouches for nothing -- that is
+        // the C3_F1 case, where the board has no business presenting characters no receipt produced.
+        || any(e1_held_receipts, h => match h {
+          HeldExactDesignator { designator: dn, standing: _, authority: _, why: _ } =>
+            designator_eq(a: designator_of(verbatim: d), b: dn)
+          // Neither kind of candidate vouches for a presented name, and one arm says so once. The
+          // partly-read arm used to vouch by text equality, which licensed the board saying 'J141' as
+          // read while the receipts say only part of it was read: the contradiction C3_F1 was removed
+          // for, one rung down the same ladder (parent's D2).
+          DesignatorCandidate { source: _, atlas_row: _, proposed_name: _, standing: _, receipt_read: _,
+                                partly_legible_in: _, obligation: _, why: _ } => false
+        })
+    Candidate { source: _ } => true
+    Unlabelled { } => true
+  })
+    // The ambiguous sighting: its verbatim and its candidate are both things the receipts saw. It
+    // mints no position of its own, which is what its own test below holds.
+    && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3"), b: r.designator))
+    && any(e1_position_receipts, r => designator_eq(a: designator_of(verbatim: "U3_2"), b: r.designator))
+    // The other half of the same rule, read from the receipts' side: no board row -- not the one keyed
+    // to a candidate, not any other -- presents a candidate's proposed spelling as if it had been read.
+    // The arm above refuses a row vouching for itself through a candidate's text; this refuses the
+    // spelling appearing anywhere as a designator, so moving it to a different row is not an escape.
+    // A candidate's name belongs in an obligation, as text, which is where its own row carries it.
+    && e1_held_receipts.all(h => match h {
+      HeldExactDesignator { designator: _, standing: _, authority: _, why: _ } => true
+      DesignatorCandidate { source: _, atlas_row: _, proposed_name: n, standing: _, receipt_read: _,
+                            partly_legible_in: _, obligation: _, why: _ } =>
+        !any(p4261_e1_layout.unresolved, u => match u.identity {
+          ReadDesignator { designator: d } => string_eq(a: d as String, b: n as String)
+          Candidate { source: _ } => false
+          Unlabelled { } => false
+        })
+    })
+}
+
+test fn every_body_sighting_is_at_a_position_the_authority_admitted() -> Bool {
+  // A body sighting states "a body is present at X", so X has to be a designator the position authority
+  // admitted -- not merely a string of the right shape. The generator's contract promises this and
+  // nothing checked it: these 66 rows are component rows, so the position/reading bijection above never
+  // looks at them. A same-shape typo in one of them keeps every number intact -- 66 sightings, 278
+  // components, the frame still resolving in the store, the bijection still total -- while stating
+  // presence beside a position NVIDIA's design list does not carry. So: through the Designator
+  // authority, never a string membership test.
+  e1_body_sightings.all(s => match p4261_position_at(positions: p4261_e1_positions, verbatim: s.designator) {
+    Present { value: _ } => true
+    Absent { } => false
+  })
+}
+
+// ---- what a count is still good for ------------------------------------------------------------------
+//
+// Named as what it is: a per-pass change detector, not a completeness claim (DESIGN §5). The position
+// census above is a join; these two numbers have no independent referent yet. The component count
+// becomes a join when the atlas's component sightings are emitted the way the designator reads are,
+// and the claim count when a marking carries the receipt it was read from; the trigger that replaces
+// this test is that work, or the K1 receipts making the same joins natural. Until then it is here so
+// a deleted row or a wrongly merged pair is loud rather than a smaller board.
+
+test fn the_pass_row_counts_are_a_change_detector() -> Bool {
+  // 212 rows written by the atlas pass and the bench work before it, plus the 66 bodies the pass
+  // sighted without reading a marking, generated from the receipts into
+  // product.p4261.e1_body_sightings -- one per position that had neither a body row nor a held row.
+  // A change detector, not a proof: `no_body_row_is_a_second_claim_about_an_instance` is what stops a
+  // 67th row duplicating a claim, and `the_positions_are_the_receipts_and_nothing_else` ties the set
+  // to the receipts.
+  count(p4261_e1_layout.components) == 278
+    // 47 design positions carried a population claim on main. Two came down with this pass: Q300 and
+    // Q301, whose only evidence is the maker-ambiguous mark "K38" -- one cited BSS138 row, so
+    // PartConstrainedToRows had nothing to constrain to, and a claim dressed up as a bet is still a
+    // claim (§4d). Each became an unclaimed position with its obligation kept on the observation that
+    // raised it: 47 - 2 = 45. (Q21_P5 and Q22_P5 carry the same defect and are listed in the PR body
+    // as open; repairing them here would retire two findings the operator measured, pending a ruling.)
+    // 45 became 49 when the four FSV20100V rectifiers were claimed: D2_P1, D8_P1, D2_P5 and D8_P5,
+    // whose bodies print the device code the datasheet gives, joined to the vendor row in
+    // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
+    // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
+    && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
+    // The held set is 25 as of the 2026-11-04 correction, which took C3_F1 out of the admitted set
+    // and put it here: the pass saw its label at t4_07 and never transcribed it, and the marking the
+    // board had stored was the neighbours' (see the generator's EXCEPTIONS and e1_b's C3_F1 rows).
+    // Before that it was 24. The K1 keeps its own 13 positions: an E1 pass must not reach into
+    // another board's design facts. Both are change detectors, not proofs -- the held set's own
+    // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
+    // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
+    && count(e1_held_receipts) == 25
+    && count(p4261_k1_positions) == 13
+}
+
+// ---- one reading per position --------------------------------------------------------------------
+//
+// The census pins two totals; this pins the shape a total cannot. Readings and positions stand in
+// one-to-one correspondence: every position on the list has exactly one designator reading, and no
+// reading names a designator that is not on the list. A position losing its reading while another
+// gains a second leaves both totals at 261 and every other test here green, which is exactly the
+// mistake this catches. The comparison goes through Designator's own equality, so a reading cannot
+// be matched to a position by a spelling that differs in case or whitespace: the reading side is a
+// plain string today (the type still says NonEmptyStr), so this test, not the type, is what holds
+// the two lists together -- see the PR note on widening DesignatorReading.designator.
+
+test fn every_position_is_read_exactly_once_and_nothing_else_is() -> Bool {
+  p4261_e1_positions.all(p =>
+    count(filter(p4261_e1_layout.designator_readings,
+      r => designator_eq(a: designator_of(verbatim: r.designator), b: p.position.designator))) == 1)
+    && p4261_e1_layout.designator_readings.all(r => is_position(r.designator))
+}
+
+test fn no_component_instance_is_recorded_twice() -> Bool {
+  // One board row per component instance. Two rows under one local name would put two
+  // identifications on the same part on the board, and whichever a lookup met first would win --
+  // a silent coin toss on what the part is. Duplicates cannot be seen in a total, so this counts
+  // each name's own occurrences.
+  p4261_e1_layout.components.all(c =>
+    count(filter(p4261_e1_layout.components, d =>
+      component_identity_eq(a: c.component, b: d.component))) == 1)
+}
+
+
+// ─── the vendor's table is upstream; comparing our print with it is a downstream obligation (review 90420) ──
+/// Piece 3's fifth control, asked for by review 90420. DESIGN §3: "Observations this repository makes
+/// are receipts in the observing layer, not facts of the observed upstream; a missing observation is a
+/// downstream coverage obligation, never an `Unobserved` property inside the upstream module." When this
+/// control was written the PI3CH480 data sheet's marking table had not been read, so the row published no
+/// mark. gunbc#15915 read it (DS40329 Rev 5.2, page 8), so the row now publishes the Q-package mark as the
+/// document states it. What did not move upstream is the comparison: the four claims that use the row still
+/// owe their own marking reading checked against that published mark, and the print our bodies carry still
+/// sits on the observing side. Pinned all three ways; `a_candidate_never_became_an_identification` covers
+/// the other four new rows.
+fn pi3ch480_positions() -> List<NonEmptyStr> {
+  ["U66", "U67", "U535", "U536"]
+}
+
+fn claim_obligation(d: NonEmptyStr) -> NonEmptyStr? {
+  match p4261_position_at(positions: p4261_e1_positions, verbatim: d) {
+    Present { value: p } => match p.population {
+      Present { value: PopulationClaim { standing: TranscribedUncited { read_obligation: o } } } => Present { value: o }
+      _ => Absent { }
+    }
+    Absent { } => Absent { }
+  }
+}
+
+fn print_is_an_observing_receipt(d: NonEmptyStr) -> Bool {
+  count(component_rows(d), c => match c.identification {
+    // `rest` is BOUND and then counted: a pattern is not an expression, so `rest: []` is not how this language
+    // asks for an empty list -- it fails to parse with "expected name, found LBracket". The model's own
+    // patterns bind (`Transcribed { first, rest }`), and the witness follows them.
+    IdentifiedByMarking { row: _, observation } => match observation_relied_on(o: observation) {
+      MarkingReading { content: Transcribed { leading: _, first: GlyphSpan { preceded_by: _, span: t, sighting: Absent }, rest: rest, followed_by: _ }, evidence: OperatorPhotograph { citation } } =>
+      (t as String).contains("PI3CH") && count(rest) == 0
+        && match citation_verdict(standing: cite(store: e1_photographs, citation: citation)) {
+             Checkable { } => true
+             _ => false
+           }
+      _ => false
+    }
+    _ => false
+  }) == 1
+}
+
+test fn a_read_vendor_table_leaves_the_comparison_downstream() -> Bool {
+  match pi3ch480_qex.top_marking {
+    Present { value: _ } => true
+    Absent { } => false
+  }
+    && all(pi3ch480_positions(), d => match claim_obligation(d: d) {
+         Present { value: o } => (o as String).contains("compared with that published mark")
+         Absent { } => false
+       })
+    && all(pi3ch480_positions(), d => print_is_an_observing_receipt(d: d))
+}
+
+// The 66 bodies the atlas sighted and never read. Each states presence and nothing more: the arm is
+// the twin of FootprintUnpopulated, and the pair is what lets the board say "fitted, unidentified" and
+// "pads bare" without either borrowing the other's meaning. The count is the receipts' 66, joined to
+// the generated rows rather than counted against a number.
+test fn the_bodies_sighted_without_a_marking_read_state_presence_and_name_no_part() -> Bool {
+  count(body_seen_rows()) == count(e1_body_sightings)
+    && count(e1_body_sightings) == 66
+    && body_seen_rows().all(c => presence_is_stated(i: c.identification)
+      && match c.identification {
+        // a sighted body carries no component row: a body of a known kind is not an identification
+        BodySeenMarkingUnread { evidence: _ } => true
+        _ => false
+      })
+}
+
+// The other side of the same distinction, and the reason the arm was not folded into MarkingUnresolved:
+// a part named in a session with no marking read is NOT a part we saw fitted. If both read present, the
+// board cannot tell what was looked at from what was only listed.
+test fn a_part_named_without_being_seen_still_reads_presence_unobserved() -> Bool {
+  count(named_without_being_seen()) > 0
+    && named_without_being_seen().all(c => !presence_is_stated(i: c.identification))
+}
+
+// One claim per instance: the pass may not state a body twice, once from the atlas and once from
+// earlier work, because two rows about one footprint read as two observations of it.
+test fn no_body_row_is_a_second_claim_about_an_instance() -> Bool {
+  e1_body_sightings.all(s =>
+    count(filter(p4261_e1_layout.components, c => component_local_label(c.component) == s.designator)) == 1)
+}
+
+// What the body rule refused stays on the board, with the frames that disagree named in the obligation.
+test fn what_the_body_rule_refused_is_held_with_the_frames_to_compare() -> Bool {
+  held_unresolved("D1_P1")
+    && held_unresolved("U3_P3")
+    && held_unresolved("U40")
+    && any(p4261_e1_layout.unresolved, u => match u.identity {
+         ReadDesignator { designator: v } => v == "D1_P1"
+           && u.obligation.contains("2026-11-02_45.jpg")
+           && u.obligation.contains("sd080.JPG")
+         Candidate { source: _ } => false
+         Unlabelled { } => false
+       })
+    && any(p4261_e1_layout.unresolved, u => match u.identity {
+         ReadDesignator { designator: v } => v == "U3_P3"
+           && u.obligation.contains("2026-11-02_41.jpg")
+           && u.obligation.contains("sd010.JPG")
+         Candidate { source: _ } => false
+         Unlabelled { } => false
+       })
+}
+// The authority carried by frames rather than by a receipt is the one place a designator could be minted
+// with no pass behind it, so the frames have to do the work a receipt would have done. Every frame it
+// names must be in the store, resolved by CONTENT -- so a digest typed from memory fails, not only a
+// name typed wrong. A read that calls itself clear must say where in at least one of them the label sits,
+// because a clear read knows its own coordinates. And the board must state its own reading of that same
+// designator citing one of the very same bytes: rows agreeing on a NAME are worthless, rows agreeing on
+// which pixels the name was read from are a read that happened. `read_by` and `read_on` are provenance
+// for a reader; the store's capture days are free text ("2026-11-02, the atlas pass day ..."), so they
+// carry no decidable order and this test does not pretend to compare them.
+test fn a_stored_frame_authority_is_checkable_against_the_board() -> Bool {
+  e1_position_receipts.all(rec => position_is_checkable(rec))
+    // Every held row too, exact or candidate, and through the SAME checker: an exact row's authority is
+    // held to the rules a position's exception is held to, with only the board table named differently
+    // (parent's D3). The version of this test checked positions and let any held authority through, so
+    // `HeldExactDesignator { authority: FromStoredFrames { ... } }` was writable with frames the store
+    // has never seen -- no row takes that arm today, which is when a check is cheapest to have.
+    && e1_held_receipts.all(h => held_is_checkable(h))
+    // The pin, counted rather than `any`: one row carries the label the pass saw and never read, and
+    // a second row proposing the same name is as wrong as a missing one. It has to hold at least one
+    // frame the store has, which is the difference between 'nobody read it' and 'nobody looked'.
+    && count(filter(e1_held_receipts, h => is_unread_candidate(h))) == 1
+    && any(e1_held_receipts, h => unread_candidate_holds_a_frame(h))
+}
+
+// One frame an authority or a candidate names, checked against the store by content AND by the name the
+// store has for those bytes. Content alone lets a citation pair a real digest with the wrong file, and a
+// reader following the name lands somewhere else; a digest typed from memory resolves nowhere, which is
+// the failure this whole test exists to catch, and a name typed from memory is the same mistake quieter.
+fn frame_is_held(s: LabelSighting) -> Bool {
+  match s.citation {
+    InStore { content: content, region: _ } =>
+      match photograph_in_store(store: e1_photographs, content: content) {
+        Present { value: p } =>
+          string_eq(a: p.store.file_name as String, b: s.file_name as String)
+        Absent { } => false
+      }
+    // No bytes, no frame. The store cannot hold what was never supplied, and this function IS the claim
+    // that it does, so the arm that says the bytes are missing is refused rather than excused.
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// Whether a sighting says WHERE on the frame the label sits. A sighting with no region says only that
+// somebody looked at the whole board, which is enough to hold a frame and not enough to have read a
+// label off it: the difference between 'nobody read it' and 'nobody looked'. It is a region test on the
+// citation now that the sighting carries one, and it is written once because two tables ask it.
+fn sighting_states_a_region(s: LabelSighting) -> Bool {
+  match s.citation {
+    InStore { content: _, region: Present { value: _ } } => true
+    InStore { content: _, region: Absent { } } => false
+    BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
+  }
+}
+
+// The same pixels, not merely the same frame, is no longer decided here: it is `same_boxed_frame` in
+// product.electrical.photograph, next to the citation type it compares. What stays in this module is
+// only what is E1's own -- how a receipts sighting is expressed as a citation -- because a relation the
+// store layer owns must not have a second implementation in a test, which is the §3 duplication the
+// digest ruling refused.
+
+type BoardReadingTable =
+  | DesignatorReadings { }
+  | UnresolvedRows { }
+
+// One board citation against one sighting the authority names. The rule is `same_boxed_frame`'s, in the
+// store layer; what is E1's own is the types being compared, since `LabelSighting` is declared in E1's
+// receipts module. It is written once so both reading tables answer to one rule, and it is a single call
+// now that a sighting carries a citation rather than a digest with a loose box beside it -- the two sides
+// are the same shape, so there is nothing to project. It refuses on its own terms: a sighting with no
+// region says only that somebody looked at the board, and a board citation whose bytes were never
+// supplied says less than that. A spoken "it says J3" is the shape that last arm exists to refuse -- a
+// name with no image behind it is exactly what an identity must not be able to lean on.
+fn cites_this_label(citation: PhotographCitation, s: LabelSighting) -> Bool {
+  same_boxed_frame(a: citation, b: s.citation)
+}
+
+// Some board row that names this designator has to point at one of the very same bytes inside the same
+// box. The rule is `cites_this_label`, written once; what differs per table is which rows to walk and how
+// a row spells its name, because a designator reading and an unresolved row are different records. That
+// is the whole of the duplication -- two walks sharing one join -- and it beats the alternative of a
+// second checker for held rows, which is how `held` came to mean one thing here and another there.
+fn board_reads_those_frames(name: NonEmptyStr, frames: List<LabelSighting>,
+                            on_the_board: BoardReadingTable) -> Bool {
+  match on_the_board {
+    DesignatorReadings { } =>
+      any(p4261_e1_layout.designator_readings, d =>
+        string_eq(a: d.designator as String, b: name as String)
+        && any(frames, s =>
+          match d.evidence {
+            OperatorPhotograph { citation: c } => cites_this_label(citation: c, s: s)
+            SellerListingPhotograph { } => false
+            OperatorStatement { } => false
+          }))
+    UnresolvedRows { } =>
+      any(p4261_e1_layout.unresolved, u => match u.identity {
+        ReadDesignator { designator: v } =>
+          string_eq(a: v as String, b: name as String)
+          && any(frames, s =>
+            match u.evidence {
+              OperatorPhotograph { citation: c } => cites_this_label(citation: c, s: s)
+              SellerListingPhotograph { } => false
+              OperatorStatement { } => false
+            })
+        // A row that presents no designator is not a row that read this label.
+        Candidate { source: _ } => false
+        Unlabelled { } => false
+      })
+  }
+}
+
+fn authority_is_checkable(name: NonEmptyStr, authority: DesignatorAuthority,
+                          on_the_board: BoardReadingTable) -> Bool {
+  match authority {
+    // A receipt read the label in full. The receipts module holds that read to its own columns, and a
+    // frame cannot disagree with a receipt that never carried it; nothing here can settle it further.
+    FromReceipt { basis: _ } => true
+    FromStoredFrames { read_by: _, read_on: _, frames: frames } =>
+      // nothing is read off frames nobody has named
+      count(frames) > 0
+      // every frame named is one the store holds, by content and by name
+      && frames.all(s => frame_is_held(s))
+      // A read that states every character has to say where on at least one image it read them: a claim
+      // with no box anywhere is somebody's impression of a label, not a read of it.
+      && any(frames, s => sighting_states_a_region(s))
+      // and a board row that names this designator points at the same pixels
+      && board_reads_those_frames(name: name, frames: frames, on_the_board: on_the_board)
+  }
+}
+
+// A position's exception is checkable when its authority is, joined to the bench's readings. A row the
+// base rule admitted has nothing to check here: the rule is its authority, and it admitted the row from
+// columns that said the label was read in full.
+fn position_is_checkable(rec: PositionReceipt) -> Bool {
+  match rec.rests_on {
+    RuleRead { } => true
+    NamedException { why: _, authority: a } =>
+      authority_is_checkable(name: designator_text(rec.designator), authority: a,
+                             on_the_board: DesignatorReadings { })
+  }
+}
+
+// A held row, same checker. An exact read's authority joins to the board row that carries its label --
+// the unresolved row, because a held row was never admitted as a position and so has no designator
+// reading. A candidate cites frames rather than presenting a name, and the most that can be asked of it
+// is that those frames are the store's own.
+fn held_is_checkable(held: HeldReceipt) -> Bool {
+  match held {
+    HeldExactDesignator { designator: dn, standing: _, authority: a, why: _ } =>
+      authority_is_checkable(name: designator_text(dn), authority: a, on_the_board: UnresolvedRows { })
+    DesignatorCandidate { source: _, atlas_row: _, proposed_name: _, standing: _, receipt_read: _,
+                          partly_legible_in: frames, obligation: _, why: _ } =>
+      frames.all(s => frame_is_held(s))
+  }
+}
+
+// (candidate_frames_are_held is gone: `held_is_checkable` above covers both arms, and covers the exact
+// arm's authority as well, which this function let through unchecked.)
+
+// The one row whose label a receipt never transcribed, keyed by the receipt row it came from rather than
+// by the name alone: two rows from two sources proposing the same text are two observations, and the
+// count that matters is the one this board made of this column.
+fn is_unread_candidate(held: HeldReceipt) -> Bool {
+  match held {
+    HeldExactDesignator { } => false
+    DesignatorCandidate {
+      source: k, atlas_row: _, proposed_name: n, standing: _, receipt_read: rr,
+      partly_legible_in: _, obligation: _, why: _
+    } =>
+      // The field, not the arm: the row whose label a receipt never read.
+      // The field, not the arm: the row whose label a receipt never read. Pinned BY ARM -- this is the
+      // candidate, and no string has to match for the pin to mean anything. The name is still checked,
+      // not as the identity but as the agreement between the arm and the prose beside it: the arm named
+      // C3_F1 had better be the row that proposes the text "C3_F1", or the generated pair has come apart.
+      // A second never-read candidate would make this false, which is the wanted noise.
+      match rr {
+        PartlyRead { } => false
+        NotRead { } =>
+          match k { C3_F1 { } => true, _ => false }
+          && string_eq(a: n as String, b: "C3_F1")
+      }
+  }
+}
+
+// And that row is the half-truth this module exists to prevent: 'no receipt read it' with no frame named
+// is a row that leaves a reader guessing whether anyone ever looked. C3_F1 is the frame case -- the
+// operator reads it as partly legible in a stored shot -- so the frames are the checkable half. The
+// `obligation` says what would close it and is prose for a reader, like `why` and `read_by`: no amount
+// of text-searching a sentence proves a label was seen, a digest does.
+fn unread_candidate_holds_a_frame(held: HeldReceipt) -> Bool {
+  match held {
+    HeldExactDesignator { } => false
+    DesignatorCandidate {
+      source: _, atlas_row: _, proposed_name: _, standing: _, receipt_read: rr,
+      partly_legible_in: frames, obligation: _, why: _
+    } =>
+      match rr {
+        PartlyRead { } => false
+        NotRead { } => count(frames) > 0 && frames.all(s => frame_is_held(s))
+      }
+  }
+}

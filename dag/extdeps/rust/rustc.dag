@@ -73,6 +73,33 @@ service rustc.Check {
       nonzero => String "rustc did not accept the source"
     }
   }
+
+  // THE FILE-BACKED SIBLING OF CheckSourceText, for a consumer whose claim is about a WRITTEN file
+  // (v2-emitter-direct-rust-door: the handback owes the source on disk and rustc's result ON THAT
+  // FILE). Same fixed-literal script and the same per-invocation scoped output directory; the only
+  // difference is that the path arrives as positional $1 and is read by rustc instead of stdin, so
+  // the observation is attributable to the bytes at that path, not to a string held in memory.
+  operation CheckSourceFile {
+    requires none
+    input { path: String, edition: String = "2021" }
+    output {
+      success: Bool from "exit_success"
+      exit_code: Int from "exit_code"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "sh", "-c",
+        "d=$(mktemp -d) && rustc --edition \"$2\" --crate-type lib --emit=metadata --out-dir \"$d\" \"$1\"; rc=$?; rm -rf \"$d\"; exit $rc",
+        "sh", "{path}", "{edition}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "rustc did not accept the file"
+    }
+  }
 }
 
 // rustc reports its own identity in a KEYED, LINE-ORIENTED form under `--version --verbose`: the

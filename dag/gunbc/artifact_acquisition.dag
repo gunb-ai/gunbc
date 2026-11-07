@@ -2,6 +2,7 @@ module gunbc.artifact_acquisition
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.nat { Nat }
+import std.algebra { length }
 
 // THE SUBJECT-AGNOSTIC ACQUISITION UPSERT: bring a named artifact into a place it is not, keyed on
 // what the artifact IS rather than on whether somebody remembers having fetched it.
@@ -229,7 +230,7 @@ fn acquisition_exhausted(subject: AcquisitionSubject, state: AcquisitionFoldStat
   } else if length(state.rejections) != 0 {
     AcquisitionRefused { cause: EverySourceRejectedTheTransfer { identity: subject.identity, attempted: state.reached_count, rejections: state.rejections } }
   } else {
-    AcquisitionRefused { cause: EverySourceUnreachable { identity: subject.identity, attempted: list_length(items: subject.sources) } }
+    AcquisitionRefused { cause: EverySourceUnreachable { identity: subject.identity, attempted: length(xs: subject.sources) } }
   }
 }
 
@@ -261,7 +262,7 @@ fn acquire_from_declared_sources(subject: AcquisitionSubject, handler: Acquisiti
 }
 
 fn acquire_from_sources(subject: AcquisitionSubject, handler: AcquisitionHandler) -> AcquisitionOutcome {
-  if list_length(items: subject.sources) == 0 {
+  if length(xs: subject.sources) == 0 {
     AcquisitionRefused { cause: NoSourceDeclared { identity: subject.identity } }
   } else {
     acquire_from_declared_sources(subject: subject, handler: handler)
