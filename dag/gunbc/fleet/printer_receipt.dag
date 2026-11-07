@@ -4,22 +4,26 @@ import gunbc.fleet.printer_setup_reports {printer_filament_report,PrinterFilamen
 import std.types {String}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
-import gunbc.auth.access_token_source {AccessTokenSource,WorkloadIdentityToken,OperatorSuppliedToken,GcloudPrintToken}
+import gunbc.auth.access_token_source {WorkloadIdentityToken,OperatorSuppliedToken,GcloudPrintToken}
+import gunbc.fleet.printer_credential_source { PrinterCredentialSource, SecretManagerCredentialSource, HostCustodyCredentialSource }
 import gunbc.actions_run_binding {actions_variable_trimmed}
 import gunbc.fleet.printer_workflow_artifact {printer_workflow_receipt_path}
 import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.languages.json.emit {json_object,json_kv,json_string,json_null,serialize_json}
-fn execution_source(token_source:AccessTokenSource) -> String {
- match token_source { WorkloadIdentityToken=>"github-actions" OperatorSuppliedToken {token:_}=>"operator-token-file" GcloudPrintToken=>"operator-gcloud" }
+fn execution_source(credential_source:PrinterCredentialSource) -> String {
+ match credential_source {
+  SecretManagerCredentialSource {token_source:t} => match t { WorkloadIdentityToken=>"github-actions" OperatorSuppliedToken {token:_}=>"operator-token-file" GcloudPrintToken=>"operator-gcloud" }
+  HostCustodyCredentialSource => "srv1-shell-custody"
+ }
 }
-fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, token_source: AccessTokenSource) -> ProcessExit {
- write_receipt_at(path:printer_workflow_receipt_path,printer:printer,standing:standing,version:version,remote:remote,digest:digest,token_source:token_source)
+fn write_receipt(printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, credential_source: PrinterCredentialSource) -> ProcessExit {
+ write_receipt_at(path:printer_workflow_receipt_path,printer:printer,standing:standing,version:version,remote:remote,digest:digest,credential_source:credential_source)
 }
 
 // Durable per-start receipts must not share the compatibility discovery output path.
-fn write_receipt_at(path:String,printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, token_source: AccessTokenSource) -> ProcessExit {
+fn write_receipt_at(path:String,printer: PhysicalAssetIdentity, standing: String, version: String, remote: String, digest: String, credential_source: PrinterCredentialSource) -> ProcessExit {
   let content = serialize_json(v: json_object(members: [
-    json_kv(key: "execution_source", value: json_string(s: execution_source(token_source:token_source))),
+    json_kv(key: "execution_source", value: json_string(s: execution_source(credential_source:credential_source))),
     json_kv(key: "printer", value: json_string(s: printer as String)),
     json_kv(key:"reported_filament",value:match printer_filament_report(printer:printer) {PrinterFilamentReported {report:r}=>json_string(s:r.product.packaging as String) PrinterFilamentUnreported {printer:_}=>json_null() PrinterFilamentReportsConflict {printer:_}=>json_null()}),
     json_kv(key: "standing", value: json_string(s: standing)),
