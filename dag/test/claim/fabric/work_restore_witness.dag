@@ -6,6 +6,7 @@ module test.claim.fabric.work_restore_witness
 // payload authenticity (a writer who changes payload and key together is not detected; PR 3 owns trusted
 // ingress), source-file bytes, or malformed UTF-8 (unrepresentable at the String API).
 
+import std.algebra { take_prefix, skip, length }
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.judgment_contract { length_prefixed_encode }
 import std.measure { hardware_thread_count, byte_size }
@@ -81,7 +82,7 @@ fn base_wire() -> String {
 }
 
 fn replace_at(fields: List<String>, index: Int, value: String) -> List<String> {
-  fields |> enumerate() |> map(p => if p.index == index { value } else { p.value })
+  concat(fields |> take_prefix(n: index), [value], fields |> skip(n: index + 1))
 }
 
 fn refused_with(r: WorkRestoration, want: fn(WorkRestoreRefusal) -> Bool) -> Bool {
@@ -116,8 +117,8 @@ test fn persist_then_restore_round_trips() -> Bool {
 // (2) RED truncated: dropping the last scalar, and cutting mid-field, refuse as truncated.
 test fn truncated_wire_refuses() -> Bool {
   let w = base_wire()
-  refused_with(r: work_restore(wire: w |> take(n: (w |> length()) - 1), expected_principal: principal), want: is_truncated)
-    && refused_with(r: work_restore(wire: w |> take(n: 7), expected_principal: principal), want: is_truncated)
+  refused_with(r: work_restore(wire: w |> take_prefix(n: (w |> length()) - 1), expected_principal: principal), want: is_truncated)
+    && refused_with(r: work_restore(wire: w |> take_prefix(n: 7), expected_principal: principal), want: is_truncated)
 }
 
 // (3) RED reordered: swapping the same-typed inputs and effect_contract fields, key retained, is a key mismatch.
