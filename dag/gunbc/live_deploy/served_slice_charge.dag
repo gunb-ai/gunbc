@@ -1,6 +1,6 @@
 module gunbc.live_deploy.served_slice_charge
 
-import std.types { String, NonEmptyStr, Bool, Int }
+import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, Terminal }
 import product.host_identity { HostIdentity }
@@ -19,9 +19,11 @@ import gunbc.live_deploy.slice_bounds {
   attempt_worker_slice_memory_max,
 }
 import std.optional { Present, Absent }
+import std.list { first_where }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.serving.serving_container_allowance {
   srv1_serving_allowance, srv1_inference_slice_limit, serving_container_host_claim,
+  ServingContainerAllowance, ParentSliceLimit,
   ServingContainerHostClaim, ServingContainerClaimResolved, ServingContainerClaimRefused,
 }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived }
@@ -172,9 +174,25 @@ fn host_served_deployment_claim_under(
   served_claim_with_serving_container(
     host: host,
     deployment: host_deployment_slices_claim_under(host: host, placement: placement),
-    serving: serving_container_host_claim(a: srv1_serving_allowance, parent: srv1_inference_slice_limit),
   )
 }
+
+// WHICH HOST CARRIES WHICH SERVING CONTAINER IS A ROW, not a branch: a host with a row is charged that row's
+// allowance under that row's parent slice; a host without one is charged nothing for serving. The next
+// engine host (serving_host_memory serving_shared_host_frontier names srv3 and srv4) adds a row here.
+type ServingContainerPlacement {
+  host: HostIdentity
+  allowance: ServingContainerAllowance
+  parent: ParentSliceLimit
+}
+
+data serving_container_placements: List<ServingContainerPlacement> = [
+  ServingContainerPlacement {
+    host: operator_host_srv1,
+    allowance: srv1_serving_allowance,
+    parent: srv1_inference_slice_limit,
+  },
+]
 
 // THE SERVING CONTAINER IS CHARGED HERE, ONCE (operator decision 2026-11-07, option A). The container
 // lil-flash-next runs in srv1-inference.slice on srv1 whatever host holds the prod role, so its claim
@@ -187,21 +205,20 @@ fn host_served_deployment_claim_under(
 fn served_claim_with_serving_container(
   host: HostIdentity,
   deployment: HostServedDeploymentClaim,
-  serving: ServingContainerHostClaim,
 ) -> HostServedDeploymentClaim {
-  if (host as String) == (operator_host_srv1 as String) {
-    match serving {
-      ServingContainerClaimRefused { cause } => ServedDeploymentClaimUnmeasured { cause: cause }
-      ServingContainerClaimResolved { memory: sm } =>
-        match deployment {
-          ServedDeploymentClaimUnmeasured { cause } => ServedDeploymentClaimUnmeasured { cause: cause }
-          ServedDeploymentNotPlaced => ServedDeploymentClaimResolved { memory: sm }
-          ServedDeploymentClaimResolved { memory: dm } =>
-            ServedDeploymentClaimResolved { memory: byte_size(byte_size_count(b: dm) + byte_size_count(b: sm)) }
-        }
-    }
-  } else {
-    deployment
+  match first_where(xs: serving_container_placements, keep: p => p.host == host) {
+    Absent => deployment
+    Present { value: p } =>
+      match serving_container_host_claim(a: p.allowance, parent: p.parent) {
+        ServingContainerClaimRefused { cause } => ServedDeploymentClaimUnmeasured { cause: cause }
+        ServingContainerClaimResolved { memory: sm } =>
+          match deployment {
+            ServedDeploymentClaimUnmeasured { cause } => ServedDeploymentClaimUnmeasured { cause: cause }
+            ServedDeploymentNotPlaced => ServedDeploymentClaimResolved { memory: sm }
+            ServedDeploymentClaimResolved { memory: dm } =>
+              ServedDeploymentClaimResolved { memory: byte_size(byte_size_count(b: dm) + byte_size_count(b: sm)) }
+          }
+      }
   }
 }
 
