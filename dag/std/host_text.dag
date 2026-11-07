@@ -1,7 +1,7 @@
 module std.host_text
 
 import std.types { Char, List }
-import std.algebra { fold_list, length, list_head, list_snoc_item, skip }
+import std.algebra { Cons, Empty, fold_list, list_head, list_reverse, skip }
 import std.nat { Nat, Zero, Succ }
 import std.optional { Absent, Optional, Present }
 
@@ -102,14 +102,21 @@ fn string_length(text: HostText) -> Nat {
 // THE BODY IS DEAD UNTIL THE ROW IS ON MAIN, as string_length's was: heal round 1 builds its generator from
 // main's stage0 mirrors, which carry no primitive_substring row until this lands, so a self-call here would
 // emit as bare Rust recursion. The fold keeps the emitted body total meanwhile; every call routes through the
-// row, so nothing executes it. Its per-step length is linear, so the body is quadratic in the window; that is
-// bounded to a body no call reaches and is stated here rather than hidden. Trigger: primitive_substring is on
-// main; the follow-up replaces the body with the self-call substring(text: text, start: start, end: end) and
-// drops the fold's imports (length, list_snoc_item).
+// row, so nothing executes it. It is LINEAR anyway (DESIGN section 6: a cost-shape defect is fixed regardless of
+// reach; review 91819): the count still to keep travels in the accumulator rather than being re-measured, kept
+// scalars are prepended, and the one reverse at the end restores source order. Trigger: primitive_substring is
+// on main; the follow-up replaces the body with the self-call substring(text: text, start: start, end: end), and
+// drops SubstringWindow and the fold's imports (Cons, Empty, list_reverse).
+type SubstringWindow {
+  left: Int
+  kept: List<Char>
+}
+
 fn substring(text: HostText, start: Nat, end: Nat) -> HostText {
-  text_of_chars(scalars: fold_list(xs: skip(xs: chars(text: text), n: start as Int), empty: [], cons: fn(kept, c) {
-    if length(xs: kept) < (end as Int) - (start as Int) { list_snoc_item(xs: kept, item: c) } else { kept }
-  }))
+  let window = fold_list(xs: skip(xs: chars(text: text), n: start as Int), empty: SubstringWindow { left: (end as Int) - (start as Int), kept: Empty }, cons: fn(acc, c) {
+    if acc.left > 0 { SubstringWindow { left: acc.left - 1, kept: Cons { head: c, tail: acc.kept } } } else { acc }
+  })
+  text_of_chars(scalars: list_reverse(xs: window.kept))
 }
 
 // THE INDEXED READ OF A HOST TEXT, WITH ABSENCE TYPED (tidy-ant-251 ruling, 2026-11-01, the F5 row of the
