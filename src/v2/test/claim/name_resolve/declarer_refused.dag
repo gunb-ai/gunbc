@@ -309,6 +309,8 @@ fn dr_head_atom(v: NativeModuleResolveVerdict) -> String {
           }
         Textual { file: _, extent: _ } => "not-a-node-locus"
         SourcePortLocus { anchor: _, file: _, extent: _ } => "not-a-node-locus"
+        // it anchors a node, but the resolver's competing-declaration node is a NodeLocus: this is not one
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => "not-a-node-locus"
         InvariantPortLocus { anchor: _, invariant: _ } => "not-a-node-locus"
         DeclarationLocus { declaration: _ } => "not-a-node-locus"
       }

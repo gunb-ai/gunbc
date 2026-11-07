@@ -96,6 +96,8 @@ fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
     DeclarationLocus { declaration: _ } => ^walk_chain_not_an_atom
     Textual { file: _, extent: _ } => ^walk_chain_not_an_atom
     SourcePortLocus { anchor: _, file: _, extent: _ } => ^walk_chain_not_an_atom
+    // a judgment site is not a chain member: the residual symbol, never an invented identity
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => ^walk_chain_not_an_atom
     InvariantPortLocus { anchor: _, invariant: _ } => ^walk_chain_not_an_atom
   }
 }

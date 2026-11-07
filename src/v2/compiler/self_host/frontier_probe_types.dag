@@ -135,6 +135,10 @@ fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLoca
     NodeLocus { anchor: _ } => CauseLocationNodeNotSerializable
     SourcePortLocus { anchor: p, file: f, extent: e } =>
       CauseLocationSourcePort { port: p.at, file: symbol_lexeme(sym: f), extent: e }
+    // A judgment locus anchors a Node, which this probe cannot serialize -- the same answer the node
+    // arm gives. Its DeclaredTypePosition is a judgment site, not a cause location, so it does not
+    // become a sixth location kind here; it is read through diagnostic_inhabitance_position.
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => CauseLocationNodeNotSerializable
     InvariantPortLocus { anchor: p, invariant: invariant } =>
       CauseLocationInvariantPort { port: p.at, invariant: invariant }
     DeclarationLocus { declaration: declaration } =>

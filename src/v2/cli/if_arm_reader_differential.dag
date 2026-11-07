@@ -337,6 +337,9 @@ fn iard_location(node: Node, spans: SpanIndex) -> String {
             WholeFile => "<whole file>"
           }
         NodeLocus { anchor: _ } => "<non-textual locus>"
+        // A judgment locus is node-anchored: the byte range comes from a Textual locus and nowhere
+        // else, and this reader does not mint a second location authority for a judgment site.
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => "<non-textual locus>"
         SourcePortLocus { anchor: _, file: _, extent: _ } => "<non-textual locus>"
         InvariantPortLocus { anchor: _, invariant: _ } => "<non-textual locus>"
         DeclarationLocus { declaration: _ } => "<non-textual locus>"

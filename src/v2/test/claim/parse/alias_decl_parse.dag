@@ -192,6 +192,8 @@ fn alias_decl_locus_lexeme(d: Diagnostic) -> String {
       }
     Textual { file: _, extent: _ } => "textual"
     SourcePortLocus { anchor: _, file: _, extent: _ } => "source_port"
+    // its OWN kind name: a judgment locus is neither an invariant port nor a node locus
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => "inhabitance_judgment"
     InvariantPortLocus { anchor: _, invariant: _ } => "invariant_port"
     DeclarationLocus { declaration: _ } => "declaration"
   }

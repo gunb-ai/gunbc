@@ -346,6 +346,8 @@ fn ncr_competing_declarations(d: NonEmptyDiagnostics) -> FreeMonoid<QualifiedNam
           Textual { file: _, extent: _ } => acc
           NodeLocus { anchor: _ } => acc
           SourcePortLocus { anchor: _, file: _, extent: _ } => acc
+          // it names no competing declaration, so it contributes nothing to the chain
+          InhabitanceJudgmentLocus { position: _, anchor: _ } => acc
           InvariantPortLocus { anchor: _, invariant: _ } => acc
         }
       } else {

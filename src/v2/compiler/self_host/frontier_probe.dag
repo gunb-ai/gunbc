@@ -233,6 +233,8 @@ fn frontier_probe_source_ref_for_read_diagnostic(
         path: symbol_lexeme(sym: module_file)
       )
     NodeLocus { anchor: _ } => optional_absent()
+    // node-anchored: it names no module file to resolve a source ref against
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => optional_absent()
     SourcePortLocus { anchor: _, file: _, extent: _ } => optional_absent()
     InvariantPortLocus { anchor: _, invariant: _ } => optional_absent()
     DeclarationLocus { declaration: _ } => optional_absent()
@@ -253,6 +255,8 @@ fn frontier_probe_diagnostic_tail_port_lexeme(d: NonEmptyDiagnostics) -> String 
           InvariantPortLocus { anchor: LocusAnchor { at: port }, invariant: _ } =>
             symbol_lexeme(sym: port)
           Textual { file: _, extent: _ } => ""
+          // a judgment locus carries no port, so it names no tail port
+          InhabitanceJudgmentLocus { position: _, anchor: _ } => ""
           NodeLocus { anchor: _ } => ""
           DeclarationLocus { declaration: _ } => ""
         }

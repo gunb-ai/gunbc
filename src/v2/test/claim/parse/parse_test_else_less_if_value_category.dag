@@ -103,6 +103,8 @@ fn elif_locus_is_the_if(at: Locus) -> Bool {
     NodeLocus { anchor: anchor } => elif_is_else_less_if(node: anchor.at.node)
     SourcePortLocus { anchor: _, file: _, extent: _ } => false
     Textual { file: _, extent: _ } => false
+    // the judgment site is not the else-less if: only a NodeLocus can carry one
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     InvariantPortLocus { anchor: _, invariant: _ } => false
     DeclarationLocus { declaration: _ } => false
   }

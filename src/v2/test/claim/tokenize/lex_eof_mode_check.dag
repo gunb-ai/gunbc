@@ -98,6 +98,8 @@ fn refusal_of(rules: LexRules, src: String) -> RefusalAt {
           }
         NodeLocus { anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
         SourcePortLocus { anchor: _, file: _, extent: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
+        // no byte extent: the same sentinel every non-textual locus gets
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
         InvariantPortLocus { anchor: _, invariant: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
         DeclarationLocus { declaration: _ } => RefusalAt { reason: ds.head.reason, start: -2, end: -2 }
       }

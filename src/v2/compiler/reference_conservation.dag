@@ -558,6 +558,11 @@ fn refusal_cover_add(cover: RefusalCover, d: Diagnostic) -> RefusalCover {
           RefusalCover { anchored: cover.anchored, ranges: list_snoc_item(xs: cover.ranges, item: ByteRange { start: s, end: e }) }
         WholeFile => cover
       }
+    // AN ANCHORED REFUSAL, like NodeLocus: the judgment locus anchors the Node the inhabitance
+    // judgment was made at, so conservation counts it. Skipping it would let an inhabitance refusal
+    // go uncovered while the census still called the population conserved.
+    InhabitanceJudgmentLocus { position: _, anchor: anchor } =>
+      RefusalCover { anchored: refusal_cover_anchor(acc: cover.anchored, node: anchor.at), ranges: cover.ranges }
     SourcePortLocus { anchor: _, file: _, extent: _ } => cover
     InvariantPortLocus { anchor: _, invariant: _ } => cover
     DeclarationLocus { declaration: _ } => cover
@@ -590,6 +595,8 @@ fn range_encloses_atom(range: Extent, atom: AuthoredAtom) -> Bool {
             WholeFile => false
           }
         NodeLocus { anchor: _ } => false
+        // no file and no extent to cover a byte range with
+        InhabitanceJudgmentLocus { position: _, anchor: _ } => false
         SourcePortLocus { anchor: _, file: _, extent: _ } => false
         InvariantPortLocus { anchor: _, invariant: _ } => false
         DeclarationLocus { declaration: _ } => false
@@ -1328,6 +1335,8 @@ fn authored_atom_extent_text(atom: AuthoredAtom) -> String {
         WholeFile => "whole-file"
       }
     NodeLocus { anchor: _ } => "unlocated"
+    // a judgment locus is node-anchored: it has no authored extent to print
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => "unlocated"
     SourcePortLocus { anchor: _, file: _, extent: _ } => "unlocated"
     InvariantPortLocus { anchor: _, invariant: _ } => "unlocated"
     DeclarationLocus { declaration: _ } => "unlocated"

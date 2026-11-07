@@ -96,6 +96,8 @@ fn let_in_locus_starts_at(at: Locus, start: Int) -> Bool {
     SourcePortLocus { anchor: _, file: _, extent: extent } => let_in_extent_starts_at(extent: extent, start: start)
     Textual { file: _, extent: extent } => let_in_extent_starts_at(extent: extent, start: start)
     NodeLocus { anchor: _ } => false
+    // node-anchored, not the locus kind this claim reads: it carries no extent to compare
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => false
     InvariantPortLocus { anchor: _, invariant: _ } => false
     DeclarationLocus { declaration: _ } => false
   }

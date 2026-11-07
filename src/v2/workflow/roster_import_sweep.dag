@@ -298,6 +298,9 @@ fn roster_stage_diagnostic(d: NonEmptyDiagnostics) -> RosterStageDiagnostic {
     Textual { file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: Present { value: RosterStageLocated { file: f, extent: x } } }
     SourcePortLocus { anchor: _, file: f, extent: x } => RosterStageDiagnostic { cause: cause, at: Present { value: RosterStageLocated { file: f, extent: x } } }
     NodeLocus { anchor: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
+    // A JUDGMENT LOCUS ANCHORS A NODE, so it names no file either: Absent, never an empty file name
+    // and never a third span kind. Its position is read through diagnostic_inhabitance_position.
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
     InvariantPortLocus { anchor: _, invariant: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
     DeclarationLocus { declaration: _ } => RosterStageDiagnostic { cause: cause, at: Absent }
   }

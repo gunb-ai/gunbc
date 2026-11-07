@@ -702,6 +702,15 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: Sour
         Absent => FileRefusalAtUnresolvedNode
         Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
+    // A JUDGMENT LOCUS ANCHORS A NODE JUST LIKE NodeLocus, so it resolves through THIS file's span
+    // index the same way and lands on the same line and byte column. The DeclaredTypePosition it also
+    // carries is a judgment fact, not a location, so it does not enter this projection -- it is read
+    // through diagnostic_inhabitance_position (v2.std.diagnostic), never re-derived from a line.
+    InhabitanceJudgmentLocus { position: _, anchor: a } =>
+      match node_authored_span_optional(node: a.at, index: spans) {
+        Absent => FileRefusalAtUnresolvedNode
+        Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
+      }
   }
 }
 

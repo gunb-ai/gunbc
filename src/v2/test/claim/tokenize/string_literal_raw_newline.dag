@@ -69,6 +69,8 @@ test fn unterminated_string_locus_covers_the_opening_quote_holds() -> Bool {
             }
           NodeLocus { anchor: _ } => false
           SourcePortLocus { anchor: _, file: _, extent: _ } => false
+          // node-anchored, not the locus kind this claim reads: it carries no extent to compare
+          InhabitanceJudgmentLocus { position: _, anchor: _ } => false
           InvariantPortLocus { anchor: _, invariant: _ } => false
           DeclarationLocus { declaration: _ } => false
         }

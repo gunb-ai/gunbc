@@ -177,13 +177,18 @@ fn retained_production_key(observation: RetainedProduction) -> String {
 }
 
 // The diagnostic's locus is the ONLY channel by which the retained node
-// reaches a consumer, and only one of its three arms carries a node at all.
-// The other two are reported as unattributable rather than skipped: a census
+// reaches a consumer, and two of its arms carry one: NodeLocus (a NodeOccurrence) and the
+// inhabitance judgment locus (a bare Node, the node the judgment was made at).
+// The rest are reported as unattributable rather than skipped: a census
 // that silently drops the loci it cannot read would understate the population
 // it exists to size.
 fn retained_node_optional(d: Diagnostic) -> Optional<Node> {
   match d.at {
     NodeLocus { anchor: anchor } => Present { value: anchor.at.node }
+    // A judgment locus anchors a Node directly, with no NodeOccurrence wrapper, so it is
+    // attributable exactly like the node arm: dropping it would understate the population this
+    // census exists to size.
+    InhabitanceJudgmentLocus { position: _, anchor: anchor } => Present { value: anchor.at }
     Textual { file: _, extent: _ } => Absent
     SourcePortLocus { anchor: _, file: _, extent: _ } => Absent
     InvariantPortLocus { anchor: _, invariant: _ } => Absent
@@ -462,6 +467,29 @@ fn diagnostic_attribution(d: Diagnostic) -> String {
         concat(
           symbol_lexeme(sym: anchor.at),
           concat(" at ", concat(symbol_lexeme(sym: file), concat("  ", lens_verdict_extent_text(e: extent))))
+        )
+      )
+    // THE SAME NODE PROJECTION as the node arm, under its own prefix: the ledger line reports where
+    // the judgment was made and what it was made at. The position itself is not spelled here -- it
+    // has one accessor (diagnostic_inhabitance_position) and this census reads nodes, not sites.
+    InhabitanceJudgmentLocus { position: _, anchor: anchor } =>
+      concat(
+        "inhabitance judgment ",
+        concat(
+          retained_production_key(observation: retained_production_of(node: anchor.at)),
+          concat(
+            "  arity ",
+            concat(
+              to_string(length(xs: anchor.at.children)),
+              concat(
+                "  occurrence ",
+                concat(
+                  occurrence_label(occurrence: anchor.at.occurrence_id),
+                  concat("\\n      atoms:", diagnostic_subtree_atoms(node: anchor.at))
+                )
+              )
+            )
+          )
         )
       )
     InvariantPortLocus { anchor: anchor, invariant: invariant } =>

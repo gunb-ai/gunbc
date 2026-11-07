@@ -74,6 +74,9 @@ fn parse_acceptance_locus_text(at: Locus) -> String {
     SourcePortLocus { anchor: _, file: _, extent: extent } => parse_acceptance_extent_text(extent: extent)
     Textual { file: _, extent: extent } => parse_acceptance_extent_text(extent: extent)
     NodeLocus { anchor: _ } => "node"
+    // A judgment locus is named by its OWN kind, not folded into "node": it is the site of an
+    // inhabitance judgment, and its DeclaredTypePosition has one accessor, not a text spelling here.
+    InhabitanceJudgmentLocus { position: _, anchor: _ } => "inhabitance-judgment"
     InvariantPortLocus { anchor: _, invariant: _ } => "invariant"
     DeclarationLocus { declaration: _ } => "declaration"
   }

@@ -116,6 +116,8 @@ fn ge_fatal_is(parsed: Outcome<ParseArtifact>, reason: ParseRefusalReason, start
               }
           Textual { file: _, extent: _ } => false
           NodeLocus { anchor: _ } => false
+          // node-anchored, not the locus kind this claim reads: it carries no extent to compare
+          InhabitanceJudgmentLocus { position: _, anchor: _ } => false
           InvariantPortLocus { anchor: _, invariant: _ } => false
           DeclarationLocus { declaration: _ } => false
         }
