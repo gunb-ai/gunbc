@@ -1,17 +1,27 @@
 module test.claim.c_roadmap2_systemd_file_state_table_witness
 
+// Run: claim_batch --source-root dag --source-root src/v2 \
+//   --entry dag/extdeps/systemd/systemctl.dag \
+//   --functions every_table_word_parses_and_labels_back_to_itself \
+//             every_variant_labels_to_a_word_the_parser_accepts_and_round_trips \
+//             words_outside_the_table_parse_to_no_state \
+//             the_table_is_the_twelve_words_is_enabled_prints_with_none_repeated
+
+// This file claims over extdeps.systemd.systemctl only.
+// It does NOT import: std.types (imported), std.algebra (imported), extdeps.systemd.systemctl (imported)
+
 import std.types { Bool, String, List }
 import std.algebra { length }
-import extdeps.systemd {
-  SystemdUnitFileState, SystemdUnitFileStateRow, systemd_unit_file_state_table,
-  UnitFileEnabled, UnitFileEnabledRuntime, UnitFileLinked, UnitFileLinkedRuntime, UnitFileMasked,
-  UnitFileDisabled, UnitFileStatic, UnitFileIndirect, UnitFileGenerated, UnitFileTransient,
-  UnitFileBad, UnitFileNotFound,
-  parse_systemd_unit_file_state, systemd_unit_file_state_wire_label,
+import extdeps.systemd.systemctl {
+  UnitFileState, UnitFileStateRow, unit_file_state_table,
+  UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitLinkedRuntime, UnitMasked,
+  UnitDisabled, UnitStatic, UnitIndirect, UnitGenerated, UnitTransient,
+  UnitBad, UnitNotFound,
+  parse_unit_file_state, unit_file_state_wire_label,
 }
 
-// THE IS-ENABLED VOCABULARY IS SPELLED ONCE, IN ONE ROW TABLE (extdeps.systemd
-// systemd_unit_file_state_table), and the parser reads it forward (word -> variant) while the label reads
+// THE IS-ENABLED VOCABULARY IS SPELLED ONCE, IN ONE ROW TABLE (extdeps.systemd.systemctl
+// unit_file_state_table), and the parser reads it forward (word -> variant) while the label reads
 // it backward (variant -> word). The pre-change module spelled the twelve-word grammar TWICE -- a dozen
 // string comparisons in the parse and a dozen more in the label -- so the two directions could drift
 // silently, and the label already needed its own nit fix (review 90985) to stay pointing at the masked
@@ -22,24 +32,24 @@ import extdeps.systemd {
 // a row answers the untabled word, which no parse accepts, and the variant claim goes red.
 
 fn is_table_word(raw: String) -> Bool {
-  match parse_systemd_unit_file_state(raw: raw) {
+  match parse_unit_file_state(raw: raw) {
     none => false
-    Present { value: parsed } => systemd_unit_file_state_wire_label(s: parsed) == raw
+    Present { value: parsed } => unit_file_state_wire_label(s: parsed) == raw
   }
 }
 
 // label then parse back, judged where the grammar lives: the label of what came back equals the label
 // that went in. With table words distinct (claimed below) two variants can never share a word, so equal
 // labels are the same variant -- the round trip is the identity without comparing variants directly.
-fn labels_round_trip(state: SystemdUnitFileState) -> Bool {
-  match parse_systemd_unit_file_state(raw: systemd_unit_file_state_wire_label(s: state)) {
+fn labels_round_trip(state: UnitFileState) -> Bool {
+  match parse_unit_file_state(raw: unit_file_state_wire_label(s: state)) {
     none => false
     Present { value: parsed } =>
-      systemd_unit_file_state_wire_label(s: parsed) == systemd_unit_file_state_wire_label(s: state)
+      unit_file_state_wire_label(s: parsed) == unit_file_state_wire_label(s: state)
   }
 }
 
-fn table_rows_round_trip(remaining: List<SystemdUnitFileStateRow>) -> Bool {
+fn table_rows_round_trip(remaining: List<UnitFileStateRow>) -> Bool {
   match remaining {
     Empty => true
     Cons { head: row, tail: rest } =>
@@ -47,7 +57,7 @@ fn table_rows_round_trip(remaining: List<SystemdUnitFileStateRow>) -> Bool {
   }
 }
 
-fn no_word_repeats(remaining: List<SystemdUnitFileStateRow>) -> Bool {
+fn no_word_repeats(remaining: List<UnitFileStateRow>) -> Bool {
   match remaining {
     Empty => true
     Cons { head: row, tail: rest } =>
@@ -55,7 +65,7 @@ fn no_word_repeats(remaining: List<SystemdUnitFileStateRow>) -> Bool {
   }
 }
 
-fn no_word_equals(remaining: List<SystemdUnitFileStateRow>, word: String) -> Bool {
+fn no_word_equals(remaining: List<UnitFileStateRow>, word: String) -> Bool {
   match remaining {
     Empty => true
     Cons { head: row, tail: rest } =>
@@ -64,22 +74,22 @@ fn no_word_equals(remaining: List<SystemdUnitFileStateRow>, word: String) -> Boo
 }
 
 test fn every_table_word_parses_and_labels_back_to_itself() -> Bool {
-  table_rows_round_trip(remaining: systemd_unit_file_state_table)
+  table_rows_round_trip(remaining: unit_file_state_table)
 }
 
 test fn every_variant_labels_to_a_word_the_parser_accepts_and_round_trips() -> Bool {
-  labels_round_trip(state: UnitFileEnabled)
-    && labels_round_trip(state: UnitFileEnabledRuntime)
-    && labels_round_trip(state: UnitFileLinked)
-    && labels_round_trip(state: UnitFileLinkedRuntime)
-    && labels_round_trip(state: UnitFileMasked)
-    && labels_round_trip(state: UnitFileDisabled)
-    && labels_round_trip(state: UnitFileStatic)
-    && labels_round_trip(state: UnitFileIndirect)
-    && labels_round_trip(state: UnitFileGenerated)
-    && labels_round_trip(state: UnitFileTransient)
-    && labels_round_trip(state: UnitFileBad)
-    && labels_round_trip(state: UnitFileNotFound)
+  labels_round_trip(state: UnitEnabled)
+    && labels_round_trip(state: UnitEnabledRuntime)
+    && labels_round_trip(state: UnitLinked)
+    && labels_round_trip(state: UnitLinkedRuntime)
+    && labels_round_trip(state: UnitMasked)
+    && labels_round_trip(state: UnitDisabled)
+    && labels_round_trip(state: UnitStatic)
+    && labels_round_trip(state: UnitIndirect)
+    && labels_round_trip(state: UnitGenerated)
+    && labels_round_trip(state: UnitTransient)
+    && labels_round_trip(state: UnitBad)
+    && labels_round_trip(state: UnitNotFound)
 }
 
 test fn words_outside_the_table_parse_to_no_state() -> Bool {
@@ -90,8 +100,9 @@ test fn words_outside_the_table_parse_to_no_state() -> Bool {
     && (!is_table_word(raw: "masked;echo"))
     && (!is_table_word(raw: "active"))
     && (!is_table_word(raw: "NOT-FOUND"))
+    && (!is_table_word(raw: "alias"))
 }
 
 test fn the_table_is_the_twelve_words_is_enabled_prints_with_none_repeated() -> Bool {
-  length(xs: systemd_unit_file_state_table) == 12 && no_word_repeats(remaining: systemd_unit_file_state_table)
+  length(xs: unit_file_state_table) == 12 && no_word_repeats(remaining: unit_file_state_table)
 }

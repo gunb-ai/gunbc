@@ -539,10 +539,33 @@ fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "status", "--no-pager", "--full", unit as String]
 }
 
+// THE UNIT-FILE STATE, as `systemctl is-enabled` PRINTS IT. systemctl(1) at systemd v255 (the Sparks'
+// recorded major, 255.4-1ubuntu8), is-enabled: the verb prints the unit FILE's install state, one of
+// `enabled`, `enabled-runtime`, `linked`, `linked-runtime`, `masked`, `disabled`, `static`, `indirect`,
+// `generated`, `transient`, `bad`, `not-found`. This is a DIFFERENT vocabulary from SystemdUnitLoadState
+// (extdeps.systemd) even where the words overlap: LoadState is what the manager loaded (systemd.unit(5),
+// org.freedesktop.systemd1(5) Unit.LoadState) and the file state is what the install directory says
+// about the unit. `masked` appears in both because a masked unit is both unstartable by fragment and
+// reported that way by is-enabled -- the two readings must still be parsed by their own parser, so a
+// caller cannot satisfy a file-state check with a load-state answer.
+//
+// WHY THE EXIT CODE IS NOT THE CHECK: measured on srv1 (gunbc#11803 follow-up reads), is-enabled on a
+// loaded unit with no install symlink prints `static` and STILL EXITS 0. A caller that trusted the exit
+// status would read a hand-started daemon as properly installed. The printed word is the fact, so the
+// word gets a type here and the comparison happens against a variant rather than against a substring
+// of whatever was printed. A word outside the set is not guessed into one: the parse answers nothing and
+// the caller refuses it as unread.
+//
+// TWO SURFACES, ONE VOCABULARY: `is-enabled` prints `not-found` for a unit the manager has never heard
+// of (systemctl(1), exit status 4), while `show --property=UnitFileState --value` prints an EMPTY value
+// for the same unit -- an empty value is not a word and parses to nothing; the not-found arm is reached
+// through the is-enabled spelling. A word outside this table (e.g. a newer systemd's `alias`) parses to
+// nothing and the caller refuses it.
 type UnitFileState
   = UnitEnabled
   | UnitEnabledRuntime
   | UnitLinked
+  | UnitLinkedRuntime
   | UnitMasked
   | UnitStatic
   | UnitDisabled
@@ -550,22 +573,76 @@ type UnitFileState
   | UnitGenerated
   | UnitTransient
   | UnitBad
+  | UnitNotFound
 
-// THE WIRE WORDS systemctl(1) `is-enabled` / the UnitFileState property print for each arm. A unit the
-// manager does not know reports an empty UnitFileState, which is not a state and parses to nothing;
-// so does any word outside this table (e.g. a newer systemd's `alias`), and the caller refuses it.
+// THE ONE SPELLING OF THE VOCABULARY: variant and wire word bound ONCE per row, so the parse below
+// (lookup by word) and the label below (lookup by variant) read the SAME table and can never drift --
+// one grammar read in both directions. A thirteenth is-enabled word reaches this table or it has no
+// name and no parse anywhere; adding a variant without a row leaves it untabled, which the round-trip
+// witness (test.claim.c_roadmap2_systemd_file_state_table_witness) refuses, and the table's distinctness
+// and length claims refuse a duplicated word or a silently dropped row.
+type UnitFileStateRow {
+  state: UnitFileState,
+  word: NonEmptyStr,
+}
+
+data unit_file_state_table: List<UnitFileStateRow> = [
+  UnitFileStateRow { state: UnitEnabled, word: "enabled" as NonEmptyStr },
+  UnitFileStateRow { state: UnitEnabledRuntime, word: "enabled-runtime" as NonEmptyStr },
+  UnitFileStateRow { state: UnitLinked, word: "linked" as NonEmptyStr },
+  UnitFileStateRow { state: UnitLinkedRuntime, word: "linked-runtime" as NonEmptyStr },
+  UnitFileStateRow { state: UnitMasked, word: "masked" as NonEmptyStr },
+  UnitFileStateRow { state: UnitStatic, word: "static" as NonEmptyStr },
+  UnitFileStateRow { state: UnitDisabled, word: "disabled" as NonEmptyStr },
+  UnitFileStateRow { state: UnitIndirect, word: "indirect" as NonEmptyStr },
+  UnitFileStateRow { state: UnitGenerated, word: "generated" as NonEmptyStr },
+  UnitFileStateRow { state: UnitTransient, word: "transient" as NonEmptyStr },
+  UnitFileStateRow { state: UnitBad, word: "bad" as NonEmptyStr },
+  UnitFileStateRow { state: UnitNotFound, word: "not-found" as NonEmptyStr },
+]
+
+fn unit_file_state_row_by_word(
+  raw: String,
+  remaining: List<UnitFileStateRow>,
+) -> UnitFileStateRow? {
+  match remaining {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if (row.word as String) == raw { Present { value: row } }
+      else { unit_file_state_row_by_word(raw: raw, remaining: rest) }
+  }
+}
+
+fn unit_file_state_row_by_state(
+  state: UnitFileState,
+  remaining: List<UnitFileStateRow>,
+) -> UnitFileStateRow? {
+  match remaining {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if row.state == state { Present { value: row } }
+      else { unit_file_state_row_by_state(state: state, remaining: rest) }
+  }
+}
+
 fn parse_unit_file_state(raw: String) -> UnitFileState? {
-  if raw == "enabled" { Present { value: UnitEnabled } }
-  else { if raw == "enabled-runtime" { Present { value: UnitEnabledRuntime } }
-  else { if raw == "linked" { Present { value: UnitLinked } }
-  else { if raw == "masked" { Present { value: UnitMasked } }
-  else { if raw == "static" { Present { value: UnitStatic } }
-  else { if raw == "disabled" { Present { value: UnitDisabled } }
-  else { if raw == "indirect" { Present { value: UnitIndirect } }
-  else { if raw == "generated" { Present { value: UnitGenerated } }
-  else { if raw == "transient" { Present { value: UnitTransient } }
-  else { if raw == "bad" { Present { value: UnitBad } }
-  else { none } } } } } } } } } }
+  match unit_file_state_row_by_word(raw: raw, remaining: unit_file_state_table) {
+    none => none
+    Present { value: row } => Present { value: row.state }
+  }
+}
+
+// The word systemd prints for a file state, so a gate that wants to NAME what it saw in a refusal gets
+// the word from the module that owns the vocabulary instead of re-spelling it. THE GRAMMAR IS READ
+// BACKWARD HERE AND FORWARD BY THE PARSER ABOVE -- both directions walk the one table, so a label can
+// never name a word the parser would refuse. The none arm is unreachable while the table covers every
+// variant (the round-trip witness pins that); should a variant ever be added untabled, it answers a word
+// no parse accepts and the witness goes red rather than the label lying quietly.
+fn unit_file_state_wire_label(s: UnitFileState) -> String {
+  match unit_file_state_row_by_state(state: s, remaining: unit_file_state_table) {
+    none => "untabled-unit-file-state"
+    Present { value: row } => row.word as String
+  }
 }
 
 // THE GRACEFUL ASK IS ONE OPERATION, NOT A SIGNAL PARAMETER, and the reason is extdeps.posix.signal's:

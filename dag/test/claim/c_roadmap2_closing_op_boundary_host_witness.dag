@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_metering_closing_cutover { metering_closing_legacy_
 // THE OP BOUNDARY, ON A REAL HOST, AGAINST REAL SYSTEMD AND REAL BYTES. This is the pairing obligation for the
 // gate's observation path: review 90693 removed every executable stand-in from #15574, so the ONE route that
 // executes `dashboard_metering_closing_writer_observation` end to end -- real `systemctl --user` execs through
-// `dashboard_target_exec`, their words parsed by parse_systemd_unit_active_state, parse_systemd_unit_file_state
+// `dashboard_target_exec`, their words parsed by parse_systemd_unit_active_state, parse_unit_file_state
 // and parse_systemd_main_pid_show -- is this entry, run on srv2 against a real user manager, in the host
 // sequence recorded in the PR body. It is NOT part of the hermetic CI groups: on a machine with no user manager
 // the observation cannot be established and these claims refuse, which is exactly what they must do; they pass

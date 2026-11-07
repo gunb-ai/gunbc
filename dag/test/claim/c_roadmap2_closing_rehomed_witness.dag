@@ -9,7 +9,8 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move {
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable }
 // THE SAME PARSERS THE PRODUCER USES. The claims hand the gate the WORDS systemd prints and let these
 // functions decide the state, so a claim can never certify a parse it never ran.
-import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_main_pid_show }
+import extdeps.systemd.systemctl { parse_unit_file_state }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent,
   MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
@@ -64,7 +65,7 @@ data fx_systemctl: NonEmptyStr = "/usr/bin/systemctl" as NonEmptyStr
 // unpopulated, and the read established.
 // ONE OBSERVATION, ALL EIGHT FIELDS, so a claim states what it varies and inherits a certified base rest.
 // The three systemd answers are given HERE AS THE WORDS SYSTEMD PRINTS and parsed by the same upstream
-// parsers the producer uses (extdeps.systemd parse_systemd_unit_active_state, parse_systemd_unit_file_state,
+// parsers the producer uses (extdeps.systemd parse_systemd_unit_active_state, parse_unit_file_state,
 // parse_systemd_main_pid_show). That is deliberate: a claim that hand-built a typed state would certify the
 // gate while never touching the parse that decides it, and the two controls that matter -- the empty read and
 // `deactivating` -- are facts about WORDS, not about variants. A word outside systemd's set parses to nothing
@@ -88,7 +89,7 @@ fn fx_obs(
   MeteringClosingWriterObservation {
     unit: unit,
     active_state: parse_systemd_unit_active_state(raw: active_word),
-    unit_file_state: parse_systemd_unit_file_state(raw: enabled_word),
+    unit_file_state: parse_unit_file_state(raw: enabled_word),
     main_pid: parse_systemd_main_pid_show(raw: main_pid_word),
     // THE SCRIPTED ANSWERS, translated through the same arms the real builder's sum exposes (review 91654
     // follow-up, item 3): a scripted established=false is a kernel file that REFUSED (never a silent
@@ -411,7 +412,7 @@ test fn an_unparseable_main_pid_refuses_rather_than_reading_as_no_process() -> B
 
 // 28. `static` IS NOT MASKED, EVEN THOUGH `is-enabled` EXITS 0 ON IT. extdeps.systemd.systemctl records the
 // srv1 measurement that a loaded unit with no install symlink prints `static` and still exits 0, which is
-// exactly why the gate reads the printed word through parse_systemd_unit_file_state instead of trusting a
+// exactly why the gate reads the printed word through parse_unit_file_state instead of trusting a
 // status: an unmasked unit can still be started by name, so the belt's transient writer survives the "mask".
 test fn a_static_unit_is_not_masked_though_is_enabled_exits_zero() -> Bool {
   let o = fx_obs(unit: fx_unit, active_word: "inactive", enabled_word: "static", main_pid_word: "0", control_group: "/user/1000/user@1000.service/system.slice/gunbc-obligation-srv2probe-metering.service", cgroup_events: CgroupEventsDecoded { populated: false }, cgroup_read_established: true, writer_process_count: 0)

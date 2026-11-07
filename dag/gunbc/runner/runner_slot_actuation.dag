@@ -19,7 +19,7 @@ import extdeps.systemd {
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, parse_systemd_unit_active_state,
 }
 import extdeps.systemd.systemctl {
-  UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad,
+  UnitEnabled, UnitEnabledRuntime, UnitLinked, UnitLinkedRuntime, UnitMasked, UnitStatic, UnitDisabled, UnitIndirect, UnitGenerated, UnitTransient, UnitBad, UnitNotFound,
   parse_unit_file_state,
   systemctl_show_properties_argv,
   systemctl_unmask_argv,
@@ -174,7 +174,7 @@ fn slot_file_is(file: extdeps.systemd.systemctl.UnitFileState?, enabled: Bool) -
     Present { value: f } => match f {
       UnitEnabled => enabled
       UnitMasked => !enabled
-      UnitEnabledRuntime => false UnitLinked => false UnitStatic => false UnitDisabled => false UnitIndirect => false UnitGenerated => false UnitTransient => false UnitBad => false
+      UnitEnabledRuntime => false UnitLinked => false UnitLinkedRuntime => false UnitStatic => false UnitDisabled => false UnitIndirect => false UnitGenerated => false UnitTransient => false UnitBad => false UnitNotFound => false
     }
   }
 }
@@ -232,6 +232,8 @@ fn slot_activation_plan_steps(r: SlotActuationReading) -> SlotActivationPlan {
           ActivationSteps { steps: concat([systemctl_enable_argv(unit: r.unit)], if slot_state_active(active: r.active) { [] } else { [systemctl_start_argv(unit: r.unit)] }) }
         UnitEnabledRuntime => ActivationRefused { reason: "UnitFileState=enabled-runtime: a runtime enablement this effect does not convert" }
         UnitLinked => ActivationRefused { reason: "UnitFileState=linked: the unit file is linked from outside the unit path" }
+        UnitLinkedRuntime => ActivationRefused { reason: "UnitFileState=linked-runtime: a runtime link this effect does not convert" }
+        UnitNotFound => ActivationRefused { reason: "UnitFileState=not-found: is-enabled finds no unit file to enable (systemctl(1))" }
         UnitStatic => ActivationRefused { reason: "UnitFileState=static: the unit has no install section to enable" }
         UnitGenerated => ActivationRefused { reason: "UnitFileState=generated: the unit is produced by a generator" }
         UnitTransient => ActivationRefused { reason: "UnitFileState=transient: the unit is transient" }

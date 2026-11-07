@@ -112,12 +112,12 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
 // the kernel two; each answer is parsed here, at the point it enters the sealed record, by the module that
 // declares the answer set -- so no word of systemd's lives in this file to drift from systemd.
 import extdeps.systemd {
-  parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show,
+  parse_systemd_unit_active_state, parse_systemd_main_pid_show,
   SystemdUnitProperty, MainPID, ControlGroup,
 }
 import extdeps.systemd.systemctl {
   systemctl_user_closing_active_args, systemctl_user_closing_enabled_args, systemctl_user_closing_show_args,
-  systemctl_show_property_value,
+  systemctl_show_property_value, parse_unit_file_state,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
@@ -1513,7 +1513,7 @@ fn metering_closing_unit_procs_path(control_group: String) -> NonEmptyStr {
 // that does not parse is carried as "no reading" rather than defaulted to a convenient word. The exit code of
 // is-enabled is deliberately not used as the check: extdeps.systemd.systemctl records the srv1 measurement
 // that a loaded unit with no install symlink prints `static` and still exits 0, so only the printed word is
-// evidence, and the word is turned into a SystemdUnitFileState here.
+// evidence, and the word is turned into a UnitFileState here.
 fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance, ctl: NonEmptyStr, unit: NonEmptyStr) -> MeteringClosingWriterObservation {
   let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_active_args(unit: unit))
   let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_enabled_args(unit: unit))
@@ -1544,7 +1544,7 @@ fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance
   MeteringClosingWriterObservation {
     unit: unit,
     active_state: parse_systemd_unit_active_state(raw: trim(s: active.stdout)),
-    unit_file_state: parse_systemd_unit_file_state(raw: trim(s: enabled.stdout)),
+    unit_file_state: parse_unit_file_state(raw: trim(s: enabled.stdout)),
     main_pid: parse_systemd_main_pid_show(raw: main_pid_text),
     // THE ONE cgroup-side CONSTRUCTION. Pairing witness (DESIGN section 3): the claims compare this route's
     // record with dashboard_metering_closing_cgroup_answer over the scripted answers standing for the same

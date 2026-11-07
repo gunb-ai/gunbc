@@ -24,7 +24,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_metering_closing_marker_census, dashboard_metering_closing_writer_observation, MeteringClosingWriterObservation }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult, dashboard_exec_ok, dashboard_exec_refused }
-import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_main_pid_show }
+import extdeps.systemd.systemctl { parse_unit_file_state }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
 import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name }
 import gunbc.roadmap.roadmap_metering_closing_cutover {
@@ -70,7 +71,7 @@ fn fx_obs(unit: NonEmptyStr, cgroup: MeteringClosingCgroup) -> MeteringClosingWr
   MeteringClosingWriterObservation {
     unit: unit,
     active_state: parse_systemd_unit_active_state(raw: "inactive"),
-    unit_file_state: parse_systemd_unit_file_state(raw: "masked"),
+    unit_file_state: parse_unit_file_state(raw: "masked"),
     main_pid: parse_systemd_main_pid_show(raw: "0"),
     cgroup: cgroup,
   }

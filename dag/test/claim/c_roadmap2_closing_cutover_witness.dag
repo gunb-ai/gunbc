@@ -26,7 +26,7 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
   metering_closing_unit_exclusion, metering_closing_cutover_disposition,
 }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
-import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show, SystemdUnitProperty, MainPID, ControlGroup }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_main_pid_show, SystemdUnitProperty, MainPID, ControlGroup }
 
 // THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, and review 89888's
 // two findings on it). The roster closing marker changed shape -- a plain metering-roster-closing entry became the
@@ -60,7 +60,7 @@ fn fx_observed(unit: NonEmptyStr, active: String, enabled: String) -> List<Meter
   [MeteringClosingWriterObservation {
     unit: unit,
     active_state: parse_systemd_unit_active_state(raw: active),
-    unit_file_state: parse_systemd_unit_file_state(raw: enabled),
+    unit_file_state: parse_unit_file_state(raw: enabled),
     main_pid: parse_systemd_main_pid_show(raw: "0"),
     // The scripted answer, as the sum: both kernel files answered, nothing populated, no pids.
     cgroup: CgroupRead { events: CgroupEventsDecoded { populated: false }, procs: [] as List<Int> },
