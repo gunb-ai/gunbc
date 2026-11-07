@@ -319,7 +319,7 @@ import gunbc.roadmap.roadmap_publish_observe {
   WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
   observe_worktree_repository_binding,
 }
-import gunbc.compute.work_request { WorkOperation, WorkRefusedByInfrastructure, HostComputeCapacityFull, RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
+import gunbc.compute.work_request { TargetIsExecutingHost, WorkOperation, WorkRefusedByInfrastructure, HostComputeCapacityFull, RunClaims, ClaimDiffWindow, stored_outcome_subject_tree, work_ending_decode, WorkEndedSucceeded, WorkEndedFailed, WorkEndedRefusedByInfrastructure, WorkEndedCancelled, WorkEndedOutputMismatch }
 import gunbc.compute.attempt_lifecycle { AttemptOwner, DispatchOwned, attempt_record_json }
 import gunbc.compute.host_capacity { compute_capacity_subject, ComputeSubjectResolved, ComputeSubjectHostUnresolved }
 import gunbc.compute.compute_seat_ensure {
@@ -9633,10 +9633,10 @@ fn belt_discharge_pass_released_a_seat(pass: SeatDischargePass) -> Bool {
 }
 
 fn belt_provide_converging(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation) -> ProvideResult {
-  let first = compute_provide(instance: instance, owner: owner, commit: commit, op: op)
+  let first = compute_provide(instance: instance, owner: owner, commit: commit, op: op, target: TargetIsExecutingHost)
   if belt_provide_pool_full(first: first) {
     if belt_discharge_pass_released_a_seat(pass: belt_compute_seat_discharge_pass(instance: instance)) {
-      compute_provide(instance: instance, owner: owner, commit: commit, op: op)
+      compute_provide(instance: instance, owner: owner, commit: commit, op: op, target: TargetIsExecutingHost)
     } else {
       first
     }
