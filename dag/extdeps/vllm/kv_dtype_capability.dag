@@ -23,7 +23,7 @@ import extdeps.vllm.engine_args {
 //
 // THE BASIS TRAVELS WITH EVERY ANSWER. A row read from upstream source cites its revision and file;
 // a row established by launching something is an observation and belongs to the layer that observed
-// it (DESIGN section 3: observations are receipts downstream, never properties authored inside an
+// it (gunbc.design_argument::single_authority: observations are receipts downstream, never properties authored inside an
 // upstream module) -- this module defines the basis vocabulary for both, and the gunbc join supplies
 // its own observed rows beside these.
 //

@@ -29,14 +29,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc.recurring_failure_mode `host_seam_realization_is_keyed_by_primitive_spelling`) -- so the value
 // that reaches `at_is` is the ambient builtin's bare host text while the checker typed the call
 // `HostText?`. The green claims therefore measure the AMBIENT REALIZATION behind a declared name: one
-// name, two meanings on one route (DESIGN section 3, a witness discriminates at one interface -- this one
+// name, two meanings on one route (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface -- this one
 // discriminates the checking interface only). `std.host_text`'s `char_at` still has NO executing
 // consumer, which is a frontier this PR states rather than closes; step 2 of the egress (resolved-target
 // dispatch, src/v1/04_lookup.dag `resolved_declaration_call_target`) is what makes these claims read the
 // declared operation's value, and it is claimed as that PR's target, not this one's.
 //
 // The samples are host texts by construction: a literal denotes HostText, so no argument reaches
-// char_at's HostText parameter through an undeclared crossing (DESIGN section 4: text crossings go
+// char_at's HostText parameter through an undeclared crossing (gunbc.design_argument::closed_grounded_substrate: text crossings go
 // through the declared unfold, and this file takes none -- it names the carrier directly). The code-point
 // count is taken the same way, through the declared unfold `chars` and std.algebra's length.
 
@@ -119,7 +119,7 @@ test fn char_at_past_the_multibyte_char_is_not_a_byte_offset() -> Bool {
   !at_is(read: char_at(text: s, pos: 3), want: "\u{a9}")
 }
 
-// THE EXECUTED PROBE OF THE DEFECT THAT IS STILL OPEN (DESIGN 4b's expected-red, in the one form that can
+// THE EXECUTED PROBE OF THE DEFECT THAT IS STILL OPEN (gunbc.design_argument::guarantee_ladder's expected-red, in the one form that can
 // land green today). This claim runs the out-of-range read and asserts today's WRONG answer -- a Present
 // rather than an Absent -- because on this route the interpreter still answers the call's VALUE by
 // SPELLING (the free_call.char_at arm of gunbc.v1.v1_interpreter_primitive_surface) while the checker

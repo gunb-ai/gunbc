@@ -29,7 +29,7 @@ import gunbc.bare_name_identity_consumer_census {
 // identity is UnavailableNoNodeAtSite flips the first assertion to false, and setting one row's
 // call_site_count to zero flips the second, both on a binary built from this tree (receipt:
 // docs/probes/bare-name-identity-consumer-census-2026-08-22.md). A claimed-but-unrun RED is the
-// specification-without-execution trap DESIGN section 5 names, and it is the one this file would be
+// specification-without-execution trap gunbc.design_argument::fail_closed names, and it is the one this file would be
 // most likely to fall into, since every assertion here is about the file next to it.
 //
 // THE SAME PROBE MEASURED ONE ASSERTION FAILING TO DISCRIMINATE, recorded rather than dropped: under
@@ -39,7 +39,7 @@ import gunbc.bare_name_identity_consumer_census {
 //
 // NO COUNT IS ASSERTED AGAINST A LITERAL. Every number here is a fold over the rows compared to
 // another fold over the same rows, so adding a row cannot make this file stale and cannot be
-// silenced by editing a number -- which is the failure mode DESIGN section 5 names when a test's
+// silenced by editing a number -- which is the failure mode gunbc.design_argument::fail_closed names when a test's
 // entire content is a copied measurement.
 
 // A SIBLING YOU CANNOT FEED IS NOT SITTING BESIDE THE SITE UNUSED.

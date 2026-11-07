@@ -9,7 +9,7 @@ module v2.test.claim.native_census.blocked_member_dependency_refusal
 // whose bytes were read and whose refusal cause is already held on the blocked member's own row (the live
 // specimen: v2.workflow.roster_import_sweep imports extdeps.git, whose file exists, is enumerated and is
 // read -- 116,078 chars of content in the acquisition block -- and whose row carried
-// resolve_module_not_found). DESIGN section 5 asks for a typed, located statement of the real boundary;
+// resolve_module_not_found). gunbc.design_argument::fail_closed asks for a typed, located statement of the real boundary;
 // section 6b locates the earliest wrong boundary exactly here, where a blocked member's refusal is turned
 // into a missing root.
 //
@@ -18,7 +18,7 @@ module v2.test.claim.native_census.blocked_member_dependency_refusal
 // (Correction.Unavailable { DeclarerRefused { declarer } }, whose comment says a census joins on that
 // identity rather than reading the refusal's reason text). They do NOT copy the blocked member's cause into
 // the requester's diagnostic -- that cause lives on the blocked member's own refusal row and a copy would be
-// a second authority for it (DESIGN section 3). The last claim is the census side of the same fact: the
+// a second authority for it (gunbc.design_argument::single_authority). The last claim is the census side of the same fact: the
 // identity handed to admission is the one the acquisition fold already recorded per read, so no second walk
 // decides which member was blocked.
 

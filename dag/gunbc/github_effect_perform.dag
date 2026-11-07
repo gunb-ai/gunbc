@@ -1,6 +1,6 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes, CommitSha, secret_of_text }
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, CommitSha, secret_of_text }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -39,8 +39,6 @@ import extdeps.github.org_actions
 import extdeps.github.org_actions { OrgRunnerGroupWire }
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList, WorkflowJobRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.github.actions { github_event_name_merge_group }
-import extdeps.github.actions_artifacts
-import extdeps.github.actions_artifacts { ActionsArtifactList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared, gunbai_ci_app_pem_secret }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
@@ -61,8 +59,8 @@ import std.integer { int_to_decimal_string }
 // THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
 // layer that PERFORMS one -- it sequences the realizations, holds the credentials between them, and
-// hands back a typed performance. Policy about WHICH effect to perform stays with its caller (DESIGN
-// §3: interface, realization and policy are three facts). Its first effect is the organization JIT
+// hands back a typed performance. Policy about WHICH effect to perform stays with its caller (
+// gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts). Its first effect is the organization JIT
 // mint, whose dispatch gunbc.runner.runner_jit_perform already decides; a second effect lands here
 // as a second perform function, not as a second module.
 //
@@ -75,7 +73,7 @@ import std.integer { int_to_decimal_string }
 // or rendered into an argv, and the key never leaves the file openssl reads -- so nothing this
 // function produces is a path from a guest to the App key.
 
-// §3c, STATED SO A GREEN WITNESS IS NOT READ AS A WORKING MINT. perform_organization_jit_mint is
+// gunbc.design_argument::consumption, STATED SO A GREEN WITNESS IS NOT READ AS A WORKING MINT. perform_organization_jit_mint is
 // the realization gunbc.runner.runner_jit_perform's old transport frontier asked for, and it is
 // consumed by NO production route in this change: the caller is the per-attempt lifecycle controller
 // (gunbc.runner.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
@@ -166,7 +164,7 @@ type JitMintAppJwt
   | AppJwtUnsigned { detail: String }
 
 // THE GENERATE STEP'S ANSWER, DECIDED WITHOUT I/O so the decision is witnessable on supplied
-// RestResults (DESIGN §3: a witness discriminates at one interface). A 2xx decodes through the
+// RestResults (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). A 2xx decodes through the
 // same jit_config_mint_outcome every status goes through, so an empty blob under 201 is still
 // refused there; a non-2xx the remote DECIDED is a JitConfigMintOutcome refusal; an answer that
 // never arrived is commit-ambiguous and is NOT reported as a refusal.
@@ -435,12 +433,10 @@ fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr
   }
 }
 
-// THE QUALIFICATION RUN'S OUTPUTS, READ UNDER THE SAME CONTROLLER TOKEN AS THE RUN ITSELF. One job's
+// THE QUALIFICATION RUN'S OUTPUT, READ UNDER THE SAME CONTROLLER TOKEN AS THE RUN ITSELF: the floor job's
 // log (actions/download-job-logs-for-workflow-run, followed through its redirect by the bound REST
-// handler), the run's artifact listing, and one artifact's archive. Each answer is sealed beside its
-// RestResult, like the run and job reads above, so a consumer cannot pair a body with a result it
-// did not come with. The archive is Bytes and today's handler reads bodies as text,
-// so a real download answers RestRefused with RestBodyUndecodable (extdeps.github.actions_artifacts).
+// handler). The answer is sealed beside its RestResult, like the run and job reads above, so a consumer
+// cannot pair a body with a result it did not come with.
 type WorkflowJobLogRead sole_constructor {
   job_id: Int
   log: RestResult<String>
@@ -452,36 +448,6 @@ fn read_job_log_with(token: ControllerInstallationToken, owner: NonEmptyStr, rep
     job_id: job_id,
     log: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.log }
-      RestRefused { refusal } => RestRefused { refusal: refusal }
-    },
-  }
-}
-
-type WorkflowRunArtifactsRead sole_constructor {
-  listed: RestResult<ActionsArtifactList>
-}
-
-fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> WorkflowRunArtifactsRead uses net: Network {
-  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id))
-  WorkflowRunArtifactsRead {
-    listed: match read {
-      RestAnswered { answer } => RestAnswered { answer: answer.result }
-      RestRefused { refusal } => RestRefused { refusal: refusal }
-    },
-  }
-}
-
-type ArtifactArchiveRead sole_constructor {
-  artifact_id: Int
-  archive: RestResult<Bytes>
-}
-
-fn download_artifact_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, artifact_id: Int) -> ArtifactArchiveRead uses net: Network {
-  let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: int_to_decimal_string(value: artifact_id))
-  ArtifactArchiveRead {
-    artifact_id: artifact_id,
-    archive: match read {
-      RestAnswered { answer } => RestAnswered { answer: answer.archive }
       RestRefused { refusal } => RestRefused { refusal: refusal }
     },
   }

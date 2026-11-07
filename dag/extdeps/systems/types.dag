@@ -168,7 +168,7 @@ fn gpu_memory_addressability_wire(a: GpuMemoryAddressability) -> NonEmptyStr {
 // - the system;
 // - the memory's capacity and kind;
 // - the complete addressability, including a coherent link's rate.
-// Equality on the two coproducts is the derived structural equality (DESIGN §4: operations come
+// Equality on the two coproducts is the derived structural equality (gunbc.design_argument::closed_grounded_substrate: operations come
 // from inhabitance), so a new arm needs no table here.
 // Two components agree only when every fact agrees. A row edited to different memory, or to a
 // different link rate, under the same system name projects a component that is NOT the original's,

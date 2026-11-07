@@ -46,7 +46,7 @@ import std.types { String, Bool, List }
 // dag/extdeps/browser/opera.dag. Current head PASS; head detail includes returned Bool(false) |
 // extdeps scope placement gate: THIS CHANGE ... dag/extdeps/browser/opera.dag. Guarantee rung:
 // observed validation on the production seed_runner path; no construction wall claimed for
-// seed/.dag mirror parity (DESIGN section 7 seed retention). REMEASURED AGAINST THE FLOOR'S OWN
+// seed/.dag mirror parity (gunbc.design_argument::self_hosting seed retention). REMEASURED AGAINST THE FLOOR'S OWN
 // LINE (witness-cost-class lane, gunbc.roadmap.roadmap_authority adhoc-0e6f8ea5-158, 2026-08-19) AND
 // FALSIFIED AS A WITNESS-COST REPAIR: the narrowing's own commit measured import closure (718
 // modules/10.1MB -> 62/0.49MB) and standalone entry-resolve time (30.726s -> 1.005s), but
@@ -66,7 +66,7 @@ import std.types { String, Bool, List }
 // the Class B and loop/bind candidates as this lane's third falsification: import-closure
 // pollution, as a witness-cost class with a demonstrated fixable member, tested empty across all
 // three candidates this lane investigated. What is NOT retracted: the closure narrowing itself is
-// real and DESIGN.md §3-legitimate (fewer modules genuinely load faster in isolation), it is
+// real and gunbc.design_argument::single_authority-legitimate (fewer modules genuinely load faster in isolation), it is
 // retained as a correctness improvement, and it may have cut cold standalone resolve time as
 // measured -- what is refuted is that it moved the FLOOR's own per-row cost, which is the only
 // number the 1552ms ceiling enforces. Same shape as this lane's Class B correction: the right

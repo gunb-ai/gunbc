@@ -12,7 +12,7 @@ module test.claim.fleet.srv1_root_mutation_workflow_witness
 // file imports the projection, the approval witness no longer does. No claim here is a copy of one from that
 // file, and the helpers below serve only these claims.
 //
-// DESIGN 3 still decides what each claim touches: it asserts over the EMITTED shape, the workflow's own
+// gunbc.design_argument::single_authority still decides what each claim touches: it asserts over the EMITTED shape, the workflow's own
 // output, and never re-derives a gate decision -- the decisions themselves are witnessed at the fold, in the
 // other file, one interface apiece.
 

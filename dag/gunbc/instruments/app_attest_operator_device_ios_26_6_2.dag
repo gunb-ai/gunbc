@@ -2,7 +2,7 @@ module gunbc.instruments.app_attest_operator_device_ios_26_6_2
 
 import std.types { Int, List, NonEmptyStr }
 
-// A RECEIPT OF THIS REPOSITORY'S OWN APP, so it lives in the observing layer, not extdeps (DESIGN section 3):
+// A RECEIPT OF THIS REPOSITORY'S OWN APP, so it lives in the observing layer, not extdeps (gunbc.design_argument::single_authority):
 // our team, our bundle, our enrolment framing. Apple's own published sample stays upstream fact in
 // extdeps.apple.app_attest_sample_ios_14_4.
 // ONE REAL ATTESTATION OBJECT FROM A PHYSICAL IPHONE, AS OBSERVED, never transcribed from a message:

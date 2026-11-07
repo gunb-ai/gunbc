@@ -28,7 +28,7 @@ data ipv4_dotted_decimal_authority: ExternalAuthority = ExternalAuthority {
 // model/realization split: ipv4_address(...) constructs from four octets for AUTHORED literals
 // (byte-known at author time), parse_ipv4_address(String) recovers structure from WIRE text (DHCP
 // tables, ip output) and REFUSES malformed input with a typed, located Ipv4ParseError rather than
-// fabricating an address (§5 fail-closed). Round-trip (parse ∘ render == id on valid; render ∘
+// fabricating an address (gunbc.design_argument::fail_closed fail-closed). Round-trip (parse ∘ render == id on valid; render ∘
 // parse == id) is the witness.
 
 type Octet = Int where range(min: 0, max: 255)

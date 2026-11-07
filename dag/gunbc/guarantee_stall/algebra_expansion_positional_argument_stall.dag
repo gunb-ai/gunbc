@@ -19,7 +19,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 //   an un-applied COPRODUCT -- FreeMonoid, children Empty and Cons -- yields the VARIANT
 //     `Empty` as the element type, which is plainly wrong
 // One peel, two shapes, one accidentally correct and one incorrect, and no declared fact
-// separates them. That is the silent wrongness DESIGN section 5 forbids, and it is why the
+// separates them. That is the silent wrongness gunbc.design_argument::fail_closed forbids, and it is why the
 // diagnostic must exist even while it cannot block.
 //
 // WHY IT CANNOT BLOCK YET. The evidence needed to answer correctly is absent everywhere the

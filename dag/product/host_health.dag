@@ -135,7 +135,7 @@ fn counter_window_standing(left: CounterSnapshot, right: CounterSnapshot) -> Cou
 // THE LEFT EDGE IS AN INPUT. A prior baseline is the last snapshot someone ADMITTED or explicitly
 // dispositioned -- never simply the previous run's reading. If the previous run saw a new error and
 // became the next run's baseline automatically, the error would vanish after one cycle: that is the
-// absorbing fallback DESIGN section 5 forbids. Selecting and admitting a baseline is therefore not
+// absorbing fallback gunbc.design_argument::fail_closed forbids. Selecting and admitting a baseline is therefore not
 // this module's job, and nothing here can mint one from an observation.
 type HostHealthBaselineBasis
   = NoPriorBaseline
@@ -510,7 +510,7 @@ fn judge_temperature(expectation: TemperatureExpectation, windows: List<Temperat
               judged: 1,
             }
             FromCitedFigure { value: limit_value, standing: standing } => match standing {
-              // Only a figure cited to its authority is a wall (DESIGN 4d). A transcribed-uncited figure is a
+              // Only a figure cited to its authority is a wall (gunbc.design_argument::epistemic_humility). A transcribed-uncited figure is a
               // bet, and an observed one is this repository's measurement (a past maximum is not the component grade's critical temperature): neither
               // yields a divergence or a green, and a new standing variant must be decided here.
               TranscribedUncited { read_obligation: _ } => SignalVerdict {

@@ -1,0 +1,189 @@
+module test.claim.fleet.fleet_identity_demand_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import extdeps.github.expressions { ingest_expression, serialize_expression, evaluate_expression, gha_value_is_truthy, github_path_key, GithubPathValue, GithubPathUnmodeled, GithubPathResolution, ExpressionValue, ExpressionEvaluationRefused }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_job, fleet_converge_fleet_identity_auth_condition, fleet_converge_fleet_identity_reader_candidates,
+  fleet_identity_readers, fleet_identity_mint_condition, fleet_identity_reader_mint_condition, step_reads_fleet_identity,
+  fleet_identity_unreadable_text,
+  fleet_converge_mode_step_if, fleet_converge_fleet_ssh_key_step_if,
+  FleetConvergeWorkflowMode, HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart,
+  MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve,
+  FabricWriterIdentityObserve, BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild,
+  RevisionJobImageBuild, FullHostPlan, OrgActionsObserve, R2MintPreflight, MtCollins1FanObserve,
+  fleet_converge_workflow_mode_wire,
+}
+import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.languages.yaml.types { kv, yaml_string }
+import gunbc.action_use_admission { upload_artifact_action }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn step_id_of(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn step_if_of(s: Step) -> String {
+  match s {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => match c { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn run_step(run: String, condition: String) -> Step {
+  RunStep { name: Present { value: "fixture" }, id: none, run: run, shell: none, env: none, working_directory: none, if_condition: Present { value: condition }, continue_on_error: none, timeout_minutes: none }
+}
+
+fn uses_step_with(value: String, condition: String) -> Step {
+  UsesStep { name: Present { value: "fixture" }, id: none, uses: upload_artifact_action, with: Present { value: [kv(key: "token", value: yaml_string(s: value))] }, env: none, if_condition: Present { value: condition }, continue_on_error: none, timeout_minutes: none }
+}
+
+data compound_condition: String = "github.event.inputs.mode == 'plan' && github.ref == 'refs/heads/main'"
+
+fn reparsed(c: String) -> String {
+  match ingest_expression(src: c) {
+    Present { value: e } => serialize_expression(expression: e)
+    Absent => "UNPARSED"
+  }
+}
+
+fn reads(text: String) -> Bool {
+  step_reads_fleet_identity(step: run_step(run: text, condition: compound_condition))
+}
+
+// FIXTURES OF THE DERIVATION ITSELF. A reader is found in any field of its emitted YAML, not by one
+// spelling: the token read in a `run:` script and in a `with:` input both count, under a compound
+// condition, and the mint is the disjunction of the readers' conditions as the grammar reads them.
+// RED: a derivation that scanned only `env` (the shape every reader happens to have today) finds
+// neither, and the mint would not cover them.
+test fn a_reader_in_run_or_with_under_a_compound_condition_widens_the_mint() -> Bool {
+  let in_run = run_step(run: "curl -H \"Authorization: Bearer ${{ steps.wif_auth.outputs.access_token }}\" https://example.invalid", condition: compound_condition)
+  let in_with = uses_step_with(value: "${{ steps['wif_auth'].outputs.access_token }}", condition: fleet_converge_mode_step_if(mode: OrgActionsObserve))
+  let other = run_step(run: "echo ${{ steps.wif_auth_hetzner_cloud_control.outputs.access_token }}", condition: fleet_converge_mode_step_if(mode: HostMemoryObserve))
+  step_reads_fleet_identity(step: in_run)
+    && step_reads_fleet_identity(step: in_with)
+    && !step_reads_fleet_identity(step: other)
+    && fleet_identity_reader_mint_condition(step: in_run) == reparsed(c: compound_condition)
+    && fleet_identity_mint_condition(readers: fleet_identity_readers(candidates: [in_run, other, in_with]))
+      == concat(concat(concat("(", reparsed(c: compound_condition)), ") || ("), concat(reparsed(c: fleet_converge_mode_step_if(mode: OrgActionsObserve)), ")"))
+}
+
+// EVERY SPELLING THE GRAMMAR ADMITS IS A READER (review 91535): bracket spacing, case, a star filter
+// over steps, a whole-context read, and an interpolation written without inner spaces. RED: the
+// substring scan this replaced found none of these and the mint shrank without a refusal.
+test fn every_spelling_of_a_read_of_the_identity_outputs_is_a_reader() -> Bool {
+  reads(text: "echo ${{ steps[ 'wif_auth' ].outputs.access_token }}")
+    && reads(text: "echo ${{ steps.WIF_AUTH['outputs'].access_token }}")
+    && reads(text: "echo ${{ toJSON(steps.*.outputs) }}")
+    && reads(text: "echo ${{ toJSON(steps) }}")
+    && reads(text: "echo ${{ steps.wif_auth }}")
+    && reads(text: "echo ${\{steps.wif_auth.outputs.access_token}}")
+}
+
+// AND NOTHING ELSE IS: another property of the identity step, another step's outputs, a star filter
+// over another property, and the reference spelled inside a string literal.
+test fn near_misses_are_not_readers() -> Bool {
+  !reads(text: "echo ${{ steps.wif_auth.conclusion }}")
+    && !reads(text: "echo ${{ steps.release_bins.outputs.sha }}")
+    && !reads(text: "echo ${{ toJSON(steps.*.conclusion) }}")
+    && !reads(text: "echo ${{ 'steps.wif_auth.outputs' }}")
+    && !reads(text: "echo steps.wif_auth.outputs is plain text, not an expression")
+}
+
+// TEXT THE GRAMMAR CANNOT READ REFUSES: an unterminated interpolation is reported, never read as
+// literal text and never as a reader; the real job carries none, so it is emitted.
+test fn unreadable_step_text_refuses_and_the_real_job_has_none() -> Bool {
+  let broken = run_step(run: "echo ${{ steps.wif_auth.outputs.access_token", condition: compound_condition)
+  match fleet_identity_unreadable_text(candidates: [broken]) {
+    Present { value: _ } => true
+    Absent => false
+  } && match fleet_identity_unreadable_text(candidates: fleet_converge_fleet_identity_reader_candidates()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// A condition the mint cannot decide before the reader runs (another step's outcome, a status
+// function) or no condition at all contributes `true`: the mint over-approximates rather than strand
+// the reader. No reader at all never mints.
+test fn an_undecidable_conjunct_is_dropped_and_an_undecidable_whole_mints() -> Bool {
+  let token = "echo ${{ steps.wif_auth.outputs.access_token }}"
+  let plan = reparsed(c: "github.event.inputs.mode == 'plan'")
+  fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "steps.release_bins.outcome == 'success'")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "always()")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "steps.prior.outcome == 'success' || github.event.inputs.mode == 'plan'")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "!(steps.prior.outcome == 'success' && github.event.inputs.mode == 'plan')")) == "true"
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "failure() && github.event.inputs.mode == 'plan'")) == plan
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "!cancelled() && github.event.inputs.mode == 'plan'")) == plan
+    && fleet_identity_reader_mint_condition(step: run_step(run: token, condition: "github.event.inputs.mode == 'plan' && steps.prior.outcome != 'failure'")) == plan
+    && fleet_identity_mint_condition(readers: []) == "false"
+}
+
+// THE REAL JOB. The emitted mint is the derivation over the job's own post-mint steps, nothing beside
+// it, and every reader's condition is one of its disjuncts.
+test fn the_emitted_auth_step_is_the_reader_derivation() -> Bool {
+  let auth = filter(fleet_converge_job().steps, s => step_id_of(s: s) == "wif_auth")
+  let readers = fleet_identity_readers(candidates: fleet_converge_fleet_identity_reader_candidates())
+  auth.length() == 1
+    && readers.length() > 0
+    && match auth.first() {
+      Present { value: s } => step_if_of(s: s) == fleet_converge_fleet_identity_auth_condition()
+      Absent => false
+    }
+    && all(readers, r => string_contains(s: fleet_converge_fleet_identity_auth_condition(), pattern: concat(concat("(", fleet_identity_reader_mint_condition(step: r)), ")")))
+}
+
+// THE FLEET KEY READS THE IDENTITY, so every key-consuming mode keeps the mint (RED: dropping the key
+// step from the candidates would strand it). Own-step readers keep it too.
+test fn the_fleet_key_and_own_step_readers_keep_the_mint() -> Bool {
+  let auth = fleet_converge_fleet_identity_auth_condition()
+  string_contains(s: auth, pattern: concat(concat("(", fleet_converge_fleet_ssh_key_step_if), ")"))
+    && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: FullHostPlan))
+    && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: OrgActionsObserve))
+    && string_contains(s: auth, pattern: fleet_converge_mode_step_if(mode: R2MintPreflight))
+}
+
+data no_reader_modes: List<FleetConvergeWorkflowMode> = [
+  HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart, MtCollins1CensusQemuHostObserve,
+  MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve,
+  BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
+]
+
+// MODES WITH NO READER DO NOT REACH THE MINT, read by evaluating the emitted condition for each mode.
+// host_memory_observe is the diagnostic that prompted this. A reader gated on one of these modes, in any
+// field, or a reader whose condition widens to `true`, makes the mint truthy there and turns this red;
+// the reader modes (including the fan-observe UI step's `!cancelled() && mode` gate) must still mint.
+fn mode_only_path(mode: String, path: List<String>) -> GithubPathResolution {
+  if github_path_key(path: path) == "event.inputs.mode" { GithubPathValue { value: mode } } else { GithubPathUnmodeled }
+}
+
+type MintReading = Mints | DoesNotMint | MintUnreadable
+
+// The emitted mint condition, EVALUATED for one dispatch mode: a `true` disjunct mints for every mode
+// without naming any, so a text search for the mode's clause cannot see it (review 91761).
+fn auth_mints_for(mode: FleetConvergeWorkflowMode) -> MintReading {
+  match ingest_expression(src: fleet_converge_fleet_identity_auth_condition()) {
+    Absent => MintUnreadable
+    Present { value: e } =>
+      match evaluate_expression(expression: e, github_path: fn(path) { mode_only_path(mode: fleet_converge_workflow_mode_wire(mode: mode), path: path) }) {
+        ExpressionEvaluationRefused { cause: _ } => MintUnreadable
+        ExpressionValue { value: v } => if gha_value_is_truthy(s: v) { Mints } else { DoesNotMint }
+      }
+  }
+}
+
+fn mints(r: MintReading) -> Bool { match r { Mints => true  DoesNotMint => false  MintUnreadable => false } }
+fn does_not_mint(r: MintReading) -> Bool { match r { Mints => false  DoesNotMint => true  MintUnreadable => false } }
+
+test fn modes_with_no_reader_do_not_reach_the_mint() -> Bool {
+  all(no_reader_modes, m => does_not_mint(r: auth_mints_for(mode: m)))
+    && mints(r: auth_mints_for(mode: FullHostPlan))
+    && mints(r: auth_mints_for(mode: OrgActionsObserve))
+    && mints(r: auth_mints_for(mode: MtCollins1FanObserve))
+}

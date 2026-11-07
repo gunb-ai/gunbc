@@ -166,7 +166,7 @@ fn control_shadow_table_beside_binder(found: Bool?) -> Int {
   }
 }
 
-// A COPRODUCT whose arm spelling collides with the local binders below (DESIGN section 6b, the
+// A COPRODUCT whose arm spelling collides with the local binders below (gunbc.design_argument::earliest_unjustified_boundary, the
 // #15565 second link). v1.compiler.emit_info derive_variant_to_enum folds every coproduct arm in the
 // closure into emit_info.variant_to_enum keyed by the BARE arm leaf, whichever module declared it, so
 // the collision is decided by spelling alone. The carriers bind a LOCAL `Red` (function parameter or
@@ -850,7 +850,7 @@ type ControlMixedSetRecord<K> { sequence: List<K> members: Set<K> }
 
 type ControlOnlySetRecord<K> { members: Set<K> }
 
-// ONE CARRIER, ONE RUST TYPE (DESIGN section 3): `FinitePowerSet<K>` is the canonical spelling of the
+// ONE CARRIER, ONE RUST TYPE (gunbc.design_argument::single_authority): `FinitePowerSet<K>` is the canonical spelling of the
 // declared alias `Set<K>` (std.types `type Set<element> = FinitePowerSet<element>`), so the two spellings
 // lower to the SAME Rust type -- the target's OrdSet/BTreeSet realization -- and a value built at a `Set`
 // position is accepted at a `FinitePowerSet` position with no conversion. Before the renderer asked the
@@ -997,7 +997,7 @@ fn mixed_set_carrier_cases() -> List<NativeEmissionCase> {
 // walk that resolves a field's applied type against its declared parameter list, before any heap-reference
 // question is asked. Outside the corpus closure, where the spelling Rc resolves to no declared item at all,
 // the same authored field emits and the rule does change the output; inside the corpus, nothing reaches it.
-// A row no fold reads is a dangling declaration (DESIGN section 3c), so the rows, their two std authorities
+// A row no fold reads is a dangling declaration (gunbc.design_argument::consumption), so the rows, their two std authorities
 // and the arm are deleted, and side one is the whole of what this instrument guards. If a future grammar
 // admits an authored heap reference in a field position, the rule comes back with a control in this file,
 // not on its own.

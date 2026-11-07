@@ -24,7 +24,7 @@ type RowAttention
   | RowWorking
   | RowAnomaly
 
-// The node-status projection: done and superseded are finished work (routine — they fold); open and review are the working set (present, never expanded by the machine — expansion is the operator's gesture); an UNMODELED status is an anomaly by fail-closed arm — a status this law has never heard of must shout, never quietly fold (DESIGN section 5: a failure arm refuses, it does not widen into routine).
+// The node-status projection: done and superseded are finished work (routine — they fold); open and review are the working set (present, never expanded by the machine — expansion is the operator's gesture); an UNMODELED status is an anomaly by fail-closed arm — a status this law has never heard of must shout, never quietly fold (gunbc.design_argument::fail_closed: a failure arm refuses, it does not widen into routine).
 fn status_attention(status: String) -> RowAttention {
   if status == "done" || status == "superseded" {
     RowRoutine

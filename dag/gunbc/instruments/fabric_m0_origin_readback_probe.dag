@@ -65,7 +65,7 @@ import gunbc.fabric.fabric_m0_origin_readback {
 // identity the change touches, and that is deliberate -- the rule's own words are that the change
 // is the moment its author is present to route it, rename it, or remove it. Tried, and the floor
 // planned it anyway (gunbc#10934, run 34441858589). So the honest routing is the third door: this
-// is a named producer that re-derives the measurement on demand (DESIGN section 6, name the
+// is a named producer that re-derives the measurement on demand (gunbc.design_argument::how_to_work, name the
 // instrument), reached by the recipe below rather than by a roster row that would be inert.
 //
 // RECIPE, and it is the whole consumer today:

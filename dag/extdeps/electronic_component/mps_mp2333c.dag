@@ -50,7 +50,7 @@ data mp2333cgtl: ElectronicComponentRow = ElectronicComponentRow {
   vendor: monolithic_power_systems,
   ordering_code: "MP2333CGTL",
   package: "SOT583 (1.6 mm x 2.1 mm), 8 pins at 0.5 mm pitch, four per side",
-  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "BDF" }, VariableField { legend: "Y = year code", width: Absent }] }, MarkLine { segments: [VariableField { legend: "LLL = lot number", width: Present { value: 3 } }] }], coverage: Complete } },
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "BDF" }, VariableField { legend: "Y = year code", width: Present { value: 1 } }] }, MarkLine { segments: [VariableField { legend: "LLL = lot number", width: Present { value: 3 } }] }], coverage: Complete } },
   specification: SwitchingRegulatorSpec { regulator: SwitchingRegulatorSpecification {
     pins: [
       RegulatorPin { number: 1, name: "PG", role: PowerGoodOpenDrain },

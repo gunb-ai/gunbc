@@ -62,7 +62,7 @@ import gunbc.fabric.fabric_cell_acquire {
 // projections of gunbc.fabric.fabric_cell_acquire; the host effects in that module are unreachable from a
 // hermetic fixture by construction, and that is the boundary rather than a gap -- a mocked
 // directory listing would assert this file's laws against authored data instead of against the
-// projection, which is the vacuous pass DESIGN section 4b rules worse than absent.
+// projection, which is the vacuous pass gunbc.design_argument::guarantee_ladder rules worse than absent.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_slot() -> RunnerSlotIdentity {

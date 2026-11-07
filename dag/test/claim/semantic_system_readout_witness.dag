@@ -76,7 +76,7 @@ test fn w_open_and_note_lines_never_fail_the_readout() -> Bool {
   !any_line_fails(sections: [section_of(first: true, joined: true)])
 }
 
-// THE INHABITANCE CLAIM THE SUPPLIED-SECTION CONTROLS OWE (DESIGN section 3, review 66755). Every
+// THE INHABITANCE CLAIM THE SUPPLIED-SECTION CONTROLS OWE (gunbc.design_argument::witness_one_interface, review 66755). Every
 // other claim in this file hands `any_line_fails` and `render` sections it CONSTRUCTED, which
 // establishes the exit rule and nothing about the readout's live wiring: deleting the real
 // producers would leave all of them green. This one calls the real `workflow_line`, so the route it
@@ -135,7 +135,7 @@ test fn w_the_observer_route_executes_and_reaches_a_live_verdict() -> Bool {
 
 // THE MAPPING, DISCRIMINATED AT ITS OWN INTERFACE. Each of these supplies one
 // GeneratedArtifactObservation arm and asserts what the readout makes of it. They reach nothing: no
-// listing, no committed read, no projection of the workflow. That is DESIGN section 3's standing
+// listing, no committed read, no projection of the workflow. That is gunbc.design_argument::single_authority's standing
 // rule applied to the rows the floor measured at 383k and 396k eval steps -- the evaluation was
 // dominated by one call whose RESULT SHAPE was all the claim inspected, so the shape is supplied and
 // the call is left to the one live claim below.

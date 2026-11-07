@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // native_demand_plan derives from a universe roster -- which demands exist, which prerequisites
 // relate them, and what is ready when. Running a real resolve to obtain a roster would re-execute
 // the whole front end inside every claim about graph SHAPE, paying for a subject none of them are
-// about (DESIGN section 3, witness standing rule). The pairing obligation is discharged by the
+// about (gunbc.design_argument::witness_one_interface, witness standing rule). The pairing obligation is discharged by the
 // production route, which derives its plan from the real universe and runs it; nothing here
 // removes the last execution of that path.
 fn g_module(name: String, declarations: List<String>) -> NativeLaneUniverseModule {
@@ -314,7 +314,7 @@ test fn rendering_the_receipt_does_not_move_any_total_holds() -> Bool {
 
 // AND THE COMPLETENESS CHECK CAN ACTUALLY FAIL. A transition whose kind no contract issues leaves the
 // rollup incomplete, which is the whole point of counting the unclassified rather than skipping it:
-// a check that cannot go red is a decoration (DESIGN section 4b).
+// a check that cannot go red is a decoration (gunbc.design_argument::guarantee_ladder).
 test fn an_unclassified_transition_makes_the_observation_incomplete_holds() -> Bool {
   let run = NativeDemandRun {
     engine: g_one_module_plan().engine,

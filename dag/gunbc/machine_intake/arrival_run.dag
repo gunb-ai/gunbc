@@ -27,7 +27,7 @@ import gunbc.host_state_root { host_state_tree }
 // admit so WIF cannot outrun a refused subject, then requires WorkloadIdentityToken (the minted
 // WIF bearer, in-process — not interpolated onto argv), takes arrival_archive_slot_acquire, and
 // arrival_archive_slot_release. It does not fold a dry/unobserved PriorLifeBoundary into
-// ExitSuccess: that would be fabricated plausible output (DESIGN §5). Until a live BMC/archive
+// ExitSuccess: that would be fabricated plausible output (gunbc.design_argument::fail_closed). Until a live BMC/archive
 // observation is bound as the prefix input, the held door refuses with a typed cause. Witnesses
 // still supply a DryPriorLifeWorld to converge_mtjade1_arrival_prefix. BMC account writes and
 // the pinned bmc-mtjade1-gunbc accessor stay behind this door: the locus is

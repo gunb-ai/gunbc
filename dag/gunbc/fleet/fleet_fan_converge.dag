@@ -16,7 +16,7 @@ import product.fleet_fan_policy { FirmwareAutomatic, FleetFanControl, FleetFanPo
 // THE FLEET FAN CONVERGENCE FOLD: desired (product.fleet_fan_policy) against observed, deciding
 // Noop / Refuse, then a standing read from an INDEPENDENT second observation.
 //
-// SELECTION PRECEDES CONVERGENCE (DESIGN 3d): this fold takes ONE host's family and ONE
+// SELECTION PRECEDES CONVERGENCE (gunbc.design_argument::selection_precedes_convergence): this fold takes ONE host's family and ONE
 // observation. Which hosts exist comes from the managed-host registry, not from here.
 //
 // BOOT IS A CONSUMER AND NEVER A WRITER. Nothing here is imported by a boot path in this change; the
@@ -116,7 +116,7 @@ fn fleet_fan_family_of(subject: FanObserveHost) -> BmcFirmwareFamily {
 // WHAT A FAMILY'S UPSTREAM CAN EXPRESS. Automatic is the firmware default and every family has it.
 // A held floor is refused unless the family's upstream is read to express it: MegaRAC by its closed
 // admitted-wire set, OpenBMC until its phosphor zone-floor expressibility is read (a typed bet,
-// DESIGN 4d, so the answer is a refusal and not a guess).
+// gunbc.design_argument::epistemic_humility, so the answer is a refusal and not a guess).
 fn fleet_fan_family_refusal(family: BmcFirmwareFamily, control: FleetFanControl) -> NonEmptyStr? {
   match control {
     FirmwareAutomatic => Absent

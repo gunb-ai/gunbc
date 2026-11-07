@@ -67,7 +67,7 @@ test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
 // is the whole correction. IntakeRedfishSurface carries no BmcFirmwareFamily in any arm --
 // RedfishHttpSurface holds an HttpStatus and a blob, HostUnreachable a cause and stderr,
 // WriteOutUnreadable a blob and a cause -- so no total fold from it can reach FamilyObserved
-// without inventing a family from nothing. That is DESIGN section 4b rung 4: the invalid state
+// without inventing a family from nothing. That is gunbc.design_argument::guarantee_ladder rung 4: the invalid state
 // has no constructor in the canonical model, and validation is unnecessary because the bad state
 // cannot be written.
 //
@@ -79,7 +79,7 @@ test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
 // in two frontier triggers as the property they rest on -- the exact shape ten earlier commits on
 // this branch deleted elsewhere, surviving in the one file whose prose defended it.
 //
-// THE RECORDED-CAPTURE DECODE, OVER SUPPLIED DOCUMENTS (DESIGN §3: the committed file's real read
+// THE RECORDED-CAPTURE DECODE, OVER SUPPLIED DOCUMENTS (gunbc.design_argument::single_authority: the committed file's real read
 // runs once, in test.claim.machine_intake.mtjade1_recorded_manager_capture_witness). Each control states the one
 // gap it must land in, so a decoder that refused for a DIFFERENT reason would red it. The supplied
 // documents carry their own digest, computed here, because the subject of these claims is the

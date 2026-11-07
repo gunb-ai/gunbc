@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE REWRAP ROUTE, ENROLLED AS AN EXECUTED RED (DESIGN 4b: a state unrepresentable in the accepted
+// THE REWRAP ROUTE, ENROLLED AS AN EXECUTED RED (gunbc.design_argument::guarantee_ladder: a state unrepresentable in the accepted
 // corpus is still representable as source handed to the compiler). test.probe.qualification_delivery_
 // rewrap_probe relabels delivery B's credential and runner id as dispatch A's; it must refuse at
 // BoundJitCredential, the sealed carrier receive_jit_mint alone constructs, so no

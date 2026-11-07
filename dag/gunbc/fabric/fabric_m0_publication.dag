@@ -22,7 +22,7 @@ import gunbc.fabric.fabric_m0_commit {
   publish_after_commit,
 }
 
-// DECLARED FRONTIER, not a closed consumer (DESIGN 3c).
+// DECLARED FRONTIER, not a closed consumer (gunbc.design_argument::consumption).
 //
 // What this fold buys over the pre-change state: it names the join point
 // so the capability trigger has a subject (Work + resolve at the
@@ -37,7 +37,7 @@ import gunbc.fabric.fabric_m0_commit {
 // lanes. The commit transport and the origin observations are received, never
 // invented.
 //
-// CONSUMERS, NAMED POSITIVELY (DESIGN 3c): this fold is called by
+// CONSUMERS, NAMED POSITIVELY (gunbc.design_argument::consumption): this fold is called by
 // test.claim.fabric_m0_publication_witness, which exercises it across the five
 // publication arms, and by gunbc.fabric.fabric_m0_job_ending end_required_job, which
 // derives the check conclusion from the JobPublication. THE REMAINING FRONTIER
@@ -56,7 +56,7 @@ import gunbc.fabric.fabric_m0_commit {
 //
 // THAT SENTENCE NAMED DurableOriginRead UNTIL NOW, and the symbol has not existed since gunbc#10934
 // deleted the ReadSource stamp. A citation naming a declaration that no longer resolves is the
-// decay DESIGN 3's cite-the-symbol rule exists to prevent, and fabricating one is no longer even
+// decay gunbc.design_argument::single_authority's cite-the-symbol rule exists to prevent, and fabricating one is no longer even
 // expressible: a confirming readback carries an OriginReading, which only
 // gunbc.fabric.fabric_m0_origin_readback read_origin_staged_file can produce. The hazard the sentence
 // warns about is real and unchanged; only its spelling was stale.

@@ -123,7 +123,7 @@ fn slot_listening_read_outcome_observation(o: SlotListeningReadOutcome) -> SlotL
 
 // Mirrors gunbc.host.host_hygiene_reaper_observe.residual_fleet_observed_slots: any single-unit
 // read refusal refuses the WHOLE fleet observation rather than narrowing to the units that
-// happened to answer — the empty-observation-narrow failure mode DESIGN section 5 names.
+// happened to answer — the empty-observation-narrow failure mode gunbc.design_argument::fail_closed names.
 fn fleet_observed_listening_slots(outcomes: List<SlotListeningReadOutcome>) -> List<SlotListeningObservation>? {
   let observed = fold(outcomes, init: [], f: fn(acc, o) {
     match slot_listening_read_outcome_observation(o: o) {

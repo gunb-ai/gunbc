@@ -43,7 +43,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (v1.compiler.infer kernel_container_carrier_verdict) at both inhabitance seams, never by
 // spelling. The fixture carries a minimal `std.algebra` declaring FreeMonoid, so the carrier's
 // DeclarationRef is the real one (module path + name); `List` itself is the seed's kernel container.
-// The REDs are invalid programs, authorable only as fixture source (DESIGN 4b).
+// The REDs are invalid programs, authorable only as fixture source (gunbc.design_argument::guarantee_ladder).
 data carrier_algebra_source: String = "module std.algebra\ntype FreeMonoid<T>\n  = Empty\n  | Cons { head: T, tail: FreeMonoid<T> }\n"
 
 fn carrier_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
@@ -168,8 +168,8 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 // FinitelySupportedFunction `Map` — and std/types.dag INDEPENDENTLY hand-writes `type List<element>
 // = FreeMonoid<element>` (and Set/Map). std/types even CONSUMES the roster for arity
 // (`container_type_arity = map_insert(carrier_container_arity_rows(), ...)`) while still writing the
-// alias bodies by hand. That is two authorities (DESIGN §3). They agree today; nothing re-checks it
-// if one drifts, and a drifted alias is a silent wrongness (DESIGN §5): a call site using `List`
+// alias bodies by hand. That is two authorities (gunbc.design_argument::single_authority). They agree today; nothing re-checks it
+// if one drifts, and a drifted alias is a silent wrongness (gunbc.design_argument::fail_closed): a call site using `List`
 // would resolve against the roster's carrier while the type checker compares against std/types'
 // declaration, and the two can disagree about which constructors inhabit the type.
 //
@@ -180,12 +180,12 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 // `carrier_container_arity_rows()` is keyed by EXACTLY the `pascal_alias_spelling` rows — the only
 // spelling helper that sets `container_arity_row: RowPresent` — which is precisely the set of names
 // std/types declares in type position. Deriving the check's subject set from the roster (never a
-// hand-typed list) is also the point: the claim cannot itself become a third authority (DESIGN §3,
-// §6 "name the instrument, never transcribe its output").
+// hand-typed list) is also the point: the claim cannot itself become a third authority (gunbc.design_argument::single_authority,
+// gunbc.design_argument::how_to_work "name the instrument, never transcribe its output").
 //
 // WHY THE PREDICATE IS PER-LINE AND HEAD-BOUND, AND WHY THAT IS ENOUGH. A two-`string_contains`
 // check over the whole text can be satisfied ACROSS lines (a name on one declaration, its carrier on
-// another) -- a §4b decoration whose forbidden state is expressible nowhere it runs. So the predicate
+// another) -- a gunbc.design_argument::guarantee_ladder decoration whose forbidden state is expressible nowhere it runs. So the predicate
 // first `split`s at `\n` and requires the pairing on the SAME line, then cuts that line at its FIRST
 // `=` and matches ONLY the right-hand-side head (`split(s: line, separator: "=") |> skip(n: 1) |>
 // first`, the corpus's assignment idiom -- see the predicate's own block for the premises this
@@ -203,7 +203,7 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 // repointed, a fixture that pairs name and carrier across two lines, and a fixture that hides the
 // expected carrier in a comment.
 //
-// WHY THIS IS A DRIFT GUARD AND NOT THE DISSOLUTION (DESIGN §3b, divergence with a stated reason).
+// WHY THIS IS A DRIFT GUARD AND NOT THE DISSOLUTION (gunbc.design_argument::conformance, divergence with a stated reason).
 // The review asked for derivation instead of validation: make std/types' alias BODIES come from the
 // roster, the way `container_type_arity` at dag/std/types.dag:30 already comes from
 // `carrier_container_arity_rows()`. Measured answer: that is not expressible today, and the wall is
@@ -214,10 +214,10 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 // from an evaluated table (the only generated declarations in the repo are emitter output into
 // src/v1/stage0, which are Rust artifacts, not .dag items). So the two copies of the fact remain
 // separate declarations, and this claim is the one instrument that refuses drift between them; the
-// §5 ideal (make the wrong state unwritable) is the named next rung below, not a pretense here.
+// gunbc.design_argument::fail_closed ideal (make the wrong state unwritable) is the named next rung below, not a pretense here.
 //
-// WHY THE CHECK READS TEXT AND NOT A LENS / TYPECHECK (DESIGN §6b: the root-generalization duty --
-// the author owes why the existing resolved-declaration surface was not used; §5: "a typecheck and a
+// WHY THE CHECK READS TEXT AND NOT A LENS / TYPECHECK (gunbc.design_argument::earliest_unjustified_boundary: the root-generalization duty --
+// the author owes why the existing resolved-declaration surface was not used; gunbc.design_argument::fail_closed: "a typecheck and a
 // .contains() grep are not consumers"). Both candidate structural instruments were measured against
 // the EXACT fact this guard holds -- which carrier a given spelling is aliased to in std/types -- and
 // neither observes it:
@@ -226,13 +226,13 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 //      was measured (scratch instrument, see PREDICTIONS_PIN) to be INSENSITIVE to the alias body --
 //      repointing the alias target leaves the acceptance verdict unchanged. It can only prove a locally
 //      redeclared carrier is not the kernel's; it cannot see std/types' alias body at all.
-//   2. The Node-tree reader (v2.std.decl_index DeclFact.node, the §6 lens): measured to ABORT in this
+//   2. The Node-tree reader (v2.std.decl_index DeclFact.node, the gunbc.design_argument::how_to_work lens): measured to ABORT in this
 //      lane (importing it drags a closure with unrelated generic-inference mismatches), and the host
 //      marshal for a transparent type alias returns a unit node with NO children (the alias RHS lives
 //      only in the node's `inferred`, which the TypeItem marshal arm does not carry). So even when the
 //      reader loads, it cannot see the alias body the guard compares.
 // The guard's subject is a PARSE-data declaration whose spelling<->carrier pairing is observable, at
-// the granularity the debt requires, only from the source text. That is the §6b answer: not "a lens
+// the granularity the debt requires, only from the source text. That is the gunbc.design_argument::earliest_unjustified_boundary answer: not "a lens
 // was cheaper" but "the lens and the typecheck are both blind to this fact, and one of them aborts".
 // The text check is therefore the discriminating instrument today; the lens becomes the instrument
 // only when the substrate carries an alias body in the reflected Node tree, which is the same next
@@ -242,7 +242,7 @@ test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
 
 // THE PATH IS DERIVED FROM THE MODULE NAME, NOT HANDED IN. Hand-typing "dag/std/types.dag" restated
 // the storage rule (gunbc.plans.source_layout_authority R5: module `a.b.c` lives at `<root(a)>/b/c
-// .dag`) as a second authority for one fact (DESIGN §3): a layout move of std.types would keep this
+// .dag`) as a second authority for one fact (gunbc.design_argument::single_authority): a layout move of std.types would keep this
 // string pointing at the OLD location and the guard would read a missing file. So the module name
 // `std.types` -- what this guard is actually about -- is the only spelling kept here, and the path
 // comes from the corpus's own storage policy, gunbc.source_layout.layout_module_storage_path. The
@@ -263,7 +263,7 @@ fn std_types_declared_text() -> String {
 // and CONTAINS ` = <carrier><`. Read as "does `text` declare `<spelling>` as an alias of
 // `<carrier>`, on one line". The per-line `split` is what makes the conjunction mean what a guard
 // needs: with two independent whole-text `string_contains` calls, a file could pair a name declared
-// on one line with a carrier bound on another and pass -- the §4b decoration whose forbidden state
+// on one line with a carrier bound on another and pass -- the gunbc.design_argument::guarantee_ladder decoration whose forbidden state
 // is expressible nowhere it runs. Control 4 below is the executed adversarial input for exactly that.
 // THE MATCH IS BOUND TO THE ACTUAL RIGHT-HAND-SIDE HEAD, NOT TO A SUBSTRING OF THE LINE (side-chat
 // review 83725 finding 1, on head 04084699). The first form asked `string_contains(s: line,
@@ -315,7 +315,7 @@ test fn every_declaration_position_alias_is_declared_in_std_types() -> Bool {
 
 // CONTROL 1 (in-tree executed RED): a std/types that LOST a declaration is refused by the SAME
 // predicate. This is the drift the guard exists to catch; without it the green claim above would be
-// green-by-construction over data that cannot fail (DESIGN §4b, §5 "a discriminating input").
+// green-by-construction over data that cannot fail (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed "a discriminating input").
 test fn a_std_types_missing_a_declaration_is_refused_by_the_same_predicate() -> Bool {
   let drifted = "module std.types\ntype Set<element> = FinitePowerSet<element>\n"
   !std_types_declares_alias_of(spelling: "List", carrier: "FreeMonoid", text: drifted)
@@ -368,7 +368,7 @@ test fn a_repointed_alias_hiding_the_expected_carrier_in_a_comment_is_refused() 
     )
 }
 
-// THE DISSOLUTION IS CONSUMED BY BEHAVIOR, NOT BY AN ECHO (§3c; review 83623 finding 2). The first
+// THE DISSOLUTION IS CONSUMED BY BEHAVIOR, NOT BY AN ECHO (gunbc.design_argument::consumption; review 83623 finding 2). The first
 // version read substrings out of a description literal written a few lines above it -- a change
 // detector that went red only when someone edited that literal. This consumer tests the MECHANISM's
 // partition over typed evidence instead, in the corpus frontier idiom (the firmware standing probe:
@@ -401,7 +401,7 @@ test fn a_repointed_alias_hiding_the_expected_carrier_in_a_comment_is_refused() 
 //
 // TWO CAPABILITIES, which this file's wording now keeps apart (finding 2): (i) ALIAS-BODY
 // REFLECTION -- the reflected Node tree of a std.types alias carrying its body, which would let a
-// claim read the binding STRUCTURALLY (the §6 lens route this file's §6b block measured as
+// claim read the binding STRUCTURALLY (the gunbc.design_argument::how_to_work lens route this file's gunbc.design_argument::earliest_unjustified_boundary block measured as
 // unavailable: concept_decl_node drops the body). Reflection replaces the text check; it does not
 // remove the duplicated authority. (ii) DECLARATION GENERATION -- a parse-data form whose item
 // comes from the roster, so std/types stops hand-writing the bodies. That is what removes the
@@ -433,23 +433,23 @@ test fn the_dissolution_condition_keys_on_its_named_producer_ref() -> Bool {
     == DissolutionPending
 }
 
-// THE DISSOLUTION TRIGGER, machine-readable (DESIGN §6: a check that replaces a construction states
+// THE DISSOLUTION TRIGGER, machine-readable (gunbc.design_argument::how_to_work: a check that replaces a construction states
 // when it retires). This guard exists only because the substrate cannot GENERATE the std/types
 // alias declarations from the roster: `algebra_carriers` is a runtime `fn` value while `type List`
-// is parse data, and there is no generated-declaration form in .dag (see the §3b block above --
+// is parse data, and there is no generated-declaration form in .dag (see the gunbc.design_argument::conformance block above --
 // measured, not assumed: the only generated declarations are emitter output into src/v1/stage0 Rust,
 // which are artifacts, not .dag module items). When that facility lands and the three std/types
-// container aliases are DERIVED from the roster -- the §5 ideal of making the drifted state
+// container aliases are DERIVED from the roster -- the gunbc.design_argument::fail_closed ideal of making the drifted state
 // unwritable -- there is one authority to agree with and this claim's subject disappears.
 //
-// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT (DESIGN §4b meta-obligation 3, review 83706).
+// THE TRIGGER NAMES THE CAPABILITY, NOT AN ARTIFACT (gunbc.design_argument::guarantee_ladder meta-obligation 3, review 83706).
 // Two earlier shapes were each wrong in a way the mechanism could not see:
 //   * retires_dissolution over the guard's OWN predicate: a Retires trigger discharges on ABSENCE,
 //     so deleting the guard fired its own dissolution (review 83674).
 //   * retires_dissolution over std.types.List: a derived alias is STILL a declaration named List,
 //     so the trigger stayed Pending after the actual cure; and deleting the alias with no facility
 //     fired it (review 83706). It also named one alias of a plural debt.
-// The capability the §3b block itself names is a PARSE-DATA DECLARATION-GENERATION FORM. Its first
+// The capability the gunbc.design_argument::conformance block itself names is a PARSE-DATA DECLARATION-GENERATION FORM. Its first
 // materialization is the data item std.types::container_alias_declaration_rows -- the parse-data
 // rows the three aliases are generated from (the name is patterned on std.types' existing
 // container_template_alias_rows, verified present at line 83; the new name is verified ABSENT

@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, Enumerated, ReplacementStaged, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 
-// THE NATIVE SERVE DOOR HAS NO PER-REQUEST BUDGET, AND THE SEED'S DOES (DESIGN 4b(3)).
+// THE NATIVE SERVE DOOR HAS NO PER-REQUEST BUDGET, AND THE SEED'S DOES (gunbc.design_argument::guarantee_ladder (no silent regression)).
 //
 // `gunbc serve` arms a CPU and wall deadline around every handler evaluation
 // (cli_run handle_serve, ctx.enter_evaluation_budget) and answers a crossing with a typed 500
@@ -27,7 +27,7 @@ import gunbc.guarantee_rung { OutsideTheLadder, Mitigatable }
 // The trigger was the INSTRUMENT observing the wall, not the code existing: `gunbc test
 // //gunbc/instruments:native-serve` on main at the gunbc#13219 merge emits, builds and starts the
 // fixture and holds over real TCP. The probe carries the cases this trigger names, and the row's
-// discriminating evidence stays enrolled there (DESIGN 4b meta-obligation 4): /spin is refused a
+// discriminating evidence stays enrolled there (gunbc.design_argument::guarantee_ladder meta-obligation 4): /spin is refused a
 // typed 500 at the deadline, a later /hello on the same process is answered 200, and past the
 // stuck-worker ceiling the process refuses 503 and exits 75.
 //

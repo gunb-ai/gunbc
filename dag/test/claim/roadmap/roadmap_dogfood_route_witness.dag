@@ -471,7 +471,7 @@ test fn a_refused_publication_is_named_as_refused() -> Bool {
 // through the decoder. These claims drive the decoder with planted payloads -- the same read the
 // acceptance function performs -- and round-trip a decoded receipt through the encoder. The clock
 // refusal is the recorder's first check before any write (dogfood_start_record_for_instance).
-// THE PINNED EVIDENCE IS SUPPLIED AT THIS INTERFACE (DESIGN §3, a witness discriminates at one
+// THE PINNED EVIDENCE IS SUPPLIED AT THIS INTERFACE (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface): a canonical service-evidence wire with every field owed. That the real producer writes a
 // wire of this shape, and that it decodes with its digest and binding, is
 // test.claim.roadmap.roadmap_service_evidence_witness's the_live_wire_round_trips_with_its_digest_and_binding.

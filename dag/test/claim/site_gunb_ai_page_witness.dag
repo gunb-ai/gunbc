@@ -1,8 +1,8 @@
 module test.claim.site_gunb_ai_page_witness
 
-// §5 — the executed witness for gunbc.site.gunb_ai_page, the module that makes
+// gunbc.design_argument::fail_closed — the executed witness for gunbc.site.gunb_ai_page, the module that makes
 // gunbc.site.gunb_ai_content, gunbc.design.brand_mark, gunbc.design.gunb_ai_hues and
-// extdeps.fonts.google_fonts §3c-consumed rather than modelled "for later".
+// extdeps.fonts.google_fonts gunbc.design_argument::consumption-consumed rather than modelled "for later".
 //
 // WHAT EXECUTES. Every test below calls gunbc.site.gunb_ai_page.render_page(), which builds the
 // page as typed Fragments and serializes it through std.markup's algebra under the page medium. So
@@ -20,7 +20,7 @@ module test.claim.site_gunb_ai_page_witness
 //   - no row may describe a difference that no longer exists, or the roster is stale and would hide
 //     the next real one.
 //
-// CONSUMERS (§3c): render_page and page_write are the site's build route (entry points
+// CONSUMERS (gunbc.design_argument::consumption): render_page and page_write are the site's build route (entry points
 // page_write_arg / v2_cli_main); every row read here is read on that route. The roster is read here
 // only to check the roster.
 //
@@ -104,7 +104,7 @@ test fn witness_render_is_a_whole_document() -> Bool {
     && occurrences(s: out, pattern: "</main>") == 1
 }
 
-// ── The content rows are what the bytes say (this is the §3c consumer, checked on the output) ──
+// ── The content rows are what the bytes say (this is the gunbc.design_argument::consumption consumer, checked on the output) ──
 
 // 2. Every copy row reaches the served bytes. This is what makes gunbc.site.gunb_ai_content a model
 //    of the site rather than a parallel copy of it.

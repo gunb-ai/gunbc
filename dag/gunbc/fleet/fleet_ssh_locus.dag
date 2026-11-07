@@ -3,11 +3,11 @@ module gunbc.fleet.fleet_ssh_locus
 // in it was ever about Spark: it admits an attempt identity, finds the agent socket, materializes an
 // attempt-owned public selector, verifies it against `fleet_automation_ssh_key` -- a FLEET credential
 // -- and seals a `FleetSshExecutionContext`. Zero references to serving, models, or endpoints. The
-// spark name was a nickname for a general capability (DESIGN §3), and the cost of leaving it there was
+// spark name was a nickname for a general capability (gunbc.design_argument::single_authority), and the cost of leaving it there was
 // concrete rather than aesthetic: `gunbc.live_deploy` needs exactly this preparation to observe a
 // deployed tree over ssh, and its only options while the nickname stood were to import spark from
 // live_deploy (cementing the nickname and inverting the layer) or to author a second preparation
-// beside it (the fork §3 exists to prevent). A rename was the only move that violated nothing.
+// beside it (the fork gunbc.design_argument::single_authority exists to prevent). A rename was the only move that violated nothing.
 //
 // ONE SPARK COUPLING SURVIVES AND IS NAMED RATHER THAN HIDDEN: `fleet_locus_ssh_target` still reads
 // the login principal declared below. That principal resolves to the fleet

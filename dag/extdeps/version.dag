@@ -18,7 +18,7 @@ type VersionIdentity = NonEmptyStr where brand("VersionIdentity")
 // grammar does not cover is a LOCATED refusal: the carrier names the side whose label failed
 // (a closed coproduct — a misspelled side is unwritable), the label itself, and the cause —
 // never a fabricated order, and never a bare Absent that a caller cannot distinguish from a
-// caller error (DESIGN section 5: a failure arm must refuse, never widen — every degradation a
+// caller error (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen — every degradation a
 // typed, located, countable diagnostic).
 type ComparisonSide = LeftOperand | RightOperand
 

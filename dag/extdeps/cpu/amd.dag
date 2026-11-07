@@ -329,7 +329,7 @@ data amd_zen1_l2_cache_citations: List<FactCitation> = [
 // SOCKET SP3 IS CARRIED UNCITED. No AMD or socket-vendor document stating the LGA termination or the 4094
 // contact count was retrievable on 2026-10-21 (the AMD EPYC 7002 data sheet and product brief state the
 // socket name only). en.wikipedia.org/wiki/Socket_SP3 reads "Type LGA - ZIF", "Contacts 4094" but a
-// secondary page is not an authority (DESIGN 4d), so no FactCitation is minted; the standing is the
+// secondary page is not an authority (gunbc.design_argument::epistemic_humility), so no FactCitation is minted; the standing is the
 // read obligation below. The cooling-mount designation is the socket's own name, the identity the AMD
 // product pages carry as "Platform", and is likewise not cited.
 data socket_sp3_standing: CitedFigureStanding = TranscribedUncited {

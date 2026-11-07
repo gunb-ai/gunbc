@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // Returns the RESULT, not a String: the serializer refuses a comment that would end its own comment, and
-// handing back a String here meant inventing one for the refused case. Callers match (§5).
+// handing back a String here meant inventing one for the refused case. Callers match (gunbc.design_argument::fail_closed).
 fn serialize_fragment(frag: Fragment) -> MarkupSerializeResult {
   serialize_fragment_with(frag: frag, medium: html_markup_medium())
 }

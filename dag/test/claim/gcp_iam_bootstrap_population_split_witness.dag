@@ -301,7 +301,7 @@ test fn the_apns_accessor_cell_reaches_gcp_through_the_converge_grant_set_plan()
 // receipt iam-ceremony-20261027T055742Z had exited 0 with 10 of 12 stage receipts and no setIamPolicy
 // anywhere in the REST log. The fork: the delta folded the owner relation, the ceremony folded the
 // stage row. These claims weld the two sides to the ONE population and to the stage row, and pin the
-// ceremony's post-run proof to fail closed (DESIGN section 5: a cell the ceremony cannot show bound is
+// ceremony's post-run proof to fail closed (gunbc.design_argument::fail_closed: a cell the ceremony cannot show bound is
 // NOT established -- an absent or unreadable policy is not a green).
 
 fn stage_wires(stages: List<IamBootstrapStage>) -> List<String> {
@@ -397,7 +397,7 @@ test fn the_proof_names_an_unbound_cell_with_the_shared_phrase() -> Bool {
 }
 
 // FAIL CLOSED: an unreadable policy and a never-read subject are both NOT established -- "no evidence
-// of absence" never means "present" (DESIGN section 5). The cause is named so an operator can tell
+// of absence" never means "present" (gunbc.design_argument::fail_closed). The cause is named so an operator can tell
 // unreadable from unbound.
 test fn unreadable_or_unread_policies_are_not_established() -> Bool {
   match iam_bootstrap_journal_cells().first() {

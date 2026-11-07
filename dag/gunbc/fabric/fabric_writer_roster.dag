@@ -26,7 +26,7 @@ import gunbc.fabric.fabric_writer_identity_observe {
 // the receipt gunbc.fabric.fabric_writer_identity_observe printed on one fleet host, transcribed by hand
 // with the run that printed it, and the roster is the fold of those receipts' grounds -- a login
 // enters exactly when a recorded reading presented it, and a host that presented none contributes
-// nothing. WHAT IS NOT MECHANIZED, stated at its rung (DESIGN §4b(1)): nothing checks that a row
+// nothing. WHAT IS NOT MECHANIZED, stated at its rung (gunbc.design_argument::guarantee_ladder (rung honesty)): nothing checks that a row
 // matches the run it names, so that correspondence is review diligence -- rung 1, mitigatable --
 // and adding a writer is a dispatch of the observe mode plus a hand-appended row. Its next-rung
 // trigger is a typed receipt store the observe mode writes and this fold reads, so a row can no

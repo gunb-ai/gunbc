@@ -289,7 +289,7 @@ test fn the_unplaced_control_plane_adds_no_refusal_of_its_own() -> Bool {
 // two causes, so the property that falsifies it directly is that the two causes are
 // DISTINGUISHABLE AT ALL. Under host_allocation_conserves these two reasons were byte-identical
 // and this witness returns false; it is the red the pair above cannot be green without, and it
-// stays enrolled now that the arm is split (DESIGN 4b: a climb dissolves the production machinery
+// stays enrolled now that the arm is split (gunbc.design_argument::guarantee_ladder: a climb dissolves the production machinery
 // it obsoletes, never the evidence that the rung is real).
 test fn the_two_control_plane_refusals_do_not_share_one_reason() -> Bool {
   plan_reason_under(p: control_plane_unmeasured_placement())
@@ -437,7 +437,7 @@ test fn srv1_derives_with_the_shakedown_slot_charged_at_its_real_size() -> Bool 
   }
 }
 
-// THE CPU ALLOCATION FOLD AT SUPPLIED VALUES (DESIGN 3, a witness discriminates at one interface).
+// THE CPU ALLOCATION FOLD AT SUPPLIED VALUES (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface).
 // The figures are the shapes the overseer reported placing by hand on 2026-10-14 -- srv1 128
 // threads, 512GiB, sessions 128GiB, 11 slots; srv3 128 threads, no sessions slice, 16 slots; srv4
 // 17 slots -- and the fold must reproduce 32 / 8, 0 / 7 and 0 / 7 with the 8-thread host reserve:
@@ -475,7 +475,7 @@ test fn host_cpu_allocation_refuses_a_width_it_cannot_feed() -> Bool {
     && allocation_refused(r: host_cpu_allocation(threads: hardware_thread_count(count: 128), reserve: host_cpu_reserve_threads, host_ram: gib(n: 512), session_pool: byte_size(0), slots: 0))
 }
 
-// THE INHABITANCE CLAIM, AT THE JOIN (review 80174, DESIGN 3 pairing obligation). For every fleet
+// THE INHABITANCE CLAIM, AT THE JOIN (review 80174, gunbc.design_argument::witness_one_interface pairing obligation). For every fleet
 // host whose deployment derives, re-run host_cpu_allocation on THAT host's own inputs -- its primary
 // CPU threads, usable RAM, session reservation and committed width, read from the same producers the
 // real route reads -- and require the deployment the real host_standing_at_width route emitted to

@@ -340,7 +340,7 @@ data mtcollins1_j1_j17_stick_swap: MtCollins1StickSwapReport = MtCollins1StickSw
   },
 }
 
-// The diagnoses are hypotheses, typed as such (§4d): bets, not facts. Each names the
+// The diagnoses are hypotheses, typed as such (gunbc.design_argument::epistemic_humility): bets, not facts. Each names the
 // observation that would discriminate it. No standing ranks one bet above another. A
 // refutation is not authored: it names the report it is derived from, and the renderer derives it.
 type MtCollins1HypothesisStanding

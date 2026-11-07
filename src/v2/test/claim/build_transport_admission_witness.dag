@@ -34,7 +34,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (v2.compiler.build_transport_admission). A well-formed build transport (workspace-relative
 // emitted files, a declared host toolchain, a workspace-produced run program) is Permit; a
 // transport whose workspace file escapes its subtree (a `..` path or an absolute path) is a located
-// std.access.Deny, never widened (DESIGN 5). The refusal arm is the RED control: if the escape
+// std.access.Deny, never widened (gunbc.design_argument::fail_closed). The refusal arm is the RED control: if the escape
 // projection or admit_effect check were dropped, admits_escaping_write would flip. The projection
 // helper is exercised directly so the containment boundary is pinned independent of the fold.
 // Containment is SEGMENT-decomposed (review 39707): a `..` PATH SEGMENT escapes, but a bare `..`

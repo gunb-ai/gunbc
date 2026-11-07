@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // primitive-call row (collection_concat_shape) through v2.compiler.resolve resolve_atom_unscoped, and v2.compiler.infer
 // types the call BY THAT ROW (v2.compiler.fold_lowering collection_roster_signature_arrow).
 //
-// SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route -- assemble plus
+// SHAPE, PER DESIGN gunbc.design_argument::single_authority's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route -- assemble plus
 // infer on a source that exercises it (cca_route_runs_on_the_real_path). Every other claim supplies its input at ONE
 // interface: the row's signature, read through the production projection and the production matcher
 // (v2.compiler.infer infer_match_generic_formal, gunbc#13187), never by re-assembling a module. The two refusals (an

@@ -136,13 +136,58 @@ pub(crate) fn compile_to_provider_fixed_point(
     )
         -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, ClosureOfError>,
 ) -> Result<Rc<crate::v1_compiler_compile::ResolvedPipelineResult>, String> {
+    compile_to_provider_fixed_point_with(
+        sources,
+        crate::v1_compiler_compile::default_compile_pipeline_options(),
+        pool,
+        closure_of,
+        // Emit-check and the hermetic fixture hold their whole pool, so their closure step never
+        // reports a provider outside their index.
+        &|outside, _sources| {
+            Err(format!(
+                "generated providers {outside:?} are outside a pool this builder holds whole"
+            ))
+        },
+    )
+    .map(|(_, resolved)| resolved)
+}
+
+/// What a builder does with providers its pool holds but its index does not: it rebuilds the whole
+/// ordered source list with those modules acquired, or refuses. The loop never guesses the order.
+pub(crate) type OutsideIndexRebuild<'a> =
+    &'a dyn Fn(
+        &[String],
+        &[Rc<crate::v1_compiler_compile::SourceFile>],
+    ) -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, String>;
+
+/// THE LOOP, WITH THE CALLER'S COMPILE OPTIONS AND ITS OWN ANSWER FOR A PROVIDER OUTSIDE ITS INDEX.
+/// Every iteration is a complete `.dag` compile over a closure that only grows; the result returned
+/// is the last iteration's, so the settled closure is resolved once and emission starts from it.
+pub(crate) fn compile_to_provider_fixed_point_with(
+    sources: Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
+    options: crate::v1_compiler_compile::CompilePipelineOptions,
+    pool: &dyn Fn(&str) -> PoolAnswer,
+    closure_of: &dyn Fn(
+        &str,
+    )
+        -> Result<Vec<Rc<crate::v1_compiler_compile::SourceFile>>, ClosureOfError>,
+    outside_index: OutsideIndexRebuild,
+) -> Result<
+    (
+        Vec<Rc<crate::v1_compiler_compile::SourceFile>>,
+        Rc<crate::v1_compiler_compile::ResolvedPipelineResult>,
+    ),
+    String,
+> {
     let mut sources = sources;
     loop {
-        let resolved =
-            crate::v1_compiler_compile::compile_to_resolved(Rc::new(sources.clone().into()));
+        let resolved = crate::v1_compiler_compile::compile_to_resolved_with_options(
+            Rc::new(sources.clone().into()),
+            options,
+        );
         let graph = match resolved.graph.clone() {
             Some(graph) => graph,
-            None => return Ok(resolved),
+            None => return Ok((sources, resolved)),
         };
         let refused = |diagnostics: Rc<im::Vector<Rc<ErrorNode>>>| {
             let mut all = (*resolved.diagnostics).clone();
@@ -159,8 +204,10 @@ pub(crate) fn compile_to_provider_fixed_point(
             resolved.source_indices.clone(),
             pool,
         ) {
-            ClosureProviderStep::Complete => return Ok(resolved),
-            ClosureProviderStep::Refused(diagnostics) => return Ok(refused(diagnostics)),
+            ClosureProviderStep::Complete => return Ok((sources, resolved)),
+            ClosureProviderStep::Refused(diagnostics) => {
+                return Ok((sources, refused(diagnostics)))
+            }
             ClosureProviderStep::Acquire(modules) => {
                 let typed_refusal =
                     match extend_with_acquired(sources.clone(), &modules, closure_of)? {
@@ -169,12 +216,9 @@ pub(crate) fn compile_to_provider_fixed_point(
                             continue;
                         }
                         Extension::Stalled => stalled(&resolved.provider_demands, &modules),
-                        // Emit-check and the hermetic fixture hold their whole pool, so their closure
-                        // step never reports a provider outside their index.
                         Extension::OutsideIndex(outside) => {
-                            return Err(format!(
-                                "generated providers {outside:?} are outside a pool this builder holds whole"
-                            ))
+                            sources = outside_index(&outside, &sources)?;
+                            continue;
                         }
                         Extension::Unreadable(failed) => unreadable(
                             &resolved.provider_demands,
@@ -186,7 +230,9 @@ pub(crate) fn compile_to_provider_fixed_point(
                         ),
                     };
                 match typed_refusal {
-                    ClosureProviderStep::Refused(diagnostics) => return Ok(refused(diagnostics)),
+                    ClosureProviderStep::Refused(diagnostics) => {
+                        return Ok((sources, refused(diagnostics)))
+                    }
                     _ => unreachable!("a stalled or unreadable acquisition always refuses"),
                 }
             }

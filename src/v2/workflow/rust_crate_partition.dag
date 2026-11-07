@@ -191,8 +191,8 @@ type InterfaceGroundingCapability {
 //
 // WHY IT IS STILL DEBT is not restated here. The operative trigger lives on the typed carrier,
 // stage0_module_dag_interface_grounding_debt_dissolve_on, because that is the declaration a
-// program can read; an annotation is never evidence that a machine claim holds (DESIGN 4c), and a
-// second prose copy of the trigger would be the §3 fork a disclaimer cannot talk its way out of.
+// program can read; an annotation is never evidence that a machine claim holds (gunbc.design_argument::source_annotations), and a
+// second prose copy of the trigger would be the gunbc.design_argument::single_authority fork a disclaimer cannot talk its way out of.
 // What is above is the irreducible rationale for the SHAPE of that trigger -- why two earlier
 // targets were named and why both could not work -- which is what this channel is for.
 fn stage0_module_interface_grounding_target() -> DeclarationRef {
@@ -296,6 +296,12 @@ fn stage0_std_core_modules() -> List<String> {
       "std_optional",
       "std_algebra",
       "std_nat",
+      // Close the integer foundation dependency chain: constructors is a leaf;
+      // machine_constraints imports it and existing foundation modules; integer
+      // imports machine_constraints and existing std-core/runtime modules.
+      "std_constructors",
+      "std_machine_constraints",
+      "std_integer",
       "std_node",
       "std_syntax",
       "std_computation",
@@ -321,6 +327,10 @@ fn stage0_std_core_modules() -> List<String> {
       "std_source_annotation",
       "std_kernel_type_name",
       "std_target_representation",
+      // Literal elaboration imports the shared interval and checked-construction
+      // declarations; their emitted modules belong to the same foundation unit.
+      "std_integer_interval",
+      "std_integer_width_construction",
       "std_literal_elaboration",
       "std_operator_realization",
       "std_import_statement",
@@ -673,7 +683,7 @@ fn assignment_unit_dep_edges(module_dag: ModuleDag, assignment: Map<ModuleId, Co
 
 // THE RESOLVE IS ONE FACT, SO IT IS ONE BINDING. Both the receipt below and
 // stage0_partition_r4_valid need the assignment this produces, and they are two demands with a
-// shared-state least common ancestor -- DESIGN section 2 calls that authored duplication, not a
+// shared-state least common ancestor -- gunbc.design_argument::minimize_redundancy calls that authored duplication, not a
 // caching opportunity, and says to carry the first value rather than let the second recompute it.
 // Binding it here is the same move this change makes for stage0_module_dag_merge one declaration up.
 // The resolve carries the merged DAG it decided over, so the receipt and the re-export derivation
@@ -922,7 +932,7 @@ fn stage0_package_sets_agree(left: List<String>, right: List<String>) -> Bool {
 // THE HOLE IS THE FUTURE STATE, and it is why the guard is not redundant. Once the divergence is
 // repaired the ledger empties, and then a detector that finds nothing yields [] against a ledger of
 // [] -- equality holds, the contract goes green, and nothing else would be looking. That is the
-// inert lens DESIGN section 5 warns about, arriving exactly when the debt this file tracks is
+// inert lens gunbc.design_argument::fail_closed warns about, arriving exactly when the debt this file tracks is
 // finally paid. The guard is built now because that is when it stops being buildable from a live
 // example.
 type ReexportDisagreementScan
@@ -956,7 +966,7 @@ fn reexport_derivation_disagreements_over(
 // A one-way subset notices a NEW divergence and nothing else: when v1-stage0-v1-artifact is finally
 // repaired the derived set empties, the subset still holds, and the row keeps naming a unit that no
 // longer diverges. A stale entry then quietly re-admits that unit to diverge again with the claim
-// still green, which is the silent regression DESIGN 4b(3) forbids -- and it would falsify this
+// still green, which is the silent regression gunbc.design_argument::guarantee_ladder (no silent regression) forbids -- and it would falsify this
 // row's own promise that removing a package is an edit someone must make and justify.
 //
 // Equality in BOTH directions is what makes that edit forced, and the objection to equality does
@@ -964,7 +974,7 @@ fn reexport_derivation_disagreements_over(
 // stop any lane over debt the ledger already declares. It reds in exactly one situation -- the
 // ledger disagreeing with reality -- which is the situation nobody would otherwise notice.
 //
-// A REMOVAL CARRIES A TYPED DISPOSITION (DESIGN section 5), so a repaired divergence does not just
+// A REMOVAL CARRIES A TYPED DISPOSITION (gunbc.design_argument::fail_closed), so a repaired divergence does not just
 // vanish from the ledger: it moves to the repaired roster below, which records what repaired it and
 // is itself asserted against -- a package recorded as repaired that starts diverging again reds.
 type Stage0ReexportDivergenceRepaired {
@@ -981,7 +991,7 @@ data stage0_reexport_derivation_repaired_divergences: List<Stage0ReexportDiverge
 
 // THE REFUSAL ARM MAY NOT ANSWER []. An empty list reads as "no unit disagrees", the strongest
 // possible answer, and a partition that refused to resolve has established nothing about any unit.
-// Collapsing a refusal into the clean answer is the absorbing fallback DESIGN section 5 forbids,
+// Collapsing a refusal into the clean answer is the absorbing fallback gunbc.design_argument::fail_closed forbids,
 // and it is the same class this lane deleted from compilation_unit, so reintroducing it here by a
 // new road would be the symptom arriving in its own repair.
 type Stage0ReexportDisagreementsUnavailableCause
@@ -1013,8 +1023,8 @@ fn stage0_reexport_derivation_disagreements() -> Stage0ReexportDerivationDisagre
   }
 }
 
-data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_source_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (DESIGN 6: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork DESIGN 3 forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
+data rust_crate_partition_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_crate_partition_interim_explicit — the balanced policy has landed (resolve_partition_outcome PolicyPartitionParam, policy_partition_assignment), so it is no longer what holds stage0 on the explicit arm. What does: stage0_source_module_dag's edges and module lists are authored (stage0_cross_unit_import_edges, the stage0_*_modules lists) over v1 mirror basenames, not derived, so a policy over them would balance an incomplete graph. THE SIZE OF 'incomplete' IS DERIVED, NOT TRANSCRIBED (gunbc.design_argument::how_to_work: name the instrument, never copy its output). stage0_reexport_derivation_disagreements is the producer: it folds the authored edges through the assignment into CompilationUnit.deps, closes them transitively, maps them back to package names and returns the package names whose DERIVED dependency set differs from their AUTHORED reexport_packages. An earlier revision of this row carried the counts in prose; they were removed because they go stale the moment an edge row is appended and nothing would notice. The population is pinned at IDENTITY grain against the ledger stage0_reexport_derivation_known_divergent_packages by test.claim.rust_crate_partition_witness stage0_reexport_derivation_disagreements_are_bounded_to_the_known_unit, and the contract that claim enforces is NOT restated here: it is the claim's to state, and an earlier revision of this row described a subset check the claim had already stopped performing, which is the one-fact-two-statements fork gunbc.design_argument::single_authority forbids inside a single change. WHICH SIDE IS WRONG is not symmetric: the reexports are correct and the authored edge list is what is missing them, established off this graph by the unit's real Cargo.toml and its real lib.rs. Crate dependency is therefore answered by TWO authorities, and deriving the edges dissolves the second rather than reconciling them -- which is why the trigger below is the derivation and not a hand completion, since completing the list by hand re-authors the fork.")
 
-data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (§5 List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
+data stage0_compilation_units_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_compilation_units — removed; receipt paths must call stage0_partition_receipt_outcome (gunbc.design_argument::fail_closed List wrapper collapses resolve/fold refusal to [], indistinguishable from empty partition). Witnesses read units from Stage0PartitionReceiptOk only.")
 
-data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT. Its declarations -- the contents supply and the population -- are the typed fields of InterfaceGroundingCapability on the debt carrier, which is what a program reads; this text states what those declarations must be SUFFICIENT FOR, which a declaration ref cannot. THE CAPABILITY: the module acquirer's supply (v2.compiler.module_acquisition acquire_closure_of, the only producer of a compile's modules) must carry PER-MODULE DECLARATION CONTENTS projected from the tree its front end already normalizes to read each module's requests, never from a second parse. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a supply that still carries only source text retires nothing, and contents re-derived by a second in-graph parse at a scale the gate cannot pay for retire nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by that derivation and its instrument, and are deliberately not copied here (DESIGN 6: name the instrument, never transcribe its output). THE HOST-EMISSION HALF NO LONGER EXISTS AS A SEPARATE TRIGGER: the hand host handler for the retired whole-tree module-binding supply was deleted with it, and the acquirer reads through the filesystem handler emitted from .dag; the CONTENTS half and the sufficiency clause above are what this row declares. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")
+data stage0_module_dag_interface_grounding_debt_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_module_dag_interface_grounding — THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT. Its declarations -- the contents supply and the population -- are the typed fields of InterfaceGroundingCapability on the debt carrier, which is what a program reads; this text states what those declarations must be SUFFICIENT FOR, which a declaration ref cannot. THE CAPABILITY: the module acquirer's supply (v2.compiler.module_acquisition acquire_closure_of, the only producer of a compile's modules) must carry PER-MODULE DECLARATION CONTENTS projected from the tree its front end already normalizes to read each module's requests, never from a second parse. SUFFICIENT FOR, which is the half a decl name cannot state: partition_fold_outcome deriving a COMPLETE CompilationUnit interface — exports as module-scope declaration Nodes, and by-value ModuleTypeDefinitionRow rows — for EVERY module of the emitted compiler closure, within the required gate budget rather than at oracle scale. Both halves must hold: a supply that still carries only source text retires nothing, and contents re-derived by a second in-graph parse at a scale the gate cannot pay for retire nothing either. THE POPULATION is the emitted closure v2.workflow.emitted_closure_crate_partition derives, not a fixture; its size and the per-module eval price are owned by that derivation and its instrument, and are deliberately not copied here (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output). THE HOST-EMISSION HALF NO LONGER EXISTS AS A SEPARATE TRIGGER: the hand host handler for the retired whole-tree module-binding supply was deleted with it, and the acquirer reads through the filesystem handler emitted from .dag; the CONTENTS half and the sufficiency clause above are what this row declares. A module whose provenance is ProducedByBehavior has no artifact and no file_path, so it has no contents to project: that arm must REFUSE, and its interface being supplied by its producer is a different fact owing a different declaration — answering Empty there reintroduces the exact symptom this row exists to remove. UNTIL ALL OF THAT HOLDS, R3 render uses Stage0PartitionCrateRow.modules plus the reexport_packages wildcard pub-use chain, never CompilationUnit.interface Nodes.")

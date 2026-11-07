@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the predicate now asks whether a shared surface EXISTS and whether each producer reaches it,
 // rather than pattern-matching one caller's inlined copy, which is what made it un-reusable and
 // therefore un-reused.\n\nTHIS IS VALIDATION, NOT A CONSTRUCTION WALL, and the difference is worth
-// stating rather than letting a green witness imply more than it proves (DESIGN section 5). A scan
+// stating rather than letting a green witness imply more than it proves (gunbc.design_argument::fail_closed). A scan
 // over emitted text concedes that the bad state is writable: nothing stops a fifth producer from
 // assigning a reason to a title attribute, it only stops that producer from doing so WITHOUT this
 // file going red, and only for producers this roster names. The construction shape exists and is
@@ -169,7 +169,7 @@ test fn anomaly_workflow_refusal_reason_survives_concatenation() -> Bool {
 
 // One phrase, one row. 'the wire carried no reason' was spelled two ways at four sites — 'no
 // located reason on the wire' in the dispatch band, 'no reason on the wire' in the sessions,
-// attempts, and workflow observation banners — for one fact, which is the nickname §3 forbids at
+// attempts, and workflow observation banners — for one fact, which is the nickname gunbc.design_argument::single_authority forbids at
 // the smallest possible scale. It is worth fixing at this scale precisely because it is small: a
 // phrase that means the same thing should not tell the operator it might not, and four literals is
 // where a fifth comes from. This witness pins that no site spells it independently.

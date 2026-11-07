@@ -28,7 +28,7 @@ import extdeps.filesystem.filesystem_io {
 // THE PRODUCER LEASE, A HOLD ON THE HOLD LIBRARY. The lease is the producer's exclusion over one work identity
 // (gunbc.compute.work_provider_local): one slot per identity under one leases directory. It replaces a hand lock --
 // an exclusive create of leases/<identity> released by a Delete -- which forked std.durable_exclusive_hold (the
-// leasing row of DESIGN 3b). Acquire, release and the read of who holds it are now the hold library's
+// leasing row of gunbc.design_argument::conformance). Acquire, release and the read of who holds it are now the hold library's
 // (gunbc.durable_exclusive_hold_file_store), so a stale holder cannot free a successor's lease by deleting a path.
 //
 // HOLDER SEMANTICS ARE TODAY'S. The owner is the same text the plain file carried: the seat holder line

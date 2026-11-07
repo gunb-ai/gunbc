@@ -244,7 +244,7 @@ fn exec_word_is_rendered_expansion(word: String) -> Bool {
 // command refusing something merges "never ran" with "ran and was refused".
 // Transcribed from the table as published for systemd 255 (the user manager on srv1); statuses the
 // table gaps over (223, 234) and anything past EXIT_CREDENTIALS are NOT modeled here, so they are
-// absent from this list rather than guessed (DESIGN section 4d): a reader must not treat absence as
+// absent from this list rather than guessed (gunbc.design_argument::epistemic_humility): a reader must not treat absence as
 // proof the command ran, and a consumer must also require the command's own status.
 type ExecSetupFailure = ExecSetupFailure { status: Int, name: NonEmptyStr }
 

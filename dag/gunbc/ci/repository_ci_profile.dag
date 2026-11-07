@@ -10,7 +10,7 @@ import gunbc.ci.ci_run_step_target {
   gunbc_ci_heal_publication_publish_target,
 }
 import extdeps.bazel.label { Label, PackagePath, TargetName }
-// THE FEDERATION IS LEASED, NOT RE-SPELLED (DESIGN 3b): the record of which workload identity provider,
+// THE FEDERATION IS LEASED, NOT RE-SPELLED (gunbc.design_argument::conformance): the record of which workload identity provider,
 // which service account and which secret a publisher federates to belongs to this module's neighbour, so
 // the profile row names which federation a publisher uses and never carries those strings itself.
 import gunbc.auth.heal_publisher_federation { HealPublisherFederation, public_heal_publisher_federation }
@@ -41,7 +41,7 @@ import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_cata
 // as a constant - which repository is checked out, which branch, which machine class, which entry runs
 // the roster, whether a compiler is built from another repository beside the one under test, whether a
 // heal publisher exists at all. Forking an emitter to express a difference in data is the expensive
-// version of the mistake DESIGN 3 forbids (one authority per subject), and it is the dangerous version
+// version of the mistake gunbc.design_argument::single_authority forbids (one authority per subject), and it is the dangerous version
 // too: the fork has already drifted from the authority it copies, so a fix to gunbc's required gate does
 // not reach the repository whose required check IS the fork.
 //
@@ -181,7 +181,7 @@ type OverlayIngest {
 // v2.extdeps.languages.bash_build, so what the arms of the gate do is modelled and only their rendering is
 // a fold. What remains admitted as debt is the composition itself, and it carries its own trigger on
 // OverlayIngest rather than a second copy here.
-// THE DESIGN 4c STEP: compile the roster's closure and fail when a source annotation has drifted outside
+// THE gunbc.design_argument::source_annotations STEP: compile the roster's closure and fail when a source annotation has drifted outside
 // module-item grain. It gates on the roster's enforced closure rather than every module of the
 // repository until its narrowing trigger fires, and it reads exit status plus the reader's classification
 // rather than trusting a green compile, so a run that observed nothing is a refusal rather than a pass.
@@ -272,7 +272,7 @@ type HealSeal {
 // WHAT THE PUBLISHER RUNS IS ROWS. The two invocations are the admit and the publish subjects, so the
 // emitter never names a repository's module for them; which identity the job federates to and which
 // installation the token is minted for are the federation record, owned by gunbc.auth.heal_publisher_federation
-// (DESIGN 3b leasing), so this row says WHICH one and never re-spells a provider path, a service account or
+// (gunbc.design_argument::conformance leasing), so this row says WHICH one and never re-spells a provider path, a service account or
 // a secret name. What is deliberately NOT here: the overlay a mirror's publisher composes, which is the
 // roster route's OverlayIngest read through profile_overlay - the same authority the drift emitter reads,
 // because a candidate sealed from one composition and admitted against another is precisely the drift this
@@ -295,7 +295,7 @@ type HealPublisherPolicy {
 // HOW THE PUBLISHER OBTAINS THE COMPILER ITS PHASES RUN UNDER. THE TWO WAYS ARE NAMED, NOT IMPLIED. An
 // absent seed used to carry this decision, which meant one repository's absence stood for another
 // repository's whole policy - toolchain-home isolation, the witness floor's toolchain, the rustup pin and
-// a build of this checkout (DESIGN 5's fabricated default, DESIGN 3's meaning fork): a repository with no
+// a build of this checkout (gunbc.design_argument::fail_closed's fabricated default, gunbc.design_argument::single_authority's meaning fork): a repository with no
 // seed silently inherited gunbc's build. `Own_checkout_under_witness_floor` says so and names the binaries;
 // `Declared_seed` says the profile's public seed is checked out and built there, the same two steps the
 // drift job runs for the seal, and is refused unless a seed is declared. There is deliberately no third
@@ -309,7 +309,7 @@ type HealPublisherPolicy {
 // THE COMBINATIONS THAT WERE VALIDATORS ARE NOT VALUES OF THIS TYPE: an overlay with no seed to compose
 // into, a publisher building its compiler "from the profile's seed" while the profile names none, and a job
 // building its own checkout while the profile composes a root its phases would have to run inside. Each was
-// a cross-field predicate restating what a sum says; DESIGN §5 puts the sum first -- "stronger than catching
+// a cross-field predicate restating what a sum says; gunbc.design_argument::fail_closed puts the sum first -- "stronger than catching
 // a wrong state is making it unwritable". The step that RUNS the roster in the composed root is carried here
 // too, because it exists only for the variants that compose one, and a `route` field beside the source was
 // the second half of the same fact.
@@ -489,7 +489,7 @@ fn gunbc_required_context_name() -> String {
 // THE ACCESSORS THE EMITTERS READ, TYPED AS PRESENCE. A repository that declares no heal job, no drift
 // job or no publisher gets `Absent`, and there is NOTHING ELSE those accessors can return: the fabricated
 // "no-heal-declared" rows this module used to hand back for an absent arm are deleted, because a row with a
-// real-looking job id, a fleet runner and a zero-minute timeout is exactly the fabricated default DESIGN 5
+// real-looking job id, a fleet runner and a zero-minute timeout is exactly the fabricated default gunbc.design_argument::fail_closed
 // refuses, and nothing in the type stopped an emitter from rendering one if it forgot to ask first. Each
 // emitter now matches on these, so the value it renders is a row its repository declared, and a forgotten
 // branch is a resolve error rather than a committed workflow that fires with nothing to do.
@@ -601,7 +601,7 @@ fn profile_public_seed(profile: RepositoryCiProfile) -> Optional<PublicSeed> {
 // THE OVERLAY, and only the variant that composes one can produce it. An overlay with no seed to compose
 // into -- the row whose copy had nowhere to land, whose publisher would then seal a candidate from one
 // composition and admit it against another -- is not a value of `CompilerSource`, so what was a refusal at
-// emit time is now a state that cannot be written (DESIGN §5).
+// emit time is now a state that cannot be written (gunbc.design_argument::fail_closed).
 fn profile_overlay(profile: RepositoryCiProfile) -> Optional<OverlayIngest> {
   match profile.source {
     Declared_seed_under_composed_overlay { seed: _, overlay: overlay, run_roster_step_name: _ } =>
@@ -734,7 +734,7 @@ fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
 
 // BOTH HALVES OF AN INVOCATION ARE WRITABLE-BY-CONSTRUCTION. `DagInvocation`'s entry and function are
 // NonEmptyStrs, so an admit or publish phase cannot be declared with an empty half and there is no state
-// left for a predicate to catch (DESIGN §5: making a wrong state unwritable beats catching it). An
+// left for a predicate to catch (gunbc.design_argument::fail_closed: making a wrong state unwritable beats catching it). An
 // invocation whose module or function is absent is therefore a type error, not a runtime refusal.
 
 // A TIMEOUT OF ZERO KILLS A JOB BEFORE IT REPORTS WHY. The roster's own timeout has always been refused

@@ -385,7 +385,7 @@ test fn the_pin_names_follow_the_manufacturers_table() -> Bool {
   // The manufacturers' numberings taken AT THE POINT OF USE, from each row's own pin table. They were
   // free-standing data here and in product.p4261.carrier until this PR: nothing else read them, and a
   // datasheet numbering sitting in a board file is the route by which one sized a specimen's body (the
-  // two rows are gone; this is what a part fact looks like when it is actually consulted, DESIGN §3c).
+  // two rows are gone; this is what a part fact looks like when it is actually consulted, gunbc.design_argument::consumption).
   // The LM5066I count is TI's twenty-eight numbered leads -- twenty-nine with its exposed pad, which the
   // table does not number: that name belongs to the reading that read it, never to a part fact.
   let lv165a_names = map(numbered_pins(row: sn74lv165a_pw), n => pin_number_name(number: n))

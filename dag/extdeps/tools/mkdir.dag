@@ -35,7 +35,7 @@ data mkdir_binary_path: NonEmptyStr = "/usr/bin/mkdir"
 // THE PATH-RESOLVED NAME IS A DIFFERENT FACT, declared as one for the reason extdeps.tools.env
 // spells out at length and extdeps.tools.chmod now mirrors: an absolute path is a claim about a
 // filesystem this repository has OBSERVED, and asserting one for a host it has not observed does
-// not repair the decline, it fabricates the host fact -- a DESIGN section 5 violation rather than
+// not repair the decline, it fabricates the host fact -- a gunbc.design_argument::fail_closed violation rather than
 // the fix for one. A caller reaching a fleet host we model cites the path above; a caller reaching
 // a developer box, a runner image or a machine over ssh cites this row.
 //
@@ -99,7 +99,7 @@ fn mkdir_parents_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvComm
 // ENSURE rather than a CREATE for exactly this reason.
 //
 // WHY A CONSUMER WOULD WANT THE REFUSING FORM. -p on a resource whose parent is a DECLARED member
-// of another family is an absorbing fallback in the DESIGN section 5 sense: a missing parent is a
+// of another family is an absorbing fallback in the gunbc.design_argument::fail_closed sense: a missing parent is a
 // failure state, and -p answers it by FABRICATING the whole chain instead of refusing. Where the
 // parent is owned by a different authority -- gunbc.fabric.fabric_cell_subject classifies /opt/fabric-cells
 // as Ensured, meaning required present and never created by the cell family -- -p would silently

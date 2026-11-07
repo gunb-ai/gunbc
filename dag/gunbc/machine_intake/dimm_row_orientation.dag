@@ -34,7 +34,7 @@ import gunbc.host.baseboard_dimm_figure {
 // front. Each anchor carries the end its operator faced and is normalised into this frame
 // before it tests anything, so a rear-observed anchor can never be read as a front one.
 
-// Three standings kept apart by type (§4d): a vendor figure, an operator's by-eye report, and
+// Three standings kept apart by type (gunbc.design_argument::epistemic_humility): a vendor figure, an operator's by-eye report, and
 // what firmware trained. On 2026-09-23 they were conflated on Mt. Collins unit 1: the operator
 // placed DIMMs by a drawing derived from Figure 9, and the firmware trained connectors the drawing
 // did not name.
@@ -398,7 +398,7 @@ fn chassis_end_landmark(end: ChassisEnd, figure: BaseboardDimmFigure) -> NonEmpt
   }
 }
 
-// A bet, typed as one (§4d), per figure. Mt. Collins: IF Figure 9 is drawn from the same viewpoint as
+// A bet, typed as one (gunbc.design_argument::epistemic_humility), per figure. Mt. Collins: IF Figure 9 is drawn from the same viewpoint as
 // Figure 10 (seen from above, front at the top), then a reader at the rear sees FigureOrder and a
 // reader at the front sees FullMirror, and nobody sees SocketHalvesSwapped. The guide does not state
 // that Figure 9 shares Figure 10's viewpoint. It is a non-gating cross-check against the canonical

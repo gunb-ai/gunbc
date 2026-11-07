@@ -37,7 +37,7 @@ import std.occurrence_identity {
 //
 // X's decision vocabulary belongs to the tap that observes X, not to the envelope that counts
 // rows. Declaring it here would fork it: the tap would either import a vocabulary written by
-// someone who cannot see X's decision sites, or mint its own beside it, and DESIGN section 3 says
+// someone who cannot see X's decision sites, or mint its own beside it, and gunbc.design_argument::single_authority says
 // what happens next. Parameterising leaves exactly one authority for what X answered and exactly
 // one for whether the answering is complete, which are genuinely two facts.
 //
@@ -202,7 +202,7 @@ type LegacyObservationAdmission<O>
 // `occurrence_transport_digest`, and agreement between it and the transport is what would close it
 // -- but `std.occurrence_identity` declares no digest over `ValidatedOccurrenceTransport`, so the
 // comparison has nothing to compute. Minting that digest here would put a fact about the transport
-// outside the transport's own authority, which is the §3 violation this lane keeps finding
+// outside the transport's own authority, which is the gunbc.design_argument::single_authority violation this lane keeps finding
 // elsewhere. NEXT-RUNG TRIGGER for this half: a content digest over ValidatedOccurrenceTransport in
 // std.occurrence_identity, at which point the admission takes both and refuses on disagreement.
 //

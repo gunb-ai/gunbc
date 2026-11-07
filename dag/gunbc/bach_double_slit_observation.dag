@@ -41,7 +41,7 @@ import extdeps.physics.bach_et_al_2013_double_slit {
 data bach_which_path_evidence_requirement_unsatisfied_note: String = "Derived from cited Bach slit-mask control (not a which-path readout): which-path distinguishability evidence requirement is unsatisfied for this source."
 
 // Which-path distinguishability evidence is absent from cited Bach et al. 2013; obligation recorded
-// here per DESIGN section 3.
+// here per gunbc.design_argument::single_authority.
 
 // Authored coverage gap (explicit gap rung, not a derived readiness verdict):
 // bach_raw_count_additivity_not_evaluable_note grounds why no raw triplet exists to evaluate.

@@ -91,7 +91,7 @@ fn ts_call(callee: TsExpr, args: List<TsExpr>) -> TsExpr {
 // shape DESIGN rules a line-stop, so the production was added instead. Serialization does NOT
 // parenthesize the callee, so a callee that is itself an operator expression (`new (a || b)()`)
 // must be bound to a name first — the grammar has no Paren production and one is not minted
-// speculatively (DESIGN section 6: priced by displaced cost, and no consumer needs it).
+// speculatively (gunbc.design_argument::how_to_work: priced by displaced cost, and no consumer needs it).
 
 fn ts_new(callee: TsExpr, args: List<TsExpr>) -> TsExpr {
   New { callee: callee, args: args }
@@ -167,7 +167,7 @@ fn ts_for_of(var_name: String, iterable: TsExpr, body: TsStmt) -> TsStmt {
 
 data try_statement_grounding_note: String = "ECMAScript TryStatement, in the shape this emitter can actually construct: a block, one binding catch parameter, one handler block. The optional finally clause and the parameter-less catch form are NOT admitted, because nothing constructs them and an arm nobody builds is an arm nobody has proven serializes.
 
-WHY IT LANDED: a constructor can throw. The Generic Sensor specification says so by name — constructing a sensor outside a secure context, or where the permissions policy forbids it, raises SecurityError, and there is no interrogable property that answers the question first. Without a catch the emitted probe would fault mid-handler and the page would keep displaying 'not yet run': an unanswered question standing where a REFUSAL was observed. That is the empty-observation narrow (DESIGN §5) at the exact seam this lane exists to keep honest, so the grammar grows one arm rather than the probe pretending the throw cannot happen."
+WHY IT LANDED: a constructor can throw. The Generic Sensor specification says so by name — constructing a sensor outside a secure context, or where the permissions policy forbids it, raises SecurityError, and there is no interrogable property that answers the question first. Without a catch the emitted probe would fault mid-handler and the page would keep displaying 'not yet run': an unanswered question standing where a REFUSAL was observed. That is the empty-observation narrow (gunbc.design_argument::fail_closed) at the exact seam this lane exists to keep honest, so the grammar grows one arm rather than the probe pretending the throw cannot happen."
 
 fn ts_try(body: TsStmt, catch_param: String, handler: TsStmt) -> TsStmt {
   Try { body: body, catch_param: catch_param, handler: handler }
@@ -233,7 +233,7 @@ fn join_array_elements(elements: List<TsExpr>) -> String {
 // THE SERIALIZER USED TO EMIT OPERAND TEXT WITHOUT REGARD FOR PRECEDENCE, which made it possible to
 // build a well-typed TsExpr that serializes to syntactically valid JavaScript computing something
 // ELSE. That is the sharpest failure shape a translator has: not a crash, not a refusal, a silent
-// semantic substitution downstream of a green typecheck (DESIGN section 5). Every consumer of this
+// semantic substitution downstream of a green typecheck (gunbc.design_argument::fail_closed). Every consumer of this
 // module inherited it, because the defect is in the printer, not in any one program.\n\nFOUR LIVE
 // PRODUCERS, found by reading the emitted asset rather than the model (2026-07-30,
 // gunbc.roadmap.roadmap_component). Every one of them was in a REASON channel — a tooltip, an accessible

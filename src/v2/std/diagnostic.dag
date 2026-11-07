@@ -1,17 +1,8 @@
 module v2.std.diagnostic
 
 import std.types { List }
-import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape, zip_eq, map_values_eq }
+import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-// INTERIM (concern equality_synthesis_helper_binding_is_import_authority): the FOREIGN helpers the
-// compiler's synthesized equality bodies call (zip_eq for List fields, map_values_eq for Map fields)
-// must arrive through this module's named imports — hand-written code here uses neither name: an
-// authoring leak, FOREIGN helpers only. A module's OWN declarations are visible to its own bodies by
-// definition (the one predicate answers from the module's own symbol table plus its imports), and a
-// module importing itself is an import-graph self-loop the acyclicity law forbids. Dissolution
-// trigger: a synthesized equality body references its helpers by the declaring module's path
-// (std.algebra), not through the consumer's import scope; at that point delete zip_eq, map_values_eq
-// from the std.algebra import verbatim.
 import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
 
 type Extent
@@ -293,7 +284,7 @@ fn rejected_with_pending(
 // PREPENDS the advisories that rode along in front of the refusal that fired, so the cause a
 // consumer should fold to is the tail, never the head -- the head is whatever advisory happened to
 // be pending first. Two consumers had each spelled this fold for themselves (the native CLI's fatal
-// pick and the native test route's fatal reason), which is the fork DESIGN section 3 forbids: the
+// pick and the native test route's fatal reason), which is the fork gunbc.design_argument::single_authority forbids: the
 // ordering is created here, so the reading of it lives here.
 fn diagnostics_fatal(d: NonEmptyDiagnostics) -> Diagnostic {
   fold_list(xs: d.tail, empty: d.head, cons: fn(_acc, diag) { diag })

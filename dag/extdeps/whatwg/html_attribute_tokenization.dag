@@ -92,10 +92,35 @@ fn html_skip_whitespace(octets: List<Int>, at: Int) -> Int {
   }
 }
 
+// THE LINEAR SCANS ARE CHUNKED. A scan over a whole page or script recurses once per octet, and the
+// interpreter's call depth is bounded (run 42383617138: CallDepthExceeded at 100000 inside a decompressed
+// script). Each chunk is one fold over a bounded slice; only the chunk-to-chunk step recurses, so the
+// depth is length / html_octet_scan_chunk and no input length can exhaust it.
+data html_octet_scan_chunk: Int = 4096
+
+type HtmlOctetSearch {
+  found: Int?
+}
+
+type HtmlOctetCount {
+  next_allowed: Int
+  count: Int
+}
+
 fn html_index_of_octet(octets: List<Int>, target: Int, at: Int) -> Int? {
-  match html_octet_at(octets, at) {
-    Absent => none
-    Present { value: o } => if o == target { Present { value: at } } else { html_index_of_octet(octets, target, at + 1) }
+  let length = count(octets)
+  if at >= length {
+    none
+  } else {
+    let chunk = if length - at < html_octet_scan_chunk { length - at } else { html_octet_scan_chunk }
+    let hit = fold(html_octets_slice(octets, at, chunk) |> enumerate, init: HtmlOctetSearch { found: none }, f: (acc, p) => match acc.found {
+      Present { value: _ } => acc
+      Absent => if p.second == target { HtmlOctetSearch { found: Present { value: at + p.first } } } else { acc }
+    }).found
+    match hit {
+      Present { value: i } => Present { value: i }
+      Absent => html_index_of_octet(octets, target, at + chunk)
+    }
   }
 }
 
@@ -206,12 +231,36 @@ fn html_octets_index_from(hay: List<Int>, needle: List<Int>, from: Int) -> Int? 
 }
 
 fn html_octets_index_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int) -> Int? {
-  if at + needle_length > haystack_length {
+  let candidates = haystack_length - needle_length + 1 - at
+  if candidates <= 0 {
     Absent
-  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
-    Present { value: at }
   } else {
-    html_octets_index_walk(hay, needle, needle_length, haystack_length, at + 1)
+    let chunk = if candidates < html_octet_scan_chunk { candidates } else { html_octet_scan_chunk }
+    let hit = fold(html_octets_slice(hay, at, chunk) |> enumerate, init: HtmlOctetSearch { found: none }, f: (acc, p) => match acc.found {
+      Present { value: _ } => acc
+      Absent => if html_octets_match_at(hay, needle, needle_length, at + p.first, 0) { HtmlOctetSearch { found: Present { value: at + p.first } } } else { acc }
+    }).found
+    match hit {
+      Present { value: i } => Present { value: i }
+      Absent => html_octets_index_walk(hay, needle, needle_length, haystack_length, at + chunk)
+    }
+  }
+}
+
+// Non-overlapping occurrences of `needle` in `hay`, chunked like the scans above.
+fn html_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, next_allowed: Int, acc: Int) -> Int {
+  let candidates = haystack_length - needle_length + 1 - at
+  if needle_length == 0 || candidates <= 0 {
+    acc
+  } else {
+    let chunk = if candidates < html_octet_scan_chunk { candidates } else { html_octet_scan_chunk }
+    let done = fold(html_octets_slice(hay, at, chunk) |> enumerate, init: HtmlOctetCount { next_allowed: next_allowed, count: acc }, f: (st, p) =>
+      if at + p.first >= st.next_allowed && html_octets_match_at(hay, needle, needle_length, at + p.first, 0) {
+        HtmlOctetCount { next_allowed: at + p.first + needle_length, count: st.count + 1 }
+      } else {
+        st
+      })
+    html_octets_count_walk(hay, needle, needle_length, haystack_length, at + chunk, done.next_allowed, done.count)
   }
 }
 

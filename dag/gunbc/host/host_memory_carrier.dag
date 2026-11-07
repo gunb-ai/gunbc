@@ -7,7 +7,7 @@ import std.measure { ByteSize }
 // reads hosts (filesystem captures, machine_intake.host_resource_observation, and through it the fabric
 // envelope and network topology); a consumer that only states or receives a reading -- the serving layout,
 // runner placement, budgets -- needs the shape, not the producer. Holding both in one module made every such
-// consumer's closure carry the whole host-intake model (DESIGN 3: interface, realization and policy are three
+// consumer's closure carry the whole host-intake model (gunbc.design_argument::interface_realization_policy: interface, realization and policy are three
 // facts). The arms' meaning is unchanged and still documented beside the rows in host_memory_observation.
 
 type HostFixedOverhead
