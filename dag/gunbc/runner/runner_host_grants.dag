@@ -75,7 +75,7 @@ import gunbc.runner.runner_slot_provision { desired_runner_slot_members, runner_
 import gunbc.runner.runner_slot_job_role { runner_instance_job_user, runner_instance_tree_mode, runner_host_has_deploy_slot }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
 import gunbc.runner.runner_host_deploy { runner_index_seq }
-import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent, RunnerHostDeployFound, RunnerHostDeployResolution, RunnerHostDeployZeroWidth, runner_host_zero_width_view, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.runner.runner_microvm_network_converge { microvm_network_granted_operations }
 import gunbc.runner.runner_unit { runner_unit_name_of_registration }
 import gunbc.runner.runner_slot_retirement { host_maskable_units }
@@ -646,10 +646,18 @@ type RunnerHostSudoersBody
   | RunnerHostSudoersBodyRefused { reason: String }
 
 fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> RunnerHostSudoersBody {
-  match runner_host_deploy_for(host: host) {
+  runner_host_sudoers_body_of(resolution: runner_host_deploy_for(host: host), artifact_path: artifact_path)
+}
+
+fn runner_host_sudoers_body_of(resolution: RunnerHostDeployResolution, artifact_path: String) -> RunnerHostSudoersBody {
+  match resolution {
     RunnerHostDeployFound { deploy } => runner_host_sudoers_body_guard(
       refusals: runner_host_provisioning_plan_refusals(spec: runner_host_spec_of(deploy: deploy)),
       content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path),
+    )
+    RunnerHostDeployZeroWidth { spec: sp } => runner_host_sudoers_body_guard(
+      refusals: runner_host_provisioning_plan_refusals(spec: sp),
+      content: runner_host_sudoers_content(deploy: runner_host_zero_width_view(spec: sp), artifact_path: artifact_path),
     )
     RunnerHostDeployUnmodeled { host: unmodeled } =>
       RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }

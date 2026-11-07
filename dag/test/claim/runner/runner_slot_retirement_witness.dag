@@ -26,7 +26,7 @@ import gunbc.runner.runner_slot_allocation {
   host_committed_identities_at,
 }
 import gunbc.runner.runner_host_deploy {
-  runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
+  runner_host_deploy_of, RunnerHostDeployAdmitted, RunnerHostDeployZeroWidthAdmitted, RunnerHostDeployWidthRefused, srv1_runner_host_spec,
 }
 import gunbc.runner.runner_slot_population_census { committed_unit_names_at }
 import gunbc.runner.runner_width_transition {
@@ -1214,6 +1214,7 @@ test fn srv1_at_committed_width_3_desires_two_fleet_plus_shakedown() -> Bool {
       w == 4
         && match runner_host_deploy_of(host: operator_host_srv1, spec: srv1_runner_host_spec) {
           RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } => false
+          RunnerHostDeployZeroWidthAdmitted { spec: _ } => false
           RunnerHostDeployAdmitted { deploy: d } =>
             d.runner_count == 4
               && length(xs: host_committed_identities_at(host: operator_host_srv1, committed: d.runner_count)) == 4

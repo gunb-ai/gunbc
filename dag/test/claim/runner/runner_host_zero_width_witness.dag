@@ -1,0 +1,137 @@
+module test.claim.runner.runner_host_zero_width_witness
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
+import gunbc.runner.runner_slot_allocation { RunnerWidthDerived, RunnerWidthUnresolved, WidthComputeOfferAbsent }
+import gunbc.runner.runner_host_deploy {
+  runner_host_deploy_from_width,
+  runner_host_spec_for,
+  runner_host_zero_width_slot_identities,
+  runner_host_zero_width_view,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
+  RunnerHostDeployAdmitted,
+  RunnerHostDeployZeroWidthAdmitted,
+  RunnerHostDeployWidthRefused,
+  RunnerHostDeployZeroWidth,
+  RunnerHostDeployRefused,
+  RunnerHostDeployFound,
+  RunnerHostDeployUnmodeled,
+}
+import gunbc.runner.runner_host_grants { runner_host_sudoers_body_of, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused }
+import gunbc.runner.runner_slot_provision { SlotRetirementEvidenceAbsent }
+import gunbc.fleet.fleet_converge_plan {
+  fleet_converge_slot_family_of,
+  slot_family_lines,
+  slot_family_apply_lines,
+  slot_family_refusal_count,
+  SlotFamilyZeroWidth,
+  SlotFamilyHostRefused,
+}
+
+// THE SPEC IS A REAL ROW (srv3's); THE WIDTH IS A SUPPLIED VALUE. A witness for what the admission does with a
+// width must not re-run the memory derivation that produces one.
+fn spec_row() -> RunnerHostSpec? {
+  match runner_host_spec_for(host: operator_host_srv3) {
+    RunnerHostSpecFound { spec: s } => Present { value: s }
+    RunnerHostSpecAbsent { host: _ } => Absent
+  }
+}
+
+fn admission_at(resolved: RunnerWidthResolution) -> RunnerHostDeployAdmission? {
+  match spec_row() {
+    Present { value: s } => Present { value: runner_host_deploy_from_width(host: operator_host_srv3, spec: s, resolved: resolved) }
+    Absent => Absent
+  }
+}
+
+fn is_zero_width(a: RunnerHostDeployAdmission?) -> Bool {
+  match a {
+    Present { value: RunnerHostDeployZeroWidthAdmitted { spec: _ } } => true
+    _ => false
+  }
+}
+
+// A DERIVED WIDTH OF 0 IS ITS OWN ARM. RED: the former mapping (width 0 -> WidthRefused) fails this.
+test fn a_derived_width_of_zero_is_the_zero_width_arm() -> Bool {
+  is_zero_width(admission_at(resolved: RunnerWidthDerived { slots: 0 }))
+}
+
+// CONTROLS: a positive width stays a deploy row and an UNRESOLVED width stays a refusal, so the new arm is not
+// "everything that is not a row" (srv2 is unresolved, and stays Refused with its exit-1 slot leg).
+test fn a_positive_width_stays_a_deploy_and_an_unresolved_width_stays_refused() -> Bool {
+  (match admission_at(resolved: RunnerWidthDerived { slots: 3 }) {
+    Present { value: RunnerHostDeployAdmitted { deploy: d } } => d.runner_count == 3
+    _ => false
+  })
+    && (match admission_at(resolved: RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: operator_host_srv3 } }) {
+      Present { value: RunnerHostDeployWidthRefused { spec: _, host: _, cause: _ } } => true
+      _ => false
+    })
+}
+
+// THE ZERO-WIDTH FAMILY DEPLOYS NOTHING AND FAILS NOTHING. RED: SlotFamilyHostRefused renders `exit 1` after the
+// timer teardown and daemon-reload (a half-applied host), which this asserts the zero arm does not.
+test fn the_zero_width_family_applies_without_exit_and_counts_no_refusal() -> Bool {
+  let f = SlotFamilyZeroWidth { host: operator_host_srv3 }
+  slot_family_refusal_count(family: f) == 0
+    && !any(slot_family_apply_lines(family: f), l => string_contains(s: l, pattern: "exit 1"))
+    && !any(slot_family_apply_lines(family: f), l => string_contains(s: l, pattern: "remove"))
+    && !any(slot_family_lines(family: f), l => string_contains(s: l, pattern: "remove"))
+    && any(slot_family_lines(family: f), l => string_contains(s: l, pattern: "ZERO-WIDTH"))
+}
+
+test fn a_refused_family_still_exits_and_counts_one_refusal() -> Bool {
+  let f = SlotFamilyHostRefused { host: operator_host_srv3, cause: "unresolved" }
+  slot_family_refusal_count(family: f) == 1
+    && any(slot_family_apply_lines(family: f), l => string_contains(s: l, pattern: "exit 1"))
+}
+
+// THE ROUTE: the resolution reaches the family through the real dispatch, not only the family value.
+test fn the_zero_width_resolution_reaches_the_zero_width_family() -> Bool {
+  match spec_row() {
+    Present { value: s } =>
+      match fleet_converge_slot_family_of(
+        resolution: RunnerHostDeployZeroWidth { spec: s },
+        host: "srv3" as NonEmptyStr,
+        observed_slots: [],
+        retirement_evidence: SlotRetirementEvidenceAbsent { cause: "none" },
+      ) {
+        SlotFamilyZeroWidth { host: _ } => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE HOST-WIDE GRANTS SURVIVE. A zero-width host's sudoers is the FULL content at count 0 (fabric cell,
+// microVM start, revision job ...), not the reduced width-refused content. RED: routing ZeroWidth through the
+// refused renderer carries the "WIDTH REFUSED" header and drops those rows.
+test fn the_zero_width_sudoers_is_the_full_content_not_the_refused_reduction() -> Bool {
+  match spec_row() {
+    Present { value: s } =>
+      match runner_host_sudoers_body_of(resolution: RunnerHostDeployZeroWidth { spec: s }, artifact_path: "x") {
+        RunnerHostSudoersBodyProduced { content: z } =>
+          match runner_host_sudoers_body_of(resolution: RunnerHostDeployRefused { host: operator_host_srv3, cause: "c" }, artifact_path: "x") {
+            RunnerHostSudoersBodyProduced { content: r } =>
+              !string_contains(s: z, pattern: "WIDTH REFUSED") && string_contains(s: r, pattern: "WIDTH REFUSED") && z != r
+            RunnerHostSudoersBodyRefused { reason: _ } => false
+          }
+        RunnerHostSudoersBodyRefused { reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+// THE VIEW IS A COMPUTATION INPUT: count 0 and no slot identities.
+test fn the_zero_width_view_has_no_slots() -> Bool {
+  match spec_row() {
+    Present { value: s } =>
+      runner_host_zero_width_view(spec: s).runner_count == 0
+        && length(runner_host_zero_width_slot_identities(spec: s)) == 0
+    Absent => false
+  }
+}
