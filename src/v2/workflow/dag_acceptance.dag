@@ -52,7 +52,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // iteration at one person's attention.
 //
 // IT IS TRANSPORT-FREE ON PURPOSE. The product is a pure function of a String, so the resident-host
-// question is a REALIZATION fact, never part of the interface (DESIGN section 3: interface,
+// question is a REALIZATION fact, never part of the interface (gunbc.design_argument::single_authority: interface,
 // realization and policy are three facts). A route on gunbc serve was REFUSED: that seam is a
 // declared frozen quarry route — gunbc.roadmap.roadmap_serve roadmap_serve_seam_restoration_note, mirrored
 // at the Commands::Serve arm of src/v1/stage0/src/main.rs, states no new options, verbs, routes
@@ -71,13 +71,13 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // TargetCompileClaim CARRIES the TranslationClaim whose output it consumes, so 'target-compile an
 // emission nobody requested' has no spelling — structural impossibility, not a runtime refusal
-// (DESIGN section 4b). The obligation's prerequisite is DERIVED from the claim it holds, not
+// (gunbc.design_argument::guarantee_ladder). The obligation's prerequisite is DERIVED from the claim it holds, not
 // authored beside it.
 
 // THE VERDICT IS DERIVED, NEVER STORED. DagAcceptanceReceipt carries the contract identity, the
 // candidate identity, and the executed rows; the verdict is a fold over those rows. With no verdict
 // field to transcribe, rung inflation on this harness's own output is unrepresentable rather than
-// lens-caught — DESIGN section 4b's meta-obligation applied to the instrument itself.
+// lens-caught — gunbc.design_argument::guarantee_ladder's meta-obligation applied to the instrument itself.
 
 type DagCandidate {
   file: Symbol,
@@ -121,7 +121,7 @@ type TranslationClaim {
 // THERE IS NO POLICY FIELD ON THIS CLAIM, BY DECISION. The acceptance rule is fixed: a target
 // toolchain rejecting the emitted source rejects the candidate, an unreadable failure is undecided,
 // an unavailable toolchain is no verdict. A policy axis with one point is a second name for that
-// rule — the nickname class DESIGN section 3 forbids — and would read as configurability that does
+// rule — the nickname class gunbc.design_argument::single_authority forbids — and would read as configurability that does
 // not exist. Next-rung trigger: a SECOND acceptance rule with a real consumer, at which point the
 // axis is minted with two inhabitants and this row is deleted.
 
@@ -301,7 +301,7 @@ type TargetCompileObservation
 // verdict authority. Unavailable is a fact about US and may never read as the toolchain saying no —
 // a verdict over a refusing call is fabricated plausible output at the host boundary.
 // FailedUnparsed — the toolchain ran, failed, produced nothing readable — is IGNORANCE; rendering
-// it as rejection is the widen DESIGN section 5 forbids, so it gets its own execution arm and
+// it as rejection is the widen gunbc.design_argument::fail_closed forbids, so it gets its own execution arm and
 // count.
 
 type TargetCompileExecutor {
@@ -337,7 +337,7 @@ type StageNotRunReason
   | ExecutorUnavailable { cause: String }
 
 // BlockedByPrerequisite and SkippedAfterDecisiveRejection are DIFFERENT FACTS; conflating them is
-// the state-space conflation DESIGN section 5 names. Resolve rejected means infer is IMPOSSIBLE.
+// the state-space conflation gunbc.design_argument::fail_closed names. Resolve rejected means infer is IMPOSSIBLE.
 // Eval rejected leaves TranslateTo possible; fail-fast CHOSE not to pay. One is a property of the
 // candidate, the other of our policy, and the remedies differ: fix the candidate versus re-run
 // under FullLedger.
@@ -1249,11 +1249,11 @@ fn run_acceptance(
   }
 }
 
-// THE ONE DERIVED OUTCOME PARTITION OF StageExecution, from inhabitance (DESIGN §3/§4; the same
+// THE ONE DERIVED OUTCOME PARTITION OF StageExecution, from inhabitance (gunbc.design_argument::single_authority, gunbc.design_argument::closed_grounded_substrate; the same
 // move as derived terminality in regen_convergence_transaction). The acceptance_row_projection
 // non-fold residue dissolved here: the label projections used to match the
-// five-arm StageExecution and wildcard every off-variant arm to Absent (the DESIGN §2 redundancy,
-// not §4 totality). This partition names the classes a projection can distinguish — passed,
+// five-arm StageExecution and wildcard every off-variant arm to Absent (the gunbc.design_argument::minimize_redundancy redundancy,
+// not gunbc.design_argument::closed_grounded_substrate totality). This partition names the classes a projection can distinguish — passed,
 // passed-with-frontier, rejected, unfinished, not-required — and each projection folds over it
 // with a named arm per class. StageNotRunReason is partitioned into not-required
 // (NotRequiredByContract) versus unfinished (every other reason, which left a debt on the

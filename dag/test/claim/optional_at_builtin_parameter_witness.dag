@@ -23,7 +23,7 @@ import gunbc.compile_diagnostic_census {
 //   DeclaredTypeObligation for them and optional_produced_at_required_declared never runs. The registry does hold the
 //   declared parameter (v1.compiler.method BuiltinSignature params, e.g. parse_int: BuiltinParam s : String).
 // Predicted: ROOT = missing obligation at builtin parameters; typing is sound. The user-fn control separates them.
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn oab_refusal_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

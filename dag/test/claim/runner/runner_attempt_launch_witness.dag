@@ -226,7 +226,7 @@ fn fixture_shape() -> RunnerMicroVmShape {
 // fact about plans this planner builds, not a construction wall -- LaunchAuthorized is assemblable
 // elsewhere and exposes its jailer field. This helper counts
 // launches and says nothing more; a second count read off the same arm would be green by
-// construction (DESIGN §4b).
+// construction (gunbc.design_argument::guarantee_ladder).
 fn no_device_no_vmm(plan: AttemptLaunchPlan) -> Bool {
   planned_jailer_launches(plan: plan) == 0
 }
@@ -743,7 +743,7 @@ test fn a_good_workspace_does_not_admit_a_refused_plan() -> Bool {
 // discharged and deleted in the same change (review 69117: a row whose trigger the author says is met,
 // kept standing, is the roster ceasing to mean what it says). What retires with it is the assertion
 // that it was UNBOUND -- which could only ever be true while the consumer was missing -- not the argv
-// assertion beside it, which is evidence about the command and survives (DESIGN 4b(4): a climb deletes
+// assertion beside it, which is evidence about the command and survives (gunbc.design_argument::guarantee_ladder (dissolution on climb): a climb deletes
 // the obsolete production machinery, never the discriminating evidence).
 test fn the_workspace_readback_reads_the_planned_image() -> Bool {
   argv_words(command: workspace_readback_command(workspace_path: "/jail/work.img")) == ["dumpe2fs", "-h", "/jail/work.img"]

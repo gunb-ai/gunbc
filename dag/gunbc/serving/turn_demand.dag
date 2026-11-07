@@ -38,7 +38,7 @@ import product.fabric.demand { SatisfactionRequirement }
 // The repair made the source a manifest of the SELECTED ENGINE's loaded weights, tokenizer and
 // runtime, observed or absent -- which fixed the cast and reversed the dependency: the requester's
 // identity then depended on the supplier's realization, nothing observes loaded weight or tokenizer
-// bytes (a boundary obligation outside the modeled guarantee, DESIGN 4b), and so no turn could ever
+// bytes (a boundary obligation outside the modeled guarantee, gunbc.design_argument::guarantee_ladder), and so no turn could ever
 // construct Work. Both spellings forced a service request through the materialized-program shape.
 //
 // SO A TURN IS product.fabric.work OfferedService. Its identity is what the caller asks for: the

@@ -5,7 +5,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // EXECUTING half of the comment wall, migrated from src/v1/tests/src/dag_comment_wall_test.rs
 // (v1-test-migration, dag-comment-wall behavior family). The two fidelity rows below assert what
 // the language model DECLARES; on their own they are a declaration, not a refusal — editing the
-// tokenizer back to skipping comments leaves both green (DESIGN 4b rung honesty: a declared row
+// tokenizer back to skipping comments leaves both green (gunbc.design_argument::guarantee_ladder rung honesty: a declared row
 // establishes nothing about the acceptance path). These four probes assert what the compiler DOES:
 // each sends a synthetic module through compile_dag_rust_emit_check, the same production compile
 // path and same compile_clean_diagnostic_is_hard authority CI's compile-clean gate uses, reaching
@@ -66,7 +66,7 @@ test fn slash_slash_inside_string_literal_accepted() -> Bool {
   slash_slash_in_string() == "https://example.com"
 }
 
-data dag_comment_wall_recut_note: String = "THE WALL'S MEANING CHANGED, AND THESE ROWS ARE WHERE THAT IS STATED. It used to assert that comment SYNTAX is unwritable. It now asserts DESIGN 4c's actual rule: prose is not forbidden, unclassified prose is.
+data dag_comment_wall_recut_note: String = "THE WALL'S MEANING CHANGED, AND THESE ROWS ARE WHERE THAT IS STATED. It used to assert that comment SYNTAX is unwritable. It now asserts gunbc.design_argument::source_annotations's actual rule: prose is not forbidden, unclassified prose is.
 
 Nothing above was edited, because nothing above became wrong — the line probe's comment is TRAILING and the block probe's syntax is still unmodeled, so both still refuse. But they refuse for a different reason than they used to: the annotation channel captures the lexeme and attachment then refuses it with a typed, located diagnostic, where before the tokenizer failed to produce a token at all. A reader who assumes those two probes still prove `// is a parse error` would be wrong, and would conclude the feature had not landed.
 

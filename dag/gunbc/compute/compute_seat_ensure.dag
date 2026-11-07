@@ -4,7 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
 import std.measure { Kibibyte, kibibyte, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend }
-import gunbc.durable_cas_file_store { slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
+import gunbc.durable_cas_file_store { CasSlotKeysAbsent, slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.compute.compute_attempt_slots_root {
   ComputeSeat, ComputeDispatchSeat, compute_seat_wire, compute_seat_holder_line, compute_seat_listed,
@@ -33,9 +33,10 @@ import gunbc.compute.compute_producer_lease {
   ComputeProducerLeaseReleased, ComputeProducerLeaseKept, compute_producer_lease_standing, compute_producer_lease_release_observed,
 }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
-  AttemptUnitRole, AttemptWorkerRole, attempt_unit_role_token,
+  AttemptUnitRole, AttemptWorkerRole,
   AttemptExitStageListing, AttemptExitStageNames, AttemptExitStageUnreadable, attempt_exit_stage_listings,
   AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_exit_entry_decode,
+  AttemptExitSubject, RoadmapAttemptExit, ComputeAttemptExit,
 }
 
 // A COMPUTE SEAT HELD BY AN ATTEMPT THAT ENDED IS ENSURED RETURNED, THROUGH THE ONE DISCHARGE DOOR
@@ -44,7 +45,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // This is an ensure over std.upsert_decision, not a second release path: the decision is made here, the
 // ACTION is gunbc.compute.work_provider_local compute_recover_attempt_in, which re-proves unit
 // termination itself and releases through the ledger's own release. Selection precedes convergence
-// (DESIGN 3d): which references to ensure is chosen by the driver below, from the attempt records.
+// (gunbc.design_argument::selection_precedes_convergence): which references to ensure is chosen by the driver below, from the attempt records.
 //
 //   live owner (deadline not reached / unit not ended) -> Noop, seat kept, unit NOT stopped
 //   owner proven ended, its unit still live             -> Apply: STOP the unit the slot record names,
@@ -371,6 +372,7 @@ fn compute_seat_discharge_dir(instance: HostDashboardInstance, store: ComputeSea
   match slot_keys(store: store.slots) {
     CasSlotKeysListed { keys } =>
       SeatDischargeRan { outcomes: keys |> map(k => compute_seat_ensure_in(instance: instance, store: store, leases: leases, subject: subject, appropriation: appropriation, reference: k, source: source, owner: owner)) }
+    CasSlotKeysAbsent { root: r } => SeatDischargeRefused { reason: join(["the attempt's seat directory is not present at ", r as String, " -- an absent store is a census answer, not an empty census: no seat is discharged and no lease is released by this pass"], "") }
     CasSlotKeysListingRefused { root: _, detail: d } => SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", d], "") }
     CasSlotKeysSubjectRefused { root: _, cause: c } => SeatDischargeRefused { reason: join(["the attempt's seat directory could not be listed: ", c], "") }
   }
@@ -432,8 +434,17 @@ fn seat_worker_exit_owners(listings: List<AttemptExitStageListing>) -> List<Seat
       AttemptExitStageNames { names } => names
       AttemptExitStageUnreadable { reason: _ } => [] as List<String>
     }) |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
-      AttemptExitEntryDecoded { record } =>
-        if record.role == attempt_unit_role_token(role: AttemptWorkerRole) { [SeatOwnerKey { node_id: record.node_id, attempt_key: record.attempt_key }] } else { [] as List<SeatOwnerKey> }
+      AttemptExitEntryDecoded { record } => match record.subject {
+        // A SEAT IS OWNED BY A ROADMAP ATTEMPT. A compute seat's exit record carries the provider's own
+        // execution identity, which is not an attempt coordinate: it names no owner here, and the compute
+        // provider discharges its own seats at its own door.
+        RoadmapAttemptExit { node_id, attempt_key, role } =>
+          match role {
+            AttemptWorkerRole => [SeatOwnerKey { node_id: node_id, attempt_key: attempt_key }]
+            other_role => [] as List<SeatOwnerKey>
+          }
+        ComputeAttemptExit { identity: _ } => [] as List<SeatOwnerKey>
+      }
       AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<SeatOwnerKey>
     }),
     key: fn(o) { join([o.node_id, "\n", o.attempt_key], "") })
@@ -443,6 +454,31 @@ fn seat_exit_listings_unreadable(listings: List<AttemptExitStageListing>) -> Lis
   listings |> flat_map(l => match l {
     AttemptExitStageUnreadable { reason: r } => [r]
     AttemptExitStageNames { names: _ } => [] as List<String>
+  })
+}
+
+// AN UNDECODABLE EXIT ENTRY IS NOT "NO EXIT". Its name resolves to no subject, so it proves no seat's
+// ending - seat_worker_exit_owners claims no ended owner from it - and it must not vanish from the
+// record either, which is what let a seat with such an entry in its spool look live indefinitely. Each
+// one is named here so the discharge pass carries a located refusal for it, exactly as
+// seat_exit_listings_unreadable surfaces a stage it could not read. srv1 carries such an entry from
+// 2026-10-28: a worker exit entry whose systemd variables were never substituted, written outside
+// systemd's own ExecStopPost expansion. It is evidence that the WRITER is broken, never proof of any
+// holder's death, and death is what a seat release would need (see the holder-identity rule in
+// gunbc.compute.compute_run_unit_cold and gunbc.systemd_unit_invocation_liveness).
+type SeatUndecodableExitEntry {
+  entry_name: String
+  reason: String
+}
+
+fn seat_exit_entries_undecodable(listings: List<AttemptExitStageListing>) -> List<SeatUndecodableExitEntry> {
+  listings |> flat_map(l => match l {
+    AttemptExitStageNames { names } =>
+      names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+        AttemptExitEntryDecoded { record: _ } => [] as List<SeatUndecodableExitEntry>
+        AttemptExitEntryMalformed { entry_name, reason } => [SeatUndecodableExitEntry { entry_name: entry_name, reason: reason }]
+      })
+    AttemptExitStageUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
   })
 }
 
@@ -458,9 +494,12 @@ fn compute_seat_discharge_all(instance: HostDashboardInstance, leases: ComputePr
         SeatLiveSeatsListed { seats: live } =>
           SeatDischargeRan {
             outcomes: concat(
+              seat_exit_entries_undecodable(listings: listings)
+                |> flat_map(u => seat_discharge_outcomes(p: SeatDischargeRefused { reason: join(["an attempt-exit entry exists that this reader cannot decode, so no seat's ending is inferred from it and it is not treated as absent either: ", u.entry_name, " (", u.reason, ")"], "") }, located: join(["exit-entry/", u.entry_name], ""))),
+              concat(
               seat_worker_exit_owners(listings: listings)
                 |> flat_map(o => seat_discharge_outcomes(p: compute_seat_discharge_owned(instance: instance, leases: leases, subject: subject, appropriation: appropriation, node_id: o.node_id, attempt_key: o.attempt_key, source: source), located: join(["dispatch-", o.attempt_key], ""))),
-              live |> flat_map(seat => seat_discharge_outcomes(p: compute_seat_discharge_live(instance: instance, seat: seat, leases: leases, subject: subject, appropriation: appropriation, source: source), located: compute_seat_wire(seat: seat)))),
+              live |> flat_map(seat => seat_discharge_outcomes(p: compute_seat_discharge_live(instance: instance, seat: seat, leases: leases, subject: subject, appropriation: appropriation, source: source), located: compute_seat_wire(seat: seat))))),
           }
       }
   }

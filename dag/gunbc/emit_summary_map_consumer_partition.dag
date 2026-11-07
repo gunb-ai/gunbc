@@ -523,7 +523,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
     modules_in_pool: 161,
     type_declarations: 1182,
     distinct_colliding_names: 25,
-    specimens: "the dual-tree homonyms DESIGN section 3 already names -- Int (std.integer vs v2.std.integer), List (std.types vs v2.std.collection), Bool (std.types vs v2.std.logic), Unit and TerminationProof and RankingDimension (std versus v2.std.cardinality), Compose, the ten machine-width integer rows, plus NonNegativeInt and PositiveInt which only the reference extension pulls in",
+    specimens: "the dual-tree homonyms gunbc.design_argument::single_authority already names -- Int (std.integer vs v2.std.integer), List (std.types vs v2.std.collection), Bool (std.types vs v2.std.logic), Unit and TerminationProof and RankingDimension (std versus v2.std.cardinality), Compose, the ten machine-width integer rows, plus NonNegativeInt and PositiveInt which only the reference extension pulls in",
   },
   PoolMeasured {
     pool_rule: "rule 2 -- single entry, imports plus the reference extension",

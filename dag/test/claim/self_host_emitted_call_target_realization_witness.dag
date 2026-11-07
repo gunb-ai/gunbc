@@ -92,7 +92,7 @@ test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bo
 // fossil greens the panic arm and reds here. (Type position is NOT the discriminator, and the two
 // decisions must not be confused: since the alias-identity repair (v1.compiler.infer_types
 // node_is_finite_power_set_algebra_spelling) this probe's `s: FinitePowerSet<Int>` renders the
-// inhabitant -- `Rc<BTreeSet<i64>>`, the very type the `Set<Int>` spelling renders (DESIGN section 3:
+// inhabitant -- `Rc<BTreeSet<i64>>`, the very type the `Set<Int>` spelling renders (gunbc.design_argument::single_authority:
 // an alias and the carrier it names are one Rust type) -- while the record literal below still
 // refuses. What the refusal guards is constructing that inhabitant from characteristic-function
 // fields, never which type the carrier is.)
@@ -742,7 +742,7 @@ test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service
   )
 }
 
-// THE REFUSAL ARM'S DISCRIMINATING RED, still authorable and so still enrolled (DESIGN 4b). The stamp
+// THE REFUSAL ARM'S DISCRIMINATING RED, still authorable and so still enrolled (gunbc.design_argument::guarantee_ladder). The stamp
 // follows the service's NAME: a bare `Filesystem` is its registered root local and is stamped, but
 // `let fs = Filesystem` copies the nominal service TYPE onto a different name, and `fs.Read(...)`
 // then carries service method semantics (read from the receiver's type) through a receiver that is

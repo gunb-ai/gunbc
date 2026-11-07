@@ -16,7 +16,7 @@ import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, cens
 // with inverted polarity: it PASSED while the emitter fabricated panic!("unsupported cast from
 // String to NonEmptyStr") into generated Rust, and its own note named the flip as the signal to
 // rewrite both poles. Its dissolve-on trigger, feature:emitter-nested-refinement-lowering, has
-// fired. Per DESIGN section 4b(4) the receipt is not retired on the climb -- it is rewritten to
+// fired. Per gunbc.design_argument::guarantee_ladder (dissolution on climb) the receipt is not retired on the climb -- it is rewritten to
 // assert the repaired direction and kept enrolled, because a class whose evidence retires when it
 // starts passing has no way to report that it stopped.
 //

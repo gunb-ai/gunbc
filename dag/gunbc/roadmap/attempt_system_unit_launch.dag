@@ -11,7 +11,7 @@ module gunbc.roadmap.attempt_system_unit_launch
 // serve handler) writes a request into the spool and reads answers/<entry> once; a system `.path`
 // unit (DirectoryNotEmpty on requests/) starts a system oneshot service whose ExecStart is the
 // `gunbc run` of attempt_system_unit_launch_cli with --arg instance_root pinned. No requester holds
-// a sudo grant for it, and no requester waits on a child it cannot signal. DESIGN §3 replacement:
+// a sudo grant for it, and no requester waits on a child it cannot signal. gunbc.design_argument::single_authority replacement:
 // no --user dual path.
 //
 // THE REQUEST NAMES AN ATTEMPT; ROOT DERIVES EVERYTHING PRIVILEGED (review 80324). Each request is
@@ -30,8 +30,8 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
 // edit instance.serve_binary and the checkout; those paths are not what root runs.
 
-import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_state_text }
-import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
+import gunbc.roadmap.roadmap_attempt_state_store { AttemptWorkerLog, attempt_log_member_text }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_array, json_string, serialize_json }
@@ -107,6 +107,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
+import gunbc.systemd_unit_names { dispatch_attempt_unit_stem }
+
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
@@ -226,7 +228,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
       SystemdUnitNameAdmitted { name } => {
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
-    let log = attempt_state_text(instance: instance, node_id: node, attempt_key: request.attempt_key, member: AttemptWorkerLog)
+    let log = attempt_log_member_text(instance: instance, node_id: node, attempt_key: request.attempt_key, member: AttemptWorkerLog)
     match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
       AttemptExitHookRefused { reason } => AttemptSystemUnitStartUnderivable { reason: reason as String }
       AttemptExitHookRendered { exec_line } =>
@@ -1014,7 +1016,7 @@ fn attempt_system_unit_handle_claimed(
   }
 }
 
-// THE DRAIN PASS AND ITS LINE STOP (DESIGN section 5; the record is gunbc.roadmap.spool_stall's, shared with the
+// THE DRAIN PASS AND ITS LINE STOP (gunbc.design_argument::fail_closed; the record is gunbc.roadmap.spool_stall's, shared with the
 // exit spool). A pass that retired nothing from requests/ and left at least one entry it could not move stalls:
 // it writes the stall record into `stalled/`, and the drain service is skipped by
 // `ConditionDirectoryNotEmpty=!stalled` until attempt_unit_stall_release_cli clears it. A pass that retired
@@ -1041,7 +1043,7 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 
 // THE PASS IS DERIVED FROM ONE OUTCOME PER ENTRY, never accumulated: each spool entry is mapped to what became
 // of it, and the counts, the first failure and the unmovable list are read off that list in one pass each, so
-// no step copies a growing list (DESIGN 6, a copied accumulator is always fixed).
+// no step copies a growing list (gunbc.design_argument::how_to_work, a copied accumulator is always fixed).
 type AttemptUnitEntryOutcome
   = AttemptUnitEntrySkipped
   | AttemptUnitEntryHandled { handled: AttemptUnitHandled }

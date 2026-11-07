@@ -13,8 +13,8 @@ import v2.workflow.dag_acceptance {
 
 // THE REALIZATION HALF, AND IT LIVES AT THE PERIPHERY ON PURPOSE. v2.workflow.dag_acceptance is a
 // pure fold that takes a TargetCompileExecutor; this module is one binding of that interface, to
-// the cited rustc surface. The dispatch that selects a realization is itself realization (DESIGN
-// section 3), so the harness never names a toolchain and a second target toolchain is a second
+// the cited rustc surface. The dispatch that selects a realization is itself realization (
+// gunbc.design_argument::single_authority), so the harness never names a toolchain and a second target toolchain is a second
 // binding here, never an edit to the harness.
 //
 // IT IS A HOST-EFFECT MODULE, so it executes only on a wet run: the hermetic envelope refuses the

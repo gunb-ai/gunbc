@@ -1,0 +1,25 @@
+module gunbc.recurring_failure_mode.the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { CeilingAmbiguous, RecurringFailureMode, RungUnread }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_labs_only_model_route_is_a_hand_placed_tunnel_to_a_single_rented_card" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingAmbiguous },
+
+  receipts: [
+    "INVALID STATE: the dev lab's harness workers all had ONE model route: an ssh -L tunnel to one card the operator rented (ssh1.vast.ai:32062, ninfer-serve, model id qwen), started by a hand-placed systemd --user unit on srv1 that listened on 127.0.0.1:18090. The operator's rental ended at 2026-10-17 03:28Z. The tunnel then failed, and the route became an unreachable address that no model declared. The lab had no inference at all, and nothing in the repository said what replaced it. A route that is an address, a unit and a rental, none of which the repository models, is a single point of failure, invisible until it fails.",
+    "RECOGNITION RULE: a consumer whose only path to a model is a literal host:port plus a process the repository does not start. Ask what happens to the consumer when that one party stops, and who is told. The tell in the code is a route fact derived from a tunnel's LISTENER rather than from a modeled upstream: the address a request is sent to cannot disagree with a forward nobody observed.",
+    "REPAIRED ON MAIN by #15789, at the interface/realization/policy split (gunbc.design_argument::single_authority). The upstream is the srv1 fabric router, whose rows live in gunbc.serving.router_dev_policy. The lab's choice to use it is policy: gunbc.harness.harness_operator_route harness_router_operator_route, with its origin derived by operator_endpoint_origin from the declared router origin and never from a listener. The pinned HTTPS client is the realization. test.claim.operator_endpoint_witness discriminates both parts: the_route_urls_are_the_routers_origin_plus_its_declared_paths, and a_certificate_with_another_fingerprint_is_not_pinned. The lab's intermediate repair went through a pool front (lab PR 14244, extdeps.pool.pool_front, bright-moth-475/integration at abcbf27e4cc3). It is superseded by the router route and not carried. A route that cannot serve (HTTP 503, 502 or 429, or no response) means nothing was served. The patient-request contract that holds such a request, and re-delivers it instead of ending the worker, is declared in the continuation stack's #15804 (lab #15313). It is not on main at this revision.",
+    "HARM: gunbc.design_argument::fail_closed externalized availability, silent until the card went. A lab with one hand-placed route cannot be qualified, resumed or moved, and the first signal was every worker failing at once. RUNG FOUND AT: mitigatable (the roster probe declined the route as unreachable). ATTAINABLE CEILING: structurally guaranteed for the route fact, which derives from a modeled upstream. The router's own availability is outside the modeled guarantee and is observed at the boundary. NEXT-RUNG TRIGGER: the patient-request contract landing on main, so that an unserved request is held and re-delivered instead of ending the worker.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.harness.harness_operator_route", decl_name: "harness_router_operator_route", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.harness.harness_operator_route", decl_name: "operator_endpoint_origin", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.operator_endpoint_witness", decl_name: "the_route_urls_are_the_routers_origin_plus_its_declared_paths", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.operator_endpoint_witness", decl_name: "a_certificate_with_another_fingerprint_is_not_pinned", field: WholeDeclaration },
+  ],
+}

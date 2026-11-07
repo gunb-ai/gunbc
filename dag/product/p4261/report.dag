@@ -69,6 +69,8 @@ import extdeps.electronic_component.types {
   VolatileConfiguration,
   VoltageWithstandKind,
   WeakPullUp,
+  RectifierSpec,
+  RectifierRepetitivePeak,
 }
 import product.electrical.carrier_phase {
   is_bus_read,
@@ -110,6 +112,8 @@ import product.electrical.continuity {
 }
 import product.electrical.measured_netlist { netlist_text }
 import product.electrical.identification {
+  observation_relied_on,
+  marking_text,
   FootprintUnpopulated,
   identification_established,
   identification_text,
@@ -814,6 +818,7 @@ fn withstand_kind_text(k: VoltageWithstandKind) -> String {
     CapacitorRatedVoltage => "capacitor rated voltage"
     DrainSourceMaximum => "drain-source maximum"
     FuseInterruptRating => "fuse voltage rating"
+    RectifierRepetitivePeak => "rectifier peak repetitive reverse"
   }
 }
 
@@ -1033,7 +1038,7 @@ fn is_trace_target(r: SensorPinRole) -> Bool {
 fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking: MarkingReading) -> List<String> {
   match row.specification {
     TemperatureSensorSpec { sensor } => [join([
-      component_text(c: c.component), " ('", marking.text as String, "') is ", row.ordering_code as String,
+      component_text(c: c.component), " ('", marking_text(marking), "') is ", row.ordering_code as String,
       "; trace pins ", join(map(filter(sensor.pins, p => is_trace_target(r: p.role)), p => join([to_string(p.number), " ", p.name as String, " (", sensor_role_text(r: p.role), ")"], "")), ", "),
     ], "")]
     TvsDiodeSpec { tvs: _ } => []
@@ -1048,19 +1053,24 @@ fn sensor_pins_text(c: InstalledComponent, row: ElectronicComponentRow, marking:
     RootOfTrustSpec { root_of_trust: _ } => []
     SerialFlashSpec { flash: _ } => []
     SwitchingRegulatorSpec { regulator: _ } => []
+    BusMultiplexerSpec { multiplexer: _ } => []
+    UsbHubSpec { hub: _ } => []
+    RectifierSpec { rectifier: _ } => []
+    ClockFanoutSpec { clock: _ } => []
   }
 }
 
 // A part identified as a temperature sensor renders its bus pins as trace targets, from its typed roles.
 fn sensor_trace_text(c: InstalledComponent) -> List<String> {
   match c.identification {
-    IdentifiedByMarking { row, marking } => sensor_pins_text(c: c, row: row, marking: marking)
+    IdentifiedByMarking { row, observation } => sensor_pins_text(c: c, row: row, marking: observation_relied_on(o: observation))
     MarkingSharedByMakers { rows: _, marking: _ } => []
     MarkingCandidate { row: _, marking: _, discriminator: _ } => []
     RatingPrintedOnBody { rating: _, marking: _ } => []
     ResistanceCodeRead { milliohms: _, marking: _ } => []
     MarkingUnresolved { marking: _, discriminator: _ } => []
     FootprintUnpopulated { evidence: _ } => []
+    BodySeenMarkingUnread { evidence: _ } => []
   }
 }
 
@@ -1166,6 +1176,7 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
   match row.specification {
     ConnectorSpec { connector } => join([" (", connector.series as String, ", ", to_string(connector.positions), " positions)"], "")
     TvsDiodeSpec { tvs: _ } => ""
+    RectifierSpec { rectifier: _ } => ""
     CapacitorSpec { capacitor: _ } => ""
     MosfetSpec { mosfet: _ } => ""
     TemperatureSensorSpec { sensor: _ } => ""
@@ -1177,6 +1188,9 @@ fn family_spec_text(row: ElectronicComponentRow) -> String {
     RootOfTrustSpec { root_of_trust: _ } => ""
     SerialFlashSpec { flash: _ } => ""
     SwitchingRegulatorSpec { regulator } => join([" (synchronous step-down converter, ", millivolt_text(n: millivolt_count(v: regulator.input.minimum)), " to ", millivolt_text(n: millivolt_count(v: regulator.input.maximum)), " in, ", to_string(ampere_count(a: regulator.continuous_output_current)), " A, ", to_string(count(regulator.pins)), " pins)"], "")
+    BusMultiplexerSpec { multiplexer } => join([" (bus multiplexer, ", to_string(multiplexer.channels), " channels of ", to_string(multiplexer.inputs_per_channel), ")"], "")
+    UsbHubSpec { hub } => join([" (USB hub, ", to_string(hub.downstream_ports), " downstream ports, ", hub.generation as String, ", ", to_string(hub.upstream_ports), " upstream)"], "")
+    ClockFanoutSpec { clock } => join([" (clock fan-out, ", to_string(clock.inputs), " inputs, ", to_string(clock.outputs), " outputs)"], "")
   }
 }
 
@@ -1199,6 +1213,8 @@ fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
       " (", obligation as String, ")",
       match family_candidate {
         Absent => ""
+        // fc.marking is a CensusPartial text (carrier.dag:250), not a MarkingReading: this candidate carries
+        // what was written, not a reading with content, so it renders as it stands.
         Present { value: fc } => join(["; family candidate ", fc.row.ordering_code as String, family_spec_text(row: fc.row), ", marking '", fc.marking as String, "' read on ", read_on_text(r: fc.read_on)], "")
       },
     ], "")

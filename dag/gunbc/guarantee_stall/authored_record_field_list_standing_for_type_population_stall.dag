@@ -4,10 +4,10 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
 import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
-// WHY THIS IS A STALL AND NOT A SECTION 4b(3) DROP. Nothing was lowered. Before the BmcSecure
+// WHY THIS IS A STALL AND NOT A gunbc.design_argument::guarantee_ladder (no silent regression) DROP. Nothing was lowered. Before the BmcSecure
 // observation join grew past four fields, the join already bound an authored subset; extending it
 // to the rest of BmcAccountStateObservation except controller_clock did not drop a rung that had
-// been held. DESIGN section 4b(2) requires a class below its ceiling to name its next-rung trigger.
+// been held. gunbc.design_argument::guarantee_ladder (no untracked stall) requires a class below its ceiling to name its next-rung trigger.
 //
 // HOMES CHECKED BEFORE MINTING, so this is not a nickname of an existing class:
 // gunbc.guarantee_stall.axis_list_re_enumerates_its_variant_type_stall -- authored list mirroring a

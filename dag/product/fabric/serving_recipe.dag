@@ -38,7 +38,7 @@ import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 // product.fabric.selection select_supply as SupplierOffer quotes is witnessed (serving_recipe_witness)
 // but has no production caller yet: see serving_recipe_frontier, row serving_card_hourly.
 //
-// Figures this repository has not read from an upstream are TranscribedUncited (DESIGN 4d): the
+// Figures this repository has not read from an upstream are TranscribedUncited (gunbc.design_argument::epistemic_humility): the
 // operator's readings carry that standing and say so, and nothing here promotes them.
 
 // A RECIPE IS KEYED BY DECLARATION IDENTITY (std.decl_ref decl_ref / declaration_ref_eq), as the vendor rows are:
@@ -58,7 +58,7 @@ type ServingWeightsSource
   // count, byte totals, read record) — a digest the provision leg can verify, which
   // WeightsNamedUnpinned could never give. `quantization` is what the ENGINE reported loading
   // ("nvfp4_csf" for the lab checkpoint, from its startup log), never a restatement of the
-  // repository name (DESIGN 4d).
+  // repository name (gunbc.design_argument::epistemic_humility).
   | WeightsPinnedAtHub { checkpoint: HubCheckpointManifest, quantization: NonEmptyStr? }
   | WeightsNamedUnpinned { weights: NonEmptyStr, quantization: NonEmptyStr? }
 
@@ -70,7 +70,7 @@ type ServingModelArtifact {
 // ── engine build ─────────────────────────────────────────────────────────────────────────────
 // The engine is a REFERENCE to its own release row in the engine's own module (ninfer:
 // gunbc.serving.rented_ninfer_source NinferEngineRelease; the lab vLLM build:
-// extdeps.vllm.local_inference_lab_build), so no hub enumerates engine products (DESIGN 3, external
+// extdeps.vllm.local_inference_lab_build), so no hub enumerates engine products (gunbc.design_argument::single_authority, external
 // upstream decomposition).
 
 // ── card requirements ────────────────────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ type ServingCacheTiers {
 // A recipe whose weights are PLACED starts from that placement: the route is derived from
 // ServingWeightsSource (serving_start_source), so a placed source and its start route cannot disagree.
 // A recipe whose weights are unpinned carries an observed route with its own standing.
-// How a setting or route is grounded (DESIGN 4d). An OPERATOR POLICY choice is established policy, cited
+// How a setting or route is grounded (gunbc.design_argument::epistemic_humility). An OPERATOR POLICY choice is established policy, cited
 // to the dated design ruling that made it; an empirical reading keeps its CitedFigureStanding.
 type ServingSettingStanding
   = SettingOperatorPolicy { ruling: DeclarationRef }
@@ -133,7 +133,7 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
         // as the named-and-unpinned arm for the same reason — nothing is placed — but spelled separately
         // so the mismatch stays visible: an arm here is a per-variant STANDING, not a catch-all (a
         // wildcard would silently absorb any future ServingWeightsSource variant). This arm is what
-        // #15222 owed when it added WeightsPinnedAtHub (§6b: enumerate the siblings of the match you
+        // #15222 owed when it added WeightsPinnedAtHub (gunbc.design_argument::root_generalization: enumerate the siblings of the match you
         // extend); without it the whole closure through product.fabric.serving_recipe refuses to
         // resolve as non-exhaustive.
         WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
@@ -150,7 +150,7 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
   }
 }
 
-// Chosen or observed settings of a recipe carry their standing (DESIGN 4d): none of these is a measured
+// Chosen or observed settings of a recipe carry their standing (gunbc.design_argument::epistemic_humility): none of these is a measured
 // compatibility fact, and a consumer reads the standing instead of assuming one.
 type ServingSettingStandings {
   disk: ServingSettingStanding
@@ -509,7 +509,7 @@ fn serving_unit_cost_at(recipe: ServingRecipe, hourly: MoneyPerHour, hourly_stan
 }
 
 // What select_supply may take as a quote. An Estimated cost is a bet and is refused as an established
-// price (DESIGN 4d): the selection fold is handed only a Quoted cost.
+// price (gunbc.design_argument::epistemic_humility): the selection fold is handed only a Quoted cost.
 type ServingSelectionQuote
   = SelectionQuoteEstablished { amount: MoneyAmountMicro, currency: CurrencyCode }
   | SelectionQuoteRefusedEstimated { standings: List<CitedFigureStanding> }
@@ -537,7 +537,7 @@ fn serving_cache_bytes(sizing: ServingCacheSizing, host: ByteSize) -> ByteSize {
 data serving_recipe_frontier: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
-    reason: "Flash-Next has no HarnessServingUnit arm: its request wire, tool-call parser, reasoning field and served model id are unread, and an arm would have to invent them in every exhaustive unit match. Until then it is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
+    reason: "The lab vLLM build has no HarnessServingUnit arm of its own: its request wire, tool-call parser and reasoning field are unread. The only Flash-Next arm is Qwen38FlashNextOnFabricRouter, which speaks the fabric router's client dialect (gunbc.serving.router_dev_policy) and claims no engine facts, so this recipe is interchangeable with nothing and placed by no harness turn. ServingCacheSizing (host RAM and disk session cache fractions) is declared here because neither extdeps.vllm.kv_cache nor an LMCache module models the host-RAM and disk tiers: no extdeps.lmcache exists and this repository has read none of LMCache.",
     dissolution: unbound_dissolution(description: "(1) an extdeps module for the lab vLLM build and Qwen3.8-Flash-Next citing its wire, parser, reasoning and served-model facts, and a HarnessServingUnit arm built from it; (2) an extdeps.lmcache module citing tier configuration, after which ServingCacheTiers references it. SUFFICIENT FOR deleting this row."),
   ),
   frontier_row_decl(

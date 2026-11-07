@@ -69,7 +69,7 @@ import v2.workflow.legacy_binding_delta {
 // what it was created for, and a declared insertion that is not a created node at all, have
 // different causes and different repairs, and the wiring would have been free to collapse them.
 // THE RETIREMENT IS A TYPED CONDITION, NOT A SENTENCE. An earlier revision of this module carried
-// the whole thing as `data ...: String`, which is the shape §4c names as modeling debt and which
+// the whole thing as `data ...: String`, which is the shape gunbc.design_argument::source_annotations names as modeling debt and which
 // #6262/#6424 already swept once: a dissolution condition is machine-consumed, so it belongs in
 // `std.dissolution` where `dissolution_status` can read it, and prose that no `Accepted` program can
 // read belongs in an annotation like this one. A review read the String as admitted BECAUSE it named
@@ -80,7 +80,7 @@ import v2.workflow.legacy_binding_delta {
 // UNBOUND and said so honestly: the bound form is `DeclarationAppears` over `std.occurrence_identity`
 // `OccurrenceProjected`, that declaration did not exist on the base this module was authored against,
 // and authoring the citation there would have been refused by the citation wall as a name that does
-// not resolve -- the §3 fabricated-citation class the dissolution module's own annotation warns about
+// not resolve -- the gunbc.design_argument::single_authority fabricated-citation class the dissolution module's own annotation warns about
 // by name. That revision also named its own trigger: the condition binds in the same change that
 // rebases this module onto the arm, at which point the ref is verifiable at the moment it is written.
 //

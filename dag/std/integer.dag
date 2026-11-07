@@ -75,6 +75,11 @@ fn nat_to_int(n: Nat) -> Int {
 // bypassing it with a bare Int. Rung: mitigatable. NEXT-RUNG TRIGGER, shared with std.machine_word's
 // word carrier: sole construction over UInt8, which makes the unconstructed value unwritable and
 // turns this refusal into a state with no constructor.
+// SUPERSEDED PRESCRIPTION, 2026-11-01: gunbc.design_ruling
+// machine_width_composition_has_an_intersection_carrier decides an inhabited integer-width
+// intersection, retaining the width in the type. The historical diagnosis below remains true of
+// the current emitter, not the intended model. UInt8Ready stays Int until the checked width mint
+// and target realization land together; changing it now would repeat the measured E0308.
 // THE READY ARM CARRIES AN `Int`, AND SAYING `UInt8` HERE WAS THE DEFECT.
 //
 // `UInt8` is `Compose<UInt, MachineWidth<8>>` and `Compose` is `Phantom`: it has NO INHABITANT. So
@@ -114,7 +119,7 @@ fn uint8_of_int(value: Int) -> UInt8Result {
 // route is a wall with a door next to it. That is not reasoning, it is measured on the head this
 // carrier replaces: word_from_octets(Width16, [1, 256], BigEndian) answered WordReady 512,
 // octet_int_values([256]) answered [256], and base64_encode([256, 0, 0], Standard) answered "AAAA"
-// -- a fabricated plausible output, which DESIGN section 5 forbids outright, reached without forging
+// -- a fabricated plausible output, which gunbc.design_argument::fail_closed forbids outright, reached without forging
 // anything. The RED that was supposed to cover this tested uint8_of_int BESIDE the production route
 // rather than on it.
 //
@@ -146,14 +151,19 @@ type QualifiedOctetsResult
 // the octet radix, each already through uint8_of_int -- so routing it through the fold would add a
 // refusal arm no input can reach, which is the unreachable-arm trap this change deletes elsewhere.
 //
-// base16_decode_lower and sha256_hex are admitted on THAT SAME GROUND and on no weaker one, which
-// is why they are named rather than the roster being opened. Each member base16_decode_lower mints
-// is `high * 16 + low` over two digits drawn from base16_digit_rows, so it is computed in [0, 255]
+// base16_decode_any and sha256_hex are admitted on THAT SAME GROUND and on no weaker one, which is
+// why they are named rather than the roster being opened. Each member base16_decode_any mints is
+// `high * 16 + low` over two digits drawn from base16's own digit rows, so it is computed in [0, 255]
 // by the operation that produced it; each member sha256_hex mints came out of sha256_word_octets,
 // which is the same modulo-radix decomposition word_to_octets performs. NEITHER IS A PROXY, which
-// is the property that decides whether a roster entry is safe: base16_decode_lower's only formal
-// is the hex STRING and sha256_hex's is the message, so no caller can pre-load the member list the
-// mint seals -- the proved list and the minted list are the same value, as they are above.
+// is the property that decides whether a roster entry is safe: base16_decode_any's only formal is the
+// hex STRING and sha256_hex's is the message, so no caller can pre-load the member list the mint
+// seals -- the proved list and the minted list are the same value, as they are above. The walk helper
+// base16_decode_any delegates to DOES take an accumulator, and that is worth saying rather than
+// glossing: it is not on this roster and it mints nothing, and the only call that reaches this
+// constructor hands it an accumulator the module built itself, from the empty list. base16's
+// lowercase decoder left this roster because it no longer mints -- it is that same either-case walk
+// plus the alphabet's own membership test over the text it was given.
 //
 // THE RUNG THIS REACHES, MEASURED IN BOTH DIRECTIONS RATHER THAN CLAIMED. Three routes were probed
 // against this carrier as real modules compiled through the real acceptance path:
@@ -176,7 +186,7 @@ type QualifiedOctetsResult
 // Product(QualifiedWord), got Product(Word)"), and a TYPED List<UInt8> crosses just as a literal
 // does, so it is the list position and not the literal. NEXT-RUNG TRIGGER: inhabitance decided for a
 // List argument at a non-List declared type -- a compiler capability, named here so the stall is
-// tracked rather than silent (DESIGN section 4b(2)).
+// tracked rather than silent (gunbc.design_argument::guarantee_ladder (no untracked stall)).
 //
 // WHAT admit_callers DOES AND DOES NOT ESTABLISH, stated here because the distinction decides the
 // rung. It constrains the CALL EDGE, not the egress of the returned value: an admitted producer that
@@ -188,7 +198,9 @@ fn qualified_octets(members: List<Int>) -> QualifiedOctets
   admit_callers: [
     decl_ref(module_path: "std.integer", decl_name: "uint8_octets_of_ints"),
     decl_ref(module_path: "std.machine_word", decl_name: "word_to_octets"),
-    decl_ref(module_path: "extdeps.numeric.base16", decl_name: "base16_decode_lower"),
+    // extdeps.numeric.base16's ONE minter, the either-case walk; its lowercase decoder is that walk plus the
+    // alphabet's membership test and never reaches this gate. The ground it stands on is stated once, above.
+    decl_ref(module_path: "extdeps.numeric.base16", decl_name: "base16_decode_any"),
     decl_ref(module_path: "extdeps.crypto.sha2", decl_name: "sha256_hex")
   ]
 {
@@ -276,7 +288,7 @@ fn uint8_channel_inclusive_max_value_derived() -> Int? {
 // through the one successor table in std.nat (a carry out of D9 wraps to D0, which IS the units
 // digit of ten), and a value in -9..-1 is its own negation's digit (no overflow: its magnitude is
 // at most nine). No Int-to-digit selection exists to be out of range and no default arm exists to
-// answer one (DESIGN section 5: a failure arm must refuse, never widen; section 4b: construction
+// answer one (gunbc.design_argument::fail_closed: a failure arm must refuse, never widen; section 4b: construction
 // over validation) -- -1 is D1, 9 is D9, 10 is D0, 99 is D9, each by derivation.
 fn decimal_digit_of_units(value: Int) -> DecimalDigit {
   if value >= 10 {
@@ -302,10 +314,10 @@ fn decimal_digit_advance(d: DecimalDigit) -> DecimalDigit {
 // MACHINE INTEGER TO DECIMAL TEXT. Int realizes as the host integer, so host division and
 // remainder are its declared operations (std.operator_realization HostOperator); the digit glyph
 // comes from the one table in std.nat. It moved here from v2.std.integer so a seed-emitted dag
-// module can name it (DESIGN section 3: a fact's home is its layer).
+// module can name it (gunbc.design_argument::single_authority: a fact's home is its layer).
 // EXACT AND LOSSLESS: the canonical decimal spelling (a leading "-" only for negatives, no leading
 // zeros) is injective over Int, so this is the declared conversion an interpolation hole over an
-// Int names (DESIGN section 4: no implicit stringify).
+// Int names (gunbc.design_argument::closed_grounded_substrate: no implicit stringify).
 fn int_to_decimal_string(value: Int) -> String {
   if value < 0 {
     concat("-", int_digits_to_decimal_string(value: value))

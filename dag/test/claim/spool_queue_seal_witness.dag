@@ -28,7 +28,7 @@ import gunbc.spool_queue {
 // operations and the mint do not exist as effects (importing them is a MissingExport today), and the three spools'
 // raw stage-path functions are still importable. When the implementation lands the first group FLIPS to
 // "exists" and the second to MissingExport; the claims then stay enrolled as permanent regression controls
-// (DESIGN section 4b, dissolution on climb).
+// (gunbc.design_argument::guarantee_ladder, dissolution on climb).
 
 fn seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
   blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)

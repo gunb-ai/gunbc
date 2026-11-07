@@ -24,6 +24,7 @@ import gunbc.auth.access_token_source {
   AccessTokenSource, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused,
   access_token_upsert_required_reason, ensure_access_token,
 }
+import std.integer { int_to_decimal_string }
 
 // WHERE EACH PRINTER'S ACCESS CODE LIVES, NEVER WHAT IT IS.
 //
@@ -159,7 +160,7 @@ fn printer_access_code_locus(printer: PhysicalAssetIdentity) -> PrinterAccessCod
 // VerifiedVersionForAttempt, whose only producer is the arm of add_initial_version where the write
 // landed, the returned identity named this very secret, the read-back identity equalled what
 // AddVersion reported, and the bytes equalled the ones this run captured. The guarantee can no
-// longer be satisfied by editing a declaration, which is the §5 tell the old note correctly named
+// longer be satisfied by editing a declaration, which is the gunbc.design_argument::fail_closed tell the old note correctly named
 // and correctly admitted it failed.
 //
 // RUNG: mitigation. CEILING: structural impossibility -- membership is decidable, so the invalid
@@ -305,7 +306,7 @@ fn classify_container_observation(
           printer: printer,
           cause: concat(concat(
             "Secret Manager did not answer whether this printer's access code exists; it refused the read with HTTP ",
-            s as String),
+            int_to_decimal_string(s)),
             concat(": ", b)) as NonEmptyStr,
         }
       }
@@ -320,7 +321,7 @@ fn classify_container_observation(
       PrinterCredentialObservationRefused {
         printer: printer,
         cause: concat(concat(concat(
-          "Secret Manager answered HTTP ", s as String),
+          "Secret Manager answered HTTP ", int_to_decimal_string(s)),
           " and the body beneath it could not be read, so the answer is unknown rather than absent: "),
           c as String) as NonEmptyStr,
       }

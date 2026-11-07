@@ -678,7 +678,7 @@ fn resolve_training(
 //
 // derive_work_key(contract, requirements) in product.fabric.work is the sole semantic identity
 // authority and it stays that way: this function projects and delegates. A local hash over the
-// manifest would be a second identity for one concept -- the fork DESIGN section 3 forbids -- and
+// manifest would be a second identity for one concept -- the fork gunbc.design_argument::single_authority forbids -- and
 // it would drift from the fabric's the first time either side gained a field.
 //
 // Nothing stores the resulting identity either. ResolvedTrainingWork carries no work_identity

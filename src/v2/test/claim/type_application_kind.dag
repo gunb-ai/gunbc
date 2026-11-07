@@ -153,7 +153,7 @@ test fn tak_application_of_a_non_generic_declaration_refuses() -> Bool {
   tak_refuses_with(o: tak_arity_nongeneric(), reason: ^resolve_reason_type_application_arity_mismatch)
 }
 
-// THE VERDICT AT ITS OWN INTERFACE, over supplied binders and a supplied judgment (DESIGN section 3: a
+// THE VERDICT AT ITS OWN INTERFACE, over supplied binders and a supplied judgment (gunbc.design_argument::single_authority: a
 // witness discriminates at one interface; the specimens above are this boundary's inhabitance claims on
 // the real route). A literal the judgment leaves unjudged is admitted, never refused -- the frontier
 // std.machine_constraints machine_width_literal_roster_frontier declares -- and an arity mismatch is

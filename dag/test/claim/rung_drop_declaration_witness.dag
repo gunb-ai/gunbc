@@ -1,6 +1,5 @@
 module test.claim.rung_drop_declaration_witness
 
-import gunbc.rung_drop.node_reaching_composite_equality { node_reaching_composite_equality }
 
 import std.types { String, Bool, NonEmptyStr }
 import std.algebra { FreeSemigroup, list_append }
@@ -14,7 +13,7 @@ import gunbc.rung_drop {
   OffLadder, OnLadderAt, NotJudgeableFromProse,
 }
 import extdeps.bazel.label { Label, TargetName }
-import gunbc.instrument_targets { instruments_package, compile_clean_diagnostic_census_label }
+import gunbc.instrument_targets { instruments_package, self_host_label }
 import gunbc.required_ci_phase_roster { ParsePhase, GeneratedArtifactPhase, FloorPhase, required_ci_phases, regenerating_phase_names }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop.source_root_ingest_gate_rung_drop { source_root_ingest_gate_rung_drop }
@@ -176,7 +175,7 @@ data readable_derived_label: RungDrop = RungDrop {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: DeletedWithoutReplacement,
-    population: DerivedBy { label: compile_clean_diagnostic_census_label() },
+    population: DerivedBy { label: self_host_label() },
     restoration_trigger: "control restoration trigger"
   } }
 }
@@ -186,7 +185,6 @@ test fn an_uncounted_or_unlabelled_standing_population_is_refused_and_readable_o
     && !rung_drop_is_readable(d: unreadable_unknown_label)
     && rung_drop_is_readable(d: control_rung_drop)
     && rung_drop_is_readable(d: readable_derived_label)
-    && !rung_drop_is_readable(d: node_reaching_composite_equality)
 }
 
 test fn unreadable_standing_roster_drops_are_only_not_yet_counted_populations() -> Bool {

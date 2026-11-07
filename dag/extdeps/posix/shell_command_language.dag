@@ -29,7 +29,7 @@ import extdeps.uri { Uri, Https }
 // here, by turning CI red. A constraint that is documented in a carrier note but enforced nowhere
 // gets rediscovered once per lane that trips it, and three rediscoveries is the argument for
 // resolving it rather than documenting it a fourth time. THE FINDING, which is worth more than the
-// cleanup: the mandatory-tag corpus scan STRUCTURALLY REQUIRES the duplication section 3 forbids.
+// cleanup: the mandatory-tag corpus scan STRUCTURALLY REQUIRES the duplication gunbc.design_argument::single_authority forbids.
 // As mechanized today, 'every extdeps module declares its own anchor' is satisfiable only by
 // re-declaring the literal per module, so any two modules governed by one upstream must copy its
 // URI. That is a real conflict between two live rules and it is NOT mine to resolve inside a review
@@ -85,7 +85,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // (review relayed through the operator, 2026-08-04). It was previously stored as a further_citation
 // on the GNU Bash ExternalModelScope, while the Bash carrier's own prose said the two were
 // independently governed entities — so the file asserted the decomposition and then violated it one
-// declaration later. DESIGN section 3's external-upstream decomposition rules on exactly this:
+// declaration later. gunbc.design_argument::external_upstreams's external-upstream decomposition rules on exactly this:
 // multiple citations may ground ONE subject, but a second INDEPENDENTLY GOVERNED subject is not a
 // citation of the first. The Open Group governs this specification; the GNU project governs Bash;
 // neither versions with the other, and a change to one must not require editing the other's module
@@ -156,8 +156,8 @@ data posix_name_continue_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
 
 // XBD 3.235 states the rule as two facts about a word: the first character is drawn from one
 // alphabet and every later character from another, and a word is non-empty. `name` is KERNEL text
-// (host String); the one declared Unicode-scalar unfold (std.coercion unicode_scalar_unfold, DESIGN
-// section 4) is taken ONCE at this reader, and the cons cell then IS that split -- the empty word is
+// (host String); the one declared Unicode-scalar unfold (std.coercion unicode_scalar_unfold,
+// gunbc.design_argument::closed_grounded_substrate) is taken ONCE at this reader, and the cons cell then IS that split -- the empty word is
 // refused by the shape, the head is tested against the first alphabet and the tail is scanned once
 // against the second. A single forward traversal: no index, so no per-position rescan from the start.
 // The alphabets are unfolded once, as data, rather than per character tested.
@@ -200,7 +200,7 @@ fn admit_posix_shell_name(spelling: String) -> PosixShellNameAdmission {
 // pathname wall (XBD Pathname / execve), not a transport. Empty: not a pathname. NUL: cannot inhabit
 // a pathname. Newline is a legal pathname and a legal quoted XCU word, and it is admitted: RFC 4254
 // section 6.5 carries the exec command as an arbitrary string with no line discipline, and a newline
-// inside single quotes is literal (XCU 2.2.2), so no transport refuses it (DESIGN section 4d).
+// inside single quotes is literal (XCU 2.2.2), so no transport refuses it (gunbc.design_argument::epistemic_humility).
 
 type PosixRedirectPathRefusal
   = RedirectPathEmpty
@@ -229,7 +229,7 @@ fn admit_posix_redirect_pathname(path: String) -> PosixRedirectPathAdmission {
 }
 
 // XCU 2.7 operators as a tree, not a suffix string. emit_posix_redirection is the one serializer
-// (DESIGN §4: emit selects from the same rows). 2.7.2 `>|word` ignores noclobber; 2.7.3 is `>>word`;
+// (gunbc.design_argument::closed_grounded_substrate: emit selects from the same rows). 2.7.2 `>|word` ignores noclobber; 2.7.3 is `>>word`;
 // 2.7.5 is `[n]>&word`. The word is posix_single_quote-wrapped.
 
 type PosixRedirection

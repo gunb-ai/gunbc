@@ -130,7 +130,7 @@ data interserver_quarter_rack_high_transit_plan: RetailPlanRow = RetailPlanRow {
   citation: "the operator's own colocation page www.interserver.net/colo/, fetched 2026-09-09 (HTTP 200, 59,427 bytes) and read from raw HTML after tag-stripping, which emits \"Quarter rack in NYC, Small cluster with room to grow, $940 /month, Region Secaucus / NYC Metro, Space Quarter Rack, Power 1500W, IP space /30 + /27 IP Space, Bandwidth 5 Gbps on a 10 Gbps Port\". The 10U count is carried from the tracker row for this operator's quarter footprint and is not on the page.",
 }
 
-// THE FOUR PLAN ROWS ABOVE HAVE NO EXECUTING CONSUMER, AND SAYING SO IS THE POINT (DESIGN 3c). A
+// THE FOUR PLAN ROWS ABOVE HAVE NO EXECUTING CONSUMER, AND SAYING SO IS THE POINT (gunbc.design_argument::consumption). A
 // List<RetailPlanRow> gathering them stood here and was deleted: nothing read it, so it was a
 // second authority over four adjacent declarations that bought nothing, which is the same dangling
 // list a review removed from extdeps.colo.lumen on this branch. Deleting the list does not

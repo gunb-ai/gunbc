@@ -1,11 +1,12 @@
 module extdeps.network.mac
 
-import std.types { Int, String, Bool, NonEmptyStr, List, list_length }
-import std.integer { UInt8, qualified_octet_members }
+import std.types { Int, String, Bool, NonEmptyStr, List }
+import std.algebra { length }
+import std.integer { UInt8, int_to_decimal_string, qualified_octet_members }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower }
-import std.host_text { chars }
+import extdeps.numeric.base16 { byte_hex_lower, base16_decode_lower, base16_decode_any }
+import std.host_text { chars, string_length }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -33,7 +34,7 @@ data ieee_802_address_authority: ExternalAuthority = ExternalAuthority {
 // departure from the sibling module rather than an oversight. extdeps.network.ipv4 declares
 // `type Octet = Int where range(min: 0, max: 255)`, and measured across the corpus that is the ONLY
 // such refinement -- so a MacOctet declared here would have been the SECOND name for one concept,
-// which is exactly the re-invention DESIGN section 2 tests for ("net concepts must not grow by
+// which is exactly the re-invention gunbc.design_argument::minimize_redundancy tests for ("net concepts must not grow by
 // re-invention"). std.integer.UInt8 is the universal authority for an 8-bit unsigned integer and
 // already exists, so the byte grounds there. Importing ipv4's Octet was the other option and is
 // worse: a MAC octet is not an IPv4 octet, and the dependency would ground a link-layer fact on a
@@ -238,12 +239,12 @@ type MacOctetResult =
 // cause rather than arriving at the codec as "not hex".
 fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   match parts |> get(position) {
-    Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
+    Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: length(xs: parts) } }
     Present { value: raw } => {
       let points = chars(text: raw)
-      if list_length(items: points) != 2 {
+      if length(xs: points) != 2 {
         MacOctetErr {
-          error: MacOctetWrongWidth { position: position, raw: raw, observed_width: list_length(items: points) },
+          error: MacOctetWrongWidth { position: position, raw: raw, observed_width: length(xs: points) },
         }
       } else {
         match base16_decode_lower(hex: raw) {
@@ -259,10 +260,122 @@ fn parse_mac_octet_at(parts: List<String>, position: Int) -> MacOctetResult {
   }
 }
 
+// ONE OCTET, EITHER CASE. The width is established first, so a wrong-length component keeps its own
+// MacOctetWrongWidth cause, and the hex check is `base16_decode_any` over the same digit rows the lowercase
+// codec uses -- the case policy is the only difference, and it lives in extdeps.numeric.base16.
+fn parse_mac_octet_any_case_at(parts: List<String>, position: Int) -> MacOctetResult {
+  match parts |> get(position) {
+    Absent => MacOctetErr { error: MacWrongOctetCount { observed_count: length(xs: parts) } }
+    Present { value: raw } => {
+      let width = string_length(raw)
+      if width != 2 {
+        MacOctetErr { error: MacOctetWrongWidth { position: position, raw: raw, observed_width: width } }
+      } else {
+        match base16_decode_any(hex: raw) {
+          Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
+          Present { value: qualified } => match qualified_octet_members(q: qualified).first() {
+            Present { value: octet } => MacOctetOk { value: octet }
+            Absent => MacOctetErr { error: MacOctetNotHex { position: position, raw: raw } }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE SIX OCTETS, COLON-SEPARATED, IN EITHER CASE. WHY THIS EXISTS AND THE LOWERCASE PARSER DOES NOT COVER IT:
+// the DMTF Redfish EthernetInterface schema spells MACAddress as uppercase hex pairs (`AC:1F:6B:E3:F6:B0`),
+// while this codec's canonical rendering is lowercase. A reader that refused the schema's own spelling would
+// report a real published port as no port at all -- a confident wrong answer, not a refusal. The canonical
+// form is unchanged: `render_mac_address` still prints lowercase, so the two spellings meet at the parsed
+// value, not at the text.
+fn parse_mac_address_any_case(text: String) -> MacParseResult {
+  let parts = split(s: text, delimiter: ":")
+  if length(xs: parts) != 6 {
+    MacParseFailed { error: MacWrongOctetCount { observed_count: length(xs: parts) } }
+  } else {
+    match parse_mac_octet_any_case_at(parts: parts, position: 0) {
+      MacOctetErr { error: e0 } => MacParseFailed { error: e0 }
+      MacOctetOk { value: o1 } => match parse_mac_octet_any_case_at(parts: parts, position: 1) {
+        MacOctetErr { error: e1 } => MacParseFailed { error: e1 }
+        MacOctetOk { value: o2 } => match parse_mac_octet_any_case_at(parts: parts, position: 2) {
+          MacOctetErr { error: e2 } => MacParseFailed { error: e2 }
+          MacOctetOk { value: o3 } => match parse_mac_octet_any_case_at(parts: parts, position: 3) {
+            MacOctetErr { error: e3 } => MacParseFailed { error: e3 }
+            MacOctetOk { value: o4 } => match parse_mac_octet_any_case_at(parts: parts, position: 4) {
+              MacOctetErr { error: e4 } => MacParseFailed { error: e4 }
+              MacOctetOk { value: o5 } => match parse_mac_octet_any_case_at(parts: parts, position: 5) {
+                MacOctetErr { error: e5 } => MacParseFailed { error: e5 }
+                MacOctetOk { value: o6 } => MacParsed {
+                  address: mac_address(
+                    octet1: o1, octet2: o2, octet3: o3, octet4: o4, octet5: o5, octet6: o6,
+                  ),
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE PACKED SPELLING A UEFI DEVICE PATH USES: twelve hex digits with no separators, either case
+// (`MAC(ac1f6be3f6b0,0x0)` in EDK2's text). It is the same six octets, and it parses to the same value, so a
+// Redfish-published MAC and a device-path-published MAC are compared as addresses rather than as text -- which
+// is the only reason the join in gunbc.machine_intake.bmc_first_contact_reading is sound at all.
+fn parse_packed_mac_address(text: String) -> MacParseResult {
+  let width = string_length(text)
+  if width != 12 {
+    MacParseFailed { error: MacWrongOctetCount { observed_count: width } }
+  } else {
+    match base16_decode_any(hex: text) {
+      Absent => MacParseFailed { error: MacOctetNotHex { position: 0, raw: text } }
+      Present { value: qualified } => match qualified_octet_members(q: qualified) |> get(0) {
+        Absent => MacParseFailed { error: MacWrongOctetCount { observed_count: 0 } }
+        Present { value: m1 } => match qualified_octet_members(q: qualified) |> get(1) {
+          Absent => MacParseFailed { error: MacWrongOctetCount { observed_count: 1 } }
+          Present { value: m2 } => match qualified_octet_members(q: qualified) |> get(2) {
+            Absent => MacParseFailed { error: MacWrongOctetCount { observed_count: 2 } }
+            Present { value: m3 } => match qualified_octet_members(q: qualified) |> get(3) {
+              Absent => MacParseFailed { error: MacWrongOctetCount { observed_count: 3 } }
+              Present { value: m4 } => match qualified_octet_members(q: qualified) |> get(4) {
+                Absent => MacParseFailed { error: MacWrongOctetCount { observed_count: 4 } }
+                Present { value: m5 } => match qualified_octet_members(q: qualified) |> get(5) {
+                  Absent => MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }
+                  Present { value: m6 } => MacParsed {
+                    address: mac_address(
+                      octet1: m1, octet2: m2, octet3: m3, octet4: m4, octet5: m5, octet6: m6,
+                    ),
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// WHY A MAC DID NOT PARSE, IN ONE SENTENCE, spelled once. The three causes stay distinct: a service that
+// published `AC:1F` and one that published `ZZ:ZZ:ZZ:ZZ:ZZ:ZZ` failed in different ways, and a consumer that
+// flattened them would hide which fact arrived.
+fn mac_parse_error_text(error: MacParseError) -> String {
+  match error {
+    MacWrongOctetCount { observed_count: observed_count } =>
+      concat("expected six hex octets, saw ", int_to_decimal_string(value: observed_count))
+    MacOctetNotHex { position: position, raw: raw } =>
+      concat("octet ", concat(int_to_decimal_string(value: position), concat(" (", concat(raw, ") is not two hex digits"))))
+    MacOctetWrongWidth { position: position, raw: raw, observed_width: observed_width } =>
+      concat("octet ", concat(int_to_decimal_string(value: position), concat(" (", concat(raw, concat(") is ", concat(int_to_decimal_string(value: observed_width), " characters, not two"))))))
+  }
+}
+
 fn parse_mac_address(text: String) -> MacParseResult {
   let parts = split(s: text, delimiter: ":")
-  if list_length(items: parts) != 6 {
-    MacParseFailed { error: MacWrongOctetCount { observed_count: list_length(items: parts) } }
+  if length(xs: parts) != 6 {
+    MacParseFailed { error: MacWrongOctetCount { observed_count: length(xs: parts) } }
   } else {
     match parse_mac_octet_at(parts: parts, position: 0) {
       MacOctetErr { error: e0 } => MacParseFailed { error: e0 }

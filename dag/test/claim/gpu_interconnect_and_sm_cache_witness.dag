@@ -13,7 +13,7 @@ import extdeps.storage.types { PcieLink, PcieGeneration, pcie_link_bandwidth }
 import std.logic { Bool }
 import std.nat { Nat }
 import std.measure { bandwidth_count, byte_size_count }
-import std.types { list_length }
+import std.algebra { length }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -52,7 +52,7 @@ test fn w_rtx_5090_sm_cache_geometry_matches_cuda_docs() -> Bool {
 
 test fn w_rtx_5090_sm_cache_citations_cover_both_fields() -> Bool {
   let citations = rtx_5090_sm_cache_citations
-  list_length(items: citations) == 2
+  length(xs: citations) == 2
     && match citations.first() {
          Present { value: e } => e.authority == cuda_compute_capabilities_authority
          Absent => false

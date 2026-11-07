@@ -1,7 +1,7 @@
 module test.claim.altra_memory_controller_witness
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.algebra { length }
 import std.integer { Int }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count, megatransfers_per_second_count }
 import extdeps.memory.jedec { ddr4_generation_catalog }
@@ -62,7 +62,7 @@ test fn w_every_admitted_module_class_is_buffered() -> Bool {
       Unbuffered => false
     }
   })
-    && list_length(items: altra_admitted_module_classes) == 3
+    && length(xs: altra_admitted_module_classes) == 3
 }
 
 // AND THE DISCRIMINATING CONTROL: an unbuffered class is genuinely refused, not merely absent
@@ -164,8 +164,8 @@ test fn w_production_qualification_separates_bringup_from_production() -> Bool {
 // in bytes at the exact 2^30-bits-per-Gb conversion the carrier declares, so a silent
 // re-denomination reds rather than rounding.
 test fn w_device_organization_matches_the_datasheet() -> Bool {
-  list_length(items: altra_admitted_device_widths) == 2
-    && list_length(items: altra_admitted_device_densities) == 2
+  length(xs: altra_admitted_device_widths) == 2
+    && length(xs: altra_admitted_device_densities) == 2
     && match altra_admitted_device_widths.first() {
       Present { value: w } => bit_width_count(b: w) == 4
       Absent => false

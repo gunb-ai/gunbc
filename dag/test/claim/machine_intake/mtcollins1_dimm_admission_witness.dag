@@ -1,7 +1,7 @@
 module test.claim.machine_intake.mtcollins1_dimm_admission_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { string_contains }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { string_contains, length }
 import std.measure { byte_size, megatransfers_per_second }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.content_hash { Sha256Digest }
@@ -112,8 +112,8 @@ fn capture_roster_is_exactly(text: String, pop: List<ObservedDimm>) -> Bool {
     AmpereDramBlockNotPrinted => false
     AmpereDramBlockObserved { block: b, blocks_printed: _ } =>
       (match b.roster { RosterClosed => true _ => false })
-        && list_length(b.malformed) == 0
-        && list_length(b.dimms) == list_length(pop)
+        && length(b.malformed) == 0
+        && length(b.dimms) == length(pop)
         && !any(pop, m => !block_has(block: b, m: m))
   }
 }

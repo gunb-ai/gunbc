@@ -20,7 +20,7 @@ import v2.extdeps.languages.bash_build {
 // SolDeactivate is a flat ipmitool argv; `sol activate` is the matching interface and it does not
 // return until the session ends. Backgrounding, redirecting the collector, and writing a pid are
 // how THIS workflow holds that session after the operator grant — one of N realizations, never a
-// fact about IPMI (DESIGN §3). The hold is still bash: process-hold is not a Node in the grammar
+// fact about IPMI (gunbc.design_argument::single_authority). The hold is still bash: process-hold is not a Node in the grammar
 // yet, so the transport is a marked scaffold rather than an unmarked script fused into the BMC
 // interface (review 67590).
 //
@@ -256,7 +256,7 @@ fn sol_hold_proc_present() -> Node {
 // subject: the one it used to borrow named the gunbc run step pipeline, and borrowing it put
 // v2.workflow.gunbc_invoke_step_emit, and through it v2.compiler.emit_orchestration, in the closure of
 // every process hold and every read-only observer that releases one.
-data sol_hold_render_refused_poison: String = "__GUNBC_SOL_HOLD_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.machine_intake.sol_hold script; this marker is not valid shell, so the hold or release it stands for fails loudly rather than running a partial script (DESIGN 5: refuse, never widen)\n"
+data sol_hold_render_refused_poison: String = "__GUNBC_SOL_HOLD_RENDER_REFUSED__ v2.workflow.bash_emit bash_emit_stmts refused a gunbc.machine_intake.sol_hold script; this marker is not valid shell, so the hold or release it stands for fails loudly rather than running a partial script (gunbc.design_argument::fail_closed: refuse, never widen)\n"
 
 fn sol_hold_rendered(stmts: List<Node>) -> String {
   match bash_emit_stmts(statements: stmts, set_e: false) {

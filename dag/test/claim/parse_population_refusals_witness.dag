@@ -5,7 +5,7 @@ import gunbc.parse_population_refusals { RefusalClass, parse_population_declared
 import gunbc.rung_drop.standing { standing_rung_drops }
 
 // THE DECLARED PARSE REFUSALS AND THE RUNG DROPS THAT HOLD THEM ARE ONE JOIN, NOT TWO LISTS
-// (DESIGN 4b(3): a drop is retired by its trigger and nothing else). gunbc.parse_population_refusals
+// (gunbc.design_argument::guarantee_ladder (no silent regression): a drop is retired by its trigger and nothing else). gunbc.parse_population_refusals
 // is the exact set of modules `parse-population` may refuse, one class per standing drop and reported cause; the drop is
 // the declaration (previous rung, reason, trigger) and its classes are its population. A class whose
 // drop is retired or absent would let the verb keep excusing refusals nothing declares; a standing

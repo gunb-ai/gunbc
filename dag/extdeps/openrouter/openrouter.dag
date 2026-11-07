@@ -406,7 +406,7 @@ fn openrouter_limit_source_meaning(s: OpenRouterLimitSource) -> String {
 // returned a retry hint. The headers are the upstream's word about when it will answer again, so they ride
 // the refusal instead of being dropped with the transport.
 //
-// WHAT IS NOT PUBLISHED IS NOT ASSERTED (DESIGN section 4d). The page gives neither the unit of
+// WHAT IS NOT PUBLISHED IS NOT ASSERTED (gunbc.design_argument::epistemic_humility). The page gives neither the unit of
 // X-RateLimit-Reset nor says Retry-After is seconds rather than an HTTP date (RFC 9110 allows both). So
 // Retry-After is read as delta-seconds only when it is all digits and otherwise carried as the text it
 // was; and the reset value is carried VERBATIM, never converted to an instant. A consumer that waits

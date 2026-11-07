@@ -69,7 +69,7 @@ fn outcome_is_ok_5050(o: Crs812LaneReadOutcome) -> Bool {
 // into Crs812EthernetWire) does not exist in this diff and is the declared frontier named on
 // fabric_switch_subject_from_wire. So what this claim discriminates is the DECODE (wire strings ->
 // typed speed/FEC/enabled), not the fetch; describing it as executing over captured bytes would be
-// the rung inflation DESIGN §4b(1) forbids. The inhabitance pairing -- that the real producer emits
+// the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids. The inhabitance pairing -- that the real producer emits
 // this shape -- lands with that fetch, not here.
 test fn reads_the_eight_fabric_legs_as_50g_fec91_enabled() -> Bool {
   let outcomes = crs812_fabric_lane_read_outcomes(wires: captured_fabric_legs)

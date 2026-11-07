@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE WITNESS for gunbc.auth.approval_google_enrolment's three sealed stages. The ID token's verdict
 // runs through the real verify_oidc_id_token under the real approval_google_enrolment_policy, so the
 // nonce and audience refusals are the extdeps fold's own arms, reached from the submitted keys. The
-// signature and the attestation are supplied values (DESIGN 3, a witness discriminates at one
+// signature and the attestation are supplied values (gunbc.design_argument::witness_one_interface, a witness discriminates at one
 // interface): their producers are the JWKS realization and the App Attest verifier, whose
 // inhabitance claims live with those modules and with child A's enrol route. The seals are
 // established by the compile-time REDs at the bottom.

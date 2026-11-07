@@ -1,5 +1,7 @@
 module v2.test.claim.execution.typescript_closure_emit_by_execution
 
+import v2.std.compilers.target_model { ValueProducing }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -121,6 +121,7 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.ci_runner_target {
   ci_runner_target_spec
 }
+import std.algebra { list_flat_map }
 import gunbc.ci.repository_seed_steps {
   repository_checkout_step,
   SeedLaneSteps,
@@ -213,7 +214,7 @@ fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: Roster
 // THE GATE'S STEPS, in the order that makes each later step's premises true: check out this repository,
 // check out the seed, RECORD the seed revision the claims were checked against, install the toolchain,
 // build the compiler, run the roster over the composed root, then (for a profile that enrols it) the
-// DESIGN 4c compile. The record step is not decoration: a green run must be attributable to the exact
+// gunbc.design_argument::source_annotations compile. The record step is not decoration: a green run must be attributable to the exact
 // seed revision, or "the claims pass" silently means "the claims pass against whatever main was at
 // checkout time".
 fn repository_witness_steps(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram, compose_statements: List<Node>, pin: String) -> Outcome<List<Step>> {
@@ -375,7 +376,7 @@ fn aggregate_statements(program: RosterProgram, profile: RepositoryCiProfile, ov
   }
 }
 
-// THE DESIGN 4c STEP, ENROLLED BY THE PROFILE. It compiles the roster's closure and fails when a source
+// THE gunbc.design_argument::source_annotations STEP, ENROLLED BY THE PROFILE. It compiles the roster's closure and fails when a source
 // annotation has drifted outside module-item grain - and it refuses rather than passing when the compile
 // observed nothing, because a check whose negative case cannot be distinguished from its silence is a
 // check that is always green. gunbc does not enrol it yet: the population it would gate is unproven and
@@ -803,7 +804,7 @@ fn expected_repository_witnesses_yml(profile: RepositoryCiProfile, program: Rost
 // AN ENFORCED ROW WITHOUT AN AGGREGATE IS A GATE THAT RUNS NOTHING AND EXITS 0. The aggregate is the step
 // that reads the enforced verdicts; with it absent, aggregate_statements emits no statement for an Enforced
 // entry and every other verdict builder skips Enforced - the required job would be green while judging
-// nothing. A silent widen landing a passing gate (DESIGN §5), so the combination is refused at admission
+// nothing. A silent widen landing a passing gate (gunbc.design_argument::fail_closed), so the combination is refused at admission
 // rather than emitted: declare the aggregate that reads the verdicts, or drop the enforced rows.
 fn enforced_rows_need_an_aggregate_refusal(program: RosterProgram) -> Optional<NonEmptyStr> {
   let enforced = count(

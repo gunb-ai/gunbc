@@ -78,7 +78,7 @@ fn dumpe2fs_superblock_command(image_path: String) -> ArgvCommand {
 // as a count of BLOCKS, whose size depends on the -b flag and otherwise on a heuristic over the
 // device -- so a bare integer at a call site does not name a quantity of storage at all. Carrying
 // the magnitude in std.measure's own unit and rendering the `m` suffix here is what makes the
-// operand mean the same thing on every host (DESIGN section 2: one concept, grounded once).
+// operand mean the same thing on every host (gunbc.design_argument::minimize_redundancy: one concept, grounded once).
 fn mke2fs_populate_command(
   fs: Ext2FilesystemType,
   image_path: String,
@@ -101,7 +101,7 @@ fn mke2fs_populate_command(
 //
 // `dumpe2fs -h` writes flat `Key:   value` lines, and which keys it writes is e2fsprogs' fact, not
 // any consumer's. A consumer that scanned this text itself would be a second authority for the
-// upstream's output format (DESIGN section 3), and the first consumer to want a second field would
+// upstream's output format (gunbc.design_argument::single_authority), and the first consumer to want a second field would
 // grow a second scanner beside the first.
 //
 // THE MAGIC NUMBER IS THE UPSTREAM'S CONSTANT, NOT A NUMBER A CONSUMER CHOSE. ext2/3/4 share the

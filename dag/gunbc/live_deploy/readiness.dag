@@ -174,7 +174,7 @@ fn healthz_effective_read_from_get(success: Bool, body: String, error: String) -
 // arrives behind such a request is answered only after it, so a probe bounded at the tool's 5 s
 // (extdeps.tools.curl curl_localhost_max_time) refused three deploys on 2026-09-17/18 whose server
 // answered /healthz in 0.1 s the moment it was idle -- two authorities on how long a request may
-// take, disagreeing by 24x (DESIGN 3). The bound is twice the wall limit: the request in service
+// take, disagreeing by 24x (gunbc.design_argument::single_authority). The bound is twice the wall limit: the request in service
 // plus the probe's own, each within what the unit promises. A unit with no wall limit cannot
 // ground a deadline, and the probe refuses rather than guessing one.
 fn live_deploy_healthz_probe_deadline(spec: DeploymentSpec) -> Second? {
@@ -232,7 +232,7 @@ fn healthz_effective_read_from_status_body(status: HttpStatus, body: String) -> 
   }
 }
 
-// ONE FOLD ROUTES EVERY REPLY, so no leg can re-decide what an answer means (DESIGN 3d: one name
+// ONE FOLD ROUTES EVERY REPLY, so no leg can re-decide what an answer means (gunbc.design_argument::selection_precedes_convergence: one name
 // per meaning). success=false is curl saying it obtained NO response -- the transport and principal
 // refusals stay refusals (the RFM row's guard, and claim 2); success=true carries a status it wrote.
 fn healthz_effective_read_from_status_get(success: Bool, stdout: String, error: String) -> HealthzEffectiveRead {
@@ -274,7 +274,7 @@ fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> Healthz
 }
 
 // THE SAME FOLD OVER THE SSH LEG, so a remote probe is not a weaker observation than a local one:
-// it must be able to say 'answered 503', not only 'answered' or 'refused' (DESIGN 3d). The argv is
+// it must be able to say 'answered 503', not only 'answered' or 'refused' (gunbc.design_argument::selection_precedes_convergence). The argv is
 // the status-bearing spelling, so the reply ends with the line curl wrote its code on.
 fn healthz_effective_read_from_status_outcome(outcome: TypedArgvExecOutcome) -> HealthzEffectiveRead {
   match outcome {
@@ -609,7 +609,7 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
     ProcessRevisionMismatch { expected: e, observed: o } =>
       join([
         "ProcessRevisionMismatch: the unit answered /healthz as a different release than the one this",
-        " deploy installed — gunbc serve binds its release identity once at process start, so this is the",
+        " deploy installed — the served process binds its release identity once at process start, so this is the",
         " pre-restart process still answering, or another candidate won this port. expected=", e,
         " observed=", o,
       ], "")
@@ -618,7 +618,7 @@ fn healthz_refusal_reason(cause: HealthzRefusalCause) -> String {
     ServedSurfaceStale { observed: o, expected: e } =>
       join([
         "ServedSurfaceStale: the unit answered /healthz but its served surface is not this tree's",
-        " — gunbc serve binds its graph once at process start, so the pre-restart process is still",
+        " — the served process binds its graph once at process start, so the pre-restart process is still",
         " answering (or the source sync did not land). observed=", o, " expected=", e,
       ], "")
   }
@@ -710,7 +710,7 @@ fn healthz_body_verdict(
 // ONE String, and nothing structural stops a future edit from reordering them, so this note is
 // still doing real work for them. It is stated this way rather than deleted wholesale because a
 // note that shrank silently would read as though the whole ordering had been made structural, which
-// is the rung inflation DESIGN §4b calls worse than sitting low.
+// is the rung inflation gunbc.design_argument::guarantee_ladder calls worse than sitting low.
 
 fn show_healthz_read_fixture_healthy(
   bundle: RoadmapSiteSurfaceBundle,
@@ -968,7 +968,7 @@ fn live_deploy_poll_until_service_ready(
   )
 }
 
-data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
+data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the gunbc.design_argument::minimize_redundancy redundancy, not the gunbc.design_argument::closed_grounded_substrate totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
 
 data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it.")
 

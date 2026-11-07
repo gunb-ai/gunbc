@@ -2,6 +2,7 @@ module std.compiler_entry
 
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.measure {
+  Second,
   Nanosecond,
   nanosecond,
   nanosecond_count,
@@ -20,10 +21,10 @@ import std.algebra { collection_map_shape }
 // matching a second literal -- is the same defect twice: it breaks at the next generation and it
 // hard-codes into the tool a fact about the corpus the tool reads.
 //
-// The question is DECIDABLE and FULLY MODELLED, so DESIGN section 5 puts it at wall-now:
+// The question is DECIDABLE and FULLY MODELLED, so gunbc.design_argument::fail_closed puts it at wall-now:
 // construction over validation, and the construction is that the entry module says so itself.
 //
-// THE DRIVER SHAPE IS A SECOND FACT AND IS NOT DERIVABLE FROM THE FIRST. DESIGN section 3 separates
+// THE DRIVER SHAPE IS A SECOND FACT AND IS NOT DERIVABLE FROM THE FIRST. gunbc.design_argument::single_authority separates
 // interface, realization and policy: "this module is the compiler pipeline entry" is the interface
 // fact, and WHICH DRIVER REALIZES IT is realization. Three realizations exist in the tree today and
 // all are load-bearing, so the sum below is closed at three rather than opened for futures nobody
@@ -103,7 +104,7 @@ import std.algebra { collection_map_shape }
 // no other door: the required-v2-native lane runs v2.test.* claims inside the emitted compiler's own
 // evaluator, which interprets the claim's closure rather than emitting it, and NativeCliDriver's main
 // is the compile CLI's (source-root walk and plan folds), so reusing it would give one arm two
-// meanings (DESIGN section 3). First consumer: gunbc.instruments.native_crypto_vectors, run by
+// meanings (gunbc.design_argument::single_authority). First consumer: gunbc.instruments.native_crypto_vectors, run by
 // `gunbc test //gunbc/instruments:native-crypto-vectors`, which executes the emitted .dag verifiers
 // over their published vectors.
 // WHAT A NativeClaimDriver ENTRY HANDS ITS RENDERED MAIN: the text to write and the decided terminal,
@@ -126,33 +127,56 @@ type NativeClaimReport {
   terminal: NativeClaimTerminal
 }
 
-// NativeServeDriver -- a NATIVELY EMITTED HTTP REQUEST/RESPONSE SERVICE, the native route for
-// every program `gunbc serve` (a seed verb, DESIGN section 7) serves today. Its `.dag` entry
-// declares `native_serve_handle(method, path, body, tailscale_identity, release_revision) ->
-// ServeWireResponse` -- the seed's handler contract unchanged -- and imports gunbc.native_serve,
-// whose folds decide everything between the bytes: which address to bind and which release the
-// process is (argv in, a refusal before any bind), whether a request head is admissible and how
-// many body bytes follow, and whether the request is answered before the handler (/livez). The
-// rendered main performs only what no fold can -- read argv, bind and accept the TCP listener,
-// read the request line, header lines and exactly the body length it was handed within the
-// contract's byte limits and timeout, call the handler once per request, write the returned
-// value -- serially, one request at a time, as the seed does. It is a fifth arm and not a mode on
-// NativeCliDriver for the reason that arm gives for itself: one crate has one entry point, and a
-// served program's main shares nothing with the compile CLI's. A driver MAY also declare
-// `native_serve_startup(executable_octets: List<Int>) -> NativeServeStartup` (gunbc.native_serve): the
-// main runs it once per worker generation (the first before the bind, within its own startup_deadline), with its own executable's octets, and a refusal exits
-// without binding, and a driver that declares one has its handler take the note the startup passed with as a trailing argument of the typed value the startup passed with (NativeServeStartup's payload), so a handler can name the receipt it was admitted under; a driver that declares none is emitted unchanged. Instrument:
-// `gunbc test //gunbc/instruments:native-serve`.
+// NativeIngressDriver -- a NATIVELY EMITTED REALIZATION OF ONE HTTP INGRESS BINDING
+// (gunbc.http_ingress, gunbc.plans.converged_ingress M2a). Serving is not a kind of program: an
+// ordinary timeless handler is served by a deployment binding, and gunbc run realizes that binding
+// by interpretation. This arm is the binding's OTHER realization, chosen by the binding module rather
+// than by the handler: the module that declares the binding constructor carries this row, and
+// `program` names, by declaration identity, the one NativeIngressProgram descriptor below. The
+// emitter resolves that descriptor as a closed typed boundary (v1.compiler.emit_rust
+// native_ingress_program_resolution): the reference must name exactly one data declaration typed
+// NativeIngressProgram, its three references must name whole declarations of the right kind and
+// signature, and anything else refuses emission. Every spelling the rendered main writes -- the
+// constructor it calls, the handler and the startup fold -- is read off the descriptor, so no name
+// is fixed by convention. The rendered main performs only what no fold can: read argv into the
+// constructor's declared arguments, call the exact constructor, bind and accept the TCP listener,
+// read the request head and exactly the body the frame fold admits, call the handler, write the
+// bytes the response folds return. Its decisions are folds of gunbc.http_ingress and
+// gunbc.native_serve. It is a separate arm and not a mode on NativeCliDriver for the reason that arm
+// gives for itself: one crate has one entry point, and a served binding's main shares nothing with
+// the compile CLI's. Instruments: `gunbc test //gunbc/instruments:native-serve` and siblings.
 type CompilerEntryDriver
   = RetainedHostCliKernel
   | DirectIngestDriver
   | SourceRootEvalDriver
   | NativeCliDriver
   | NativeClaimDriver
-  | NativeServeDriver
+  | NativeIngressDriver { program: DeclarationRef }
 
-// WHICH EFFECTS EACH NATIVE ENTRY ROUTE ADMITS: one denominator per native driver, owned here beside
-// the drivers and read by v1.compiler.emit NativeEffectRealizationAdmission. An effect is named by
+// THE NATIVE PROGRAM OF ONE INGRESS BINDING, as one typed value. `binding` is the exact binding
+// constructor (a pure function returning gunbc.http_ingress HttpIngressAdmission) the rendered main
+// calls with its argv; `handler` is the exact handler the binding must name, compared structurally
+// with the binding the constructor returns; `startup` is the optional startup fold, run once per
+// worker generation before the bind, within its own bound. These are declaration references and not
+// imports, so the descriptor may live beside the facts it is read with (for device crypto,
+// gunbc.auth.approval_device_crypto_realization) without importing the modules it names.
+type NativeIngressStartup {
+  fold: DeclarationRef
+  bound: Second
+}
+
+type NativeIngressProgram {
+  binding: DeclarationRef
+  handler: DeclarationRef
+  startup: NativeIngressStartup?
+}
+
+// WHICH EFFECTS EACH NATIVE ENTRY ROUTE ADMITS: one denominator per native ROUTE CLASS, owned here
+// beside the drivers and read by v1.compiler.emit NativeEffectRealizationAdmission. The route class is
+// not the driver instance: a payload-bearing driver (NativeIngressDriver { program }) would otherwise
+// need a dummy value to name its denominator. The route class selects which effects are ALLOWED; the
+// exact declarations the driver selects (an ingress program's handler and startup) decide which are
+// DEMANDED. An effect is named by
 // what it IS, never by a spelling: a declaration identity (a service or resource declaration), or
 // NativeOutgoingHttp -- any service whose operations bind the REST transport, which is what makes a
 // service an outgoing-HTTP (Network) effect whatever it is called. Each denominator cites the ruling
@@ -165,8 +189,13 @@ type NativeEffectScope
   = NativeAdmitAllExcept { excluded: List<NativeEffectClass> }
   | NativeAdmitOnly { admitted: List<NativeEffectClass> }
 
+type NativeEffectRoute
+  = NativeCompilerRoute
+  | NativeClaimRoute
+  | NativeIngressRoute
+
 type NativeEffectDenominator {
-  route: CompilerEntryDriver
+  route: NativeEffectRoute
   ruling: DeclarationRef
   scope: NativeEffectScope
 }
@@ -175,25 +204,59 @@ fn native_effect_declared(module_path: String, decl_name: String) -> NativeEffec
   NativeEffectDeclaration { declaration: decl_ref(module_path: module_path, decl_name: decl_name) }
 }
 
-// The compiler route keeps the operator's 2026-09-16 ruling (demand-engine-program D11) whole: no
-// clock, no outgoing HTTP, no entropy, no auth context.
+// THE COMPILER ROUTE DECLARES ITS SET RATHER THAN EXCLUDING FROM AN OPEN ONE (operator ruling relayed
+// 2026-11-01, recorded in gunbc.design_ruling native_compiler_route_admits_the_declared_cargo_build on the
+// same D11 row the 2026-09-16 ruling sits on). The set was DERIVED BY READ, not guessed, and the read is
+// reproducible. Population: the roots both subjects compile (["dag","src/v2"] -- gunbc.instrument_targets
+// self_host_source_roots and v2_native_cli_source_roots). Commands, run 2026-11-02 at 5b0b26d9b399:
+//   git grep -h -o -E 'Filesystem[.](Read|Write|Delete|List|WriteCreateNew)[(]' 5b0b26d9b399 -- src/v2
+//     | sort | uniq -c            -> Read 49, Write 17, Delete 7, List 5, WriteCreateNew 4, 82 sites total
+//   the same scan for every other service name declared in dag (83 service declarations, listed with
+//   git grep -h -o -E '^service [A-Za-z0-9_]+' 5b0b26d9b399 -- dag, matching <ServiceName>[.][A-Z]...[(] )
+//                                 -> zero call sites in src/v2
+// so extdeps.filesystem.filesystem_io Filesystem is the only service this route demands today, and no clock,
+// network, entropy or auth-context service is reached. Those counts say WHICH services and how many; they are
+// not the proof that the set is complete -- that proof is the emission refusal at the v2-native-cli entry,
+// which walks the entry's whole closure, and what these greps do NOT cover is call sites inside generated
+// mirrors and services reached only through a lens or a trait demand. The four std.resources resources and extdeps.clock Clock that D11 excluded fall out by
+// not being listed, and NativeOutgoingHttp stays refused by admit_native_service_effect's rest rule.
+//
+// THE BUILD EFFECT IS MODELLED BY THIS CUT AND ADMITTED BY THE NEXT ONE, AND THAT IS AN INTENTIONAL C1
+// BEHAVIOUR, NOT AN IMPLEMENTED H1. extdeps.rust.cargo_build_service CargoBuild joins this list together
+// with the binding its ruling requires -- an explicitly declared cargo program, working root and dry-run
+// mode, with no Default fallback at v1.compiler.emit_rust native_effect_binding_of -- because admitting it
+// before that binding exists would open the ambient-cwd class this PR files as
+// gunbc.recurring_failure_mode.admitted_shell_effect_spawned_at_an_ambient_working_root: the emitted
+// handler takes only a dry-run mode, the emitted main passes Default::default(), the emitted constructor
+// sets working_dir to None and the spawn renders current_dir(unwrap_or(".")). gunbc.design_argument::fail_closed says a failure arm
+// refuses and never widens, and a dissolution condition does not authorize creating the debt -- so the
+// effect stays OUT of this list and the refusal that already executes is the guard. The claim module
+// dag/test/claim/cargo_build_native_route_witness.dag asserts exactly that refusal against the REAL module,
+// not a fixture. Nothing about the ruling changes: the route's declared build effect is admitted once its
+// binding lands, and no cut needs the generic-exec service extdeps.shell.exec, which stays out either way.
+//
+// WHAT THIS ROW DOES NOT JUDGE, STATED SO IT IS NOT READ AS A CLEAN BILL ON BOTH compiler-route subjects.
+// The admission walk (v1.compiler.emit_rust native_entry_effects) runs only for an entry named by
+// native_entry_function_name -- native_serve_handle, v2_cli_main, native_claim_report. The self-host
+// subject's pipeline entry declares SourceRootEvalDriver (src/v2/compiler/source_root_eval.dag
+// compiler_pipeline_entry), which carries no such name, so no denominator judges it: its argv, file,
+// output and exit behavior comes from the emitter's hand-rendered main. v2-native-cli (v2_cli_main,
+// NativeCliDriver) is the subject that judges this list, and a demanded effect missing from it is a hard
+// emission refusal -- THAT refusal, not the self-host build, is the evidence the list is complete.
 data native_compiler_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
-  route: NativeCliDriver,
-  ruling: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"),
-  scope: NativeAdmitAllExcept { excluded: [
-    native_effect_declared(module_path: "std.resources", decl_name: "Clock"),
-    native_effect_declared(module_path: "std.resources", decl_name: "Network"),
-    native_effect_declared(module_path: "std.resources", decl_name: "Entropy"),
-    native_effect_declared(module_path: "std.resources", decl_name: "AuthContext"),
-    native_effect_declared(module_path: "extdeps.clock", decl_name: "Clock"),
-    NativeOutgoingHttp
+  route: NativeCompilerRoute,
+  ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_compiler_route_admits_the_declared_cargo_build"),
+  scope: NativeAdmitOnly { admitted: [
+    native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem")
   ] }
 }
 
-// The service route is that ruling's declared extension (gentle-dove-36, 2026-10-04, recorded on the
-// same D11 row): the clock and outgoing HTTP come back in; entropy and auth context stay out.
-data native_service_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
-  route: NativeServeDriver,
+// The ingress route is the declared extension of gunbc.plans.demand_engine_program
+// demand_engine_program_plan -- named rather than pointed at, because the datum above now cites a
+// different ruling (gentle-dove-36, 2026-10-04, recorded on the same D11 row): the clock and outgoing
+// HTTP come back in; entropy and auth context stay out.
+data native_ingress_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
+  route: NativeIngressRoute,
   ruling: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"),
   scope: NativeAdmitAllExcept { excluded: [
     native_effect_declared(module_path: "std.resources", decl_name: "Entropy"),
@@ -206,7 +269,7 @@ data native_service_route_denominator: NativeEffectDenominator = NativeEffectDen
 // operator's 2026-10-25 extension on the D11 row, the fixed-argv extdeps.docker.cli_service DockerCli
 // (the narrow process-spawn effect; generic exec is not admitted), and nothing else.
 data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenominator {
-  route: NativeClaimDriver,
+  route: NativeClaimRoute,
   ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
   scope: NativeAdmitOnly { admitted: [
     native_effect_declared(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
@@ -290,7 +353,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // DEFINING IT AS "whatever is left" WOULD HAVE BEEN THE FABRICATION, not the fix: a row equal to
 // parent minus the others makes the sum identically equal to the parent, the residual identically
 // zero, and NativeDriverCostRemainderExceedsTolerance unfireable by construction -- a check that
-// cannot fail, which DESIGN section 5 calls worse than absent because it will be cited as
+// cannot fail, which gunbc.design_argument::fail_closed calls worse than absent because it will be cited as
 // coverage. So the driver times the serialize-and-write span with its own clock reads, the
 // residual is measured again afterwards, and if a residual still exceeds the tolerance the answer
 // is to NAME THE NEXT UNATTRIBUTED SPAN, never to widen the tolerance to fit.
@@ -303,7 +366,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // edit with nothing that forced the fourteen to be found, and three separate runs were spent on
 // exactly that: a partial record the seed admits (.dag does not require construction totality)
 // refused only later as rustc error[E0063] at the emitted driver. Nine parallel fields of one type
-// is DESIGN section 2's horizontal case -- one axis modelled as N declarations -- and section 5
+// is gunbc.design_argument::minimize_redundancy's horizontal case -- one axis modelled as N declarations -- and section 5
 // asks for construction over validation, which is what this is.
 //
 // WHAT THIS CLOSES, AND WHAT IT DOES NOT -- CORRECTED, BECAUSE THE FIRST VERSION OF THIS PARAGRAPH
@@ -314,7 +377,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // variant from it still typechecks -- native_driver_exclusive_row_name and every measure match
 // stay exhaustive because they are matches over the KEY TYPE and never see the missing key. So the
 // hole did not close; it MOVED, from fourteen construction sites to one roster, and calling that
-// structural would be the rung inflation DESIGN section 4b(1) names.
+// structural would be the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.
 //
 // RUNG HELD: 3, mechanically preventable, and the mechanism is a discriminating witness rather
 // than construction. test.claim.native_driver_cost_partition exclusive_sum_is_every_row_the_law_folds
@@ -365,7 +428,7 @@ data native_claim_route_denominator: NativeEffectDenominator = NativeEffectDenom
 // ExclusiveDriverCollection IS THE DRIVER'S OWN WORK AFTER THE CALL, NAMED FOR WHAT IT IS: copying the
 // run's rows into the population, collecting the prepare and eval samples and reading the run's
 // counters. It is not scheduling -- the engine has returned -- and folding it into that row would
-// change the row's meaning under the model's name (DESIGN section 3).
+// change the row's meaning under the model's name (gunbc.design_argument::single_authority).
 type NativeDriverExclusiveRowKey
   = ExclusiveLoad
   | ExclusiveUniverseDerivation
@@ -458,7 +521,7 @@ type NativeDriverCostAccounting
 // the rows partition the driver's OWN work. It was once read on the monotonic wall, and a wall span
 // also holds every interval the host descheduled the thread -- work no phase performed and no row
 // could ever name -- so the residual, and therefore the verdict, varied with host contention for one
-// fixed subject (DESIGN section 5: a verdict is determined by its subject). The repair was the
+// fixed subject (gunbc.design_argument::fail_closed: a verdict is determined by its subject). The repair was the
 // measure, not this tolerance: on thread CPU the residual is uninstrumented driver work and only
 // that, so a busy loop outside every span still refuses here while a stall or sleep does not.
 data native_driver_cost_remainder_tolerance_nanos: Nanosecond = millisecond_to_nanosecond(m: millisecond(count: 50))
@@ -495,12 +558,12 @@ fn native_driver_cost_account(
   }
 }
 
-// DECLARED FRONTIER (DESIGN §3c) — not a live bind on this head.
+// DECLARED FRONTIER (gunbc.design_argument::consumption) — not a live bind on this head.
 // native_driver_cost_row_standing has no executing consumer here: planted witnesses
 // prove the fold; they do not exercise the spawn. Consumer: native_lane_runner
 // run_native_binary. Route: after the child exits, that spawn reads the relayed
 // stderr into NativeDriverChildExited and folds native_driver_cost_row_standing,
-// refusing NativeDriverCostRowsUnobserved. Trigger (DESIGN §4b(3) capability, not
+// refusing NativeDriverCostRowsUnobserved. Trigger (gunbc.design_argument::guarantee_ladder (no silent regression) capability, not
 // an artifact): the host relays the child's stderr on successful exit
 // (native_lane_runner run_native_binary as changed by #10940). Kill condition: if
 // that relay lands and this standing is still unread, the row is dangling. Until

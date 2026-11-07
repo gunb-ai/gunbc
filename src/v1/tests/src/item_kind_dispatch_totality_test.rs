@@ -9,7 +9,7 @@
 //!
 //! DISCRIMINATING RED: fixture source whose match omits one variant. The forbidden state is
 //! authorable HERE even though no accepted program contains it -- which is the case DESIGN
-//! section 4b names when it says a compiler's regression probes are invalid programs, and the
+//! gunbc.design_argument::guarantee_ladder names when it says a compiler's regression probes are invalid programs, and the
 //! reason "no accepted program can express it" is not grounds to skip the probe.
 //!
 //! POSITIVE CONTROL: the same fixture with every arm present must compile clean, so the RED

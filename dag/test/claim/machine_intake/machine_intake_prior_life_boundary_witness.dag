@@ -87,7 +87,7 @@ data sel_records: List<BmcSelRecord> = [
 
 // Every surface the archive reads, modeled: a generic Redfish record set with one log service, one
 // account event, one virtual-media member and one sensor.
-data all_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
+data all_surfaces: BmcRecordSurfaces = BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
   manager_date_time: Present { value: "2026-10-05T12:00:00+00:00" },
   log_services: Present { value: [RedfishLogService { id: "EventLog", entries: [RedfishLogEntry { id: 1, severity: "OK", message: "service started" }, RedfishLogEntry { id: 2, severity: "Warning", message: "fan below threshold" }] }] },
   account_events: Present { value: [RedfishLogEntry { id: 7, severity: "OK", message: "session opened" }] },
@@ -163,7 +163,7 @@ data one_sel_record: List<BmcSelRecord> = [
   BmcSelRecord { id_hex: "1", date: "01/01/2026", time: "00:00:01", sensor: "Power Unit", event: "AC lost", state: "Asserted" },
 ]
 
-data empty_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
+data empty_surfaces: BmcRecordSurfaces = BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
   manager_date_time: Present { value: "2026-10-05T12:00:00+00:00" },
   log_services: Present { value: [] },
   account_events: Present { value: [] },
@@ -234,7 +234,7 @@ test fn w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_establ
 // A GAP IS A GAP FOR EVERY REQUIRED CARRIER, NOT ONLY THE FIRST: a world with every surface modeled
 // except the sensors refuses naming the sensor snapshot.
 test fn w_one_unmodeled_carrier_is_a_typed_gap_that_refuses() -> Bool {
-  let no_sensors = BmcRecordSurfaces {
+  let no_sensors = BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
     manager_date_time: all_surfaces.manager_date_time,
     log_services: all_surfaces.log_services,
     account_events: all_surfaces.account_events,
@@ -332,7 +332,7 @@ test fn w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from() -> 
 
 // A world that differs from the full world only in its one log service's entries.
 fn world_with_log(entries: List<RedfishLogEntry>) -> BmcWorld {
-  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
     manager_date_time: all_surfaces.manager_date_time,
     log_services: Present { value: [RedfishLogService { id: "EventLog", entries: entries }] },
     account_events: all_surfaces.account_events,
@@ -344,7 +344,7 @@ fn world_with_log(entries: List<RedfishLogEntry>) -> BmcWorld {
 
 // A world that differs from the full world only in its one virtual-media member.
 fn world_with_media(member: RedfishVirtualMediaObservation) -> BmcWorld {
-  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces { mc_info: none, sol_configuration: none, ethernet_interface: none, boot_options: none,
     manager_date_time: all_surfaces.manager_date_time,
     log_services: all_surfaces.log_services,
     account_events: all_surfaces.account_events,
@@ -472,7 +472,7 @@ fn pre_capture_at(world: DryPriorLifeWorld, read_at: EpochMs, returned_at: Epoch
 // THE FORCED-WRITE CONTEXT, BUILT FROM THE REAL WRITE TRANSITION. The write and its completion record come
 // from gunbc.machine_intake.bmc_secure's own producers over srv13's admitted forced first write (see
 // test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness); the inference is the row's
-// reason, typed as an inference (§4d), minted from the same admitted write. A producer that refuses returns
+// reason, typed as an inference (gunbc.design_argument::epistemic_humility), minted from the same admitted write. A producer that refuses returns
 // none, so no claim here can pass over a transition that was not produced.
 fn forced_ctx(pre: PriorLifeArchive?, began: EpochMs, finished: EpochMs, applied: EpochMs) -> PriorLifeForcedWriteContext? {
   match srv13_forced_write_transition(subject: subject_p(), pre_capture: pre, began_millis: began, finished_millis: finished, applied_at_millis: applied) {
@@ -550,7 +550,7 @@ test fn w_a_pre_write_entry_across_the_forced_write_establishes_normally() -> Bo
             world: prior_life_full_dry_world(),
             across: Present { value: ctx },
           ).outcome {
-            // ESTABLISHED NORMALLY, and the row's typed inference rides the receipt (§3c): the receipt the
+            // ESTABLISHED NORMALLY, and the row's typed inference rides the receipt (gunbc.design_argument::consumption): the receipt the
             // run keeps names the write the inference is about, so "the write changes only the password"
             // stays an inference on the record rather than an assertion in a comment.
             PriorLifeArchiveEstablished { receipt: r } => match r.forced_write_inference {
@@ -610,7 +610,7 @@ test fn w_zero_pre_write_entries_take_the_indeterminate_third_outcome_across_the
 // THE STOP CARRIES ITS OWN DISSOLUTION TRIGGER. The indeterminate verdict carries the frontier row that
 // declares the operator surface it is waiting on, so whoever reads the incomplete step sees what would
 // dissolve it without opening the module -- and this is the claim that READS prior_life_operator_decision_frontier
-// alongside the mint (§3c: a declaration names its consumer). Rung: witness over the dry archive arm; the
+// alongside the mint (gunbc.design_argument::consumption: a declaration names its consumer). Rung: witness over the dry archive arm; the
 // positive control is the same call that establishes in w_pre_write_entries_before_the_write_instant_establish.
 test fn w_the_indeterminate_stop_carries_its_own_dissolution_trigger() -> Bool {
   match pre_capture_at(world: prior_life_full_dry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
@@ -644,7 +644,7 @@ test fn w_the_indeterminate_stop_carries_its_own_dissolution_trigger() -> Bool {
 // archive holds real entries; the run's pre-write capture (sealed from the zero-entry world) holds none of
 // them. Entries none of which the run held before the write is exactly what an erased-then-refilled history
 // looks like, and it establishes nothing predating the write -- so it is indeterminate too, with the count
-// DERIVED from the post-write archive (not copied in), and it fails closed to the operator (§5).
+// DERIVED from the post-write archive (not copied in), and it fails closed to the operator (gunbc.design_argument::fail_closed).
 test fn w_entries_present_none_before_the_write_are_indeterminate_across_the_forced_write() -> Bool {
   match pre_capture_at(world: zero_entry_world(), read_at: t_pre_capture_p, returned_at: t_pre_capture_returned_p) {
     Absent => false

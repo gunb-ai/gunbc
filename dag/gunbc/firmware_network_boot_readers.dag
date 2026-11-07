@@ -1,7 +1,7 @@
 module gunbc.firmware_network_boot_readers
 
-import std.types { Bool, HttpStatus, List, list_length, NonEmptyStr, String }
-import std.algebra { list_map, list_flat_map, list_append }
+import std.types { Bool, HttpStatus, List, NonEmptyStr, String }
+import std.algebra { list_map, list_flat_map, list_append, length }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
 import extdeps.bmc.redfish_memory_inventory { redfish_document }
 import extdeps.ietf.http_semantics { http_status_is_success, http_unauthorized, http_forbidden, http_not_found }
@@ -38,7 +38,7 @@ import gunbc.firmware_network_boot_probe {
 // with a kind source. Both axes are answered ReplyBeyondDecoder with our reason, never a BMC
 // refusal, never an empty list, and never the EthernetInterfaces members as bootable NICs.
 //
-// WHAT THE FIXTURES ARE NOT (DESIGN 4d). No captured MegaRAC or OpenBMC ComputerSystem body for
+// WHAT THE FIXTURES ARE NOT (gunbc.design_argument::epistemic_humility). No captured MegaRAC or OpenBMC ComputerSystem body for
 // these axes is in this corpus, so the witness bodies are DMTF-schema-shaped, not observations.
 // The decoder claims the schema; a real capture is a separate receipt in the observing layer.
 //
@@ -115,7 +115,7 @@ fn boot_order_reply(system: RedfishDocRead) -> List<AxisReply> {
             FieldMalformed { cause: c } => refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: c))
             FieldRead { value: refs } =>
               if refs == [] { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "BootOrder is empty; an empty list is not read as no boot entries")) }
-              else if list_length(items: list_flat_map(xs: refs, f: fn(r) { if r == "" { [r] } else { [] } })) > 0 { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "a BootOrder member is the empty string")) }
+              else if length(xs: list_flat_map(xs: refs, f: fn(r) { if r == "" { [r] } else { [] } })) > 0 { refused_axis(axis: BootOrderAxis, refusal: shape_refusal(detail: "a BootOrder member is the empty string")) }
               else { [ReplyBootOrder { devices: list_map(xs: refs, f: fn(r) { boot_order_entry(reference: r as NonEmptyStr, label: r as NonEmptyStr) }) }] }
           }
       }

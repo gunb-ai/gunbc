@@ -59,7 +59,7 @@ import gunbc.host.host_layout {
 }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_https_port, fabric_storage_door_socket, FabricStorageOwnershipMarkerSpec, fabric_storage_ownership_marker_spec }
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
-import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, owned_directory_path }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -72,7 +72,12 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_provider_state_root,
   dashboard_instance_tailnet_door_socket,
   dashboard_instance_tailnet_door_directory,
+  dashboard_instance_agent_door_directory,
+  dashboard_instance_agent_door_socket,
+  agent_door_socket_in,
+  owned_directory_is_agent_door,
 }
+import gunbc.auth.request_authentication { deployment_admits_agent_peer }
 import gunbc.auth.tracker_web_oauth_client {
   tracker_web_test_lab_https_port,
   tracker_web_oidc_serve_placement,
@@ -85,7 +90,7 @@ import extdeps.http.server { HttpServerListenConfig }
 import gunbc.auth.approval_broker_endpoint { approval_broker_listen_port, approval_broker_listen_host, approval_broker_approve_front_door }
 import gunbc.auth.approval_broker_cutover { approval_front_door_mounts_installed, approval_broker_front_door_endpoints }
 import product.network_topology { NetworkEndpoint }
-import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, PerReleaseBinary }
+import gunbc.live_deploy.serve_binary { ServeBinarySource, AdmittedFixedServeBinary, admit_fixed_serve_path, serve_source_from_instance, PerReleaseBinary }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
 // Belt B membership: the service is `gunbc
@@ -134,6 +139,7 @@ type ComposeOwnedArtifactKind =
   | FabricStorageServeUnit
   | FabricStorageServeMapping
   | TailnetDoorServeUnit
+  | AgentDoorServeUnit
   | OidcConfigArtifact
 
 type UpsertArtifactKind =
@@ -224,6 +230,7 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
       FabricStorageServeUnit => TeardownActs
       FabricStorageServeMapping => TeardownActs
       TailnetDoorServeUnit => TeardownActs
+      AgentDoorServeUnit => TeardownActs
       OidcConfigArtifact => TeardownActs
     }
     UpsertOwned { kind: uk } => match uk {
@@ -399,13 +406,23 @@ fn dashboard_serve_wall_limit() -> EvaluationLimit {
 // other half of the same fact.
 
 // THE SERVE ROUTE'S SOURCE ROOTS, relative to the deployed tree. The emitted ExecStart passes them to
-// `serve`, and the pre-swap admission compiles the serve entry under the same roots, so both read
+// `gunbc run`, and the pre-swap admission compiles the serve entry under the same roots, so both read
 // this one value rather than each spelling the flags.
 data deployment_serve_source_roots: List<String> = ["dag", "src/v2"]
 
-data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_serve.dag"
+// THE SERVE ENTRY IS THE HANDLER'S DEPLOYMENT BINDING (gunbc.http_ingress), not the handler's own
+// module: serving is declared by the binding, which imports the handler, so the unit's `gunbc run
+// --entry` loads the binding and its closure carries the handler. serve_function stays the handler
+// the binding is asked to serve; the binding constructor each entry declares is named beside it.
+data roadmap_serve_entry_file: NonEmptyStr = "dag/gunbc/roadmap/roadmap_ingress.dag"
+data roadmap_ingress_function: NonEmptyStr = "roadmap_ingress"
 
-data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_serve.dag"
+data approval_broker_serve_entry_file: NonEmptyStr = "dag/gunbc/auth/approval_broker_ingress.dag"
+data approval_broker_ingress_function: NonEmptyStr = "approval_broker_ingress"
+
+data fabric_storage_ingress_entry_file: NonEmptyStr = "dag/gunbc/fabric/fabric_storage_ingress.dag"
+data fabric_storage_ingress_function: NonEmptyStr = "fabric_storage_ingress"
+data fabric_storage_handler_function: NonEmptyStr = "fabric_storage_serve_handle"
 
 // ── THE APPROVAL BROKER IS ONE PER HOST, AND THAT IS THE POINT RATHER THAN A SIMPLIFICATION ──
 // Every other unit this deployment installs is named per deployment identity, so a lab twin gets
@@ -527,7 +544,7 @@ fn gunbc_attempt_worker_slice_unit_path() -> NonEmptyStr {
 // THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process
 // needs -- a unit name, a binary, an entry, a function, a root to run in, a principal, an address
 // and a pair of evaluation caps -- does not differ by which routes it serves, and minting a second
-// record for the second server would be one concept in two shapes (DESIGN section 2, horizontal).
+// record for the second server would be one concept in two shapes (gunbc.design_argument::minimize_redundancy, horizontal).
 // What differs is the VALUES, and every one of them that differs is a value this function supplies.
 //
 // IT REUSES THE INSTANCE'S ROOTS DELIBERATELY. The broker runs the same admitted binary out of the
@@ -731,6 +748,54 @@ fn deployment_tailnet_door_steps(names: DeploymentNames) -> List<DeploymentArtif
   match deployment_tailnet_door_socket(names: names) {
     Absent => []
     Present { value: _ } => [DeploymentArtifactStep { kind: ComposeOwned { kind: TailnetDoorServeUnit }, path: deployment_tailnet_door_unit_path(names: names) }]
+  }
+}
+
+// THE LAB AGENT'S DOOR. A second unix-socket `gunbc serve` beside the loopback one, launched on the
+// lab's agent-door entry, whose only reader is the host account the lab's write policy rosters
+// (gunbc.auth.request_authentication lab_agent_host_account). WHETHER a deployment has one is the
+// write policy's own answer (deployment_admits_agent_peer), read through the instance's deployment,
+// so a deployment whose policy rosters no agent derives no socket, no unit and no directory: there is
+// no second list of lab deployments here. The socket is opened to every class by the seed's listener
+// and its directory is traversable by every class; the kernel peer uid, not the mode, decides.
+fn deployment_agent_door_socket(instance: HostDashboardInstance) -> NonEmptyStr? {
+  if deployment_admits_agent_peer(deployment: instance.deployment) {
+    Present { value: dashboard_instance_agent_door_socket(instance: instance) }
+  } else {
+    none
+  }
+}
+
+// The spec carries the door as the directory demand it joined; the unit reads the socket back out of
+// that demand, so the directory the provider ensures and the socket the unit binds cannot differ.
+fn deployment_agent_door_socket_of(spec: DeploymentSpec) -> NonEmptyStr? {
+  match filter(spec.directories, d => owned_directory_is_agent_door(t: d)) |> first() {
+    Absent => none
+    Present { value: d } => Present { value: agent_door_socket_in(directory: d) }
+  }
+}
+
+fn deployment_agent_door_directories(instance: HostDashboardInstance) -> List<OwnedDirectoryTarget> {
+  match deployment_agent_door_socket(instance: instance) {
+    Present { value: _ } => [dashboard_instance_agent_door_directory(instance: instance)]
+    Absent => []
+  }
+}
+
+fn deployment_agent_door_unit_name(names: DeploymentNames) -> NonEmptyStr {
+  join([deployment_belt_unit_stem(names: names), "-agent-door.service"], "") as NonEmptyStr
+}
+
+fn deployment_agent_door_unit_path(names: DeploymentNames) -> NonEmptyStr {
+  join(["/etc/systemd/system/", deployment_agent_door_unit_name(names: names) as String], "") as NonEmptyStr
+}
+
+data deployment_agent_door_function_suffix: String = "_agent_door"
+
+fn deployment_agent_door_steps(instance: HostDashboardInstance, names: DeploymentNames) -> List<DeploymentArtifactStep> {
+  match deployment_agent_door_socket(instance: instance) {
+    Absent => []
+    Present { value: _ } => [DeploymentArtifactStep { kind: ComposeOwned { kind: AgentDoorServeUnit }, path: deployment_agent_door_unit_path(names: names) }]
   }
 }
 
@@ -1117,7 +1182,7 @@ type DeploymentSpec {
 // row about a fold shape; and the module's own header describes its precedent, ctrl-runner-
 // reclaim.timer, as 'a hand-deployed host timer with no prior .dag model'. Copying it would have
 // produced a second modeled timer that never runs — the specification-without-execution trap in
-// DESIGN section 5, reproduced while fixing an instance of it.
+// gunbc.design_argument::fail_closed, reproduced while fixing an instance of it.
 //
 // So the belt timer rides the one host-effect path this repo can show executing: this deployment.
 // That also makes its lifecycle honest rather than merely convenient — the belt drives THIS
@@ -1132,7 +1197,7 @@ type DeploymentSpec {
 // and belt_run_once_cli took no argument, so every timer actuated PRODUCTION's tree whatever
 // instance installed it. The first cut of this member papered over that by making membership
 // conditional — production got a timer, the twin got none — which is the author-side workaround
-// DESIGN §5 names: it routed around the defect instead of fixing it, and it silently broke the one-
+// gunbc.design_argument::fail_closed names: it routed around the defect instead of fixing it, and it silently broke the one-
 // for-one twin mirror that a_twin_deployment_on_one_host_collides_with_nothing asserts as its non-
 // degeneracy guard (review 46541 caught both). The spawn root is now a per-deployment parameter
 // carried to the tick through the unit's Environment= line, so every instance actuates its own tree
@@ -1153,7 +1218,7 @@ type DeploymentSpec {
 // under names the derivation would not mint, so both constructors must state them. No belt unit
 // exists on any host, so there is no live name to preserve and no silent-rename hazard
 // (the concern the annotation on DeploymentNames states); storing a value that would be identical in every
-// constructor is the second representation DESIGN section 2 forbids.
+// constructor is the second representation gunbc.design_argument::minimize_redundancy forbids.
 fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
@@ -1175,7 +1240,7 @@ fn deployment_owned_steps(
     },
   ], concat(deployment_attempt_unit_drain_steps(names: names, lab_plan: lab_plan), concat([
     DeploymentArtifactStep { kind: UpsertOwned { kind: BeltEventPathUnit }, path: deployment_belt_exit_path_unit_path(names: names) },
-  ], concat(deployment_tailnet_door_steps(names: names), concat([
+  ], concat(deployment_tailnet_door_steps(names: names), concat(deployment_agent_door_steps(instance: instance, names: names), concat([
     DeploymentArtifactStep {
       kind: UpsertOwned { kind: TailscaleServeMapping },
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
@@ -1183,14 +1248,14 @@ fn deployment_owned_steps(
   ], concat(
     deployment_fabric_storage_steps(holding: holding, names: names),
     deployment_approval_broker_front_door_steps(holding: holding),
-  ))))))))
+  )))))))))
 }
 
 // THE DRAIN BELONGS TO THE SELECTED WORKER-SANDBOX REALIZATION, NOT TO EVERY DEPLOYMENT. The path
 // unit and its root service replace the attempt-system-unit launcher grant, which was installed only
 // when the plan selected the system-manager launcher; a deployment whose plan does not select it has
 // nothing that enqueues on the attempt-unit spool, so a root service there would be a member nothing
-// consumes (DESIGN 3c) and a root surface for nothing. The selector is read once, in lab_host_plan.
+// consumes (gunbc.design_argument::consumption) and a root surface for nothing. The selector is read once, in lab_host_plan.
 fn deployment_attempt_unit_drain_steps(names: DeploymentNames, lab_plan: LabDeployPlan) -> List<DeploymentArtifactStep> {
   match lab_plan_worker_sandbox_choice(plan: lab_plan) {
     Present { value: SystemManagerLauncherSelected } => [
@@ -1394,7 +1459,7 @@ fn deployment_steps_apply_order(
 // root moved to the ensured side, where converged-on-apply and never-torn-down are what the
 // category already means, and neither claim was edited. The rejected alternative was to narrow
 // those two claims to per-instance ownership so a host-shared resource fell outside them; it was
-// refused because editing a safety claim to accommodate a change is the DESIGN section 5 tell, and
+// refused because editing a safety claim to accommodate a change is the gunbc.design_argument::fail_closed tell, and
 // a claim that has just caught a real hazard is not the thing to weaken (operator ruling,
 // 2026-08-08).\n\nThe service still runs git init --bare itself, which remains correct and is not
 // made redundant: the deploy ensures the DIRECTORY exists and is owned, and only the service can
@@ -1443,7 +1508,7 @@ fn deployment_service_config(
 ) -> DeploymentServiceConfig<AdmittedFixedServeBinary> {
   DeploymentServiceConfig {
     unit_name: names.unit_name,
-    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr),
+    serve_binary: admit_fixed_serve_path(path: instance.serve_binary as String as NonEmptyStr, source: serve_source_from_instance(instance: instance)),
     serve_entry: roadmap_serve_entry_file,
     provider_state_root: dashboard_instance_provider_state_root(instance: instance) as String as NonEmptyStr,
     serve_function: instance.serve_function,
@@ -1497,7 +1562,7 @@ fn deployment_spec_for(
     ),
     names: names,
     instance_id: instance.instance_id,
-    directories: concat(dashboard_instance_directory_demands(realization: realization, instance: instance), deployment_tailnet_door_directories(instance: instance, names: names)),
+    directories: concat(dashboard_instance_directory_demands(realization: realization, instance: instance), concat(deployment_tailnet_door_directories(instance: instance, names: names), deployment_agent_door_directories(instance: instance))),
   }
 }
 
@@ -1523,7 +1588,7 @@ fn deployment_tailnet_door_directories(instance: HostDashboardInstance, names: D
 // model has any more.
 //
 // Recorded rather than silently dropped because a scaffold row that vanishes with its subject
-// leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution
+// leaves no evidence the obligation was DISCHARGED as opposed to forgotten (gunbc.design_argument::guarantee_ladder: dissolution
 // on climb deletes the production machinery, never the receipt).
 //
 // Retirement classification went with it. RetirementDisposition and

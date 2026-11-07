@@ -2,7 +2,7 @@ module gunbc.superseded_run_starvation_census
 
 import std.types { Bool, Int, String, Timestamp, NonEmptyStr }
 import std.measure { Second, second, seconds_per_day }
-import std.algebra { Cons, Empty, trim }
+import std.algebra { Cons, Empty, list_reverse, trim }
 import extdeps.github.github { default_per_page, max_per_page }
 import extdeps.github.workflow_runs
 import extdeps.github.workflow_runs {
@@ -850,18 +850,23 @@ fn find_refreshed(refreshed: List<RefreshedPair>, pair: SupersededRunPair) -> Re
 }
 
 fn collect_cancellation_rows(pairs: List<SupersededRunPair>, refreshed: List<RefreshedPair>) -> List<CancellationRow> {
+  collect_cancellation_rows_into(pairs: pairs, refreshed: refreshed, reversed: [])
+}
+
+// TAIL POSITION: rows ride a reversed accumulator (a cons per row) and are reversed once at the end.
+fn collect_cancellation_rows_into(pairs: List<SupersededRunPair>, refreshed: List<RefreshedPair>, reversed: List<CancellationRow>) -> List<CancellationRow> {
   match pairs {
-    Empty {} => []
+    Empty {} => list_reverse(xs: reversed)
     Cons { head: pair, tail: rest_pairs } => {
       let matched = find_refreshed(refreshed: refreshed, pair: pair)
-      let rows_for_pair = match matched {
+      let next = match matched {
         Present { value: rp } =>
           if rp.cancelled_jobs > 0 {
-            [pair_to_cancellation_row(pair: pair, rp: rp)]
-          } else { [] }
-        Absent => []
+            [pair_to_cancellation_row(pair: pair, rp: rp)] |> concat(reversed)
+          } else { reversed }
+        Absent => reversed
       }
-      rows_for_pair |> concat(collect_cancellation_rows(pairs: rest_pairs, refreshed: refreshed))
+      collect_cancellation_rows_into(pairs: rest_pairs, refreshed: refreshed, reversed: next)
     }
   }
 }
@@ -957,37 +962,39 @@ fn refresh_pairs(
   repo: String,
   pairs: List<SupersededRunPair>,
 ) -> RefreshPairsResult {
+  refresh_pairs_into(auth_token: auth_token, owner: owner, repo: repo, pairs: pairs, reversed_done: [], reversed_truncated: [])
+}
+
+// TAIL POSITION: refreshed pairs and truncations ride reversed accumulators, reversed once at the end;
+// a refused read stops the walk with its cause, exactly as the nested match did.
+fn refresh_pairs_into(
+  auth_token: String,
+  owner: String,
+  repo: String,
+  pairs: List<SupersededRunPair>,
+  reversed_done: List<RefreshedPair>,
+  reversed_truncated: List<JobListTruncated>,
+) -> RefreshPairsResult {
   match pairs {
-    Empty {} => AllPairsRefreshed { pairs: [] }
+    Empty {} =>
+      match reversed_truncated {
+        Empty {} => AllPairsRefreshed { pairs: list_reverse(xs: reversed_done) }
+        Cons { head: _, tail: _ } =>
+          SomePairsTruncated { pairs: list_reverse(xs: reversed_done), truncated: list_reverse(xs: reversed_truncated) }
+      }
     Cons { head: pair, tail: rest } =>
-      match refresh_pair(
-        auth_token: auth_token,
-        owner: owner,
-        repo: repo,
-        pair: pair,
-      ) {
+      match refresh_pair(auth_token: auth_token, owner: owner, repo: repo, pair: pair) {
         RefreshComplete { pair: rp } =>
-          match refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest) {
-            AllPairsRefreshed { pairs: remaining } =>
-              AllPairsRefreshed { pairs: [rp] |> concat(remaining) }
-            SomePairsTruncated { pairs: remaining, truncated: ts } =>
-              SomePairsTruncated { pairs: [rp] |> concat(remaining), truncated: ts }
-            PairRefreshRefused { cause: c } => PairRefreshRefused { cause: c }
-          }
+          refresh_pairs_into(
+            auth_token: auth_token, owner: owner, repo: repo, pairs: rest,
+            reversed_done: [rp] |> concat(reversed_done), reversed_truncated: reversed_truncated,
+          )
         JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r } =>
-          match refresh_pairs(auth_token: auth_token, owner: owner, repo: repo, pairs: rest) {
-            AllPairsRefreshed { pairs: remaining } =>
-              SomePairsTruncated {
-                pairs: remaining,
-                truncated: [JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r }],
-              }
-            SomePairsTruncated { pairs: remaining, truncated: ts } =>
-              SomePairsTruncated {
-                pairs: remaining,
-                truncated: [JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r }] |> concat(ts),
-              }
-            PairRefreshRefused { cause: c } => PairRefreshRefused { cause: c }
-          }
+          refresh_pairs_into(
+            auth_token: auth_token, owner: owner, repo: repo, pairs: rest,
+            reversed_done: reversed_done,
+            reversed_truncated: [JobListTruncated { run_id: id, total_jobs: t, returned_jobs: r }] |> concat(reversed_truncated),
+          )
         RefreshReadRefused { cause: c } => PairRefreshRefused { cause: c }
       }
   }

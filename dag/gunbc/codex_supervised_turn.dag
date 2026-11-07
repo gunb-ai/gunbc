@@ -524,7 +524,7 @@ type SupervisedThreadIdReading
 // The arm is kept rather than folded into a neighbour, because mapping "this line was addressed
 // elsewhere" onto ThreadIdLineUnreadable would be the state-space conflation this whole change is
 // removing -- it would put a lie in the decoder to avoid an unreachable arm. What is NOT done is
-// write a witness for it: its RED is unauthorable today, and DESIGN section 4b rules such a probe
+// write a witness for it: its RED is unauthorable today, and gunbc.design_argument::guarantee_ladder rules such a probe
 // worse than absent because it is cited as coverage. Exhaustiveness requires the arm; evidence
 // cannot yet be authored for it, and the difference is stated rather than papered over.
 //

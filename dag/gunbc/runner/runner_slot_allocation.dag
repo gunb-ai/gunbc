@@ -2,6 +2,8 @@ module gunbc.runner.runner_slot_allocation
 
 import gunbc.fleet.fleet_enrollment { CiRunnerParticipation, hosts_enrolled_for }
 import std.types { Int, String, List, Bool }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.design_ruling { srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves }
 import std.algebra { take_prefix }
 import std.nat { Nat, nat_range_inclusive }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend, measure_fit_count_floor, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
@@ -35,7 +37,7 @@ type HostRunnerSlotAllocation {
 }
 
 data gunbc_runner_slot_allocation_authority_disposition: Disposition = Terminal {
-  reason: "RE-DERIVED 2026-09-19 UNDER THE OPERATOR RULING 'there is no CPU demand - the processes we run are single core - do NOT overthink it please': cores_per_slot is an AUTHORED POLICY of 1 (gunbc_runner_cores_per_slot_policy), no longer derived from MemoryMax against a vendor memory-per-vCPU ratio, so the CPU axis admits 128 on every M128-30 host and STOPS BINDING; committed width is the memory-admitted width -- srv1 15, srv3/srv4 17 at the 26 GiB slot, fleet 49; and cpu_quota is SlotCpuQuotaUnbounded, so no finite CPU ceiling is declared for a runner unit or a fabric cell slice and the affirmative reset `CPUQuota=` is emitted in its place (the reported srv4 runner-unit census found unlimited quotas -- other units and the fabric boundary require their own readback -- and a 100% quota would throttle parallel link/codegen; the reset is a declared representation -- applying it to an EXISTING finite quota is explicitly blocked at gunbc.fabric.fabric_cell_effect and gunbc.host.host_converge, each naming its trigger). Every figure below that names a cores_per_slot of 6 or 10, a CPU admission of 21 or 12, or a CPU-bound committed width is PRIOR configuration retained as history.\n\nSingle authority for fleet runner-slot desired allocation (operator rulings 2026-07-10 superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning 2026-07-11; srv3 host-standup converge 2026-07-21; PER-HOST WIDTH + 14GiB slot 2026-08-05; srv4 disk row-pin retired + apply-time preflight 2026-08-06). Fleet-uniform per-slot row: 6 cores (DERIVED 2026-08-23 from the 16GiB MemoryMax at the surveyed 1 core : 3 GiB memory-per-vCPU convention, superseding an authored 8 that stated no relation to the ceiling beside it -- gunbc_runner_memory_per_core reads it from gunbc.runner.runner_shape_census rather than restating it as a literal here) · 16GiB MemoryMax · 15GiB MemoryHigh (the authored max−1GiB relation, its own emitted knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15; raised from 14/13 by the 2026-08-17 floor-peak ruling in gunbc_runner_slot_memory_max_ruling_note) · 32GiB MemorySwapMax · TasksMax 16384 (the 2026-06-21 incident REPAIR value restored by operator ruling 2026-08-08 on PR 8045: TasksMax=512 WAS the diagnosed EAGAIN/process-creation outage value, and the earlier 512 row here inverted that diagnosis; any lower derived envelope value must be separately accepted and never below live task demand) · cpu_weight 100. PER-HOST width, RE-DERIVED 2026-08-27: MEMORY admits 25 on srv1 and 29 on srv3/srv4 at the 16GiB slot, and on srv2 IT IS UNESTABLISHED. CPU admits 21 on every host (128 cited cores at 6 per slot); disk admits nothing numeric anywhere. COMMITTED width is the minimum over those axes. SUPERSEDED 2026-09-13 BY THE 26/25 GiB TRANSITION: the slot is 26 GiB MemoryMax / 25 GiB MemoryHigh, cores_per_slot rises 6 -> 10, and CPU admits 12 on every host (128 cited cores at 10 per slot), so srv1/srv3/srv4 commit 12 and the fleet commits 36. srv2 NO LONGER HOLDS 5 AND HOLDS NOTHING: the held arm is deleted, its width RESOLVES TO A TYPED REFUSAL, and `gunbc.runner.runner_host_deploy` constructs no operational deploy row for it at all. The figures in the rest of this row that describe the 16/15 slot and the 21-wide commitment are the PRIOR configuration and are retained only as the transition's starting point -- they are not the current standing and must not be cited as one.\n\nsrv1 MOVED 27 -> 25 AND THAT IS A SYNCHRONIZATION, NOT A NEW TARGET. The 27 was consistent with an ungrounded 20 GiB fleet-wide session figure; that figure is deleted and srv1 carries an evidence-backed 52 GiB allowance, which removes three slots from the derivation this literal claims to report. No committed width moves, because srv1's CPU axis binds at 21 either way.\n\nsrv2's HELD 5 IS DELETED (2026-09-13) AND WHAT REPLACED IT IS THE TYPED REFUSAL THIS NOTE ASKED FOR. The paragraph below states the eventual construction fix as replacing the Int API with a typed standing so an unestablished host cannot be read as a number at all; that is now done at the DEPLOY seam -- `RunnerHostDeployAdmission` constructs an operational row only in the admitted arm, so srv2 yields a cause and no row, and zero can no longer inhabit `RunnerHostDeploy`. The historical argument is kept because it is what motivated the construction; the held number it defends no longer exists. Its session reservation is unestablished, so the memory subtraction cannot be performed at all -- there is no denominator to subtract. A held number and a derived one are different claims: the first says what the host is currently running while it is re-grounded, the second says what the conservation wall would pass, and only the second is evidence. The previous revision of this sentence listed 5 beside three derived figures as though the four were the same kind of fact, which is exactly the reading the ruling forbids. test.claim.host.host_allocation_conservation the_srv2_width_derivation_is_unestablished is the executed statement of this, and derived_width_reproduces_the_surviving_host_classes carries the hosts whose widths DO derive. A third witness, every_derived_width_matches_its_authored_copy, used to sit beside them asserting that each derived width equalled an authored copy of itself; it is DELETED, because the authored copies it compared against are gone and a check whose RED is no longer authorable is a permanently green row cited as coverage (DESIGN 4b). The eventual construction fix is to replace this Int API with a typed standing (MemoryWidthDerived / MemoryWidthUnestablished) so an unestablished host cannot be read as a number at all; until then this note is the boundary and those two surviving witnesses are the wall. THE BINDING AXIS CHANGED AND THAT IS THE HEADLINE: memory bound every host in this fleet's entire history until 2026-08-22, and now binds only srv2, the one host whose 64GiB install failed training and was reverted. Everywhere else CPU binds, which is why host_memory_admitted_width reporting 29 is not a commitment to 29 (width_minimum_now_spans_three_axes_note). srv4's disk stays DiskWidthUnconstrained at allocation with the apply-time gate gunbc.runner.runner_lifecycle runner_width_disk_preflight unchanged. Live fleet ran 5 slots on EVERY host when this was written, so srv3/srv4's sixth slot is a provisioning target rather than a description (gunbc_runner_slot_width_ruling_note). GUARANTEED mode is now STRUCTURAL rather than checked — runner_slice_cap is DERIVED as slots × MemoryMax instead of being a second literal, so Σ per-slot MemoryMax ≤ slice_cap holds by construction and an oversubscribed slice has no representation here (DESIGN 5 construction-over-validation; the prior 80GiB literal was kept coherent with 5 × 16GiB by hand, which the old note admitted when it called them 'coherent by construction at these values' — a coincidence maintained by an author, not a derivation). The real remaining constraint is CONSERVATION against host RAM, which is not this module's to check: gunbc.ci.ci_runner_placement holds it, now against OS-usable RAM with the per-host session slice and per-host fixed overhead charged. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). Downstream: gunbc.ci.ci_floor_measurement (declared vs live cap fork), gunbc.ci.ci_runner_placement, gunbc.host.host_converge, gunbc.host.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.runner.runner_slot_enforcement, gunbc.fleet.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
+  reason: "RE-DERIVED 2026-09-19 UNDER THE OPERATOR RULING 'there is no CPU demand - the processes we run are single core - do NOT overthink it please': cores_per_slot is an AUTHORED POLICY of 1 (gunbc_runner_cores_per_slot_policy), no longer derived from MemoryMax against a vendor memory-per-vCPU ratio, so the CPU axis admits 128 on every M128-30 host and STOPS BINDING; committed width is the memory-admitted width -- srv1 15, srv3/srv4 17 at the 26 GiB slot, fleet 49; and cpu_quota is SlotCpuQuotaUnbounded, so no finite CPU ceiling is declared for a runner unit or a fabric cell slice and the affirmative reset `CPUQuota=` is emitted in its place (the reported srv4 runner-unit census found unlimited quotas -- other units and the fabric boundary require their own readback -- and a 100% quota would throttle parallel link/codegen; the reset is a declared representation -- applying it to an EXISTING finite quota is explicitly blocked at gunbc.fabric.fabric_cell_effect and gunbc.host.host_converge, each naming its trigger). Every figure below that names a cores_per_slot of 6 or 10, a CPU admission of 21 or 12, or a CPU-bound committed width is PRIOR configuration retained as history.\n\nSingle authority for fleet runner-slot desired allocation (operator rulings 2026-07-10 superseding the 2026-07-05 brief; MemoryHigh-emit + swap-provisioning 2026-07-11; srv3 host-standup converge 2026-07-21; PER-HOST WIDTH + 14GiB slot 2026-08-05; srv4 disk row-pin retired + apply-time preflight 2026-08-06). Fleet-uniform per-slot row: 6 cores (DERIVED 2026-08-23 from the 16GiB MemoryMax at the surveyed 1 core : 3 GiB memory-per-vCPU convention, superseding an authored 8 that stated no relation to the ceiling beside it -- gunbc_runner_memory_per_core reads it from gunbc.runner.runner_shape_census rather than restating it as a literal here) · 16GiB MemoryMax · 15GiB MemoryHigh (the authored max−1GiB relation, its own emitted knob per the 2026-07-11 ruling — a hit at 16GiB spills to swap after throttling at 15; raised from 14/13 by the 2026-08-17 floor-peak ruling in gunbc_runner_slot_memory_max_ruling_note) · 32GiB MemorySwapMax · TasksMax 16384 (the 2026-06-21 incident REPAIR value restored by operator ruling 2026-08-08 on PR 8045: TasksMax=512 WAS the diagnosed EAGAIN/process-creation outage value, and the earlier 512 row here inverted that diagnosis; any lower derived envelope value must be separately accepted and never below live task demand) · cpu_weight 100. PER-HOST width, RE-DERIVED 2026-08-27: MEMORY admits 25 on srv1 and 29 on srv3/srv4 at the 16GiB slot, and on srv2 IT IS UNESTABLISHED. CPU admits 21 on every host (128 cited cores at 6 per slot); disk admits nothing numeric anywhere. COMMITTED width is the minimum over those axes. SUPERSEDED 2026-09-13 BY THE 26/25 GiB TRANSITION: the slot is 26 GiB MemoryMax / 25 GiB MemoryHigh, cores_per_slot rises 6 -> 10, and CPU admits 12 on every host (128 cited cores at 10 per slot), so srv1/srv3/srv4 commit 12 and the fleet commits 36. srv2 NO LONGER HOLDS 5 AND HOLDS NOTHING: the held arm is deleted, its width RESOLVES TO A TYPED REFUSAL, and `gunbc.runner.runner_host_deploy` constructs no operational deploy row for it at all. The figures in the rest of this row that describe the 16/15 slot and the 21-wide commitment are the PRIOR configuration and are retained only as the transition's starting point -- they are not the current standing and must not be cited as one.\n\nsrv1 MOVED 27 -> 25 AND THAT IS A SYNCHRONIZATION, NOT A NEW TARGET. The 27 was consistent with an ungrounded 20 GiB fleet-wide session figure; that figure is deleted and srv1 carries an evidence-backed 52 GiB allowance, which removes three slots from the derivation this literal claims to report. No committed width moves, because srv1's CPU axis binds at 21 either way.\n\nsrv2's HELD 5 IS DELETED (2026-09-13) AND WHAT REPLACED IT IS THE TYPED REFUSAL THIS NOTE ASKED FOR. The paragraph below states the eventual construction fix as replacing the Int API with a typed standing so an unestablished host cannot be read as a number at all; that is now done at the DEPLOY seam -- `RunnerHostDeployAdmission` constructs an operational row only in the admitted arm, so srv2 yields a cause and no row, and zero can no longer inhabit `RunnerHostDeploy`. The historical argument is kept because it is what motivated the construction; the held number it defends no longer exists. Its session reservation is unestablished, so the memory subtraction cannot be performed at all -- there is no denominator to subtract. A held number and a derived one are different claims: the first says what the host is currently running while it is re-grounded, the second says what the conservation wall would pass, and only the second is evidence. The previous revision of this sentence listed 5 beside three derived figures as though the four were the same kind of fact, which is exactly the reading the ruling forbids. test.claim.host.host_allocation_conservation the_srv2_width_derivation_is_unestablished is the executed statement of this, and derived_width_reproduces_the_surviving_host_classes carries the hosts whose widths DO derive. A third witness, every_derived_width_matches_its_authored_copy, used to sit beside them asserting that each derived width equalled an authored copy of itself; it is DELETED, because the authored copies it compared against are gone and a check whose RED is no longer authorable is a permanently green row cited as coverage (gunbc.design_argument::guarantee_ladder). The eventual construction fix is to replace this Int API with a typed standing (MemoryWidthDerived / MemoryWidthUnestablished) so an unestablished host cannot be read as a number at all; until then this note is the boundary and those two surviving witnesses are the wall. THE BINDING AXIS CHANGED AND THAT IS THE HEADLINE: memory bound every host in this fleet's entire history until 2026-08-22, and now binds only srv2, the one host whose 64GiB install failed training and was reverted. Everywhere else CPU binds, which is why host_memory_admitted_width reporting 29 is not a commitment to 29 (width_minimum_now_spans_three_axes_note). srv4's disk stays DiskWidthUnconstrained at allocation with the apply-time gate gunbc.runner.runner_lifecycle runner_width_disk_preflight unchanged. Live fleet ran 5 slots on EVERY host when this was written, so srv3/srv4's sixth slot is a provisioning target rather than a description (gunbc_runner_slot_width_ruling_note). GUARANTEED mode is now STRUCTURAL rather than checked — runner_slice_cap is DERIVED as slots × MemoryMax instead of being a second literal, so Σ per-slot MemoryMax ≤ slice_cap holds by construction and an oversubscribed slice has no representation here (gunbc.design_argument::fail_closed construction-over-validation; the prior 80GiB literal was kept coherent with 5 × 16GiB by hand, which the old note admitted when it called them 'coherent by construction at these values' — a coincidence maintained by an author, not a derivation). The real remaining constraint is CONSERVATION against host RAM, which is not this module's to check: gunbc.ci.ci_runner_placement holds it, now against OS-usable RAM with the per-host session slice and per-host fixed overhead charged. Per-axis targets are operator-set; never reconcile this row toward live readback (live is not automatically truth — the 32-vs-0 swap fork existed precisely because the apply was assumed rather than readback-proven). Downstream: gunbc.ci.ci_floor_measurement (declared vs live cap fork), gunbc.ci.ci_runner_placement, gunbc.host.host_converge, gunbc.host.host_standup (prefix:host-converge + P1:runner-deploy-slot), gunbc.runner.runner_slot_enforcement, gunbc.fleet.fleet_show_effective_read. ctrl applies host-side; gunbc emits converge — never apply from this module."
 }
 
 data gunbc_runner_slot_width_ruling_note: String = "SUPERSEDED 2026-08-23 AND RETAINED AS METHOD. Everything below is the derivation as it stood when memory bound every host in the fleet, and its METHOD is unchanged and still correct: width is the largest count the conservation wall passes, charging each host its own overhead and sessions slice against OS-usable RAM. What changed is an INPUT and an AXIS. The input: the 2026-08-22 DIMM upgrade plus the /proc/meminfo reads that followed took srv1, srv3 and srv4 from about 125 GiB usable to about 502 GiB, so memory admission moved to 27/5/29/29. The axis: CPU is now charged too, at 128 cited cores and 6 cores per slot, admitting 21 everywhere. Committed width is 21/5/21/21.\n\nSO THE QUESTION THIS NOTE ANSWERS NO LONGER HAS THE ANSWER IT GIVES. Reading on for CURRENT widths will mislead; read on for how a width is derived, which is the part worth keeping. The one claim below that has fully inverted is the tightest-number warning: it says srv1/srv2 hold 5 slots with roughly a gibibyte to spare and that any upward correction to the sessions reservation drops them to 4. That is now true of srv2 ALONE. srv1 has roughly 170 GiB of slack at its committed width and is bound by cores, not bytes.\n\nPRIOR TEXT FOLLOWS UNEDITED. WHY srv3/srv4 GET 6 AND srv1/srv2 STAY AT 5, RE-DERIVED AT THE 16GiB SLOT (operator ruling 2026-08-17). The derivation below is unchanged in method and re-run on the new per-slot ceiling: with runner-available RAM of about 111.4GiB on the managed hosts and about 81.0GiB on the legacy pair, a 16GiB slot admits 6 on srv3/srv4 (7 x 16 = 112GiB exceeds 111.4GiB) and still 5 on srv1/srv2 (5 x 16 = 80GiB against 81.0GiB). Fleet total 24 -> 22.\n\nTHE LEGACY MARGIN IS 1.0GiB AND IT IS THE TIGHTEST NUMBER IN THIS MODULE. srv1/srv2 hold 5 slots with roughly one gibibyte to spare, so any upward correction to the 20GiB sessions reservation or to the legacy fixed-overhead allowance drops them to 4. That is the first thing to re-check if either input moves, and it is why the sessions reservation's own dissolve-on (a measured concurrent-peak series) now has a width consequence attached to it rather than only a budget one.\n\nWIDTH IS NOW AHEAD OF THE FLEET, WHICH IS THE OPPOSITE OF THE MEMORY AXIS AND MUST NOT BE READ AS A DESCRIPTION. Observed 2026-08-17 across all four hosts: srv1, srv2, srv3 and srv4 each run FIVE loaded actions-runner instances. So 6 on srv3/srv4 is a PROVISIONING TARGET — two slots that do not exist yet — while 5 on srv1/srv2 matches live. A reader checking this row against systemctl will find srv3/srv4 short by one and that is the model leading, not drifting behind.\n\nSUPERSEDED DERIVATION AT THE 14GiB SLOT, RETAINED AS METHOD (operator ruling 2026-08-05): the width difference is DERIVED from two per-host facts, not granted by preference. First, sessions: gunbc.session_residency host_session_residency places interactive session containers on srv1 and srv2 and on neither managed host, so srv1/srv2 owe a sessions reservation out of the same host RAM and srv3/srv4 do not. Second, fixed overhead: gunbc.ci.ci_floor_measurement carries a measured upper bound for the managed hosts and an operator allowance for the legacy pair, which differ by 10.4GiB per host.\n\nRun the conservation arithmetic with both charged and the MEMORY admissions fall out — srv3/srv4 admit 7 slots at 14GiB and refuse 8 (an eighth would need 112GiB against ~111.6GiB available, over by less than a gibibyte), srv1/srv2 admit 5 and refuse 6. Neither number is authored here as a target; both are the largest width gunbc.ci.ci_runner_placement's wall will pass, and if either per-host fact is corrected the admissible width moves with it.\n\nMEMORY ADMISSION IS NOT THE FULL STORY FOR DISK ON srv4. This note explains the memory axis; gunbc_runner_committed_width derives committed width as the minimum over allocation-time axes. srv4's disk row-pin is retired: host_disk_admitted_width returns DiskWidthUnconstrained and srv4 commits 6 like srv3 at allocation (7 before the 2026-08-17 16GiB ruling); insufficient or unobservable disk at apply is refused by gunbc.runner.runner_lifecycle runner_width_disk_preflight rather than lowering allocation to 5.\n\nTHE SESSIONS FACT IS RESIDENCY, AND SAYING SO HERE IS LOAD-BEARING. An earlier revision of this note derived the same widths from gunbc.build_cache.build_cache_instance instead — whether a host carried an InteractiveSessionCompiles cache instance — which merely CORRELATED with sessions living there. That proxy is the defect this change removes, and gunbc.session_residency why_this_is_not_derived_from_the_build_cache_roster_note records how close it came: the session cache on srv1 and srv2 was found provably dead on 2026-08-06 and deleted, so dropping its now-meaningless roster rows would have stopped charging both hosts their reservation and admitted 7 slots each on a wall returning true. A note still reasoning from the roster would invite exactly that edit, which is why it is corrected rather than left as harmless prose.\n\nTHE FLEET-UNIFORM ROW IS WHY THIS COULD NOT BE EXPRESSED BEFORE. gunbc_committed_host_runner_slot_allocation took a host and then read three globals, so 'this host is different' had nowhere to live and the only way to raise srv3/srv4 was to raise all four — which on srv1/srv2 would have overcommitted by 17GiB against a wall that could not see the sessions it was overcommitting against."
@@ -105,6 +107,56 @@ data revision_job_slots: List<RunnerSlotIdentity> = [srv1_revision_job_slot()]
 // OWN CELL PLUS ITS OWN CONTROLLER SLICE. This list is the one fact the single-slot special cases
 // (the shakedown slot's charge, its place in the committed identities) were each a copy of; a second
 // authored slot is a row here, not another special case. Order is the order of the identities.
+// srv1-02 IS THE DEPLOY SLOT (decision D4 = A of gunbc.plans.srv1_deploy_principal_split). The index is
+// authored because renaming live state is not free; it lives here, beside the other authored indices, so
+// the fleet range can charge it first, and gunbc.runner.runner_slot_job_role reads it from here.
+data srv1_deploy_slot_index: Nat = 2
+
+fn srv1_deploy_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv1, slot_index: srv1_deploy_slot_index }
+}
+
+data deploy_slot_identities: List<RunnerSlotIdentity> = [srv1_deploy_slot()]
+
+// A TRANSITIONAL CI SLOT IS A DECLARED ROW ON TOP OF THE WIDTH THE ENVELOPE ADMITS, SIZED TO THE ENVELOPE REMAINDER (no over-admission; see below). At the 25 GiB
+// slot (#15850) srv1's envelope admits two authored microVM slots and the deploy slot srv1-02, and no
+// CI slot. srv1-01, a CI slot in group gunbai, is the only srv1 runner that has served the
+// srv1-pinned fleet-converge jobs: 16 of 16 in the 60 completed runs read 2026-11-05. srv1-02 is not
+// in service: masked after the 2026-10-30 crash loop, recorded at
+// gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names. So the
+// operator ruled option (a): keep srv1-01 until the deploy slot serves (2026-11-05, relayed by
+// merry-fox-82 msg_07ba9a54 and keen-otter-392). The row is charged ON TOP of the memory-admitted
+// width. srv1's charged envelope after the two authored microVM slots is 47.85 GiB (the derivation in
+// test.claim.runner.runner_slot_allocation_witness: 145.85 GiB less 52 shakedown and 46 revision-job),
+// so two 25 GiB fleet slots would over-admit it by ~2.15 GiB. The operator narrowed option (a) to B on
+// 2026-11-06: srv1-01 is granted the envelope remainder (~22.85 GiB), so there is no over-admission. Keeping the
+// slot preserves an OBSERVED route, not guaranteed scheduling: srv1-01 is a shared CI slot.
+// THE EXIT IS NOT MODELED HERE (gunbc.design_argument::consumption, a declared frontier): it is the deletion of this row, taken when
+// ALL of (1) the three deploy_slot_tenancy walls (gunbc.ci.deploy_slot_tenancy) read back current,
+// (2) a srv1-pinned converge job is observed completed on srv1-02, (3) the operator signs off. No fold
+// reads those readings today, so a typed condition list would be a row nothing consumes (review 91374);
+// the consumer is the later change that makes the deploy slot's standing observable, and until then the
+// exit is an operator act recorded in the ruling's provenance.
+type TransitionalCiSlot {
+  identity: RunnerSlotIdentity
+  ruling: DeclarationRef
+}
+
+data transitional_ci_slots: List<TransitionalCiSlot> = [
+  TransitionalCiSlot {
+    identity: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+    ruling: srv1_transitional_ci_slot_is_kept_until_the_deploy_slot_serves.reference,
+  },
+]
+
+fn host_transitional_ci_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  map(filter(transitional_ci_slots, t => (t.identity.host as String) == (host as String)), t => t.identity)
+}
+
+fn host_transitional_ci_slot_count(host: HostIdentity) -> Int {
+  host_transitional_ci_slot_identities(host: host).length()
+}
+
 data authored_microvm_slots: List<RunnerSlotIdentity> = [srv1_microvm_shakedown_slot(), srv1_revision_job_slot()]
 
 fn host_authored_microvm_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
@@ -144,6 +196,27 @@ fn slot_is_microvm_shakedown_slot(slot: RunnerSlotIdentity) -> Bool {
 // A workspace-designated shakedown cell has the finite CPU envelope of its largest admitted
 // profile. CI-purpose cells retain the runner policy; guest sizing consumes this same boundary.
 fn gunbc_runner_slot_desired_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
+  let base = gunbc_runner_slot_desired_base_for(slot: slot)
+  if identity_in_list(identity: slot, members: host_transitional_ci_slot_identities(host: slot.host)) {
+    let remainder = transitional_ci_slot_memory_max(host: slot.host)
+    RunnerSlotDesired {
+      memory_max: remainder,
+      memory_swap_max: byte_size(0),
+      memory_high: remainder,
+      tasks_max: base.tasks_max,
+      cpu_weight: base.cpu_weight,
+      cpu_quota: base.cpu_quota,
+      labels: base.labels,
+    }
+  } else {
+    base
+  }
+}
+
+// THE BASE ANSWER, BEFORE A TRANSITIONAL SLOT'S REMAINDER. The remainder is derived from the envelope
+// less the authored slots' charge, and that charge reads each authored slot's grant; an authored slot is
+// never transitional, so the charge reads this base and the two folds do not call each other.
+fn gunbc_runner_slot_desired_base_for(slot: RunnerSlotIdentity) -> RunnerSlotDesired {
   let fleet = gunbc_runner_slot_desired()
   if slot_is_microvm_shakedown_slot(slot: slot) {
     RunnerSlotDesired {
@@ -250,7 +323,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 //
 // THESE ARE STILL AUTHORED LITERALS AND THAT IS STILL DEBT. test.claim.host.host_allocation_conservation
 // derived_width_reproduces_every_authored_literal re-runs the arithmetic and joins it to each
-// number here, which is validation standing where construction was available (DESIGN 5): the wall
+// number here, which is validation standing where construction was available (gunbc.design_argument::fail_closed): the wall
 // concedes the bad state is writable and catches it afterwards. The construction fix is for this
 // function to CALL that derivation rather than restate its result, and it is blocked on an import
 // cycle -- gunbc.ci.ci_floor_measurement imports this module for the slot shape, so this module cannot
@@ -305,7 +378,7 @@ fn runner_label_sets_equal(a: List<String>, b: List<String>) -> Bool {
 // existing callers, which is stated exactly at that function and is NOT closed by this change
 // (operator direction 2026-09-18: "we can't assume a uniform fleet, i would just derive as
 // much as possible from the actual state of the machines here"). What stood here was one authored
-// literal per host and an `else` arm of 0, which is the conflation DESIGN 5 forbids at its most
+// literal per host and an `else` arm of 0, which is the conflation gunbc.design_argument::fail_closed forbids at its most
 // consequential: a host measured to have no runner memory and a host nobody wrote a row for
 // produced the same Int, so every consumer downstream read "this machine has no capacity" for what
 // was actually "nobody answered". srv2 was the live instance of that second reading.
@@ -460,8 +533,8 @@ fn envelope_final(usable: ByteSize, overhead: ByteSize, session: ByteSize, contr
   }
 }
 
-// WHERE THE CLASS HAS *NOT* CLIMBED, SAID HERE RATHER THAN LEFT FOR A READER TO DISCOVER (DESIGN
-// 4b(1), rung honesty; review 67854). The resolution above carries the distinction between a host
+// WHERE THE CLASS HAS *NOT* CLIMBED, SAID HERE RATHER THAN LEFT FOR A READER TO DISCOVER (
+// gunbc.design_argument::guarantee_ladder (rung honesty), rung honesty; review 67854). The resolution above carries the distinction between a host
 // with no runner memory and a host whose inputs nobody established. THIS SHIM THEN DISCARDS IT: the
 // unestablished arm becomes 0, host_memory_admitted_width divides that 0, and the consumer sees the
 // same Int it saw before. So the conflation is closed AT THE RESOLUTION and is still open AT THIS
@@ -528,14 +601,14 @@ data microvm_controller_slice_cache_headroom: ByteSize = byte_size(8589934592)
 // gunbc.runner.runner_microvm_slot_unit re-wrap the result one module later -- which is this same change
 // MINTING a ByteSize authority and discarding it on the next line (review 70050). std.measure
 // measure_add is the existing surface for adding two measures of one quantity and scale, so
-// reaching past it to Int arithmetic is DESIGN section 2's re-invention of a concept that already
+// reaching past it to Int arithmetic is gunbc.design_argument::minimize_redundancy's re-invention of a concept that already
 // has a home.
 fn microvm_controller_slice_memory_max() -> ByteSize {
   measure_add(a: whole_corpus_compile_public_root_peak, b: microvm_controller_slice_cache_headroom)
 }
 
 fn authored_microvm_slot_charge(slot: RunnerSlotIdentity) -> ByteSize {
-  measure_add(a: gunbc_runner_slot_desired_for(slot: slot).memory_max, b: microvm_controller_slice_memory_max())
+  measure_add(a: gunbc_runner_slot_desired_base_for(slot: slot).memory_max, b: microvm_controller_slice_memory_max())
 }
 
 fn gunbc_microvm_shakedown_slot_charge() -> ByteSize {
@@ -574,6 +647,43 @@ fn memory_admitted_width_of_envelope(envelope: ByteSize, authored_slots: List<Ru
   } else {
     measure_fit_count_floor(capacity: envelope, each: gunbc_runner_slot_memory_max) as Int
   }
+}
+
+// WHAT A TRANSITIONAL CI SLOT IS GRANTED IS THE ENVELOPE'S REMAINDER, DERIVED FROM THE SAME FOLD THE WIDTH
+// READS (operator option (a) narrowed to B, 2026-11-06). memory_admitted_width_of_envelope spends the
+// envelope on the authored slots' charge, then divides the rest by the fleet row and keeps the quotient;
+// the remainder that division loses is what srv1 has left after the deploy slot, and a transitional slot
+// is sized to exactly that, split across the host's transitional slots. Sized to a fleet row it would
+// over-admit the envelope and gunbc.ci.ci_runner_placement host_allocation_verdict would refuse the host
+// (HostAllocationOversubscribedOnHost), which is why the row is NOT charged the fleet constant. A host
+// with no authored slots has no remainder to grant; an envelope that cannot hold the authored charge
+// grants zero; committed_width_of REFUSES that case by name (WidthSlotShapeInadmissible) and never commits the
+// slot at MemoryMax zero. Both arms (envelope under the authored charge; exact-fit remainder of zero) are that refusal.
+fn transitional_ci_slot_memory_max_of_envelope(envelope: ByteSize, authored_slots: List<RunnerSlotIdentity>, transitional_count: Int) -> ByteSize {
+  match measure_sub(a: envelope, b: authored_microvm_slots_charge(slots: authored_slots)) {
+    MeasureSubtrahendExceedsMinuend => byte_size(0)
+    MeasureDifference { value: rest } =>
+      match measure_sub(
+        a: rest,
+        b: gunbc_runner_slot_demand_sum_memory_max(
+          slots: measure_fit_count_floor(capacity: rest, each: gunbc_runner_slot_memory_max) as Int,
+          per_slot: gunbc_runner_slot_memory_max
+        )
+      ) {
+        MeasureSubtrahendExceedsMinuend => byte_size(0)
+        MeasureDifference { value: remainder } =>
+          if transitional_count > 0 { byte_size(byte_size_count(b: remainder) / transitional_count) } else { byte_size(0) }
+      }
+  }
+}
+
+fn transitional_ci_slot_memory_max(host: HostIdentity) -> ByteSize {
+  let f = host_width_facts(host: host)
+  transitional_ci_slot_memory_max_of_envelope(
+    envelope: byte_size(runner_memory_envelope_bytes_of(f: f)),
+    authored_slots: f.authored_slots,
+    transitional_count: host_transitional_ci_slot_count(host: host),
+  )
 }
 
 type HostDiskWidthConstraint
@@ -854,7 +964,7 @@ fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
 // width answer becomes a RunnerWidthResolution -- derived, or unresolved-with-cause -- and every
 // production call site carries or refuses that cause instead of reading an Int. That is what this
 // change is; the Int declaration is DELETED rather than left beside this one, because two answers to
-// one question is the fork DESIGN 3 exists to prevent and a surviving Int is the attractor DESIGN 3's
+// one question is the fork gunbc.design_argument::replacement_migration exists to prevent and a surviving Int is the attractor gunbc.design_argument::replacement_migration's
 // replacement-migration rule names -- every nearby question would keep being answered in its
 // vocabulary while it stood.
 //
@@ -921,19 +1031,27 @@ fn committed_width_of(f: HostWidthFacts) -> RunnerWidthResolution {
             cause: WidthMemoryDenominatorUnestablished { host: f.host, cause: c },
           }
         MemoryDenominatorEstablished =>
+          if host_transitional_ci_slot_count(host: f.host) > 0 && byte_size_count(b: transitional_ci_slot_memory_max_of_envelope(envelope: byte_size(runner_memory_envelope_bytes_of(f: f)), authored_slots: f.authored_slots, transitional_count: host_transitional_ci_slot_count(host: f.host))) == 0 {
+            RunnerWidthUnresolved {
+              cause: WidthSlotShapeInadmissible {
+                reason: "the host declares a transitional CI slot but its envelope leaves no remainder to grant it (the envelope cannot hold the authored charge, or the remainder after the whole fleet-width slots is zero), so the slot is refused rather than committed at MemoryMax zero" as NonEmptyStr,
+              },
+            }
+          } else {
           match f.cpu {
             CpuWidthOfferAbsent { host: h } =>
               RunnerWidthUnresolved { cause: WidthComputeOfferAbsent { host: h } }
             CpuWidthDerived { slots: by_cpu } =>
               RunnerWidthDerived { slots: derived_runner_slots_of(f: f, by_cpu: by_cpu) }
           }
+          }
       }
   }
 }
 
 fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
-  let by_memory = memory_admitted_width_of(f: f)
-  let by_mem_cpu = if by_cpu < by_memory { by_cpu } else { by_memory }
+  let by_memory_plus_transitional = memory_admitted_width_of(f: f) + host_transitional_ci_slot_count(host: f.host)
+  let by_mem_cpu = if by_cpu < by_memory_plus_transitional { by_cpu } else { by_memory_plus_transitional }
   match f.disk {
     DiskAdmitsWidth { slots: d, provenance: _ } => if d < by_mem_cpu { d } else { by_mem_cpu }
     DiskWidthUnconstrained { reason: _ } => by_mem_cpu
@@ -954,7 +1072,7 @@ fn derived_runner_slots_of(f: HostWidthFacts, by_cpu: Int) -> Int {
 // core, so the CPU axis was reserving ten times the demand from a price list. The survey reading,
 // its per-arm refusal vocabulary (RunnerMemoryPerCoreResolution) and the derived resolution
 // (RunnerCoresPerSlotResolution) are DELETED with it, not left beside this row: two answers to one
-// question is the fork DESIGN 3 exists to prevent, and none of their refusing arms had a producer
+// question is the fork gunbc.design_argument::single_authority exists to prevent, and none of their refusing arms had a producer
 // once the survey went.
 //
 // WHAT IT IS NOT. It is not derived from memory_max, not from a vendor catalog, and not a
@@ -977,7 +1095,7 @@ fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
 //
 // gunbc.fleet.fleet_host_budget gunbc_runner_pool_budget_for IS DELETED WITH IT. That function was
 // `gunbc_runner_slice_cap_declared(host: host)` and nothing else -- a second name for one concept
-// (DESIGN 3), which mattered here because it is the name the conservation wall read, so the wall
+// (gunbc.design_argument::single_authority), which mattered here because it is the name the conservation wall read, so the wall
 // and the deploy row reached the width by two routes that had to be kept agreeing by hand.
 fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
   gunbc_runner_slot_demand_sum_memory_max(
@@ -996,14 +1114,25 @@ fn gunbc_runner_slice_cap_for_width(slots: Int) -> ByteSize {
 // the controller slice is its own unit and is charged here, not inside the runner slice.
 fn host_runner_pool_charge(host: HostIdentity, slots: Int) -> ByteSize {
   let authored = host_authored_slots_within_width(host: host, width: slots)
+  let transitional = host_transitional_slots_within_width(host: host, committed: slots)
   if authored.length() > 0 {
     byte_size(
-      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length()))
+      byte_size_count(b: gunbc_runner_slice_cap_for_width(slots: slots - authored.length() - transitional.length()))
         + byte_size_count(b: authored_microvm_slots_charge(slots: authored))
+        + byte_size_count(b: transitional_slots_charge(slots: transitional))
     )
   } else {
     gunbc_runner_slice_cap_for_width(slots: slots)
   }
+}
+
+// A TRANSITIONAL SLOT IS CHARGED ITS OWN GRANT, never the fleet row (see transitional_ci_slot_memory_max_of_envelope).
+fn transitional_slots_charge(slots: List<RunnerSlotIdentity>) -> ByteSize {
+  fold(
+    slots,
+    init: byte_size(0),
+    f: (acc, s) => measure_add(a: acc, b: gunbc_runner_slot_desired_for(slot: s).memory_max)
+  )
 }
 
 fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> ByteSize {
@@ -1391,7 +1520,7 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 //
 // Guaranteed mode is deliberately NOT asserted here any more. runner_slice_cap is derived as slots
 // × MemoryMax, so Σ ≤ cap is true by construction and a check of it would be the vacuous
-// restatement DESIGN 5 says to prefer construction over.
+// restatement gunbc.design_argument::fail_closed says to prefer construction over.
 // gunbc_runner_slot_oversubscription_within_slice survives as the general relation for callers
 // holding two independent numbers.
 
@@ -1400,7 +1529,7 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // The conjunct read `a.slots_per_host > 0 || !host_memory_width_is_established(host: a.host)`: a
 // row could carry a zero width provided the host's session charge was unestablished. That was the
 // only honest shape available while every host produced a row, and it is validation standing where
-// construction was available (DESIGN 5) -- the disjunct re-stated, as a predicate over a row, the
+// construction was available (gunbc.design_argument::fail_closed) -- the disjunct re-stated, as a predicate over a row, the
 // condition under which the row should never have existed.
 //
 // A host whose width does not resolve now produces no allocation row at all
@@ -1445,11 +1574,14 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // receipt measures it yet: the first cold required run's MEMORY RECEIPT (gunbc test, peak_bytes at
 // the slot grain) is that oracle, and a MemoryHigh >= measured-subject-peak conjunct returns here
 // with that receipt as its input -- a declared frontier, never a number copied from the tree
-// (DESIGN section 5, the oracle rule).
+// (gunbc.design_argument::fail_closed, the oracle rule).
+// THE THROTTLE-LINE CONJUNCT, 2026-11-04 (operator: an overrun must crash, not slow): MemoryHigh equals
+// MemoryMax. It used to require MemoryHigh one GiB BELOW the maximum, which is exactly the band in
+// which the kernel throttles and never kills (gunbc.runner.runner_slot_desired, the 2026-11-04 ruling
+// carries the control receipts). A row declaring a lower line would be a slot that crawls.
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
-  let gibibyte_bytes = 1073741824
-  (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
+  (byte_size_count(b: per_slot.memory_high) == byte_size_count(b: per_slot.memory_max))
     && (byte_size_count(b: per_slot.memory_swap_max) == 0)
     && all(
       gunbc_admitted_runner_slot_allocations(),
@@ -1772,15 +1904,40 @@ fn committed_slot_identities(host: HostIdentity) -> CommittedSlotPopulation {
 // fell to or below its index (srv1 14 -> 11, operator ruling via the parent session, 2026-09-26: keep
 // srv1-13, rename no live state). The indices stay authored for the reason
 // gunbc_microvm_shakedown_slot_index gives; only the fleet range is derived.
+// THE DEPLOY SLOT IS CHARGED BEFORE THE CI PREFIX. A deploy slot is a committed member whose index is
+// authored (srv1_deploy_slot_index), so a width that cannot hold every fleet index must drop CI slots,
+// never the deploy slot: a bare prefix of the indices lost srv1-02 at the 25 GiB slot (width 3, prefix
+// {1}) while its role stayed declared. The result stays in index order.
+fn host_deploy_slot_identities(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  filter(deploy_slot_identities, d => (d.host as String) == (host as String))
+}
+
+fn host_transitional_slots_within_width(host: HostIdentity, committed: Int) -> List<RunnerSlotIdentity> {
+  let fleet_count = committed - host_authored_slots_within_width(host: host, width: committed).length()
+  let deploy_kept = take_prefix(host_deploy_slot_identities(host: host), fleet_count)
+  take_prefix(host_transitional_ci_slot_identities(host: host), fleet_count - deploy_kept.length())
+}
+
 fn host_fleet_slot_indices(host: HostIdentity, committed: Int) -> List<Nat> {
   let authored = host_authored_slots_within_width(host: host, width: committed)
   let fleet_count = committed - authored.length()
-  take_prefix(
+  let deploy = host_deploy_slot_identities(host: host)
+  let deploy_kept = take_prefix(deploy, fleet_count)
+  let transitional = host_transitional_ci_slot_identities(host: host)
+  let transitional_kept = host_transitional_slots_within_width(host: host, committed: committed)
+  let ci_kept = take_prefix(
     filter(
-      nat_range_inclusive(lo: 1, hi: committed),
-      i => !identity_in_list(identity: RunnerSlotIdentity { host: host, slot_index: i }, members: authored)
+      map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
+      id => !identity_in_list(identity: id, members: authored) && !identity_in_list(identity: id, members: deploy) && !identity_in_list(identity: id, members: transitional)
     ),
-    fleet_count
+    fleet_count - deploy_kept.length() - transitional_kept.length()
+  )
+  map(
+    filter(
+      map(nat_range_inclusive(lo: 1, hi: committed), i => RunnerSlotIdentity { host: host, slot_index: i }),
+      id => identity_in_list(identity: id, members: deploy_kept) || identity_in_list(identity: id, members: transitional_kept) || identity_in_list(identity: id, members: ci_kept)
+    ),
+    id => id.slot_index
   )
 }
 
@@ -1828,7 +1985,7 @@ fn count_fabric_members(identities: List<RunnerSlotIdentity>) -> Int {
 // THE COUNTS REUSE RunnerWidthResolution RATHER THAN MINTING A SECOND ONE. A count of slots is a
 // width -- derived from the same population under the same standing -- so a parallel
 // SlotCountResolution would be two carriers for one shape, and every consumer would have to learn
-// both (DESIGN 2). What they answer differs; what can be said about their derivability does not.
+// both (gunbc.design_argument::minimize_redundancy). What they answer differs; what can be said about their derivability does not.
 fn count_github_members(identities: List<RunnerSlotIdentity>) -> Int {
   fold(
     identities,

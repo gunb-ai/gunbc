@@ -30,7 +30,7 @@ import gunbc.runner.runner_microvm_lifecycle_realize {
 // WHY IT IS WET AND NOT ENROLLED, and the distinction is the point rather than an excuse. The
 // hermetic witness test.claim.runner.runner_microvm_lifecycle_witness_test SUPPLIES every
 // CgroupSubtreeReadback, TeardownStop and ResourceReadback and asks what the decision layer does
-// with them. That is the right subject for those claims (DESIGN section 3: a witness discriminates at
+// with them. That is the right subject for those claims (gunbc.design_argument::single_authority: a witness discriminates at
 // one interface) and it establishes nothing at all about whether a readback taken on a host ever
 // PRODUCES those values. This file is the pairing obligation that makes those supplied inputs a
 // reading: it executes the producers in gunbc.runner.runner_microvm_lifecycle_realize against transient
@@ -244,7 +244,7 @@ test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Boo
 // `cgroup.freeze` while it writes `cgroup.kill` on the same host in the same run -- the force claim
 // below is that write executing and working. So the freezer has no .dag writer, which is why this
 // corpus carries no cgroup.freeze rows: modelling an interface nothing can drive would be dangling
-// (DESIGN 3c). It returns when a consumer can reach it.
+// (gunbc.design_argument::consumption). It returns when a consumer can reach it.
 //
 // WHAT COVERS THE ARM MEANWHILE: test.claim.runner.runner_microvm_lifecycle_witness_test supplies it
 // and checks what the controller does with it -- that it refutes, that it names its pid, and that it
@@ -267,7 +267,7 @@ test fn a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty() -> Boo
 // WHY NOT chmod: the first cut of this claim made the test slice's own cgroup.events mode 000. That
 // claim FAILED, and the failure was the claim's, not the readback's -- this file runs as root, and
 // root bypasses the permission bits, so the file was still perfectly readable. A blinding that does
-// not blind is a red that cannot go red, which is the decoration DESIGN section 4b warns about at the
+// not blind is a red that cannot go red, which is the decoration gunbc.design_argument::guarantee_ladder warns about at the
 // top rung; it is recorded here rather than quietly replaced.
 test fn a_missing_cgroup_events_is_unobservable_and_never_empty() -> Bool
   uses net: Network

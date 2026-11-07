@@ -25,7 +25,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // CONSOLIDATED EDISON OF NEW YORK, the delivering utility for New York City. This is a SEPARATE
 // subject from extdeps.energy.nj_electricity and not an extension of it: a different utility on a
-// different filed schedule in a different state, per DESIGN section 3's external decomposition rule
+// different filed schedule in a different state, per gunbc.design_argument::single_authority's external decomposition rule
 // (each independently governed upstream gets its own module authority). New Jersey's rows must not
 // grow a New York class, and this module must not restate theirs.
 //

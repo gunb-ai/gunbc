@@ -1,7 +1,7 @@
 // Witness for the TYPED LIVE_DEPLOY APPLY PLAN (gunbc.live_deploy.apply_legs deploy_apply_plan_legs):
 // what the real srv1 plan contains, in what order, under which elevation, and what it refuses. These
 // replace the claims that rendered the deleted apply script and searched its text; each reads the
-// typed legs at the plan interface instead (DESIGN section 3: a witness discriminates at one
+// typed legs at the plan interface instead (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface), and the real route is reached once (the locus refusal) so supplying the plan never
 // removes the last execution of production's entry.
 module test.claim.live_deploy.live_deploy_apply_plan_witness
@@ -12,6 +12,7 @@ import std.optional { Optional, Present, Absent }
 import std.realization_reconcile { Converged, NotConverged }
 import std.content_hash { content_hash_atom }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch, tracker_web_test_console_readback_valid_until_epoch, tracker_web_test_oidc_config_host_path }
+import test.claim.live_deploy.apply_emission_projection { claim_oidc_now_for }
 import gunbc.host.host_effect { HostEffectIntent, HostOs, SshShell, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation, LiveDeployRetract, host_effect_identity_evidence }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize { realize_live_deploy_apply_on_host, deploy_apply_ports_on_host, deploy_apply_run_legs, DeployApplyPorts, ApplyRunOk, ApplyRunFailed }
@@ -54,7 +55,12 @@ fn lab_spec() -> DeploymentSpec {
 // readback, where a literal would expire). The unreadable clock is its own claim
 // (lab_apply_oidc_refuses_without_an_observer_clock).
 fn plan_for(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> DeployApplyPlan {
-  deploy_apply_plan_legs(spec: spec, plan: plan, source_root: "/src", oidc_now: tracker_web_test_console_readback_observed_at_epoch)
+  // THE CLOCK IS THE SPEC's OWN ENVIRONMENT READBACK, not one pinned reading: the stage spec reads
+  // a later console readback than the Test twin, so judging every spec at the Test instant refused
+  // the stage plan at oidc-config (future-dated standing) and falsified the full-install rows.
+  // claim_oidc_now_for already owns the per-environment clock (the fix #15863 applied to the launch
+  // witness's full_install_legs; this is the same root at this witness's shared helper).
+  deploy_apply_plan_legs(spec: spec, plan: plan, source_root: "/src", oidc_now: claim_oidc_now_for(spec: spec))
 }
 
 fn legs_of(p: DeployApplyPlan) -> List<DeployApplyLeg> {
@@ -753,7 +759,7 @@ test fn a_twin_apply_writes_neither_productions_tree_sync_env_nor_its_serve_unit
     && !has_word(words: env, w: prod.names.tree_sync_env_path as String)
     && unit != []
     && !has_word(words: unit, w: deployment_systemd_unit_path(names: prod.names) as String)
-    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: "--function roadmap_serve_handle_srv1_lab ")
+    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: join([" --arg handler=", lab_spec().service.serve_function as String, " "], ""))
 }
 
 // PRODUCTION WRITES ITS OWN TREE-SYNC ENVIRONMENT AND RUNS ITS OWN HANDLER (was
@@ -762,7 +768,7 @@ test fn the_production_apply_writes_its_own_tree_sync_env_and_names_its_own_hand
   let spec = deployment_spec_srv1()
   let legs = full_legs(spec: spec)
   has_word(words: words_at(legs: legs, step: "tree-sync-env"), w: spec.names.tree_sync_env_path as String)
-    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: "--function roadmap_serve_handle ")
+    && string_contains(s: payload_at(legs: legs, step: "serve-unit"), pattern: join([" --arg handler=", spec.service.serve_function as String, " "], ""))
 }
 
 // THE TREE-SYNC ENVIRONMENT NAMES THE APPLY'S SOURCE ROOT (the residual of
@@ -878,6 +884,7 @@ fn launcher_snapshot_owner(legs: List<DeployApplyLeg>) -> String {
           match a {
             HelperSnapshotInstall => l.owner as String
             HelperSnapshotRetireSuperseded => launcher_snapshot_owner(legs: rest)
+            HelperSnapshotVerify => launcher_snapshot_owner(legs: rest)
           }
         ApplyLegCommand { step: _, command: _ } => launcher_snapshot_owner(legs: rest)
         ApplyLegInstallFile { step: _, command: _, payload: _ } => launcher_snapshot_owner(legs: rest)

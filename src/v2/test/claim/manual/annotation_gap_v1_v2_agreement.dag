@@ -15,7 +15,7 @@ import v1.compiler.tokenize { tokenize_artifact }
 import v1.compiler.parse { parse_with_table }
 import v1.compiler.annotation_bind { bind_annotations, keyed_annotation_regions }
 import v1.std.core { build_newline_index, empty_intern_table }
-import v2.compiler.parse { parse_module_authored, authored_parse_annotations, authored_parse_semantic }
+import v2.compiler.parse { parse_artifact_span_index, parse_module_authored, authored_parse_annotations, authored_parse_semantic }
 import v2.compiler.tokenize { lex_walk_artifact }
 import v2.extdeps.languages.dag { dag_lex_rules }
 import std.host_text { chars }
@@ -107,7 +107,7 @@ fn v2_neighbours(source: String) -> List<String> {
       match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
         Rejected { diagnostics: _ } => ["<no parse>"]
         Accepted { value: authored, diagnostics: _ } =>
-          v2_rows_text(source: source, rows: source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored)), index: authored_parse_semantic(artifact: authored).span_index)
+          v2_rows_text(source: source, rows: source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored)), index: parse_artifact_span_index(artifact: authored_parse_semantic(artifact: authored)))
       }
   }
 }

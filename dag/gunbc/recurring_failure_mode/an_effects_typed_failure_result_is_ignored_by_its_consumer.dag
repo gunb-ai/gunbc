@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.an_effects_typed_failure_result_is_ignored_by_its_consumer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+data an_effects_typed_failure_result_is_ignored_by_its_consumer: RecurringFailureMode = RecurringFailureMode {
+  identity: "an_effects_typed_failure_result_is_ignored_by_its_consumer" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "**an effect's typed failure result is ignored by its consumer** (a host effect such as Filesystem.Write reports failure as a value, FileResult.success = false, instead of refusing; the consumer binds the result, never reads the verdict, and a later stage acts on state that was never produced.)",
+
+    "INVALID STATE: a pipeline stage runs against an artifact whose producing effect reported failure. The failure is typed and present in the program, but nothing branches on it, so the downstream stage's own error (rustc ENOENT) is read as a verdict about the candidate rather than about the write.",
+
+    "HARM: a false claim with the wrong cause. The srv1 wet run at 3927f5b1 for gunbc#15933 (job cc2-15933-3927-wet) read a bare FAIL for the written-source compile although nothing had been written: Filesystem.Write is std::fs::write (no parent directories), write_rust_workspace in v2.compiler.self_host.candidate_generation created none, and observe_written_rust_compile ran rustc.Check.CheckSourceFile without reading the receipt's write verdicts. A spent, granted host run produced no usable observation.",
+
+    "THE DISCRIMINATOR, BOTH DIRECTIONS. RED: a consumer binds an effect result and reaches a dependent effect or claim verdict without reading its success field (or an equivalent typed arm), with no discriminating control that makes the write fail. GREEN: the consumer branches on the verdict BEFORE the dependent stage (the gunbc#15933 fix: WrittenFileNotWritten, never running rustc) and a RED claim (unwritable_workspace_refuses_before_rustc) pins that the failure surfaces as its own typed outcome.",
+
+    "RECEIPTS, SIGHTINGS FROM A BOUNDED git grep 'Filesystem.Write(' over src/v2 and dag at 3927f5b1 (794 sites including test setup; heuristic: a let-bound result with no .success/.error read within 25 lines; NOT a completeness claim, and candidates not yet each read): dag/gunbc/instruments/self_host_curated_seed_linked_harness.dag (main_rs), self_host_logic_behavioral_transport.dag and self_host_logic_seed_unavailable_transport.dag (logic_written), emit_host_transport.dag (server_js), fabric_seat_probe.dag (w), roadmap_event_carrier.dag (recorded), harness_turn.dag (kept). Each needs a read to classify as ignored-and-consumed versus ignored-and-inert.",
+
+    "RUNG: found BELOW the ladder at the consumer in gunbc#15933 (silent wrongness: a granted run misattributed its cause). CEILING 3 for the class where the effect result is a typed sum the consumer must eliminate: a refusal-on-unread-verdict is decidable from the consumer's data flow. Until a lens reads it, mechanically preventable at best: each consumer needs its own RED.",
+
+    "NEXT-RUNG TRIGGER: a data-flow check that an effect result carrying a success verdict reaches a dependent effect only through an elimination of that verdict, or Filesystem.Write refusing instead of returning success=false for the realization that has no consumer reading the field. Absent that capability, each sighting above is classified by reading it and given its own control.",
+  ],
+
+  evidence: [],
+}

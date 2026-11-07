@@ -365,7 +365,7 @@ test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
 // keeps finding, this time in my own test name one commit after fixing it in someone else's.
 //
 // THE OLD REFUSAL DID NOT RETIRE, IT NARROWED. Its population was every declared insertion; it is
-// now exactly the cause-lost one, and that arm is still an executing red -- which is what §4b asks
+// now exactly the cause-lost one, and that arm is still an executing red -- which is what gunbc.design_argument::guarantee_ladder asks
 // of evidence when a class climbs: the production machinery that refused the whole population is
 // gone, the discriminating RED that proved the refusal executed stays enrolled. Deleting it because
 // the capability arrived would have recreated specification-without-execution one rung up.

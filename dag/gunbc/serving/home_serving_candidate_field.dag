@@ -1,14 +1,14 @@
 module gunbc.serving.home_serving_candidate_field
 
 // WHICH CITED ADD-IN CARD, AT WHICH APPLIED POWER LIMIT, FOR A HOME SERVING BOX
-// (DESIGN.md §3d; dag/gunbc/plans/p4_home_serving_power_semantics.dag, option C).
+// (gunbc.design_argument::selection_precedes_convergence; dag/gunbc/plans/p4_home_serving_power_semantics.dag, option C).
 //
 // THE ONE FOLD. This module owns the question, the funded axis, the constraint and the policy. It
 // owns no catalog fact and no watt semantics:
 //   - the candidate field comes from gunbc.serving.home_serving_accelerator_field, whose frontier
 //     names this fold as its consumer ("the add-in list is the P4 purchase-candidate field; the SXM
 //     list is reference-only"). Consuming BOTH lists is what retires that frontier: delete either
-//     and this module stops resolving, so the lists are load-bearing rather than inert. §3c is
+//     and this module stops resolving, so the lists are load-bearing rather than inert. gunbc.design_argument::consumption is
 //     explicit that "a list of things" is not a contribution and a witness asserting the lists
 //     exist does not close it; the fold that consumes them does.
 //   - every candidate figure is read off an extdeps.gpu.nvidia board row. This module cites nothing.
@@ -18,7 +18,7 @@ module gunbc.serving.home_serving_candidate_field
 //     module's public entry. So "a 300 W card asked to run at 600 W" is not filtered out late, it
 //     is not writable at all.
 //
-// WHY THE CEILINGS SIT WHERE THEY SIT (§3d: "a ceiling must exclude before Pareto, and the same
+// WHY THE CEILINGS SIT WHERE THEY SIT (gunbc.design_argument::selection_precedes_convergence: "a ceiling must exclude before Pareto, and the same
 // Watt cannot be both without saying which"). Two ceilings, placed differently on purpose:
 //  - THE BUYER'S PSU CEILING is a std.decision HardConstraint on the funded axis. It is genuinely
 //    universal — it applies to every candidate alike — which is the precondition for expressing it
@@ -32,7 +32,7 @@ module gunbc.serving.home_serving_candidate_field
 //    ceiling is therefore enforced where it is a fact about one pair: at minting, by
 //    gunbc.serving.home_serving_power_policy. Exclusion by typed refusal at construction, and
 //    exclusion by the kernel for the one bound that is universal. No second decision algebra is
-//    added either way (§3), and every decision-shaped refusal this fold can produce is an arm of
+//    added either way (gunbc.design_argument::single_authority), and every decision-shaped refusal this fold can produce is an arm of
 //    std.decision::select_realization.
 //
 // WHAT THE FOLD DELIBERATELY DOES NOT RANK ON.
@@ -48,14 +48,14 @@ module gunbc.serving.home_serving_candidate_field
 //    policy is consulted, which would mask the one refusal this fold most needs to show. Reading it
 //    would need a bytes-per-token figure for a named engine at a named quantization, and no such
 //    figure is cited anywhere in this repo — converting a caller's token count into cache bytes by
-//    guesswork is exactly the invented figure §4d refuses. The route is named (a cited
+//    guesswork is exactly the invented figure gunbc.design_argument::epistemic_humility refuses. The route is named (a cited
 //    bytes-per-token authority, then an AxisGap per unread candidate until it exists) and is left
 //    unbuilt rather than stubbed.
 //
 // THE LIVE ANSWER TODAY is the kernel's own and it is a refusal. The cited figures do not separate
 // the field — every card is offered at the same cited rungs — so UniqueSurvivorRequired answers
-// SelectionNeedsPolicy naming every survivor. Refusing to choose is the contribution (§3d), and
-// §5's "a wrong answer is a loud error, not a warning" rules out picking.
+// SelectionNeedsPolicy naming every survivor. Refusing to choose is the contribution (gunbc.design_argument::selection_precedes_convergence), and
+// gunbc.design_argument::fail_closed's "a wrong answer is a loud error, not a warning" rules out picking.
 //
 // NO FLEET IS ASSERTED. This fold never observes a device and never claims a card was bought,
 // installed, or measured. Presence and measurement stay refused in their own lanes.
@@ -110,7 +110,7 @@ import extdeps.gpu.types {
 // NOT the four rows. This module used to import each add-in card by name so two hand-written chains could
 // key on those names; review 86449 filed that as the second source of the roster. A card now enters the
 // sweep only through home_serving_add_in_card_catalog_rows in gunbc.serving.home_serving_accelerator_field,
-// so adding a fifth card is one row there and ZERO edits here (§6b: "adding it edits a row, not a branch").
+// so adding a fifth card is one row there and ZERO edits here (gunbc.design_argument::earliest_unjustified_boundary: "adding it edits a row, not a branch").
 // The datasheet authority stays imported because the exclusion cause names it as what a card must be cited
 // to before its ceiling can be trusted.
 import extdeps.gpu.nvidia { rtx_pro_6000_workstation_datasheet_authority }
@@ -130,7 +130,7 @@ import gunbc.serving.home_serving_power_policy {
 
 data hscf_module: String = "gunbc.serving.home_serving_candidate_field"
 
-// ── IDENTITIES (§3: symbol references, never positions, never re-spelled strings) ────────────
+// ── IDENTITIES (gunbc.design_argument::single_authority: symbol references, never positions, never re-spelled strings) ────────────
 data hscf_field_identity: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_candidate_field")
 data home_serving_selection_subject: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_selection_subject")
 data home_serving_choice_domain: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "home_serving_choice_domain")
@@ -147,7 +147,7 @@ data home_serving_buyer_psu_ceiling: DeclarationRef = decl_ref(module_path: hscf
 // THE ONE FUNDED AXIS: the applied draw of the pair, in watts, LowerIsBetter. It is a fact about the
 // pair, not a preference: a lower applied limit under the same cited ceiling is the cheaper, cooler
 // home box, so among a card's own admissible rungs the lower draw dominates. Admissibility gets no
-// separate axis because the ceiling binds this same axis directly — which is what §3d asks for when
+// separate axis because the ceiling binds this same axis directly — which is what gunbc.design_argument::selection_precedes_convergence asks for when
 // it says the same Watt cannot be both bound and axis "without saying which". Saying which: bound
 // for the buyer's ceiling, axis for the draw that bound measures.
 data ax_applied_draw_watts: DeclarationRef = decl_ref(module_path: hscf_module, decl_name: "ax_applied_draw_watts")
@@ -160,7 +160,7 @@ data home_serving_candidate_axes: List<SelectionAxis> = [
 // an invention (the plan: "Power rungs: a sweep list of Watt values, safe to type"). These are the
 // APPLIED arm of the option-C pair and are never read as a catalog TDP. The list is of WATT VALUES,
 // as the plan words it — not bare counts: a List<Nat> here would put the unit in the list's NAME while
-// every consumer had to remember it, which is the unit defect §3 refuses; the carrier is Measure itself
+// every consumer had to remember it, which is the unit defect gunbc.design_argument::single_authority refuses; the carrier is Measure itself
 // (std/measure.dag, Watt = Measure<Power, One, Nat>). So a rung cannot be handed to a TDP, a bandwidth,
 // or a token count by accident. Counts are WATTS, not milliwatts, so 600 here is the cited TDP of the
 // Workstation Edition read off its own row, not a round number chosen to make a case.
@@ -173,7 +173,7 @@ data home_serving_candidate_axes: List<SelectionAxis> = [
 // have been vacuously true, proved by a constant rather than by the catalog. Now the standing is DATA
 // beside the watt (the pair is the policy module's own HomeServingPowerReading, not a second carrier), and
 // an operator who obtains a real power-limit receipt adds one rung row with ObservedByReceipt — the
-// comparison runs, over-capacity cells get refused, the rest are admitted, and no branch is edited (§6b).
+// comparison runs, over-capacity cells get refused, the rest are admitted, and no branch is edited (gunbc.design_argument::earliest_unjustified_boundary).
 // All four rungs are TranscribedUncited TODAY because no receipt exists; that is the honest current data,
 // not a limitation of the type.
 data hscf_planned_rung_standing: CitedFigureStanding = TranscribedUncited {
@@ -192,7 +192,7 @@ data home_serving_applied_rungs: List<HomeServingPowerReading> = [
 // buyer's own constraint, so it enters as an input carrying its reason rather than as a constant
 // hidden in this module. It is a Watt, NOT a bare Nat, and for the same reason the rungs above are:
 // the watt has one authority, std.measure::Watt, and a Nat field named for watts carries that same
-// fact outside it (§3, "Minimization holds only if each fact lives in exactly one place"). A stated
+// fact outside it (gunbc.design_argument::single_authority, "Minimization holds only if each fact lives in exactly one place"). A stated
 // intent and a measured figure differ in STANDING, not in unit — the distinction is carried by
 // HomeServingPowerStanding, so it never needed to be paid for by dropping the carrier. A Nat here
 // would also be handed straight to bound_micro at the constraint boundary with nothing typed saying
@@ -208,7 +208,7 @@ type HomeServingBuyerTerms {
 // policy's Admitted/Refused arms unreachable and this fold's verdict a tautology. The standing is data
 // (hscf_planned_rung_standing) carried on each rung, and the read_obligation no longer repeats the watt
 // the rung already states. Standing it CitedToAuthority would assert a datasheet states a sweep value it
-// never mentions (§4d: "do not assert as deduced what is only inferred") — the defect review 79389 filed
+// never mentions (gunbc.design_argument::epistemic_humility: "do not assert as deduced what is only inferred") — the defect review 79389 filed
 // on this lane for the Workstation core count.
 
 // WHY A RENDERER AND NOT A PREDICATE. The policy module deliberately has no
@@ -231,7 +231,7 @@ fn hscf_unread_gap_cause(cause: HomeServingPowerCause) -> NonEmptyStr =
       ("applied " + nat_to_decimal_string(value: watt_count(w: applied)) + " W exceeds the card's cited TDP " + nat_to_decimal_string(value: watt_count(w: ceiling)) + " W" as NonEmptyStr)
   }
 
-// ── CANDIDATE IDENTITIES (§3: symbol references, never positions, never re-spelled strings) ────
+// ── CANDIDATE IDENTITIES (gunbc.design_argument::single_authority: symbol references, never positions, never re-spelled strings) ────
 // ONE FUNCTION MINTS EVERY CELL'S IDENTITY from the two lists this fold is given: the roster (through the
 // anchor each row carries in its own citations) and the rung ladder. There is deliberately NO per-cell
 // `data` here. There used to be sixteen, and TWO hand-written chains keyed them — `hscf_rung_for`
@@ -239,7 +239,7 @@ fn hscf_unread_gap_cause(cause: HomeServingPowerCause) -> NonEmptyStr =
 // row names beside the roster. Review 86449 filed what that costs: add a fifth rung or a fifth card, the
 // policy admits the pair, the hand-written lookup answers `Absent`, the builder maps that to `[]`, and the
 // cell disappears with no typed cause — and the witness's "sixteen cells" only caught it because sixteen
-// was a literal copied out of the tree (§3 "each fact lives in exactly one place"; §6b "adding a case
+// was a literal copied out of the tree (gunbc.design_argument::single_authority "each fact lives in exactly one place"; gunbc.design_argument::earliest_unjustified_boundary "adding a case
 // edits a row, not a branch"). A computed name is production practice, not a test shortcut:
 // gunbc.rust_function_type_selection::position_ref and gunbc.v2_compile_obligation_census::rung_drop_ref
 // both mint DeclarationRefs whose decl_name a function builds.
@@ -259,14 +259,14 @@ fn home_serving_cell_identity(anchor: String, rung: Watt) -> DeclarationRef {
 // `board_power` citation states both WHERE the figure came from
 // and WHICH ROW it is a figure of. Reading the row's identity out of that citation instead of a chain of
 // `gpu_catalog_row_eq` calls against hand-typed strings is what keeps a datasheet rename honest: the cell
-// names follow the row rather than drifting from a copy in this module (§3, "each fact lives in exactly
+// names follow the row rather than drifting from a copy in this module (gunbc.design_argument::single_authority, "each fact lives in exactly
 // one place"). The old chain is what review 86449 filed as the second source.
 // WHY ONE LOOKUP AND NOT TWO. Asking separately for the authority and for the row's name would be two
 // traversals that could disagree — a citation found by one and a name matched by the other is precisely
 // the drift the reviewer asked me to remove. So the pair travels together, and the carrier lives HERE
 // rather than in the policy module: it is this fold's concern which row a cell belongs to, and the policy
 // knows nothing about candidate fields. The figure and the standing travel together inside
-// HomeServingPowerReading, so no caller can take the number and stand it by something friendlier (§4d).
+// HomeServingPowerReading, so no caller can take the number and stand it by something friendlier (gunbc.design_argument::epistemic_humility).
 // WHAT A MIS-ANCHORED CITATION DOES: the two cells would come back with the SAME identity, and std.pareto
 // refuses a field carrying duplicate identities rather than ranking them. A copy-pasted citation is
 // therefore loud at the kernel, not silently re-labelled.
@@ -279,7 +279,7 @@ type HomeServingCellWarrant {
 // the board publishes NO power figure at all (TdpUnread — go find a datasheet that states one), versus
 // the row publishes a figure with nothing citing it (TdpStandingUnstated — the number exists, its warrant
 // does not). Collapsing them into one `Absent` would send a reader looking for a datasheet that already
-// exists. The causes are the policy module's own (§6: no second vocabulary for the same question).
+// exists. The causes are the policy module's own (gunbc.design_argument::how_to_work: no second vocabulary for the same question).
 type HomeServingWarrantRead
   = WarrantRead { warrant: HomeServingCellWarrant }
   | WarrantMissing { cause: HomeServingPowerCause }
@@ -338,12 +338,12 @@ fn home_serving_candidate_label(board: GpuBoardCatalogFacts, limit: Watt) -> Non
 // removes: the minter used to answer `Absent` for three different situations (the row's TDP carries no
 // citation, the applied rung is over that card's own cited ceiling, the roster does not recognise the
 // row) and the field builder turned every one of them into `Absent => []`. Three distinct facts collapsed
-// into one vanished cell with no typed cause — §5: "A failure arm refuses, never widens, and every
-// degradation is typed, located and countable", and §3d: "absence is not irrelevance". So the minter is
+// into one vanished cell with no typed cause — gunbc.design_argument::fail_closed: "A failure arm refuses, never widens, and every
+// degradation is typed, located and countable", and gunbc.design_argument::selection_precedes_convergence: "absence is not irrelevance". So the minter is
 // now TOTAL and says which of the three it is. Excluded cells stay out of the field (std.decision
-// scan_feasibility excludes a definite violation before Pareto; §3d forbids ranking one), but they are
+// scan_feasibility excludes a definite violation before Pareto; gunbc.design_argument::selection_precedes_convergence forbids ranking one), but they are
 // NAMEABLE: home_serving_candidate_exclusions returns them, located by the roster row and the rung, with
-// the policy module's own HomeServingPowerCause as the cause — no second cause vocabulary (§6).
+// the policy module's own HomeServingPowerCause as the cause — no second cause vocabulary (gunbc.design_argument::how_to_work).
 type HomeServingCellExclusion {
   board: GpuBoardCatalogFacts
   rung: Watt
@@ -405,7 +405,7 @@ fn home_serving_admitted_board_entry(board: GpuBoardCatalogRow, rung: HomeServin
     // A row that cannot lend a GROUNDED number to the ceiling is excluded, with the policy's own cause
     // saying which of the two it is: no figure at all, or a figure nobody cites. Both are reported rather
     // than answered `Absent`, because an excluded cell and a vanished cell are different facts and only a
-    // nameable one can be chased down. Neither mints an entry whose axis value nobody stated (§4d).
+    // nameable one can be chased down. Neither mints an entry whose axis value nobody stated (gunbc.design_argument::epistemic_humility).
     WarrantMissing { cause: cause } =>
       CellExcluded { exclusion: HomeServingCellExclusion { board: board.facts, rung: limit, cause: ExcludedByPowerPolicy { cause: cause } } }
     WarrantRead { warrant: warrant } =>
@@ -428,7 +428,7 @@ fn home_serving_admitted_board_entry(board: GpuBoardCatalogRow, rung: HomeServin
             },
           }
         // REFUSED means the pair can never be a candidate: the applied watt is a claimed operating point
-        // that breaks the card's own cited ceiling, and §3d excludes it before Pareto, never ranks it. It
+        // that breaks the card's own cited ceiling, and gunbc.design_argument::selection_precedes_convergence excludes it before Pareto, never ranks it. It
         // is reported, not silently absent — see the exclusion type above.
         PowerPolicyRefused { cause: cause } =>
           CellExcluded { exclusion: HomeServingCellExclusion { board: board.facts, rung: limit, cause: ExcludedByPowerPolicy { cause: cause } } }
@@ -438,7 +438,7 @@ fn home_serving_admitted_board_entry(board: GpuBoardCatalogRow, rung: HomeServin
         // Returning Absent handed the kernel an empty field, and the kernel then said
         // "candidate field is empty" (std.decision establish_candidate_field), which is the arm for
         // nobody having offered a candidate at all. Silencing known candidates into that arm is the
-        // substitution §5 rejects: std.pareto's own rule for a ParetoEntry is that a nonempty
+        // substitution gunbc.design_argument::fail_closed rejects: std.pareto's own rule for a ParetoEntry is that a nonempty
         // missing_inputs "states what is absent instead of substituting a zero or an average", and
         // scan_feasibility answers a declared gap with SelectionNeedsEvidence carrying the cause. The
         // candidate is therefore offered WITH its gap, and the instrument's own refusal — go read the
@@ -505,7 +505,7 @@ fn home_serving_constraints(terms: HomeServingBuyerTerms) -> List<HardConstraint
 // ESTABLISHED, not deferred: the cost relation is the vendor's own datasheet statement, the term
 // varies along the rung, and the constraint disposition is Satisfied because no entry reaches the
 // field without passing the power policy's applied ≤ cited TDP rule — the completeness argument that
-// policy's own witness makes, referenced rather than re-derived (§2).
+// policy's own witness makes, referenced rather than re-derived (gunbc.design_argument::minimize_redundancy).
 //
 // Deferring here would not be caution, it would be a bug: std.decision merge_deferred_into_pick
 // rewrites a genuine SelectionNeedsPolicy into SelectionNeedsEvidence under a Deferred closure, so a
@@ -566,7 +566,7 @@ fn home_serving_power_assessment(terms: HomeServingBuyerTerms) -> DecisionAssess
 
 // THE FOLD. Everything after this call is std.decision's: establishment, the feasibility scan and its
 // exclusion of definite violations, domination, the policy, and the receipt. This module re-implements
-// none of it (§2: "net concepts must not grow by re-invention"; §3d: "select_realization is the ONLY
+// none of it (gunbc.design_argument::minimize_redundancy: "net concepts must not grow by re-invention"; gunbc.design_argument::selection_precedes_convergence: "select_realization is the ONLY
 // decision fold"). The field is a parameter for the same reason the flagship fold takes its routes as
 // evidence: a caller who has read a power-limit receipt, or who can state a working set, hands in the
 // better field rather than this module hard-coding what the field may contain.

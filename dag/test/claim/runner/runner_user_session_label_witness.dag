@@ -9,7 +9,7 @@ module test.claim.runner.runner_user_session_label_witness
 // wrote. The composition (gunbc.runner.runner_registration_labels
 // runner_evidence_gated_registration_labels) grants the label only when the host is rostered
 // AND the supplied receipt parses, is ABOUT that host, and every reading in it holds. There is no receipt
-// data in-tree (reviews 87051/87054/87126/87136/87155: hand-copied rows are DESIGN 6's transcribed
+// data in-tree (reviews 87051/87054/87126/87136/87155: hand-copied rows are gunbc.design_argument::how_to_work's transcribed
 // output, and a row cannot re-read a host): production supplies ReceiptAbsent until the follow-up named
 // in the PR body of gunbc#15253 wires the fleet-converge leg to run the receipt read
 // (runner_user_session_converge_receipt_read_argv) and parse the bytes. THE LABEL IS OFF IN PRODUCTION
@@ -40,7 +40,7 @@ module test.claim.runner.runner_user_session_label_witness
 //      principal) does not inherit the host's capability even when a receipt is handed to the entry.
 //   7. THE CONSUMER -- the label's consumer is the runs-on selector of the jobs that run a command under
 //      the job account's user manager: gunbc#14972's credential-acquisition rows, the pool the roster is
-//      waiting on (DESIGN 3c: the frontier is recorded beside the row, in gunbc.runner.runner_host_deploy
+//      waiting on (gunbc.design_argument::consumption: the frontier is recorded beside the row, in gunbc.runner.runner_host_deploy
 //      runner_job_user_session_hosts). The control builds the selector the way the emitter builds a
 //      host-pinned CI spec and checks satisfaction against what each registration advertises, with and
 //      without a receipt.
@@ -50,7 +50,7 @@ module test.claim.runner.runner_user_session_label_witness
 // A REFUSAL IS NOT AN ABSENCE, AND NO HELPER HIDES ONE. There is no labels_of with a Refused => []
 // default: every control matches the RunnerRegistrationLabelsResolution directly, so a host whose facts
 // stopped resolving makes that control FALSE rather than vacuously green (reviews 86935 and 87051;
-// DESIGN 5: "no plausible output is fabricated" -- a folded-in empty list is exactly the fabricated
+// gunbc.design_argument::fail_closed: "no plausible output is fabricated" -- a folded-in empty list is exactly the fabricated
 // default a later control would inherit).
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
@@ -100,7 +100,7 @@ import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_conv
 import extdeps.github.actions { Workflow }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed_with, runner_user_session_receipt_unreadable }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionRunScan, RunScanSelected, RunScanNone, RunScanContinues, RunScanCapReached, runner_user_session_run_scan_step }
-import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
+import gunbc.runner.runner_slot_allocation { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
@@ -325,7 +325,7 @@ test fn the_consumer_reads_this_spec() -> Bool {
 // header's probed_at, so any document on disk granted forever -- the stale-grant defect the rows were
 // deleted for, back through the reader). The parser's job is SHAPE: an instant is kept VERBATIM, canonical
 // or not, because WHETHER it can be aged is a question with a located answer at the gate that spends the
-// evidence (DESIGN 5), not a reason to throw the document away at the mouth. This control pins the
+// evidence (gunbc.design_argument::fail_closed), not a reason to throw the document away at the mouth. This control pins the
 // preservation and drives the age function on both sides of the declared bound.
 // RED control: drop probed_at from the receipt type, or age at the parse instead of the grant.
 test fn the_parser_keeps_the_instant_and_the_grant_ages_it() -> Bool {
@@ -515,7 +515,7 @@ fn header_line_is_the_document_head() -> Bool {
     == "runner_user_session_converge host=srv4 job_user=ghrunner probed_at=2026-10-28T00:00:00Z"
 }
 
-// THE FRONTIER THIS WITNESS ONCE CARRIED IS DISSOLVED, AND ITS RED STAYS (DESIGN 4b, dissolution on climb:
+// THE FRONTIER THIS WITNESS ONCE CARRIED IS DISSOLVED, AND ITS RED STAYS (gunbc.design_argument::guarantee_ladder, dissolution on climb:
 // the production machinery goes, the discriminating control remains). The two FrontierRows that named the
 // receipt-read leg as their dissolution were deleted when gunbc.runner.runner_user_session_receipt_observed
 // landed, so (1) no enrolled frontier subject names an entry of gunbc.runner.runner_registration_labels, and
@@ -793,7 +793,7 @@ test fn the_newest_run_is_read_and_a_stale_newest_receipt_refuses() -> Bool {
   }
 }
 
-// THE INHABITANCE CLAIM ON THE REAL PRODUCER ROUTE (DESIGN 3: supplying inputs above may not remove the last
+// THE INHABITANCE CLAIM ON THE REAL PRODUCER ROUTE (gunbc.design_argument::witness_one_interface: supplying inputs above may not remove the last
 // execution of the real path). The producer is the fleet-converge workflow: its run_name is the title the
 // listing returns for a dispatch, and fleet_converge_workflow_mode_wire is the mode word its input carries. The
 // title the PRODUCER's run_name renders -- read from the workflow data, its three placeholders resolved to the
@@ -847,7 +847,7 @@ test fn the_read_route_refuses_a_rostered_host_without_a_credential_and_skips_an
     }
 }
 
-// ABSENCE IS ESTABLISHED, NOT ASSUMED FROM AN INCOMPLETE LISTING (DESIGN 5; the side chat, PR 15431). The runs are
+// ABSENCE IS ESTABLISHED, NOT ASSUMED FROM AN INCOMPLETE LISTING (gunbc.design_argument::fail_closed; the side chat, PR 15431). The runs are
 // supplied values at the scan-step boundary; the real fold judges them. No age or page-local fact ends the scan:
 // a FULL page holding an OLD run continues, and the FRESH qualifying run on the next (underfull) page is selected;
 // the newest qualifying run is chosen across all pages scanned; a still-full page at the cap is RunScanCapReached
@@ -927,7 +927,7 @@ test fn a_branch_dispatched_run_is_never_the_producer() -> Bool {
 
 // THE CONTROL CENSUS, IN THE ORDER THE FOLD READS THEM. Each control above answers Bool (the claim lane's
 // shape); this vocabulary names them so the fold below can carry the FIRST failing control's name into
-// the refusal -- DESIGN 5: every path fails with a typed, located diagnostic, so a red receipt says where
+// the refusal -- gunbc.design_argument::fail_closed: every path fails with a typed, located diagnostic, so a red receipt says where
 // to look instead of listing every possible cause. A named-step sum type folded through a dispatch fn,
 // not a List<thunk>: the interpreter runs folded zero-argument thunks but the Rust emission refuses them
 // (extdeps.apple.app_attest records that around gunbc#11989), and this witness must emit as cleanly as it

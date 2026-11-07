@@ -25,7 +25,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // declares) and native_census_modules (the roster a census reports on). A header scan kept for those
 // files alone is still a second reader of the `module` production.
 //
-// THE TRIGGER NAMES WHAT THE CAPABILITY MUST BE SUFFICIENT FOR, per DESIGN section 4b(3): the census
+// THE TRIGGER NAMES WHAT THE CAPABILITY MUST BE SUFFICIENT FOR, per gunbc.design_argument::guarantee_ladder (no silent regression): the census
 // route must name each source by the name the population read BOUND IT TO (a file's name is its path's,
 // source layout R5), so native_lane_declared_module_name is DELETED. A route that kept the scan for
 // refused files only would satisfy a weaker sentence and leave the second reading standing for the

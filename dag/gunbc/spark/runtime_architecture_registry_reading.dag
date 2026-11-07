@@ -14,7 +14,7 @@ import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_architecture_c
 // instrument, and if any of those three had been different the answer could have been too.
 //
 // AN EARLIER REVISION OF THIS CHANGE PUT THE LISTS IN THE IMAGE MODULES and it read as though the
-// vendor had shipped them. That is the layer inversion DESIGN section 3 names directly: observations
+// vendor had shipped them. That is the layer inversion gunbc.design_argument::single_authority names directly: observations
 // this repository produces are receipts in the observing layer, never facts backfilled onto the
 // observed upstream. Keyed by digest, a reading can also be superseded by a later reading of the
 // same digest without editing anything the publisher owns.

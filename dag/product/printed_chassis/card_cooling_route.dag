@@ -7,7 +7,7 @@ import std.optional {Present, Absent}
 import product.printed_chassis.chassis_clearances {ChassisGap, single_card_side_allowance_2026_11_02, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, chassis_gaps, card_end_to_chassis_fan_2026_10_29, power_connector_head_protrusion, cable_bend_keepout, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound, gap_is_estimate, inter_card_gap, card_to_rear_fans, power_connector_latch, power_connector_head_protrusion, cable_bend_keepout, outer_side_at_the_wall, GapRoom, Room, OverSubscribed, NoReading, gap_room, standing_origin, gap_may_be_printed_on}
 import product.printed_chassis.printable_assembly {CardFaceSide, BackFaceSide, FrontFaceSide, card_face_side_wire}
 import product.printed_chassis.side_mount_duct {side_mount_rear_spend, side_mount_side_spend, side_mount_card_gap}
-import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff}
+import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, BlowerDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um, plane_on_end_duct_run_back, plane_on_end_blower_bottom_standoff, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion, plane_on_end_relief_back_reach, plane_on_end_relief_inboard_x, plane_on_end_floor_behind_face}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
@@ -28,8 +28,9 @@ import product.printed_chassis.exhaust_thermal {exhaust_rise}
 // plus the socket's 10 mm depth and a wall, so the straight-back home asks the chassis for about 108 mm where
 // it has 70. The duct has to curve.
 //
-// WHAT THE CURVE ACTUALLY BUYS, AND WHAT IT COSTS. A radial blower is a box whose intake axis is its
-// thickness axis and whose outlet lies on the periphery. Two orientations are available and each spends
+// WHAT THE CURVE ACTUALLY BUYS, AND WHAT IT COSTS. A radial blower's housing is a scroll inside a bounding
+// rectangle (extdeps.fans.types RadialBlowerEnvelope carries only the rectangle), with its intake axis
+// along its thickness and its outlet on the periphery. Two orientations are available and each spends
 // a DIFFERENT chassis gap -- this is the whole design, and the model says so in the open:
 //
 //   PLANE-ON-END      the fan's face lies parallel to the card's end face, its intake looking straight
@@ -100,7 +101,7 @@ fn thickness_extent(b: RadialBlowerEnvelope) -> Int { um(m: b.thickness) + um(m:
 // delegates to product.printed_chassis.gpu_duct plane_on_end_duct_run_back rather than re-deriving it here,
 // because the demand the route admits against and the geometry the CAD builds are one fact. They were
 // written separately once (this fn said "two walls", the duct said "two walls") and drifted apart when the
-// seat was introduced; a route that reports a smaller spend than the part has is the fabrication §5 forbids.
+// seat was introduced; a route that reports a smaller spend than the part has is the fabrication gunbc.design_argument::fail_closed forbids.
 fn plane_on_end_run_back(fan: BlowerDuctDesign, d: GpuDuctDesign) -> Int { um(m: plane_on_end_duct_run_back(b: fan, d: d)) }
 // ...but its face spans the slot, where the pitch is the only room.
 fn plane_on_end_slot_demand(b: RadialBlowerEnvelope) -> Int { longest_face_edge(b: b) }
@@ -307,7 +308,7 @@ fn admit_home_over(s: RouteSubject, home: BlowerHome, rear: ChassisGap, lane: Ch
 // twice now (rear_of_end_room), and a design may not be admitted against the generous reading of a span
 // that somebody has since read tighter. Absent means the ordinary case: this row's own standing governs.
 // `need` is a Micrometer, not a count: this is the function that decides whether a route is admitted, and a
-// count at that boundary is a unit system that lives in the caller's memory. §5 -- "making it unwritable,
+// count at that boundary is a unit system that lives in the caller's memory. gunbc.design_argument::fail_closed -- "making it unwritable,
 // correctness by construction, not validation" -- is about exactly this: with `need: Int`, someone passing
 // millimetres, or a raw count, writes a wrong admission and nothing complains.
 fn ask(gap: ChassisGap, need: Micrometer, home: BlowerHome, unmet: RouteDemand, over: GapRoom?) -> RouteAdmission? {
@@ -507,7 +508,7 @@ fn shape_um(m: Int) -> Micrometer { micrometer(count: m) }
 //                    home does not fit THIS direction, and by how much is a measured fact worth reporting.
 //   Unread           no reading reaches this direction at all. Not zero, not negative: there is no number,
 //                    and inventing one -- or smuggling absence in through a sign -- is the fabricated output
-//                    DESIGN.md §5 refuses and gunbc.design_ruling dag_absence_is_one_meaning forbids.
+//                    gunbc.design_argument::fail_closed refuses and gunbc.design_ruling dag_absence_is_one_meaning forbids.
 //
 // The old shape carried all three as one Micrometer whose sign meant "probably unmeasured", which merged the
 // second case into the first and let a caller's arithmetic turn the third into a plausible-looking extent.
@@ -685,7 +686,7 @@ fn flat_on_end_pair_span() -> GapRoom {
 // Deliberately NOT narrowed by the twin-card span: the pair question is its own verdict below, with its own
 // number, because the two cards' overhangs face each other across the gap between them rather than each
 // spending a full lane. Folding the pair span in here would forbid a single card from spending room that the
-// twin case already shows it does not need -- over-forbidding, which DESIGN.md §4d refuses as plainly as it
+// twin case already shows it does not need -- over-forbidding, which gunbc.design_argument::epistemic_humility refuses as plainly as it
 // refuses fabricating. Any cap with no reading makes the answer unread: the unmeasured one is exactly the
 // one that could be binding.
 fn flat_on_end_housing_length_cap() -> GapRoom {
@@ -1214,7 +1215,7 @@ fn a16_power_points_w() -> List<String> {
     Present { value: ConfigurableBoardPower { default: dd, minimum: lo, maximum: hi, named_points: _ } } =>
       // #15315 made the published default an Optional, because that is what vendors do: the A16's row states
       // 250 W, the A2's page states "40-60 W (configurable)" and no default at all. A report that printed
-      // "default 0 W" for the second case would be §5's fabricated output, so the absence is a line of its own.
+      // "default 0 W" for the second case would be gunbc.design_argument::fail_closed's fabricated output, so the absence is a line of its own.
       concat(
         match dd {
           Present { value: d } => [join(["default ", to_string(value: watt_count(w: d)), " W"], "")]

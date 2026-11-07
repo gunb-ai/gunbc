@@ -32,10 +32,10 @@ import extdeps.bmc.megarac_observed_output {
 }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
+import extdeps.bmc.ipmitool_mc_info { IpmiMcInfoFields, render_ipmitool_mc_info_fields }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
   ipmitool_fru_print_0_mt_collins,
-  ipmitool_mc_info_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
   ipmitool_sel_elist_line,
 }
@@ -68,7 +68,7 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
 // world after it, or a harness fault. Handlers are written over the BMC world alone; bmc_bindings lifts
 // them through a lens into whatever scenario state embeds the world.
 //
-// `stdout` carries NO provenance, and that is deliberate (review 87856, DESIGN §4d). A real ipmitool's
+// `stdout` carries NO provenance, and that is deliberate (review 87856, gunbc.design_argument::epistemic_humility). A real ipmitool's
 // stdout is untagged bytes too, so this is the shape consumers have to work with; the alternative was a
 // standing field on the reply, which bmc_lift then shed on the way into ShellProcessExited -- a label that
 // dies at the first boundary is worse than none, because it advertises a guarantee nothing enforces. The
@@ -169,9 +169,18 @@ fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world }
 }
 
-// `mc info` answers whenever the management controller does, whatever the host's power or SOL state.
+// `mc info` answers whenever the management controller does, whatever the host's power or SOL state — and it
+// answers from WHAT THE WORLD MODELS OF THIS CONTROLLER, rendered by extdeps.bmc.ipmitool_mc_info's own
+// renderer. This used to hand every dry controller in the repository a stored transcript of ONE real machine's
+// reply (a Mt. Collins `mc info`, two fields deep): a BMC that was never that machine was given another
+// machine's identity, and anything downstream that parsed it learned something true of nobody. A controller the
+// world does not model gets no reply and says so — ipmitool then has nothing to parse, which is the honest
+// outcome, and the first-contact battery records the read as owed rather than answered.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_mc_info_mt_collins, world: world }
+  match world.record_surfaces.mc_info {
+    Present { value: fields } => BmcReplied { stdout: render_ipmitool_mc_info_fields(fields: fields), world: world }
+    Absent => BmcReplyFault { reason: "the dry controller models no mc info answer, and another controller's stored reply is not an answer for this one" as NonEmptyStr }
+  }
 }
 
 // `sdr type <sensor_type>`: the controller's IPMI sensor records of that type, one line each, in the

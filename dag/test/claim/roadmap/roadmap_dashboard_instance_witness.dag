@@ -1,5 +1,6 @@
 module test.claim.roadmap.roadmap_dashboard_instance_witness
 
+import std.optional { Present, Absent }
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.owned_directory { owned_directory_path }
@@ -33,6 +34,12 @@ import gunbc.host.host_layout {
 }
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
+  dashboard_instance_own_directory_demands, macbook_local_dashboard_instance,
+  dashboard_instance_converged_ref,
+  DashboardServeBinaryOrigin,
+  DeclaredBuiltBinary,
+  CargoReleaseOfInstanceCheckout,
+  BuildInPlaceFromAdmittedRevision,
   WorkerIsServiceUser,
   dispatch_base_branch,
   prod_role_realization,
@@ -49,6 +56,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardEnsureOwnershipMarker,
   DashboardEnsureLocalOrigin,
   DashboardEnsureSourceRepo,
+  DashboardResetConvergedSourceRepo,
   DashboardVerifyProviderRuntime,
   DashboardVerifyProviderAuth,
   DashboardInstanceObserved,
@@ -106,6 +114,8 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instances_dispatch_state_is_consistent,
   DashboardGitBundle,
   DashboardExistingRepo,
+  DashboardSeededByConvergence,
+  srv1_lab_admitted_revision_source,
   DashboardLocalProvision,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
@@ -121,6 +131,9 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_path_is_under,
   srv1_linux_toolchain,
   dispatch_worker_memory_ceiling,
+  compute_build_memory_ceiling_default,
+  belt_max_concurrent_default,
+  srv1_lab_belt_max_concurrent,
 }
 
 test fn dashboard_instance_paths_move_as_one_owned_root() -> Bool {
@@ -148,6 +161,23 @@ test fn dashboard_actuation_posture_is_instance_data() -> Bool {
     && preview.actuation == DashboardObserveOnly
 }
 
+// THE BELT'S CONCURRENT-WORKER CEILING IS A PER-INSTANCE FACT, not one shared constant. The srv1 lab widens
+// to srv1_lab_belt_max_concurrent (6) while srv1-live and srv2-preview stay at the default (3). If the
+// ceiling were still the single roadmap_belt_default_capacity constant these three would be EQUAL, so the
+// live/lab inequality is the RED sensor: a shared constant fails it. It is the figure the launch standing,
+// the reconcile fold and the session pool all read through the instance (see HostDashboardInstance).
+test fn belt_max_concurrent_is_per_instance_not_one_shared_constant() -> Bool {
+  let live = srv1_live_dashboard_instance()
+  let lab = srv1_lab_dashboard_instance()
+  let preview = srv2_preview_dashboard_instance()
+  live.belt_max_concurrent == belt_max_concurrent_default
+    && lab.belt_max_concurrent == srv1_lab_belt_max_concurrent
+    && preview.belt_max_concurrent == belt_max_concurrent_default
+    // THE DISCRIMINATOR: the lab is strictly wider than srv1-live; a shared constant makes them equal.
+    && lab.belt_max_concurrent != live.belt_max_concurrent
+    && srv1_lab_belt_max_concurrent > belt_max_concurrent_default
+}
+
 test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
   let live = srv1_live_dashboard_instance()
   let lab = srv1_lab_dashboard_instance()
@@ -170,6 +200,7 @@ fn instance_anchor_ref(i: HostDashboardInstance) -> String {
       history_remote: _,
     } => anchor_ref as String
     DashboardExistingRepo { anchor_ref } => anchor_ref as String
+    DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => dashboard_instance_converged_ref(instance: i) as String
   }
 }
 
@@ -180,6 +211,7 @@ fn plan_binds_instance_paths(
   let source_bound = any(plan, op => match op {
     DashboardEnsureSourceRepo { origin, repo, anchor_ref: _ } =>
       origin == instance.local_origin_root && repo == instance.repo_root
+    DashboardResetConvergedSourceRepo { repo, anchor_ref: _ } => repo == instance.repo_root
     _ => false
   })
   let marker_bound = any(plan, op => match op {
@@ -231,6 +263,8 @@ fn plan_binds_source_ref_translation(
     && any(plan, op => match op {
       DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } =>
         anchor_ref == instance.dispatch_base_ref
+      DashboardResetConvergedSourceRepo { repo: _, anchor_ref } =>
+        anchor_ref == instance.dispatch_base_ref
       _ => false
     })
 }
@@ -248,12 +282,20 @@ test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
   // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
   // by name, so a rename or a silently dropped op cannot hide behind either.
+  // TEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
+  // stage, local origin) are gone, and the one source op resets to the dispatch base ref.
+  // ELEVEN with DashboardRetireLegacyWriters, the new FIRST op: the lab's legacy writer is retired (stop, rename
+  // into the rollback store, daemon-reload) before anything the writer could clobber.
   count(plan) == 11
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
-    && plan_binds_source_ref_translation(plan: plan, instance: lab)
+    && any(plan, op => match op {
+      DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref } => anchor_ref == lab.dispatch_base_ref
+      DashboardResetConvergedSourceRepo { repo: _, anchor_ref } => anchor_ref == lab.dispatch_base_ref
+      _ => false
+    })
 }
 
 // THE POSTURE OP, exactly once, bound to THIS instance's repository. Exactly once matters: two of them
@@ -432,7 +474,7 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
     source_anchor_matches: true,
   }
   match dashboard_instance_reconcile(
-    instance: srv1_lab_dashboard_instance(),
+    instance: srv2_lab_dashboard_instance(),
     observed: observed,
   ) {
     DashboardInstanceApply { plan } => count(plan) > 0
@@ -440,34 +482,29 @@ test fn dashboard_bundle_is_required_for_convergence() -> Bool {
   }
 }
 
-test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
-  let plan = dashboard_instance_provision_plan(instance: lab)
-  any(plan, op => match op {
-    DashboardHydrateControllerHistory {
-      controller_repo,
-      history_remote,
-    } =>
-      controller_repo == srv1_dashboard_controller_repo
-        && history_remote == "origin"
+// THE LAB PLAN CARRIES NO CONTROLLER-ANCHOR READ. The srv1 lab is seeded by convergence (its admitted
+// revision has remote '.'), so no hydrate / prepare / stage / local-origin op exists in its plan, and its
+// only source op is the ensure-source-repo reset to the admitted ref in its OWN repository. The srv2 lab
+// still bundles from a controller and keeps the full chain (the follow-up that moves it).
+test fn the_lab_plan_has_no_controller_anchor_read_and_the_bundling_lab_keeps_its_chain() -> Bool {
+  let lab = dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance())
+  let bundling = dashboard_instance_provision_plan(instance: srv2_lab_dashboard_instance())
+  !any(lab, op => match op {
+    DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => true
+    DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
+    DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => true
+    DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => true
+    DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => true
     _ => false
   })
-    && any(plan, op => match op {
-    DashboardPrepareGitBundle {
-      controller_repo,
-      anchor_ref,
-    } =>
-      controller_repo == srv1_dashboard_controller_repo
-        && anchor_ref == "refs/remotes/origin/main"
-    _ => false
-  })
-    && any(plan, op => match op {
-      DashboardStageGitBundle {
-        controller_repo,
-        staged_bundle,
-      } =>
-        controller_repo == srv1_dashboard_controller_repo
-          && staged_bundle == "/opt/gunbc-lab/codex-provider-feedback-v0/inbox/source.bundle"
+    && any(lab, op => match op {
+      DashboardResetConvergedSourceRepo { repo, anchor_ref } =>
+        repo == srv1_lab_dashboard_instance().repo_root
+          && (anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
+      _ => false
+    })
+    && any(bundling, op => match op {
+      DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
       _ => false
     })
 }
@@ -529,7 +566,7 @@ fn retract_plan_is_safe(
 }
 
 test fn dashboard_retract_preserves_recovery_anchor_and_provider_state() -> Bool {
-  let lab = srv1_lab_dashboard_instance()
+  let lab = srv2_lab_dashboard_instance()
   match dashboard_instance_retract_plan(instance: lab) {
     DashboardInstanceRetractPlan { plan } =>
       retract_plan_is_safe(plan: plan, instance: lab)
@@ -573,7 +610,7 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
     listen_port: 19999,
     source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: witness_synthetic_layout().host_identity,
   )
 }
 
@@ -591,8 +628,8 @@ test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
   let srv2_lab = instance_anchor_ref(i: srv2_lab_dashboard_instance())
   let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
   synthetic == "refs/heads/witness-anchor"
-    && srv2_lab == "refs/remotes/origin/main"
-    && srv1_lab == "refs/remotes/origin/main"
+    && srv2_lab == (fleet_admitted_revision_source.ref_name as String)
+    && srv1_lab == (srv1_lab_admitted_revision_source.ref_name as String)
 }
 
 // serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.
@@ -624,6 +661,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
         history_remote: _,
       } => controller_repo == "/witness/controller-repo"
       DashboardExistingRepo { anchor_ref: _ } => false
+      DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
     }
     && !(i.serve_binary == srv1_gunbc_serve_binary)
     && !(dashboard_instance_provider_state_root(instance: i) == srv1_roadmap_codex_home)
@@ -635,6 +673,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
         history_remote: _,
       } => controller_repo == srv1_dashboard_controller_repo
       DashboardExistingRepo { anchor_ref: _ } => false
+      DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
     })
 }
 
@@ -668,7 +707,8 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 9
+  // THIRTEEN: the same DashboardRetireLegacyWriters op, first in the plan.
+  count(plan) == 13
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
@@ -698,7 +738,7 @@ fn plan_ensures_serve_binary(
   instance: HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
-    DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path } =>
+    DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin: _, path } =>
       path == instance.serve_binary
     _ => false
   })
@@ -811,11 +851,13 @@ fn witness_production_slot(
     listen_port: 18081,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    actuator_host: "macbook" as NonEmptyStr,
     source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
+    belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: none,
@@ -871,7 +913,7 @@ test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
 // THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and
 // that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its
 // roots are derived beneath its own instance_root and there is no way to author a lab pointing at
-// the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production
+// the host-shared roots. The gunbc.design_argument::guarantee_ladder rule is that a climb deletes the lower-rung production
 // machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red
 // unwritable instead of pretending to still construct it — a witness whose invalid input became
 // unrepresentable must change what it asserts, not keep a name that no longer describes it.\n\nWHAT
@@ -952,7 +994,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 //
 // THE POPULATION FOLD DOES NOT RETIRE THIS PAIR. dashboard_declared_instances_owned_paths_
 // are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
-// control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
+// control that the binary-overlap class stays closed (gunbc.design_argument::guarantee_ladder (dissolution on climb): climb deletes production
 // machinery, never the evidence).
 test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()
@@ -982,7 +1024,7 @@ fn witness_endpoint_instance(
     listen_port: listen_port,
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: layout.host_identity,
   )
 }
 
@@ -1125,7 +1167,7 @@ fn outside_instance_at(root: FilePath) -> HostDashboardInstance {
     listen_port: 18099,
     source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardLocalProvision,
+    actuator_host: srv1_host_layout().host_identity,
   )
 }
 
@@ -1181,11 +1223,13 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     listen_port: 18099,
     tmux_server: live.tmux_server,
     actuation: live.actuation,
-    provision_transport: live.provision_transport,
+    actuator_host: live.actuator_host,
     source_seed: live.source_seed,
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: live.compute_build_memory_ceiling,
+    belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,
     materialization_store_root: live.materialization_store_root,
@@ -1244,4 +1288,59 @@ test fn a_demand_list_without_the_session_slots_creator_leaves_that_root_uncreat
   let sessions = owned_directory_path(t: session_attempt_slots_directory(instance: lab))
   let without = filter(dashboard_instance_directory_demands(realization: prod_role_realization(), instance: lab), t => owned_directory_path(t: t) != sessions)
   slot_store_roots_without_a_creator(instance: lab, demands: without) == [sessions]
+}
+
+// The lab NAMES its serve-binary source: it builds in place from the admitted revision, chosen on the instance and
+// never defaulted by the apply, so there is no guessed path and no Absent to default from.
+test fn the_lab_serve_binary_input_is_a_named_in_place_build() -> Bool {
+  any(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance()), op => match op {
+    DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin, path: _ } =>
+      match serve_binary_origin {
+        BuildInPlaceFromAdmittedRevision => true
+        DeclaredBuiltBinary { path: _ } => false
+        CargoReleaseOfInstanceCheckout { path: _ } => false
+      }
+    _ => false
+  })
+}
+
+// The convergence-seeded lab owns no bundle or local origin; its repository belongs to convergence, so the
+// isolated-instance retractor REFUSES it (typed) instead of removing a repository it did not create.
+test fn the_convergence_seeded_lab_is_not_retractable_by_the_isolated_instance_retractor() -> Bool {
+  match dashboard_instance_retract_plan(instance: srv1_lab_dashboard_instance()) {
+    DashboardInstanceRetractPlan { plan: _ } => false
+    DashboardInstanceRetractRefused { reason: _ } => true
+  }
+}
+
+// The lab instance owns its serve binary's directory (loyal-deer-449's srv1 run: a root-owned bin/ failed the install with a bare
+// cp error): the demand is the parent of instance.serve_binary, and the macbook's cargo-dir binary demands none.
+test fn the_lab_instance_declares_its_serve_binary_directory_and_the_macbook_does_not() -> Bool {
+  let lab = srv1_lab_dashboard_instance()
+  let lab_paths = map(dashboard_instance_own_directory_demands(instance: lab), t => owned_directory_path(t: t) as String)
+  contains(lab_paths, join([lab.instance_root as String, "/bin"], ""))
+    && !any(map(dashboard_instance_own_directory_demands(instance: macbook_local_dashboard_instance()), t => owned_directory_path(t: t) as String), p => string_contains(s: p, pattern: "/release"))
+}
+
+
+// THE READBACK CAN CONVERGE FOR A CONVERGENCE-SEEDED INSTANCE: its source repo has no origin (convergence writes the
+// admitted ref into the repo itself and the reset op never clones), so an absent origin is the converged state there.
+// lab_observed above carries origin_present: true, which hid that Converged demanded one.
+test fn a_convergence_seeded_instance_reads_converged_with_no_origin_and_a_bundle_seeded_one_does_not() -> Bool {
+  let o = lab_observed(production_untouched: true, source_anchor_matches: true, source_revision_observed: true, source_revision_current: true, health_current: true)
+  let no_origin = DashboardInstanceObserved {
+    observation_refusals: o.observation_refusals, root_present: o.root_present, ownership_marker_present: o.ownership_marker_present,
+    bundle_present: o.bundle_present, origin_present: false, source_present: o.source_present,
+    source_revision_observed: o.source_revision_observed, source_revision_current: o.source_revision_current,
+    source_revision_detail: o.source_revision_detail, directories_converged: o.directories_converged,
+    directory_refusals: o.directory_refusals, provider_runtime_ready: o.provider_runtime_ready,
+    provider_runtime_detail: o.provider_runtime_detail, provider_authenticated: o.provider_authenticated,
+    provider_auth_detail: o.provider_auth_detail, health_current: o.health_current,
+    production_untouched: o.production_untouched, source_anchor_matches: o.source_anchor_matches,
+  }
+  let lab_converges = match dashboard_instance_reconcile(instance: srv1_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => true, _ => false }
+  let seeded = match srv1_lab_dashboard_instance().source_seed { DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => true, _ => false }
+  let bundle_replans = match dashboard_instance_reconcile(instance: srv2_lab_dashboard_instance(), observed: no_origin) { DashboardInstanceConverged => false, _ => true }
+  let bundle_seeded = match srv2_lab_dashboard_instance().source_seed { DashboardGitBundle { controller_repo: _, staged_bundle: _, anchor_ref: _, history_remote: _ } => true, _ => false }
+  lab_converges && seeded && bundle_replans && bundle_seeded
 }

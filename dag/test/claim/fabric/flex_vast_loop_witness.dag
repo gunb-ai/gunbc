@@ -2,7 +2,7 @@ module test.claim.fabric.flex_vast_loop_witness
 
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, List, Bool, Int, String, list_length }
+import std.types { NonEmptyStr, List, Bool, Int, String }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
 import std.decl_ref { decl_ref }
@@ -61,10 +61,11 @@ import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import test.claim.serving.rented_release_witness { w_acquired, w_readings, w_roots, w_protected }
 import gunbc.serving.rented_release { RentedInstanceObserved, rented_bound_instance_id }
 import gunbc.serving.rented_allocation { rented_allocation_wire }
+import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ---- Supplied values at the boundary (DESIGN 3). The admitted bid is produced by the REAL
+// ---- Supplied values at the boundary (gunbc.design_argument::witness_one_interface). The admitted bid is produced by the REAL
 // flex_bid_admission; the instances and charges are supplied as the Vast interface returns them.
 fn w_admitted() -> FlexBidAdmission {
   flex_bid_admission(
@@ -370,7 +371,7 @@ test fn the_create_body_carries_runtype_args_the_args_list_and_onstart_b64() -> 
     Present { value: r } =>
       (flex_launch_runtype_wire(launch: r.launch.mode) == "args")
         && (flex_launch_args(launch: r.launch.mode) == flex_vast_args_launch)
-        && (list_length(flex_launch_args(launch: r.launch.mode)) == 3)
+        && (length(flex_launch_args(launch: r.launch.mode)) == 3)
         && (flex_launch_onstart(launch: r.launch.mode) == "")
         && r.launch.env.contains(flex_vast_onstart_b64_flag())
         && !r.launch.env.contains("POOL_API_KEY")
@@ -382,7 +383,7 @@ test fn the_create_body_carries_runtype_args_the_args_list_and_onstart_b64() -> 
 // whoever names it, and a create with no bound hash refuses.
 test fn the_binding_is_declared_unbound_and_a_create_with_no_bound_hash_refuses() -> Bool {
   let unbound = match flex_vast_template_hash_binding { FlexVastTemplateHashUnbound { reason: _ } => true  FlexVastTemplateHashBound { rows: _ } => false }
-  let none_rows = list_length(flex_vast_template_hashes) == 0
+  let none_rows = length(flex_vast_template_hashes) == 0
   let refused = match w_wet_refusal(entry: w_established(), admitted: true, gates: w_open, hashes: flex_vast_template_hashes) {
     Present { value: FlexPassCreateRefused { refusal: FlexRefusedTemplateHashUnread } } => true
     _ => false

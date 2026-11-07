@@ -26,7 +26,7 @@ import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.fleet.fleet_posix_accounts { fleet_operator_email }
 import gunbc.durable_cas_file_store {
-  OwnerOnlyCreateOnly,
+  CasSlotKeysAbsent, OwnerOnlyCreateOnly,
   admit_cas_attempt_for_derived_payload,
   DerivedPayloadAdmitted,
   DerivedPayloadKeyNotSlotAddressable,
@@ -646,6 +646,7 @@ fn pending_fold_step(acc: PendingFold, escalation_id: NonEmptyStr, slot: Escalat
 
 fn pending_escalations(root: NonEmptyStr, observed_at: Timestamp) -> PendingEscalations {
   match cas_slot_keys(root: root) {
+    CasSlotKeysAbsent { root: r } => PendingEscalationsRefused { detail: join(["no escalation store is present at ", r as String, " -- an absent store is not an empty one, so no escalation is reported settled"], "") }
     CasSlotKeysListingRefused { root: _, detail: d } => PendingEscalationsRefused { detail: d }
     CasSlotKeysSubjectRefused { root: r, cause: c } => PendingEscalationsRefused { detail: "store root " + (r as String) + " is not an admissible directory: " + c }
     CasSlotKeysListed { keys: keys } => {

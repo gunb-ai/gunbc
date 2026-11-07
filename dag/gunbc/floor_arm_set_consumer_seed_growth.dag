@@ -44,7 +44,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // gunbc#12120's side-chat ruling (2026-09-23; `gunbc.recurring_failure_mode`
 // `changed_declaration_signature_consumer_unplanned`) GENERALIZES the dependents half from a
 // coproduct's arm set to a declaration's whole INTERFACE, consolidating rather than forking
-// (DESIGN 3): the arm-set selector and its types are RENAMED into the interface selector
+// (gunbc.design_argument::single_authority): the arm-set selector and its types are RENAMED into the interface selector
 // (`interface_changed_consumers`, `InterfaceChangeGround` with `ArmSetChanged` as one arm), not
 // kept beside it, and the planning enum and fixture helpers are renamed with them. The new items
 // are the per-module direct-change reader, the one read-binding rule the selector and its

@@ -14,7 +14,7 @@ import gunbc.fleet.fleet_asset_identity { gh200_dv5_b, p4261_e1_b }
 import product.electrical.connectivity { ElectricalTerminalRef, terminal_ref_equal }
 import product.electrical.continuity { BenchConditions, BeforeIncidents, BetweenIncidents, BuzzerAsserted, BuzzerNotAsserted, ContinuityObservation, ContinuityResult, ModuleInstalled, ReadingOrder, Unpowered, both_points_recorded }
 import product.electrical.identification { numbered_pins, pin_number_name }
-import product.p4261.carrier { CarrierLayoutObservation, ConnectorHousing, InputConnector, MeasuredBoard, admit_correspondence, away_side, lm5066i_terminals, lv165a_pins }
+import product.p4261.carrier { CarrierLayoutObservation, ConnectorHousing, InputConnector, MeasuredBoard, admit_correspondence, away_side }
 import product.p4261.evidence {
   ConnectorNotMappedWhole,
   InputClassesNotEstablished,
@@ -144,7 +144,7 @@ fn e1_with(continuity: List<ContinuityObservation>, input: InputConnector?) -> C
     analysis: x.analysis, asset: x.asset, continuity: continuity, diode_readings: x.diode_readings, source_draws: x.source_draws,
     bench: x.bench, phases: x.phases, transitions: x.transitions, pole_closures: x.pole_closures,
   } }, Absent => Absent }
-  CarrierLayoutObservation {
+  CarrierLayoutObservation { ambiguous_designators: [],
     asset: b.asset, design: b.design, revision: b.revision, markings: b.markings, module_receptacles: b.module_receptacles, backplane_connectors: b.backplane_connectors,
     j20: b.j20, j20_calipers: b.j20_calipers, edge_high_speed_connectors: b.edge_high_speed_connectors, management_io_survey: b.management_io_survey,
     management_io: b.management_io, components: b.components, measured: m, input: input, unresolved: b.unresolved, designator_readings: b.designator_readings,
@@ -376,9 +376,23 @@ fn lv165a_less_pin_16() -> ElectronicComponentRow {
   }
 }
 
+// A FACT ABOUT THE PART, not about any specimen: TI numbers sixteen pins on the SN74LV165A and
+// twenty-nine terminals on the LM5066I, and that stays true whether or not a marking on our board has
+// settled. What may NOT happen is writing this numbering onto a specimen row: a specimen's body is the
+// positions the bench probed, counted on the body, and carrier_layout's
+// a_specimens_body_is_what_was_probed_and_not_a_named_parts_numbering is the check that holds that line.
 test fn the_pin_names_follow_the_manufacturers_table() -> Bool {
-  count(lv165a_pins) == 16 && any(lv165a_pins, n => (n as String) == "pin 16")
-    && count(lm5066i_terminals) == 29 && any(lm5066i_terminals, n => (n as String) == "pin 28") && any(lm5066i_terminals, n => (n as String) == "exposed pad") && !any(lm5066i_terminals, n => (n as String) == "pin 29")
+  // The manufacturers' numberings taken AT THE POINT OF USE, from each row's own pin table. They were
+  // free-standing data here and in product.p4261.carrier until this PR: nothing else read them, and a
+  // datasheet numbering sitting in a board file is the route by which one sized a specimen's body (the
+  // two rows are gone; this is what a part fact looks like when it is actually consulted, gunbc.design_argument::consumption).
+  // The LM5066I count is TI's twenty-eight numbered leads -- twenty-nine with its exposed pad, which the
+  // table does not number: that name belongs to the reading that read it, never to a part fact.
+  let lv165a_names = map(numbered_pins(row: sn74lv165a_pw), n => pin_number_name(number: n))
+  let lm5066i_names = map(numbered_pins(row: lm5066i_pwp), n => pin_number_name(number: n))
+  count(lv165a_names) == 16 && any(lv165a_names, n => (n as String) == "pin 16")
+    && count(lm5066i_names) == 28 && any(lm5066i_names, n => (n as String) == "pin 28")
+    && !any(lm5066i_names, n => (n as String) == "pin 29")
     && count(map(numbered_pins(row: lv165a_less_pin_16()), n => pin_number_name(number: n))) == 15
     && !any(map(numbered_pins(row: lv165a_less_pin_16()), n => pin_number_name(number: n)), n => (n as String) == "pin 16")
 }

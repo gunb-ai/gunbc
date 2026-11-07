@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // deduplicating two declarations, and until it lands this class sits at mitigatable -- one module
 // is walled by an executing assertion and the rest of the corpus is review diligence.
 // WHERE THIS WITNESS EXECUTES, AND THE HONEST ANSWER IS NOWHERE IN CI — a declared rung drop
-// (DESIGN §4b(3)), stated on the carrier so it is not rediscovered by the next reader who takes the
+// (gunbc.design_argument::guarantee_ladder (no silent regression)), stated on the carrier so it is not rediscovered by the next reader who takes the
 // green PR as evidence the assertion ran. It was authored in the fast lane, where it was
 // BUDGET-REFUSED and went UNDECIDED: the floor refused rather than passing an undecided row, which
 // is the fail-closed arm working. Moved here on the measurement recorded in gunbc.ci.ci_layer_roots
@@ -95,7 +95,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // WHAT IS NOT CLAIMED: that moving it fixed anything. The deletion this witness was authored to
 // evidence still landed and is still correct; what changed is that the evidence no longer runs, and
-// saying so here is the difference between a declared drop and coverage by illusion (DESIGN §6).
+// saying so here is the difference between a declared drop and coverage by illusion (gunbc.design_argument::how_to_work).
 fn host_identity_data_declarations() -> List<DataDeclTypeFact> {
   filter(
     data_decl_type_facts(pool_roots: ["dag", "src/v2"]),

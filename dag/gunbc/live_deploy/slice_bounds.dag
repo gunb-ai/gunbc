@@ -13,7 +13,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 // closure (emit -> ci_deploy_access -> ... -> ci_runner_placement -> fleet_host_budget). Declaring
 // the numbers in the emitter therefore closed an import cycle, which CI's floor caught as
 // `circular dependency detected` where the parse sweep could not see it -- acyclicity is the import
-// graph's only structural law (DESIGN section 3) and a policy row is not an emission fact.
+// graph's only structural law (gunbc.design_argument::single_authority) and a policy row is not an emission fact.
 //
 // So the bounds sit where both consumers can reach them and neither can be reached FROM: this
 // module imports one std measure module and nothing else.
@@ -46,7 +46,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 // decision was. Nothing downstream of THIS passage changes: its whole argument is that the floor's
 // demand does not apply to this deployment at all, and that holds at any value. It is a citation
 // defect, not a wrong decision. The repair is to stop carrying a second copy of a number this row
-// does not own (DESIGN section 6: name the producer, never transcribe its output) -- which is also
+// does not own (gunbc.design_argument::how_to_work: name the producer, never transcribe its output) -- which is also
 // why no newer figure is substituted here, even though one now exists.
 //
 // THE VALUES DO NOT CHANGE TODAY, deliberately. They are the bytes this deployment already runs
@@ -69,7 +69,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 // for gunbc-roadmap.service and gunbc-tree-sync.service; re-derive there. 26 GiB max / 24 GiB high
 // (operator ruling 2026-09-18, the same envelope the runner slots moved to that day) covers serve
 // peak + convergence peak concurrently (~23 GB); why the serve footprint grew from 3.46 GB to ~18 GB
-// is a demand question (DESIGN section 2) this row does not answer and does not hide. That this
+// is a demand question (gunbc.design_argument::demand_before_materialization) this row does not answer and does not hide. That this
 // number EQUALS the runner slot's is a coincidence of two rulings on one day, not a derivation: the
 // row is authored here, and the witness pins that by reading this declaration, not by inequality.
 //
@@ -105,7 +105,7 @@ import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 // throttles before Max kills: 53 GiB. When the members move by more than one member's footprint, or
 // a fifth resolving member joins, this row is re-derived from the same instrument -- and the reason
 // one resolve costs ~8-12 GB, times four members, is the demand question filed separately rather than
-// absorbed here (DESIGN section 2: a larger bound is not an answer to why the demand exists).
+// absorbed here (gunbc.design_argument::demand_before_materialization: a larger bound is not an answer to why the demand exists).
 data live_deploy_slice_memory_max: ByteSize = byte_size(56908316672)
 
 data live_deploy_slice_memory_high: ByteSize = byte_size(52613349376)
@@ -144,7 +144,7 @@ data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 // question. A ceiling proved by containment against that superset is about 26 GiB, which bounds
 // nothing useful.
 //
-// SO THIS IS A DECLARED POLICY BUDGET WITH AN UNMEASURED SUBJECT, said plainly because DESIGN 4d
+// SO THIS IS A DECLARED POLICY BUDGET WITH AN UNMEASURED SUBJECT, said plainly because gunbc.design_argument::epistemic_humility
 // forbids carrying an inference in the vocabulary of a deduction. What supports 6 GiB is a
 // qualitative fact -- the broker compiles and serves four routes that consult no roadmap, no plan,
 // no site bundle and no attempt evidence, which is the work the roadmap's footprint is made of --
@@ -166,7 +166,7 @@ data live_deploy_slice_memory_swap_max: ByteSize = byte_size(0)
 // gunbc-approval-broker.service, the same one the row above names". That line reports ONE number --
 // the cgroup's peak across the unit's whole lifetime -- so it can establish the lifetime peak and
 // nothing finer. It cannot separate a confirm-page peak from a redemption peak, and this sentence
-// claimed it yielded six readings. Naming an instrument (DESIGN section 6) is only half the
+// claimed it yielded six readings. Naming an instrument (gunbc.design_argument::how_to_work) is only half the
 // obligation; its RESOLUTION has to match the fields being derived from it.
 //
 // THE REAL PROTOCOL IS ONE INCARNATION PER ROUTE CLASS, and it is forced by a measured kernel fact
@@ -263,7 +263,7 @@ data repository_convergence_slice_memory_swap_max: ByteSize = byte_size(0)
 // and refuses; in a root ssh shell with no user manager it refuses UserSessionAbsent; and the
 // user-work slice is a --user slice that srv3 does not provision. So the controls had NO admissible
 // placement, and borrowing another row's slice (repository convergence, approval broker) would charge
-// their budget for work that is not theirs (DESIGN section 3: a slice named for one workload is that
+// their budget for work that is not theirs (gunbc.design_argument::single_authority: a slice named for one workload is that
 // workload's fact). They get their own row.
 //
 // THE CAP IS DERIVED, NOT AUTHORED: it is the envelope gunbc.fabric.fci1_bounded_execution_context
@@ -313,7 +313,7 @@ data user_work_slice_high_gap: ByteSize = byte_size(1073741824)
 data user_manager_remainder: ByteSize = byte_size(4294967296)
 
 // MemoryMax IS THE POOL APPROPRIATION, not a transcribed GiB. per-slot bytes are
-// gunbc_runner_slot_desired().memory_max (the same ceiling dispatch_worker_memory_max names).
+// gunbc_runner_slot_desired().memory_max (no longer the ceiling dispatch_worker_memory_max names: that is authored separately since 2026-11-04).
 // Slot count is gunbc.live_deploy.user_work_pool_slots -- kept out of this leaf so unit_bounds
 // can import the name here without closing a cycle through roadmap_belt.
 fn user_work_slice_memory_max_of(slots: Nat) -> ByteSize {
@@ -348,6 +348,22 @@ data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
 // APPROPRIATION: two 22 GiB slots, the same function as user_work_slice_memory_max_of.
 // Operator decision 2026-10-15 (escalation msg_57614325): stack this 2 x 22 GiB with
 // user-work, srv1 CI width 7 to 5. Charge is served_deployment_slice_allowance, not the wrap.
+//
+// WHY THE WIDENED srv1 LAB BELT (belt_max_concurrent = 6, gunbc.roadmap.roadmap_dashboard_instance) DOES
+// NOT WIDEN THIS SLICE -- and why its 6 workers cannot all be resident at once. The per-slot here is the
+// 22 GiB RUNNER-SLOT ceiling (gunbc_runner_slot_desired().memory_max), i.e. a BUILD-sized allocation; the
+// slice's MemoryMax caps the SUM of the transient workers in it, so at 2 slots only 2 build-sized
+// transients fit before they queue/OOM. The lab's harness workers (GunbcHarnessProvider -> a systemd
+// transient; harness_default_requirement_places_on_operator_endpoint; the deployment row's name
+// srv1_lab_codex_feedback_deployment is historical, the provider is selected per attempt) therefore enter
+// THIS host-global slice (srv1 is HOST_CLOSED now, so no peak is observable yet). Widening the slice to the
+// lab's 6 is deliberately NOT done here: it is an operator decision -- it grows served_deployment_slice_allowance
+// and lowers the derived srv1 CI runner width, and a hand-authored widening would replace the recorded
+// operator ruling above (gunbc.design_argument::fail_closed). The real relief is decoupling the worker/session memory ceiling from the
+// build-sized runner slot (operator ruling 2026-11-04, a measured harness worker sits at ~750 MB, ~30x under
+// the 22 GiB ceiling), so N workers fit inside the operator's slice without touching the CI charge; that is a
+// STACKED change, not this one. Until it lands and the operator widens the slice, the lab's concurrent resident
+// transient workers stay bounded by this 2-slot figure even though the belt admits 6 to launch.
 data attempt_worker_slice_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
 
 data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)

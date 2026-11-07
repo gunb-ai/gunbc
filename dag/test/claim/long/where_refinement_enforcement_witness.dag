@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // already-correct arbitrary-depth peel_where_refinement_base; past depth 1 it landed on an
 // intermediate alias name and an overly-permissive decl_is_refinement_over_actual check silently
 // deferred to the advisory arm instead of refusing a genuine base-kernel-type mismatch — now it
-// calls peel_where_refinement_base directly (DESIGN §3 single authority), fixing both call sites
+// calls peel_where_refinement_base directly (gunbc.design_argument::single_authority single authority), fixing both call sites
 // (record-field init and call-arg checking) from one change. (b)
 // where_refinement_diags_for_predicate (direct returns, data inits — which never reach
 // kernel_value_declared_type_mismatch at all, so this was the only wall there) used
@@ -689,7 +689,7 @@ test fn where_refinement_wrong_kind_literal_direct_return_accepts() -> Bool {
 // it already sits beside a guaranteed-length table carrying exactly those names — then 128 >= 64
 // credits a 128-digit string as a valid sha256 hex and this witness goes red. It is a permanent
 // regression control on the asymmetry, not a probe of a landed behavior, and it does not retire
-// when the wall lands (DESIGN 4b meta-obligation 4: a climb deletes the redundant production
+// when the wall lands (gunbc.design_argument::guarantee_ladder meta-obligation 4: a climb deletes the redundant production
 // machinery, never the evidence).
 
 fn where_refinement_advisory_count(source: String) -> Int {
