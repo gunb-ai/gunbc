@@ -1162,7 +1162,7 @@ data gcp_token_lifetime_condition_and_expiry_unconsumed: IntegrationConcern = In
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "default_token_lifetime"),
     requirement: "Google's GenerateAccessToken contract has a default and an ordinary maximum of one hour, a twelve-hour maximum only for service accounts allowed by constraints/iam.allowServiceAccountCredentialLifetimeExtension, and a response expireTime. The model holds default_seconds 3600 and max_seconds 43200 with no condition, no inspected production request path consumes it, and the returned expiry is discarded, so no downstream claim about credential validity can consume it.",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.optional_impersonation", decl_name: "optional_impersonation") } },
+    standing: RequirementUnestablished { decided_by: "a cited read of Google's projects.serviceAccounts.generateAccessToken reference (default and ordinary maximum lifetime, the twelve-hour maximum under constraints/iam.allowServiceAccountCredentialLifetimeExtension, and the expireTime response field) carried into extdeps.cloud.gcp.iam; the declarations in this row are the implementation being questioned, not the authority for the requirement" },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "extdeps.cloud.gcp.iam", decl_name: "default_token_lifetime"),
@@ -1196,7 +1196,7 @@ data jwks_cache_freshness_without_origin_evidence: IntegrationConcern = Integrat
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "jwks_cache_decode"),
     requirement: "Google directs verifiers to use the key response's Cache-Control to decide when to fetch again, and HTTP freshness is computed against the response's current age, with directives that can require validation or prohibit storage (RFC 9111). The cache marks an entry fresh by local age against a fixed 3600 s and stores only fetched_at and body, so it cannot derive freshness from the response that produced it.",
-    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "google_oidc_jwks_cache_ttl_seconds") } },
+    standing: RequirementUnestablished { decided_by: "a cited read of Google's ID-token verification guidance (refetch the keys per the response's Cache-Control) and RFC 9111 (freshness from current age; directives that require validation or forbid storage) carried into an extdeps model; the cache declarations in this row are the implementation being questioned, not the authority for the requirement" },
   },
   affected: FreeSemigroup {
     head: decl_ref(module_path: "gunbc.auth.oidc_id_token_verification", decl_name: "jwks_cache_decode"),

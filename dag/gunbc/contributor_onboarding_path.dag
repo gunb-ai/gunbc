@@ -2,6 +2,14 @@ module gunbc.contributor_onboarding_path
 import gunbc.repo.repo_self_build { repo_self_build_all_bins_command }
 
 import std.types { String, List, NonEmptyStr }
+import std.algebra { FreeSemigroup, non_empty_to_list }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.documentary_refs { documentary_ref_symbol_text }
+import gunbc.design_document { purpose_heading, worked_examples_heading, ci_contract_heading, ledgers_heading }
+import gunbc.design_argument {
+  DesignRow, method_separate_order_compose, fail_closed, minimize_redundancy, single_authority,
+  conformance, consumption, guarantee_ladder, closed_grounded_substrate, source_annotations, how_to_work, self_hosting,
+}
 import std.integer { int_to_decimal_string }
 import std.optional { Optional, Absent, Present }
 import std.markdown { MarkdownDocument, MarkdownBlock }
@@ -181,11 +189,33 @@ type DesignReadingPriority
   | BeforeFirstCommit
   | WhenItBites
 
+// WHAT A READING NAMES, AS A REFERENCE RATHER THAN A SPELLING. A DESIGN section is a
+// gunbc.design_argument claim row, rendered from its own title and citation; the four parts that are
+// not claims (purpose, worked examples, CI contract, ledgers) carry their heading from
+// gunbc.design_document and a resolvable citation. A section number spelled as text here was how
+// this roster went stale when the document stopped numbering its sections.
+type DesignPart
+  = ClaimPart { row: DesignRow }
+  | ReferencePart { title: String, cite: DeclarationRef }
+
 type DesignReading {
-  section: NonEmptyStr
+  parts: FreeSemigroup<DesignPart>
   priority: DesignReadingPriority
   why: NonEmptyStr
 }
+
+fn design_part_text(part: DesignPart) -> String {
+  match part {
+    ClaimPart { row } => join(["*", row.title, "* (", documentary_ref_symbol_text(reference: row.cite), ")"], "")
+    ReferencePart { title, cite } => join(["*", title, "* (", documentary_ref_symbol_text(reference: cite), ")"], "")
+  }
+}
+
+fn design_reading_label(r: DesignReading) -> String {
+  join(map(non_empty_to_list(xs: r.parts), part => design_part_text(part: part)), " and ")
+}
+
+fn claim(row: DesignRow) -> DesignPart { ClaimPart { row: row } }
 
 fn source_root_flags() -> List<String> {
   fold(witness_layer_roots, init: [], f: fn(acc, root) { append(acc, items: ["--source-root", root]) })
@@ -371,7 +401,7 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
   OnboardingObstacle {
     step_id: "clone" as NonEmptyStr,
     symptom: "The repository root offers DESIGN.md, and README.md and CLAUDE.md are symlinks to the same file. There is no CONTRIBUTING file and no first-day document." as NonEmptyStr,
-    cause: "DESIGN.md is the single authority and is a serially-reasoned argument from axioms, loaded in full every session. Measured on the tree: it names no build command, no toolchain installer and no binary path, so the document a newcomer is pointed at cannot get them to a build." as NonEmptyStr,
+    cause: "DESIGN.md is the single authority, an argument of named claims applying one method, loaded in full every session. Measured on the tree: it names no build command, no toolchain installer and no binary path, so the document a newcomer is pointed at cannot get them to a build." as NonEmptyStr,
     disposition: RemediedByDerivation { how: "docs/onboarding.md is generated from this module (`gunbc.instruments.docs_projection_gate` `regen`) and carries the ordered path with commands derived from their authorities. DESIGN.md names `gunbc.contributor_onboarding_path`, not the projection path." as NonEmptyStr },
     discoverable_from_symptom: false,
   },
@@ -509,47 +539,58 @@ data onboarding_obstacles: List<OnboardingObstacle> = [
 // section and says WHY a reader needs it at that point, so the reader reads the authority itself.
 data onboarding_design_reading: List<DesignReading> = [
   DesignReading {
-    section: "Building and checks" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: ci_contract_heading, cite: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks") }, tail: [] },
     priority: FirstDay,
-    why: "It names the checks and the one manual per-clone seed, and it is the section this path is linked from. It is the only section a reader needs before a build." as NonEmptyStr,
+    why: "It names the checks and the one manual per-clone seed, and it is the part this path is linked from. It is the only part a reader needs before a build." as NonEmptyStr,
   },
   DesignReading {
-    section: "gunbc.design_argument::goal_safe_efficient_predictable, the objective" as NonEmptyStr,
+    parts: FreeSemigroup {
+      head: ReferencePart { title: purpose_heading, cite: decl_ref(module_path: "gunbc.design_argument", decl_name: "goal_safe_efficient_predictable") },
+      tail: [claim(row: method_separate_order_compose)],
+    },
     priority: FirstDay,
-    why: "Three axioms and the three consequences every later section is derived from. Without it the rest of the document reads as a list of preferences rather than a chain, and a reader will argue with conclusions instead of premises." as NonEmptyStr,
+    why: "What safe, efficient and predictable mean in practice, and the method every later section applies: separate concerns by meaning and authority, order them by their real dependencies, and give their composition an explicit contract. Without it the rest reads as a list of preferences rather than one method applied." as NonEmptyStr,
   },
   DesignReading {
-    section: "gunbc.design_argument::fail_closed, fail-closed" as NonEmptyStr,
+    parts: FreeSemigroup { head: ReferencePart { title: worked_examples_heading, cite: decl_ref(module_path: "gunbc.design_document", decl_name: "worked_examples_blocks") }, tail: [] },
+    priority: FirstDay,
+    why: "The method worked through two real problems, with the defects the tree carries today. Read it to see what sorting a problem into concerns looks like before being asked to do it in a diff." as NonEmptyStr,
+  },
+  DesignReading {
+    parts: FreeSemigroup { head: claim(row: fail_closed), tail: [] },
     priority: BeforeFirstCommit,
     why: "It carries the hard reject: a silent widen, a fabricated default, an uncounted degradation or an escape hatch is refused regardless of what else the change delivers. It is the single most likely reason a first diff is rejected." as NonEmptyStr,
   },
   DesignReading {
-    section: "Sections 2 and 3, redundancy and single authority" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: minimize_redundancy), tail: [claim(row: single_authority)] },
     priority: BeforeFirstCommit,
-    why: "They decide where a fact is allowed to live. A first change usually either restates something that already has an owner or cites a position instead of a symbol, and both are refused on these two sections." as NonEmptyStr,
+    why: "They decide where a fact is allowed to live. A first change usually either restates something that already has an owner or cites a position instead of a symbol, and both are refused on these two claims." as NonEmptyStr,
   },
   DesignReading {
-    section: "Sections 3b and 3c, conformance and consumption" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: conformance), tail: [claim(row: consumption)] },
     priority: BeforeFirstCommit,
     why: "They are the two questions a reviewer asks of a diff: does it inhabit the models it touches, and who consumes what it adds. A well-shaped declaration nothing reads is refused under the second." as NonEmptyStr,
   },
   DesignReading {
-    section: "gunbc.design_argument::guarantee_ladder, the guarantee ladder" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: guarantee_ladder), tail: [] },
     priority: BeforeFirstCommit,
     why: "It fixes what a change may claim about its own safety, and it is where the vocabulary a reviewer will use comes from. A claim stated one rung above its executed evidence is the failure mode it names." as NonEmptyStr,
   },
   DesignReading {
-    section: "gunbc.design_argument::closed_grounded_substrate, the substrate, and gunbc.design_argument::source_annotations, annotations" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: closed_grounded_substrate), tail: [claim(row: source_annotations)] },
     priority: WhenItBites,
-    why: "Needed at the first .dag edit rather than at the first read: the closed vocabulary the language is built from, and the rule that a comment is the only place uncarried prose may live." as NonEmptyStr,
+    why: "Needed at the first .dag edit rather than at the first read: the closed vocabulary the language is built from, and the rule that a comment is best-effort prose no machine claim may rest on, deletable at any time." as NonEmptyStr,
   },
   DesignReading {
-    section: "gunbc.design_argument::how_to_work, how to work" as NonEmptyStr,
+    parts: FreeSemigroup { head: claim(row: how_to_work), tail: [] },
     priority: WhenItBites,
     why: "The authorship tells -- scaffold, workaround, for-now, a new artifact with no consumer. Read it when a change starts wanting one of those, which is the moment it is about to be refused." as NonEmptyStr,
   },
   DesignReading {
-    section: "gunbc.design_argument::self_hosting, self-hosting, and the recurring failure modes" as NonEmptyStr,
+    parts: FreeSemigroup {
+      head: claim(row: self_hosting),
+      tail: [ReferencePart { title: ledgers_heading, cite: decl_ref(module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode") }],
+    },
     priority: WhenItBites,
     why: "Why Rust is present at all and what the seed is shrinking toward, plus the ledger of classes already found. Deferrable on day one and indispensable once a change touches the compiler." as NonEmptyStr,
   },
@@ -701,7 +742,7 @@ fn obstacle_item_text(o: OnboardingObstacle) -> String {
 }
 
 fn reading_item_text(r: DesignReading) -> String {
-  join(["**", (r.section as String), " — ", priority_rendered(pr: r.priority), ".** ", (r.why as String)], "")
+  join(["**", design_reading_label(r: r), " — ", priority_rendered(pr: r.priority), ".** ", (r.why as String)], "")
 }
 
 
@@ -807,7 +848,7 @@ fn onboarding_reference_blocks() -> List<MarkdownBlock> {
 fn onboarding_reading_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Reading DESIGN.md in an order"),
-    p(text: "`DESIGN.md` is reasoned serially from three axioms, and every section is a consequence of the ones before it. So it rewards being read in its own order and punishes being skimmed for the section that seems relevant. What follows is when you need each part, not a summary of any of them — a shorter second account of the axioms would be the exact duplication the document forbids."),
+    p(text: "`DESIGN.md` is one argument. Each section states one claim, rendered from a `gunbc.design_argument` row and cited by that row's symbol; sections carry no numbers. The order of sections is for reading: which claims a claim rests on is its premise list, checked in `gunbc.design_argument`, not its position. Read the purpose, the method and the worked examples first, because every later claim applies that method. What follows is when you need each part, not a summary of any of them — a shorter second account of the method would be the exact duplication the document forbids."),
     ul(items: map(onboarding_design_reading, r => li(text: reading_item_text(r: r)))),
   ]
 }

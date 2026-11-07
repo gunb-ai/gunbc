@@ -36,13 +36,13 @@ classification to review or a corpus-wide rerun.
 **Downstream:** [#7683](https://github.com/gunb-ai/gunbc/pull/7683) builds on this design;
 correcting this note is on the critical path for that lane.
 
-DESIGN refs: §2 (DFS existing machinery before minting vocabulary; no parallel ledger),
-§3 (`gunbc.bootstrap.CompilerStage` is the stage authority; `FrontierProbeStage` is harness
-vocabulary, not a second pipeline), §4 (emission is the downstream half of the two-stage
+DESIGN refs: gunbc.design_argument::minimize_redundancy (DFS existing machinery before minting vocabulary; no parallel ledger),
+gunbc.design_argument::single_authority (`gunbc.bootstrap.CompilerStage` is the stage authority; `FrontierProbeStage` is harness
+vocabulary, not a second pipeline), gunbc.design_argument::closed_grounded_substrate (emission is the downstream half of the two-stage
 contract in [compiler-guarantee-recovery-gap-analysis.md](compiler-guarantee-recovery-gap-analysis.md)
-§1), §5 (undeclared emission delta refuses — never widens to rerun-everything or
-accept-anyway), §4b (discriminating RED: regression vs declared-change controls stay enrolled
-after walls land), §6 (model-before-implement; scaffolds name dissolution triggers), §7
+§1), gunbc.design_argument::fail_closed (undeclared emission delta refuses — never widens to rerun-everything or
+accept-anyway), gunbc.design_argument::guarantee_ladder (discriminating RED: regression vs declared-change controls stay enrolled
+after walls land), gunbc.design_argument::how_to_work (model-before-implement; scaffolds name dissolution triggers), gunbc.design_argument::self_hosting
 (behavioral equivalence over byte identity for self-host).
 
 Related:

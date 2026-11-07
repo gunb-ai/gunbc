@@ -63,6 +63,14 @@ import gunbc.required_ci_contract_epoch { required_ci_context_name }
 // Sections carry no numbers: reading order is presentation, and the argument graph is checked on
 // its premises in gunbc.design_argument.
 
+// THE HEADINGS OF THE PARTS THAT ARE NOT CLAIMS, named once. A claim's heading is its row's title;
+// these four parts have no row, so a consumer that names them (gunbc.contributor_onboarding_path's
+// reading order) imports the heading rather than spelling it.
+data purpose_heading: String = "Purpose"
+data worked_examples_heading: String = "Worked examples"
+data ci_contract_heading: String = "Reference: building and checks"
+data ledgers_heading: String = "Reference: ledgers"
+
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
 fn ruling(r: DesignRuling) -> String {
@@ -112,7 +120,7 @@ fn preamble_blocks() -> List<MarkdownBlock> {
 fn purpose_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Purpose and method"),
-    h3(text: "Purpose"),
+    h3(text: purpose_heading),
     p(text: concat("**", concat(goal_safe_efficient_predictable.statement, ".**"))),
     tbl(header: ["Goal", "What it means in practice"], rows: [
       ["**Safe**", "Invalid states and actions are prevented where the model allows it. Remaining failures and uncertainty stay explicit. Every action stays within its authority."],
@@ -181,7 +189,7 @@ fn method_blocks() -> List<MarkdownBlock> {
 
 fn worked_examples_blocks() -> List<MarkdownBlock> {
   [
-    h2(text: "Worked examples"),
+    h2(text: worked_examples_heading),
     p(text: "Two problems sorted by the method, read at revision `8d22701ad6ca`. The findings are dated, scoped specimens; fixing them is tracked by their owners and is not a precondition of this document. The acceptance question for the whole document is the one these examples answer: *can someone take an unfamiliar complex problem, identify its atomic concerns and dependencies, compose them into a process, and explain both what the result guarantees and what remains uncertain?*"),
     h3(text: "Integers: meaning, operations, constraints, realization"),
     p(text: "`std.integer` separates five things a typical language fuses into `int`:"),
@@ -528,7 +536,7 @@ fn conformance_reference_blocks() -> List<MarkdownBlock> {
 // (gunbc.design_ruling DesignRuling governs), which is why it has a stable name.
 fn ci_contract_blocks() -> List<MarkdownBlock> {
   [
-    h2(text: "Reference: building and checks"),
+    h2(text: ci_contract_heading),
     p(text: "The CI contract. This part is `gunbc.design_document::ci_contract_blocks`. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate` `regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document."),
     ul(items: [
       li(text: concat("**CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `", concat(required_ci_context_name as String, concat("`, run on the fleet for every pull request and merge_group ", concat(ruling(r: v1_withdrawn_one_required_job), ". It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no required check — unobserved, not excused."))))),
@@ -539,7 +547,7 @@ fn ci_contract_blocks() -> List<MarkdownBlock> {
       li(text: concat("**An instrument is a row, not a flag** ", concat(ruling(r: instrument_is_a_row_not_a_flag), ". Investigation does not require one (see *Proportionate evidence* under the how-to-work claim). When a measurement warrants an instrument, a `gunbc test <label>` address is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2). A new wide instrument must first name its real consumer, discriminator and acceptable cost; required completeness is never certified by grep."))),
       li(text: concat("**Instrument measurements queue per dispatch, not one behind all** ", concat(ruling(r: instrument_measurement_queues_run_in_parallel), ". `gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_concurrency_group` keys the concurrency group on the dispatch ref plus the dispatch label, so unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped. Isolation between runs on the shared self-hosted pool is the SLOT's, not the queue's: `gunbc.runner.runner_slot_desired` declares the per-slot shape and `gunbc.host.memory_envelope` enforces it. That is what isolation means for an instrument run, not a claim that the live fleet carries it: live runner units drift from the declared shape (`gunbc.recurring_failure_mode::the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot refusing on drift), so until that trigger runs, parallel measurements rest on a declared authority that is not fully installed."))),
     ]),
-    h2(text: "Reference: ledgers"),
+    h2(text: ledgers_heading),
     p(text: "Recurring failure modes live one file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`), each with its recognition rule and receipts. They are a ledger, not a consequence, so they are not indexed here: an index in this file would regenerate it on every append."),
   ]
 }
