@@ -30,6 +30,8 @@ import gunbc.live_deploy.emit {
   live_deploy_belt_answer_path_unit_file,
   live_deploy_belt_credential_recovery_unit_file,
   live_deploy_belt_credential_recovery_timer_unit_file,
+  live_deploy_agent_door_unit_file,
+  LiveDeployTailnetDoorUnitEmitted, LiveDeployTailnetDoorUnitNotDeployed, LiveDeployTailnetDoorUnitOidcReadbackRefused,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_properties }
@@ -80,4 +82,15 @@ fn ld449_render_lab_review_properties() -> CliWireResponse {
       SystemdRunPropertyAssignmentRefused { cause: _ } => "REFUSED: this property has no systemd-run assignment (see extdeps.systemd.systemd_run SystemdRunOptionWordsRefusedCause)"
     }
   ), "\n")) }
+}
+
+// The lab agent door's unit, rendered for the revision the lab runs (the restore installed only the serve unit; the door
+// kept its pre-restore gunbc-serve unit). Same clock producer as the serve render.
+fn ld449_render_lab_agent_door_unit(revision: String) -> CliWireResponse {
+  let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
+  match live_deploy_agent_door_unit_file(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: tracker_web_oidc_deploy_now_epoch()) {
+    LiveDeployTailnetDoorUnitEmitted { file } => CliWirePrintable { bytes: serialize_systemd_unit_file(file: file), exit: ExitSuccess }
+    LiveDeployTailnetDoorUnitNotDeployed => CliWirePrintable { bytes: ld449_section(title: "agent door NOT DEPLOYED", body: "the lab spec carries no agent-door socket"), exit: exit_failure(reason: "agent door not deployed for the lab spec") }
+    LiveDeployTailnetDoorUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "agent door unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
+  }
 }
