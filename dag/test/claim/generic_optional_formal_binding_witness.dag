@@ -1,0 +1,55 @@
+module test.claim.generic_optional_formal_binding_witness
+
+// A formal `P?` matched against an actual `T?` binds P to T (v1.compiler.infer
+// generic_binding_through_formal_cardinality). Before, P was bound to `T?`, so `Dec<P>` instantiated as
+// `Dec<T?>`, printing exactly like `Dec<T>`, and the declared-return judgment refused it (gunbc#15643
+// corpus gate; attributed by srv2 kh-evdec2, gunbc df91740c: each `opt` shape below refused, each plain
+// shape did not). REDs: the three ways P is solved through `P?` (a callable's optional return, a record
+// payload, an optional value), and a `-> P` return read at a required declared type. Controls: P solved
+// with no optional layer, and a wrong argument still refusing.
+
+import std.types { String, Bool, Int }
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
+
+data gof_opt_lambda: String = "module probe_gof_opt_lambda\ntype Ev = EA | EB\ntype Dec<P> = Got { v: P } | Bad\nfn dec<P>(k: fn(Int) -> P?) -> Dec<P> { Bad }\nfn kd(i: Int) -> Ev? { none }\nfn f() -> Dec<Ev> { dec(k: fn(i) { kd(i: i) }) }\n"
+data gof_opt_record: String = "module probe_gof_opt_record\ntype Ev { x: Int }\ntype Dec<P> = Got { v: P } | Bad\nfn dec<P>(k: fn(Int) -> P?) -> Dec<P> { Bad }\nfn kd(i: Int) -> Ev? { none }\nfn f() -> Dec<Ev> { dec(k: fn(i) { kd(i: i) }) }\n"
+data gof_opt_value: String = "module probe_gof_opt_value\ntype Ev = EA | EB\ntype Dec<P> = Got { v: P } | Bad\nfn dec<P>(e: P?) -> Dec<P> { Bad }\nfn kd(i: Int) -> Ev? { none }\nfn f() -> Dec<Ev> { dec(e: kd(i: 1)) }\n"
+data gof_bare_return: String = "module probe_gof_bare_return\ntype Ev = EA | EB\nfn or_else<P>(x: P?, d: P) -> P { d }\nfn kd(i: Int) -> Ev? { none }\nfn f(e: Ev) -> Ev { or_else(x: kd(i: 1), d: e) }\n"
+data gof_plain_lambda: String = "module probe_gof_plain_lambda\ntype Ev = EA | EB\ntype Dec<P> = Got { v: P } | Bad\nfn dec<P>(k: fn(Int) -> P) -> Dec<P> { Bad }\nfn kd(i: Int) -> Ev { EA }\nfn f() -> Dec<Ev> { dec(k: fn(i) { kd(i: i) }) }\n"
+data gof_direct_arg: String = "module probe_gof_direct_arg\ntype Ev = EA | EB\ntype Dec<P> = Got { v: P } | Bad\nfn dec<P>(e: P) -> Dec<P> { Got { v: e } }\nfn f() -> Dec<Ev> { dec(e: EA) }\n"
+data gof_wrong_arg: String = "module probe_gof_wrong_arg\ntype Ev = EA | EB\ntype Other = OA | OB\ntype Dec<P> = Got { v: P } | Bad\nfn dec<P>(e: P?) -> Dec<P> { Bad }\nfn kd(i: Int) -> Other? { none }\nfn f() -> Dec<Ev> { dec(e: kd(i: 1)) }\n"
+
+fn gof_blocking(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn a_type_parameter_solved_through_an_optional_callable_return_is_the_inner_type() -> Bool {
+  gof_blocking(source: gof_opt_lambda) == 0
+}
+
+test fn a_record_type_parameter_solved_through_an_optional_callable_return_is_the_inner_type() -> Bool {
+  gof_blocking(source: gof_opt_record) == 0
+}
+
+test fn a_type_parameter_solved_through_an_optional_value_is_the_inner_type() -> Bool {
+  gof_blocking(source: gof_opt_value) == 0
+}
+
+test fn a_bare_type_parameter_return_solved_through_an_optional_is_required() -> Bool {
+  gof_blocking(source: gof_bare_return) == 0
+}
+
+test fn a_type_parameter_solved_without_an_optional_layer_is_unchanged_control() -> Bool {
+  gof_blocking(source: gof_plain_lambda) == 0
+}
+
+test fn a_type_parameter_solved_from_a_direct_argument_is_unchanged_control() -> Bool {
+  gof_blocking(source: gof_direct_arg) == 0
+}
+
+test fn a_wrong_inner_type_through_an_optional_still_refuses_control() -> Bool {
+  gof_blocking(source: gof_wrong_arg) >= 1
+}

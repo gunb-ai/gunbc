@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+
+data a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_type_parameter_solved_through_an_optional_formal_keeps_the_optional_layer" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "v1.compiler.infer unify_generics binds through generic_binding_through_formal_cardinality, so no Accepted program carries a type parameter bound to `T?` through a `P?` formal. Executed on srv2 kh-arm3 at e365325f (gunbc 9128793d, built 2026-11-02T17:23:58Z; regenerated v1_compiler_infer.rs sha256 e12cb172, second regen first_generation_equal=true): test.claim.generic_optional_formal_binding_witness 7 of 7, its four REDs refused before (srv2 kh-evdec2, gunbc df91740c) and accepted now, three controls green" as NonEmptyStr },
+  },
+
+  receipts: [
+    "**a type parameter solved through an optional formal keeps the optional layer** (a generic `fn dec<P>(k: fn(Int) -> P?) -> Dec<P>` called with a callable returning `Ev?` solved P as `Ev?`, not `Ev`).",
+
+    "INVALID STATE: an Accepted program in which a type parameter is bound to `T?` where the formal that bound it was `P?`, so every other occurrence of P (a `Dec<P>` return, a bare `-> P`) carries an optional layer its declaration never stated.",
+
+    "HARM: silent. The cardinality is not printed, so `EventDecode<RedemptionEvent?>` read as `EventDecode<RedemptionEvent>`; nothing judged type arguments at the declared return, so the wrong instantiation reached emission and every consumer of the declared return.",
+
+    "SPECIMEN (gunbc#15643 corpus gate, srv2 kh-bc-ddcce7e, gunbc df91740c, 2026-11-02): once user-generic applications were judged argument by argument, three declared returns refused with identically printed declared and produced types: product.capacity.redemption redemption_event_decode, product.capacity.pool_events, gunbc.roadmap.roadmap_task_store, each a chain_event_decode<P>(kind_decode: fn(JsonValue, String) -> P?) -> EventDecode<P> call.",
+
+    "LOCATED BY EXECUTION (srv2 kh-evdec2): the refusal appeared exactly when P was solved through `P?` (an optional callable return, a record payload, an optional value) and not when solved from a plain callable return or a direct argument. The earliest unjustified link is the substitution in v1.compiler.infer unify_generics, which bound the actual whole; the declared-return judgment that exposed it is correct.",
+
+    "CANDIDATE SIBLING, NOT CHANGED AND NOT YET INSPECTED: v1.compiler.infer_types unify_template binds algebra-template variables by inserting the concrete node unchanged. Whether any algebra template carries an optional formal over a bare variable has not been checked; if one does, it is a second instance of this class.",
+
+    "RUNG: found BELOW the ladder -- a wrong instantiation accepted silently.",
+
+    "CEILING 3, structurally guaranteed: the binding is constructed with the formal's layer removed.",
+
+    "REVIEW TELL: a generic binding that inserts the actual node unchanged regardless of the formal's cardinality; a declared-vs-produced refusal whose two printed types are identical.",
+  ],
+
+  evidence: [],
+}

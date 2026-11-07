@@ -2606,7 +2606,7 @@ pub fn declared_type_conformance_diags_core(
                                                 if application_pair(
                                                     declared.clone(),
                                                     produced.clone(),
-                                                    si.clone(),
+                                                    scope.clone(),
                                                 ) {
                                                     declared_type_obligation_diags(
                                                         Rc::new(DeclaredTypeObligation {
@@ -4640,6 +4640,27 @@ pub fn type_carries_optional_layer(
         )) == "Optional".to_string()))
 }
 
+pub fn arm_application_argument_refused(
+    unified_arm_type: Rc<Node>,
+    arm_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if application_pair(unified_arm_type.clone(), arm_type.clone(), scope.clone()) {
+        match (*application_arguments_inhabitance(
+            unified_arm_type.clone(),
+            arm_type.clone(),
+            scope.clone(),
+        ))
+        .clone()
+        {
+            InhabitanceVerdict::InhabitanceRefused { reason: _, .. } => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -4673,35 +4694,59 @@ pub fn match_arm_join_diagnostics(
                 scope.module_name.clone(),
             )])
         } else {
-            if match_arm_types_are_proven_disjoint(
+            if arm_application_argument_refused(
                 unified_arm_type.clone(),
                 arm.body_type.clone(),
                 scope.clone(),
             ) {
-                Rc::new(vec![inference_error(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "match arms produce proven-disjoint types: ".to_string(),
-                                crate::v1_compiler_infer_types::node_type_shape(
-                                    unified_arm_type.clone(),
-                                    scope.type_env.source_indices.clone(),
-                                ),
-                            ),
-                            " vs ".to_string(),
+                Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+                        position: "match arm".to_string(),
+                        expected: crate::v1_compiler_infer_types::node_type_shape(
+                            unified_arm_type.clone(),
+                            scope.type_env.source_indices.clone(),
                         ),
-                        crate::v1_compiler_infer_types::node_type_shape(
+                        got: crate::v1_compiler_infer_types::node_type_shape(
                             arm.body_type.clone(),
                             scope.type_env.source_indices.clone(),
                         ),
-                    ),
-                    crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                        .span
-                        .clone(),
+                        span: crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                            .span
+                            .clone(),
+                    }),
                     scope.module_name.clone(),
                 )])
             } else {
-                Rc::new(vec![])
+                if match_arm_types_are_proven_disjoint(
+                    unified_arm_type.clone(),
+                    arm.body_type.clone(),
+                    scope.clone(),
+                ) {
+                    Rc::new(vec![inference_error(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "match arms produce proven-disjoint types: ".to_string(),
+                                    crate::v1_compiler_infer_types::node_type_shape(
+                                        unified_arm_type.clone(),
+                                        scope.type_env.source_indices.clone(),
+                                    ),
+                                ),
+                                " vs ".to_string(),
+                            ),
+                            crate::v1_compiler_infer_types::node_type_shape(
+                                arm.body_type.clone(),
+                                scope.type_env.source_indices.clone(),
+                            ),
+                        ),
+                        crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                            .span
+                            .clone(),
+                        scope.module_name.clone(),
+                    )])
+                } else {
+                    Rc::new(vec![])
+                }
             }
         }
     }
@@ -8288,18 +8333,32 @@ pub fn produced_is_kernel_grounded_carrier_or_its_alias(
     }
 }
 
-pub fn application_pair(
+pub fn application_pair(declared: Rc<Node>, produced: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let source_indices = scope.type_env.source_indices.clone();
+        ((((declared.return_cardinality.clone() == produced.return_cardinality.clone())
+            && ((declared.children.clone().len() as i64) > 0))
+            && ((declared.children.clone().len() as i64)
+                == (produced.children.clone().len() as i64)))
+            && (collection_application_pair(declared.clone(), produced.clone(), source_indices)
+                || declared_template_application_pair(
+                    declared.clone(),
+                    produced.clone(),
+                    scope.clone(),
+                )))
+    }
+}
+
+pub fn collection_application_pair(
     declared: Rc<Node>,
     produced: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((crate::v1_compiler_infer_types::node_is_collection(
-        declared.clone(),
-        source_indices.clone(),
-    ) && crate::v1_compiler_infer_types::node_is_collection(
-        produced.clone(),
-        source_indices.clone(),
-    )) && (declared.return_cardinality.clone() == produced.return_cardinality.clone()))
+    ((crate::v1_compiler_infer_types::node_is_collection(declared.clone(), source_indices.clone())
+        && crate::v1_compiler_infer_types::node_is_collection(
+            produced.clone(),
+            source_indices.clone(),
+        ))
         && (crate::v1_compiler_infer_types::canonical_template_name(
             declared.clone(),
             source_indices.clone(),
@@ -8307,7 +8366,30 @@ pub fn application_pair(
             produced.clone(),
             source_indices.clone(),
         )))
-        && ((declared.children.clone().len() as i64) == (produced.children.clone().len() as i64)))
+}
+
+pub fn declared_template_application_pair(
+    declared: Rc<Node>,
+    produced: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    (((declared.connective.clone() == Connective::NoConnective)
+        && (produced.connective.clone() == Connective::NoConnective))
+        && match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+            declared.clone(),
+            scope.type_env.source_indices.clone(),
+            scope.type_env.clone(),
+        ) {
+            std::option::Option::None => false,
+            Some(d) => match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                produced.clone(),
+                scope.type_env.source_indices.clone(),
+                scope.type_env.clone(),
+            ) {
+                std::option::Option::None => false,
+                Some(p) => crate::std_decl_ref::declaration_ref_eq(d.clone(), p.clone()),
+            },
+        })
 }
 
 pub fn application_argument_is_opaque(n: Rc<Node>) -> bool {
@@ -8585,7 +8667,7 @@ pub fn declared_type_inhabitance(
                                     if application_pair(
                                         declared.clone(),
                                         produced.clone(),
-                                        source_indices.clone(),
+                                        scope.clone(),
                                     ) {
                                         application_arguments_inhabitance(
                                             declared.clone(),
@@ -22787,7 +22869,7 @@ if direct_call_formal_has_unbound_type_variable(field_conformance_type.clone()) 
                         if (either_side_is_arrow(expected_node.clone(), got_value.clone()) && callable_inhabitance_mismatch(expected_node.clone(), expected_node.clone(), got_value.clone(), scope.type_env.clone(), scope.type_env.source_indices.clone())) {
                             Rc::new(vec![type_mismatch_error(crate::v1_compiler_infer_types::node_type_shape(expected_node.clone(), scope.type_env.source_indices.clone()), crate::v1_compiler_infer_types::node_type_shape(got_value.clone(), scope.type_env.source_indices.clone()), ar_typed.span.clone(), scope.module_name.clone())])
                         } else {
-                            if application_pair(expected_node.clone(), got_node.clone(), scope.type_env.source_indices.clone()) {
+                            if application_pair(expected_node.clone(), got_node.clone(), scope.clone()) {
                                 declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
     position: DeclaredTypePosition::PositionRecordLiteralField,
     subject: fi_name.clone(),
@@ -29260,6 +29342,16 @@ pub fn param_is_generic_decl(
     }
 }
 
+pub fn generic_binding_through_formal_cardinality(formal: Rc<Node>, actual: Rc<Node>) -> Rc<Node> {
+    if ((formal.return_cardinality.clone() == Cardinality::CardOptional)
+        && (actual.return_cardinality.clone() == Cardinality::CardOptional))
+    {
+        crate::v1_std_core::with_required_cardinality(actual.clone())
+    } else {
+        actual.clone()
+    }
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -29288,9 +29380,11 @@ pub fn unify_generics(
             })
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
-                std::option::Option::None => {
-                    v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
-                }
+                std::option::Option::None => v1_rt::rc_map_insert(
+                    acc.clone(),
+                    bind_name.clone(),
+                    generic_binding_through_formal_cardinality(formal.clone(), actual.clone()),
+                ),
                 Some(_) => acc.clone(),
             }
         } else {
