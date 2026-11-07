@@ -13574,14 +13574,15 @@ mod orchestrator_model_load_tests {
         );
         for (site_roots, entry_path) in &entries {
             let entry = entry_path.to_string_lossy().into_owned();
+            // The DEMAND side is resolved first, deliberately: it is the route this change ships,
+            // and it needs no memory budget. Building the ~10 GB shared index first meant an
+            // environment without an enforceable limit refused before the shipped route was asked
+            // anything, so the half that was answerable went unobserved.
+            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
             // The shared side indexes exactly what the demand side indexes, or the two sides are
             // answering two different questions and the comparison proves nothing.
             let shared = super::super::process_shared_index_or_refuse(site_roots);
-            // A route that refuses must say so in the failure, not unwind at an unwrap site: an
-            // Err from either side is itself a statement about the routes, and "called `Result::unwrap()`
-            // on an `Err` value" hides which route refused and why.
-            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
-                .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
             let (whole, whole_si) = super::super::resolve_entry_with_index(&shared, &entry)
                 .unwrap_or_else(|e| panic!("{entry}: the shared-index route refused: {e}"));
             // EQUAL UP TO OCCURRENCE NUMBERING. Occurrence identities are minted from a per-process
