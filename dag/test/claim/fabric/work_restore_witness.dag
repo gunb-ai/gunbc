@@ -181,6 +181,15 @@ test fn trailing_bytes_refuse() -> Bool {
     && refused_with(r: work_restore(wire: base_wire() + "junk", expected_principal: principal), want: is_truncated)
 }
 
+// (7b) Truncation is guarded twice, and each guard yields exactly RestoreTruncated: the tokenizer (a frame
+// that cannot be read) and the field reader (a field missing from a short wire). A wire cut inside its LAST
+// field is caught by both, so removing the tokenizer guard alone leaves it refused. A COMPLETE valid wire
+// followed by a partial frame ("5#ab" has two scalars where five are declared) isolates the tokenizer guard:
+// every field is present, the only defect is the truncated trailing frame.
+test fn a_partial_trailing_frame_is_exactly_truncated() -> Bool {
+  refused_with(r: work_restore(wire: base_wire() + "5#ab", expected_principal: principal), want: is_truncated)
+}
+
 // (8) RED non-canonical spelling: lengths the decoder's parse_int may read but the encoder never writes.
 test fn non_canonical_length_spelling_refuses() -> Bool {
   let w = base_wire()
