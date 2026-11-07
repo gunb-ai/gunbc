@@ -23,7 +23,7 @@ import v2.extdeps.languages.dag {
   dag_language_model
 }
 import v2.std.compilers.target_model { char_kernel_type_node, symbol_kernel_type_node }
-import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, Rejected, diagnostics_has_reason }
+import v2.std.diagnostic { diagnostics_fatal_reason, Accepted, Outcome, PositionDeclaredReturn, Rejected, diagnostics_has_reason }
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
@@ -38,6 +38,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   rcf_member_accepted_and_decided,
   rcf_member_arrow,
   rcf_read_in,
+  rcf_refuses_at,
   rcf_refuses_with
 }
 
@@ -180,7 +181,8 @@ test fn kvr_symbol_and_char_are_a_recorded_fork_that_binds_no_spelling_holds() -
 
 // THE DISCRIMINATING RED: a declared Bool return holding an Int refuses, on the real route.
 test fn kvr_a_declared_bool_return_holding_an_int_refuses_holds() -> Bool {
-  rcf_refuses_with(resolved: kvr_resolved_return_bad(), reason: ^arrow_body_does_not_inhabit_declared_return)
+  rcf_refuses_at(resolved: kvr_resolved_return_bad(), reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] })
 }
 
 // THE POSITIVE CONTROL, one term away and decided: `true` at a declared Bool is accepted with no
