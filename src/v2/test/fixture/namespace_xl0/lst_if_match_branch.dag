@@ -1,0 +1,28 @@
+// Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).
+// Read as a module by the native lane: the `ctl_*` rows must be accepted and the `tail_*`/`arm_*` rows are the
+// refusals the body-lowering statement-position fix owes. Do not edit to dodge a refusal -- a fixture that
+// stops refusing has moved, and the claim suite's expectations are the record of what it must do.
+module v2.test.fixture.namespace_xl0.lst_if_match_branch
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+
+type LstS = LstA { v: Int } | LstB
+
+fn lst_uses(x: Int) -> Int { x }
+
+fn lst_predicate(i: Int) -> Bool { i > 0 }
+
+// The SIBLING leaf of the arm block (DESIGN 6b root generalization): an `if` at term position whose
+// branches are braced statement sequences. One rule reads a braced block in term position, so a braced
+// if-branch must be read the same way as a braced arm body -- or the fix is a per-leaf patch.
+fn lst_probe(s: LstS, i: Int) -> Int { if lst_predicate(i: i) {
+  let left = lst_uses(x: i)
+  let scaled = left * 2
+  lst_uses(x: scaled)
+} else {
+  match s {
+    LstA { v: v } => lst_uses(x: v)
+    LstB => 0
+  }
+} }
