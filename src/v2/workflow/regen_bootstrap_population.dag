@@ -1,0 +1,119 @@
+module v2.workflow.regen_bootstrap_population
+
+import std.types { String, FilePath, List }
+import std.optional { Optional }
+import extdeps.git.object_store { GitObjectId, TreeEntry }
+import v2.workflow.regen_convergence_transaction { RegenConvergenceRefusal }
+
+// LOCAL MODEL REVIEW ONLY. Supersedes the broader, unadmitted 56ee5511 proposal.
+// This corrects selected-commit PACKAGE coherence, not whole-build hermeticity.
+// Registry, compiler-cache, target lifecycle, invocation and build.rs repository-state
+// policies remain with their existing authorities. No new assurance about them is minted.
+// Named later consumer: required_regen_host::bootstrap_round_one_from_base_mirror.
+// Its existing journal/restore remains the sole writer and rollback authority; no host
+// cutover is admitted until this model and its producer/checkpoint integration are reviewed.
+// Seals below have no producer yet: lists, hashes and cargo success cannot mint them.
+
+type BootstrapCommitSubject {
+  commit: GitObjectId
+  tree: GitObjectId
+}
+
+type BootstrapPathVersion {
+  path: FilePath
+  entry: Optional<TreeEntry>
+}
+
+type BootstrapPathTransition {
+  before: BootstrapPathVersion
+  during: BootstrapPathVersion
+}
+
+// Read linked_partition_crates.generated.txt from the SELECTED commit, not the worktree.
+// Its authority is gunbc.stage0.stage0_executable_assembly_emit::render_linked_partition_crates:
+// stage0_host_shell_partition_dependencies closed over partition reexport_packages, with
+// unrostered reach refused. Add the existing host package root; do not add all workspace
+// members or infer membership from a directory glob. Pin the projection blob and its selected
+// tree relation. Validate normalized unique nonescaping roots and required package entries.
+// The existing assembly/partition authority must establish agreement with dependency edges;
+// a listing alone does not prove an arbitrary manifest graph. Unsupported dependency reach,
+// including a new build/target/path dependency outside this modeled closure, refuses.
+// Do not invent a second Cargo parser or assume an unknown manifest spelling means no edge.
+//
+// Include ALL tracked entries in these roots. Partition #[path] declarations point back into
+// the host root: those shared bodies are already in this union. Existing assembly declaration
+// traversal establishes such reach; any shared source outside the union must be explicitly
+// refused in this first slice, not silently ignored or guessed into membership. Governing
+// workspace manifests/lock/config/toolchain are separately checked equal (bytes/mode/presence).
+// Workspace membership/exclusion follows the root manifest; an independent nested workspace
+// is not a governing input merely because its files share a basename. This conservative gate
+// does not claim to observe every ambient build input or change existing discovery semantics.
+// Unavailable authority evidence refuses; the implementation must name the existing producer
+// or admit its bounded adapter before claiming the producer frontier has dissolved.
+type BootstrapPopulationRefusal
+  = SelectedCommitUnreadable { commit: GitObjectId }
+  | SelectedCommitTreeMismatch { subject: BootstrapCommitSubject }
+  | ProjectionAuthorityUnestablished { path: FilePath }
+  | AssemblyDependencyDisagrees { path: FilePath, detail: String }
+  | UnsupportedDependencyReach { path: FilePath }
+  | SharedInputOutsidePopulation { path: FilePath }
+  | WorkspaceInputDiffers { path: FilePath }
+  | WorkspaceInputUnobserved { path: FilePath }
+  | HeadOnlyPath { path: FilePath }
+  | UnsupportedTrackedEntry { path: FilePath }
+  | ModeTransitionUnsupported { path: FilePath }
+  | UntrackedPathCollision { path: FilePath }
+  | HeadObservationChanged { path: FilePath }
+  | TransactionAuthorityRefused { cause: RegenConvergenceRefusal }
+
+// Before any write, establish the complete HEAD/BASE path union under the admitted roots.
+// HEAD-only tracked paths refuse (no new transient deletion algorithm). BASE-only files are
+// journaled AbsentBeforeInstall and removed on rollback through the existing v1 journal.
+// Both present versions must be ordinary 100644 regular files with matching modes; executable,
+// symlink, gitlink and mode-transition entries refuse. BASE-only installs also require 100644,
+// no existing filesystem collision, and an ordinary regular-file installation route. Observe
+// filesystem kind/mode before mutation and after installation/restoration; mismatch refuses
+// continuation, retaining recovery evidence. No chmod or mode-aware v1 recovery is claimed.
+// A mode change by an external writer is not repaired by the byte-only journal.
+//
+// v1 journal records digest/presence, NOT mode. Existing present paths retain the unchanged
+// ordinary-file constraint; backup/restore must preserve that constraint or refuse publication.
+// Every changed byte/presence entry is journaled before mutation. No-op entries do not move
+// mtimes. Untracked or ignored collisions in input paths refuse; unrelated existing outputs
+// are never erased. This model does not allocate a fresh target or assert cache isolation.
+type BootstrapPopulation sole_constructor {
+  selected: BootstrapCommitSubject
+  head: BootstrapCommitSubject
+  projection: BootstrapPathVersion
+  package_roots: List<FilePath>
+  authority_inputs: List<BootstrapPathVersion>
+  workspace_inputs: List<BootstrapPathVersion>
+  transitions: List<BootstrapPathTransition>
+}
+
+type BootstrapPopulationAdmission
+  = BootstrapPopulationAdmitted { population: BootstrapPopulation }
+  | BootstrapPopulationRefused { cause: BootstrapPopulationRefusal }
+
+// Existing journal_paths_for_subject and restore_regen_convergence_journal_for_subject are
+// the only backup/recovery route. Extend the population supplied to them, not their meaning.
+// The existing checkpoint/source/stage-plan identity must bind selected commit/tree, projection,
+// roots and complete path/blob population, carried through re-exec. If the wire changes, version
+// that existing wire and refuse mismatches; never relabel an old journal as stronger evidence.
+// Observe original byte/presence state on BOTH successful and refused builds before comparison
+// or publication; restore failure retains the journal and refuses continuation. The ordinary
+// file mode guard is a scope check, not a promise that v1 restores arbitrary modes.
+type BootstrapRestored sole_constructor {
+  population: BootstrapPopulation
+}
+
+type BootstrapRestoreOutcome
+  = BootstrapRestoreObserved { restored: BootstrapRestored }
+  | BootstrapRestoreRefused { cause: RegenConvergenceRefusal }
+
+// Transient BASE bytes are NOT a generated candidate or RegenStagePlan and may never enter
+// publication. Candidate affected bounds, generation/rebuild policy and executor remain intact.
+// Receipt binds population, checkpoint and actual invoked executable identity through existing
+// receipt authority. Initial HEAD orchestrator re-execs a BASE-built seed: a HEAD-only host
+// patch is not end-to-end proof. Qualify against a BASE containing the corrected host; no
+// alternate seed workaround. Source/model/unit evidence is separate from that end-to-end run.
