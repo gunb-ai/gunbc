@@ -63,7 +63,7 @@ import extdeps.tools.stat {
 }
 import gunbc.host.host_layout {
   attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_deferred_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
 import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
@@ -164,6 +164,10 @@ fn attempt_system_unit_request_path(instance_root: String, entry: String) -> Str
 
 fn attempt_system_unit_staging_path(instance_root: String, entry: String) -> String {
   join([attempt_unit_spool_staging_dir(instance_root: instance_root), "/", entry, ".staging"], "")
+}
+
+fn attempt_system_unit_deferred_path(instance_root: String, entry: String) -> String {
+  join([attempt_unit_spool_deferred_dir(instance_root: instance_root), "/", entry], "")
 }
 
 fn attempt_system_unit_claimed_path(instance_root: String, entry: String) -> String {
@@ -1177,9 +1181,44 @@ fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitD
 // unreadable in-flight cap falls through to the claim, where attempt_system_unit_cli_start refuses it fail-closed.
 fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
   if attempt_system_unit_byte_bound_waits(instance: instance) {
-    AttemptUnitEntryWaiting { entry: entry }
+    attempt_system_unit_defer_entry(instance_root: instance_root, entry: entry)
   } else {
     attempt_unit_entry_outcome_claimed(instance_root: instance_root, instance: instance, entry: entry)
+  }
+}
+
+// DEFER = MOVE OUT OF THE WATCHED requests/ into deferred/ (same no-replace rename as the claim). A move that
+// fails with the source still present is Unmovable, the stall arm: the entry would re-fire the path unit.
+fn attempt_system_unit_defer_entry(instance_root: String, entry: String) -> AttemptUnitEntryOutcome {
+  if entry == "" || entry == "." || entry == ".." || string_contains(s: entry, pattern: "/") {
+    AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "request entry name is not one path segment" }
+  } else if attempt_system_unit_rename_exact(
+    source: attempt_system_unit_request_path(instance_root: instance_root, entry: entry),
+    destination: attempt_system_unit_deferred_path(instance_root: instance_root, entry: entry),
+  ) {
+    AttemptUnitEntryWaiting { entry: entry }
+  } else {
+    AttemptUnitEntryUnmovable { entry: entry, step: SpoolStallClaim, cause: "the request could not be deferred to deferred/ and is still in requests/" }
+  }
+}
+
+// REQUEUE AT THE START OF EVERY PASS, in the sorted listing order (the order the drain itself processes
+// requests/ in): entries are moved back one by one in that order, so defer and requeue preserve it. The
+// admission decision then runs again on each, so one that still does not fit is deferred again.
+fn attempt_system_unit_requeue_deferred(instance_root: String) -> List<String> {
+  let dir = attempt_unit_spool_deferred_dir(instance_root: instance_root)
+  let listed = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error) {
+    FilesystemDirectoryListed(admitted) =>
+      filter(
+        filesystem_listing_entry_names(listing: admitted),
+        e => !attempt_system_unit_rename_exact(
+          source: attempt_system_unit_deferred_path(instance_root: instance_root, entry: e),
+          destination: attempt_system_unit_request_path(instance_root: instance_root, entry: e),
+        ),
+      )
+    FilesystemDirectoryListingRefused { directory: _, error: _ } => [] as List<String>
+    FilesystemDirectorySubjectRefused { directory: _, cause: _ } => [] as List<String>
   }
 }
 
@@ -1200,11 +1239,15 @@ fn attempt_unit_entry_outcome_claimed(instance_root: String, instance: HostDashb
 
 fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass {
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
+  let still_deferred = attempt_system_unit_requeue_deferred(instance_root: instance_root)
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
     AttemptSystemUnitRequestListRefused { reason } =>
       attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: SpoolStallListRequests, cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
-      attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)))
+      attempt_unit_pass_of(outcomes: concat(
+        map(still_deferred, e => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: "a deferred request could not be moved back to requests/" }),
+        map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)),
+      ))
   }
 }
 

@@ -400,6 +400,12 @@ fn attempt_unit_spool_claimed_dir(instance_root: String) -> String {
   join([attempt_unit_spool_root(instance_root: instance_root), "/claimed"], "")
 }
 
+// REQUESTS THE SLICE'S BYTE BOUND CANNOT ADMIT YET: moved out of the .path-watched requests/ so a waiting request
+// costs nothing while it waits (no re-fire), and moved back when an attempt ends (gunbc.roadmap.attempt_worker_byte_admission).
+fn attempt_unit_spool_deferred_dir(instance_root: String) -> String {
+  join([attempt_unit_spool_root(instance_root: instance_root), "/deferred"], "")
+}
+
 fn attempt_unit_spool_answer_dir(instance_root: String) -> String {
   join([attempt_unit_spool_root(instance_root: instance_root), "/answers"], "")
 }

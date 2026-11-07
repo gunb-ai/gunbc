@@ -100,7 +100,7 @@ import gunbc.live_deploy.emit {
 import gunbc.managed_directory { declared_directory_mode, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerOnly }
 import gunbc.host.host_layout {
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_deferred_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown }
 import gunbc.live_deploy.intent { DeploymentIntent }
@@ -642,6 +642,7 @@ fn deploy_apply_attempt_spool_legs(spec: DeploymentSpec) -> List<DeployApplyLeg>
     apply_root_directory_leg(step: "attempt-spool-staging", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_staging_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-request", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_request_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-claimed", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: attempt_unit_spool_claimed_dir(instance_root: instance_root)),
+    apply_root_directory_leg(step: "attempt-spool-deferred", mode: declared_directory_mode(m: DirectoryOwnerOnly), group: root, path: attempt_unit_spool_deferred_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-answer", mode: attempt_unit_spool_answer_mode, group: service, path: attempt_unit_spool_answer_dir(instance_root: instance_root)),
     apply_root_directory_leg(step: "attempt-spool-stalled", mode: publication_spool_request_mode, group: service, path: attempt_unit_spool_stalled_dir(instance_root: instance_root)),
   ]

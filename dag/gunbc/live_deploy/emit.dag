@@ -283,7 +283,7 @@ import gunbc.host.host_layout {
   publication_bare_mirror_path,
   attempt_exit_spool_root, attempt_exit_stalled_dir, attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_running_dir, attempt_exit_done_dir, attempt_exit_refused_dir,
   attempt_unit_spool_root, attempt_unit_spool_staging_dir, attempt_unit_spool_request_dir,
-  attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
+  attempt_unit_spool_claimed_dir, attempt_unit_spool_deferred_dir, attempt_unit_spool_answer_dir, attempt_unit_spool_stalled_dir,
 }
 import product.host_identity { HostIdentity }
 import gunbc.ownership { Ownership }
@@ -1067,6 +1067,9 @@ fn live_deploy_attempt_unit_drain_path_unit_file(spec: DeploymentSpec) -> System
     path: [
       PathUnit { target: deployment_attempt_unit_drain_service_unit_name(names: spec.names) },
       DirectoryNotEmpty { path: attempt_unit_spool_request_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
+      // AN ATTEMPT ENDED (its exit record reached done/): bytes were freed, so the drain re-runs and requeues deferred/.
+      // PathChanged is edge-triggered, so it cannot spin the way a level on a non-empty directory would.
+      PathChanged { path: attempt_exit_done_dir(instance_root: spec.service.instance_root as String) as NonEmptyStr },
       TriggerLimitIntervalSec { duration: systemd_time_span_of_seconds(d: belt_exit_trigger_limit_interval) },
       TriggerLimitBurst { count: to_string(value: belt_exit_trigger_limit_burst) as NonEmptyStr },
     ],
