@@ -242,6 +242,10 @@ fn metering_role_terminal(body: String) -> Bool {
     ProviderAwaitingSeat { detail: _ } => false
     ProviderRunning { activity: _ } => false
     ProviderEventsRefused { activity: _, detail: _ } => false
+    // THE ROUND ENDED: the worker drew no answer, recorded the durable turn.request_pending and
+    // exited, so this role's provider evidence is terminal for metering -- the round is closed and
+    // counting stops. Re-delivery runs the round again later and meters that round on its own.
+    ProviderRequestPending { activity: _, detail: _ } => true
   }
 }
 

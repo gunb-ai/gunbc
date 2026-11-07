@@ -1,0 +1,176 @@
+module test.claim.roadmap.roadmap_attempt_redelivery_route_witness
+
+// THE ROUTE CLAIMS OF THE RE-DELIVERY WAKE: the belt's spawn fold maps the continuation decision to a
+// SpawnRouteWake only for a not-due request-pending hold, the wake's arm outcome is classified, and the wake
+// entry (roadmap_belt_tick_cli) only CONTINUES the one attempt it armed. This module imports
+// roadmap_belt_actuate and roadmap_belt_tick_cli, whose closure reaches gunbc.host.host_effect, so main's
+// seed refuses it (host_effect_is_converge_loop_evidence): it is a declared UNEXECUTED obligation, enrolled
+// for the native compiler that can evaluate that closure, and no verdict is claimed for it here. The logic
+// the route consumes is witnessed apart, in test.claim.roadmap.roadmap_attempt_redelivery_wake_witness.
+
+import std.types { Bool, EpochSecs, NonEmptyStr, String }
+import std.optional { Present }
+import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_unit_stem }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  PriorAttemptFacts, ContinuationHoldUntil, ContinuationResume, ContinuationSpawnFresh, continuation_decision,
+}
+import gunbc.roadmap.roadmap_belt_actuate { SpawnRouteWake, SpawnRouteNone, SpawnRouteResume, SpawnRouteWorker, belt_spawn_route_for_decision, ExecOk, ExecFailed, ExecRefused, WakeArmed, WakeAlreadyArmed, WakeArmFailed, WakeArmRefused, belt_redelivery_wake_arm }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_repo_root, DashboardInstanceRootUnknown, DashboardInstanceResolved }
+import gunbc.harness.harness_session_recovery { SessionRecovery, SessionRecoveryRequestPending, PendingUpstreamBusy }
+import gunbc.roadmap.roadmap_submission { SubmissionCaptureObservation, CaptureAbsent }
+import gunbc.roadmap.roadmap_belt_tick_cli { belt_redeliver_instance_matches, belt_redeliver_attempt_continues }
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
+
+data wake_now: EpochSecs = 1700000000
+data wake_user: NonEmptyStr = "srv1lab"
+data wake_key: String = "e5a42384c6a5e13d"
+data wake_node: String = "roadmap-belt"
+
+fn wedged_recovery(last_delivery: EpochSecs) -> SessionRecovery {
+  SessionRecoveryRequestPending {
+    cause: PendingUpstreamBusy,
+    since: wake_now,
+    re_deliveries: 0,
+    wakes_made: 0,
+    last_delivery_at: last_delivery,
+    resumable: true,
+    interrupted_calls: [],
+    resume_round: 7,
+  }
+}
+
+fn wedged_pri(capture: SubmissionCaptureObservation, last_delivery: EpochSecs, worker_terminal: Bool, now: EpochSecs?) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    node_id: wake_node,
+    attempt_key: wake_key,
+    branch: "still-owl-805-pending-attempt-replay",
+    worker_terminal: worker_terminal,
+    capture: capture,
+    verification: none,
+    review: none,
+    goal_audit: none,
+    recovery: wedged_recovery(last_delivery: last_delivery),
+    verification_retry: RefusedRetryOperatorOnly,
+    now: now,
+  }
+}
+
+// THE ROUTE ARM: the wedged pending attempt's HoldUntil maps to a SpawnRouteWake for the same attempt key at
+// that instant, and no other decision does.
+test fn the_wedged_pending_hold_until_maps_to_a_wake_route() -> Bool {
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now, worker_terminal: true, now: Present { value: wake_now }) })
+  match belt_spawn_route_for_decision(decision: decision) {
+    SpawnRouteWake { attempt_key, at } => attempt_key == wake_key && at > wake_now
+    _ => false
+  }
+}
+
+// THE ALREADY-EXISTS REFUSAL IS READ AS ALREADY-ARMED, NOT A FAILURE (review 87556). The same-name start
+// that systemd-run refuses with 'Unit ... already exists' on THIS wake's stem classifies as WakeAlreadyArmed,
+// so a belt pass that re-runs the arming of the same instant is not a spurious failure. A refusal naming a
+// DIFFERENT unit is not ours and stays a real failure; anything unrecognized keeps exit code + stderr.
+test fn the_already_exists_refusal_is_idempotence_and_other_exits_stay_failures() -> Bool {
+  let stem = attempt_redelivery_wake_unit_stem(node_id: wake_node, attempt_key: wake_key, instant: wake_now)
+  let armed = match belt_redelivery_wake_arm(exec: ExecOk { stdout: "" }, unit_stem: stem) { WakeArmed => true, _ => false }
+  let already = match belt_redelivery_wake_arm(exec: ExecFailed { program: "systemd-run", exit_code: 1, stderr: "Failed to create transient unit: Unit gunbc-attempt-redeliver-roadmap-belt-e5a42384c6a5e13d-1700000000.timer already exists." }, unit_stem: stem) { WakeAlreadyArmed => true, _ => false }
+  let other_unit_is_not_ours = match belt_redelivery_wake_arm(exec: ExecFailed { program: "systemd-run", exit_code: 1, stderr: "Failed to create transient unit: Unit somebody-else.timer already exists." }, unit_stem: stem) { WakeArmFailed { exit_code, stderr } => exit_code == 1 && string_contains(s: stderr, pattern: "already exists"), _ => false }
+  let real_failure_keeps_evidence = match belt_redelivery_wake_arm(exec: ExecFailed { program: "systemd-run", exit_code: 7, stderr: "Failed to connect to bus" }, unit_stem: stem) { WakeArmFailed { exit_code, stderr } => exit_code == 7 && string_contains(s: stderr, pattern: "Failed to connect to bus"), _ => false }
+  let refused = match belt_redelivery_wake_arm(exec: ExecRefused { program: "systemd-run", reason: "no transport" }, unit_stem: stem) { WakeArmRefused { reason } => reason == "no transport", _ => false }
+  armed && already && other_unit_is_not_ours && real_failure_keeps_evidence && refused
+}
+
+// A PLAIN (UNTIMED) HOLD IS NOT WOKEN -- THE DISCRIMINATOR. A request-pending recovery whose worker has
+// not ended yields a plain ContinuationHold; it maps to SpawnRouteNone, NOT SpawnRouteWake: a live worker
+// is mid-turn and must never be re-dispatched by a timer.
+test fn a_plain_hold_maps_to_no_spawn_not_a_wake() -> Bool {
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: wake_now, worker_terminal: false, now: Present { value: wake_now }) })
+  let route = belt_spawn_route_for_decision(decision: decision)
+  match route {
+    SpawnRouteNone { step, detail: _ } => step == "continuation-hold"
+    _ => false
+  }
+}
+
+// A DUE-NOW RESUME IS NOT WOKEN. Its re-delivery is already due, so the running route re-delivers it now.
+test fn a_resume_due_now_maps_to_a_resume_route_not_a_wake() -> Bool {
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: 1699900000, worker_terminal: true, now: Present { value: wake_now }) })
+  let route = belt_spawn_route_for_decision(decision: decision)
+  match route {
+    SpawnRouteResume { attempt_key, ordinal: _ } => attempt_key == wake_key
+    _ => false
+  }
+}
+
+// A NON-PENDING RECOVERY IS NOT WOKEN. An attempt with no request standing pending spawns fresh; a timer
+// belongs only to a request-pending HoldUntil.
+test fn a_non_pending_recovery_maps_to_a_spawn_not_a_wake() -> Bool {
+  let no_prior = continuation_decision(prior: none)
+  let route = belt_spawn_route_for_decision(decision: no_prior)
+  match route {
+    SpawnRouteWorker => true
+    _ => false
+  }
+}
+
+// THE ENTRY RESOLVES BY REPO ROOT, NOT BY THE ID LIST (hermetic). belt_redeliver_attempt_cli resolves
+// the instance via the belt's own belt_instance_from_env -> dashboard_instance_for_repo_root, keyed on the
+// SPAWN WORKDIR (repo root) -- NOT belt_dispatch_instance_named's narrow id list (which is what refuses
+// srv1-lab-codex-feedback-v0 and is why the wake does NOT use belt_dispatch_node_cli). The discriminator:
+// a path no instance is rooted at, and an instance ID (not a path), both return RootUnknown -- the refusal
+// belt_redeliver_attempt_cli surfaces before any dispatch. An id the name-admission WOULD accept ("srv1-live")
+// is still RootUnknown by the root lookup, proving the key is the root.
+test fn the_redelivery_route_resolves_by_repo_root_not_by_id() -> Bool {
+  let unknown_path = match dashboard_instance_for_repo_root(repo_root: "/no/such/belt/repo/root/xyzzy") {
+    DashboardInstanceRootUnknown { repo_root } => repo_root == "/no/such/belt/repo/root/xyzzy"
+    DashboardInstanceResolved { instance: _ } => false
+  }
+  let id_is_not_a_root = match dashboard_instance_for_repo_root(repo_root: "srv1-live") {
+    DashboardInstanceRootUnknown { repo_root } => repo_root == "srv1-live"
+    DashboardInstanceResolved { instance: _ } => false
+  }
+  unknown_path && id_is_not_a_root
+}
+
+test fn the_redelivery_entry_guard_refuses_a_wrong_instance() -> Bool {
+  // The entry's ONLY novel pure decision (the env reads + belt_instance_from_env +
+  // belt_dispatch_node_for_instance around it are existing and witnessed elsewhere): a
+  // mis-set GUNBC_BELT_SPAWN_WORKDIR that resolves a DIFFERENT instance than the armed
+  // wake named must NOT match (the entry then refuses) — a wake firing for the wrong
+  // instance is worse than a wedge, and the node is found over the global plan so this
+  // identity check is the only guard.
+  !belt_redeliver_instance_matches(resolved: "srv1-live", expected: "srv1-lab-codex-feedback-v0")
+}
+
+test fn the_redelivery_entry_guard_clears_the_matching_instance() -> Bool {
+  belt_redeliver_instance_matches(resolved: "srv1-lab-codex-feedback-v0", expected: "srv1-lab-codex-feedback-v0")
+}
+
+// THE STRUCTURAL CONTINUATION GUARD (review 87645, A1): the wake entry may only CONTINUE an already-admitted
+// attempt, never START fresh work. belt_redeliver_attempt_continues is the pure predicate; the entry refuses
+// dispatch unless the node's own belt_continuation_decision_for_instance is a Resume/Hold-Until for EXACTLY the
+// armed attempt key. These legs pin: fresh-start and wrong-key both refuse (so the entry is not a second door
+// into new dispatch), and the two genuine re-delivery cases -- the wedged request-pending Hold-Until and a
+// resume -- are allowed.
+
+test fn the_redelivery_guard_refuses_a_spawn_fresh_decision() -> Bool {
+  // A node with no prior attempt (SpawnFresh) is NEW work -- the wake entry must refuse it, exactly the
+  // case the review feared (a CLI-shaped entry starting un-admitted dispatch).
+  !belt_redeliver_attempt_continues(decision: ContinuationSpawnFresh { reason: "no prior attempt of this node" }, attempt_key: wake_key)
+}
+
+test fn the_redelivery_guard_refuses_resume_for_a_different_key() -> Bool {
+  // A resumable attempt whose key is not the one the wake armed: the entry re-delivers only ITS attempt,
+  // so a foreign key refuses.
+  !belt_redeliver_attempt_continues(decision: ContinuationResume { reason: "recovery needed", attempt_key: "some-other-attempt", ordinal: 1, causes: ["provider-busy"] }, attempt_key: wake_key)
+}
+
+test fn the_redelivery_guard_allows_resume_for_the_exact_key() -> Bool {
+  belt_redeliver_attempt_continues(decision: ContinuationResume { reason: "recovery needed", attempt_key: wake_key, ordinal: 7, causes: ["provider-busy"] }, attempt_key: wake_key)
+}
+
+test fn the_redelivery_guard_allows_hold_until_for_the_exact_key() -> Bool {
+  // THE acceptance case: the wedged round-7 request-pending attempt, resumed by its armed wake, is a
+  // Hold-Until for exactly wake_key -- allowed, because it is a continuation of already-admitted work.
+  belt_redeliver_attempt_continues(decision: ContinuationHoldUntil { reason: "request-pending, next re-delivery not due", attempt_key: wake_key, redeliver_at: 1700000060 }, attempt_key: wake_key)
+}
+
