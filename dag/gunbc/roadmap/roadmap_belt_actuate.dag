@@ -9331,17 +9331,22 @@ fn belt_verify_retry_ledger_count(instance: HostDashboardInstance, node_id: Road
   }
 }
 
-fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> String? {
+type RetryBasename
+  = RetryBasenameRead { basename: String }
+  | RetryBasenameUnreadable { reason: String }
+
+fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> RetryBasename {
   match belt_worktree_head_observe(instance: instance, worktree: dispatch_worktree_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key)) {
-    WorktreeHeadUnobserved { reason: _ } => none
+    WorktreeHeadUnobserved { reason } =>
+      RetryBasenameUnreadable { reason: join(["the worktree head could not be observed: ", reason], "") }
     WorktreeHeadObserved { revision } =>
       match belt_verification_selection_observe(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: revision as String) {
         SelectionObserved { head, window_identity } =>
-          Present { value: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)) }
-        SelectionUnaddressable { cause: _ } => none
-        SelectionAbsent => none
-        SelectionUnreadable { cause: _ } => none
-        SelectionMalformed { cause: _ } => none
+          RetryBasenameRead { basename: exact_verification_receipt_basename(head_sha: head as String, window_identity_hex: git_diff_window_identity_hex(identity: window_identity)) }
+        SelectionUnaddressable { cause: _ } => RetryBasenameUnreadable { reason: "the verification selection is unaddressable" }
+        SelectionAbsent => RetryBasenameUnreadable { reason: "no verification selection is recorded beside the refused receipt" }
+        SelectionUnreadable { cause: _ } => RetryBasenameUnreadable { reason: "the verification selection could not be read" }
+        SelectionMalformed { cause: _ } => RetryBasenameUnreadable { reason: "the verification selection is malformed" }
       }
   }
 }
@@ -9350,8 +9355,8 @@ fn belt_verify_retry_basename(instance: HostDashboardInstance, node_id: RoadmapN
 fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
   let node_id = progress.node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   match belt_verify_retry_basename(instance: instance, node_id: node_id, attempt_key: progress.attempt_key) {
-    Absent => RefusedRetryOperatorOnly
-    Present { value: basename } =>
+    RetryBasenameUnreadable { reason } => RefusedRetryUnreadable { reason: reason }
+    RetryBasenameRead { basename } =>
       match belt_verification_refused_cause(source: exact_verification_receipt_source_read(
         attempt_dir: dispatch_attempt_state_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
         verification_dir: belt_verify_retry_dir(instance: instance, node_id: node_id, attempt_key: progress.attempt_key),
@@ -9368,7 +9373,7 @@ fn belt_verify_retry_standing_of_refused(instance: HostDashboardInstance, progre
 }
 
 // WHERE THE ATTEMPT'S VERIFICATION STANDS against the bound, from the segment the belt already read and
-// the ledger. Anything that cannot be established is OperatorOnly: no retry is fabricated.
+// the ledger. An unreadable selection or ledger is RefusedRetryUnreadable (typed, counted); only a refusal about the candidate is OperatorOnly.
 fn belt_verify_retry_standing(instance: HostDashboardInstance, progress: WorkflowAttemptProgress) -> RefusedRetryStanding {
   match workflow_segment_of_kind(segments: progress.segments, kind: VerificationWorkflowSegment) {
     Absent => RefusedRetryOperatorOnly
