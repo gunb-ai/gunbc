@@ -28,6 +28,7 @@ pub use crate::std_integer_interval::{
     integer_extent_admits, integer_extent_within, integer_machine_interval_spec, IntegerExtent,
 };
 pub use crate::std_integer_width_construction::integer_width_checked_conversion_remedy;
+pub use crate::std_measure::BitWidth;
 pub use crate::std_optional::Optional;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
@@ -959,7 +960,7 @@ pub fn kernel_grounding_sign_change_allowed(
 pub fn integer_width_grounding(
     source: Rc<DeclarationRef>,
     signedness: Signedness,
-    bits: i64,
+    bits: BitWidth,
 ) -> Rc<KernelGrounding> {
     Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
