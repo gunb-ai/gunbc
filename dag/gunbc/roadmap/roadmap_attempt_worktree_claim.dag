@@ -9,7 +9,7 @@ import gunbc.compute.attempt_lifecycle {
   AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused, AttemptPayloadCodec,
   UnitLifecycle, UnitStillRunning, UnitLifecycleUnknown, unit_lifecycle_ended,
   attempt_state_wire, attempt_state_decode, attempt_member, attempt_member_epoch, attempt_transition_wire,
-  attempt_open_payload, attempt_terminate_payload, attempt_owner_wire, DispatchOwned,
+  attempt_open_payload, attempt_terminate_payload, attempt_reopen_settled_payload, attempt_owner_wire, DispatchOwned,
   attempt_payload_read, AttemptPayloadAbsent, AttemptPayloadHeld, AttemptPayloadUnreadable,
   attempt_slot_keys, AttemptSlotKeysListed, AttemptSlotKeysRefused,
 }
@@ -162,6 +162,7 @@ fn worktree_claim_codec() -> AttemptPayloadCodec<WorktreeClaim>
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_open"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_read"),
     decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_close"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_worktree_claim", decl_name: "worktree_claim_reopen_settled"),
   ]
 {
   AttemptPayloadCodec {
@@ -196,6 +197,25 @@ fn worktree_claim_open(claims: WorktreeClaimStore, claim: WorktreeClaim) -> Atte
 
 fn worktree_claim_close(claims: WorktreeClaimStore, reference: NonEmptyStr, expected: CasGeneration, detail: String) -> AttemptTransition {
   attempt_terminate_payload(store: claims.slots, reference: reference, expected: expected, verdict: AttemptRecovered, detail: detail, codec: worktree_claim_codec())
+}
+
+// A CLAIM REOPENS WHEN THE SAME ATTEMPT IS RESUMED AFTER ITS WORKTREE WAS REAPED BY THE OLD, WRONG
+// SETTLEMENT (which read 'capture committed' as 'the attempt ended'). The caller supplies the same
+// fresh-timed claim it would open -- the fold commits it back to reserved at generation n+1 under a CAS
+// on the observed generation, keeping the whole generation line (§3b), admitting only a terminal claim
+// at that exact generation and refusing a live (reserved/launching) one. It is the codec-generic
+// attempt_reopen_settled_payload specialised to WorktreeClaim (§2); the session-placement slot reopen is a
+// second codec of the same payload and does not exist yet -- it lands with the settle-before-acquire work
+// (adhoc-128c25f2, M4), which must call the payload, not redefine it. CONSUMER: the belt's same-key worktree
+// restore (PR 15943, the Restore plan arm) reopens a wrongly-released claim through this; until that lands the
+// only caller is attempt_worktree_claim_wet_witness.
+fn worktree_claim_reopen_settled(claims: WorktreeClaimStore, reference: NonEmptyStr, expected: CasGeneration, claim: WorktreeClaim) -> AttemptTransition {
+  attempt_reopen_settled_payload(
+    store: claims.slots,
+    reference: reference,
+    expected: expected,
+    record: claim,
+    codec: worktree_claim_codec())
 }
 
 fn worktree_claim_new(node_id: String, attempt_key: String, worktree_path: String, opened_at: EpochSecs, launch_deadline: EpochSecs) -> WorktreeClaim {

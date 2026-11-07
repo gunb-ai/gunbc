@@ -3,7 +3,7 @@ module v2.extdeps.languages.rust_fixtures
 import v2.extdeps.languages.rust_native_driver { RustEmitHostFamilyMember, rust_family_main_suffix }
 import v2.std.node { ArrowBodyEdge, core_edge_label, Authored, StructuralLabel, NotADeclaration }
 
-import std.algebra { Cons, Empty }
+import std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -57,8 +57,9 @@ import v2.extdeps.languages.rust {
   rust_semantic_decl_emission_bundle_node
 }
 import v2.std.logic { bool_boolean_algebra }
-import v2.std.grammar { derive_grammar_relation_row_for_lhs, Sequence }
-import v2.std.compilers.target_model { ValueProducing, ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs, Sequence, formal_productions_catalog_to_node, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free }
+import v2.std.host_transport { FilesystemReadFamily, ShellExecRunFamily, emitted_family_runtime_row_gated, target_emit_host_runtime_row_unconfigured }
+import v2.std.compilers.target_model { ValueProducing, concrete_syntax_token_class, derive_bodied_arrow_scaffold, grammar_relation_row_attach_bodied_scaffold, target_model_make_with_emit_transforms, target_operator_realizations_catalog_node, target_reference_layer_tokens_node, target_use_site_ownership_catalog_node, target_value_semantics_carriers_node, value_expr_projection_bundle_node, ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 import std.host_text { chars }
 import std.operation_argv { shell_materialize_operation_argv }
 

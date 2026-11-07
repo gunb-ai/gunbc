@@ -32,7 +32,7 @@ import extdeps.languages.json.parse {
 type UnexplainedEngineRefusal {
   status: HttpStatus
   request_id: String?
-  bytes_sent: String
+  request_body_digest: String
 }
 
 // THE RESUME BOUND IS DECLARED POLICY (operator decision 2026-10-16, condition 6): three resumes of
@@ -73,7 +73,7 @@ fn harness_unexplained_refusal(
               Present { value: UnexplainedEngineRefusal {
                 status: status,
                 request_id: http_header_dump_field(dump: dump, name: "x-request-id"),
-                bytes_sent: content_hash_atom(value: request_body as NonEmptyStr).digest as String,
+                request_body_digest: content_hash_atom(value: request_body as NonEmptyStr).digest as String,
               } }
             }
         }
@@ -150,20 +150,31 @@ fn session_member_elements(v: JsonValue, key: String) -> SessionElements {
   }
 }
 
-fn session_message_role(m: JsonValue) -> String {
-  match session_member_text(v: m, key: "role") {
-    SessionTextFound { value: r } => r
-    SessionTextAbsent => ""
-    SessionTextMalformed { mismatch: _ } => ""
-  }
+fn session_message_role(m: JsonValue) -> SessionText {
+  session_member_text(v: m, key: "role")
 }
 
-fn session_role_readable(m: JsonValue) -> Bool {
-  match session_member_text(v: m, key: "role") {
-    SessionTextFound { value: _ } => true
-    SessionTextAbsent => false
-    SessionTextMalformed { mismatch: _ } => false
-  }
+// A MESSAGE WITH A READABLE ROLE: the role is carried beside the message, so no consumer re-reads it or
+// treats an unreadable one as an empty string.
+type SessionRoled {
+  message: JsonValue
+  role: String
+}
+
+fn session_role_refusals(messages: List<JsonValue>) -> List<String> {
+  messages |> flat_map(m => match session_message_role(m: m) {
+    SessionTextFound { value: _ } => [] as List<String>
+    SessionTextAbsent => ["a message has no role member"]
+    SessionTextMalformed { mismatch: x } => [x]
+  })
+}
+
+fn session_roled(messages: List<JsonValue>) -> List<SessionRoled> {
+  messages |> flat_map(m => match session_message_role(m: m) {
+    SessionTextFound { value: r } => [SessionRoled { message: m, role: r }]
+    SessionTextAbsent => [] as List<SessionRoled>
+    SessionTextMalformed { mismatch: _ } => [] as List<SessionRoled>
+  })
 }
 
 fn session_ids_combine(parts: List<SessionIds>) -> SessionIds {
@@ -215,28 +226,29 @@ fn session_assistant_call_ids(m: JsonValue) -> SessionIds {
 
 // A RESULT IS NAMED BY THE CALL IT ANSWERS: the chat shape's tool message tool_call_id, the messages
 // shape's tool_result block tool_use_id.
-fn session_result_ids(m: JsonValue) -> SessionIds {
+fn session_result_ids(r: SessionRoled) -> SessionIds {
   session_ids_combine(parts: [
-    if session_message_role(m: m) == "tool" { session_id_of(v: m, key: "tool_call_id") } else { SessionIdsRead { ids: [] as List<String> } },
-    session_block_ids(m: m, block_type: "tool_result", id_key: "tool_use_id"),
+    if r.role == "tool" { session_id_of(v: r.message, key: "tool_call_id") } else { SessionIdsRead { ids: [] as List<String> } },
+    session_block_ids(m: r.message, block_type: "tool_result", id_key: "tool_use_id"),
   ])
 }
 
 fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
-  let indexed = enumerate(messages)
+  let roled = session_roled(messages: messages)
+  let indexed = enumerate(roled)
   if length(xs: messages) == 0 {
     SessionUnresumable { cause: "the request carries no messages" }
-  } else if length(xs: messages |> filter(m => !session_role_readable(m: m))) > 0 {
-    SessionUnresumable { cause: "a message carries no readable string role, so the conversation's state is not established" }
+  } else if length(xs: roled) != length(xs: messages) {
+    SessionUnresumable { cause: join(["a message carries no readable string role, so the conversation's state is not established: ", join(session_role_refusals(messages: messages), "; ")], "") }
   } else {
-    match indexed |> filter(p => session_message_role(m: p.second) == "assistant") |> last() {
+    match indexed |> filter(p => p.second.role == "assistant") |> last() {
       Absent => SessionUnresumable { cause: "the conversation carries no assistant message, so no answered state was persisted" }
       Present { value: assistant } => {
         let after = indexed |> filter(p => p.first > assistant.first) |> map(p => p.second)
-        match session_assistant_call_ids(m: assistant.second) {
+        match session_assistant_call_ids(m: assistant.second.message) {
           SessionIdsMalformed { mismatch: x } => SessionUnresumable { cause: join(["the last assistant message's calls are unreadable: ", x], "") }
           SessionIdsRead { ids: called } =>
-            match session_ids_combine(parts: after |> map(m => session_result_ids(m: m))) {
+            match session_ids_combine(parts: after |> map(r => session_result_ids(r: r))) {
               SessionIdsMalformed { mismatch: x } => SessionUnresumable { cause: join(["a recorded result is unreadable: ", x], "") }
               SessionIdsRead { ids: recorded } => {
                 let unrecorded = called |> filter(id => length(xs: filter(recorded, r => r == id)) == 0)
@@ -252,14 +264,6 @@ fn session_messages_validation(messages: List<JsonValue>) -> SessionValidation {
         }
       }
     }
-  }
-}
-
-fn session_validation_resumable(v: SessionValidation) -> Bool {
-  match v {
-    SessionValidated => true
-    SessionInterrupted { unrecorded_call_ids: _ } => false
-    SessionUnresumable { cause: _ } => false
   }
 }
 
@@ -287,7 +291,11 @@ fn session_conversation_from_request(request_body: String, leading_system: Bool)
       } else if leading_system {
         match all.get(0) {
           Present { value: head } =>
-            if session_message_role(m: head) == "system" { Present { value: json_array(elements: all.skip(n: 1)) } } else { none }
+            match session_message_role(m: head) {
+              SessionTextFound { value: r } => if r == "system" { Present { value: json_array(elements: all.skip(n: 1)) } } else { none }
+              SessionTextAbsent => none
+              SessionTextMalformed { mismatch: _ } => none
+            }
           Absent => none
         }
       } else {
@@ -319,7 +327,7 @@ fn session_conversation_messages(conversation: JsonValue) -> List<JsonValue> {
 fn session_cause_text(round: Int, refusal: UnexplainedEngineRefusal) -> String {
   join([
     "round ", to_string(value: round), ": the engine answered ", to_string(value: refusal.status),
-    " with an empty body (x-request-id ", session_request_id_text(refusal: refusal), ", bytes sent ", refusal.bytes_sent, ")",
+    " with an empty body (x-request-id ", session_request_id_text(refusal: refusal), ", request body digest ", refusal.request_body_digest, ")",
   ], "")
 }
 
@@ -329,9 +337,8 @@ fn session_event_recovery_needed(round: Int, refusal: UnexplainedEngineRefusal, 
     json_kv(key: "round", value: json_int(n: round)),
     json_kv(key: "status", value: json_int(n: refusal.status)),
     json_kv(key: "request_id", value: json_string(s: session_request_id_text(refusal: refusal))),
-    json_kv(key: "bytes_sent", value: json_string(s: refusal.bytes_sent)),
+    json_kv(key: "request_body_digest", value: json_string(s: refusal.request_body_digest)),
     json_kv(key: "cause", value: json_string(s: session_cause_text(round: round, refusal: refusal))),
-    json_kv(key: "resumable", value: json_bool(b: session_validation_resumable(v: validation))),
     json_kv(key: "interrupted_calls", value: json_array(elements: session_validation_interrupted_ids(v: validation) |> map(id => json_string(s: id)))),
   ]))
 }

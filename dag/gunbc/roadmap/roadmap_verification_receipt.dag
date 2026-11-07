@@ -554,21 +554,9 @@ fn belt_verification_resume_decision(
 ) -> BeltVerificationDecision {
   match belt_verification_decision(expected: expected, source: source) {
     BeltVerificationDefer { reason } =>
-      match source {
-        ExactVerificationReceiptPresent { text } =>
-          match verification_receipt_text_classify(receipt: text) {
-            VerificationReceiptTextV2 { receipt } =>
-              if validation_verdict_key(verdict: receipt.verdict) == "refused" {
-                BeltVerificationRun
-              } else {
-                BeltVerificationDefer { reason: reason }
-              }
-            VerificationReceiptTextUndecodable { reason: _ } => BeltVerificationDefer { reason: reason }
-            VerificationReceiptTextLegacyAttempt { verdict_key: _ } => BeltVerificationDefer { reason: reason }
-            VerificationReceiptTextV1ExactHead { legacy: _ } => BeltVerificationDefer { reason: reason }
-          }
-        ExactVerificationReceiptAbsent => BeltVerificationDefer { reason: reason }
-        ExactVerificationReceiptUnreadable { detail: _ } => BeltVerificationDefer { reason: reason }
+      match belt_verification_refused_cause(source: source) {
+        Present { value: _ } => BeltVerificationRun
+        none => BeltVerificationDefer { reason: reason }
       }
     BeltVerificationRun => BeltVerificationRun
     BeltVerificationRefuse { reason: r } => BeltVerificationRefuse { reason: r }

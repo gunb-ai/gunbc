@@ -132,6 +132,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_oracle_refs_for_contract,
   belt_verify_attempt_for_instance,
   belt_verify_terminal_attempt,
+  VerifyAsBelt,
   belt_workflow_attempt_presentation_json,
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
@@ -266,7 +267,6 @@ import gunbc.fleet.origin_main_revision_observe {
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import extdeps.languages.json.emit { json_string }
-import gunbc.roadmap.roadmap_attempt_continuation { attempt_origin_turn }
 import gunbc.roadmap.roadmap_launch_admission { launch_refusal_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap.roadmap_verification_receipt {
@@ -1320,6 +1320,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
     instance: srv2_preview_dashboard_instance(),
     progress: completed_attempt_progress(node_id: "belt-verify-probe-node"),
     lookup: NodeMissing,
+    mode: VerifyAsBelt,
   ) {
     VerifyDeferred { node_id, reason } =>
       node_id == "belt-verify-probe-node"
@@ -1378,6 +1379,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       goal_audit: [],
       session_placement: SessionPlacementAbsent { unit: "" },
     }),
+    mode: VerifyAsBelt,
   ) {
     VerifyDeferred { node_id: _, reason } =>
       string_contains(s: reason, pattern: "agent obligation is not satisfied")
@@ -3166,8 +3168,8 @@ test fn the_belt_addresses_the_attempt_its_spawn_commands_were_built_for() -> Bo
       match dispatch_spawn_commands_for_launch(
         prepared: prepared,
         session_uuid: "00000000-0000-4000-8000-000000000009",
-        origin: FreshFromBase,
         resolution: fixture_ready_resolution(node_id: "belt-addressing-node", project_ids: []),
+        run: DispatchWorkerFirst,
       ) {
         DispatchSpawnRefused { step: _, detail: _ } => false
         DispatchSpawnReady { commands } =>

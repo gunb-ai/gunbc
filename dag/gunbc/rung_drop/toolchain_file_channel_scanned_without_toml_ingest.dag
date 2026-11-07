@@ -1,0 +1,23 @@
+module gunbc.rung_drop.toolchain_file_channel_scanned_without_toml_ingest
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
+
+// Operator ruling 2026-11-06 (option B, relayed by quick-newt-573): a bounded fail-closed reader for this one file shape, restored by a TOML ingest.
+data toolchain_file_channel_scanned_without_toml_ingest: RungDrop = RungDrop {
+  identity: "toolchain_file_channel_scanned_without_toml_ingest" as NonEmptyStr,
+
+  subject: "extdeps.rust.rustup rustup_toolchain_file_channel: the declared toolchain channel is read from rust-toolchain.toml by a bounded line scanner because no TOML ingest into extdeps.languages.toml.types.TomlDocument exists",
+
+  declared: "2026-11-06",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "the [toolchain] channel key of a repository rust-toolchain.toml; escapes in basic strings and multi-line strings refuse typed as RustupChannelUnsupportedForm, any other shape outside the scanned subset reads Absent and refuses the requirement", tail: [] } },
+    restoration_trigger: "a TOML ingest built as rows read backward in extdeps.languages (the grammar the TOML emit uses) producing TomlDocument, sufficient that the channel is read from the parsed document and the line scanner is deleted",
+  } }
+}

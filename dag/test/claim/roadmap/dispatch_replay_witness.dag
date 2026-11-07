@@ -1,5 +1,6 @@
 module test.claim.roadmap.dispatch_replay_witness
 
+import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptWorkerRole }
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Present }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv1_dashboard_lab_id, srv1_dashboard_live_id }
@@ -64,6 +65,7 @@ fn fx_plan(provider: DispatchCliProvider, inner: List<String>) -> DispatchSessio
     pane_working_directory: "/wt",
     worktree_path: "/wt",
     provider_inner: inner,
+    worker_role: AttemptWorkerRole,
   )
 }
 
