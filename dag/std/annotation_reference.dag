@@ -1,7 +1,7 @@
 module std.annotation_reference
 
 import std.types { Char, List, NonEmptyStr, String }
-import std.algebra { Cons, Empty, FreeMonoid, list_reverse, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, length, list_at_optional, list_map, list_reverse, list_snoc_item }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
 import std.optional { Absent, Optional, Present }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter }
@@ -15,7 +15,7 @@ import std.unicode.types { unicode_scalar_utf8_octet_count }
 // written as code -- is never a reference, so the marker is what makes intent decidable rather than
 // a guess about which `a::b` spans were meant.
 //
-// THE GRAMMAR. `@ref(` COORDINATE `)` where COORDINATE is
+// THE GRAMMAR. `\@ref(` COORDINATE `)` (written here escaped, as every literal marker in a comment must be) where COORDINATE is
 //   module.path::decl              a whole declaration
 //   module.path::decl::field       a named field of decl
 //   module.path::decl::<T>         a type parameter of decl
@@ -69,17 +69,26 @@ fn code_point_is_identifier_continue(cp: Int) -> Bool {
   code_point_is_ascii_letter(cp: cp) || code_point_is_ascii_digit(cp: cp) || cp == 95
 }
 
-// What may appear between `@ref(` and `)`: identifier characters and the coordinate punctuation.
+// What may appear between the marker and `)`: identifier characters and the coordinate punctuation.
 // Anything else ends the marker as unterminated.
 fn code_point_is_coordinate_body(cp: Int) -> Bool {
   code_point_is_identifier_continue(cp: cp) || cp == 46 || cp == 58 || cp == 60 || cp == 62
 }
 
-fn marker_code_point_at(k: Int) -> Int {
-  if k == 0 { 64 } else if k == 1 { 114 } else if k == 2 { 101 } else if k == 3 { 102 } else { 40 }
-}
+// THE MARKER'S SPELLING, ONCE. The scan reads it a scalar at a time, the check's spelling test and
+// every rendered finding read it whole; none spells it again.
+data annotation_reference_marker: String = "@ref("
 
-data marker_length: Int = 5
+data annotation_reference_marker_scalars: List<Int> = list_map(xs: unicode_scalar_unfold(s: annotation_reference_marker), f: fn(c) { unicode_char_code_point(c: c) })
+
+data marker_length: Int = length(xs: annotation_reference_marker_scalars)
+
+fn marker_code_point_at(k: Int) -> Int {
+  match list_at_optional(xs: annotation_reference_marker_scalars, index: k) {
+    Present { value: cp } => cp
+    Absent => 0 - 1
+  }
+}
 
 type ReferenceScanMode
   = Seeking { progress: Int, marker_start: Int, escaped: Bool }
@@ -236,7 +245,7 @@ fn annotation_reference_coordinate(body: FreeMonoid<Char>) -> Optional<Declarati
 
 fn marker_text(body_reversed: FreeMonoid<Char>, closed: Bool) -> String {
   let body = unicode_scalar_fold(xs: list_reverse(xs: body_reversed))
-  if closed { concat("@ref(", concat(body, ")")) } else { concat("@ref(", body) }
+  if closed { concat(annotation_reference_marker, concat(body, ")")) } else { concat(annotation_reference_marker, body) }
 }
 
 fn reference_scan_unterminated(scan: ReferenceScan, marker_start: Int, body: FreeMonoid<Char>) -> ReferenceScan {

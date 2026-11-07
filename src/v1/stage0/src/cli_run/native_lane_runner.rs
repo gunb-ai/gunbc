@@ -2779,6 +2779,7 @@ fn walk_cli_door(
     walk_native_ingest_layout_controls(binary, workspace)?;
     walk_native_acquisition_projection_controls(binary, workspace, scratch)?;
     walk_population_controls(binary, workspace, scratch)?;
+    walk_reference_controls(binary, workspace)?;
     let refusal_status = i64::from(refused.status.unwrap_or_default());
     eprintln!("v2-native-cli: door refused as cli_no_entry — exit {refusal_status}");
     Ok((door_exit_status, emitted_bytes, refusal_status))
@@ -3493,6 +3494,112 @@ fn walk_population_controls(binary: &Path, workspace: &Path, scratch: &Path) -> 
          the malformed specimen and an empty or absent root refuse, and a malformed module outside a compile's \
          closure refuses the parse and leaves the compile unchanged; misplaced and undeclared files are \
          refused by file; usage refusals)"
+    );
+    Ok(())
+}
+
+const REFERENCE_CHECK_HOLDS_ROOT: &str = "fixtures/annotation_reference_holds/dag";
+const REFERENCE_CHECK_REFUSED_ROOT: &str = "fixtures/annotation_reference_refused/dag";
+/// `v2.cli.reference_check` `reference_check_holds_head` / `reference_check_refused_head`.
+const REFERENCE_CHECK_HOLDS_HEAD: &str = "references resolve:";
+const REFERENCE_CHECK_REFUSED_HEAD: &str = "references refused:";
+
+/// THE MARKED-REFERENCE CHECK, WALKED. `check-references` (`v2.cli.reference_check`) reads every module
+/// under the bound trees, extracts the `\@ref(...)` markers from their annotations and resolves each in
+/// the context built from the cited modules. The claims over that fold
+/// (`v2.test.claim.cli.reference_check`) run it on the interpreter; these walks are the inhabitance on
+/// the BUILT binary, and the first is the check itself:
+///
+/// - over the live governed roots (`dag`, `src/v2`) it holds, so every marked reference on the subject
+///   revision resolves -- this is the verdict the required job carries;
+/// - over the holding fixture it holds with every marker resolved (a field, a function, a relay hop);
+/// - over the refusing fixture it refuses, and each marker's own finding is on stdout: no such
+///   declaration, no such field, a cited module that does not read, a contested name, an unsupported
+///   type parameter, a malformed coordinate and an unterminated marker.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): one more inhabitance walk over the existing `run_cli_door`; no
+/// new production route. Accounted on `gunbc.source_root_eval_driver_seed_growth`
+/// `source_root_eval_driver_seed_growth_justification` with the walks above it.
+fn walk_reference_controls(binary: &Path, workspace: &Path) -> Result<(), String> {
+    let live_dag = workspace.join("dag");
+    let live_v2 = workspace.join("src/v2");
+    let holds_root = workspace.join(REFERENCE_CHECK_HOLDS_ROOT);
+    let refused_root = workspace.join(REFERENCE_CHECK_REFUSED_ROOT);
+    for (label, path) in [
+        ("holds", holds_root.as_path()),
+        ("refused", refused_root.as_path()),
+    ] {
+        if !path.is_dir() {
+            return Err(format!(
+                "V2-NATIVE REFUSAL cause=NativeReferenceControlRootAbsent — {label} {} is not a directory",
+                path.display()
+            ));
+        }
+    }
+    let fail = |cause: &str, run: &CliDoorRun| -> String {
+        format!(
+            "V2-NATIVE REFUSAL cause={cause} — status={:?} stdout={} stderr={}",
+            run.status,
+            population_excerpt_lines(&run.stdout, 40),
+            population_excerpt(&run.stderr)
+        )
+    };
+
+    eprintln!("v2-native-cli: reference controls — check-references over the live roots");
+    let live = run_cli_door(
+        binary,
+        &population_argv("check-references", &[live_dag.as_path(), live_v2.as_path()]),
+    )?;
+    if live.status != Some(0) || !live.stdout.starts_with(REFERENCE_CHECK_HOLDS_HEAD) {
+        return Err(fail(
+            "NativeMarkedReferenceDoesNotResolveOnTheLiveRoots",
+            &live,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: live roots — {}",
+        live.stdout.lines().next().unwrap_or("")
+    );
+
+    let holds = run_cli_door(
+        binary,
+        &population_argv("check-references", &[holds_root.as_path()]),
+    )?;
+    if holds.status != Some(0)
+        || !holds.stdout.starts_with(REFERENCE_CHECK_HOLDS_HEAD)
+        || !holds.stdout.contains("6 marked reference(s), 6 resolved")
+    {
+        return Err(fail("NativeReferenceHoldingFixtureDidNotHold", &holds));
+    }
+
+    let refused = run_cli_door(
+        binary,
+        &population_argv("check-references", &[refused_root.as_path()]),
+    )?;
+    let expected = [
+        "6 marked reference(s), 1 resolved",
+        "@ref(gunbc.annotation_reference_home::NoSuchDeclaration): no such declaration",
+        "@ref(gunbc.annotation_reference_home::AnnotationReferenceHome::no_such_field): the declaration has no such field",
+        "@ref(gunbc.annotation_reference_no_such_module::Anything): cited module not read:",
+        "@ref(gunbc.annotation_reference_contested::AnnotationReferenceTwin): contested between",
+        "@ref(gunbc.annotation_reference_home::AnnotationReferenceBox::<T>): UnsupportedTarget",
+        "@ref(gunbc.annotation_reference_home): malformed coordinate",
+        ": unterminated marker",
+    ];
+    if refused.status != Some(CLI_DOOR_REFUSAL_EXIT)
+        || !refused.stdout.starts_with(REFERENCE_CHECK_REFUSED_HEAD)
+        || !expected
+            .iter()
+            .all(|fragment| refused.stdout.contains(fragment))
+    {
+        return Err(fail(
+            "NativeReferenceRefusingFixtureNotRefusedPerMarker",
+            &refused,
+        ));
+    }
+    eprintln!(
+        "v2-native-cli: reference controls held (live roots resolve; holding fixture resolves every marker; \
+         refusing fixture refuses each broken marker with its own finding)"
     );
     Ok(())
 }

@@ -1,0 +1,5 @@
+module gunbc.annotation_reference_twin_a
+
+type AnnotationReferenceTwin {
+  a: Int
+}

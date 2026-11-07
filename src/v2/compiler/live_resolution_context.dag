@@ -2,7 +2,7 @@ module v2.compiler.live_resolution_context
 
 import std.algebra { Empty, FreeMonoid, empty_map, fold_list, length, list_snoc_item, map_insert, map_lookup }
 import std.content_hash { Fnv1a64Structural }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import std.occurrence_identity { OccurrenceIdAllocator }
 import std.types { List, Map }
 import v2.compiler.name_resolve { ResolutionContext, resolution_context }
@@ -23,11 +23,13 @@ import v2.std.resolution_policy { NameResolutionPolicy }
 
 // THE LIVE-TREE RESOLUTION CONTEXT: the one ResolutionContext a caller whose subject is the tree
 // itself (not a fixture population) resolves its citations in. It is built from exactly the modules
-// the caller names, each reached by one lookup in `by_name` (module name to the read that declares
-// it) and one normalize, never from a corpus-wide pass. `by_name` is a PARAMETER: where the reads
-// come from (a native ingest today) stays the caller's fact, so this module imports no layout and
-// no reader. A module absent from `by_name`, or whose read does not normalize, is simply not in
-// `roots`, which is what makes the resolver answer ModuleAbsent for it
+// the caller names, each reached by one call of `read` (module name to the read that declares it)
+// and one normalize, never from a corpus-wide pass. `read` is a PARAMETER: where the reads come from
+// (a supplied population, or the layout's storage rule over bound trees) stays the caller's fact, so
+// this module imports no layout and no reader. It is a function rather than a map because the hop
+// homes below are learned only after the targets normalize, so a caller cannot list them up front
+// without normalizing twice. A module `read` does not answer, or whose read does not normalize, is
+// simply not in `roots`, which is what makes the resolver answer ModuleAbsent for it
 // (v2.std.decl_ref_resolution: the arm is decided by the ingest's own module roots).
 //
 // ONE RE-EXPORT HOP. A cited module that only imports a name (a relay) declares nothing: the resolver
@@ -53,7 +55,7 @@ type LiveResolutionContext {
 
 fn live_context_load_target(
   load: LiveContextLoad,
-  by_name: Map<String, DagSourceReadWitness>,
+  read: fn(String) -> Optional<DagSourceReadWitness>,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
   ingest_scope: Fnv1a64Structural,
@@ -61,19 +63,19 @@ fn live_context_load_target(
 ) -> LiveContextLoad {
   match map_lookup(m: load.attempted, key: module) {
     Present { value: _ } => load
-    Absent => live_context_load_unattempted(load: LiveContextLoad { roots: load.roots, index: load.index, alloc: load.alloc, refused_files: load.refused_files, attempted: map_insert(load.attempted, module, true) }, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: module)
+    Absent => live_context_load_unattempted(load: LiveContextLoad { roots: load.roots, index: load.index, alloc: load.alloc, refused_files: load.refused_files, attempted: map_insert(load.attempted, module, true) }, read: read, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: module)
   }
 }
 
 fn live_context_load_unattempted(
   load: LiveContextLoad,
-  by_name: Map<String, DagSourceReadWitness>,
+  read: fn(String) -> Optional<DagSourceReadWitness>,
   lex: PreparedLexRules,
   prepared: PreparedGrammar,
   ingest_scope: Fnv1a64Structural,
   module: String
 ) -> LiveContextLoad {
-  match map_lookup(m: by_name, key: module) {
+  match read(module) {
     Absent => load
     Present { value: read } =>
       let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: lex, prepared: prepared, seed: load.alloc, scope: ingest_scope)
@@ -108,7 +110,7 @@ fn live_context_hop_home(acc: List<String>, row: AliasBindingRow, homes: FreeMon
 }
 
 fn live_resolution_context(
-  by_name: Map<String, DagSourceReadWitness>,
+  read: fn(String) -> Optional<DagSourceReadWitness>,
   targets: List<String>,
   names: Map<String, Bool>,
   lm: LanguageModel,
@@ -122,7 +124,7 @@ fn live_resolution_context(
   let named = fold_list(
     xs: targets,
     empty: LiveContextLoad { roots: Empty, index: source_root_index_empty(), alloc: seed, refused_files: [], attempted: empty_map() },
-    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
+    cons: fn(acc, m) { live_context_load_target(load: acc, read: read, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
   )
   let hops = fold_list(
     xs: named.roots,
@@ -143,7 +145,7 @@ fn live_resolution_context(
   let loaded = fold_list(
     xs: hops,
     empty: named,
-    cons: fn(acc, m) { live_context_load_target(load: acc, by_name: by_name, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
+    cons: fn(acc, m) { live_context_load_target(load: acc, read: read, lex: lex, prepared: prepared, ingest_scope: ingest_scope, module: m) }
   )
   LiveResolutionContext {
     context: resolution_context(lm: lm, roots: loaded.roots, index: loaded.index, active_roots: active_roots, policy: policy),

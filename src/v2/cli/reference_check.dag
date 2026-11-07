@@ -1,0 +1,361 @@
+module v2.cli.reference_check
+
+import std.types { Bool, Int, List, Map, NonEmptyStr }
+import std.algebra { string_contains, Cons, Empty, FreeMonoid, empty_map, fold_list, is_empty, length, list_map, list_reverse, list_snoc_item, map_insert, map_lookup, map_support_keys, collection_concat_shape, collection_join_shape }
+import std.optional { Absent, Optional, Present }
+import std.integer { int_to_decimal_string }
+import std.occurrence_identity { occurrence_id_allocator_initial }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_ref_is_type_parameter }
+import std.annotation_reference {
+  AnnotationReference,
+  AnnotationReferenceExtraction,
+  CoordinateMalformed,
+  MalformedReferenceMarker,
+  MarkerUnterminated,
+  annotation_reference_extraction_concat,
+  annotation_reference_extraction_empty,
+  annotation_reference_marker,
+  annotation_references,
+}
+import v2.cli.population_verbs { PopulationReport }
+import v2.cli.repository_layout { repository_storage_layout }
+import v2.compiler.live_resolution_context { live_resolution_context }
+import v2.compiler.module_acquisition {
+  AcquisitionEnv,
+  AcquisitionEnvReady,
+  AcquisitionEnvUnprepared,
+  BoundModulesListed,
+  BoundModulesRefused,
+  PopulationMemberRead,
+  PopulationMemberRefused,
+  SourceRootBinding,
+  acquisition_env,
+  acquisition_witness,
+  enumerate_bound_modules,
+  population_member,
+}
+import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, module_file_key, source_root_set_from_ingest }
+import v2.compiler.tokenize { tokenize_artifact_prepared }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { UnboundSourceAnnotation, lex_artifact_annotations }
+import v2.std.decl_ref_resolution {
+  DeclarationRefContested,
+  DeclarationRefDeclarationAbsent,
+  DeclarationRefFieldAbsent,
+  DeclarationRefModuleAbsent,
+  DeclarationRefResolution,
+  DeclarationRefResolved,
+  resolve_declaration_ref,
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { symbol_intern_lexeme }
+import v2.std.resolution_policy { ImportScoped }
+import v2.std.text { String }
+
+// `check-references`: EVERY MARKED DECLARATION REFERENCE IN THE BOUND TREES' ANNOTATIONS RESOLVES.
+//
+// THE SOURCE POPULATION is every module the declared namespace rows store under the bound trees
+// (`enumerate_bound_modules`, the population `parse-population` walks). Each is read, and a module
+// whose text contains the marker spelling is LEXED -- not parsed: an annotation is a lexical capture
+// (DESIGN 4c), so the check needs the comment channel and nothing the parser adds. Each capture's raw
+// lexeme goes through the one extractor, std.annotation_reference annotation_references. Only the
+// extracted sites are kept, so memory follows the citations and not the population.
+//
+// THE SPELLING TEST IS EXACT, NOT A HEURISTIC. Every marker -- resolving, broken or escaped -- is a
+// substring of its file's text, so a module whose text does not contain the marker spelling has no
+// marker in any of its annotations, and not lexing it loses no finding. It is what keeps the cost at
+// one read per module plus one lex per CITING module, instead of a second lex of the whole population
+// beside parse-population's. What it does not do is judge whether a non-citing module lexes: that is
+// parse-population's question, walked over the same population.
+//
+// THE TARGET UNIVERSE is the modules the citations name, read under the same storage rule over the
+// same bound trees, plus one re-export hop (v2.compiler.live_resolution_context). It is built from the
+// cited modules only, never by resolving the corpus: a citation is not an import, so citing a module
+// adds nothing to any compilation and a comment can cite above its own module's layer without
+// creating an edge. Resolution is the native resolver, v2.std.decl_ref_resolution
+// resolve_declaration_ref, the arm decided by that context.
+//
+// EVERY CITATION THAT CANNOT BE JUDGED FAILS THE CHECK, and its line says why: a cited module that
+// does not read (absent file, unbound tree, unreadable) carries the reader's own cause; one that
+// reads but does not normalize says so; neither is relabelled "does not exist". A population member
+// that cannot be read or lexed fails the check too, because a population that silently lost a
+// member would certify fewer comments than it names. Type-parameter citations parse but are not
+// resolved by this version: they report UnsupportedTarget rather than reading as a missing field.
+//
+// WHAT RESOLVING ESTABLISHES is existence: the cited declaration (and field) is there and unique.
+// It says nothing about the prose around the marker, which stays best-effort and deletable.
+
+type ReferenceSite {
+  file: String
+  site: AnnotationReference
+}
+
+type MalformedSite {
+  file: String
+  marker: MalformedReferenceMarker
+}
+
+type ReferenceWalk {
+  members: Int
+  lexed: Int
+  annotations: Int
+  sites: List<ReferenceSite>
+  malformed: List<MalformedSite>
+  unread: List<String>
+}
+
+fn reference_walk_empty() -> ReferenceWalk {
+  ReferenceWalk { members: 0, lexed: 0, annotations: 0, sites: [], malformed: [], unread: [] }
+}
+
+fn reference_walk_unread(walk: ReferenceWalk, line: String) -> ReferenceWalk {
+  ReferenceWalk { members: walk.members, lexed: walk.lexed, annotations: walk.annotations, sites: walk.sites, malformed: walk.malformed, unread: list_snoc_item(xs: walk.unread, item: line) }
+}
+
+fn reference_walk_annotations(walk: ReferenceWalk, file: String, annotations: List<UnboundSourceAnnotation>) -> ReferenceWalk {
+  let extracted = fold_list(
+    xs: annotations,
+    empty: annotation_reference_extraction_empty(),
+    cons: fn(acc, a) { annotation_reference_extraction_concat(left: acc, right: annotation_references(text: a.lexeme, start: a.start)) }
+  )
+  ReferenceWalk {
+    members: walk.members,
+    lexed: walk.lexed + 1,
+    annotations: walk.annotations + length(xs: annotations),
+    sites: fold_list(xs: extracted.references, empty: walk.sites, cons: fn(acc, r) { list_snoc_item(xs: acc, item: ReferenceSite { file: file, site: r }) }),
+    malformed: fold_list(xs: extracted.malformed, empty: walk.malformed, cons: fn(acc, m) { list_snoc_item(xs: acc, item: MalformedSite { file: file, marker: m }) }),
+    unread: walk.unread,
+  }
+}
+
+fn reference_walk_member(env: AcquisitionEnv, name: String, walk: ReferenceWalk) -> ReferenceWalk {
+  match population_member(layout: env.layout, bindings: env.bindings, name: name) {
+    PopulationMemberRefused { cause: cause } => reference_walk_unread(walk: walk, line: concat(name, ": not read: ", cause))
+    PopulationMemberRead { member: member } =>
+      reference_walk_read(env: env, file: module_file_key(file: member.file), content: member.content, walk: reference_walk_counted(walk: walk))
+  }
+}
+
+fn reference_walk_counted(walk: ReferenceWalk) -> ReferenceWalk {
+  ReferenceWalk { members: walk.members + 1, lexed: walk.lexed, annotations: walk.annotations, sites: walk.sites, malformed: walk.malformed, unread: walk.unread }
+}
+
+fn reference_walk_read(env: AcquisitionEnv, file: String, content: String, walk: ReferenceWalk) -> ReferenceWalk {
+  if !string_contains(s: content, pattern: annotation_reference_marker) {
+    walk
+  } else {
+      match tokenize_artifact_prepared(text: content, file: symbol_intern_lexeme(lexeme: file), prepared: env.lex) {
+        Rejected { diagnostics: _ } => reference_walk_unread(walk: walk, line: concat(file, ": not lexed, so its annotations were not observed"))
+        Accepted { value: artifact, diagnostics: _ } =>
+          reference_walk_annotations(walk: walk, file: file, annotations: lex_artifact_annotations(artifact: artifact))
+      }
+  }
+}
+
+fn reference_walk_go(env: AcquisitionEnv, pending: List<String>, walk: ReferenceWalk) -> ReferenceWalk {
+  match pending {
+    Empty => walk
+    Cons { head: name, tail: rest } => reference_walk_go(env: env, pending: rest, walk: reference_walk_member(env: env, name: name, walk: walk))
+  }
+}
+
+// ---- the target universe -----------------------------------------------------------------------
+
+fn reference_module_name(reference: DeclarationRef) -> String {
+  reference.module_path as String
+}
+
+fn reference_site_supported(site: ReferenceSite) -> Bool {
+  !declaration_ref_is_type_parameter(ref: site.site.reference)
+}
+
+// One module's standing as a citation target: the read that declares it, or the reader's cause.
+type CitedModule
+  = CitedModuleRead { read: DagSourceReadWitness }
+  | CitedModuleUnread { cause: String }
+
+fn cited_module(env: AcquisitionEnv, name: String) -> CitedModule {
+  match population_member(layout: env.layout, bindings: env.bindings, name: name) {
+    PopulationMemberRead { member: member } => CitedModuleRead { read: acquisition_witness(module: member) }
+    PopulationMemberRefused { cause: cause } => CitedModuleUnread { cause: cause }
+  }
+}
+
+fn cited_module_read(env: AcquisitionEnv, name: String) -> Optional<DagSourceReadWitness> {
+  match cited_module(env: env, name: name) {
+    CitedModuleRead { read: read } => Present { value: read }
+    CitedModuleUnread { cause: _ } => Absent
+  }
+}
+
+fn cited_names(sites: List<ReferenceSite>, of: fn(DeclarationRef) -> String) -> Map<String, Bool> {
+  fold_list(xs: sites, empty: empty_map(), cons: fn(acc, s) { map_insert(acc, of(s.site.reference), true) })
+}
+
+type CitedTargets {
+  standing: Map<String, CitedModule>
+  readable: List<String>
+  ingest: SourceRootIngest
+}
+
+fn cited_targets(env: AcquisitionEnv, modules: List<String>) -> CitedTargets {
+  fold_list(
+    xs: modules,
+    empty: CitedTargets { standing: empty_map(), readable: [], ingest: Empty },
+    cons: fn(acc, m) {
+      let standing = cited_module(env: env, name: m)
+      match standing {
+        CitedModuleRead { read: read } =>
+          CitedTargets { standing: map_insert(acc.standing, m, standing), readable: list_snoc_item(xs: acc.readable, item: m), ingest: Cons { head: read, tail: acc.ingest } }
+        CitedModuleUnread { cause: _ } =>
+          CitedTargets { standing: map_insert(acc.standing, m, standing), readable: acc.readable, ingest: acc.ingest }
+      }
+    }
+  )
+}
+
+// ---- judging -----------------------------------------------------------------------------------
+
+fn site_head(site: ReferenceSite) -> String {
+  concat(site.file, "@", int_to_decimal_string(value: site.site.start), ": ", annotation_reference_marker, declaration_ref_display_key(ref: site.site.reference), ")")
+}
+
+fn malformed_line(m: MalformedSite) -> String {
+  let cause = match m.marker.cause {
+    MarkerUnterminated => "unterminated marker"
+    CoordinateMalformed => "malformed coordinate (module.path::decl, ::field or ::<T>)"
+  }
+  concat(m.file, "@", int_to_decimal_string(value: m.marker.start), ": ", m.marker.text, ": ", cause)
+}
+
+fn resolution_line(site: ReferenceSite, resolution: DeclarationRefResolution) -> Optional<String> {
+  match resolution {
+    DeclarationRefResolved { declaration_identity: _ } => Absent
+    DeclarationRefModuleAbsent { reference: _ } => Present { value: concat(site_head(site: site), ": cited module is not in the target universe") }
+    DeclarationRefDeclarationAbsent { reference: _ } => Present { value: concat(site_head(site: site), ": no such declaration") }
+    DeclarationRefFieldAbsent { reference: _ } => Present { value: concat(site_head(site: site), ": the declaration has no such field") }
+    DeclarationRefContested { reference: _, claimants: claimants } =>
+      Present { value: concat(site_head(site: site), ": contested between ", join(claimants, ", ")) }
+  }
+}
+
+type ReferenceVerdicts {
+  resolved: Int
+  lines: List<String>
+}
+
+fn reference_verdicts_push(acc: ReferenceVerdicts, line: Optional<String>) -> ReferenceVerdicts {
+  match line {
+    Absent => ReferenceVerdicts { resolved: acc.resolved + 1, lines: acc.lines }
+    Present { value: l } => ReferenceVerdicts { resolved: acc.resolved, lines: list_snoc_item(xs: acc.lines, item: l) }
+  }
+}
+
+// A CITED MODULE THAT READ IS A TARGET, so the resolver answering ModuleAbsent for it means its read
+// did not normalize (live_resolution_context leaves a refused read out of the roots). That is a module
+// that could not be indexed, not one that does not exist, and the line says which.
+fn reference_site_judged(site: ReferenceSite, targets: CitedTargets, resolution: DeclarationRefResolution) -> Optional<String> {
+  match map_lookup(m: targets.standing, key: reference_module_name(reference: site.site.reference)) {
+    Present { value: CitedModuleUnread { cause: cause } } => Present { value: concat(site_head(site: site), ": cited module not read: ", cause) }
+    Present { value: CitedModuleRead { read: _ } } =>
+      match resolution {
+        DeclarationRefModuleAbsent { reference: _ } => Present { value: concat(site_head(site: site), ": cited module read but did not normalize, so its declarations were not indexed") }
+        _ => resolution_line(site: site, resolution: resolution)
+      }
+    Absent => resolution_line(site: site, resolution: resolution)
+  }
+}
+
+fn supported_sites(sites: List<ReferenceSite>) -> List<ReferenceSite> {
+  let kept: List<ReferenceSite> = []
+  fold_list(xs: sites, empty: kept, cons: fn(acc, s) { if reference_site_supported(site: s) { list_snoc_item(xs: acc, item: s) } else { acc } })
+}
+
+fn reference_verdicts(env: AcquisitionEnv, sites: List<ReferenceSite>) -> ReferenceVerdicts {
+  let unsupported = fold_list(xs: sites, empty: ReferenceVerdicts { resolved: 0, lines: [] }, cons: fn(acc, s) {
+    if reference_site_supported(site: s) { acc } else {
+      ReferenceVerdicts { resolved: acc.resolved, lines: list_snoc_item(xs: acc.lines, item: concat(site_head(site: s), ": UnsupportedTarget: type-parameter references are not resolved by this version")) }
+    }
+  })
+  let supported = supported_sites(sites: sites)
+  if is_empty(xs: supported) {
+    unsupported
+  } else {
+    let targets = cited_targets(env: env, modules: map_support_keys(m: cited_names(sites: supported, of: fn(r) { reference_module_name(reference: r) })))
+    let names = cited_names(sites: supported, of: fn(r) { r.decl_name as String })
+    match program_assembly_ingest_scope_outcome(ingest: targets.ingest) {
+      Rejected { diagnostics: _ } =>
+        fold_list(xs: supported, empty: unsupported, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules' ingest scope could not be formed") }) })
+      Accepted { value: scope, diagnostics: _ } => {
+        let live = live_resolution_context(
+          read: fn(m) { cited_module_read(env: env, name: m) },
+          targets: targets.readable,
+          names: names,
+          lm: dag_language_model(),
+          lex: env.lex,
+          prepared: env.grammar,
+          ingest_scope: scope,
+          seed: occurrence_id_allocator_initial(),
+          active_roots: source_root_set_from_ingest(ingest: targets.ingest),
+          policy: ImportScoped
+        )
+        match live.context {
+          Rejected { diagnostics: _ } =>
+            fold_list(xs: supported, empty: unsupported, cons: fn(acc, s) { reference_verdicts_push(acc: acc, line: Present { value: concat(site_head(site: s), ": the cited modules did not form a resolution context") }) })
+          Accepted { value: context, diagnostics: _ } =>
+            fold_list(xs: supported, empty: unsupported, cons: fn(acc, s) {
+              reference_verdicts_push(acc: acc, line: reference_site_judged(site: s, targets: targets, resolution: resolve_declaration_ref(ref: s.site.reference, context: context)))
+            })
+        }
+      }
+    }
+  }
+}
+
+// ---- the report --------------------------------------------------------------------------------
+
+data reference_check_holds_head: String = "references resolve:"
+data reference_check_refused_head: String = "references refused:"
+
+fn reference_report(walk: ReferenceWalk, verdicts: ReferenceVerdicts) -> PopulationReport {
+  let lines = concat(walk.unread, concat(list_map(xs: walk.malformed, f: fn(m) { malformed_line(m: m) }), verdicts.lines))
+  let counts = concat(
+    int_to_decimal_string(value: walk.members), " module(s), ",
+    int_to_decimal_string(value: walk.lexed), " spelling the marker, ",
+    int_to_decimal_string(value: walk.annotations), " annotation(s) in those, ",
+    int_to_decimal_string(value: length(xs: walk.sites)), " marked reference(s), ",
+    int_to_decimal_string(value: verdicts.resolved), " resolved"
+  )
+  if is_empty(xs: lines) {
+    PopulationReport { text: concat(reference_check_holds_head, " ", counts), held: true, detail: "" }
+  } else {
+    PopulationReport {
+      text: join(Cons { head: concat(reference_check_refused_head, " ", counts), tail: lines }, "\n"),
+      held: false,
+      detail: concat(int_to_decimal_string(value: length(xs: lines)), " marked reference(s) or population member(s) did not resolve or could not be judged")
+    }
+  }
+}
+
+fn check_references_prepared(env: AcquisitionEnv) -> PopulationReport {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
+    BoundModulesRefused { subject: subject, cause: cause } =>
+      PopulationReport { text: concat(subject, ": ", cause), held: false, detail: concat("could not enumerate the modules of ", subject) }
+    BoundModulesListed { modules: modules } =>
+      if is_empty(xs: modules) {
+        PopulationReport { text: "", held: false, detail: "the bound trees hold no module; a check over nothing is not a check of zero" }
+      } else {
+        let walk = reference_walk_go(env: env, pending: modules, walk: reference_walk_empty())
+        reference_report(walk: walk, verdicts: reference_verdicts(env: env, sites: walk.sites))
+      }
+  }
+}
+
+fn check_references(bindings: List<SourceRootBinding>) -> PopulationReport {
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no annotation was observed" }
+    AcquisitionEnvReady { env: env } => check_references_prepared(env: env)
+  }
+}
