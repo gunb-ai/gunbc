@@ -95,7 +95,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_release_stage_dir, witness_release_stage_member, witness_stage_release_binary,
   witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
   witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
-  witness_locus_install_refusal_cause, witness_sudo_elevation_available,
+  witness_sudo_elevation_available,
 }
 import extdeps.tools.stat { stat_mode_command }
 import extdeps.tools.gnu_coreutils {
@@ -536,7 +536,7 @@ fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
 // not a `wet_stage` side effect is that three different arms have to branch on it.
 type WetLocusState
   = WetLocusReady { revision: String, dir: String }
-  | WetLocusRefused { cause: String, capability: String }
+  | WetLocusRefused { cause: String, reason: String, capability: String }
 
 // PREPARE THE LOCUS THE DRAIN AND THE PROBE RUN FROM: stage the operator-named image where production's
 // install fold reads binaries, read the guest tree's own revision out of git, and hand both to the fold
@@ -551,15 +551,56 @@ type WetLocusState
 // and verdict with ':' and spaces, so the comparison missed; and it reported a real fault on a host
 // that happens to lack sudo as a capability gap, which is the inversion this whole change exists to
 // stop. Empty string means: this refusal WAS observed.
-fn witness_locus_install_refusal_capability(verdict: ApprovalBrokerTreeInstallVerdict) -> String {
+
+// THE REFUSAL'S REASON, AS AN IDENTITY, NOT AS PROSE. `cause` is written for a human in a trail line;
+// a CLAIM that needs to know which refusal it got must compare an id, because a claim that only reads
+// `wet_locus_reads_as_installed(...) == false` accepts ANY refusal -- including the one a host without
+// elevation answers when the real fault is the seal. That is the vacuity the fold-before-receipt mutant
+// (M8) must turn red, and it can only be seen by a claim that names the reason it expected.
+data witness_locus_reason_serve_binary_unset: NonEmptyStr = "serve-binary-unset"
+data witness_locus_reason_receipt_seal_mismatch: NonEmptyStr =
+  "locus-receipt-seal-does-not-attest-the-tree"
+data witness_locus_reason_release_stage_unwritable: NonEmptyStr = "release-stage-unwritable"
+data witness_locus_reason_fold_needs_elevation: NonEmptyStr = "locus-install-needs-elevation"
+data witness_locus_reason_fold_refused: NonEmptyStr = "locus-install-fold-refused"
+data witness_locus_reason_seal_unwritable: NonEmptyStr = "locus-receipt-seal-unwritable"
+data witness_locus_reason_paths_absent_after_fold: NonEmptyStr = "locus-paths-absent-after-fold"
+
+// WHY THE REASON TRAVELS ON THE REFUSAL. A fold refusal reaches the caller carrying the production
+// fold's step name glued to its reason, so re-deriving "was this a capability gap?" from the joined
+// text afterwards is comparison against a moving string -- tried twice, wrong both times: once it hid
+// a real fault inside a capability line, once it printed nothing at all. Only the site that knows, this
+// match over the verdict, decides, and it decides both fields at once.
+fn witness_locus_install_refusal(verdict: ApprovalBrokerTreeInstallVerdict) -> WetLocusRefused {
   match verdict {
-    TreeInstallRefused { step: _, reason: reason } =>
+    TreeInstallRefused { step: step, reason: reason } =>
       if reason == (witness_locus_needs_elevation_cause as String) {
-        "sudo-elevation-for-the-helper-locus-install"
+        WetLocusRefused {
+          cause: join(["the install fold refused at ", step, ": ", reason], ""),
+          reason: witness_locus_reason_fold_needs_elevation as String,
+          capability: "sudo-elevation-for-the-helper-locus-install",
+        }
       } else {
-        ""
+        WetLocusRefused {
+          cause: join(["the install fold refused at ", step, ": ", reason], ""),
+          reason: witness_locus_reason_fold_refused as String,
+          capability: "",
+        }
       },
-    _ => ""
+    _ => WetLocusRefused {
+      cause: "the install fold returned neither a verdict this witness can read nor a refusal",
+      reason: witness_locus_reason_fold_refused as String,
+      capability: "",
+    }
+  }
+}
+
+// WHAT THE GATE WOULD ANSWER, AS AN ID, so a refusal of the WRONG kind cannot be mistaken for the
+// refusal a claim is about. Empty means the locus reads as installed.
+fn wet_locus_refusal_reason(instance: HostDashboardInstance) -> String {
+  match wet_locus_prepare(instance: instance) {
+    WetLocusReady { revision: _, dir: _ } => "",
+    WetLocusRefused { cause: _, reason: reason, capability: _ } => reason,
   }
 }
 
@@ -568,6 +609,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
   if named == "" {
     WetLocusRefused {
       cause: "GUNBC_WET_SERVE_BINARY is unset, so there is no image to stage into a locus",
+      reason: witness_locus_reason_serve_binary_unset as String,
       capability: "served-image-named-by-the-batch",
     }
   } else {
@@ -612,20 +654,19 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
           ],
           "",
         ),
+        reason: witness_locus_reason_receipt_seal_mismatch as String,
         capability: "",
       }
     } else if !witness_stage_release_binary(instance: instance, image: named) {
       WetLocusRefused {
         cause: join(["the release stage could not be written at ", witness_release_stage_member(instance: instance)], ""),
+        reason: witness_locus_reason_release_stage_unwritable as String,
         capability: "",
       }
     } else {
       let verdict = witness_locus_install(instance: instance, revision_text: revision)
       if !witness_locus_install_converged(verdict: verdict) {
-        WetLocusRefused {
-          cause: witness_locus_install_refusal_cause(verdict: verdict),
-          capability: witness_locus_install_refusal_capability(verdict: verdict),
-        }
+        witness_locus_install_refusal(verdict: verdict)
       } else if !witness_seal_locus_receipt(instance: instance, revision_text: revision) {
         // THE SEAL IS WRITTEN HERE, after the fold and before the readback, because this is the only
         // caller of the fold: every leg that later REUSES this locus will trust the digest this line
@@ -640,6 +681,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
             ],
             "",
           ),
+          reason: witness_locus_reason_seal_unwritable as String,
           capability: "",
         }
       } else if !wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
@@ -654,6 +696,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
             ],
             "",
           ),
+          reason: witness_locus_reason_paths_absent_after_fold as String,
           capability: "",
         }
       } else {
@@ -1238,7 +1281,7 @@ fn wet_locus_gate_refusal_record(
   // refusal was OBSERVED -- an unsealed receipt, an obstructed seal, a fold step that faulted --
   // and those must never be printed as a capability gap: that hides a defect inside a line the
   // reader discounts. The refusal state carries the capability from the place that knows it
-  // (`witness_locus_install_refusal_capability`, and the named sites in `wet_locus_prepare`),
+  // (`witness_locus_install_refusal` for the fold, and the named sites in `wet_locus_prepare`),
   // not from a comparison of joined trail text and not from the host's sudo inventory.
   if capability != "" {
     let marked = wet_stage(
@@ -3606,10 +3649,12 @@ fn wet_fold_cost_probe(
            // which capability it needed, so the runner counts it apart from a real FAIL instead of adding it to
            // the PASS column. A refusal when elevation IS available stays a plain defect: the conjunct below is
            // false either way, and only the no-elevation case earns the not-observed line.
-           ok: wet_not_observed(
-             claim: claim as NonEmptyStr,
-             capability: "sudo-elevation-for-the-install-fold" as NonEmptyStr,
-           ) && reason == witness_locus_needs_elevation_cause as String && !witness_sudo_elevation_available(),
+           ok: reason == (witness_locus_needs_elevation_cause as String)
+             && !witness_sudo_elevation_available()
+             && wet_not_observed(
+               claim: claim as NonEmptyStr,
+               capability: "sudo-elevation-for-the-install-fold" as NonEmptyStr,
+             ),
          )
        })
   wet_claim_verdict_with_root_readback(verdict: verdict, root: root as NonEmptyStr)
@@ -4022,12 +4067,22 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
     && wet_write_unsealed_receipt(instance: inst, revision_text: revision, lines: 64)
     && wet_path_exists(path: witness_locus_receipt_path(instance: inst, revision_text: revision))
     && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
-    // THE SAME BYTES, SEALED: the reader is not stuck.
+    // AND THE GATE REFUSES IT BY NAME. Asking only for `== false` would accept ANY refusal: on a host
+    // without elevation the gate used to answer "this host has no sudo" for this very state, because it
+    // ran the install fold before it asked the receipt -- a green earned from a refusal that had nothing
+    // to do with the seal. The id below is the seal refusal's id, and restoring that order (mutant M8)
+    // turns this arm red on both kinds of host.
+    && wet_locus_refusal_reason(instance: inst)
+      == (witness_locus_reason_receipt_seal_mismatch as String)
+    // THE SAME BYTES, SEALED: the reader is not stuck, and the gate has no refusal to name.
     && witness_seal_locus_receipt(instance: inst, revision_text: revision)
     && wet_locus_reads_as_installed(instance: inst, revision_text: revision)
+    && wet_locus_refusal_reason(instance: inst) == ""
     // ONE PATH ALTERED, LINE COUNT UNCHANGED: blind to a count, blind to a shape.
     && wet_rewrite_receipt_line(instance: inst, revision_text: revision, replacement: "0000000000000000000000000000000000000000000000000000000000000000  dag/tampered.dag")
     && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
+    && wet_locus_refusal_reason(instance: inst)
+      == (witness_locus_reason_receipt_seal_mismatch as String)
     // RESTORED, THE VERDICT RETURNS.
     && witness_seal_locus_receipt(instance: inst, revision_text: revision)
     && wet_locus_reads_as_installed(instance: inst, revision_text: revision)
@@ -4035,10 +4090,13 @@ test fn an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed() -
     // accepted, every remaining line still well-formed -- the fold dying mid-write is exactly this.
     && wet_truncate_receipt(instance: inst, revision_text: revision)
     && wet_locus_reads_as_installed(instance: inst, revision_text: revision) == false
+    && wet_locus_refusal_reason(instance: inst)
+      == (witness_locus_reason_receipt_seal_mismatch as String)
     // RESTORED A SECOND TIME: three refusals and three acceptances, alternating, so neither a reader stuck
     // true nor one stuck false can print this claim green.
     && witness_seal_locus_receipt(instance: inst, revision_text: revision)
     && wet_locus_reads_as_installed(instance: inst, revision_text: revision)
+    && wet_locus_refusal_reason(instance: inst) == ""
 
   wet_claim_verdicts_with_root_readbacks(verdict: verdict, roots: [root as NonEmptyStr])
 }
