@@ -6,6 +6,7 @@ import gunbc.roadmap.roadmap_attempt_state_store {
   AttemptAuditEvents, AttemptDirectoryRoot, AttemptReviewEvents, AttemptSupervisorEvents, AttemptWorkerEvents,
   AttemptMeteringRecordFile, AttemptMeteringRosterSealed, AttemptMeteringLaunch,
   attempt_state_directory_text, attempt_state_text, attempt_state_member_name, attempt_log_member_text,
+  attempt_log_observe_at, attempt_log_seat_pointer_observe_at,
 }
 import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.durable_exclusive_hold_file_store {
@@ -49,6 +50,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemFileSubjectRefused, filesystem_file_observation, filesystem_listing_observation, filesystem_read_outcome,
   filesystem_write_outcome,
   FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused, filesystem_listing_entry_names,
+  FilesystemListingObservation,
   FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
 }
 // THE RECORD COMMIT IS THE LIBRARY'S COMPARE-AND-SET, not a local re-implementation of one (§6b: the
@@ -177,16 +179,19 @@ fn metered_role_decode(v: JsonValue) -> RowDecode<MeteredRole> {
 
 // The events path and the seat owner of a launch are the spawner's own derivations, read from the
 // same functions gunbc.roadmap.roadmap_dispatch_actuator mints them with -- never from a file the launch wrote.
-fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> String {
+// THE ROLE'S LOG MEMBER, named once: readers take the MEMBER and go through the owning store
+// (attempt_log_observe_at / attempt_log_seat_pointer_observe_at); the spawner keeps the path printer.
+fn metered_role_log_member(role: MeteredRole) -> AttemptLogMember {
   match role {
-    MeteredWorker => attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptWorkerEvents)
-    MeteredReviewer { criterion_key: c, head: h } =>
-      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptReviewEvents { criterion_key: c as String, head_sha: h as String })
-    MeteredAuditor { head: h } =>
-      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptAuditEvents { head_sha: h as String })
-    MeteredSupervisor { turn: t } =>
-      attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptSupervisorEvents { turn: t })
+    MeteredWorker => AttemptWorkerEvents
+    MeteredReviewer { criterion_key: c, head: h } => AttemptReviewEvents { criterion_key: c as String, head_sha: h as String }
+    MeteredAuditor { head: h } => AttemptAuditEvents { head_sha: h as String }
+    MeteredSupervisor { turn: t } => AttemptSupervisorEvents { turn: t }
   }
+}
+
+fn metered_role_events_path(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> String {
+  attempt_log_member_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: metered_role_log_member(role: role))
 }
 
 fn metered_role_seat_owner(node_id: String, attempt_key: String, role: MeteredRole) -> String {
@@ -1237,7 +1242,7 @@ fn attempt_metering_index_store(instance: HostDashboardInstance) -> AttemptMeter
 // directory refuses rather than reading as an empty one, and a refused read is never projected to empty
 // content.
 fn attempt_metering_read(store: AttemptMeteringStore, entry: NonEmptyStr) -> OptionalFileRead {
-  attempt_metering_read_at(path: join([store.directory as String, "/", entry as String], ""), dir: store.directory as String, name: entry as String)
+  attempt_metering_read_derived(dir: store.directory as String, name: entry)
 }
 
 // THE METERING RECORD IS COMPARE-AND-SET, NEVER A BLIND OVERWRITE (review 90868).
@@ -1355,26 +1360,30 @@ fn attempt_metering_commit(store: AttemptMeteringStore, expected: CasExpectation
 // A read of a file the attempt-state declaration itself names inside the attempt's tree — the worker and
 // reviewer event streams and the seat pointer beside them, which belong to OTHER stores. The path is
 // admitted only while it lies under this store's own directory; anything else refuses typed.
-fn attempt_metering_read_within(store: AttemptMeteringStore, path: String) -> OptionalFileRead {
-  let under = join([store.directory as String, "/"], "")
-  if !starts_with(s: path, prefix: under) {
-    OptionalFileRefused { cause: join(["the path ", path, " is outside the attempt metering directory"], "") }
-  } else {
-    let parts = split(s: path, delimiter: "/")
-    let name = fold(parts, init: "", f: (_a, x) => x)
-    attempt_metering_read_at(path: path, dir: join(take(parts, length(xs: parts) - 1), "/"), name: name)
-  }
-}
-
-fn attempt_metering_read_at(path: String, dir: String, name: String) -> OptionalFileRead {
+// THE ONE READ ALL STORE READS PASS THROUGH (review 91654 follow-up, item 1; DESIGN section 3 step 4).
+// It takes a DIRECTORY and a DECLARED ENTRY NAME and derives the path itself -- there is no longer a
+// function in this module that accepts a path, a directory and a name as three strings that can disagree
+// (the old attempt_metering_read_at took them, and attempt_metering_read_within split a caller-supplied path
+// into the pair, so `<dir>/../../x` walked its way out: the prefix guard passed, the split named the parent
+// `..`, and the listing of the PARENT then legitimately contained the target). A name that is not literally
+// an entry of the listed directory cannot produce content: FilesystemFileAbsent or the disagreement arms
+// refuse it, which is what the traversal claims pin.
+fn attempt_metering_read_derived(dir: String, name: NonEmptyStr) -> OptionalFileRead {
+  let path = join([dir, "/", name as String], "")
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
-  match filesystem_file_observation(
+  attempt_metering_optional_of_observation(filesystem_file_observation(
     listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
-    name: name,
+    name: name as String,
     path: path,
     read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
-  ) {
+  ))
+}
+
+// THE ONE PROJECTION file observations get inside this module: content, ESTABLISHED absence, or a refusal
+// naming the cause. Shared with the roster, which guards its entry reads against a single listing.
+fn attempt_metering_optional_of_observation(o: FilesystemFileObservation) -> OptionalFileRead {
+  match o {
     FilesystemFileAbsent(_) => OptionalFileAbsent
     FilesystemFileRead { path: _, content: c } => OptionalFileContent { content: c }
     FilesystemFileIndeterminate { cause: c } => OptionalFileRefused { cause: c }
@@ -1382,6 +1391,12 @@ fn attempt_metering_read_at(path: String, dir: String, name: String) -> Optional
     FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => OptionalFileRefused { cause: c }
   }
 }
+
+// RETAINED SHAPE of the deleted reader for the diff record -- deleted body, kept here in prose only:
+// read_within(store, path) guarded ONLY `starts_with(path, store.directory + "/")` and read_at took
+// (path, dir, name) freely; both are gone, and no caller may pass a path into a read again.
+
+
 
 fn attempt_metering_listing_of(store: AttemptMeteringStore) -> AttemptMeteringListing {
   attempt_metering_listing(root: store.directory as String, what: "the attempt metering directory")
@@ -1481,9 +1496,42 @@ fn attempt_metering_closing_acquire(store: AttemptMeteringStore, owner: NonEmpty
 }
 
 fn metering_attempt_closing_observe_at_key(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> DurableHoldObservation {
-  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    AttemptMeteringStoreUnready { detail } => HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: detail as NonEmptyStr } }
-    AttemptMeteringStoreReady { store } => attempt_metering_closing_observe(store: store)
+  // OBSERVE LISTS; IT NEVER ENSURES (review 91654 follow-up, item 4; DESIGN section 6). The old adapter ran
+  // the MINT, whose Mkdir.Parents CREATED the very directory the observation was supposed to report on --
+  // an observe that manufactures its own subject certifies nothing, and on a never-minted attempt it
+  // manufactured the directory AND then certified the hold absent inside it. Now the root is LISTED:
+  //   - a root whose own listing reports ENOENT holds nothing and cannot have held the marker: HoldSlotAbsent,
+  //     established the same single-authority way the closing census establishes absence (stern-ram-763);
+  //   - any other unreadable root is Unavailable, and every closing route refuses on Unavailable;
+  //   - a listed root is observed through the hold library, after the pre-seal plain-marker refusal.
+  let dir = attempt_state_directory_text(instance: instance, node_id: node_id, attempt_key: attempt_key, directory: AttemptDirectoryRoot)
+  let listing = Filesystem.List(path: dir)
+  match filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectoryListed(l) =>
+      match observe_file_hold(root: dir as NonEmptyStr, key: metering_closing_hold_key) {
+        // THE HOLD IS HELD -- report it, whatever else the listing shows. Refusing here would make the
+        // final gate's recheck see Unavailable precisely in the state the seal produces, and the closing
+        // could never finish (route-RED found by reading the route, not by a mutant).
+        HoldSlotHeld { generation: g, owner: o } => HoldSlotHeld { generation: g, owner: o }
+        // The hold is NOT held. A pre-seal PLAIN marker sitting in the directory then means two layouts at
+        // once, and the hold question cannot be answered -- the same refusal the mint raises, reached
+        // without creating anything.
+        other => if attempt_metering_closing_held(names: filesystem_listing_entry_names(listing: l)) {
+          HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: join(["a pre-seal plain closing marker sits in ", dir, " as a plain entry while the closing hold does not; the closing hold lives in ", attempt_state_text(instance: instance, node_id: node_id, attempt_key: attempt_key, member: AttemptMeteringRecordFile), " beside the record -- an operator removes that one file"], "") as NonEmptyStr } }
+        } else {
+          // Not held and no plain marker: the hold library's own answer stands -- Absent, Free, Undecodable
+          // or Unavailable -- with the directory listing as evidence of what it did contain.
+          other
+        }
+      }
+    FilesystemDirectoryListingRefused { directory: _, error: e } =>
+      if string_contains(s: e, pattern: "No such file or directory") {
+        HoldSlotAbsent
+      } else {
+        HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: join(["the attempt metering directory ", dir, " could not be listed: ", e], "") as NonEmptyStr } }
+      }
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+      HoldObservationUnavailable { cause: CasUnreadableReadRefused { detail: c as NonEmptyStr } }
   }
 }
 
@@ -1506,7 +1554,7 @@ fn attempt_metering_index_create_once(store: AttemptMeteringIndexStore, entry: N
 }
 
 fn attempt_metering_index_read(store: AttemptMeteringIndexStore, entry: NonEmptyStr) -> OptionalFileRead {
-  attempt_metering_read_at(path: join([store.root as String, "/", entry as String], ""), dir: store.root as String, name: entry as String)
+  attempt_metering_read_derived(dir: store.root as String, name: entry)
 }
 
 fn attempt_metering_index_listing(store: AttemptMeteringIndexStore) -> AttemptMeteringListing {
@@ -1547,12 +1595,38 @@ fn metering_attempt_record_name() -> NonEmptyStr {
   attempt_state_member_name(member: AttemptMeteringRecordFile) as NonEmptyStr
 }
 
+// ONE ENTRY READ, guarded by the roster's SHARED listing observation (review 91654 follow-up, item 4):
+// the listing ran ONCE for the whole roster; each entry's read is still compared against it, so an entry
+// that vanished between listing and read takes the disagreement/absence arms exactly as when every read
+// listed on its own.
+fn attempt_metering_roster_entry_read(dir: String, listing: FilesystemListingObservation, name: String) -> RosterEntryRead {
+  let path = join([dir, "/", name], "")
+  let read = Filesystem.Read(path: path)
+  RosterEntryRead { name: name, read: attempt_metering_optional_of_observation(filesystem_file_observation(
+    listing: listing,
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )) }
+}
+
 fn metering_open_roster_for_attempt(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> MeteringRoster {
-  match metering_attempt_listing_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key) {
-    MeteringListingRefused { cause: c } => RosterRefused { cause: c }
-    MeteringListed { names: names } => {
+  // MINT ONCE, LIST ONCE, THEN READ (review 91654 follow-up, item 4; DESIGN section 6, cost is always
+  // fixed): the old body mapped the key-taking adapter over every launch entry, and EACH adapter re-minted
+  // the store -- mkdir plus a full directory listing per entry, ~O(n^2) entry scans and n needless mkdirs
+  // for an n-entry roster. The store is minted once; its one listing names the entries and guards every
+  // entry read.
+  match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
+    AttemptMeteringStoreUnready { detail } => RosterRefused { cause: detail }
+    AttemptMeteringStoreReady { store } => {
+      let dir = store.directory as String
+      let listed = Filesystem.List(path: dir)
+      let listing = filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error)
+      match listing {
+        FilesystemDirectoryListed(l) => {
+          let names = filesystem_listing_entry_names(listing: l)
       let entry_names = filter(names, n => starts_with(s: n, prefix: attempt_metering_slots.launch_prefix as String))
-      let reads = map(entry_names, n => RosterEntryRead { name: n, read: metering_attempt_read_at_key(instance: instance, node_id: node_id, attempt_key: attempt_key, entry: n as NonEmptyStr) })
+      let reads = map(entry_names, n => attempt_metering_roster_entry_read(dir: dir, listing: listing, name: n))
       match fold(reads, init: none, f: (acc, r) =>
         match acc {
           Present { value: c } => Present { value: c }
@@ -1571,6 +1645,10 @@ fn metering_open_roster_for_attempt(instance: HostDashboardInstance, node_id: Ro
               OptionalFileAbsent => [] as List<RosterEntryText>
               OptionalFileRefused { cause: _ } => [] as List<RosterEntryText>
             }))
+        }
+        }
+        FilesystemDirectoryListingRefused { directory: _, error: e } => RosterRefused { cause: join(["the attempt metering directory ", dir, " could not be listed: ", e], "") }
+        FilesystemDirectorySubjectRefused { directory: _, cause: c } => RosterRefused { cause: c }
       }
     }
   }
@@ -1808,10 +1886,15 @@ fn metering_observe_for_attempt(instance: HostDashboardInstance, node_id: Roadma
 fn metering_launch_tokens(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> RoleTokens {
   match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     AttemptMeteringStoreUnready { detail } => TokensRefused { cause: detail }
-    AttemptMeteringStoreReady { store: mstore } => match attempt_metering_read_within(store: mstore, path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role)) {
-      OptionalFileAbsent => TokensStreamAbsent
-      OptionalFileRefused { cause: c } => TokensRefused { cause: c }
-      OptionalFileContent { content: body } => role_tokens_from_events(body: body)
+    AttemptMeteringStoreReady { store: _ } => match attempt_log_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: metered_role_log_member(role: role)) {
+      // THE EVENTS STREAM IS READ THROUGH ITS OWNING STORE, by declared member (review 91654 follow-up,
+      // item 1) -- the old route ran this module's path-taking reader over a SECOND derivation of the
+      // events path, which could disagree with the listing it was guarded against.
+      FilesystemFileAbsent(_) => TokensStreamAbsent
+      FilesystemFileRead { path: _, content: body } => role_tokens_from_events(body: body)
+      FilesystemFileIndeterminate { cause: c } => TokensRefused { cause: c }
+      FilesystemFileObservationsDisagree { path: _, cause: c } => TokensRefused { cause: c }
+      FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => TokensRefused { cause: c }
     }
   }
 }
@@ -1819,10 +1902,14 @@ fn metering_launch_tokens(instance: HostDashboardInstance, node_id: RoadmapNodeI
 fn metering_launch_seat(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String, role: MeteredRole) -> SeatHeld {
   match attempt_metering_store(instance: instance, node_id: node_id, attempt_key: attempt_key) {
     AttemptMeteringStoreUnready { detail } => SeatRefused { cause: detail }
-    AttemptMeteringStoreReady { store: mstore } => match attempt_metering_read_within(store: mstore, path: harness_seat_pointer_path(events_path: metered_role_events_path(instance: instance, node_id: node_id, attempt_key: attempt_key, role: role))) {
-    OptionalFileAbsent => SeatPointerAbsent
-    OptionalFileRefused { cause: c } => SeatRefused { cause: c }
-    OptionalFileContent { content: raw } =>
+    AttemptMeteringStoreReady { store: _ } => match attempt_log_seat_pointer_observe_at(instance: instance, node: node_id as String, attempt_key: attempt_key, member: metered_role_log_member(role: role)) {
+    // THE SEAT POINTER IS READ BESIDE ITS MEMBER, through the owning store, name and path both spelled by
+    // gunbc.harness.harness_seat_pointer (review 91654 follow-up, item 1).
+    FilesystemFileAbsent(_) => SeatPointerAbsent
+    FilesystemFileIndeterminate { cause: c } => SeatRefused { cause: c }
+    FilesystemFileObservationsDisagree { path: _, cause: c } => SeatRefused { cause: c }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause: c } => SeatRefused { cause: c }
+    FilesystemFileRead { path: _, content: raw } =>
       match harness_seat_pointer_decode(raw: raw) {
         HarnessSeatPointerUndecodable { cause: c } => SeatRefused { cause: c }
         HarnessSeatPointerDecoded { pointer: p } =>

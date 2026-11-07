@@ -12,6 +12,7 @@ import gunbc.roadmap.roadmap_attempt_state_layout_move {
 // THE CGROUP AUTHORITY. The gate asks the kernel whether anything is alive under the writer's cgroup, so it takes
 // the mount point, the file names and the decoder from the module that owns cgroup v2 rather than spelling any of
 // them here.
+import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import extdeps.linux.cgroup_v2 {
   CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
   decode_cgroup_procs, cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
@@ -130,33 +131,30 @@ type MeteringClosingWriterObservation {
   // What `systemctl show -p MainPID` answered, ALREADY PARSED by extdeps.systemd.parse_systemd_main_pid_show:
   // a positive pid, the established 0, or an unreadable answer. Only the middle one is "no main process".
   main_pid: SystemdMainPidReading,
-  control_group: String,
-  cgroup_events: CgroupEventsDecoding,
-  cgroup_read_established: Bool,
-  writer_process_count: Int,
+  // What the cgroup side SAID, as one sum: positive absence, a complete read, or an unread (review 91654
+  // follow-up, item 3; DESIGN section 5, construction over validation). The old record carried
+  // control_group:String + cgroup_events + cgroup_read_established:Bool + writer_process_count:Int, where a
+  // `show` that answered WITHOUT a ControlGroup key produced "" + a synthesized CgroupEventsDecoded
+  // {populated:false} that read as "cgroup gone" -- a failed read indistinguishable from positive absence.
+  // One sum now; no bool that can lie.
+  cgroup: MeteringClosingCgroup,
 }
 
-// THE READ USED FOR THE TWO CGROUP FILES. `cat`, the same argv the cgroup v2 interface declares for
-// `ReadEvents` (extdeps.linux.cgroup_v2 `ReadEvents { transport shell { argv: ["cat", "{events_path}"] } }`), so
-// this gate is not inventing a second way to open a kernel file.
-data metering_closing_file_read_program: NonEmptyStr = "/bin/cat" as NonEmptyStr
+// THE CGROUP SIDE OF AN OBSERVATION, as a sum of what was actually ESTABLISHED.
+//   CgroupGone   -- `show` ANSWERED and the ControlGroup property came back EMPTY: the unit has no cgroup.
+//                  Only a positive answer establishes this; a stopped-and-masked unit reads this way.
+//   CgroupRead   -- both kernel files answered: the events body and the pids are what they are.
+//   CgroupUnread -- anything else: `show` did not answer, the ControlGroup property was MISSING from an
+//                  otherwise good answer, or either kernel file failed. The gate refuses on this arm.
+type MeteringClosingCgroup
+  = CgroupGone
+  | CgroupRead { events: CgroupEventsDecoding, procs: List<Int> }
+  | CgroupUnread { cause: String }
 
-
-// THE PATH TO A UNIT'S OWN CGROUP FILES. systemd reports ControlGroup relative to the unified mount, so the
-// mount point comes from the module that owns cgroup v2 (`cgroup_v2_mount_point`) and the file names come from
-// it too (`cgroup_v2_events_path`, `cgroup_v2_procs_interface_file`) -- this gate holds no spelling of a kernel
-// file's name or location of its own.
-fn metering_closing_unit_cgroup_path(control_group: String) -> NonEmptyStr {
-  join([cgroup_v2_mount_point as String, trim(s: control_group)], "/") as NonEmptyStr
-}
-
-fn metering_closing_unit_events_path(control_group: String) -> NonEmptyStr {
-  cgroup_v2_events_path(cgroup_path: metering_closing_unit_cgroup_path(control_group: control_group))
-}
-
-fn metering_closing_unit_procs_path(control_group: String) -> NonEmptyStr {
-  cgroup_v2_child_path(parent: metering_closing_unit_cgroup_path(control_group: control_group), child: cgroup_v2_procs_interface_file)
-}
+// THE READ PROGRAM AND THE CGROUP PATHS MOVED (review 91654 follow-up) to
+// gunbc.roadmap.roadmap_dashboard_instance_apply, whose writer-observation builder is their only consumer;
+// they now live beside it, unchanged. This module keeps only the EVIDENCE SHAPE they fill: the
+// MeteringClosingCgroup sum above, matched into refusals -- never a path or a program spelled here.
 
 // WHETHER ONE OBSERVATION CERTIFIES AN ABSENT WRITER, fail-closed. Every way of NOT establishing it is its own
 // case with its own words, so a refusal names the question that went unanswered instead of collapsing into "not
@@ -246,23 +244,33 @@ fn metering_closing_unit_file_masked(state: SystemdUnitFileState) -> Bool {
 // expect: the cgroup. An unanswered read refuses; `populated` refuses; only a decoded, established
 // not-populated answer -- or the positive absence of a cgroup whose ControlGroup read SUCCEEDED -- is idle.
 fn metering_closing_cgroup_refusal(o: MeteringClosingWriterObservation) -> String? {
-  if o.writer_process_count > 0 {
-    Present { value: join([to_string(value: o.writer_process_count), " process(es) are attached to ", o.unit as String, "; a running writer needs no argument"]) }
-  } else if !o.cgroup_read_established {
-    Present { value: join(["the cgroup files of ", o.unit as String, " could not be read; an unanswered question is not evidence of absence (gunbc.runner.runner_slot_retirement CgroupOccupancy: an empty cgroup.procs is not positive absence, still less a read that failed)"]) }
-  } else if o.control_group == "" {
-    // systemd was ASKED and answered with no control group, and the read succeeded: the cgroup is gone,
-    // which is the positive absence the landed note describes. A failed read lands in the arm above.
-    none
-  } else {
-    match o.cgroup_events {
-      CgroupEventsUnparseable { cause: c } =>
-        Present { value: join(["cgroup.events of ", o.unit as String, " did not answer the populated question (", c, "); a file that will not decode is not a file that says nobody is home"]) }
-      CgroupEventsDecoded { populated: true } =>
-        Present { value: join(["the kernel reports the cgroup of ", o.unit as String, " populated: a writer, or one of its children, is alive under it", ""]) }
-      CgroupEventsDecoded { populated: false } =>
-        none
-    }
+  match o.cgroup {
+    // systemd was ASKED and answered with no control group: the cgroup is GONE, the positive absence the
+    // landed note describes. This is the only cgroup-side arm that certifies the writer.
+    CgroupGone =>
+      none
+    CgroupRead { events, procs } =>
+      if procs.filter(p => p > 0).length() > 0 {
+        // The pid list is the running-writer fact: a positive pid in cgroup.procs is a live process.
+        Present { value: join([to_string(value: procs.filter(p => p > 0).length()), " process(es) are attached to ", o.unit as String, "; a running writer needs no argument"]) }
+      } else {
+        match events {
+          CgroupEventsUnparseable { cause: c } =>
+            Present { value: join(["cgroup.events of ", o.unit as String, " did not answer the populated question (", c, "); a file that will not decode is not a file that says nobody is home"]) }
+          CgroupEventsDecoded { populated: true } =>
+            // The 15576 lesson: events=1 with procs empty is a LIVE unit; the kernel says activity.
+            Present { value: join(["the kernel reports the cgroup of ", o.unit as String, " populated: a writer, or one of its children, is alive under it", ""]) }
+          CgroupEventsDecoded { populated: false } =>
+            none
+        }
+      }
+    // UNKNOWN IS REFUSED: `show` silent, the ControlGroup property missing from an answer, or either kernel
+    // file unread means the running-writer question was NEVER OBSERVED -- and an unobserved writer stops the
+    // seal (gunbc.runner.runner_slot_retirement CgroupOccupancy: an unanswered question is not evidence of
+    // absence). The old record mapped the missing-key case to a populated:false read that PASSED: the
+    // fail-open this sum closes.
+    CgroupUnread { cause } =>
+      Present { value: join(["the cgroup files of ", o.unit as String, " could not be read (", cause, "); an unanswered question is not evidence of absence (gunbc.runner.runner_slot_retirement CgroupOccupancy: an empty cgroup.procs is not positive absence, still less a read that failed)"]) }
   }
 }
 
@@ -305,28 +313,19 @@ type MeteringClosingMarkerCensus
 // enough, a unit that is merely stopped can be started again, so it has to be masked as well. A declared unit
 // with no observation at all is NOT excluded -- the cutover does not get to assume silence means absence.
 fn metering_closing_unit_exclusion(unit: NonEmptyStr, observed: List<MeteringClosingWriterObservation>) -> LegacyWriterExclusion {
-  let states = observed.filter(o => o.unit == unit)
-  if length(xs: states) == 0 {
+  // ONE filter, one rule (review 91654 follow-up): the per-observation filter lives in
+  // metering_closing_writer_process_quiescence, which also refuses a live pid, an unpopulated-but-unread
+  // cgroup, a non-masked unit and an unestablished MainPID. Re-filtering here invited the two to drift.
+  // Only the ZERO case is guarded here, because exclusion names it in its own words: silence is not absence.
+  if observed.length() == 0 {
     LegacyWriterNotExcluded { reason: join(["the closing-marker writer unit ", unit as String, " has no observed state; an unobserved unit is not excluded"], "") }
   } else {
-    // THE UNIT STATES AND THE PROCESS OBSERVATION BOTH HAVE TO PASS (blocker 2(c)). Stopped+masked is not enough:
-    // a writer process that is alive right now can write the plain marker again before the build that takes the
-    // hold lands, and the census would then count a marker the cutover believed excluded.
     match metering_closing_writer_process_quiescence(unit: unit, observed: observed) {
       WriterNotQuiescent { unit: _, reason: why } => LegacyWriterNotExcluded { reason: why }
-      // THE TYPED CHECK SUBSUMES THE WORD CHECK. `legacy_writer_exclusion` in
-      // gunbc.roadmap.roadmap_attempt_state_layout_move decides exclusion from the STRINGS is-active and
-      // is-enabled printed, which is the shape review 90637 removed from this module: a word list can admit
-      // `deactivating`, and an empty read can be read as stopped. `metering_closing_writer_process_quiescence`
-      // above already required a parsed Inactive or Failed, a parsed UnitFileMasked, MainPID established at
-      // 0 and an established unpopulated cgroup -- every demand the legacy helper makes, and more -- so
-      // re-asking it here with words would only reopen the hole. It stays where it is used: the legacy
-      // dispatcher's own gate, for that unit family.
       WriterQuiescent { unit: _ } => LegacyWriterExcluded
     }
   }
 }
-
 // THE DISPOSITION, per host. Noop only where every declared writer unit is observed stopped AND masked and no
 // plain marker is on the host; ActivationRequired naming every declared unit that is not excluded, with the
 // step that excludes it (that is the disposition for a host where the old writer can still run); Refused where
@@ -434,5 +433,74 @@ fn metering_closing_cutover_disposition(
     LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
     LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
     LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: declared, observed: observed, census: census)
+  }
+}
+
+// THE CENSUS DECISION, factored so every cell -- including the one only the live race produces -- is
+// claim-reachable over SCRIPTED answers (review 91654 follow-up, item 2; DESIGN section 5: the check fails
+// CLOSED). The rule the cells encode:
+//   ABSENCE IS ESTABLISHED ONLY BY THE ROOT'S OWN STAT. `ls -1R` prints "No such file or directory" when the
+//   root is gone AND when a subdirectory vanishes mid-walk while the root stands -- so the recursive listing's
+//   stderr text can never establish absence. The root gets its own `ls -d`: ENOENT there is positive absence
+//   of the whole tree; any other stat failure is refused.
+//   ANY non-zero from the recursive listing over a root that EXISTS is CensusRefused, whatever its stderr.
+//   The old census text-matched the recursive listing's stderr, so the mid-walk race read ABSENT, the cutover
+//   answered Noop and the final gate passed over live markers: the fail-open this closes.
+fn dashboard_metering_closing_marker_census_decision(
+  root: String,
+  root_stat: DashboardExecResult,
+  listing: DashboardExecResult,
+) -> MeteringClosingMarkerCensus {
+  if !root_stat.success {
+    if string_contains(s: root_stat.stderr, pattern: "No such file or directory") {
+      // The root's OWN stat reports ENOENT: positive absence of the whole tree, systemd-independent
+      // (stern-ram-763 ruling). This is the only arm that establishes absence.
+      CensusAbsentEstablished
+    } else {
+      CensusRefused { cause: join(["the census refused: it could not even stat the root ", root, ": ", trim(s: root_stat.stderr)], "") }
+    }
+  } else if !listing.success {
+    CensusRefused { cause: join(["the recursive listing of ", root, " refused over a root that EXISTS: ", trim(s: listing.stderr)], "") }
+  } else {
+    CensusCounted {
+      count: length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String))) as Int,
+    }
+  }
+}
+
+// THE ONE PLACE THE CGROUP SIDE IS DECIDED, as a pure function of what the probes SAID (review 91654
+// follow-up, item 3; DESIGN section 5: construction over validation -- the missing-key case CANNOT be built
+// as a "gone" record any more, because "gone" is a constructor that only an empty positive answer reaches).
+// The claims script every cell through here; the builder above holds no cgroup branch of its own and its
+// output is compared with this function's on the scripted answers (pairing witnesses).
+fn dashboard_metering_closing_cgroup_answer(
+  show_success: Bool,
+  control_group_property: String?,
+  events: DashboardExecResult,
+  procs: DashboardExecResult,
+) -> MeteringClosingCgroup {
+  if !show_success {
+    CgroupUnread { cause: "systemctl show did not answer; the ControlGroup question was never put to a working systemd" }
+  } else {
+    match control_group_property {
+      // It answered, but NOT about ControlGroup: the property read itself failed. That is not "cgroup gone";
+      // the old record made exactly this case a populated:false read the gate PASSED. The gate refuses here.
+      Absent => CgroupUnread { cause: "systemctl show answered without a ControlGroup property" }
+      Present { value: raw } =>
+        if trim(s: raw) == "" {
+          // POSITIVE absence: systemd was asked and answered EMPTY. A stopped-and-masked unit reads this
+          // way; nothing else can build this constructor.
+          CgroupGone
+        } else if !events.success {
+          CgroupUnread { cause: join(["cgroup.events of ", trim(s: raw), " did not answer: ", trim(s: events.stderr)], "") }
+        } else if !procs.success {
+          CgroupUnread { cause: join(["cgroup.procs of ", trim(s: raw), " did not answer: ", trim(s: procs.stderr)], "") }
+        } else {
+          CgroupRead {
+            events: decode_cgroup_events_populated(body: events.stdout),
+            procs: decode_cgroup_procs(body: procs.stdout),
+          }
+        }
+    }
   }
 }

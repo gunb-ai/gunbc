@@ -4,7 +4,12 @@ import std.algebra { trim, is_empty, string_contains }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
 // The writer observation reads two cgroup files; their decoders belong to the module that owns cgroup v2.
-import extdeps.linux.cgroup_v2 { CgroupEventsDecoded, decode_cgroup_events_populated, decode_cgroup_procs }
+import extdeps.linux.cgroup_v2 {
+  CgroupEventsDecoded, decode_cgroup_events_populated, decode_cgroup_procs,
+  // THE CGROUP PATH SPELLINGS moved here from gunbc.roadmap.roadmap_metering_closing_cutover (review 91654
+  // follow-up): the observation builder below is their only consumer, and a helper lives with its consumer.
+  cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path, cgroup_v2_procs_interface_file,
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.gunbc
@@ -98,8 +103,8 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
   MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
   MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
   MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent, metering_closing_writer_process_quiescence,
-  metering_closing_unit_events_path, metering_closing_unit_procs_path,
-  metering_closing_file_read_program,
+  MeteringClosingCgroup, CgroupGone, CgroupRead, CgroupUnread,
+  dashboard_metering_closing_marker_census_decision, dashboard_metering_closing_cgroup_answer,
   metering_closing_cutover_disposition, metering_closing_legacy_marker_name,
   MeteringClosingFinalGate, MeteringClosingFinalGatePassed, MeteringClosingFinalGateRefused, metering_closing_final_gate_for,
 }
@@ -1464,6 +1469,31 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
 
 // WHAT THE HOST SAYS ABOUT ONE FENCED WRITER UNIT: the two questions the fence asks, through the instance's own
 // transport, in the shape the cutover module reads.
+// THE CGROUP READ PROGRAM AND PATHS, MOVED VERBATIM from gunbc.roadmap.roadmap_metering_closing_cutover
+// (review 91654 follow-up: their only consumer is the observation builder below; a helper lives with its
+// consumer). Original comments retained.
+// THE READ USED FOR THE TWO CGROUP FILES. `cat`, the same argv the cgroup v2 interface declares for
+// `ReadEvents` (extdeps.linux.cgroup_v2 `ReadEvents { transport shell { argv: ["cat", "{events_path}"] } }`), so
+// this gate is not inventing a second way to open a kernel file.
+data metering_closing_file_read_program: NonEmptyStr = "/bin/cat" as NonEmptyStr
+
+
+// THE PATH TO A UNIT'S OWN CGROUP FILES. systemd reports ControlGroup relative to the unified mount, so the
+// mount point comes from the module that owns cgroup v2 (`cgroup_v2_mount_point`) and the file names come from
+// it too (`cgroup_v2_events_path`, `cgroup_v2_procs_interface_file`) -- this gate holds no spelling of a kernel
+// file's name or location of its own.
+fn metering_closing_unit_cgroup_path(control_group: String) -> NonEmptyStr {
+  join([cgroup_v2_mount_point as String, trim(s: control_group)], "/") as NonEmptyStr
+}
+
+fn metering_closing_unit_events_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_events_path(cgroup_path: metering_closing_unit_cgroup_path(control_group: control_group))
+}
+
+fn metering_closing_unit_procs_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: metering_closing_unit_cgroup_path(control_group: control_group), child: cgroup_v2_procs_interface_file)
+}
+
 // THE WRITER OBSERVATION: what the host says about one closing-marker writer unit RIGHT NOW (blocker 2(c)).
 // Six reads, no instructions: `is-active`, `is-enabled`, `show -p MainPID --value`, `show -p ControlGroup
 // --value`, and the two files of that cgroup -- `cgroup.events` for the kernel's subtree answer and
@@ -1476,7 +1506,7 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
 // gunbc.roadmap.roadmap_belt_actuate's obligation enqueue). Asking the SYSTEM manager about that unit answers a
 // different question and returns "not loaded", which this module would otherwise read as a stopped, masked,
 // cgroup-less writer -- an exclusion certified about the wrong manager. A read that cannot reach the manager it
-// is asking leaves `cgroup_read_established` false and the gate refuses.
+// is asking leaves the cgroup side UNREAD and the gate refuses.
 // THE OBSERVATION, TAKEN AS THREE QUESTIONS TO TWO AUTHORITIES. systemd is asked what it thinks (is-active,
 // is-enabled, show MainPID/ControlGroup) and the kernel is asked what is alive (cgroup.events, cgroup.procs);
 // each answer is PARSED on the way into the record, by the module that owns that vocabulary, and an answer
@@ -1493,56 +1523,49 @@ fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance
     Present { value: v } => v
     Absent => ""
   }
-  let group = match systemctl_show_property_value(text: show.stdout, key: "ControlGroup") {
+  let capture = systemctl_show_property_value(text: show.stdout, key: "ControlGroup")
+  let group = match capture {
     Present { value: v } => trim(s: v)
     Absent => ""
   }
-  if group == "" {
-    // The record is still built, and it is built HONEST: whether the cgroup side was established follows
-    // whether `show` actually answered, so a failed read refuses downstream instead of being read as
-    // "no cgroup, therefore nothing running".
-    MeteringClosingWriterObservation {
-      unit: unit,
-      active_state: parse_systemd_unit_active_state(raw: trim(s: active.stdout)),
-      unit_file_state: parse_systemd_unit_file_state(raw: trim(s: enabled.stdout)),
-      main_pid: parse_systemd_main_pid_show(raw: main_pid_text),
-      control_group: group,
-      cgroup_events: CgroupEventsDecoded { populated: false },
-      cgroup_read_established: show.success,
-      writer_process_count: 0,
-    }
+  // The two kernel files are read only when systemd NAMED a cgroup. When it did not, the reads never ran
+  // and the answer below records the cgroup side as UNREAD (or GONE, when `show` positively answered with
+  // an empty ControlGroup) -- a read that never happened is not a read that said empty.
+  let events = if show.success && group != "" {
+    dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_events_path(control_group: group) as String])
   } else {
-    let events = dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_events_path(control_group: group) as String])
-    let procs = dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_procs_path(control_group: group) as String])
-    MeteringClosingWriterObservation {
-      unit: unit,
-      active_state: parse_systemd_unit_active_state(raw: trim(s: active.stdout)),
-      unit_file_state: parse_systemd_unit_file_state(raw: trim(s: enabled.stdout)),
-      main_pid: parse_systemd_main_pid_show(raw: main_pid_text),
-      control_group: group,
-      cgroup_events: decode_cgroup_events_populated(body: events.stdout),
-      // BOTH kernel files have to answer. A cgroup.procs that could not be read leaves the count at 0, and
-      // 0 from a failed read would otherwise read as "no writer" -- so the count is only usable when the
-      // read that produced it succeeded, and this flag is what says so.
-      cgroup_read_established: events.success && procs.success,
-      writer_process_count: if procs.success { length(xs: decode_cgroup_procs(body: procs.stdout)) as Int } else { 0 },
-    }
+    dashboard_exec_ok(stdout: "")
+  }
+  let procs = if show.success && group != "" {
+    dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_procs_path(control_group: group) as String])
+  } else {
+    dashboard_exec_ok(stdout: "")
+  }
+  MeteringClosingWriterObservation {
+    unit: unit,
+    active_state: parse_systemd_unit_active_state(raw: trim(s: active.stdout)),
+    unit_file_state: parse_systemd_unit_file_state(raw: trim(s: enabled.stdout)),
+    main_pid: parse_systemd_main_pid_show(raw: main_pid_text),
+    // THE ONE cgroup-side CONSTRUCTION. Pairing witness (DESIGN section 3): the claims compare this route's
+    // record with dashboard_metering_closing_cgroup_answer over the scripted answers standing for the same
+    // probes, so the real route cannot keep a mapping of its own.
+    cgroup: dashboard_metering_closing_cgroup_answer(
+      show_success: show.success,
+      control_group_property: capture,
+      events: events,
+      procs: procs
+    ),
   }
 }
 
+// THE LIVE CENSUS: two probes through the instance's transport, then the decision above -- nothing else.
+// Pairing witness (DESIGN section 3, a witness discriminates at one interface): the claims compare this
+// function's answer with dashboard_metering_closing_marker_census_decision over the scripted answers that
+// stand for what the probes said at the same fixture, and refuse every cell the decision refuses.
 fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, root: FilePath) -> MeteringClosingMarkerCensus {
+  let root_stat = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-d", root as String])
   let listing = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-1R", root as String])
-  if listing.success {
-    CensusCounted { count: length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String))) as Int }
-  } else if string_contains(s: listing.stderr, pattern: "No such file or directory") {
-    // The root is POSITIVELY absent: `ls -1R` on a missing directory reports ENOENT, so there is nothing there to
-    // count -- absence ESTABLISHED, not a probe that failed to look. The cutover may read this as zero markers.
-    CensusAbsentEstablished
-  } else {
-    // Anything else -- a failed stat, an unreadable subtree, a missing binary, an I/O error -- is UNKNOWN, not
-    // zero. This is the fail-open this closes: a census that could not look must REFUSE the seal, never proceed.
-    CensusRefused { cause: join(["`ls -1R ", root as String, "` refused: ", trim(s: listing.stderr)], "") }
-  }
+  dashboard_metering_closing_marker_census_decision(root: root as String, root_stat: root_stat, listing: listing)
 }
 
 // sha256 of a file read on the target ("" when it cannot be read): the first word of sha256sum's ASCII output.

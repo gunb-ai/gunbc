@@ -69,6 +69,12 @@ data fx_systemctl: NonEmptyStr = "/usr/bin/systemctl" as NonEmptyStr
 // gate while never touching the parse that decides it, and the two controls that matter -- the empty read and
 // `deactivating` -- are facts about WORDS, not about variants. A word outside systemd's set parses to nothing
 // and the gate must refuse it.
+fn fx_pids(n: Int) -> List<Int> {
+  // The cgroup.procs read as the manager answered it: one line per attached pid. The count the claim
+  // states must be the LENGTH the producer sees, not a number smuggled into a one-element list.
+  if n <= 0 { [] as List<Int> } else if n == 1 { [1] as List<Int> } else if n == 2 { [1, 2] as List<Int> } else if n == 3 { [1, 2, 3] as List<Int> } else { [1, 2, 3, 4] as List<Int> }
+}
+
 fn fx_obs(
   unit: NonEmptyStr,
   active_word: String,
@@ -84,10 +90,17 @@ fn fx_obs(
     active_state: parse_systemd_unit_active_state(raw: active_word),
     unit_file_state: parse_systemd_unit_file_state(raw: enabled_word),
     main_pid: parse_systemd_main_pid_show(raw: main_pid_word),
-    control_group: control_group,
-    cgroup_events: cgroup_events,
-    cgroup_read_established: cgroup_read_established,
-    writer_process_count: writer_process_count,
+    // THE SCRIPTED ANSWERS, translated through the same arms the real builder's sum exposes (review 91654
+    // follow-up, item 3): a scripted established=false is a kernel file that REFUSED (never a silent
+    // populated:false); a scripted empty control_group WITH establishment is the POSITIVE empty answer;
+    // a scripted count is a pid list. The claims below keep their old meanings under the new shape.
+    cgroup: if !cgroup_read_established {
+      CgroupUnread { cause: join(["scripted: the kernel file under ", control_group, " refused"], "") }
+    } else if control_group == "" {
+      CgroupGone
+    } else {
+      CgroupRead { events: cgroup_events, procs: fx_pids(n: writer_process_count) }
+    },
   }
 }
 
