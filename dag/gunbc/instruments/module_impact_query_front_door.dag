@@ -25,6 +25,7 @@ import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
   NameStatusDiffOk,
   NameStatusDiffFail,
+  NameStatusBaseRefUnresolvable,
   floor_observe_git_diff_name_status_for_ci,
 }
 import v2.lens.module_impact_query {
@@ -395,6 +396,9 @@ fn render_outcome(outcome: ChangedSurfaceImpactOutcome) -> String {
 fn front_door_changed_surface_outcome() -> ChangedSurfaceImpactOutcome {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffFail { reason } => ChangedSurfaceRefused { reason: reason }
+    // A base that names nothing in this clone is a REFUSAL to compute a surface, not an empty
+    // surface: the front door reports the observation's own located reason and computes nothing.
+    NameStatusBaseRefUnresolvable { reason: reason } => ChangedSurfaceRefused { reason: reason }
     NameStatusDiffOk { changed_paths, departed_paths } =>
       changed_surface_impact_outcome(
         changed_paths: changed_paths,

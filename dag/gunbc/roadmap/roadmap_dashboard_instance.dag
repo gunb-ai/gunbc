@@ -31,7 +31,7 @@ import std.algebra { trim }
 import extdeps.access.posix {
   FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text,
 }
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, gibibyte, gibibyte_to_byte_size }
 import std.materialization_store_grant {
   MaterializationStoreRoot, DurableHostVolume, PersistentInstanceWorkspace, FrameJobWorkspace,
   materialization_store_frame_root,
@@ -308,7 +308,18 @@ type HostDashboardInstance {
   source_seed: DashboardSourceSeed
   admitted_revision: DashboardAdmittedRevisionSource
   toolchain: DashboardToolchain
+  // THE WORKER SESSION'S MEMORY CAP, AND NOTHING ELSE: the dispatched worker unit's MemoryMax
+  // (roadmap_dispatch_actuator) and the per-seat reservation of the AgentSessionPool
+  // (host_capacity_session_seat_ceiling). It is NOT the compute build ceiling or the build pool's
+  // appropriation: those are compute_build_memory_ceiling below, so changing this figure cannot move a
+  // build grant. The srv1 lab sets it to a policy figure (srv1_lab_dispatch_worker_memory_max, 8 GiB).
   dispatch_worker_memory_max: ByteSize
+  // THE COMPUTE BUILD CEILING, A SEPARATE FACT: the per-grant ceiling (gunbc.compute.host_capacity
+  // compute_memory_ceiling) a class with no sampled grant reserves, and the per-seat figure of the
+  // ComputeBuildPool appropriation (compute_pool_slots x this). It carries the 22 GiB every instance's
+  // worker cap carried before the split, so builds and the build pool are unchanged. Not yet host-scoped:
+  // that redesign is the remote-build program's PR 4.
+  compute_build_memory_ceiling: ByteSize
   // THE BELT'S CONCURRENT-WORKER CEILING FOR THIS INSTANCE, AND THE ONE AUTHORITY FOR IT (§3). It was
   // once a single shared constant (gunbc.roadmap.roadmap_belt roadmap_belt_default_capacity.max_concurrent,
   // 3) read by EVERY instance; it is now a per-instance row field so one host's lab can widen without
@@ -758,6 +769,17 @@ type DashboardToolchain {
 // worker-specific ruling lowers it; it no longer tracks the slot.
 data dispatch_worker_memory_ceiling: ByteSize = byte_size(23622320128)
 
+// THE COMPUTE BUILD CEILING EVERY INSTANCE CARRIES, authored apart from the worker cap above. Same 22 GiB the
+// conflated field gave compute before the split; its own row so a worker-cap ruling cannot move it.
+data compute_build_memory_ceiling_default: ByteSize = byte_size(23622320128)
+
+// THE SRV1 LAB'S WORKER-SESSION CAP, a stated policy figure and not the CI runner slot: a worker's builds and
+// tests belong in the compute pool, not its own cgroup. Operator 2026-11-04 ("lets try it and fix it if it
+// breaks something"), anchored at gunbc.design_ruling worker_session_memory_is_a_per_instance_policy_figure.
+// Applies to the worker session ONLY. DISSOLVE-ON: a lab worker OOM-killed at this cap surfaces loudly
+// (SIGKILL -> AttemptUnitFinished exit_status "9", retained) and the operator re-raises it.
+data srv1_lab_dispatch_worker_memory_max: ByteSize = gibibyte_to_byte_size(gibibyte(count: 8))
+
 // THE BELT CONCURRENT-WORKER CEILING, AS A PER-INSTANCE FACT. This is the ONE source of the number a
 // belt holds at once: the instance row's HostDashboardInstance.belt_max_concurrent reads either this
 // default or the srv1-lab override below, and every former reader of the shared constant
@@ -1196,6 +1218,7 @@ fn macbook_local_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: macbook_local_admitted_revision_source,
     toolchain: macbook_local_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: macbook_local_directory_owner,
     worker: WorkerIsServiceUser,
@@ -1301,6 +1324,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1375,6 +1399,7 @@ fn isolated_dashboard_instance(
     worker: WorkerIsServiceUser,
     provision_parent_root: dashboard_home_provision_parent_root,
     belt_max_concurrent: belt_max_concurrent_default,
+    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
   )
 }
 
@@ -1402,6 +1427,7 @@ fn isolated_dashboard_instance_admitting(
   worker: WorkerIdentity,
   provision_parent_root: FilePath,
   belt_max_concurrent: Nat,
+  dispatch_worker_memory_max: ByteSize,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     deployment: deployment,
@@ -1439,7 +1465,8 @@ fn isolated_dashboard_instance_admitting(
     source_seed: source_seed,
     admitted_revision: admitted_revision,
     toolchain: srv1_linux_toolchain,
-    dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    dispatch_worker_memory_max: dispatch_worker_memory_max,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent,
     directory_owner: linux_service_directory_owner(),
     worker: worker,
@@ -1501,6 +1528,10 @@ fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
     // 2 x 22 GiB, so this belt admits 6 to LAUNCH while the resident transient-worker cgroup stays bounded by
     // the operator's slice figure -- widening the slice is a separate operator decision (see the ruling).
     belt_max_concurrent: srv1_lab_belt_max_concurrent,
+    // 8 GiB WORKER-SESSION policy (srv1_lab_dispatch_worker_memory_max; ruling worker_session_memory_is_a_per_instance_policy_figure).
+    // It governs ONLY the worker unit's MemoryMax and the session pool; the lab's compute build ceiling stays
+    // compute_build_memory_ceiling_default (a separate field), so builds and the build pool keep 22 GiB.
+    dispatch_worker_memory_max: srv1_lab_dispatch_worker_memory_max,
   )
 }
 
@@ -1634,6 +1665,7 @@ fn srv2_deploy_dashboard_instance() -> HostDashboardInstance {
     admitted_revision: srv2_deploy_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: linux_service_directory_owner(),
     worker: WorkerIsServiceUser,
@@ -1774,6 +1806,7 @@ fn fleet_compute_hermetic_dashboard_instance_at(workspace: FilePath, frame: Int,
     admitted_revision: fleet_admitted_revision_source,
     toolchain: toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: fleet_compute_hermetic_directory_owner,
     worker: WorkerIsServiceUser,
