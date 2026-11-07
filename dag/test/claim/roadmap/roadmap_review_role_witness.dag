@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_review_role {
   HeadVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
   ReviewVerdictDecode, ReviewVerdictDecoded, ReviewVerdictUndecodable,
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
-  CriterionReviewEvidence, review_reconcile, review_all_approved,
+  CriterionReviewEvidence, review_reconcile, review_all_approved, standing_blocks, criterion_standing,
   review_verdict_decode, review_verdict_key, review_verdict_detail, review_brief,
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
@@ -18,7 +18,7 @@ import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
 import std.markdown { MarkdownDocument }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
-import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
+import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited, WorkerProcessSignaled }
 
 fn approve_text(summary: String) -> String {
   join(["{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"", summary, "\"}"], "")
@@ -79,6 +79,22 @@ test fn the_reconciliation_orders_changes_over_blocks_over_running_over_pending_
     && review_all_approved(evidence: [a, present(key: "fail-closed", text: approve_text(summary: "ok"))])
     && !review_all_approved(evidence: [a, waiting])
     && !review_all_approved(evidence: [])
+}
+
+// RED WITNESS (srv1 2026-11-07, goal-audit reviewer OOM-killed): a stage whose process was killed
+// without a verdict must reach a TERMINAL segment (Failed -- which the continuation spends against its
+// turn cap), never Refused, which the continuation holds on forever. SIGKILL is signal 9.
+test fn a_killed_or_exited_stage_without_a_verdict_is_failed_not_refused() -> Bool {
+  let killed = CriterionReviewEvidence { criterion_key: "goal-audit", source: ReviewReceiptAbsent, process: WorkerProcessSignaled { signal: 9, last_command: "gunbc" } }
+  let exited = CriterionReviewEvidence { criterion_key: "goal-audit", source: ReviewReceiptAbsent, process: WorkerProcessExited { exit_code: 1, last_command: "gunbc" } }
+  let k = review_reconcile(evidence: [killed])
+  let e = review_reconcile(evidence: [exited])
+  let with_approved = review_reconcile(evidence: [present(key: "fail-closed", text: approve_text(summary: "ok")), killed])
+  (match k.state { WorkflowSegmentFailed => true  _ => false }) && string_contains(s: k.detail, pattern: "killed by")
+    && (match e.state { WorkflowSegmentFailed => true  _ => false })
+    && (match with_approved.state { WorkflowSegmentFailed => true  _ => false })
+    && !review_all_approved(evidence: [killed])
+    && !standing_blocks(s: criterion_standing(e: killed)) && !standing_blocks(s: criterion_standing(e: exited))
 }
 
 // Every design-grounded criterion names a proposition the modeled argument carries; the roster is
