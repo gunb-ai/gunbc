@@ -39,7 +39,10 @@ import v2.std.diagnostic {
   Rejected,
   Some,
   diagnostics_fatal_reason,
-  diagnostics_has_reason
+  diagnostics_has_reason,
+  DeclaredTypePosition,
+  PositionDeclaredReturn,
+  diagnostics_inhabitance_position
 }
 import std.algebra { list_snoc_item }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }
@@ -418,7 +421,12 @@ test fn infer_nested_body_bearing_arrow_formal_is_decided_and_refused_holds() ->
     )
   ) {
     Rejected { diagnostics: nds } =>
-      (diagnostics_fatal_reason(d: nds) == ^arrow_body_does_not_inhabit_declared_return)
+      // The decision, named by identity: the minted codomain is a concrete root and the supplied formal
+      // is another, so the fold's no-candidate path lets the comparison answer at the two roots. The
+      // position is the refusal's own typed field, asserted beside it rather than folded into its name.
+      (diagnostics_fatal_reason(d: nds) == ^inhabitance_structural_roots_differ)
+        && diagnostics_inhabitance_position(d: Some { diagnostics: nds })
+            == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
         && !diagnostics_has_reason(
           d: Some { diagnostics: nds },
           reason: ^inhabitance_undecidable_generic_formal
