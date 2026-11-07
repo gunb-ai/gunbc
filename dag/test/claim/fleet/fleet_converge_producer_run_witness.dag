@@ -1,0 +1,159 @@
+module test.claim.fleet.fleet_converge_producer_run_witness
+
+import std.types { Bool, Int, String, List, NonEmptyStr, CommitSha }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.workflow_runs { WorkflowRun, GitHubWorkflowRunId, github_workflow_run_id_wire_text, Completed, Success, Failure }
+import extdeps.units.iso8601_calendar { iso8601_utc_text }
+import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
+import gunbc.superseded_run_starvation_census { RunCollectionOutcome, CollectionComplete, PageLimitExceeded, RunListingRefused }
+import gunbc.fleet.fleet_converge_producer_run {
+  ProducerRunWindow, FleetConvergeProducerRunWalk, ProducerWalkSelected, ProducerWalkAbsent, ProducerWalkUnreadable,
+  fleet_converge_producer_run_walk, producer_run_walk_from, fleet_converge_producer_run_window_max_pages,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRODUCER-RUN WALK (gunbc.fleet.fleet_converge_producer_run fleet_converge_producer_run_walk) at its one
+// interface: a start instant, a mode and host, and a window read go in; a selected run, an established absence, or
+// a typed refusal comes out. The window read is a SUPPLIED value here: it answers each creation-time window from a
+// supplied history the way GitHub's filtered listing does -- the whole window when its total is within the bound,
+// and PageLimitExceeded (the census collector's answer to a total past its page bound) when it is not -- so the
+// walk is judged against the 1,000-result cap without a network read. That the live read is this walk over the
+// census's whole-window collector is the walk's own live entry (fleet_converge_producer_run_observed), which hands
+// the same fold collect_runs_in_window.
+
+data now: Int = 1762549200
+
+data window_seconds: Int = 86400
+
+data mode: String = "mtcollins1_boot"
+
+data host: String = "srv1"
+
+// A RUN IN THE SUPPLIED HISTORY, with the instant it was created as seconds (the instant the read filters on).
+type HistoryRun {
+  at: Int
+  run: WorkflowRun
+}
+
+fn run_at(id: Int, at: Int, title: String, success: Bool) -> HistoryRun {
+  HistoryRun {
+    at: at,
+    run: WorkflowRun {
+      id: id,
+      name: Absent,
+      display_title: Present { value: title },
+      path: Absent,
+      head_sha: "1111111111111111111111111111111111111111" as CommitSha,
+      head_branch: Present { value: "main" },
+      event: "workflow_dispatch",
+      status: Completed,
+      conclusion: Present { value: if success { Success } else { Failure } },
+      workflow_id: 334497012,
+      run_number: id,
+      run_attempt: 1,
+      actor: Absent,
+      triggering_actor: Absent,
+      html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+      created_at: iso8601_utc_text(unix: at),
+      updated_at: iso8601_utc_text(unix: at),
+      pull_requests: [],
+    },
+  }
+}
+
+fn producer_title() -> String {
+  fleet_converge_run_title(mode: mode, host: host, nonce: "n1")
+}
+
+// UNRELATED RUNS, one a minute back from `newest`, ids lo..hi-1: built by halves so the list costs n log n.
+fn unrelated(lo: Int, hi: Int, newest: Int) -> List<HistoryRun> {
+  if hi - lo <= 0 {
+    []
+  } else if hi - lo == 1 {
+    [run_at(id: lo, at: newest - (lo - 1000) * 60, title: "fleet-converge apply srv2 nonce=x", success: true)]
+  } else {
+    let mid = lo + (hi - lo) / 2
+    concat(unrelated(lo: lo, hi: mid, newest: newest), unrelated(lo: mid, hi: hi, newest: newest))
+  }
+}
+
+// THE SUPPLIED READ: the runs created in the window, or PageLimitExceeded when there are more than the bound's
+// pages hold -- the census collector's own answer, so a saturated window is never handed over as complete.
+fn read_of(history: List<HistoryRun>) -> fn(ProducerRunWindow) -> RunCollectionOutcome {
+  fn(w) {
+    let hits = filter(history, h => h.at >= w.from && h.at <= w.through)
+    if count(hits) > fleet_converge_producer_run_window_max_pages * 100 {
+      PageLimitExceeded { collected: [], reached_page: fleet_converge_producer_run_window_max_pages + 1, max_pages: fleet_converge_producer_run_window_max_pages }
+    } else {
+      CollectionComplete { runs: map(hits, h => h.run) }
+    }
+  }
+}
+
+fn walk(history: List<HistoryRun>) -> FleetConvergeProducerRunWalk {
+  fleet_converge_producer_run_walk(st: producer_run_walk_from(now: now, width: window_seconds, horizon_days: 30), mode: mode, host: host, read: read_of(history: history))
+}
+
+fn selected_id(r: FleetConvergeProducerRunWalk) -> String {
+  match r {
+    ProducerWalkSelected { run: id, attempt: _, window: _ } => github_workflow_run_id_wire_text(id: id)
+    ProducerWalkAbsent { cause: _ } => "absent"
+    ProducerWalkUnreadable { cause: _ } => "unreadable"
+  }
+}
+
+// POSITIVE: 1,100 unrelated runs in the newest day (past the 1,000-result cap a single listing returns) and the
+// qualifying producer among them. The newest day is saturated, so it is split, and the producer is read from a half
+// that is complete. RED control: read a saturated window as complete (or raise the bound past the cap) and the
+// supplied read answers PageLimitExceeded where the walk expected runs; drop the split and this is unreadable.
+test fn a_producer_inside_a_history_past_the_cap_is_selected_by_splitting_the_saturated_window() -> Bool {
+  let history = concat(unrelated(lo: 1000, hi: 2100, newest: now), [run_at(id: 42414019046, at: now - 30, title: producer_title(), success: true)])
+  count(history) > 1000 && selected_id(r: walk(history: history)) == "42414019046"
+}
+
+// POSITIVE: the producer sits in the second day, behind a newer day of 1,100 unrelated runs and a newer FAILED run
+// with the producer's title. The newest day holds no qualifying run, so the walk reads it to its end and moves on;
+// the failed run is not a producer.
+test fn the_newest_qualifying_run_is_found_in_an_older_window_after_a_saturated_newer_one() -> Bool {
+  let history = concat(
+    unrelated(lo: 1000, hi: 2100, newest: now),
+    [run_at(id: 7, at: now - 100, title: producer_title(), success: false), run_at(id: 8, at: now - window_seconds - 100, title: producer_title(), success: true)],
+  )
+  selected_id(r: walk(history: history)) == "8"
+}
+
+// RED: a window whose read refuses is an incomplete observation. The walk does not move past it to an older
+// producer, because a newer one may lie inside it: it refuses, naming the window.
+test fn an_unreadable_window_refuses_rather_than_reading_past_it() -> Bool {
+  let history = [run_at(id: 8, at: now - window_seconds - 100, title: producer_title(), success: true)]
+  let all_read = read_of(history: history)
+  let refusing_newest = fn(w) {
+    if w.through == now { RunListingRefused { cause: "HTTP 502" as NonEmptyStr } } else { all_read(w) }
+  }
+  match fleet_converge_producer_run_walk(st: producer_run_walk_from(now: now, width: window_seconds, horizon_days: 30), mode: mode, host: host, read: refusing_newest) {
+    ProducerWalkUnreadable { cause: c } => string_contains(s: c, pattern: "HTTP 502") && string_contains(s: c, pattern: iso8601_utc_text(unix: now))
+    _ => false
+  }
+}
+
+// RED: more runs in one second than the bound holds cannot be split, so it is unreadable, never complete.
+test fn a_saturated_single_second_refuses() -> Bool {
+  let always_saturated = fn(w) { PageLimitExceeded { collected: [], reached_page: 10, max_pages: 9 } }
+  match fleet_converge_producer_run_walk(st: producer_run_walk_from(now: now, width: window_seconds, horizon_days: 30), mode: mode, host: host, read: always_saturated) {
+    ProducerWalkUnreadable { cause: c } => string_contains(s: c, pattern: "single second")
+    _ => false
+  }
+}
+
+// ABSENCE IS ESTABLISHED ONLY OVER THE HORIZON, every window read: a qualifying run older than the horizon is not a
+// producer (its artifact has expired), and the walk says absent naming the horizon.
+test fn a_producer_past_the_horizon_is_absent_after_every_window_is_read() -> Bool {
+  let history = [run_at(id: 9, at: now - 31 * window_seconds, title: producer_title(), success: true)]
+  match walk(history: history) {
+    ProducerWalkAbsent { cause: c } => string_contains(s: c, pattern: "30 days")
+    _ => false
+  }
+}

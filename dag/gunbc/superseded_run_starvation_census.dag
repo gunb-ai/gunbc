@@ -1,6 +1,6 @@
 module gunbc.superseded_run_starvation_census
 
-import std.types { Bool, Int, String, Timestamp, NonEmptyStr }
+import std.types { Bool, Int, String, Timestamp, NonEmptyStr, Secret }
 import std.measure { Second, second, seconds_per_day }
 import std.algebra { Cons, Empty, list_reverse, trim }
 import extdeps.github.github { default_per_page, max_per_page }
@@ -214,7 +214,7 @@ fn census_read_refusal_cause(operation: String, refusal: RestRefusal) -> NonEmpt
 }
 
 fn collect_runs_in_window(
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   workflow_name: String,
@@ -250,7 +250,7 @@ fn collect_runs_in_window(
 
 fn collect_runs_after_first_page(
   first: WorkflowRunList,
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   workflow_name: String,
@@ -307,7 +307,7 @@ fn collect_runs_after_first_page(
 fn pump_run_pages(
   state: PageFoldState<WorkflowRun>,
   first_page_runs: List<WorkflowRun>,
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   workflow_name: String,
@@ -550,7 +550,7 @@ fn live_head_list_jobs_run_id(pair: SupersededRunPair) -> String {
 }
 
 fn refresh_pair(
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   pair: SupersededRunPair,
@@ -872,7 +872,7 @@ fn collect_cancellation_rows_into(pairs: List<SupersededRunPair>, refreshed: Lis
 }
 
 fn superseded_run_starvation_census(
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   workflow_name: String,
@@ -957,7 +957,7 @@ fn extract_pairs_from_groups(groups: List<PrGroup>, from: Timestamp, through: Ti
 }
 
 fn refresh_pairs(
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   pairs: List<SupersededRunPair>,
@@ -968,7 +968,7 @@ fn refresh_pairs(
 // TAIL POSITION: refreshed pairs and truncations ride reversed accumulators, reversed once at the end;
 // a refused read stops the walk with its cause, exactly as the nested match did.
 fn refresh_pairs_into(
-  auth_token: String,
+  auth_token: Secret,
   owner: String,
   repo: String,
   pairs: List<SupersededRunPair>,

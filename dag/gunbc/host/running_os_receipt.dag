@@ -1,8 +1,9 @@
 module gunbc.host.running_os_receipt
 
-import std.types { String, Int, List, NonEmptyStr }
+import std.types { String, Int, Bool, List, NonEmptyStr }
 import std.algebra { trim }
-import std.list { first_where }
+import std.integer { int_to_decimal_string }
+import std.list { sole_where, SoleMatchNone, SoleMatchRepeated, SoleMatchOne }
 import std.optional { Present, Absent }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
@@ -41,13 +42,18 @@ fn running_os_receipt_producer_text(p: RunningOsReceiptProducer) -> String {
   join(["run ", p.run_id as String, " attempt ", p.run_attempt as String], "")
 }
 
-// WHERE A HOST'S RUNNING-OS RECEIPT IS PUBLISHED: the fleet-converge mode of the boot run that writes it, the
-// artifact that run uploads it under, and the file's name inside that artifact. One row per boot route, declared by
+// WHERE A HOST'S RUNNING-OS RECEIPT IS PUBLISHED: the fleet-converge mode of the boot run that writes it, the host
+// that run is DISPATCHED with, the artifact that run uploads it under, and the file's name inside that artifact.
+// The SUBJECT host (the host the receipt is about, the key a consumer looks the source up by) and the producer's
+// DISPATCH host (the `host` input the boot run was dispatched with, which its run title carries and the producer-run
+// selection matches) are two facts: a boot route whose executor is not its subject (mtcollins1 is booted from srv1)
+// titles every producer run with the executor, so selecting by the subject finds none. One row per boot route, declared by
 // the route that writes the receipt (for mtcollins1, gunbc.machine_intake.mtcollins1_boot_run
 // mtcollins1_running_os_receipt_source), so the writer and the reader (gunbc.host.running_os_receipt_observed)
 // read one spelling.
 type RunningOsReceiptSource {
   host: HostIdentity
+  producer_dispatch_host: HostIdentity
   mode: String
   artifact: String
   file_name: String
@@ -93,8 +99,16 @@ fn running_os_receipt_text(producer: RunningOsReceiptProducer, reading: RunningO
 }
 
 type RunningOsReceiptRefusal
-  // the bytes are not this document: no content digest line, a missing field, or a field that does not decode.
+  // the bytes are not this document: no content digest line, a wrong header, or a field that does not decode.
   = RunningOsReceiptMalformed { cause: String }
+  // a named field has no line. The document lost a fact its writer always states.
+  | RunningOsReceiptFieldAbsent { prefix: String }
+  // a named field has more than one line. The writer states each fact once, so a document carrying two cannot
+  // say which is meant; reading the first would admit 'host=a' over a later 'host=b' whatever the digest says.
+  | RunningOsReceiptFieldRepeated { prefix: String, occurrences: Int }
+  // a line that is none of the fields the writer states. The writer's lines are the whole document, so a line it
+  // never writes is not part of this receipt, and admitting it would let the document carry a fact no reader checks.
+  | RunningOsReceiptLineUnexpected { line: String }
   // the stated digest is not the digest of the content: the document is not what its producer wrote.
   | RunningOsReceiptDigestMismatch { stated: String, computed: String }
   // the document names another run than the one it was downloaded from.
@@ -107,6 +121,9 @@ type RunningOsReceiptReading
 fn running_os_receipt_refusal_text(refusal: RunningOsReceiptRefusal) -> String {
   match refusal {
     RunningOsReceiptMalformed { cause: c } => concat("the running-OS receipt is malformed: ", c)
+    RunningOsReceiptFieldAbsent { prefix: p } => join(["the running-OS receipt has no ", p, " line"], "")
+    RunningOsReceiptLineUnexpected { line: l } => join(["the running-OS receipt carries a line its writer never states: ", l], "")
+    RunningOsReceiptFieldRepeated { prefix: p, occurrences: n } => join(["the running-OS receipt has ", int_to_decimal_string(value: n), " ", p, " lines; each field is stated exactly once"], "")
     RunningOsReceiptDigestMismatch { stated: s, computed: c } => join(["the running-OS receipt states content_sha256 ", s, " but its content digests to ", c], "")
     RunningOsReceiptOfAnotherRun { stated: s, fetched_from: f } => join(["the running-OS receipt names ", s, " but was downloaded from ", running_os_receipt_producer_text(p: f)], "")
   }
@@ -116,10 +133,17 @@ fn running_os_receipt_malformed(cause: String) -> RunningOsReceiptReading {
   RunningOsReceiptRefused { refusal: RunningOsReceiptMalformed { cause: cause } }
 }
 
-fn running_os_receipt_field(lines: List<String>, prefix: String) -> String? {
-  match first_where(xs: lines, keep: l => starts_with(s: l, prefix: prefix)) {
-    Present { value: l } => Present { value: trim(s: substring(s: l, start: string_length(s: prefix), end: string_length(s: l))) }
-    Absent => none
+// A NAMED FIELD IS READ ONLY WHEN IT OCCURS EXACTLY ONCE: an absent line and a repeated line are each a typed
+// refusal, never a first-match pick (std.list sole_where).
+type RunningOsReceiptField
+  = RunningOsReceiptFieldRead { value: String }
+  | RunningOsReceiptFieldRefused { refusal: RunningOsReceiptRefusal }
+
+fn running_os_receipt_field(lines: List<String>, prefix: String) -> RunningOsReceiptField {
+  match sole_where(xs: lines, keep: l => starts_with(s: l, prefix: prefix)) {
+    SoleMatchOne { value: l } => RunningOsReceiptFieldRead { value: trim(s: substring(s: l, start: string_length(s: prefix), end: string_length(s: l))) }
+    SoleMatchNone => RunningOsReceiptFieldRefused { refusal: RunningOsReceiptFieldAbsent { prefix: prefix } }
+    SoleMatchRepeated { occurrences: n } => RunningOsReceiptFieldRefused { refusal: RunningOsReceiptFieldRepeated { prefix: prefix, occurrences: n } }
   }
 }
 
@@ -148,8 +172,43 @@ fn running_os_receipt_reading(text: String, fetched_from: RunningOsReceiptProduc
   }
 }
 
+// THE FIELDS THE WRITER STATES, one row each, after the header line (running_os_receipt_body). The full shape is
+// the header, then each of these exactly once, then nothing else: a field read is by prefix (running_os_receipt_field
+// refuses an absent or repeated one) and every other line refuses here.
+data running_os_receipt_field_prefixes: List<String> = [
+  running_os_receipt_run_prefix,
+  running_os_receipt_attempt_prefix,
+  running_os_receipt_host_prefix,
+  running_os_receipt_delivered_artifact_prefix,
+  running_os_receipt_boot_prefix,
+]
+
+fn running_os_receipt_line_is_field(line: String) -> Bool {
+  count(filter(running_os_receipt_field_prefixes, p => starts_with(s: line, prefix: p))) > 0
+}
+
+// The body the writer produces ends in one newline, so splitting it yields one trailing empty element and no
+// other: every element after the header and before that one must be a field line.
+fn running_os_receipt_unexpected_line(lines: List<String>) -> String? {
+  let n = count(lines)
+  let inner = lines.skip(n: 1).take(n: if n >= 2 { n - 2 } else { 0 })
+  let trailing_ok = match lines.last() { Present { value: l } => l == ""  Absent => false }
+  if trailing_ok == false {
+    Present { value: "(the body does not end in one newline)" }
+  } else {
+    filter(inner, l => running_os_receipt_line_is_field(line: l) == false).first()
+  }
+}
+
 fn running_os_receipt_body_reading(body: String, fetched_from: RunningOsReceiptProducer) -> RunningOsReceiptReading {
   let lines = body.split(delimiter: "\n")
+  match running_os_receipt_unexpected_line(lines: lines) {
+    Present { value: l } => RunningOsReceiptRefused { refusal: RunningOsReceiptLineUnexpected { line: l } }
+    Absent => running_os_receipt_shaped_body_reading(lines: lines, fetched_from: fetched_from)
+  }
+}
+
+fn running_os_receipt_shaped_body_reading(lines: List<String>, fetched_from: RunningOsReceiptProducer) -> RunningOsReceiptReading {
   match lines.first() {
     Absent => running_os_receipt_malformed(cause: "empty body")
     Present { value: head } =>
@@ -157,10 +216,10 @@ fn running_os_receipt_body_reading(body: String, fetched_from: RunningOsReceiptP
         running_os_receipt_malformed(cause: concat("the first line is not ", running_os_receipt_header))
       } else {
         match running_os_receipt_field(lines: lines, prefix: running_os_receipt_run_prefix) {
-          Absent => running_os_receipt_malformed(cause: concat("no ", running_os_receipt_run_prefix))
-          Present { value: run } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_attempt_prefix) {
-            Absent => running_os_receipt_malformed(cause: concat("no ", running_os_receipt_attempt_prefix))
-            Present { value: attempt } =>
+          RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+          RunningOsReceiptFieldRead { value: run } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_attempt_prefix) {
+            RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+            RunningOsReceiptFieldRead { value: attempt } =>
               if run != (fetched_from.run_id as String) || attempt != (fetched_from.run_attempt as String) {
                 RunningOsReceiptRefused { refusal: RunningOsReceiptOfAnotherRun { stated: join(["run ", run, " attempt ", attempt], ""), fetched_from: fetched_from } }
               } else {
@@ -174,12 +233,12 @@ fn running_os_receipt_body_reading(body: String, fetched_from: RunningOsReceiptP
 
 fn running_os_receipt_facts(lines: List<String>) -> RunningOsReceiptReading {
   match running_os_receipt_field(lines: lines, prefix: running_os_receipt_host_prefix) {
-    Absent => running_os_receipt_malformed(cause: concat("no ", running_os_receipt_host_prefix))
-    Present { value: host } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_delivered_artifact_prefix) {
-      Absent => running_os_receipt_malformed(cause: concat("no ", running_os_receipt_delivered_artifact_prefix))
-      Present { value: digest } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_boot_prefix) {
-        Absent => running_os_receipt_malformed(cause: concat("no ", running_os_receipt_boot_prefix))
-        Present { value: boot_text } => match host_boot_id_of_kernel_text(text: boot_text) {
+    RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+    RunningOsReceiptFieldRead { value: host } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_delivered_artifact_prefix) {
+      RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+      RunningOsReceiptFieldRead { value: digest } => match running_os_receipt_field(lines: lines, prefix: running_os_receipt_boot_prefix) {
+        RunningOsReceiptFieldRefused { refusal: r } => RunningOsReceiptRefused { refusal: r }
+        RunningOsReceiptFieldRead { value: boot_text } => match host_boot_id_of_kernel_text(text: boot_text) {
           Absent => running_os_receipt_malformed(cause: concat("the observed boot id is not a uuid: ", boot_text))
           Present { value: boot } =>
             if host == "" || digest == "" {

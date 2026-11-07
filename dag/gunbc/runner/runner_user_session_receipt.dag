@@ -2,7 +2,7 @@ module gunbc.runner.runner_user_session_receipt
 
 import std.types { String, Bool, Int, List, Timestamp }
 import std.algebra { trim }
-import std.list { first_where }
+import std.list { sole_where, SoleMatchNone, SoleMatchRepeated, SoleMatchOne }
 import std.measure { Second, second, second_count }
 import std.optional { Optional, Present, Absent }
 import product.host_identity { HostIdentity }
@@ -241,6 +241,17 @@ fn runner_user_session_converge_receipt_document_text(receipt: RunnerUserSession
   )
 }
 
+// A FIELD OF THE DOCUMENT IS READ ONLY WHEN EXACTLY ONE ELEMENT CARRIES ITS PREFIX (std.list sole_where). A
+// repeated field cannot say which is meant, so it does not parse, the same as a missing one: reading the first
+// would let an earlier 'linger=yes' shadow a later 'linger=no'.
+fn receipt_sole(xs: List<String>, prefix: String) -> Optional<String> {
+  match sole_where(xs: xs, keep: l => starts_with(s: l, prefix: prefix)) {
+    SoleMatchOne { value: l } => Present { value: l }
+    SoleMatchNone => Absent
+    SoleMatchRepeated { occurrences: _ } => Absent
+  }
+}
+
 fn receipt_after(line: String, prefix: String) -> String {
   if starts_with(s: line, prefix: prefix) {
     substring(s: line, start: string_length(s: prefix), end: string_length(s: line))
@@ -251,15 +262,16 @@ fn receipt_after(line: String, prefix: String) -> String {
 
 // THE PARSER: bytes-in, typed-receipt-or-nothing. Absent is the only refusal -- it means "this text is
 // not a converge receipt document", and the caller must treat that as no evidence, never as evidence of
-// absence or of presence. Every one of the three readings must be PRESENT in the document (a document
-// that lost its linger line does not parse to "no linger"; it does not parse), and the host is taken from
+// absence or of presence. Every one of the three readings must be PRESENT in the document EXACTLY ONCE (a
+// document that lost its linger line does not parse to "no linger", and one stating it twice does not parse
+// to the first; neither parses), and the host is taken from
 // the document itself, never from the caller's wish.
 fn parse_runner_user_session_converge_receipt(text: String) -> Optional<RunnerUserSessionConvergeReceipt> {
   let lines = split(s: text, delimiter: "\n")
-  let header = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_header_prefix))
-  let enable_line = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_enable_linger_prefix))
-  let linger_line = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_linger_prefix))
-  let bus_line = first_where(xs: lines, keep: l => starts_with(s: l, prefix: runner_user_session_receipt_bus_prefix))
+  let header = receipt_sole(xs: lines, prefix: runner_user_session_receipt_header_prefix)
+  let enable_line = receipt_sole(xs: lines, prefix: runner_user_session_receipt_enable_linger_prefix)
+  let linger_line = receipt_sole(xs: lines, prefix: runner_user_session_receipt_linger_prefix)
+  let bus_line = receipt_sole(xs: lines, prefix: runner_user_session_receipt_bus_prefix)
   match header {
     Absent => Absent
     Present { value: h } =>
@@ -289,7 +301,7 @@ fn parse_runner_user_session_converge_receipt(text: String) -> Optional<RunnerUs
                       // not a receipt document at all -- an undated document cannot be aged, and the age is
                       // what makes it evidence of a live manager rather than of a past one. WHETHER the
                       // instant is canonical is the grant's question (staleness below), not the parser's.
-                      match first_where(xs: words, keep: x => starts_with(s: x, prefix: runner_user_session_receipt_probed_at_prefix)) {
+                      match receipt_sole(xs: words, prefix: runner_user_session_receipt_probed_at_prefix) {
                         Absent => Absent
                         Present { value: t } =>
                           if string_length(s: trim(s: w)) == 0 {

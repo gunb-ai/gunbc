@@ -3,6 +3,7 @@ module gunbc.machine_intake.mtcollins1_boot_receipts
 import std.types { String }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.running_os_receipt { RunningOsReceiptSource }
+import gunbc.machine_intake.mtcollins1_boot_admission { mtcollins1_boot_dispatch_host }
 
 // WHERE THE mtcollins1 BOOT RUN PUBLISHES WHAT LATER JOBS READ, apart from the boot run itself
 // (gunbc.machine_intake.mtcollins1_boot_run) so that a reader -- the runner initialization, which reads the
@@ -24,6 +25,7 @@ data mtcollins1_boot_running_os_receipt_path: String = concat("artifacts/", mtco
 
 data mtcollins1_running_os_receipt_source: RunningOsReceiptSource = RunningOsReceiptSource {
   host: operator_host_mtcollins1,
+  producer_dispatch_host: mtcollins1_boot_dispatch_host,
   mode: mtcollins1_boot_mode_wire,
   artifact: mtcollins1_boot_receipts_artifact_name,
   file_name: mtcollins1_boot_running_os_receipt_file_name,

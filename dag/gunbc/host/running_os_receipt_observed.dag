@@ -1,6 +1,6 @@
 module gunbc.host.running_os_receipt_observed
 
-import std.types { String, Secret, Timestamp }
+import std.types { String, Secret, Timestamp, List }
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.tools.gh { gh_run_download_command }
@@ -10,7 +10,8 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import gunbc.repository { gunbc_repository }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.command_runner { run_shell_command_capture }
-import gunbc.fleet.fleet_converge_producer_run { ProducerRunObserved, ProducerRunAbsent, ProducerRunUnreadable, fleet_converge_producer_run_observed }
+import extdeps.github.workflow_runs { WorkflowRun }
+import gunbc.fleet.fleet_converge_producer_run { ProducerRunObserved, ProducerRunAbsent, ProducerRunUnreadable, fleet_converge_producer_run_observed, FleetConvergeProducerRunSelection, fleet_converge_producer_run_select }
 import gunbc.host.running_os { RunningOsReading, RunningOsUnobserved }
 import gunbc.host.running_os_receipt {
   RunningOsReceiptProducer, RunningOsReceiptSource, running_os_receipt_producer_of_run, RunningOsReceiptAdmitted, RunningOsReceiptRefused, running_os_receipt_reading, running_os_receipt_refusal_text,
@@ -28,8 +29,19 @@ fn running_os_receipt_unobserved(step: String, cause: String) -> RunningOsReadin
 // document naming another run or not digesting to its stated digest refuses (gunbc.host.running_os_receipt). No
 // value is accepted from a dispatch input or a working-tree path. Every failure is RunningOsUnobserved with the
 // step located, so the host is not initialized.
+// THE PRODUCER IS SELECTED BY ITS DISPATCH HOST, never by the subject: the run title carries the `host` input the
+// boot run was dispatched with (gunbc.host.running_os_receipt RunningOsReceiptSource). The pure selection over a
+// listing is the same rule the live walk applies to each window, so a witness drives it with a supplied run.
+fn running_os_receipt_producer_title_host(source: RunningOsReceiptSource) -> String {
+  source.producer_dispatch_host as String
+}
+
+fn running_os_receipt_producer_select(source: RunningOsReceiptSource, runs: List<WorkflowRun>) -> FleetConvergeProducerRunSelection {
+  fleet_converge_producer_run_select(runs: runs, mode: source.mode, host: running_os_receipt_producer_title_host(source: source))
+}
+
 fn running_os_receipt_observed(source: RunningOsReceiptSource, token: Secret) -> RunningOsReading {
-  match fleet_converge_producer_run_observed(mode: source.mode, host: source.host as String, token: token) {
+  match fleet_converge_producer_run_observed(mode: source.mode, host: running_os_receipt_producer_title_host(source: source), token: token) {
     ProducerRunAbsent { cause: c } => running_os_receipt_unobserved(step: "producer run", cause: c)
     ProducerRunUnreadable { cause: c } => running_os_receipt_unobserved(step: "producer run", cause: c)
     ProducerRunObserved { run: run, attempt: attempt } =>

@@ -51,6 +51,29 @@ fn first_where<T>(xs: List<T>, keep: fn(T) -> Bool) -> T? {
   })
 }
 
+// THE ONE ELEMENT A PREDICATE KEEPS, where the reader's contract is that exactly one exists (a keyed line of
+// a document read by its key). first_where answers "which comes first", which silently picks one of two
+// candidates; this answers "is there exactly one", so a second candidate refuses instead of being shadowed.
+// Repeated carries the count, so a refusal can say how many were found.
+type SoleMatch<T>
+  = SoleMatchNone
+  | SoleMatchRepeated { occurrences: Int }
+  | SoleMatchOne { value: T }
+
+fn sole_where<T>(xs: List<T>, keep: fn(T) -> Bool) -> SoleMatch<T> {
+  fold(xs, init: SoleMatchNone, f: fn(acc, x) {
+    if keep(x) {
+      match acc {
+        SoleMatchNone => SoleMatchOne { value: x }
+        SoleMatchOne { value: _ } => SoleMatchRepeated { occurrences: 2 }
+        SoleMatchRepeated { occurrences: n } => SoleMatchRepeated { occurrences: n + 1 }
+      }
+    } else {
+      acc
+    }
+  })
+}
+
 fn first_duplicate_by_key<T>(xs: List<T>, key: fn(T) -> String) -> T? {
   match fold(xs, init: FirstDuplicateNotFound { seen: empty_map() }, f: fn(acc, x) {
     match acc {

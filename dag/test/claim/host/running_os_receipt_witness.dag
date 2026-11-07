@@ -1,6 +1,6 @@
 module test.claim.host.running_os_receipt_witness
 
-import std.types { Bool, Int, String, NonEmptyStr }
+import std.types { Bool, Int, String, NonEmptyStr, CommitSha }
 import std.optional { Present, Absent }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -8,11 +8,19 @@ import product.host_identity { host_identity_eq }
 import extdeps.github.workflow_runs { github_workflow_run_id_of_wire }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_mtjade1 }
 import gunbc.host.host_boot_id { host_boot_id_of_kernel_text }
+import extdeps.github.workflow_runs { WorkflowRun, Completed, Success }
+import gunbc.fleet.fleet_converge_run_name { fleet_converge_run_title }
+import gunbc.fleet.fleet_converge_producer_run { ProducerRunSelected, ProducerRunNone }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.host.running_os_receipt_observed { running_os_receipt_producer_select }
+import gunbc.machine_intake.mtcollins1_boot_receipts { mtcollins1_running_os_receipt_source, mtcollins1_boot_mode_wire }
 import gunbc.host.running_os { RunningOsReading, RunningOsObserved, RunningOsUnobserved, RunningDeliveredArtifact }
 import gunbc.host.running_os_receipt {
   RunningOsReceiptProducer, RunningOsReceiptAdmitted, RunningOsReceiptRefused,
   RunningOsReceiptDigestMismatch, RunningOsReceiptOfAnotherRun, RunningOsReceiptMalformed,
+  RunningOsReceiptFieldAbsent, RunningOsReceiptFieldRepeated, RunningOsReceiptLineUnexpected,
   running_os_receipt_text, running_os_receipt_reading, running_os_receipt_producer_of_run,
+  running_os_receipt_content_digest,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -89,4 +97,105 @@ test fn an_unobserved_reading_has_no_receipt_and_undigested_bytes_are_not_one() 
       RunningOsReceiptRefused { refusal: RunningOsReceiptMalformed { cause: _ } } => true
       _ => false
     })
+}
+
+// A DOCUMENT WHOSE DIGEST IS CONSISTENT WITH ITS CONTENT, built from the written body with that body edited: the
+// digest is recomputed over the edited body, so the edit survives the digest check and reaches the field reader.
+// This is the shape a writer defect (or a writer that appends rather than replaces) would upload.
+fn redigested(edit: fn(String) -> String) -> String {
+  match written().split(delimiter: "content_sha256=").first() {
+    Absent => ""
+    Present { value: body } => {
+      let edited = edit(body)
+      join([edited, "content_sha256=", running_os_receipt_content_digest(body: edited), "\n"], "")
+    }
+  }
+}
+
+// RED: a second host line after the first, digest-consistent. Reading the first line would admit mtcollins1
+// whatever the second says; the field is stated twice, so the document refuses and names the field and the count.
+test fn a_receipt_stating_its_host_twice_refuses_rather_than_reading_the_first() -> Bool {
+  let doubled = redigested(edit: b => concat(b, "host=mtjade1\n"))
+  string_contains(s: doubled, pattern: "host=mtcollins1\n")
+    && string_contains(s: doubled, pattern: "host=mtjade1\n")
+    && match running_os_receipt_reading(text: doubled, fetched_from: producer(run: 41000000001, attempt: 1)) {
+      RunningOsReceiptRefused { refusal: RunningOsReceiptFieldRepeated { prefix: p, occurrences: n } } => p == "host=" && n == 2
+      _ => false
+    }
+}
+
+// RED: the producer is read by the same rule, so a second run line naming another run cannot be shadowed by a
+// first that matches the run the document was fetched from.
+test fn a_receipt_stating_its_producer_run_twice_refuses() -> Bool {
+  match running_os_receipt_reading(text: redigested(edit: b => concat(b, "producer_run=41000000002\n")), fetched_from: producer(run: 41000000001, attempt: 1)) {
+    RunningOsReceiptRefused { refusal: RunningOsReceiptFieldRepeated { prefix: p, occurrences: n } } => p == "producer_run=" && n == 2
+    _ => false
+  }
+}
+
+// RED: a digest-consistent document that lost its host line refuses with the field it lacks.
+test fn a_digest_consistent_receipt_without_its_host_line_refuses() -> Bool {
+  match running_os_receipt_reading(text: redigested(edit: b => b.replace(from: "host=mtcollins1\n", to: "")), fetched_from: producer(run: 41000000001, attempt: 1)) {
+    RunningOsReceiptRefused { refusal: RunningOsReceiptFieldAbsent { prefix: p } } => p == "host="
+    _ => false
+  }
+}
+
+// RED: the same field stated twice with the SAME value is still a repeat. The writer states each field once, so an
+// identical second line is not this document either.
+test fn a_receipt_stating_its_host_twice_identically_refuses() -> Bool {
+  match running_os_receipt_reading(text: redigested(edit: b => concat(b, "host=mtcollins1\n")), fetched_from: producer(run: 41000000001, attempt: 1)) {
+    RunningOsReceiptRefused { refusal: RunningOsReceiptFieldRepeated { prefix: p, occurrences: n } } => p == "host=" && n == 2
+    _ => false
+  }
+}
+
+// RED: a digest-consistent line the writer never states refuses and names the line, so the document cannot carry a
+// fact no reader checks.
+test fn a_receipt_carrying_a_line_its_writer_never_states_refuses() -> Bool {
+  match running_os_receipt_reading(text: redigested(edit: b => concat(b, "trusted=yes\n")), fetched_from: producer(run: 41000000001, attempt: 1)) {
+    RunningOsReceiptRefused { refusal: RunningOsReceiptLineUnexpected { line: l } } => l == "trusted=yes"
+    _ => false
+  }
+}
+
+// THE PRODUCER RUN IS FOUND BY ITS EXECUTOR, NOT ITS SUBJECT (review side chat, P1a). The mtcollins1 boot is
+// dispatched with host srv1 (gunbc.machine_intake.mtcollins1_boot_admission mtcollins1_boot_dispatch_host), and the
+// workflow titles the run from that input, so every admissible producer is titled with srv1. The run below is
+// titled by the REAL title constructor for mode mtcollins1_boot and host srv1, completed, successful, on main; the
+// mtcollins1 receipt source selects it. RED: the same run titled with the subject (mtcollins1) -- what the reader
+// searched for before -- is a title no admitted boot writes, and the source does not select it.
+fn boot_run(id: Int, title_host: String) -> WorkflowRun {
+  WorkflowRun {
+    id: id,
+    name: Absent,
+    display_title: Present { value: fleet_converge_run_title(mode: mtcollins1_boot_mode_wire, host: title_host, nonce: "n1") },
+    path: Absent,
+    head_sha: "1111111111111111111111111111111111111111" as CommitSha,
+    head_branch: Present { value: "main" },
+    event: "workflow_dispatch",
+    status: Completed,
+    conclusion: Present { value: Success },
+    workflow_id: 9,
+    run_number: 1,
+    run_attempt: 1,
+    actor: Absent,
+    triggering_actor: Absent,
+    html_url: "https://github.com/gunb-ai/gunbc/actions/runs/1" as NonEmptyStr,
+    created_at: "2026-11-07T00:00:00Z",
+    updated_at: "2026-11-07T00:00:00Z",
+    pull_requests: [],
+  }
+}
+
+test fn the_mtcollins1_receipt_source_selects_the_boot_run_dispatched_on_srv1() -> Bool {
+  (match running_os_receipt_producer_select(source: mtcollins1_running_os_receipt_source, runs: [boot_run(id: 41000000001, title_host: operator_host_srv1 as String)]) {
+    ProducerRunSelected { run: _, attempt: _, created_at: _ } => true
+    ProducerRunNone { cause: _ } => false
+  })
+    && (match running_os_receipt_producer_select(source: mtcollins1_running_os_receipt_source, runs: [boot_run(id: 41000000002, title_host: operator_host_mtcollins1 as String)]) {
+      ProducerRunNone { cause: _ } => true
+      ProducerRunSelected { run: _, attempt: _, created_at: _ } => false
+    })
+    && host_identity_eq(a: mtcollins1_running_os_receipt_source.host, b: operator_host_mtcollins1)
 }
