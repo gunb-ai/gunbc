@@ -1623,7 +1623,7 @@ fn finalize(
         Ok(v) => v,
         Err(refusal) => return Some(refusal),
     };
-    if inventory_after.contains(worktree_str) {
+    if inventory_after.contains(worktree_str.as_str()) {
         return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
             observation: CommandObservation::Completed {
                 exit_code: 0,
