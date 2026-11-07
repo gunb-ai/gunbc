@@ -827,18 +827,30 @@ fn ui_octets_contain(hay: List<Int>, needle: List<Int>) -> Bool {
 }
 
 // Cookie values of a Netscape jar: tab-separated, seven fields, the value last. A `#HttpOnly_` line is a
-// cookie; any other `#` line is a comment. An empty value is dropped (an empty needle matches nothing,
-// and listing it would make the check look broader than it is).
-fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>> {
+// cookie; any other `#` line is a comment; a blank line is skipped. EVERY other row must be a
+// well-formed seven-field record, and one that is not makes the whole jar Absent: a malformed row next
+// to a valid one would otherwise leave a screen set that looks complete and is not (fail closed, nothing
+// is written). An empty cookie value is well-formed but dropped from the set (an empty needle matches
+// nothing, and listing it would make the check look broader than it is).
+fn ui_cookie_jar_rows(jar_text: String) -> List<String> {
   split(s: jar_text, delimiter: "\n")
+    |> filter(line => count(ui_octets_of(line)) > 0)
     |> filter(line => !ui_octets_starts_with(hay: ui_octets_of(line), needle: [35]) || ui_octets_starts_with(hay: ui_octets_of(line), needle: ui_octets_of("#HttpOnly_")))
-    |> map(line => split(s: line, delimiter: "\t"))
-    |> filter(fields => count(fields) == 7)
-    |> map(fields => match fields |> get(6) {
-      null => []
-      value => ui_octets_of(value)
-    })
-    |> filter(value => count(value) > 0)
+}
+
+fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>>? {
+  let rows = ui_cookie_jar_rows(jar_text: jar_text)
+  if any(rows, row => count(split(s: row, delimiter: "\t")) != 7) {
+    none
+  } else {
+    Present { value: rows
+      |> map(row => split(s: row, delimiter: "\t"))
+      |> map(fields => match fields |> get(6) {
+        null => []
+        value => ui_octets_of(value)
+      })
+      |> filter(value => count(value) > 0) }
+  }
 }
 
 fn ui_captured_text_of(body: String, session_values: List<List<Int>>) -> MegaRacUiCapturedText {
@@ -892,11 +904,11 @@ fn ui_first_text_octet_text(first: MegaRacUiFirstTextOctet) -> String {
 }
 
 fn ui_page_text_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
-  let head = join(["page_text path=", reading.path as String], "")
+  let head = join(["page_text wire_bytes=not_established path=", reading.path as String], "")
   match reading.captured_text {
     CapturedTextNotOwed => []
     CapturedTextWritten { text_utf8_length: n, text_sha256: d, hex: hex, hex_sha256: hd, first_text_octet: first, replacement_characters: r } => [join([
-      head, " wire_bytes=not_established text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      head, " text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
       " text_sha256=", megarac_ui_digest_text(d),
       " first_text_octet=", ui_first_text_octet_text(first),
       " replacement_characters=", megarac_ui_count_text(r),
@@ -904,7 +916,7 @@ fn ui_page_text_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
       " text_hex=", hex,
     ], "") as NonEmptyStr]
     CapturedTextTooLarge { text_utf8_length: n, limit: lim, text_sha256: d } => [join([
-      head, " wire_bytes=not_established refused=too_large text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      head, " refused=too_large text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
       " limit=", megarac_ui_count_text(byte_size_count(b: lim)),
       " text_sha256=", match d {
         Absent => "unrenderable"
@@ -912,7 +924,7 @@ fn ui_page_text_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
       },
     ], "") as NonEmptyStr]
     CapturedTextMatchSecret => [join([head, " refused=matches_session_value"], "") as NonEmptyStr]
-    CapturedTextNothingToCheckAgainst => [join([head, " refused=no_session_value_to_check"], "") as NonEmptyStr]
+    CapturedTextNothingToCheckAgainst => [join([head, " refused=session_values_unavailable_unreadable_or_malformed_jar"], "") as NonEmptyStr]
     CapturedTextNotRenderable { observed: o } => [join([head, " refused=octet_outside_byte_range observed=", megarac_ui_count_text(o)], "") as NonEmptyStr]
     CapturedTextHexDoesNotRoundTrip => [join([head, " refused=hex_does_not_round_trip"], "") as NonEmptyStr]
     CapturedTextDigestUnreadable => [join([head, " refused=digest_unrenderable"], "") as NonEmptyStr]
@@ -929,7 +941,7 @@ type MegaRacUiPageReading {
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
   shape: MegaRacUiPageShape
-  // The body's own octets, owed only on the no-script path (see ui_captured_text_of).
+  // The UTF-8 octets of the captured text projection of the body (not wire bytes), owed only on the no-script path (see ui_captured_text_of).
   captured_text: MegaRacUiCapturedText
 }
 
@@ -1462,7 +1474,10 @@ fn megarac_ui_asset_observation_run(
           success: jar_read.success,
           error: jar_read.error,
         ) {
-          FilesystemReadSucceeded { content: jar_text } => ui_cookie_values_of_jar(jar_text: jar_text)
+          FilesystemReadSucceeded { content: jar_text } => match ui_cookie_values_of_jar(jar_text: jar_text) {
+            Present { value: values } => values
+            Absent => []
+          }
           FilesystemReadRefused { error: _ } => []
         }
         let pages = ui_page_ladder(

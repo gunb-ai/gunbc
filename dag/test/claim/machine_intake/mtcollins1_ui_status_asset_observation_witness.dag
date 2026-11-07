@@ -1541,9 +1541,33 @@ test fn w_a_page_that_names_a_script_or_failed_owes_no_body_octets() -> Bool {
 }
 
 test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool {
-  let jar = "# Netscape HTTP Cookie File\n#HttpOnly_192.168.1.228\tFALSE\t/\tFALSE\t0\tSID\thttponlyvalue1\n192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2\n# comment\nshort\tline\n"
-  ui_cookie_values_of_jar(jar_text: jar) == [ui_octets_of("httponlyvalue1"), ui_octets_of("plainvalue2")] &&
-    count(ui_cookie_values_of_jar(jar_text: "")) == 0
+  let valid_http = "#HttpOnly_192.168.1.228\tFALSE\t/\tFALSE\t0\tSID\thttponlyvalue1"
+  let valid_plain = "192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2"
+  let jar = concat("# Netscape HTTP Cookie File\n", concat(valid_http, concat("\n", concat(valid_plain, "\n# comment\n\n"))))
+  witness_jar_values(jar: jar) == Present { value: [ui_octets_of("httponlyvalue1"), ui_octets_of("plainvalue2")] } &&
+    witness_jar_values(jar: "") == Present { value: [] }
+}
+
+// FAIL CLOSED: a malformed row beside a valid one makes the jar refuse (Absent), and the reading built
+// from it writes no text. Positive control: the same valid row alone yields its value and a written text.
+test fn w_a_malformed_jar_row_beside_a_valid_one_writes_nothing() -> Bool {
+  let valid_plain = "192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2"
+  let bad = concat(valid_plain, "\nshort\tline\n")
+  let control = witness_jar_values(jar: concat(valid_plain, "\n"))
+  let refused = witness_jar_values(jar: bad)
+  let session_values = match refused {
+    Absent => []
+    Present { value: values } => values
+  }
+  let reading = witness_body_reading(body: "<html><body>x</body></html>", session_values: session_values)
+  control == Present { value: [ui_octets_of("plainvalue2")] } &&
+    refused == none &&
+    witness_body_kind(o: reading.captured_text) == "nothing_to_check" &&
+    !string_contains(s: witness_lines_text(reading: reading), pattern: " text_hex=")
+}
+
+fn witness_jar_values(jar: String) -> List<List<Int>>? {
+  ui_cookie_values_of_jar(jar_text: jar)
 }
 
 test fn w_the_first_octet_classes_are_distinguished() -> Bool {
@@ -1562,6 +1586,7 @@ test fn w_the_captured_text_lines_state_that_wire_bytes_are_not_established() ->
   let too_large = witness_body_reading(body: concat("<p>", witness_fill(n: 4094, acc: "")), session_values: witness_session_values())
   string_contains(s: witness_lines_text(reading: written), pattern: "wire_bytes=not_established") &&
     string_contains(s: witness_lines_text(reading: too_large), pattern: "wire_bytes=not_established") &&
+    string_contains(s: witness_lines_text(reading: refused), pattern: "wire_bytes=not_established") &&
     !string_contains(s: witness_lines_text(reading: written), pattern: "gzip") &&
     string_contains(s: join([ui_page_shape_line(reading: written) as String], ""), pattern: "basis=captured_text_utf8")
 }
