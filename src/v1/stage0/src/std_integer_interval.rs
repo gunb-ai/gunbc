@@ -16,6 +16,7 @@ pub use crate::std_algebra::{
 };
 use crate::std_integer::Signedness::{Signed, Unsigned};
 pub use crate::std_integer::{decimal_digit_of_units, int_compare, Signedness};
+pub use crate::std_measure::{bit_width, bit_width_count, BitWidth};
 use crate::std_nat::DecimalDigit::{D0, D1, D2, D3, D4, D5, D6, D7, D8, D9};
 pub use crate::std_nat::{decimal_digit_glyph, decimal_digit_value, DecimalDigit};
 pub use crate::std_optional::Optional;
@@ -688,18 +689,20 @@ pub fn integer_standard_integer_type_signedness(
     }
 }
 
-pub fn integer_standard_integer_type_width_bits(standard_integer_type: StandardIntegerType) -> i64 {
+pub fn integer_standard_integer_type_width_bits(
+    standard_integer_type: StandardIntegerType,
+) -> BitWidth {
     match standard_integer_type.clone() {
-        StandardIntegerType::Int128 => 128,
-        StandardIntegerType::Int64 => 64,
-        StandardIntegerType::Int32 => 32,
-        StandardIntegerType::Int16 => 16,
-        StandardIntegerType::Int8 => 8,
-        StandardIntegerType::UInt128 => 128,
-        StandardIntegerType::UInt64 => 64,
-        StandardIntegerType::UInt32 => 32,
-        StandardIntegerType::UInt16 => 16,
-        StandardIntegerType::UInt8 => 8,
+        StandardIntegerType::Int128 => crate::std_measure::bit_width(128),
+        StandardIntegerType::Int64 => crate::std_measure::bit_width(64),
+        StandardIntegerType::Int32 => crate::std_measure::bit_width(32),
+        StandardIntegerType::Int16 => crate::std_measure::bit_width(16),
+        StandardIntegerType::Int8 => crate::std_measure::bit_width(8),
+        StandardIntegerType::UInt128 => crate::std_measure::bit_width(128),
+        StandardIntegerType::UInt64 => crate::std_measure::bit_width(64),
+        StandardIntegerType::UInt32 => crate::std_measure::bit_width(32),
+        StandardIntegerType::UInt16 => crate::std_measure::bit_width(16),
+        StandardIntegerType::UInt8 => crate::std_measure::bit_width(8),
     }
 }
 
@@ -715,29 +718,32 @@ pub fn integer_magnitude_upper_bound(magnitude: Rc<DecimalMagnitude>) -> Rc<Inte
     }
 }
 
-pub fn integer_machine_interval_spec(signedness: Signedness, width_bits: i64) -> Rc<IntegerExtent> {
-    if ((width_bits.clone() < 0)
-        || ((width_bits.clone() == 0) && (signedness.clone() == Signedness::Signed)))
+pub fn integer_machine_interval_spec(signedness: Signedness, width: BitWidth) -> Rc<IntegerExtent> {
     {
-        Rc::new(IntegerExtent::EmptyIntegerExtent)
-    } else {
-        match signedness.clone() {
-            Signedness::Signed => {
-                let signed_pow2 = integer_pow2_magnitude(v1_rt::int_sub(width_bits.clone(), 1));
-                integer_interval(
-                    integer_concrete_bound(
-                        IntegerBoundSign::IntegerBoundNegative,
-                        signed_pow2.clone(),
-                    ),
-                    integer_magnitude_upper_bound(decimal_nonzero_sub_one(signed_pow2.clone())),
-                )
+        let width_bits = crate::std_measure::bit_width_count(width);
+        if ((width_bits.clone() < 0)
+            || ((width_bits.clone() == 0) && (signedness.clone() == Signedness::Signed)))
+        {
+            Rc::new(IntegerExtent::EmptyIntegerExtent)
+        } else {
+            match signedness.clone() {
+                Signedness::Signed => {
+                    let signed_pow2 = integer_pow2_magnitude(v1_rt::int_sub(width_bits.clone(), 1));
+                    integer_interval(
+                        integer_concrete_bound(
+                            IntegerBoundSign::IntegerBoundNegative,
+                            signed_pow2.clone(),
+                        ),
+                        integer_magnitude_upper_bound(decimal_nonzero_sub_one(signed_pow2.clone())),
+                    )
+                }
+                Signedness::Unsigned => integer_interval(
+                    integer_concrete_zero(),
+                    integer_magnitude_upper_bound(decimal_nonzero_sub_one(integer_pow2_magnitude(
+                        width_bits.clone(),
+                    ))),
+                ),
             }
-            Signedness::Unsigned => integer_interval(
-                integer_concrete_zero(),
-                integer_magnitude_upper_bound(decimal_nonzero_sub_one(integer_pow2_magnitude(
-                    width_bits.clone(),
-                ))),
-            ),
         }
     }
 }
@@ -1134,7 +1140,7 @@ pub fn integer_pointer_width_bound(
 pub fn int8_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Signed, 8)
+            integer_machine_interval_spec(Signedness::Signed, crate::std_measure::bit_width(8))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1143,7 +1149,7 @@ pub fn int8_interval_spec() -> Rc<IntegerExtent> {
 pub fn int16_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Signed, 16)
+            integer_machine_interval_spec(Signedness::Signed, crate::std_measure::bit_width(16))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1152,7 +1158,7 @@ pub fn int16_interval_spec() -> Rc<IntegerExtent> {
 pub fn int32_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Signed, 32)
+            integer_machine_interval_spec(Signedness::Signed, crate::std_measure::bit_width(32))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1161,7 +1167,7 @@ pub fn int32_interval_spec() -> Rc<IntegerExtent> {
 pub fn int64_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Signed, 64)
+            integer_machine_interval_spec(Signedness::Signed, crate::std_measure::bit_width(64))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1170,7 +1176,7 @@ pub fn int64_interval_spec() -> Rc<IntegerExtent> {
 pub fn int128_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Signed, 128)
+            integer_machine_interval_spec(Signedness::Signed, crate::std_measure::bit_width(128))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1179,7 +1185,7 @@ pub fn int128_interval_spec() -> Rc<IntegerExtent> {
 pub fn uint8_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Unsigned, 8)
+            integer_machine_interval_spec(Signedness::Unsigned, crate::std_measure::bit_width(8))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1188,7 +1194,7 @@ pub fn uint8_interval_spec() -> Rc<IntegerExtent> {
 pub fn uint16_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Unsigned, 16)
+            integer_machine_interval_spec(Signedness::Unsigned, crate::std_measure::bit_width(16))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1197,7 +1203,7 @@ pub fn uint16_interval_spec() -> Rc<IntegerExtent> {
 pub fn uint32_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Unsigned, 32)
+            integer_machine_interval_spec(Signedness::Unsigned, crate::std_measure::bit_width(32))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1206,7 +1212,7 @@ pub fn uint32_interval_spec() -> Rc<IntegerExtent> {
 pub fn uint64_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Unsigned, 64)
+            integer_machine_interval_spec(Signedness::Unsigned, crate::std_measure::bit_width(64))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1215,7 +1221,7 @@ pub fn uint64_interval_spec() -> Rc<IntegerExtent> {
 pub fn uint128_interval_spec() -> Rc<IntegerExtent> {
     thread_local! {
         static CACHED: Rc<IntegerExtent> = {
-            integer_machine_interval_spec(Signedness::Unsigned, 128)
+            integer_machine_interval_spec(Signedness::Unsigned, crate::std_measure::bit_width(128))
         };
     }
     CACHED.with(|c: &Rc<IntegerExtent>| c.clone())
@@ -1255,14 +1261,16 @@ pub fn integer_nonzero_decimal_digit_widen(digit: NonZeroDecimalDigit) -> Decima
 
 pub fn integer_standard_type_from_width(
     signedness: Signedness,
-    bits: i64,
+    bits: BitWidth,
 ) -> Option<StandardIntegerType> {
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
             for width in integer_standard_integer_type_roster().iter().cloned() {
                 if ((integer_standard_integer_type_signedness(width.clone()) == signedness.clone())
-                    && (integer_standard_integer_type_width_bits(width.clone()) == bits.clone()))
+                    && (crate::std_measure::bit_width_count(
+                        integer_standard_integer_type_width_bits(width.clone()),
+                    ) == crate::std_measure::bit_width_count(bits.clone())))
                 {
                     __result.push(width);
                 }
