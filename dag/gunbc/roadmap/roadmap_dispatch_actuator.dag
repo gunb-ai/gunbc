@@ -2538,6 +2538,7 @@ fn dispatch_attempt_worker_worktree_grant(
         pruned: [git_non_bare_git_dir_name],
         sticky: false,
         files_group_writable: true,
+        owner: instance.directory_owner.user as String,
         depth: dashboard_git_worker_subtree_walk_depth,
       ),
       find_subtree_ungranted_entry_refusal_command(
@@ -2589,6 +2590,7 @@ fn dispatch_attempt_worker_git_entry_migration(
       dashboard_git_worker_subtree_chgrp_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         group: group,
+        owner: instance.directory_owner.user as String,
         // NOTHING UNDER THE ENTRY IS CONFINED: a worktree private gitdir holds commondir, gitdir,
         // index, HEAD, ORIG_HEAD, COMMIT_EDITMSG and logs/. It has no pack, no info, no hooks, so the
         // prune group is empty -- and the builder then emits NO prune words at all rather than an
@@ -2612,6 +2614,7 @@ fn dispatch_attempt_worker_git_entry_migration(
         // not transfer: nothing under this entry is confined, and no maintenance step writes or deletes
         // through it.
         sticky: false,
+        owner: instance.directory_owner.user as String,
       ),
     ]
   }
