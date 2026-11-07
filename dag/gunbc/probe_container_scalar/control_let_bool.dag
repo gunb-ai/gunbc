@@ -1,0 +1,6 @@
+module gunbc.probe_container_scalar.control_let_bool
+
+fn zz_ctl() -> Bool {
+  let flag: Bool = "s"
+  flag
+}
