@@ -82,13 +82,12 @@ data srv1_serving_wrapper_resized: RetainedShellScript = RetainedShellScript {
   dissolves_to: decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_run_foreground_argv"),
 }
 
-// THE WRAPPER'S MEMORY FLAGS ARE CHECKED AGAINST THE ONE RESOLVED ALLOWANCE, not authored beside it.
-// gunbc.serving.serving_container_allowance srv1_serving_allowance renders --memory/--memory-swap/--shm-size
-// and the retained body above must carry exactly those. Changing the allowance without the wrapper is
-// WrapperDisagreesWithAllowance; changing the wrapper is a relaunch obligation (its sha256 is pinned to the
-// host copy by gunbc.host.srv1_serving_startup_receipt), so the reconciliation is the operator-gated relaunch.
+// THE BODY ON THE HOST IS CHECKED AGAINST THE ONE RESOLVED ALLOWANCE. The check reads srv1_serving_wrapper
+// (the bytes the startup receipt pins), never the resized body, which is rendered from the allowance and
+// could only agree with it. It reports WrapperDisagreesWithAllowance until the host copy is the resized
+// one (the declared relaunch obligation), then WrapperCarriesAllowance.
 fn srv1_serving_wrapper_allowance_verdict() -> WrapperAllowanceVerdict {
-  wrapper_allowance_verdict(body: srv1_serving_wrapper_resized.body, a: srv1_serving_allowance)
+  wrapper_allowance_verdict(body: srv1_serving_wrapper.body, a: srv1_serving_allowance)
 }
 
 // THE RELAUNCH IS A TYPED PENDING STATE, NOT A RED WITNESS. The allowance was resized (option B), so the

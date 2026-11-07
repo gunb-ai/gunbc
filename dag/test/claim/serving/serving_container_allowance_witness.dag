@@ -45,11 +45,10 @@ fn not_renderable(v: WrapperAllowanceVerdict) -> Bool {
   match v { AllowanceNotRenderable { figure: _ } => true  _ => false }
 }
 
-// THE REAL CONSUMER READS THE ALLOWANCE: the retained wrapper body (the bytes the host copy's sha256 pins)
-// carries exactly the flags srv1_serving_allowance renders. Removing the check, or editing the allowance
-// without the wrapper, is the control below.
-test fn the_retained_wrapper_carries_the_one_resolved_allowance() -> Bool {
-  wrapper_agrees(v: srv1_serving_wrapper_allowance_verdict())
+// THE REAL CONSUMER READS THE ALLOWANCE: the verdict reads the body pinned to the host copy, which still
+// carries the 130 GiB flags, so it disagrees with the 71 GiB allowance until the relaunch (pending state).
+test fn the_host_wrapper_disagrees_with_the_allowance_until_the_relaunch() -> Bool {
+  wrapper_disagrees(v: srv1_serving_wrapper_allowance_verdict())
 }
 
 // THE CHECK DISCRIMINATES: a larger allowance, a larger shm, and an unrenderable (non-GiB) allowance each

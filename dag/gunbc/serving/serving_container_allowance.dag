@@ -2,7 +2,7 @@ module gunbc.serving.serving_container_allowance
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import std.algebra { string_contains }
+import std.algebra { string_contains, string_concat_join }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Present, Absent }
 import std.measure { Gibibyte, ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size }
@@ -15,9 +15,10 @@ import std.measure { Gibibyte, ByteSize, byte_size, byte_size_count, gibibyte, g
 // agree today are two authorities that stop agreeing at the next edit (DESIGN 3).
 //
 // WHAT CONSUMES THIS, and how:
-//  - the launch: gunbc.serving.srv1_serving_launch srv1_serving_wrapper_allowance_verdict renders the docker
-//    flags from srv1_serving_allowance and finds them in the retained wrapper body, so the wrapper is a
-//    CHECKED consumer: editing either side without the other is a typed disagreement. The wrapper itself is
+//  - the launch: gunbc.serving.srv1_serving_launch srv1_serving_wrapper_resized renders the docker flags
+//    from srv1_serving_allowance (the sha256 pin on that body is the guarantee the render equals the host
+//    copy), and srv1_serving_wrapper_allowance_verdict checks the body ON THE HOST (srv1_serving_wrapper)
+//    against the allowance, so it reports a disagreement until the relaunch lands. The wrapper itself is
 //    not edited (its sha256 is pinned to the host copy by gunbc.host.srv1_serving_startup_receipt, so a
 //    wrapper change is a relaunch obligation, never a repo-only edit).
 //  - the host budget: gunbc.serving.serving_host_memory srv1_vllm_engine_memory takes its memory_cap and
@@ -148,7 +149,7 @@ fn wrapper_allowance_verdict(body: String, a: ServingContainerAllowance) -> Wrap
           if string_contains(s: body, pattern: mem) && string_contains(s: body, pattern: shm) {
             WrapperCarriesAllowance
           } else {
-            WrapperDisagreesWithAllowance { missing_flags: concat(mem, concat(" / ", shm)) }
+            WrapperDisagreesWithAllowance { missing_flags: string_concat_join(fields: [mem, " / ", shm], separator: "") }
           }
       }
   }
