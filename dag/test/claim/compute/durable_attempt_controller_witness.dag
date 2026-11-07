@@ -3,24 +3,36 @@ module test.claim.compute.durable_attempt_controller_witness
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.temporal_effect { HeldLease }
-import std.durable_exclusive_hold { DurableHoldOwnerRef }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldSubject, DurableHoldRef, DurableHoldCompletionReport, SectionObservedComplete,
+}
 import std.measure { kibibyte }
 import product.fabric.identity { FabricIdentity, DemandKey, ExecutionAttemptKey }
 import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
 import gunbc.compute.durable_attempt_controller {
-  ControllerDelegation, ControllerDelegated, controller_store, controller_delegate,
-  controller_attempt_open, controller_attempt_read, controller_attempt_prepare,
+  ControllerDelegation, ControllerDelegated, controller_store, controller_delegate, controller_attempt_open,
+  controller_attempt_read, controller_attempt_prepare, controller_event_prepare, ControllerCancel,
+  ControllerCapacityWaiting, ControllerCapacityReleased, controller_next_obligation, ControllerAwaitCapacity,
+  ControllerRequestGrant, ControllerRequestTermination, ControllerObserveQuiescence, controller_receipt_for_attempt,
+  ControllerReceiptBindingMissing, ControllerReceiptWrongAttempt, ControllerReceiptFenceRefused,
+  controller_attempt_wire, ControllerDelegationRefused,
 }
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, DirectInvocation, AttemptReserved, AttemptLaunching,
-  AttemptAdvanced, AttemptLostRace, AttemptPayloadHeld,
-  AttemptFencedPreparation, AttemptFencePrepared, AttemptFenceRefused,
-  AttemptClaimAcquire, AttemptClaimRelease, AttemptOwnerAdvance,
-  AttemptFenceWrongOwner, AttemptFenceWrongEpoch,
-  attempt_fenced_commit, attempt_claim_lease,
+  AttemptRecord, DirectInvocation, AttemptReserved, AttemptLaunching, AttemptAdvanced, AttemptLostRace,
+  AttemptPayloadHeld, AttemptFencedPreparation, AttemptFencePrepared, AttemptFenceRefused, AttemptClaimAcquire,
+  AttemptClaimRelease, AttemptOwnerAdvance, AttemptFenceWrongOwner, AttemptFenceWrongEpoch, attempt_fenced_commit,
+  attempt_claim_lease, AttemptPayloadAbsent, AttemptPayloadUnreadable, AttemptFenceUnreadable,
 }
 import test.claim.fabric.work_restore_witness { base_wire }
 import extdeps.shell
+import std.durable_compare_and_set { cas_generation_first, cas_attempt, ExpectSlotGeneration, CasCommitted }
+import test.claim.fabric.fabric_terminal_contract_witness {
+  fixture_grant, granted_lease_receipt, stale_receipt, foreign_attempt_receipt,
+}
+import product.fabric.execution { ReceiptGenerationStale }
+import gunbc.durable_cas_file_store { slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
+import std.content_hash { content_hash_of_value }
+
 
 // These controls execute the production request acceptance, delegation, codec,
 // prepare and file CAS paths. The pause is an explicit prepared proposal, not
@@ -191,12 +203,6 @@ test fn restart_reattaches_the_same_attempt_without_resetting_its_claim() -> Boo
   }
 }
 
-import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldCompletionReport, SectionObservedComplete }
-import std.durable_compare_and_set { cas_generation_first }
-import gunbc.compute.durable_attempt_controller {
-  controller_event_prepare, ControllerCancel, ControllerCapacityWaiting, ControllerCapacityReleased,
-  controller_next_obligation, ControllerAwaitCapacity, ControllerRequestGrant, ControllerRequestTermination, ControllerObserveQuiescence,
-}
 
 fn wake_source() -> DurableHoldSubject {
   DurableHoldSubject { hold: "capacity-pool" as DurableHoldRef, holder: "prior-cell" as DurableHoldOwnerRef, generation: cas_generation_first() }
@@ -252,9 +258,6 @@ test fn launch_winning_before_cancel_requires_termination_reconciliation() -> Bo
 }
 
 
-import test.claim.fabric.fabric_terminal_contract_witness { fixture_grant, granted_lease_receipt, stale_receipt, foreign_attempt_receipt }
-import gunbc.compute.durable_attempt_controller { controller_receipt_for_attempt, ControllerReceiptBindingMissing, ControllerReceiptWrongAttempt, ControllerReceiptFenceRefused }
-import product.fabric.execution { ReceiptGenerationStale }
 
 test fn matching_legacy_receipt_names_missing_binding_instead_of_completing() -> Bool {
   match fixture_grant() {
@@ -277,11 +280,6 @@ test fn receipt_from_other_attempt_and_stale_lease_are_distinct_refusals() -> Bo
 }
 
 
-import gunbc.compute.attempt_lifecycle { AttemptPayloadAbsent, AttemptPayloadUnreadable, AttemptFenceUnreadable }
-import gunbc.compute.durable_attempt_controller { controller_attempt_wire, ControllerDelegationRefused }
-import gunbc.durable_cas_file_store { slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
-import std.durable_compare_and_set { cas_attempt, ExpectSlotGeneration, CasCommitted }
-import std.content_hash { content_hash_of_value }
 
 // Actual crash boundary: request CAS has committed, but no attempt exists yet.
 // Two restarters finish the SAME sealed intent. Open never grants ownership.

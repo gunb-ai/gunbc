@@ -3,32 +3,41 @@ module gunbc.compute.durable_attempt_controller
 import std.types { String, NonEmptyStr, Bool, EpochSecs }
 import std.algebra { FreeSemigroup }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
-import product.fabric.execution { ExecutionGrant, Receipt, ReceiptAdmission, ReceiptAdmissible, admit_receipt_for_grant, ExecutionReceipt }
+import product.fabric.execution {
+  ExecutionGrant, Receipt, ReceiptAdmission, ReceiptAdmissible, admit_receipt_for_grant, ExecutionReceipt,
+}
 import std.optional { Optional, Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set {
-  CasGeneration, cas_generation, cas_generation_count, ExpectSlotAbsent,
-  CasCommitted, CasPreconditionFailed, CasStoreRefused,
-  CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
+  CasGeneration, cas_generation, cas_generation_count, ExpectSlotAbsent, CasCommitted, CasPreconditionFailed,
+  CasStoreRefused, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, cas_attempt,
 }
-import std.durable_exclusive_hold { DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldCompletionReport, SectionObservedComplete, durable_hold_ref_equal, durable_hold_owner_equal }
+import std.durable_exclusive_hold {
+  DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldCompletionReport, SectionObservedComplete,
+  durable_hold_ref_equal, durable_hold_owner_equal,
+}
 import std.temporal_effect { HeldLease }
 import gunbc.compute.work_request { WorkEndedCancelled }
-import gunbc.durable_cas_file_store { SlotStore, file_slot_store, slot_observe, slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
-import std.durable_compare_and_set { cas_attempt }
+import gunbc.durable_cas_file_store {
+  SlotStore, file_slot_store, slot_observe, slot_commit, admit_cas_attempt, CasAttemptAdmitted,
+  DefaultAccessCreateOnly,
+}
 import gunbc.durable_handoff_host { HostAcceptedRequest, host_request_identity_wire }
 import product.fabric.work { Work }
-import product.fabric.work_restore { work_restore, work_persist, WorkRestored, WorkRestoreRefused, WorkPersisted, WorkPersistRefused }
+import product.fabric.work_restore {
+  work_restore, work_persist, WorkRestored, WorkRestoreRefused, WorkPersisted, WorkPersistRefused,
+}
 import gunbc.compute.attempt_lifecycle {
-  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptWorkEnded, AttemptPayloadCodec, AttemptFencedCodec,
-  AttemptPayloadReading, AttemptPayloadHeld, AttemptPayloadAbsent, AttemptPayloadUnreadable,
-  AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
-  AttemptFencedAction, AttemptFencedPreparation, AttemptOwnerChange, attempt_fenced_prepare,
-  attempt_record_wire, attempt_record_decode, attempt_record_with_state,
-  attempt_member, attempt_member_int, attempt_payload_read, attempt_open_payload,
+  AttemptRecord, AttemptState, AttemptReserved, AttemptLaunching, AttemptTerminal, AttemptWorkEnded,
+  AttemptPayloadCodec, AttemptFencedCodec, AttemptPayloadReading, AttemptPayloadHeld, AttemptPayloadAbsent,
+  AttemptPayloadUnreadable, AttemptTransition, AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  AttemptFencedAction, AttemptFencedPreparation, AttemptOwnerChange, attempt_fenced_prepare, attempt_record_wire,
+  attempt_record_decode, attempt_record_with_state, attempt_member, attempt_member_int, attempt_payload_read,
+  attempt_open_payload,
 }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+
 
 // This record is the delegated request's one active ownership authority.
 // The immutable request slot stores only its initial intent/link. Its owner is

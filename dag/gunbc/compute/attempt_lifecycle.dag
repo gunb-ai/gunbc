@@ -2,19 +2,19 @@ module gunbc.compute.attempt_lifecycle
 
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, Seconds }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
-import std.content_hash { content_hash_of_value }
+import std.content_hash { content_hash_of_value, compare_content_hash, ContentHashEqual }
 import std.durable_compare_and_set {
-  CasAttempt, cas_attempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
-  CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused,
-  CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
-  CasReadableSlot, CasReadableAbsent, CasReadablePresent,
-  CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
-  CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
+  CasAttempt, cas_attempt, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasOutcome, CasCommitted,
+  CasPreconditionFailed, CasStoreRefused, CasSlotObservation, CasObservedReadable, CasObservedUnreadable,
+  CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasGeneration, cas_generation_count,
+  cas_unreadable_slot_detail, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused,
+  CasGenerationSpaceExhausted, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted,
 }
 import gunbc.durable_cas_file_store {
-  CasSlotKeysAbsent, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
-  CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly, SlotStore, slot_observe, slot_commit, slot_keys,
-  CasSlotKeysListed, CasSlotKeysListingRefused, CasSlotKeysSubjectRefused,
+  CasSlotKeysAbsent, CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch,
+  CasAttemptDigestIncomparable, CasAttemptKeyNotSlotAddressable, admit_cas_attempt, DefaultAccessCreateOnly,
+  SlotStore, slot_observe, slot_commit, slot_keys, CasSlotKeysListed, CasSlotKeysListingRefused,
+  CasSlotKeysSubjectRefused,
 }
 import std.decl_ref { decl_ref }
 import gunbc.compute.work_request { WorkEnding, work_ending_wire, work_ending_decode }
@@ -24,6 +24,14 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   JsonString, JsonNumber,
 }
+import std.temporal_effect { HeldLease, LeaseEpoch, LeaseRunningExpected }
+import std.durable_exclusive_hold {
+  DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldHolderReport,
+  durable_hold_recovery_assess, HoldRecoveryEligible, HoldRecoveryRefused, durable_hold_acquire_assess,
+  HoldAcquireEligible, HoldAcquireRefused, durable_hold_release_assess, HoldReleaseEligible, HoldReleaseRefused,
+  HoldSlotHeld, HoldSlotFree,
+}
+
 
 // THE ATTEMPT'S OWN RECORD, AND THE ONE PLACE ITS LIFECYCLE IS DECIDED.
 //
@@ -834,16 +842,6 @@ fn recovery_trigger_wire(t: RecoveryTrigger) -> String {
 // PR3: the claim and lifecycle live in ONE slot. A HeldLease is evidence about
 // the acquisition, not a substitute for the conditional write. A prepared write
 // binds its store/key/revision; ownership transfer changes that same revision.
-import std.temporal_effect { HeldLease, LeaseEpoch, LeaseRunningExpected }
-import std.content_hash { compare_content_hash, ContentHashEqual }
-import std.durable_compare_and_set { cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
-import std.durable_exclusive_hold {
-  DurableHoldSubject, DurableHoldRef, DurableHoldOwnerRef, DurableHoldReleaseRef,
-  DurableHoldHolderReport, durable_hold_recovery_assess, HoldRecoveryEligible, HoldRecoveryRefused,
-  durable_hold_acquire_assess, HoldAcquireEligible, HoldAcquireRefused,
-  durable_hold_release_assess, HoldReleaseEligible, HoldReleaseRefused,
-  HoldSlotHeld, HoldSlotFree,
-}
 
 // The consuming record owns its bytes; lifecycle owns EVERY conditional write.
 // The optional is exactly occupancy: Absent means no controller holds this attempt.
