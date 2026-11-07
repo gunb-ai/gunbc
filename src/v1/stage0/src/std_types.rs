@@ -518,23 +518,6 @@ pub enum AuthScheme {
     ApiKey,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct AccessToken {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<Timestamp>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Credential {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
-    pub expires_in: Option<i64>,
-}
-
 pub type FilesystemHandle = String;
 
 pub type NetworkHandle = ();
