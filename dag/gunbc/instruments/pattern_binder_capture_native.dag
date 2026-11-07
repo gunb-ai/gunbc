@@ -1,0 +1,138 @@
+module gunbc.instruments.pattern_binder_capture_native
+
+import std.types { Int, List, String, Bool }
+import std.algebra { fold_list }
+import std.optional { Optional, Present, Absent }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimHeld, NativeClaimNotHeld }
+
+// A PATTERN FIELD RENAMED IN AN ARM, WITH THE BODY READING A SAME-NAMED OUTER VARIABLE, ON THE EMITTED
+// PATH (v1.compiler.emit_rust emit_pattern_rc_aware). The emitter renders a field binding's pattern under
+// a NAME; the class this label fences is any rendering that binds the field under the MATCHED FIELD NAME
+// while the arm declared a different variable: the arm body's references to a same-named variable from
+// the enclosing scope are then captured by the shadowing pattern binding, and the emitted program reads
+// a different variable than the .dag source declares. Confirmed instance (seed emission): both arms of
+// v2.compiler.parse parse_expr_not_predicate_attempt -- the .dag binds `table: table1` and reads the
+// OUTER parameter `table` for the furthest position; the emitted arm bound the field under `table` and
+// aliased `let table1 = table.as_ref()`, so the body's `table.furthest` read the INNER table. The class
+// compiles and RUNS -- it is silent, changing which variable is read, never whether it compiles -- so
+// the witness must observe a VALUE, which is what this label does: each case holds when the emitted
+// function returns what the .dag scoping declares; a lost outer value is a wrong value, and a wrong
+// value is NativeClaimNotHeld.
+//
+//   renamed_bind_capture  the not_predicate_attempt shape itself: arm `AcceptedProbe { ..., table: table1 }`
+//                         (renamed Bind leaf), body reads the parameter `table` AND `table1`. Pre-fix the
+//                         body's `table` was the field: expected 77*1000 + 13*10 + 4 + 1 = 77135, the
+//                         class observes 13*1000 + 13*10 + 4 + 1 = 13135.
+//   shorthand_bind        the arm binds `table` plainly: binding the field under the field name IS the
+//                         declared binding here, so this case holds before and after -- it fences the fix
+//                         from over-reaching into shorthand arms.
+//   nested_variant_rename the field is destructured with a nested variant pattern (`captured: ShallowProbe
+//                         { stamp: s1, marks: _ }`) and NO same-named outer variable exists (the parameter
+//                         is outer_payload): the let-else prelude must keep binding s1 correctly before
+//                         and after the fix -- a regression guard, expected 5*100 + 2*10 + 1 = 521 on both
+//                         legs.
+//
+// RED: the entry built at the PRE-FIX seed (the seed emission whose v2_compiler_parse.rs carries sha
+// 188439f2, pre-fix src/v1/05_emit_rust.dag) must exit NOT-HELD (1); built at the fix it must exit HELD
+// (0). The fix binds the rc-ref PAIR under one emitter-owned binder: the pattern renders
+// `field: ref __rc_field` and the prelude reads `__rc_field.as_ref()`, so no arm-body identifier can be
+// captured by a field binder and the declared variable is bound from the pair source. Both legs are run
+// by hand; the discriminating case is renamed_bind_capture -- shorthand_bind and nested_variant_rename
+// hold on both legs by construction.
+//
+// NOT ON THE REQUIRED PATH: this label is executed by host runs, not by the required job; the class rung
+// is mechanical-by-label, not gate-enrolled (gunbc.recurring_failure_mode
+// emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding).
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+type ProbeResult
+  = AcceptedProbe { remaining: Int, captured: ProbePayload, diagnostics: List<Int>, table: ProbeTable }
+  | RejectedProbe { diagnostics: List<Int>, table: ProbeTable }
+
+type ProbePayload
+  = DeepProbe { stamp: Int, marks: List<Int> }
+  | ShallowProbe { stamp: Int, marks: List<Int> }
+
+type ProbeTable {
+  furthest: Int,
+  refusal: Optional<Int>,
+  layout: Optional<Int>,
+  nullable: List<Int>,
+  productions: List<Int>,
+  first_rows: List<Int>
+}
+
+fn stamp(p: ProbePayload) -> Int {
+  match p {
+    DeepProbe { stamp: s, marks: _ } => s
+    ShallowProbe { stamp: s, marks: _ } => s
+  }
+}
+
+fn probe_table(furthest: Int) -> ProbeTable {
+  ProbeTable { furthest: furthest, refusal: Absent, layout: Absent, nullable: [], productions: [], first_rows: [] }
+}
+
+// Case A: the not_predicate_attempt shape. The arm RENAMES `table` to `table1`; the body reads the
+// PARAMETER `table` (the outer value the .dag scoping reaches) and the field binding `table1`.
+fn observed_capture(table: ProbeTable, result: ProbeResult) -> Int {
+  match result {
+    AcceptedProbe { remaining: r, captured: cap, diagnostics: _, table: table1 } =>
+      table.furthest * 1000 + table1.furthest * 10 + stamp(cap) + r
+    RejectedProbe { diagnostics: _, table: table1 } => table1.furthest * 10 + 3
+  }
+}
+
+// Case B: shorthand binding -- field name IS the declared variable; holds before and after the fix.
+fn observed_shorthand(result: ProbeResult) -> Int {
+  match result {
+    AcceptedProbe { remaining: r, captured: cap, diagnostics: _, table } => table.furthest * 10 + stamp(cap) + r
+    RejectedProbe { diagnostics: _, table } => table.furthest * 10 + 3
+  }
+}
+
+// Case C: the field is destructured by a nested variant pattern (prelude machinery); NO same-named
+// outer variable exists to capture (the parameter is named differently), so this case holds on both
+// legs -- it fences the let-else prelude for ref-bound fields from regressing under the fix.
+fn observed_nested(outer_payload: ProbePayload, result: ProbeResult) -> Int {
+  match result {
+    AcceptedProbe { remaining: r, captured: ShallowProbe { stamp: s1, marks: _ }, diagnostics: _, table: _ } =>
+      stamp(outer_payload) * 100 + s1 * 10 + r
+    AcceptedProbe { remaining: _, captured: _, diagnostics: _, table: _ } => 999
+    RejectedProbe { diagnostics: _, table: _ } => 998
+  }
+}
+
+type FixtureCase {
+  name: String,
+  observed: Int,
+  expected: Int
+}
+
+fn outer_table() -> ProbeTable { probe_table(furthest: 77) }
+fn field_table() -> ProbeTable { probe_table(furthest: 13) }
+fn deep_cap() -> ProbePayload { DeepProbe { stamp: 4, marks: [] } }
+
+fn fixture_cases() -> List<FixtureCase> {
+  let accepted = AcceptedProbe { remaining: 1, captured: deep_cap(), diagnostics: [], table: field_table() }
+  let accepted_c = AcceptedProbe { remaining: 1, captured: ShallowProbe { stamp: 2, marks: [] }, diagnostics: [], table: field_table() }
+  [
+    FixtureCase { name: "renamed_bind_capture", observed: observed_capture(table: outer_table(), result: accepted), expected: 77135 },
+    FixtureCase { name: "shorthand_bind", observed: observed_shorthand(result: accepted), expected: 135 },
+    FixtureCase { name: "nested_variant_rename", observed: observed_nested(DeepProbe { stamp: 5, marks: [] }, result: accepted_c), expected: 521 }
+  ]
+}
+
+fn verdict_word(held: Bool) -> String { if held { "held" } else { "not_held" } }
+
+fn case_line(c: FixtureCase) -> String {
+  concat("case ", c.name, " ", verdict_word(held: c.observed == c.expected), " observed=", to_string(value: c.observed), " expected=", to_string(value: c.expected), "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport {
+  let cases = fixture_cases()
+  let failed = count(filter(cases, c => c.observed != c.expected))
+  let terminal = if failed > 0 { NativeClaimNotHeld { reason: concat(to_string(value: failed), " fixture(s) read the wrong variable: a pattern field binding captured an outer same-named variable") } } else { NativeClaimHeld }
+  NativeClaimReport { stdout: concat("roster ", join(map(cases, c => c.name), ","), "\n", join(map(cases, c => case_line(c: c)), "")), terminal: terminal }
+}

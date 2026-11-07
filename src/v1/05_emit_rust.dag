@@ -11402,6 +11402,18 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
 }
 
+// The rc-ref PAIR: the PATTERN binder and the PRELUDE source (rc_pattern_preludes'
+// `let <bound_str> = <src>.as_ref()`) are ONE name, derived here once. It is never the bare field name:
+// a pattern field bound under its field name shadows a same-named outer variable the arm body reads --
+// v2.compiler.parse parse_expr_not_predicate_attempt's emitted arms read the INNER table where the .dag
+// reads the parameter (gunbc.recurring_failure_mode
+// emitted_pattern_field_bound_under_its_own_name_captures_an_outer_binding). The __rc_ prefix is
+// emitter-owned: no .dag identifier collides with it. Bound by the pair: the arm body never references
+// the binder; it reads bound_str (the declared variable, or the nested destructuring).
+fn rc_field_binder_name(field_name: String) -> String {
+  concat("__rc_", emit_ident(name: field_name, target: Rust))
+}
+
 fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { declaration: declaration } => emit_ident(name: declaration.name, target: Rust)
@@ -11477,7 +11489,7 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
             let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, bare_name), fb_name))
             concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", bind_name, ", .. }")
           } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+            concat(qualified, " { ", emit_ident(name: fb_name, target: Rust), ": ref ", rc_field_binder_name(field_name: fb_name), ", .. }")
           } else {
             let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
             let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, bare_name), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
@@ -11508,7 +11520,11 @@ fn emit_resolved_variant_pattern_rc_aware(name: String, parent_enum: String?, pa
           if fb_name == "0" { concat("ref ", bind_name) } else { concat(emit_ident(name: fb_name, target: Rust), ": ref ", bind_name) }
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
-            concat("ref ", emit_ident(name: fb_name, target: Rust))
+            if fb_name == "0" {
+              concat("ref ", emit_ident(name: fb_name, target: Rust))
+            } else {
+              concat(emit_ident(name: fb_name, target: Rust), ": ref ", rc_field_binder_name(field_name: fb_name))
+            }
           } else {
             let is_shorthand = match fb_pat { Bind { declaration: declaration } => declaration.name == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
@@ -11654,7 +11670,7 @@ fn rc_field_selection_test(field_name: String, authored_pattern: MatchPattern, o
   } else { "" }
   let conds = [string_guards, deeper] |> filter(g => g != "")
   let guard = if conds |> count == 0 { "" } else { concat(" if ", conds |> join(separator: " && ")) }
-  concat("matches!(", emit_ident(name: field_name, target: Rust), ".as_ref(), ", pat, guard, ")")
+  concat("matches!(", rc_field_binder_name(field_name: field_name), ".as_ref(), ", pat, guard, ")")
 }
 
 // A let-else over `.as_ref()` is irrefutable when the pattern is structurally irrefutable
@@ -11715,7 +11731,7 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
             } else {
               " else { unreachable!() };"
             }
-            let head = concat("let ", bound_str, " = ", emit_ident(name: fb_name, target: Rust), ".as_ref()", tail)
+            let head = concat("let ", bound_str, " = ", rc_field_binder_name(field_name: fb_name), ".as_ref()", tail)
             let inner_preludes = if inner_analysis.needs_rc_pattern {
               rc_pattern_preludes(pattern: fb_pat_here, rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
             } else { "" }
@@ -15558,7 +15574,7 @@ fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedAr
       concat("    ", e.plan.inner_pat_str, " => ", emit_typed_match_arm_body_str(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type), ",")
     )
   }
-  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms |> join(separator: "\n"), "\n} },")
+  concat("    ", plan.pat_str, " => { match ", rc_field_binder_name(field_name: plan.ref_field), ".as_ref() {\n", inner_arms |> join(separator: "\n"), "\n} },")
 }
 
 // A DEEPER Rc LEVEL INSIDE THE DISCRIMINATED FIELD'S PATTERN IS THE SAME PROBLEM ONE LEVEL DOWN, so
@@ -17864,7 +17880,7 @@ fn emit_rc_grouped_tco_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroup
   let inner_arms = members |> map(e =>
     concat("    ", e.plan.inner_pat_str, " => { ", emit_typed_tco_expr(texpr: arm_body(n: e.arm), fn_name: fn_name, params: params, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info), " },")
   ) |> join(separator: "\n")
-  concat("    ", plan.pat_str, " => { match ", emit_ident(name: plan.ref_field, target: Rust), ".as_ref() {\n", inner_arms, "\n} },")
+  concat("    ", plan.pat_str, " => { match ", rc_field_binder_name(field_name: plan.ref_field), ".as_ref() {\n", inner_arms, "\n} },")
 }
 
 fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, registry: Map<String, ItemInfo>, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
