@@ -1,7 +1,10 @@
 module gunbc.compute.durable_attempt_controller
 
 import std.types { String, NonEmptyStr, Bool, EpochSecs }
-import std.optional { Present, Absent }
+import std.algebra { FreeSemigroup }
+import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, fabric_identity_eq }
+import product.fabric.execution { ExecutionGrant, Receipt, ReceiptAdmission, ReceiptAdmissible, admit_receipt_for_grant, ExecutionReceipt }
+import std.optional { Optional, Present, Absent }
 import std.content_hash { content_hash_of_value, serialize_content_hash }
 import std.durable_compare_and_set {
   CasGeneration, cas_generation, cas_generation_count, ExpectSlotAbsent,
@@ -33,6 +36,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 // this module does not spawn or equate a reservation with an ExecutionGrant.
 type ControllerAttempt sole_constructor {
   request: NonEmptyStr
+  attempt_key: ExecutionAttemptKey
   work_wire: NonEmptyStr
   record: AttemptRecord
   claim: DurableHoldSubject?
@@ -63,6 +67,7 @@ fn controller_attempt_wire(r: ControllerAttempt) -> String {
   serialize_json(v: json_object(members: [
     json_kv(key: "schema", value: json_string(s: "gunbc.controller_attempt/1")),
     json_kv(key: "request", value: json_string(s: r.request as String)),
+    json_kv(key: "attempt_key", value: json_string(s: r.attempt_key as String)),
     json_kv(key: "work", value: json_string(s: r.work_wire as String)),
     json_kv(key: "attempt", value: json_string(s: attempt_record_wire(r: r.record))),
     json_kv(key: "claim_kind", value: json_string(s: match r.claim { Absent => "free" Present { value: _ } => "held" })),
@@ -84,6 +89,9 @@ fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> Controller
       match attempt_member(doc: doc, key: "request") {
         Absent => none
         Present { value: request } =>
+      match attempt_member(doc: doc, key: "attempt_key") {
+        Absent => none
+        Present { value: attempt_key } =>
       match attempt_member(doc: doc, key: "work") {
         Absent => none
         Present { value: wire } =>
@@ -109,18 +117,18 @@ fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> Controller
           Present { value: waiting } => match attempt_member(doc: doc, key: "cancellation") {
             Absent => none
             Present { value: cancellation } =>
-      if schema != "gunbc.controller_attempt/1" || request == "" { none } else {
+      if schema != "gunbc.controller_attempt/1" || request == "" || attempt_key == "" { none } else {
         match work_restore(wire: wire, expected_principal: principal) {
           WorkRestoreRefused { cause: _ } => none
           WorkRestored { work } => match attempt_record_decode(text: attempt) {
             Absent => none
             Present { value: record } =>
               if kind == "free" && hold == "" && owner == "" && epoch == 0 {
-                Present { value: ControllerAttempt { request: request as NonEmptyStr, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } }, claim: none } }
+                Present { value: ControllerAttempt { request: request as NonEmptyStr, attempt_key: attempt_key as ExecutionAttemptKey, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } }, claim: none } }
               } else if kind == "held" && hold != "" && owner != "" {
                 match cas_generation(n: epoch) {
                   Absent => none
-                  Present { value: generation } => Present { value: ControllerAttempt { request: request as NonEmptyStr, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } },
+                  Present { value: generation } => Present { value: ControllerAttempt { request: request as NonEmptyStr, attempt_key: attempt_key as ExecutionAttemptKey, work_wire: wire as NonEmptyStr, record: record, waiting: waiting, cancellation: if cancellation == "" { none } else { Present { value: cancellation as NonEmptyStr } },
                     claim: Present { value: DurableHoldSubject { hold: hold as DurableHoldRef, holder: owner as DurableHoldOwnerRef, generation: generation } } } }
                 }
               } else { none }
@@ -135,7 +143,7 @@ fn controller_attempt_decode(text: String, principal: NonEmptyStr) -> Controller
       }
       }
       }
-      } } }
+      } } } }
   }
 }
 
@@ -145,10 +153,10 @@ fn controller_opened(r: ControllerAttempt) -> EpochSecs { r.record.opened_at }
 fn controller_deadline(r: ControllerAttempt) -> EpochSecs { r.record.launch_deadline }
 fn controller_claim(r: ControllerAttempt) -> DurableHoldSubject? { r.claim }
 fn controller_with_state(r: ControllerAttempt, state: AttemptState) -> ControllerAttempt {
-  ControllerAttempt { request: r.request, work_wire: r.work_wire, record: attempt_record_with_state(r: r.record, state: state), claim: r.claim, waiting: r.waiting, cancellation: r.cancellation }
+  ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire, record: attempt_record_with_state(r: r.record, state: state), claim: r.claim, waiting: r.waiting, cancellation: r.cancellation }
 }
 fn controller_with_claim(r: ControllerAttempt, claim: DurableHoldSubject?) -> ControllerAttempt {
-  ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: claim, waiting: r.waiting, cancellation: r.cancellation }
+  ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire, record: r.record, claim: claim, waiting: r.waiting, cancellation: r.cancellation }
 }
 fn controller_payload_codec(principal: NonEmptyStr) -> AttemptPayloadCodec<ControllerAttempt> {
   AttemptPayloadCodec {
@@ -190,14 +198,15 @@ fn controller_delegation_key(request: HostAcceptedRequest) -> NonEmptyStr {
   serialize_content_hash(hash: content_hash_of_value(value: host_request_identity_wire(identity: request.identity) as NonEmptyStr)) as NonEmptyStr
 }
 
-fn controller_delegate(store: ControllerStore, request: HostAcceptedRequest, proposed: AttemptRecord) -> ControllerDelegationResult {
+fn controller_delegate(store: ControllerStore, request: HostAcceptedRequest, attempt_key: ExecutionAttemptKey, proposed: AttemptRecord) -> ControllerDelegationResult {
   if (request.identity.principal as String) != (store.principal as String) {
     ControllerDelegationRefused { detail: "accepted request is outside the independently configured principal" }
   } else { match work_restore(wire: request.payload as String, expected_principal: store.principal) {
     WorkRestoreRefused { cause: _ } => ControllerDelegationRefused { detail: "accepted payload is not a canonical supported Work" }
     WorkRestored { work } => {
-      let initial = ControllerAttempt { request: host_request_identity_wire(identity: request.identity) as NonEmptyStr, work_wire: request.payload,
-        record: attempt_record_with_state(r: proposed, state: AttemptReserved), claim: none, waiting: none, cancellation: none }
+      let initial = ControllerAttempt { request: host_request_identity_wire(identity: request.identity) as NonEmptyStr, attempt_key: attempt_key, work_wire: request.payload,
+        record: AttemptRecord { identity: work.id.key as String, reference: proposed.reference, unit: proposed.unit, granted: proposed.granted,
+          opened_at: proposed.opened_at, launch_deadline: proposed.launch_deadline, state: AttemptReserved, owner: proposed.owner }, claim: none, waiting: none, cancellation: none }
       let bytes = controller_attempt_wire(r: initial) as NonEmptyStr
       match admit_cas_attempt(attempt: cas_attempt(key: controller_delegation_key(request: request), expected: ExpectSlotAbsent, proposed: bytes, proposed_content: content_hash_of_value(value: bytes))) {
         CasAttemptAdmitted { verified } => match slot_commit(store: store.requests, publication: DefaultAccessCreateOnly, verified: verified) {
@@ -264,7 +273,7 @@ fn controller_event_prepare(delegation: ControllerDelegation, lease: HeldLease, 
 }
 
 fn controller_attempt_immutable_wire(r: ControllerAttempt) -> String {
-  controller_attempt_wire(r: ControllerAttempt { request: r.request, work_wire: r.work_wire,
+  controller_attempt_wire(r: ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire,
     record: attempt_record_with_state(r: r.record, state: AttemptReserved), claim: none, waiting: none, cancellation: none })
 }
 
@@ -280,7 +289,7 @@ fn controller_wait_wire(waiting: DurableHoldSubject?) -> String {
 }
 
 // Outer absence is decode failure; inner absence means no capacity wait.
-fn controller_wait_decode(text: String) -> (DurableHoldSubject?)? {
+fn controller_wait_decode(text: String) -> Optional<Optional<DurableHoldSubject>> {
   if text == "" { Present { value: none } } else {
     match parse_json_document(s: text) {
       JsonDocumentUnreadable { gap: _ } => none
@@ -308,21 +317,21 @@ fn controller_event_apply(r: ControllerAttempt, event: ControllerEvent) -> Contr
     ControllerCapacityWaiting { source } => match r.record.state {
       AttemptReserved => match r.cancellation {
         Present { value: _ } => none
-        Absent => Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: Present { value: source }, cancellation: none } }
+        Absent => Present { value: ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: Present { value: source }, cancellation: none } }
       }
       _ => none
     }
     ControllerCapacityReleased { report } => match r.waiting {
       Absent => none
       Present { value: w } => if durable_hold_ref_equal(left: w.hold, right: report.hold.hold) && durable_hold_owner_equal(left: w.holder, right: report.hold.holder) && cas_generation_count(g: w.generation) == cas_generation_count(g: report.hold.generation) && (match report.completion { SectionObservedComplete { observation: _ } => true _ => false }) {
-        Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: none, cancellation: r.cancellation } }
+        Present { value: ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire, record: r.record, claim: r.claim, waiting: none, cancellation: r.cancellation } }
       } else { none }
     }
     ControllerCancel { reason } => match r.record.state {
       AttemptTerminal { verdict: _, detail: _ } => none
-      AttemptReserved => Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire,
+      AttemptReserved => Present { value: ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire,
         record: attempt_record_with_state(r: r.record, state: AttemptTerminal { verdict: AttemptWorkEnded { ending: WorkEndedCancelled }, detail: reason as String }), claim: r.claim, waiting: none, cancellation: Present { value: reason } } }
-      AttemptLaunching => Present { value: ControllerAttempt { request: r.request, work_wire: r.work_wire,
+      AttemptLaunching => Present { value: ControllerAttempt { request: r.request, attempt_key: r.attempt_key, work_wire: r.work_wire,
         record: r.record, claim: r.claim, waiting: none, cancellation: Present { value: reason } } }
     }
   }
@@ -360,4 +369,52 @@ fn controller_advance(r: ControllerAttempt, next: AttemptState) -> ControllerAtt
     }
     _ => none
   }
+}
+
+
+// PR5 owns the schema migration AND its real legacy producer. Today's receipt
+// has no way to bind these three facts, so a matching attempt is necessary but
+// never sufficient. Do not invent an outcome from billable time/output digest.
+type ControllerReceiptMissing
+  = ControllerReceiptMissingOutcome
+  | ControllerReceiptMissingWork
+  | ControllerReceiptMissingSource
+
+type ControllerReceiptRefusal
+  = ControllerReceiptWrongAttempt
+  | ControllerReceiptWrongRequest
+  | ControllerReceiptWrongWork
+  | ControllerReceiptWorkUnreadable
+  | ControllerReceiptFenceRefused { admission: ReceiptAdmission }
+  | ControllerReceiptNotExecution
+  | ControllerReceiptBindingMissing { missing: FreeSemigroup<ControllerReceiptMissing> }
+
+// There is deliberately no accepted constructor until PR5 can supply the
+// promised fields. This is a declared consumer frontier, not a silent default.
+fn controller_receipt_for_attempt(expected: FabricIdentity<NonEmptyStr, ExecutionAttemptKey>, receipt: Receipt<NonEmptyStr>, grant: ExecutionGrant<NonEmptyStr>) -> ControllerReceiptRefusal {
+  if !fabric_identity_eq(left: expected, right: receipt.attempt) || !fabric_identity_eq(left: expected, right: grant.context.attempt) {
+    ControllerReceiptWrongAttempt
+  } else { match admit_receipt_for_grant(r: receipt, g: grant) {
+    ReceiptAdmissible => match receipt.payload {
+      ExecutionReceipt { step_id: _, outputs: _, billable: _, completed_at: _ } => ControllerReceiptBindingMissing {
+        missing: FreeSemigroup { head: ControllerReceiptMissingOutcome, tail: [ControllerReceiptMissingWork, ControllerReceiptMissingSource] },
+      }
+      _ => ControllerReceiptNotExecution
+    }
+    other => ControllerReceiptFenceRefused { admission: other }
+  } }
+}
+
+fn controller_receipt_admit(delegation: ControllerDelegation, receipt: Receipt<NonEmptyStr>, grant: ExecutionGrant<NonEmptyStr>) -> ControllerReceiptRefusal {
+  let d = delegation
+  if host_request_identity_wire(identity: grant.context.demand) != (d.initial.request as String) {
+    ControllerReceiptWrongRequest
+  } else { match work_restore(wire: d.initial.work_wire as String, expected_principal: d.store.principal) {
+    WorkRestoreRefused { cause: _ } => ControllerReceiptWorkUnreadable
+    WorkRestored { work } => if !fabric_identity_eq(left: work.id, right: grant.context.work) {
+      ControllerReceiptWrongWork
+    } else {
+      controller_receipt_for_attempt(expected: FabricIdentity { principal: d.store.principal, key: d.initial.attempt_key }, receipt: receipt, grant: grant)
+    }
+  } }
 }

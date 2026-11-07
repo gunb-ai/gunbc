@@ -911,7 +911,7 @@ data controller_executor_fence_handoff: IntegrationConcern = IntegrationConcern 
   disposition: Triaged {
     home: ExistingHome { model: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant") },
     preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"), control: Absent, statement: "Cell occupancy remains distinct from host resource conservation and cannot be double spent." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.runner.runner_revision_job_launch", decl_name: "revision_job_launch_plan"), control: Absent, statement: "The microVM profile preserves its provisioning, isolation and root-approval obligations; a grant does not substitute for profile admission." }],
-    next: climbs_when(capability: "PR 4/5 consumes the committed attempt with full grant and lease binding, demonstrates duplicate delivery cannot duplicate execution, and reconciles launch-before-transfer and cancellation without a second live attempt. PR 6 connects the route to local consumers."),
+    next: climbs_when(capability: "PR 4/5 consumes the committed attempt with full grant and lease binding, demonstrates duplicate delivery cannot duplicate execution, and reconciles launch-before-transfer and cancellation without a second live attempt. PR 5's receipt binds WorkOutcome and the legacy producer is migrated. PR 3 names missing outcome/work/source and refuses legacy-shaped receipts; it never fabricates an outcome. PR 6 connects the route to local consumers."),
   },
 }
 

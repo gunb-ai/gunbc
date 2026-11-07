@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.temporal_effect { HeldLease }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
 import std.measure { kibibyte }
-import product.fabric.identity { FabricIdentity, DemandKey }
+import product.fabric.identity { FabricIdentity, DemandKey, ExecutionAttemptKey }
 import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
 import gunbc.compute.durable_attempt_controller {
   ControllerDelegation, ControllerDelegated, controller_store, controller_delegate,
@@ -25,21 +25,28 @@ import extdeps.shell
 // These controls execute the production request acceptance, delegation, codec,
 // prepare and file CAS paths. The pause is an explicit prepared proposal, not
 // a sleep or a simulated scheduler. No process launch is performed by PR3.
-fn fixture() -> ControllerDelegation? {
+fn delegated_fixture() -> ControllerDelegation? {
   let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_controller.XXXXXX").path
   match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
     identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
     HostRequestAccepted { request } => match controller_delegate(
-      store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr), request: request,
+      store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr), request: request, attempt_key: "execution-one" as ExecutionAttemptKey,
       proposed: AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
         state: AttemptReserved, owner: DirectInvocation { why: "isolated controller witness" } }) {
-      ControllerDelegated { delegation } => match controller_attempt_open(delegation: delegation) {
-        AttemptAdvanced { state: _, generation: _ } => Present { value: delegation }
-        _ => none
-      }
+      ControllerDelegated { delegation } => Present { value: delegation }
       _ => none
     }
     _ => none
+  }
+}
+
+fn fixture() -> ControllerDelegation? {
+  match delegated_fixture() {
+    Absent => none
+    Present { value: d } => match controller_attempt_open(delegation: d) {
+      AttemptAdvanced { state: _, generation: _ } => Present { value: d }
+      _ => none
+    }
   }
 }
 
@@ -242,4 +249,120 @@ test fn launch_winning_before_cancel_requires_termination_reconciliation() -> Bo
       a && launched && cancelled && (match reopened { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && terminate && launching(d: d)
     } }
   } }
+}
+
+
+import test.claim.fabric.fabric_terminal_contract_witness { fixture_grant, granted_lease_receipt, stale_receipt, foreign_attempt_receipt }
+import gunbc.compute.durable_attempt_controller { controller_receipt_for_attempt, ControllerReceiptBindingMissing, ControllerReceiptWrongAttempt, ControllerReceiptFenceRefused }
+import product.fabric.execution { ReceiptGenerationStale }
+
+test fn matching_legacy_receipt_names_missing_binding_instead_of_completing() -> Bool {
+  match fixture_grant() {
+    Absent => false
+    Present { value: grant } => match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: granted_lease_receipt, grant: grant) {
+      ControllerReceiptBindingMissing { missing: _ } => true
+      _ => false
+    }
+  }
+}
+
+test fn receipt_from_other_attempt_and_stale_lease_are_distinct_refusals() -> Bool {
+  match fixture_grant() {
+    Absent => false
+    Present { value: grant } =>
+      (match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: foreign_attempt_receipt, grant: grant) { ControllerReceiptWrongAttempt => true _ => false }) &&
+      (match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: stale_receipt, grant: grant) { ControllerReceiptFenceRefused { admission: ReceiptGenerationStale { presented: _, current: _ } } => true _ => false }) &&
+      (match controller_receipt_for_attempt(expected: grant.context.attempt, receipt: granted_lease_receipt, grant: grant) { ControllerReceiptBindingMissing { missing: _ } => true _ => false })
+  }
+}
+
+
+import gunbc.compute.attempt_lifecycle { AttemptPayloadAbsent, AttemptPayloadUnreadable, AttemptFenceUnreadable }
+import gunbc.compute.durable_attempt_controller { controller_attempt_wire, ControllerDelegationRefused }
+import gunbc.durable_cas_file_store { slot_commit, admit_cas_attempt, CasAttemptAdmitted, DefaultAccessCreateOnly }
+import std.durable_compare_and_set { cas_attempt, ExpectSlotGeneration, CasCommitted }
+import std.content_hash { content_hash_of_value }
+
+// Actual crash boundary: request CAS has committed, but no attempt exists yet.
+// Two restarters finish the SAME sealed intent. Open never grants ownership.
+test fn crash_after_delegation_before_open_retains_one_unclaimed_intent() -> Bool {
+  match delegated_fixture() { Absent => false Present { value: d } => {
+    let absent = match controller_attempt_read(delegation: d) { AttemptPayloadAbsent => true _ => false }
+    let first = controller_attempt_open(delegation: d)
+    let second = controller_attempt_open(delegation: d)
+    let unclaimed = match controller_attempt_read(delegation: d) {
+      AttemptPayloadHeld { record, generation: _ } => (record.record.reference == "reservation-one") && (match record.claim { Absent => true _ => false })
+      _ => false
+    }
+    absent && (match first { AttemptAdvanced { state: AttemptReserved, generation: _ } => true _ => false }) &&
+      (match second { AttemptAdvanced { state: AttemptReserved, generation: _ } => true _ => false }) && unclaimed && acquire(d: d, owner: "restarter")
+  } }
+}
+
+// Fixture corruption goes through the real store, deliberately bypassing the
+// lifecycle policy using test-owned filesystem authority. Production cannot
+// infer absence or a replacement identity from this unreadable live slot.
+test fn malformed_attempt_refuses_claim_and_reopen_without_remint() -> Bool {
+  match fixture() { Absent => false Present { value: d } => {
+    match controller_attempt_read(delegation: d) {
+      AttemptPayloadHeld { record: _, generation } => {
+        let bytes = "malformed-record" as NonEmptyStr
+        match admit_cas_attempt(attempt: cas_attempt(key: d.initial.record.reference as NonEmptyStr, expected: ExpectSlotGeneration { generation: generation }, proposed: bytes, proposed_content: content_hash_of_value(value: bytes))) {
+          CasAttemptAdmitted { verified } => {
+            let corrupted = slot_commit(store: d.store.attempts, publication: DefaultAccessCreateOnly, verified: verified)
+            let attempted = controller_attempt_prepare(delegation: d, action: AttemptClaimAcquire { owner: "new-owner" as DurableHoldOwnerRef })
+            let reopened = controller_attempt_open(delegation: d)
+            let unreadable = match controller_attempt_read(delegation: d) { AttemptPayloadUnreadable { detail: _ } => true _ => false }
+            (match corrupted { CasCommitted { committed: _ } => true _ => false }) &&
+              (match attempted { AttemptFenceRefused { cause: AttemptFenceUnreadable { detail: _ } } => true _ => false }) &&
+              (match reopened { AttemptAdvanced { state: _, generation: _ } => false _ => true }) && unreadable
+          }
+          _ => false
+        }
+      }
+      _ => false
+    }
+  } }
+}
+
+test fn independent_principal_mismatch_refuses_delegation_with_matching_positive() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_principal.XXXXXX").path
+  match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
+    identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
+    HostRequestAccepted { request } => {
+      let record = AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "isolated principal witness" } }
+      let wrong = controller_delegate(store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "other" as NonEmptyStr), request: request, attempt_key: "execution-one" as ExecutionAttemptKey, proposed: record)
+      let right = controller_delegate(store: controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr), request: request, attempt_key: "execution-one" as ExecutionAttemptKey, proposed: record)
+      (match wrong { ControllerDelegationRefused { detail: _ } => true _ => false }) && (match right { ControllerDelegated { delegation: _ } => true _ => false })
+    }
+    _ => false
+  }
+}
+
+test fn competing_delegators_resume_the_committed_link_not_their_new_candidate() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_delegate.XXXXXX").path
+  match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
+    identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
+    HostRequestAccepted { request } => {
+      let store = controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr)
+      let first_record = AttemptRecord { identity: "work-one", reference: "reservation-one", unit: "unit-one", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "competing first" } }
+      let second_record = AttemptRecord { identity: "work-one", reference: "reservation-two", unit: "unit-two", granted: kibibyte(count: 1024), opened_at: 1800, launch_deadline: 2000,
+        state: AttemptReserved, owner: DirectInvocation { why: "competing second" } }
+      match controller_delegate(store: store, request: request, attempt_key: "execution-one" as ExecutionAttemptKey, proposed: first_record) {
+        ControllerDelegationRefused { detail: _ } => false
+        ControllerDelegated { delegation: first } => match controller_delegate(store: store, request: request, attempt_key: "execution-two" as ExecutionAttemptKey, proposed: second_record) {
+          ControllerDelegationRefused { detail: _ } => false
+          ControllerDelegated { delegation: second } => {
+            let opened1 = controller_attempt_open(delegation: first)
+            let opened2 = controller_attempt_open(delegation: second)
+            first.initial.record.reference == second.initial.record.reference && (second.initial.attempt_key as String) == "execution-one" &&
+              (match opened1 { AttemptAdvanced { state: _, generation: _ } => true _ => false }) && (match opened2 { AttemptAdvanced { state: _, generation: _ } => true _ => false })
+          }
+        }
+      }
+    }
+    _ => false
+  }
 }
