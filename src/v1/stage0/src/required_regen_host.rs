@@ -13323,6 +13323,9 @@ mod route_projection_control {
     const ROUTE_ENV: &str = "GUNBC_ORCH_DUMP_ROUTE";
     const OUT_ENV: &str = "GUNBC_ORCH_DUMP_OUT";
     const DUMP_TEST: &str = "orchestrator_route_row_projection_dump";
+    /// Only the child that actually performed a dump prints this. A child that matched no
+    /// test, or returned early, exits 0 without it - see the parent's non-vacuity assert.
+    const DONE_MARKER: &str = "route_projection_done:";
     const SHARED_ROUTE: &str = "shared_index";
     const DEMAND_ROUTE: &str = "demand";
 
@@ -13474,7 +13477,7 @@ mod route_projection_control {
         std::fs::write(&out, lines.join("\n") + "\n")
             .unwrap_or_else(|e| panic!("could not write the {route} projection to {out}: {e}"));
         eprintln!(
-            "route_projection: {route} wrote {} row(s) to {out}",
+            "{DONE_MARKER} {route} wrote {} row(s) to {out}",
             lines.len()
         );
     }
@@ -13507,18 +13510,40 @@ mod route_projection_control {
             // SEQUENTIAL ON PURPOSE. Two concurrent children would peak at the sum again, which is
             // the very property that made the in-process comparison unrunnable.
             let file = dir.join(format!("{route}.rows"));
-            let status = std::process::Command::new(&exe)
-                .arg(DUMP_TEST)
+            let child = std::process::Command::new(&exe)
+                // FULL PATH, because `--exact` with a bare test name matches ZERO tests: the
+                // harness then prints "running 0 tests", the child exits 0, and no projection is
+                // written. That is exactly how this control first "passed" without comparing
+                // anything, so the filter names the module and the marker below is the proof.
+                .arg(format!("{}::{DUMP_TEST}", module_path!()))
                 .arg("--exact")
                 .arg("--nocapture")
                 .arg("--test-threads=1")
                 .env(ROUTE_ENV, route)
                 .env(OUT_ENV, &file)
-                .status()
+                .output()
                 .unwrap_or_else(|e| panic!("the {route} child could not start: {e}"));
+            let child_out = format!(
+                "{}{}",
+                String::from_utf8_lossy(&child.stdout),
+                String::from_utf8_lossy(&child.stderr)
+            );
+            for line in child_out.lines() {
+                // Forwarded rather than swallowed, so a child that refuses for a stated reason
+                // (a closure error, an index refusal) is still readable in the parent's log.
+                eprintln!("route_projection: [{route} child] {line}");
+            }
             assert!(
-                status.success(),
-                "the {route} child exited with {status:?}; its diagnostics are above"
+                child.status.success(),
+                "the {route} child exited with {:?}; its lines are above",
+                child.status
+            );
+            assert!(
+                child_out
+                    .lines()
+                    .any(|l| l.starts_with(DONE_MARKER) && l.contains(route)),
+                "the {route} child exited 0 without printing its {DONE_MARKER} line, so it never \
+                 ran the dump - a filter that matches no test looks like this. Its lines are above."
             );
             let rows = std::fs::read_to_string(&file).unwrap_or_else(|e| {
                 panic!(
