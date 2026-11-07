@@ -54,6 +54,43 @@ type PopulationReport {
   detail: String
 }
 
+// THE TWO PRODUCTS ONE parse-population WALK PRODUCES: what the process SAYS, and what a publishing route
+// WRITES. They were one value -- report.text carried the receipts when no base was read and the reuse counts
+// when one was (population_parse_report) -- which is the reason the two routes could not be one route: the
+// writer wrote the text, so a walk that had read a base would have published its counts line as a verdict.
+// Deriving both products from the one tally is what lets the default-branch route read an ancestor's
+// standing and still publish: the lines it writes are the lines a full walk writes for the same bytes
+// (population_parse_accepted records a reused member's line exactly as it records a parsed member's), and
+// the counts the operator reads still come from the same walk.
+type PopulationVerdictProducts {
+  report: PopulationReport,
+  receipts: Optional<String>
+}
+
+// THE RECEIPTS PAYLOAD, SPELLED ONCE. population_parse_report renders it and population_verdict_products
+// hands the same derivation to a writer; two spellings would be two truths about one artifact.
+fn population_parse_receipts_text(tally: PopulationParse) -> String {
+  join(list_reverse(xs: tally.accepted_receipts), "\n")
+}
+
+fn population_verdict_products(tally: PopulationParse) -> PopulationVerdictProducts {
+  PopulationVerdictProducts {
+    report: population_parse_report(tally: tally),
+    // NO COMPILER, NO RECEIPTS. A line is a claim about a parse compiler's identity, and with none named no
+    // line was ever recorded (population_parse_accepted appends only under a compiler), so there is nothing
+    // truthful to write. Absent here is a refusal to produce an artifact, NOT an empty file. It is not
+    // guarding against an empty set being read as completeness: a member is never admitted because the set
+    // happens to hold it, but because its OWN recomputed digest forms the exact line looked up in that set
+    // (gunbc.parse_verdict_schema .parse_verdict_standing), so a base carrying no lines at all is an honest
+    // all-miss and a full walk. What Absent rules out is worse than an all-miss: a run reporting itself
+    // held while publishing no payload at all.
+    receipts: match tally.compiler {
+      Absent => Absent
+      Present { value: _ } => Present { value: population_parse_receipts_text(tally: tally) }
+    }
+  }
+}
+
 // ---- check-layout -----------------------------------------------------------------------------------
 
 type TreeFiles
@@ -514,7 +551,7 @@ fn population_parse_report(tally: PopulationParse) -> PopulationReport {
       Present { value: _ } =>
         PopulationReport {
           text: match tally.reuse.base {
-            Absent => join(list_reverse(xs: tally.accepted_receipts), "\n")
+            Absent => population_parse_receipts_text(tally: tally)
             Present { value: _ } => parse_verdict_reuse_counts_text(counts: tally.reuse.counts)
           },
           held: true,
@@ -544,29 +581,38 @@ fn population_declaration_duplicated_report(keys: List<String>) -> PopulationRep
   }
 }
 
-fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
+fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationVerdictProducts {
   match population_parse_begin(classes: parse_population_declared_refusal_classes(), compiler: compiler, reuse: reuse) {
-    PopulationDeclarationDuplicated { keys: keys } => population_declaration_duplicated_report(keys: keys)
-    PopulationBegun { tally: tally } => population_parse_report(tally: population_parse_go(env: env, pending: modules, tally: tally))
+    // NO PRODUCTS, NOT EMPTY PRODUCTS: nothing was enumerated, so there is no artifact to publish and
+    // "held: false" is the only truthful thing the run can say.
+    PopulationDeclarationDuplicated { keys: keys } =>
+      PopulationVerdictProducts { report: population_declaration_duplicated_report(keys: keys), receipts: Absent }
+    PopulationBegun { tally: tally } => population_verdict_products(tally: population_parse_go(env: env, pending: modules, tally: tally))
   }
 }
 
-fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
+fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationVerdictProducts {
   match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
-      PopulationReport {
-        text: concat(subject, ": ", cause),
-        held: false,
-        detail: concat("could not enumerate the modules of ", subject)
+      PopulationVerdictProducts {
+        report: PopulationReport {
+          text: concat(subject, ": ", cause),
+          held: false,
+          detail: concat("could not enumerate the modules of ", subject)
+        },
+        receipts: Absent
       }
     BoundModulesListed { modules: modules } => parse_population_listed(env: env, modules: modules, compiler: compiler, reuse: reuse)
   }
 }
 
-fn parse_population(bindings: List<SourceRootBinding>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
+fn parse_population(bindings: List<SourceRootBinding>, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationVerdictProducts {
   match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
     AcquisitionEnvUnprepared { diagnostics: _ } =>
-      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
+      PopulationVerdictProducts {
+        report: PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" },
+        receipts: Absent
+      }
     AcquisitionEnvReady { env: env } => parse_population_prepared(env: env, compiler: compiler, reuse: reuse)
   }
 }

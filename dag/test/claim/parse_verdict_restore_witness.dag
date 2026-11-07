@@ -6,14 +6,20 @@ import std.optional { Absent, Present }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import gunbc.action_use_admission { cache_restore_action, cache_save_action }
 import extdeps.github.action_release { action_release_uses_text }
-import gunbc.parse_verdict_publish { materialization_publish_if }
+import gunbc.parse_verdict_publish {
+  materialization_publish_if,
+  parse_verdict_cache_working_directory,
+  parse_verdict_publish_command,
+}
 import gunbc.parse_verdict_restore {
+  parse_verdict_ancestor_base_sha_expr,
   parse_verdict_identity_restore_step,
   parse_verdict_locate_script,
   parse_verdict_ancestor_sha_expr,
   parse_verdict_receipts_restore_step,
   parse_verdict_restore_if,
   parse_verdict_reuse_command,
+  parse_verdict_reuse_walk_if,
   parse_verdict_reuse_walk_step,
   parse_verdict_record_step,
   parse_verdict_record_script,
@@ -22,7 +28,7 @@ import gunbc.parse_verdict_restore {
 import gunbc.parse_verdict_publish { parse_verdict_identity_blob_file, parse_verdict_receipts_file }
 import extdeps.github.expressions { serialize_expression }
 
-fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String) -> Bool {
+fn restore_step_is_exact_restore_on_read_route(step: Step, key_marker: String) -> Bool {
   match step {
     UsesStep { name: _, id: _, uses: u, with: w, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
       (action_release_uses_text(action_release: u) == action_release_uses_text(action_release: cache_restore_action))
@@ -39,12 +45,58 @@ fn restore_step_is_exact_restore_on_pull_request(step: Step, key_marker: String)
   }
 }
 
-// POSITIVE CONTROL, ROUTE ASSERTED: both restores are the cache RESTORE action (not save), guarded by
-// the pull-request scope, with an exact key and no restore-keys, which a near-identity hit would need.
-test fn the_base_sha_entries_are_restored_exactly_on_pull_request_only() -> Bool {
-  restore_step_is_exact_restore_on_pull_request(step: parse_verdict_identity_restore_step(ordinal: 3), key_marker: "")
-    && restore_step_is_exact_restore_on_pull_request(step: parse_verdict_receipts_restore_step(ordinal: 3), key_marker: "")
+// POSITIVE CONTROL, ROUTE ASSERTED: both restores are the cache RESTORE action (not save), guarded by the
+// route that may READ an ancestor, with an exact key and no restore-keys, which a near-identity hit would
+// need. The read guard names BOTH routes -- the pull request (which restores what main saved) and the
+// default-branch push (which restores what earlier main pushes saved) -- and is still not the publisher's
+// guard, which is a conjunction of push AND the main ref and so admits no pull-request run.
+test fn the_base_sha_entries_are_restored_exactly_on_the_two_read_routes() -> Bool {
+  restore_step_is_exact_restore_on_read_route(step: parse_verdict_identity_restore_step(ordinal: 3), key_marker: "")
+    && restore_step_is_exact_restore_on_read_route(step: parse_verdict_receipts_restore_step(ordinal: 3), key_marker: "")
+    && string_contains(s: parse_verdict_restore_if(), pattern: "github.event_name == 'pull_request'")
+    && string_contains(s: parse_verdict_restore_if(), pattern: "github.event_name == 'push'")
+    && string_contains(s: parse_verdict_restore_if(), pattern: "refs/heads/main")
     && (parse_verdict_restore_if() != materialization_publish_if())
+}
+
+// POSITIVE CONTROL, THE WALKS ARE MUTUALLY EXCLUSIVE: reading widened to the push route must not have
+// given the push route a second walk. The pull-request walk is gated on the pull-request route ALONE --
+// not on the widened read guard, which would fire on a push too -- and it never names the publisher's
+// arguments; the publisher never runs on a pull request. A run that fired both would pay for the whole
+// population twice, which is the cost this change exists to remove (DESIGN.md section 2).
+test fn one_run_fires_exactly_one_walk_and_the_read_guard_is_not_a_walk_guard() -> Bool {
+  (step_condition(step: parse_verdict_reuse_walk_step()) == parse_verdict_reuse_walk_if())
+    && (parse_verdict_reuse_walk_if() != parse_verdict_restore_if())
+    && string_contains(s: parse_verdict_reuse_walk_if(), pattern: "github.event_name == 'pull_request'")
+    && (string_contains(s: parse_verdict_reuse_walk_if(), pattern: "'push'") == false)
+    && (string_contains(s: parse_verdict_reuse_command(), pattern: "--receipts") == false)
+    && (string_contains(s: parse_verdict_reuse_command(), pattern: "--write-identity") == false)
+    && string_contains(s: materialization_publish_if(), pattern: "'push'")
+    && (string_contains(s: materialization_publish_if(), pattern: "pull_request") == false)
+}
+
+// POSITIVE CONTROL, THE ANCESTOR START NAMES THE PRE-EXISTING COMMIT AND NEVER THE HEAD: the locator
+// starts at the pull request's base or at the commit main held before this push, and its expression never
+// names the head under verification. This is the START of the search only -- what a member may stand on is
+// decided by the standing rule, controlled in src/v2/test/claim/cli/population_verbs.dag, which does not
+// read the ancestor at all. The residual cases (force push, batched push, `before` equal to the head) are
+// stated as review claims in gunbc.parse_verdict_restore, not asserted here.
+test fn the_ancestor_start_names_the_pre_push_commit_and_never_the_head() -> Bool {
+  let start = parse_verdict_ancestor_base_sha_expr()
+  string_contains(s: start, pattern: "github.event.pull_request.base.sha")
+    && string_contains(s: start, pattern: "github.event.before")
+    && (string_contains(s: start, pattern: "github.sha") == false)
+}
+
+// POSITIVE CONTROL, ONE BASE PATH: the publishing walk reuses and publishes in one pass, and reads the
+// SAME directory the pull-request walk reads -- one spelling of where a base lives, so the routes cannot
+// disagree about it and silently fall back to a full walk while believing they reused.
+test fn the_publishing_walk_reuses_the_same_base_the_pull_request_walk_reads() -> Bool {
+  let reuse_arg = concat(" --reuse-from ", parse_verdict_cache_working_directory)
+  string_contains(s: parse_verdict_publish_command(), pattern: reuse_arg)
+    && string_contains(s: parse_verdict_reuse_command(), pattern: reuse_arg)
+    && string_contains(s: parse_verdict_publish_command(), pattern: "--receipts")
+    && string_contains(s: parse_verdict_publish_command(), pattern: "--write-identity")
 }
 
 // The walk that consumes them is the reuse walk: it names --reuse-from, and writes nothing.

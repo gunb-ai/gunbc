@@ -13,7 +13,7 @@ import v2.extdeps.languages.bash_build {
 }
 import std.optional { Optional, Present }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, kv }
-import extdeps.github.actions { Step, RunStep, UsesStep }
+import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_pull_request }
 import gunbc.action_use_admission { cache_restore_action }
 import gunbc.instrument_targets { v2_native_cli_source_roots }
 import v2.cli.population_verb_names { cli_verb_parse_population }
@@ -48,6 +48,8 @@ import gunbc.parse_verdict_schema {
 import gunbc.parse_verdict_publish {
   materialization_gha_cache_key_prefix,
   materialization_scope_guard,
+  materialization_restore_guard,
+  materialization_restore_if,
   parse_verdict_compiler_expr,
   parse_verdict_generation_one_bin,
   parse_verdict_identity_blob_file,
@@ -64,22 +66,68 @@ import gunbc.parse_verdict_publish {
 // never a pass and never an error (DESIGN.md section 5). The restore keys are exact; there are no
 // restore-keys, because a prefix hit would be a near identity and reuse is exact or it is a miss.
 //
-// The guard is derived from the pull-request scope in the cache model, as the publisher's is from the
-// default-branch scope, so the two sides cannot both fire on one event.
+// THE GUARD BOTH ROUTES READ UNDER is parse_verdict_restore_if below, which is derived from the cache
+// model (a pull request restores main's entries; a default-branch push restores the entries earlier
+// default-branch pushes saved). The two WALKS stay one per run: the pull-request walk is
+// parse_verdict_reuse_walk_if below, the push walk is materialization_publish_if in
+// gunbc.parse_verdict_publish, and they never both fire on one event.
 
-data parse_verdict_locate_step_name: String = "Locate first-parent ancestors of base.sha"
+data parse_verdict_locate_step_name: String = "Locate first-parent ancestors below the commit under verification"
 data parse_verdict_locate_step_id: String = "parse_ancestors"
 data parse_verdict_record_step_name: String = "Record the restored parse-verdict ancestor"
 data parse_verdict_reuse_walk_step_name: String = "Walk parse-population reusing the nearest published ancestor's receipts"
 
+// THE GUARD FOR READING A PUBLISHED ANCESTOR'S VERDICTS, derived from the cache model in
+// gunbc.parse_verdict_publish (materialization_restore_guard), which admits every route the model says
+// can restore an entry: a pull request restores what main saved, and a default-branch push restores
+// what earlier default-branch pushes saved. IT IS NOT THE GUARD FOR A WALK. Each walk keeps its own,
+// mutually exclusive guard -- parse_verdict_reuse_walk_if on the pull-request route, materialization_publish_if
+// on the push route -- so widening the read cannot put a second walk into one run and pay for the
+// population twice (DESIGN.md section 2).
 fn parse_verdict_restore_if() -> String {
+  materialization_restore_if()
+}
+
+// THE PULL-REQUEST WALK ONLY. It reads the restored entries, reports counts and writes nothing; with no
+// receipts to publish there is exactly one walk per pull-request run. The default-branch route takes NO
+// walk here: its walk is the publisher (gunbc.parse_verdict_publish.parse_verdict_publish_walk_step),
+// which reuses and saves in one pass. Asserted distinct from the publisher's guard by
+// test.claim.parse_verdict_restore_witness, because a run that fired both would double the walk.
+fn parse_verdict_reuse_walk_if() -> String {
   serialize_expression(expression: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope))
 }
 
-fn pull_request_base_sha_expr() -> String {
+// THE START OF THE FIRST-PARENT SEARCH, one per route. A pull request searches the base it merges into; a
+// default-branch push has no base, so it searches from github.event.before: the commit main held BEFORE
+// this push, which is the nearest commit that could already have published. The commit being pushed is
+// excluded because `before` is a different commit, not because of any arithmetic -- see the review claim
+// below. When `before` names no commit the run can resolve (a new branch, where GitHub reports the all-zeros
+// sha), the locator's git rev-list answers nothing, every ordinal is a typed miss, and the walk is a full
+// walk: the same shape an evicted entry takes, never an error and never a pass.
+//
+// REVIEW CLAIM, NOT A VERIFIED INVARIANT (so named deliberately). What the walk actually stands on is
+// decided per member by gunbc.parse_verdict_schema .parse_verdict_standing, which reads ONLY the head's
+// parse-compiler identity, the base's identity, and the line built from the digest THIS walk recomputed
+// from the bytes on disk. The start commit reaches the standing decision nowhere: it selects which
+// published ENTRY the cache hands back, and it is reported in the counts line. So an unreachable or
+// rewritten `before` (a force push, a batched push, `before` equal to the head) costs hit rate and can name
+// a misleading ancestor in the log; it cannot make a member stand on bytes or a parse compiler it did not
+// verify. Enforcing the ancestor relation itself -- a `git merge-base --is-ancestor` guard emitted into the
+// locator -- is available and was deliberately NOT added here, because it adds a predicate to the emitted
+// shell without changing what any member may reuse; it is listed for decision, not assumed away.
+fn parse_verdict_ancestor_base_sha_expr() -> String {
   serialize_template(template: ExpressionTemplate {
     segments: [Interpolation {
-      expression: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] }
+      expression: LogicalOr {
+        left: LogicalAnd {
+          left: Equals {
+            left: ContextAccess { context: Github, path: ["event_name"] },
+            right: StringLiteral { value: github_event_name_pull_request }
+          },
+          right: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] }
+        },
+        right: ContextAccess { context: Github, path: ["event", "before"] }
+      }
     }]
   })
 }
@@ -111,11 +159,15 @@ fn parse_verdict_restore_receipts_key(ordinal: Int) -> String {
   )
 }
 
-// THE LOCATOR: the first-parent ancestors of the base, newest first, to the declared ordinals, each
-// written as a step output, which the restore keys and the record step read. The script is a bash node tree emitted through bash_emit, as the
-// release-bins runners are; no shell is authored here. A `git rev-list` that cannot answer (a
-// base sha outside the checkout) leaves the output empty, and an empty sha is a key no entry carries,
-// so the restore is a typed miss rather than a failed required job.
+// THE LOCATOR: the first-parent ancestors below the commit under verification, newest first, to the
+// declared ordinals, each written as a step output, which the restore keys and the record step read. It
+// starts where parse_verdict_ancestor_base_sha_expr points -- the base on a pull request, the commit main
+// held before this push on the default branch -- and it EXCLUDES that start's own commit only by the
+// ordinal the caller asks for, which is why neither route may name the commit it is judging. The script is
+// a bash node tree emitted through bash_emit, as the release-bins runners are; no shell is authored here.
+// A `git rev-list` that cannot answer (a start outside the checkout, or the all-zeros sha GitHub reports
+// for a new branch) leaves the output empty, and an empty sha is a key no entry carries, so the restore is
+// a typed miss rather than a failed required job.
 fn parse_verdict_lit(t: String) -> Node { bash_build_word_lit(text: t) }
 fn parse_verdict_var(n: String) -> Node { bash_build_word_var(name: n) }
 fn parse_verdict_words(ws: List<Node>) -> Node { bash_build_word_concat_from_nodes(parts: ws) }
@@ -172,7 +224,7 @@ fn parse_verdict_locate_step() -> Step {
     id: Present { value: parse_verdict_locate_step_id },
     run: parse_verdict_locate_script(),
     shell: none,
-    env: Present { value: [kv(key: "BASE_SHA", value: yaml_string(s: pull_request_base_sha_expr()))] },
+    env: Present { value: [kv(key: "BASE_SHA", value: yaml_string(s: parse_verdict_ancestor_base_sha_expr()))] },
     working_directory: none,
     if_condition: Present { value: parse_verdict_restore_if() },
     continue_on_error: none,
@@ -201,7 +253,7 @@ fn parse_verdict_identity_hit(ordinal: Int) -> Expression {
 fn parse_verdict_identity_restore_condition(ordinal: Int) -> Expression {
   fold_list(
     xs: parse_verdict_restore_ancestor_ordinals,
-    empty: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope),
+    empty: materialization_restore_guard(),
     cons: fn(acc, earlier) {
       if earlier < ordinal {
         LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_identity_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
@@ -213,7 +265,7 @@ fn parse_verdict_identity_restore_condition(ordinal: Int) -> Expression {
 }
 
 fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
-  LogicalAnd { left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope), right: parse_verdict_identity_hit(ordinal: ordinal) }
+  LogicalAnd { left: materialization_restore_guard(), right: parse_verdict_identity_hit(ordinal: ordinal) }
 }
 
 fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: String, cache_key: String, condition: Expression) -> Step {
@@ -347,7 +399,7 @@ fn parse_verdict_reuse_walk_step() -> Step {
     shell: none,
     env: Present { value: parse_verdict_publish_memory_env() },
     working_directory: none,
-    if_condition: Present { value: parse_verdict_restore_if() },
+    if_condition: Present { value: parse_verdict_reuse_walk_if() },
     continue_on_error: none,
     timeout_minutes: none
   }

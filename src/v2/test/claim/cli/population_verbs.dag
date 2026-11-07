@@ -41,6 +41,8 @@ import v2.cli.population_verbs {
   population_parse_begin,
   population_parse_refused,
   population_parse_report,
+  population_verdict_products,
+  PopulationVerdictProducts,
 }
 import gunbc.parse_verdict_schema {
   parse_verdict_receipts_empty_detail,
@@ -303,6 +305,190 @@ test fn a_walk_over_no_enumerated_module_does_not_hold_and_names_the_declared_mo
   !report.held
     && report.text.starts_with(prefix: "dag:a/one.dag: ")
     && string_contains(s: report.detail, pattern: "a parse over nothing is not a parse of zero")
+}
+
+// THE TWO PRODUCTS, SEPARATED. report.text and the published payload were one value, and that single slot
+// is what forced the gate to keep the two routes apart: with no base read the text IS the receipts payload,
+// and with a base read the text is the operator's counts line. A publishing route that reads a base must
+// therefore write the bytes a walk with no base would have written, while still printing the counts -- the
+// purity oracle for the default-branch route standing on an ancestor
+// (gunbc.recurring_failure_mode.cache_impurity: "byte-identical cached-vs-cold is the purity oracle"). The
+// two tallies below carry the SAME verdicts; only their route differs, so their payloads must not.
+test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -> Bool {
+  let off_tally = fold_list(
+    xs: every_declared_met,
+    empty: reuse_tally(reuse: parse_verdict_reuse_off()),
+    cons: fn(acc, judgment) { judge(tally: acc, judgment: judgment) }
+  )
+  let on_tally = fold_list(
+    xs: every_declared_met,
+    empty: reuse_tally(
+      reuse: reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: reuse_receipts_text()))
+    ),
+    cons: fn(acc, judgment) { judge(tally: acc, judgment: judgment) }
+  )
+  let off = population_verdict_products(tally: off_tally)
+  let on = population_verdict_products(tally: on_tally)
+  published_payload_ignores_the_route(
+    off: off,
+    on: on,
+    cold_expected: held_parse_report_text(),
+    counts_line: parse_verdict_reuse_counts_text(counts: on_tally.reuse.counts)
+  )
+}
+
+// THE PUBLISHED LINE IS THE MEMBER'S OWN, WHATEVER ROUTE BROUGHT IT. The member's standing is taken
+// through the SAME function the walk consults (population_parse_standing); only when it is actually Reused
+// does the acceptance run, and the line the publishing route then writes is byte-identical to the line the
+// no-base route writes for the same member. Discriminatory mutations, each flipping a named assertion: a
+// base under another parse-compiler identity yields MissIdentityMismatch instead of the reused path (next
+// control); a base carrying another digest yields MissDigestUnseen; a walk with no compiler yields an
+// Absent payload, not an empty one (the writer control below).
+test fn a_reused_member_publishes_the_line_a_parsed_member_would() -> Bool {
+  let reuse = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: reuse_receipts_text()))
+  reuse_standing_is(reuse: reuse, digest: fixture_source_digest, expected: Reused)
+    && published_payloads_agree(
+      cold: population_verdict_products(
+        tally: population_parse_accepted(tally: reuse_tally(reuse: parse_verdict_reuse_off()), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+      ),
+      warm: population_verdict_products(
+        tally: population_parse_accepted(tally: reuse_tally(reuse: reuse), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+      ),
+      expected: held_parse_report_text()
+    )
+}
+
+// RED AGAINST AN UNSOUND REUSE: a base under a different parse-compiler identity must not stand in for the
+// member, and the line published for that member must still be the one THIS walk verified by parsing.
+test fn a_mismatched_base_still_publishes_only_what_this_walk_verified() -> Bool {
+  let wrong = reuse_base(i_base: optional_present(value: "other-compiler"), text: optional_present(value: reuse_receipts_text()))
+  reuse_standing_is(reuse: wrong, digest: fixture_source_digest, expected: MissIdentityMismatch)
+    && published_payloads_agree(
+      cold: population_verdict_products(
+        tally: population_parse_accepted(tally: reuse_tally(reuse: parse_verdict_reuse_off()), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+      ),
+      warm: population_verdict_products(
+        tally: population_parse_accepted(tally: reuse_tally(reuse: wrong), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+      ),
+      expected: held_parse_report_text()
+    )
+}
+
+// MIXED WALK, THE ORDER CASE: one member stands on the ancestor's line, the other is parsed here. The
+// published file must carry both lines in the same order as the all-parsed walk -- the file IS the artifact,
+// so a payload that agrees as a set but not in order is still a different artifact.
+test fn a_mixed_walk_publishes_the_same_lines_in_the_same_order() -> Bool {
+  let reuse = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: reuse_receipts_text()))
+  let cold_t = fold_list(
+    xs: [JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }, JudgedParses { key: "dag:a/six.dag", source_digest: "other-digest" }],
+    empty: reuse_tally(reuse: parse_verdict_reuse_off()),
+    cons: fn(acc, judgment) { judge(tally: acc, judgment: judgment) }
+  )
+  // THE FIRST MEMBER STANDS ON THE ANCESTOR, THE SECOND DOES NOT: asserted, not assumed.
+  let standing = population_parse_standing(tally: reuse_tally(reuse: reuse), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+  let warm_t = fold_list(
+    xs: [JudgedParses { key: "dag:a/six.dag", source_digest: "other-digest" }],
+    empty: population_parse_accepted(tally: reuse_tally(reuse: reuse), key: "dag:a/four.dag", source_digest: fixture_source_digest),
+    cons: fn(acc, judgment) { judge(tally: acc, judgment: judgment) }
+  )
+  match standing {
+    Present { value: Reused } =>
+      published_payloads_agree(
+        cold: population_verdict_products(tally: cold_t),
+        warm: population_verdict_products(tally: warm_t),
+        expected: concat(held_parse_report_text(), "\nparse-verdict\tother-digest\tfixture-compiler\tAccepted")
+      )
+    Present { value: MissIdentityAbsent } => false
+    Present { value: MissIdentityMismatch } => false
+    Present { value: MissEntryAbsent } => false
+    Present { value: MissDigestUnseen } => false
+    Present { value: MissDeclaredRefused } => false
+    Absent => false
+  }
+}
+
+// A BASE THAT ANSWERS NOTHING FOR THIS MEMBER IS AN ALL-MISS, NEVER A PASS. The identity is exact and the
+// line set is well-formed but does not carry the member's digest, so the member is parsed and what is
+// published is what THIS walk verified -- the shape that keeps a restored-but-useless base from being read
+// as completeness.
+test fn a_base_without_the_member_line_misses_it_and_publishes_its_own() -> Bool {
+  let unrelated = reuse_base(i_base: optional_present(value: fixture_compiler), text: optional_present(value: "parse-verdict\tsome-other-digest\tfixture-compiler\tAccepted"))
+  reuse_standing_is(reuse: unrelated, digest: fixture_source_digest, expected: MissDigestUnseen)
+    && published_payloads_agree(
+      cold: population_verdict_products(
+        tally: population_parse_accepted(tally: reuse_tally(reuse: parse_verdict_reuse_off()), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+      ),
+      warm: population_verdict_products(
+        tally: population_parse_accepted(tally: reuse_tally(reuse: unrelated), key: "dag:a/four.dag", source_digest: fixture_source_digest)
+      ),
+      expected: held_parse_report_text()
+    )
+}
+
+// THE ANCESTOR IS METADATA, NOT STANDING: two bases that differ ONLY in which ancestor they name decide the
+// same standing for the same member. This is what makes the start commit a matter of hit rate and log
+// honesty rather than soundness (the case the gate's comment claims, and the reason the force-push and
+// batched-push residuals need no git-side guard to be safe).
+test fn the_named_ancestor_changes_nothing_about_standing() -> Bool {
+  let lines_text = reuse_receipts_text()
+  let lines = Present { value: parse_verdict_receipt_lines(text: lines_text) }
+  let one = ParseVerdictBase {
+    ancestor: optional_present(value: "ancestor-one"),
+    i_base: optional_present(value: fixture_compiler),
+    receipt_lines: lines
+  }
+  let other = ParseVerdictBase {
+    ancestor: Absent,
+    i_base: optional_present(value: fixture_compiler),
+    receipt_lines: lines
+  }
+  reuse_standing_is(reuse: parse_verdict_reuse_requested(base: one), digest: fixture_source_digest, expected: Reused)
+    && reuse_standing_is(reuse: parse_verdict_reuse_requested(base: other), digest: fixture_source_digest, expected: Reused)
+}
+
+fn published_payloads_agree(cold: PopulationVerdictProducts, warm: PopulationVerdictProducts, expected: String) -> Bool {
+  match cold.receipts {
+    Absent => false
+    Present { value: cold_body } => match warm.receipts {
+      Absent => false
+      Present { value: warm_body } => (cold_body == expected) && (warm_body == cold_body)
+    }
+  }
+}
+
+// THE PUBLISHED PAYLOAD IS THE ROUTE-INDEPENDENT PRODUCT: the same verdicts, read either way, publish the
+// same bytes -- while the log line does move, because the walk with a base says what it reused.
+fn published_payload_ignores_the_route(off: PopulationVerdictProducts, on: PopulationVerdictProducts, cold_expected: String, counts_line: String) -> Bool {
+  match off.receipts {
+    Absent => false
+    // THE PUBLISHED BYTES DO NOT MOVE. The route changed; the artifact did not.
+    Present { value: cold } => match on.receipts {
+      Absent => false
+      Present { value: warm } =>
+        (cold == cold_expected)
+          && (off.report.text == cold)
+          && (off.report.held == true)
+          && (warm == cold)
+          && (on.report.held == true)
+          // THE LOG LINE DOES MOVE: with a base read, the walk says what it reused.
+          && (on.report.text == counts_line)
+          && (on.report.text != cold)
+    }
+  }
+}
+
+// A HELD WALK WITH NO COMPILER HAS NO PAYLOAD TO PUBLISH, and Absent (not an empty string) is what makes
+// the writer refuse instead of publishing a base of zero verdicts that a later run would read as complete.
+test fn a_walk_with_no_compiler_offers_no_receipts_payload() -> Bool {
+  let no_compiler = fold_list(
+    xs: [JudgedParses { key: "dag:a/four.dag", source_digest: fixture_source_digest }],
+    empty: begun(classes: []),
+    cons: fn(acc, judgment) { judge(tally: acc, judgment: judgment) }
+  )
+  match population_verdict_products(tally: no_compiler).receipts {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 // REUSE: the base the restore step left behind, built through the SAME crossing the verb reads it

@@ -7,7 +7,7 @@ import extdeps.github.actions { Step, RunStep, UsesStep, github_event_name_push,
 import gunbc.action_use_admission { cache_save_action }
 import v2.cli.population_verb_names { cli_verb_parse_population }
 import v2.cli.parse_verdict_invocation {
-  ParseVerdictInvocationArg, cli_option_compiler, cli_option_write_identity, cli_option_receipts,
+  ParseVerdictInvocationArg, cli_option_compiler, cli_option_reuse_from, cli_option_write_identity, cli_option_receipts,
   parse_verdict_invocation_command, parse_verdict_invocation_source_root_args
 }
 import gunbc.instrument_targets { v2_native_cli_source_roots }
@@ -37,6 +37,7 @@ import extdeps.github.expressions {
   StringLiteral,
   Equals,
   LogicalAnd,
+  LogicalOr,
   ExpressionTemplate,
   LiteralText,
   Interpolation,
@@ -79,6 +80,29 @@ fn materialization_scope_guard(scope: GhaCacheEntryScope) -> Expression {
 
 fn materialization_publish_if() -> String {
   serialize_expression(expression: materialization_scope_guard(scope: materialization_publish_scope()))
+}
+
+// THE ROUTES THAT MAY READ AN ANCESTOR'S PUBLISHED VERDICTS. Reading is not publishing: it crosses no
+// write boundary, so it is admitted wherever the cache model says an entry is restorable -- read from
+// gha_cache_entry_restorable_by above, not restated here. A pull-request run restores the entries main
+// saved (materialization_publish_restorable_by_pull_request); a default-branch push restores the
+// entries earlier default-branch pushes saved, which is the only way a main commit can publish
+// verdicts for modules it did not touch. The reverse stays refused: an entry a pull request saved is
+// not restorable by the default branch, so a push never reads a pull request's entries.
+//
+// Admitting the READ decides no WALK. The two walks keep their own mutually exclusive guards --
+// gunbc.parse_verdict_restore.parse_verdict_reuse_walk_if on the pull-request route (it reports counts
+// and writes nothing) and materialization_publish_if on the default-branch push (it writes receipts and
+// the identity blob) -- so widening the read never puts a second walk into one run.
+fn materialization_restore_guard() -> Expression {
+  LogicalOr {
+    left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope),
+    right: materialization_scope_guard(scope: materialization_publish_scope())
+  }
+}
+
+fn materialization_restore_if() -> String {
+  serialize_expression(expression: materialization_restore_guard())
 }
 
 fn materialization_gha_cache_key_prefix(family: String) -> String {
@@ -136,10 +160,20 @@ fn github_sha_expr() -> String {
 // THE WALK'S WHOLE ARGUMENT POPULATION, source-root tail included. See parse_verdict_reuse_args in
 // gunbc.parse_verdict_restore for why the roots are declared ARGUMENTS now rather than appended as a
 // rendered string: an option the invocation always passes has to be inside the shape the stamp certifies.
+//
+// IT READS THE NEAREST PUBLISHED ANCESTOR AND PUBLISHES, in one pass, over the restored directory the
+// pull-request walk reads too (parse_verdict_cache_working_directory) -- one spelling of where a base
+// lives, so the two routes cannot disagree about it. Reading is not standing: every module's digest is
+// recomputed and compared, the ancestor's parse-compiler identity must equal the one under verification,
+// and anything that fails either is parsed. What the pass saves is re-parsing members this commit did not
+// change, which is the whole of the walk's cost on a main push (a hit walk runs in seconds; a miss walk
+// in 15 to 24 minutes, measured on runs 42362849618 and 42339827972). It is why the receipts this run
+// publishes are the lines IT verified, not lines it inherited unexamined.
 fn parse_verdict_publish_args() -> List<ParseVerdictInvocationArg> {
   list_append(
     left: [
       ParseVerdictInvocationArg { option: cli_option_compiler, value: parse_verdict_compiler_expr() },
+      ParseVerdictInvocationArg { option: cli_option_reuse_from, value: parse_verdict_cache_working_directory },
       ParseVerdictInvocationArg { option: cli_option_write_identity, value: parse_verdict_identity_blob_file() },
       ParseVerdictInvocationArg { option: cli_option_receipts, value: parse_verdict_receipts_file() }
     ],
