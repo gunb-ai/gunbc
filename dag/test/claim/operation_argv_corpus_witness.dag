@@ -82,7 +82,6 @@ data operation_argv_reason_catalog: String = "argv[0] reads no declared input an
 data operation_argv_reason_residue_call: String = "an argv element after position 0 is a call expression, which materialization binds around but does not evaluate"
 data operation_argv_reason_residue_field: String = "an argv element is a field access on a bound input (TransportScript.body), which materialization does not evaluate"
 data operation_argv_reason_data_ref: String = "an argv element names a module data declaration, which materialization reads as an unbound declared input"
-data operation_argv_reason_env_assignment: String = "argv[0] is an env-assignment expansion over a declared input (GIT_INDEX_FILE=<index> or HOME=<home> inside the executable position); the wall fires correctly, and the assignment belongs in the env binding, not the executable (modeling smell, follow-up)"
 data operation_argv_reason_caller_program: String = "argv[0] is the caller-supplied program input by design (general runner); the wall fires correctly"
 data operation_argv_reason_interp_path: String = "argv[0] interpolates the declared executable input path; the wall fires correctly"
 data operation_argv_reason_fixture: String = "the negative-control fixture whose argv[0] interpolates input `bin`; the wall must fire here"
@@ -114,13 +113,6 @@ data operation_argv_expression_residue_operations: List<ArgvClassifiedOperation>
 ]
 
 data operation_argv_input_reading_executable_operations: List<ArgvClassifiedOperation> = [
-  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.ReadTreeIntoIndex", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.ReadTreeIntoIndexPrefixed", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.AddAllIntoIndex", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.UpdateIndexCacheInfo", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.WriteTreeFromIndex", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git/plumbing.dag git.Plumbing.CheckoutIndexToPrefix", reason: operation_argv_reason_env_assignment },
-  ArgvClassifiedOperation { operation: "dag/extdeps/git.dag git.Core.PushRefInRepo", reason: operation_argv_reason_env_assignment },
   ArgvClassifiedOperation { operation: "dag/extdeps/llm/codex_app_server.dag codex_app_server.Cli.GenerateJsonSchema", reason: operation_argv_reason_interp_path },
   ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgv", reason: operation_argv_reason_caller_program },
   ArgvClassifiedOperation { operation: "dag/extdeps/shell/exec.dag shell.Exec.RunArgvStdin", reason: operation_argv_reason_caller_program },
