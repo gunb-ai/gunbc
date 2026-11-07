@@ -13,6 +13,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
 import std.host_text { chars }
+import std.decimal { decimal_digits_only }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -350,17 +351,16 @@ type SystemdMainPidReading
   | MainPidNoneEstablished
   | MainPidUnreadable { raw: String }
 
-// Decimal-only, checked before the numeric parse: parse_int on "12a" is not something this parser should
-// have an opinion about, and a MainPID carrying a stray character is a corrupt read, not a pid with noise.
-fn systemd_main_pid_is_decimal(text: String) -> Bool {
-  fold(chars(text: text), init: true, f: (acc, cp) => acc && (cp >= 48 && cp <= 57))
-}
-
 fn parse_systemd_main_pid_show(raw: String) -> SystemdMainPidReading {
   let text = trim(s: raw)
   if text == "" {
     MainPidUnreadable { raw: raw }
-  } else if systemd_main_pid_is_decimal(text: text) {
+  // Decimal-only, checked before the numeric parse: parse_int on "12a" is not something this parser
+  // should have an opinion about, and a MainPID carrying a stray character is a corrupt read, not a pid
+  // with noise. THE RULE IS std.decimal decimal_digits_only -- this module does not re-spell "only digits
+  // 0-9" (review 91843); that rule is true of the empty text as well, and the non-empty case is stated
+  // BESIDE it by the text == "" branch above, exactly as decimal_digits_only's own comment requires.
+  } else if decimal_digits_only(s: text) {
     match parse_int(s: text) {
       Absent => MainPidUnreadable { raw: raw }
       Present { value: n } =>

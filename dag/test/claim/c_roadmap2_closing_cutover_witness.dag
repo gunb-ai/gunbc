@@ -26,7 +26,7 @@ import gunbc.roadmap.roadmap_metering_closing_cutover {
   metering_closing_unit_exclusion, metering_closing_cutover_disposition,
 }
 import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
-import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_main_pid_show, SystemdUnitProperty, MainPID, ControlGroup }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_main_pid_show, SystemdMainPidReading, MainPidRunning, MainPidNoneEstablished, MainPidUnreadable, SystemdUnitProperty, MainPID, ControlGroup }
 
 // THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, and review 89888's
 // two findings on it). The roster closing marker changed shape -- a plain metering-roster-closing entry became the
@@ -340,5 +340,31 @@ test fn an_established_absence_closes_the_gate_a_refusal_cannot() -> Bool {
       string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
     MeteringClosingCutoverRefused { cause: _ } => false
     MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// THE MAINPID READING KEEPS ITS THREE ANSWERS APART AFTER THE DECIMAL RULE MOVED TO std.decimal
+// (review 91843): "0" is the POSITIVE no-main-process answer, a decimal pid is Running, and anything
+// that is not decimal -- "12a", an empty answer, a stray prefix -- is Unreadable, never a guessed 0.
+test fn main_pid_show_answers_running_none_and_unreadable_without_guessing() -> Bool {
+  match parse_systemd_main_pid_show(raw: "0") {
+    MainPidNoneEstablished =>
+      (match parse_systemd_main_pid_show(raw: " 4321 ") {
+        MainPidRunning { pid: n } => n == 4321
+        _ => false
+      })
+      && (match parse_systemd_main_pid_show(raw: "12a") {
+        MainPidUnreadable { raw: r } => r == "12a"
+        _ => false
+      })
+      && (match parse_systemd_main_pid_show(raw: "") {
+        MainPidUnreadable { raw: r } => r == ""
+        _ => false
+      })
+      && (match parse_systemd_main_pid_show(raw: "MainPID=7") {
+        MainPidUnreadable { raw: r } => r == "MainPID=7"
+        _ => false
+      })
+    _ => false
   }
 }
