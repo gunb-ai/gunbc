@@ -636,14 +636,14 @@ test fn the_pass_row_counts_are_a_change_detector() -> Bool {
     // product.p4261.e1_b rather than asserted beside it. 47 - 2 + 4 = 49. Beside the identity join
     // (the_positions_are_the_receipts_and_nothing_else), a change detector only.
     && count(filter(p4261_e1_positions, p => match p.population { Present { value: _ } => true Absent { } => false })) == 49
-    // The held set is 25 as of the 2026-11-04 correction, which took C3_F1 out of the admitted set
-    // and put it here: the pass saw its label at t4_07 and never transcribed it, and the marking the
-    // board had stored was the neighbours' (see the generator's EXCEPTIONS and e1_b's C3_F1 rows).
+    // The held set is 25. The 2026-11-04 correction took C3_F1 out of the admitted set and put it here
+    // (26), and the 2026-11-07 batch-6 fold took the Q12 candidate out again: stored frame sd130b reads
+    // Q12_P2 in full, so the retired candidate is that position's own reading (see e1_b's Q12_P2 rows).
     // Before that it was 24. The K1 keeps its own 13 positions: an E1 pass must not reach into
     // another board's design facts. Both are change detectors, not proofs -- the held set's own
     // authority is `every_held_receipt_is_recorded_on_the_board` joined to `e1_held_receipts`, and
     // the design list's is `the_positions_are_the_receipts_and_nothing_else`.
-    && count(e1_held_receipts) == 26
+    && count(e1_held_receipts) == 25
     && count(p4261_k1_positions) == 13
 }
 
