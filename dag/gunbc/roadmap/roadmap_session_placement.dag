@@ -1249,7 +1249,11 @@ fn session_holder_evidence(stores: SessionPlacementStores, unit: NonEmptyStr, re
   let route = attempt_unit_route(unit: unit)
   match session_launch_manager_admissible(reading: recorded, route: route, reference: unit) {
     ManagerAdmissionRefused { detail } => SessionHolderEvidenceRefused { detail: detail }
-    ManagerAdmissionGranted { manager: _ } | ManagerAdmissionLegacy { reference: _ } => session_holder_evidence_from_manager(stores: stores, unit: unit, route: route)
+    // TWO ARMS, ONE BODY: this language has no or-pattern in a match arm, so the two admitted bases are
+    // written out. A granted recorded fact and an admitted legacy lease reach the same reader; only the
+    // REFUSED arm goes anywhere else, and it carries the reason the admission named.
+    ManagerAdmissionGranted { manager: _ } => session_holder_evidence_from_manager(stores: stores, unit: unit, route: route)
+    ManagerAdmissionLegacy { reference: _ } => session_holder_evidence_from_manager(stores: stores, unit: unit, route: route)
   }
 }
 
