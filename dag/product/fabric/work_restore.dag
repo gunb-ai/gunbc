@@ -477,7 +477,7 @@ fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
               decoded_then(rd_list(fields: s4, n: n_steps, item: rd_step), fn(steps, s5) {
                 decoded_then(rd_named(fields: s5, field: "inputs"), fn(inputs, s6) {
                   decoded_then(rd_named(fields: s6, field: "effect_contract"), fn(effect, s7) {
-                    decoded_then(rd_named(fields: s7, field: "output_contract"), fn(output, s8) {
+                    decoded_then(rd_named(fields: s7, field: "output_contract"), fn(output_ref, s8) {
                       decoded_then(rd_count(fields: s8, field: "obligation_count"), fn(n_ob, s9) {
                         decoded_then(rd_list(fields: s9, n: n_ob, item: rd_obligation), fn(obligations, s10) {
                           decoded_then(rd_requirements(fields: s10), fn(decoded, s11) {
@@ -490,7 +490,7 @@ fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
                                   steps: steps,
                                   inputs: inputs as ArtifactManifestRef,
                                   effect_contract: effect as EffectContractRef,
-                                  output_contract: output as OutputContractRef,
+                                  output_contract: output_ref as OutputContractRef,
                                   output_obligations: DeclaredOutputObligations { required: obligations },
                                 },
                                 decoded: decoded,
