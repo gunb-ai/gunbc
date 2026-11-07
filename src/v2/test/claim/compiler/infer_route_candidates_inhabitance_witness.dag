@@ -7,7 +7,7 @@ import v2.std.resolution_policy { default_name_resolution_policy }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, DeclaredTypePosition, PositionDeclaredReturn }
 import std.optional { Absent, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.node { Symbol }
@@ -19,7 +19,7 @@ import v2.test.claim.compiler.infer_record_construct_field_inhabitance_witness {
   RcfInferAccepted,
   RcfInferRefused,
   RcfResolveRefused,
-  rcf_refusal,
+  rcf_refuses_at,
   rcf_verdict,
   rcf_read_in
 }
@@ -87,11 +87,11 @@ fn qrc_resolve_subject(subject: String) -> Outcome<ResolvedTree> {
   }
 }
 
-fn qrc_refused_as(subject: String, reason: Symbol) -> Bool {
-  match rcf_refusal(resolved: qrc_resolve_subject(subject: subject), reason: reason) {
-    Absent => false
-    Present { value: _ } => true
-  }
+// The refusal is asserted as the two facts it carries: the decision that answered no, named by
+// identity, and the position it was asked at -- the refusal's own typed field, read through the single
+// accessor by the rcf matcher. Either can fail alone.
+fn qrc_refused_at(subject: String, reason: Symbol, position: DeclaredTypePosition) -> Bool {
+  rcf_refuses_at(resolved: qrc_resolve_subject(subject: subject), reason: reason, position: position)
 }
 
 fn qrc_accepted(subject: String) -> Bool {
@@ -103,7 +103,11 @@ fn qrc_accepted(subject: String) -> Bool {
 }
 
 test fn qrc_site6_a_concrete_sibling_beside_the_functions_own_variable_at_the_declared_return_refuses_holds() -> Bool {
-  qrc_refused_as(subject: "gunbc.qrc_site6_red", reason: ^arrow_body_does_not_inhabit_declared_return)
+  qrc_refused_at(
+    subject: "gunbc.qrc_site6_red",
+    reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] }
+  )
 }
 
 test fn qrc_site6_agreeing_siblings_beside_the_functions_own_variable_is_accepted_holds() -> Bool {
