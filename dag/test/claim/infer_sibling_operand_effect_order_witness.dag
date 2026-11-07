@@ -24,13 +24,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // for this evidence, test.claim.guarantee_floor_class_probe_witness, sits in NEITHER the prefix
 // roster nor `required_gate_authored_modules` after the 2026-09-19 nominal-roster cut, so the wall
 // that cites it as merge-path evidence is citing a witness the merge path no longer runs. A red
-// placed there would be green forever and cited as coverage, which is the decoration DESIGN
-// section 4b tells an author to check for BEFORE writing the check.
+// placed there would be green forever and cited as coverage, which is the decoration
+// gunbc.design_argument::guarantee_ladder tells an author to check for BEFORE writing the check.
 //
 // EVERY SOURCE BELOW IS A STRING AND NEVER A CORPUS LITERAL. An inline expecting-red would be
 // refused by the compiler that compiles this file, so the fixture has to arrive as text handed to
-// a nested compile -- which is also what makes the red authorable at all, the question DESIGN
-// section 4b says to ask first.
+// a nested compile -- which is also what makes the red authorable at all, the question
+// gunbc.design_argument::guarantee_ladder says to ask first.
 
 // TWO EFFECT-REACHING SIBLINGS IN ONE ARGUMENT LIST. This is the shape the authored ruling on
 // gunbc.host.host_effect_realize srv3_chown_then_read_back was written about, and the shape
@@ -83,7 +83,7 @@ data sibling_effect_order_record_green_source: String = "module probe_sibling_ef
 // diagnostics. IT DOES NOT. compile_dag_diagnostic_census compiles the synthetic source AGAINST
 // THE LIVE TREE, so the total is the whole corpus census: measured at 151 for the green source and
 // 152 for the red. A literal 0 is unreachable, and asserting the measured 151 would be the change
-// detector DESIGN section 5 forbids -- a number copied from the tree it measures.
+// detector gunbc.design_argument::fail_closed forbids -- a number copied from the tree it measures.
 //
 // SO THE CONTROL IS THE DIFFERENCE BETWEEN THE PAIR, which cancels the corpus baseline entirely:
 // the red source and its let-rewritten twin differ in exactly one authored respect, so the wall

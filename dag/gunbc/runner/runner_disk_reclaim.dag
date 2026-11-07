@@ -80,7 +80,7 @@ type ReclaimAdmission
 // a job" have the same immediate action and different owners: the first is the mechanism working,
 // the second is a producer that failed and needs fixing. Collapsing them zeroes the second's
 // frequency by construction, so the producer defect never ranks -- the absorbing-fallback shape
-// DESIGN 5 names, arrived at from the cautious direction rather than the permissive one.
+// gunbc.design_argument::fail_closed names, arrived at from the cautious direction rather than the permissive one.
 fn admit_reclaim_operation(op: ReclaimOperation, activity: SlotActivityObservation) -> ReclaimAdmission {
   if !operation_requires_idle_slot(op: op) {
     ReclaimAdmitted { operation: op }

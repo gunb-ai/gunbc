@@ -122,7 +122,7 @@ type MedianScan {
 // Selection is a single linear fold over the sorted list because this substrate exposes only
 // first/last/length on List — there is no index accessor, and the alternatives are a quadratic
 // rank-count or a hand-rolled recursion. One fold carrying (index, picked) is O(n) after the sort,
-// which keeps the whole derivation at sort cost and clear of DESIGN section 6's standing rule that
+// which keeps the whole derivation at sort cost and clear of gunbc.design_argument::how_to_work's standing rule that
 // a quadratic fold is always fixed regardless of the realized n.
 //
 // EVEN-SIZED POPULATIONS take the LOWER median rather than averaging the middle pair. Declared

@@ -108,7 +108,7 @@ data ci_fleet_job_if: String = "!cancelled() && ((github.ref == 'refs/heads/main
 // cursor/composer-2.5, 2026-08-06). It set the job condition to `!failure() && !cancelled()`, so an
 // upstream failure SKIPPED ci. The retracted note asserted 'a skipped job does not satisfy a
 // required check, so this makes drift BLOCK the merge'. That sentence was false, and it was written
-// from reasoning rather than from a receipt — the §5 trap of fluent output that was never run.
+// from reasoning rather than from a receipt — the gunbc.design_argument::fail_closed trap of fluent output that was never run.
 // GitHub's own troubleshooting-required-status-checks page states that a job skipped by a
 // conditional REPORTS SUCCESS, and that a job skipped because a needed job failed 'may not block
 // merging'. The live default-branch ruleset (id 16178731) names exactly one required context, `ci`;

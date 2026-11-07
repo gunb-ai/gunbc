@@ -38,7 +38,7 @@ import extdeps.linux.proc_stat { proc_stat_boot_time, BootTimeObserved, BootTime
 //
 // A MISSING OR MALFORMED COMPONENT IS A TYPED REFUSAL, never a default: UnitInvocationUnreadable carries
 // the located cause, so "the run is gone" (an observed different run) and "the run could not be asked"
-// are never one value. CONSUMERS (§3c): gunbc.workspace_acquisition_invocation (migrated in this change),
+// are never one value. CONSUMERS (gunbc.design_argument::consumption): gunbc.workspace_acquisition_invocation (migrated in this change),
 // the slot-unit create-once request binding (bold-dove-340) and the srv1 session-memory lease holder-death
 // proof (snappy-carp-24) are declared frontiers, each adopting this observation in its own change.
 type SystemdManagerInstance
@@ -184,8 +184,8 @@ fn unit_run_manager_of_wire(text: String) -> SystemdManagerInstance? {
 // THE HOST PAIR, read once and typed once: which boot a reading was taken from, and when that boot began.
 // It is ONE type and ONE function because the run reading above and the boot-order reading below must not
 // be able to disagree about what a non-UUID boot_id or a malformed btime MEANS -- two spellings of the same
-// refusal are two chances to get it wrong, and the refusal is the value a consumer acts on (DESIGN 3, one
-// fact in one place; DESIGN 2, no second name for one concept). The refusals are this function's; nothing
+// refusal are two chances to get it wrong, and the refusal is the value a consumer acts on (gunbc.design_argument::single_authority, one
+// fact in one place; gunbc.design_argument::minimize_redundancy, no second name for one concept). The refusals are this function's; nothing
 // here invents a default.
 type UnitBootObservation
   = BootObserved { boot_id: Uuid, boot_started_at: EpochSecs }

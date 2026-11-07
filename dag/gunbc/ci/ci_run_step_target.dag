@@ -14,14 +14,14 @@ import std.types { NonEmptyStr }
 // module names, and produced `dag/gunbc/spark/grant_install.dag` (never existed at any commit) and
 // `dag/gunbc/spark/serving_durability.dag` (exists but does not define the named function, nor
 // import the module that does). Nothing refused, because a path in a string is not a symbol — the
-// DESIGN section 3 stale-citation class, landing in an emitted argv rather than prose. Both steps
+// gunbc.design_argument::single_authority stale-citation class, landing in an emitted argv rather than prose. Both steps
 // were unrunnable on main from the day they landed. One roster gives one population to join
 // against, instead of pairs scattered across call sites where two strings could disagree unnoticed.
 //
 // NO CHECK ENFORCES THIS ROSTER TODAY, stated plainly because an earlier revision named one: it
 // promised `test.claim.ci_run_step_target_resolution` joined every row against decl_facts — a
 // witness written, measured, then REMOVED from this PR along with a second attempt at an emit-time
-// wall. Leaving that sentence would have been the DESIGN section 3 stale-citation defect in the
+// wall. Leaving that sentence would have been the gunbc.design_argument::single_authority stale-citation defect in the
 // very comment diagnosing it, and it had already misled one reviewer into reading coverage that
 // does not exist. The roster buys single authority, not enforcement.
 //

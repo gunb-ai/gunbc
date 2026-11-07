@@ -27,7 +27,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // happened -- `carrier_ref_hand_authored_census_is_zero_refusals` was refused on the Wall clock at
 // main 9b341e1b03 against a 29.7s `resolve_declaration_ref_over` fill it did not cause, and
 // #10748 netted the clock one commit later -- while the invalid state stayed exactly as writable
-// as before. That is DESIGN section 4b(2)'s named defect: a trigger naming an OBSERVATION and ONE
+// as before. That is gunbc.design_argument::guarantee_ladder (no untracked stall)'s named defect: a trigger naming an OBSERVATION and ONE
 // MECHANISM CHANGE names less than the capability it meant to restore, so it fires while the
 // capability stays dead. The trigger below is re-derived at capability grain.
 //

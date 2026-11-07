@@ -37,7 +37,7 @@ import std.types { List, NonEmptyStr, String }
 // THE SEED DIRECTORY IS NAMED FROM THE HOST IDENTITY, NOT FROM THE DOCUMENT. It used to read the
 // autoinstall identity's hostname; the payload is key-only now (no identity section), so the only
 // honest source left is gunbc.fleet.fleet_host_identity's own row — the single authority for what a
-// host is called (§3). The bytes are unchanged ("nocloud/srv3"), because they always were this string.
+// host is called (gunbc.design_argument::single_authority). The bytes are unchanged ("nocloud/srv3"), because they always were this string.
 data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
   hostname: operator_host_srv3,
 )
@@ -54,7 +54,7 @@ data srv3_seeded_install_media_image_stem: NonEmptyStr = "ubuntu-24.04.3-live-se
 
 // EVERY BUILD INPUT BUT THE USER-DATA BODY IS A CONSTANT OF THIS MODULE; the body is the one field
 // that is rendered, so it is the one parameter. A witness that supplies a body at this boundary gets
-// the real input shape without re-running the renderer (DESIGN §3, a witness discriminates at one
+// the real input shape without re-running the renderer (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface); the real route below is the inhabitance claim that the renderer's output reaches it.
 fn srv3_seeded_install_media_input_for(user_data_body: NonEmptyStr) -> UbuntuSeededInstallMediaBuildInput {
   UbuntuSeededInstallMediaBuildInput {

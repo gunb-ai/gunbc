@@ -31,7 +31,7 @@ module gunbc.scm.repository_convert
 // root, the allocator, the member census -- and only an admitted decode reaches `save_repository_sharded`.
 // There is no arm in which a shard was written for a repository whose read refused; refusing rather
 // than partially converting is not a check the writer performs but a state the writer cannot be
-// constructed in (DESIGN section 5). A refused conversion leaves the monolith byte-for-byte on disk,
+// constructed in (gunbc.design_argument::fail_closed). A refused conversion leaves the monolith byte-for-byte on disk,
 // so the operator's next act can be a repair of the document, not a recovery from a half-written one.
 //
 // THE WRITE IS THE GUARDED SHARDED WRITER. `save_repository_sharded_guarded` writes shards first (each

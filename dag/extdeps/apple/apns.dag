@@ -104,7 +104,7 @@ type ApnsCollapseId = NonEmptyStr where brand("ApnsCollapseId")
 data apns_collapse_id_max_size: ByteSize = byte_size(count: 64)
 
 // THE CHECKED CONSTRUCTOR: the cap is Apple's, so the judgment that a value fits it lives here with
-// the cap, and every producer of a collapse id goes through it (DESIGN section 4, checked
+// the cap, and every producer of a collapse id goes through it (gunbc.design_argument::closed_grounded_substrate, checked
 // constructors returning Optional). A value over the cap has no collapse id; what a producer does
 // then -- derive a shorter key, or refuse -- is the producer's choice, not this module's.
 fn apns_collapse_id(value: NonEmptyStr) -> ApnsCollapseId? {

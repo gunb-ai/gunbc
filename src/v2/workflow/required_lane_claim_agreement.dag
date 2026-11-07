@@ -16,7 +16,7 @@ import std.algebra { Cons, Empty, length, list_reverse }
 //
 // SO THE SUBJECT IS NOT PROSE HYGIENE. It is a claim about which lanes gate a merge, made in a
 // document, contradicted by the roster the workflow emission is derived from -- two authorities for
-// one fact, which is the DESIGN section 3 defect, and a reader planning against the losing one
+// one fact, which is the gunbc.design_argument::single_authority defect, and a reader planning against the losing one
 // plans against a CI shape that does not exist.
 //
 // WHAT THIS READS, AND IT IS DELIBERATELY THE PROJECTION RATHER THAN THE CORPUS. The subject is the
@@ -32,7 +32,7 @@ import std.algebra { Cons, Empty, length, list_reverse }
 // `gunbc.recurring_failure_mode` `check_subject_narrower_than_its_declared_claim`, and this lane
 // filed that neighbour deliberately. Of the twelve sites the promotion left behind, this covers the
 // THREE that reach a projected ledger. It does NOT cover:
-//   the SIX carried as `//` source annotations, because DESIGN section 4c hands every semantic pass
+//   the SIX carried as `//` source annotations, because gunbc.design_argument::source_annotations hands every semantic pass
 //     the annotation-erased projection and mints no identity for an annotation, so no consumer this
 //     repository has can read one. That is the finding rather than a gap in this module: an
 //     obligation authored into an erased channel has no mechanical consumer at all, so it can
@@ -82,7 +82,7 @@ type ProjectedDocument {
 // sentence UNWRITABLE IN A PROJECTED LEDGER, quotation included. The repair that filed this class
 // wanted to record, in `gunbc.recurring_failure_mode`, that an earlier revision HAD made the claim
 // -- and spelling it in the past tense reddened this wall, correctly. A tense-sensing exemption was
-// rejected: tense is unbounded in prose and any such arm is the smuggled heuristic DESIGN section 5
+// rejected: tense is unbounded in prose and any such arm is the smuggled heuristic gunbc.design_argument::fail_closed
 // names, and it would reopen the wall to exactly the sentence it closes. The ledger says instead
 // that the job stood OUTSIDE the required aggregate, which records the same history and spells no
 // claim. Describing a retired claim is always available; spelling it is not.

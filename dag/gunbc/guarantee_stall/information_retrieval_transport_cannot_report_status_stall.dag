@@ -12,7 +12,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 //
 // WHY THIS IS A STALL AND NOT A DEFECT. Refusing is the correct arm today: the alternative is
 // writing an unobserved status into an observation record, which this module did in an earlier
-// revision and which DESIGN section 5 names as fabricated plausible output. The class is mitigated
+// revision and which gunbc.design_argument::fail_closed names as fabricated plausible output. The class is mitigated
 // -- the wrong state is refused rather than recorded -- and it cannot climb further while the
 // transport stays blind, which is what makes it a stall rather than an unbuilt wall.
 //

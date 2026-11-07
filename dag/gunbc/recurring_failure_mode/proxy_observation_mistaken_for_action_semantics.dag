@@ -15,7 +15,7 @@ data proxy_observation_mistaken_for_action_semantics: RecurringFailureMode = Rec
 
     "The proxy is only ever as strong as the checking path that produces it, and the semantic question -- does every occurrence that crossed the destroyed edge still bind to exactly one accepted declaration identity, and does that identity project a provider the closure reaches -- is never asked.",
 
-    "**HARM: DESIGN section 5 silent wrongness, and directionally the worst member of its family, because the proxy and the semantics agree EXACTLY WHERE THE CHECKER IS SOUND AND DIVERGE EXACTLY WHERE IT FAILS OPEN.** The green is therefore densest on the population the destruction actually damages, and a count of green subjects reads as coverage while being a census of the checker's absorbing arm.",
+    "**HARM: gunbc.design_argument::fail_closed silent wrongness, and directionally the worst member of its family, because the proxy and the semantics agree EXACTLY WHERE THE CHECKER IS SOUND AND DIVERGE EXACTLY WHERE IT FAILS OPEN.** The green is therefore densest on the population the destruction actually damages, and a count of green subjects reads as coverage while being a census of the checker's absorbing arm.",
 
     "**RECOGNITION RULE, and it is mechanical rather than a matter of judgement: name the acceptance path that produced the observation, and ask what that path does when the property under test is ABSENT -- refuse, or substitute.** If any arm on it fabricates, widens, defaults or falls back, the observation is a proxy and its green is a statement about that arm.",
 
@@ -31,7 +31,7 @@ data proxy_observation_mistaken_for_action_semantics: RecurringFailureMode = Rec
 
     "So the 69% is a joint statement about which providers happened to be in the pool and which failures the fabrication arm absorbed, and the document says so in its own words: a clean file may be clean because its provider happened to be loaded.",
 
-    "**THE SUBSTITUTE, STATED SO THIS ROW NAMES A TEST AND NOT ONLY A DEFECT, and it is section 15.4's own terminal test: not 'delete imports, compile exits 0', but every cross-module occurrence has exactly one accepted declaration identity; every accepted identity projects its provider file; the loader closure equals that provider projection; adding or removing an unrelated loaded module changes neither binding nor closure; type, value, callee and emitter consumers all consume the accepted edge; no fallback or fabrication arm is reachable; and compile AND execution are green.** **THE STANDING OBLIGATION THIS CLASS CREATES, AND IT LANDS ON THIS PROJECT'S OWN CENSUS METHOD: THE DESTRUCTION-WITNESS PRECONDITION.** DESIGN section 3 grounds delete-first on 'the deletion is the census -- every real dependent refuses loudly'.",
+    "**THE SUBSTITUTE, STATED SO THIS ROW NAMES A TEST AND NOT ONLY A DEFECT, and it is section 15.4's own terminal test: not 'delete imports, compile exits 0', but every cross-module occurrence has exactly one accepted declaration identity; every accepted identity projects its provider file; the loader closure equals that provider projection; adding or removing an unrelated loaded module changes neither binding nor closure; type, value, callee and emitter consumers all consume the accepted edge; no fallback or fabrication arm is reachable; and compile AND execution are green.** **THE STANDING OBLIGATION THIS CLASS CREATES, AND IT LANDS ON THIS PROJECT'S OWN CENSUS METHOD: THE DESTRUCTION-WITNESS PRECONDITION.** gunbc.design_argument::replacement_migration grounds delete-first on 'the deletion is the census -- every real dependent refuses loudly'.",
 
     "That sentence is CONDITIONAL on the substrate being fail-closed ON THE AXIS DESTROYED, and it is the conditional, not the sentence, that a destruction witness must discharge: before a deletion's green may be read as 'nothing depended on it', exhibit BY EXECUTION, on the SAME acceptance path the green will be read from, one case where the destroyed edge is genuinely required and the path goes RED.",
 
@@ -45,7 +45,7 @@ data proxy_observation_mistaken_for_action_semantics: RecurringFailureMode = Rec
 
     "**NEXT TRIGGER, NAMED AS THE CAPABILITY AND NOT AS AN ARTIFACT: a destruction witness declares the axis it destroys and the acceptance path it reads, and the executor REFUSES the witness when that path carries a reachable fail-open arm on that axis** -- so the precondition is discharged by the runner rather than remembered by an author.",
 
-    "Until that capability exists this row and the doctrine section are the mitigation, and citing either as coverage is the rung inflation DESIGN section 4b(1) names.",
+    "Until that capability exists this row and the doctrine section are the mitigation, and citing either as coverage is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.",
   ],
 
   evidence: [],

@@ -8,7 +8,7 @@ import extdeps.github.workflow_runs { WorkflowJobStep, Completed, Success }
 // required run (gunb-ai/gunbc actions run 40509253563, job 122206492701 "v2-bootstrap", on srv3, slot
 // actions-runner@srv3-15.service, 2026-10-27), copied verbatim from `gh run view --log` and the Jobs API. The real
 // producer of both is today's floor (the seed's memory_envelope_receipt printer; GitHub's step record); a claim over
-// this text is the pairing claim that the decoder reads what the producer emits (DESIGN section 3).
+// this text is the pairing claim that the decoder reads what the producer emits (gunbc.design_argument::witness_one_interface).
 data recorded_v2_bootstrap_run: String = "40509253563"
 
 // The run's head_sha as the Runs API reports it. The run was a pull_request event, so the tree it built was that

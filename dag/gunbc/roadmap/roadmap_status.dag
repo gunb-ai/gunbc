@@ -49,12 +49,12 @@ type RoadmapItem
 
 // Acceptance was three hand-set Bools, so a row could be accepted by asserting
 // works/scope_equivalent while its declared red_control never executed and its declared handback
-// was never delivered — the DESIGN.md §5 shape where a check is satisfied by editing the
+// was never delivered — the gunbc.design_argument::fail_closed shape where a check is satisfied by editing the
 // declaration while the realization still lies. Each row already declares its acceptance criteria
 // in TicketFields.red_control and TicketFields.handback; nothing consumed them. works and
 // scope_equivalent now carry evidence pointing at those two fields instead of asserting them, and
 // the pointers are NonEmptyStr so an unnamed witness is unwritable rather than checked. as_expected
-// stays a Bool because operator satisfaction is the genuinely unstructurable residue §5 reserves
+// stays a Bool because operator satisfaction is the genuinely unstructurable residue gunbc.design_argument::fail_closed reserves
 // for post-hoc judgment. Unsigned remains the fail-closed default. REMAINING GAP, stated so it is
 // countable: signoff_accepts receives only the Signoff, so it cannot compare the named witness
 // against the row's TicketFields.red_control, nor the delivered artifacts against its

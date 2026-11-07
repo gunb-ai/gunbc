@@ -99,7 +99,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 // CONSUMER READS IT FROM. gunbc.machine_intake.megarac_kvm_still drives the MegaRAC KVM viewer
 // in headless Chromium through Playwright; until this module nothing put that toolchain on a runner,
 // and the only proposal was a boot-step `npm install` -- an undeclared toolchain on a fleet host
-// (DESIGN 3: interface in extdeps, realization bound to it; DESIGN 6: a hand-authored provisioning
+// (gunbc.design_argument::single_authority: interface in extdeps, realization bound to it; gunbc.design_argument::how_to_work: a hand-authored provisioning
 // script is out-of-band actuation). The pieces:
 //
 //   WHAT     extdeps.automation.playwright (packages, browser downloads, install-deps set),
@@ -800,11 +800,11 @@ fn browser_toolchain_probe_page_path(scratch: String) -> String {
 // browser_toolchain_launch_script, browser_toolchain_package_version_script and
 // browser_toolchain_decoy_index. (The decoy's package.json is emitted by extdeps.languages.json and is
 // not covered.)
-// ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_87357a75,
+// ADMISSION OF THIS SCAFFOLD (gunbc.design_argument::fail_closed, external to this diff): operator escalation msg_87357a75,
 // DEFAULT-APPROVED on recommendation A, 2026-09-28, after the operator did not answer within the
 // default window -- not an explicit operator ruling. An explicit ruling covering this and the two
 // sibling scaffolds (gunbc#12490, gunbc#12492) has been requested; review 72121 on gunbc#12490 holds
-// that a default approval is insufficient for §5.
+// that a default approval is insufficient for gunbc.design_argument::fail_closed.
 data runner_browser_toolchain_probe_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

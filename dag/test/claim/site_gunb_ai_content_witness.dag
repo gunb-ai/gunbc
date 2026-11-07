@@ -1,6 +1,6 @@
 module test.claim.site_gunb_ai_content_witness
 
-// §5 — "done means executed" for the gunb.ai content model (gunbc.site.gunb_ai_content). The
+// gunbc.design_argument::fail_closed — "done means executed" for the gunb.ai content model (gunbc.site.gunb_ai_content). The
 // claim is not "the strings are present in the file" (a grep, which passes on dead code); it is
 // that the rows RENDER into markup carrying the relationships the copy depends on. Where a claim
 // is about rendered output it builds a Fragment with the same helpers the page will use and

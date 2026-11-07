@@ -259,7 +259,7 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
 // participation claims four of the spine's steps contributes four cells, never the full spine. The
 // former assertion was enrollments.length() * host_standup_spine.length(), which is a count
 // equality over a rectangle: it could not distinguish a correct matrix from one that gave every
-// host every step, and DESIGN.md §5 rules that completeness is an identity join, not a count.
+// host every step, and gunbc.design_argument::fail_closed rules that completeness is an identity join, not a count.
 test fn witness_matrix_is_exact_join_over_participation_programs() -> Bool {
   let matrix = host_fleet_phase_matrix(enrollments: fleet_enrollments)
   let matched = filter(

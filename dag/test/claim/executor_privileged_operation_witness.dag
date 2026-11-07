@@ -139,7 +139,7 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // the witness. test.claim.executor_privileged_operation_witness is not in
 // v2.workflow.required_floor required_gate_prefixes, so the required floor never executes it;
 // it reddened here only because touching this file enrolled it as a changed witness. That is an
-// inert lens on main (DESIGN §6), not a defect this CPU-quota diff introduced. The fabric term
+// inert lens on main (gunbc.design_argument::how_to_work), not a defect this CPU-quota diff introduced. The fabric term
 // already derived from desired_directives length; this term now does the same from the named
 // host-wide list. `allocation_store == 2` remains a transcribed count of
 // fabric_allocation_store_privileged_operations on a fabric host -- deriving that chain is

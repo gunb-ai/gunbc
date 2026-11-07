@@ -93,13 +93,13 @@ data first_reap: List<NonEmptyStr> = [
 // THE DEFECT IS NOT THE WRONG HOSTNAME, IT IS THAT A HOSTNAME WAS SPELLED HERE AT ALL. This
 // module's own attachment_authority names the BMC's redirection configuration as the authority for
 // which image is presented, and that same configuration is what names WHERE it is read from. A
-// literal beside it is a second answer to a question this module already routes elsewhere (DESIGN
-// §3), and a positional one at that: nothing edits this string when an export moves, so it decays
+// literal beside it is a second answer to a question this module already routes elsewhere (
+// gunbc.design_argument::single_authority), and a positional one at that: nothing edits this string when an export moves, so it decays
 // silently while every reader keeps trusting it.
 //
 // CORRECTING THE STRING WAS THE TEMPTING MOVE AND IT IS THE WRONG ONE -- a freshly-true literal
 // rots exactly as the last one did, and restores the false confidence that made this defect
-// expensive. So the field is deleted rather than fixed (§3 delete-first: uproot the root, then fix
+// expensive. So the field is deleted rather than fixed (gunbc.design_argument::replacement_migration delete-first: uproot the root, then fix
 // forward), and what remains are the two properties that are genuinely facts ABOUT THE STORE
 // rather than about where it happens to sit.
 type StoreStanding {

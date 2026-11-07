@@ -175,7 +175,7 @@ fn hostname_set_invocation_cli_arguments(invocation: HostnameSetInvocation) -> O
 // spells); the subcommand and the operand are the rendered surface, so the verb can never drift
 // from the cited row.
 //
-// REFUSAL-CARRYING, NOT A WIDEN: a lowering refusal surfaces as Rejected (DESIGN section 5 --
+// REFUSAL-CARRYING, NOT A WIDEN: a lowering refusal surfaces as Rejected (gunbc.design_argument::fail_closed --
 // a failure arm refuses, it does not widen into an empty argv that a caller could mistake for
 // a real projection). Every consumer matches the Outcome; nothing reads a bare list that has
 // already swallowed the refusal.

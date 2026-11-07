@@ -3,10 +3,10 @@ module gunbc.provisioning.ubuntu_network_origin_observation
 // SEAM: extdeps keeps what Canonical publishes; gunbc keeps what we concluded. The kernel and
 // initrd digests below were extracted by us from inside the ISO by a procedure we wrote, with no
 // upstream digest to cite, so we are the authority for them (hence TranscribedUncited), and what a
-// mirror served when we fetched and hashed it is our observation (DESIGN 3, External upstream
+// mirror served when we fetched and hashed it is our observation (gunbc.design_argument::external_upstreams, External upstream
 // decomposition; 3b External facts). The verdict is descriptive only: it never says an origin is
 // admitted or selected; the first thing that decides from it is the later install step.
-// CONSUMER (DESIGN 3c): consumed by its witness in this change; executing consumer is a declared
+// CONSUMER (gunbc.design_argument::consumption): consumed by its witness in this change; executing consumer is a declared
 // later change of cut 6 of gunbc.plans.physical_machine_boot_program (the PXE-edge provisioning arm
 // and the wet install step that calls verify_ubuntu_network_origin).
 
@@ -34,7 +34,7 @@ import extdeps.provisioning.ubuntu_install_media {
 // MIXED PROVENANCE, SO TWO STANDINGS. A pin's digest and its size can come from different places:
 // for the ISO the digest is Canonical's (CitedToAuthority, SHA256SUMS) while the byte count is
 // OUR measurement of what the mirror served; for the casper members both are ours. One standing
-// for the pin would let a measured size wear a citation it does not have (DESIGN 4d). The size is
+// for the pin would let a measured size wear a citation it does not have (gunbc.design_argument::epistemic_humility). The size is
 // std.measure FiniteByteSize, so an empty artefact has no constructor rather than a check. The
 // constructor takes the hex, not a Digest, so a sha512 pin has no spelling, and a hex that
 // std.content_hash sha256_hex_digest refuses returns absence; the stored digest is built from the

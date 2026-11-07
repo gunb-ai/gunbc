@@ -61,7 +61,7 @@ fn cli_dispatch_rung_classes() -> List<CliDispatchRungClass> {
 //
 // This is a PRODUCT fact -- which verbs gunbc offers, which options each takes, and what each
 // verb's arm delegates to. It is not a fact about the Rust language and it is not a fact about
-// clap. It lives here because DESIGN section 3 separates interface, realization and policy: the
+// clap. It lives here because gunbc.design_argument::interface_realization_policy separates interface, realization and policy: the
 // surface below is policy, `clap` is one realization of it, and `v1.compiler.emit_rust` is where
 // that realization is rendered.
 //
@@ -70,7 +70,7 @@ fn cli_dispatch_rung_classes() -> List<CliDispatchRungClass> {
 // selected by a `has_pipeline` predicate that asks whether the corpus being compiled contains
 // `v1.compiler.compile`. That predicate is an "am I gunbc?" test sitting inside the interface, and
 // everything it guards is one product's argv policy welded into the emitter every other product
-// shares. The tell DESIGN section 3 names is exact: an argv carrying a literal it should receive
+// shares. The tell gunbc.design_argument::single_authority names is exact: an argv carrying a literal it should receive
 // as a parameter.
 //
 // WHAT THIS MODULE DOES NOT DO. It renders no Rust. A `Vec<String>` for a repeated option, a
@@ -120,7 +120,7 @@ type CliOptionArity
 // was a port written as characters, so the row NAMED `Port` while CARRYING a string, and the only
 // thing relating the two was this comment. Putting the default in the arm makes the row carry the
 // authority it names -- `port_default` IS a `Port`, `millisecond_default` IS a `Millisecond` --
-// which is the anemic-leaf decomposition DESIGN section 2 asks for, onto concepts that already
+// which is the anemic-leaf decomposition gunbc.design_argument::minimize_redundancy asks for, onto concepts that already
 // exist rather than a fresh one.
 //
 // It also makes a state unwritable rather than checked. `CliToggleValue` has no default field, so
@@ -128,7 +128,7 @@ type CliOptionArity
 // to select -- has no constructor. A witness asserting toggles declare no default was enrolled
 // here and is DELETED rather than kept: its RED is no longer authorable in any source a fixture
 // could write, so it would be permanently green by construction and would read as coverage while
-// carrying no information (DESIGN section 4b). The climb removes the check, not the guarantee.
+// carrying no information (gunbc.design_argument::guarantee_ladder). The climb removes the check, not the guarantee.
 type CliOptionValue
   = CliTextValue { text_default: String? }
   | CliToggleValue
@@ -169,7 +169,7 @@ type CliVersionIdentity
 // symbol, and the binding between the two would hold only by spelling. A verb on this arm instead
 // declares that its subject is resolved through `gunbc.target_binding`'s registry and realized by
 // whatever that registry binds — so the CLI surface names no realization at all, and the dispatch
-// that selects one stays peripheral where DESIGN section 3 puts it.
+// that selects one stays peripheral where gunbc.design_argument::single_authority puts it.
 type CliArmRealization
   = CliDelegatesToHostFn { symbol: String }
   | CliRetainedHostKernel
@@ -331,7 +331,7 @@ fn gunbc_cli_version_text(identity: CliVersionIdentity) -> String {
   }
 }
 
-// §7 PURE-BOOTSTRAP RECEIPT FOR THE ONE SEED-RETAINED UNIT THIS SURFACE STILL NEEDS.
+// gunbc.design_argument::self_hosting PURE-BOOTSTRAP RECEIPT FOR THE ONE SEED-RETAINED UNIT THIS SURFACE STILL NEEDS.
 // The policy and formatting are modeled above; `build.rs` remains the host observation that asks
 // Git for HEAD and observes whether the Rust inputs are dirty, then binds GUNBC_BUILD_IDENTITY for
 // the Rust realization. This is counted interim HAND-Rust growth, not a census shrink.
@@ -343,7 +343,7 @@ data gunbc_cli_build_identity_seed_dissolve_trigger: DissolutionCondition = unbo
 // root, because dry-run is a property of how a compiled program's service calls are realized, not
 // of gunbc's verbs. Declaring it below would create a second authority for a field this module
 // does not own and the emitter would keep emitting from its own -- the parallel-representation
-// debt DESIGN section 3 forbids, marked or not. The surface below is the SUBCOMMAND surface, and
+// debt gunbc.design_argument::single_authority forbids, marked or not. The surface below is the SUBCOMMAND surface, and
 // that is the whole of what `has_pipeline` fused into the emitter.
 
 fn gunbc_build_operation_ref() -> DeclarationRef {
@@ -679,7 +679,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         }
       ],
       realization: CliRefusesUnwired {
-        successor: "unwired AS A SUBCOMMAND -- `gunbc scm log` does not exist -- but the answer is now REACHABLE, and this row said it was not. The successor is `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=<p>`, which prints the rendered answer and exits on the exit the response itself carries. What changed: gunbc.cli_wire CliWireResponse gained a host binding in run_verb (cli_run classify_cli_wire + cli_wire_outcome), so a wire-returning entry is no longer refused with `returned ScmReadResult, not ProcessExit` and its answer is no longer computed and discarded. The earlier text -- `there is NO route a user can invoke today` -- was true when written and this row is the authority that has to stop saying it, because a surface that keeps asserting an absence the host has since filled is a §3 fork between the model and the thing it models. scm_status and scm_init are reachable by the same route; scm_init REFUSES an occupied path (gunbc.scm.init)."
+        successor: "unwired AS A SUBCOMMAND -- `gunbc scm log` does not exist -- but the answer is now REACHABLE, and this row said it was not. The successor is `gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=<p>`, which prints the rendered answer and exits on the exit the response itself carries. What changed: gunbc.cli_wire CliWireResponse gained a host binding in run_verb (cli_run classify_cli_wire + cli_wire_outcome), so a wire-returning entry is no longer refused with `returned ScmReadResult, not ProcessExit` and its answer is no longer computed and discarded. The earlier text -- `there is NO route a user can invoke today` -- was true when written and this row is the authority that has to stop saying it, because a surface that keeps asserting an absence the host has since filled is a gunbc.design_argument::single_authority fork between the model and the thing it models. scm_status and scm_init are reachable by the same route; scm_init REFUSES an occupied path (gunbc.scm.init)."
       },
       emission: AbsentFromShippedDispatch
     },

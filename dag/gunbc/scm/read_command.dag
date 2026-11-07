@@ -34,7 +34,7 @@ import gunbc.scm.status { RepositoryStatus, repository_status }
 import gunbc.scm.proposal { Proposal }
 
 // THE VERB IS A TYPE ARGUMENT, NOT AN ARM. Selecting a verb from argv is dispatch, and dispatch is
-// realization (DESIGN section 3), so a `ScmReadCommand = Log | Status` coproduct here would pull
+// realization (gunbc.design_argument::single_authority), so a `ScmReadCommand = Log | Status` coproduct here would pull
 // the CLI's own concern into the value layer. A `ScmReadAnswer = ScmLogAnswer | ScmStatusAnswer`
 // coproduct did exactly that in an earlier revision while a header paragraph denied it: the roster
 // was not removed, it was MOVED FROM THE REQUEST TO THE RESPONSE, one arm per verb. The test that
@@ -53,7 +53,7 @@ type ScmReadResult<T>
 // this module's construction site. The neighbouring advisory about generic formals is real but
 // belongs to other call sites; nothing was reported against these two functions at all.
 //
-// SO THE HONEST RUNG IS mitigatable, NOT structurally guaranteed (DESIGN section 4b). A reader who
+// SO THE HONEST RUNG IS mitigatable, NOT structurally guaranteed (gunbc.design_argument::guarantee_ladder). A reader who
 // took the generic for a wall would be doing the rung inflation that section names as worse than
 // sitting low, because an inflated class never ranks for climbing. What the generic ACTUALLY
 // removed is a state the old shape could NAME: under `ScmReadAnswer = ScmLogAnswer | ScmStatusAnswer`
@@ -84,11 +84,11 @@ type ScmReadResult<T>
 // refuse it. Here that pair has no spelling. The construction is the one
 // `gunbc.live_deploy.spec` `deployment_step_ownership` uses, whose authority note gives the reason
 // in general form: the classification is DERIVED, never stored, so an inconsistent pair is
-// unwritable -- DESIGN section 5, construction over validation.
+// unwritable -- gunbc.design_argument::fail_closed, construction over validation.
 //
 // AND NO `Bool` PROJECTION OVER IT IS EXPORTED. An earlier revision offered
 // `scm_read_produced_answer`, whose only consumers were the two witnesses asserting it returns true
-// and false -- an artifact with no final consumer (DESIGN section 6). `gunbc.scm.checkout` records
+// and false -- an artifact with no final consumer (gunbc.design_argument::how_to_work). `gunbc.scm.checkout` records
 // this exact helper shape being removed twice before, once as `checkout_succeeded` and once from
 // `gunbc.scm.ancestry` under review 56207, for the reason that survives here: consumers match the
 // arms, so a new arm fails to compile at every site rather than being silently absorbed into a
@@ -106,7 +106,7 @@ type ScmReadResult<T>
 // The functions below ARE the verbs, but a caller that has to NAME one -- a CLI operand, a dispatch
 // table, a help listing -- cannot name a function. Without this type the name would travel as a bare
 // `String`, and every consumer would re-decide which strings are admissible: the anemic-leaf shape
-// DESIGN section 2 rejects, and a roster that drifts per consumer.
+// gunbc.design_argument::minimize_redundancy rejects, and a roster that drifts per consumer.
 //
 // IT IS DELIBERATELY NOT A DISPATCHER. There is no `fn run(verb: ScmReadVerb, ...)` here, because the
 // two verbs do not share a result type -- `CommitLog` and `RepositoryStatus` are different answers --

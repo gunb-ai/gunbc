@@ -61,7 +61,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the day the underlying repair lands. That is intended and it is the whole
 // value: the repair's author gets a located, named row telling them what changed
 // instead of the fact silently ceasing to be true. What becomes of the evidence
-// at that point is DESIGN 4b(4)'s to say, not this file's. They are ordinary
+// at that point is gunbc.design_argument::guarantee_ladder (dissolution on climb)'s to say, not this file's. They are ordinary
 // greens today, so no expected-red admission is involved.
 
 data lcr_producer_text: String = "module lcr.producer\ntype CrossFileMarker { x: Int }\nfn producer_anchor() -> Int {\n  1\n}\n"
@@ -244,7 +244,7 @@ test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_hol
   length(xs: lcr_root_nodes()) == 2
 }
 
-// RECEIPT 2 -- REGRESSION CONTROL, FLIPPED FROM A DEFECT RECORD (DESIGN 4b(4)). This row was
+// RECEIPT 2 -- REGRESSION CONTROL, FLIPPED FROM A DEFECT RECORD (gunbc.design_argument::guarantee_ladder (dissolution on climb)). This row was
 // enrolled (#9597) as an expecting-red probe: on the INDEX path -- inline, import-free source,
 // resolution asked of the index alone -- a record TYPE declaration never reached the symbol index
 // while a fn in the same module did, because the type name appeared as a Named edge zero times in
@@ -263,7 +263,7 @@ test fn a_record_type_declaration_reaches_the_index_as_a_fn_does_holds() -> Bool
   fn_is_indexed && type_is_indexed && fn_is_named_once && type_is_named_once
 }
 
-// RECEIPT 3 -- REGRESSION CONTROL, FLIPPED FROM A CARRIER-SHAPE RECORD (DESIGN 4b(4)). Enrolled
+// RECEIPT 3 -- REGRESSION CONTROL, FLIPPED FROM A CARRIER-SHAPE RECORD (gunbc.design_argument::guarantee_ladder (dissolution on climb)). Enrolled
 // (#9597) as the measurement that function bodies were still TOKEN-LEVEL in the normalized tree: a
 // raw `{` token atom present in the loaded consumer root while the callee its body names was absent
 // from that root, though globally bound. The row said it would go red when body lowering moved ahead

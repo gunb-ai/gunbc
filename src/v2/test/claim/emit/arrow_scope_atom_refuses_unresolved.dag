@@ -45,7 +45,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SUBJECT IS AN ATOM THAT MISSES ARROW SCOPE (v2.std.compilers.target_model
 // target_value_expr_project_atom_in_arrow_scope). Before this change its Rejected arm fell through to
 // the literal projector, whose last arm minted the name as a symbol_identity -- an unresolved name
-// emitted as if it resolved (DESIGN §5, absorbing fallback). The fixture is `f(xs, (acc) => <atom>)`:
+// emitted as if it resolved (gunbc.design_argument::fail_closed, absorbing fallback). The fixture is `f(xs, (acc) => <atom>)`:
 // the closure is a call argument, so its body atom reaches exactly that site with the closure as its
 // arrow. An atom that names nothing in scope must refuse `body_scope_binding_invalid`, LOCATED AT THE
 // ATOM; an atom that spells a literal (`true`) still projects. Restoring the fallback makes the

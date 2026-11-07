@@ -40,7 +40,7 @@ data runner_microvm_lifecycle_disposition: ConstructionMechanism = SingleAuthori
 // controller exits. This module is what the controller decides at each step, from what it has
 // observed; the realization that performs the steps consumes these decisions and adds none.
 //
-// DECLARED FRONTIER (DESIGN 3c). In this change the module's only executing consumer is its witness;
+// DECLARED FRONTIER (gunbc.design_argument::consumption). In this change the module's only executing consumer is its witness;
 // no production entry calls it yet. NAMED CONSUMER: gunbc.runner.runner_microvm_lifecycle_realize, the
 // controller that runs as the slot unit's MainPID and calls controller_start, advance_bring_up,
 // stop_request_admission and settle_teardown, reading and writing the store through

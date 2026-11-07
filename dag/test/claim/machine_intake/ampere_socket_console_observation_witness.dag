@@ -30,7 +30,7 @@ fn reference_text() -> String {
   Filesystem.Read(path: mtcollins1_census_sol_artifact_path as String).content
 }
 
-// THE WHOLE-FILE ROUTE IS PAID ONCE (DESIGN §3, a witness discriminates at one interface): only
+// THE WHOLE-FILE ROUTE IS PAID ONCE (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): only
 // the_comparison_over_the_committed_file_names_socket_one reads the capture whole. The other
 // reference claims supply its three regions as excerpts, exact bytes of that file.
 // artifacts/bmc/mtcollins1-hw-census-sol.log lines 455-494 verbatim; excerpt sha256 969989d117ab172dca5f80995c8c0a8c23ed3c090a24dc14595f3e257f7db35c.

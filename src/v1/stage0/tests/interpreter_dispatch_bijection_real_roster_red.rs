@@ -6,7 +6,7 @@
 //! and an unresolvable macro invocation in the abstract (claim A). Necessary, not sufficient: a
 //! fixture reproducing only the *shape* stays green if the production macro in
 //! `v1_interpreter.rs` regains a wildcard catch-all -- the state `origin/main` is in today for the
-//! bridge-family sites, and the DESIGN.md §5 tell ("a check satisfiable by editing the declaration
+//! bridge-family sites, and the gunbc.design_argument::fail_closed tell ("a check satisfiable by editing the declaration
 //! while the realization still lies"). This file perturbs a clone of the actual roster (or the
 //! hand-authored arm list), regenerates `v1_interpreter_dispatch_generated.rs` via the real
 //! `gunbc run ... main_wet` pipeline, and `cargo build`s the real `v1-compiler` crate.

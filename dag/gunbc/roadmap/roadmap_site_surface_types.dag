@@ -52,7 +52,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 // in v1.compiler.infer. What is absent is the refusal, not the fact. NOTED AT THE REACH MEASURED
 // AND NO FURTHER: those symbols answer the VARIANT-named literal (this name is an arm, whose
 // parent is X), while the case here is the PARENT-named literal, which is a different question,
-// and I have neither built nor tested the refusal. So this is DESIGN section 4b's third category
+// and I have neither built nor tested the refusal. So this is gunbc.design_argument::guarantee_ladder's third category
 // -- can climb now but unbuilt -- rather than its second, and the distinction is the whole reason
 // for correcting the line. ONE TRAP FOR WHOEVER BUILDS IT, named here because a trigger exists to
 // stop a future implementation being wrong: is_coproduct_type is sufficient for the DIRECT,
@@ -60,7 +60,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 // RESOLVED STRUCTURAL declaration, not assume every authored alias node itself carries Disj -- an
 // alias to a coproduct need not, and a check that tested the alias node would silently admit
 // exactly the construction it was written to refuse. Until that lands, saying this carrier makes the state
-// unwritable would be the rung inflation DESIGN §4b calls worse than sitting low -- which is why
+// unwritable would be the rung inflation gunbc.design_argument::guarantee_ladder calls worse than sitting low -- which is why
 // the paragraph above says what it says, and why the probes that established it are cited here by
 // their measurement rather than left enrolled: both are hard refusals, so neither can survive in
 // the corpus as an executing control.
@@ -79,7 +79,7 @@ import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 // only modeled route to repair a service required the service to be healthy. The arm is not a
 // readiness verdict and carries no judgement about what to DO: it records that the process answered,
 // at what status, and with no release identity in the body. What observed-unhealthy means for a plan
-// is the domain's decision (DESIGN 6b, D14), taken in gunbc.live_deploy.member_identity over the
+// is the domain's decision (gunbc.design_argument::earliest_unjustified_boundary, D14), taken in gunbc.live_deploy.member_identity over the
 // member's expected revision -- never by a generic "is this response ok" boolean here.
 //
 // IT IS REACHED ONLY FROM extdeps.http.client GetWithinWithStatus, whose curl exit -- not a status

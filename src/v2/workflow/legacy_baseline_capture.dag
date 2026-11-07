@@ -142,7 +142,7 @@ type LegacyBaselineCapturePhase
 // A BRIDGE ROW WHOSE SPELLING IS EMPTY IS A REFUSAL, NOT A DROP. The seed's repair encoder can
 // only ever produce a degenerate (module_name == "" or name == "") row by defect; a fold that
 // skipped it would shrink the roster and the observation together, silently, and the roster
-// digest would then attest a census that never counted the row (DESIGN 5: a failure arm must
+// digest would then attest a census that never counted the row (gunbc.design_argument::fail_closed: a failure arm must
 // refuse, never widen). The row is located by its index in the bridge's own order.
 type MalformedBridgeRow {
   index: Int
@@ -154,7 +154,7 @@ type MalformedBridgeRow {
 // floor now executes it over a MEASURED fixture root (gunbc#11265 keyed whole-root admission on
 // the root's own row; whole_corpus_compile_xl1_fixture_root_demand is that row), and the
 // controls that read it are enrolled in test.claim.legacy_repair_tap_live_bridge_witness. The
-// variant went with its block: a cause nothing constructs is a dangling declaration (DESIGN 3c).
+// variant went with its block: a cause nothing constructs is a dangling declaration (gunbc.design_argument::consumption).
 type LegacyBaselineCaptureRefusal
   = ObserverNeverReachedDecision {}
   | BridgeRowSpellingEmpty { malformed: List<MalformedBridgeRow> }

@@ -1657,7 +1657,7 @@ fn gpu_container_provision_plan_has_refusal(actions: List<GpuContainerProvisionA
 // OBSERVING ONE CAPABILITY ROW: read the sibling's own drop-in and answer HELD / ABSENT / UNOBSERVABLE.
 // One function for every capability, because the question is always the same question — do these bytes
 // contain that label token? — and the answer's SHAPE is what keeps the fold honest. A per-capability
-// observer would be a second implementation of one rule (§6b) and the place where a third capability
+// observer would be a second implementation of one rule (gunbc.design_argument::earliest_unjustified_boundary) and the place where a third capability
 // gets forgotten.
 //
 // THE COMMAND IS ELEVATED AND THE LOCALE IS PINNED, both for the same reason as the locale-pinned `ls`
@@ -1960,7 +1960,7 @@ data gpu_container_provision_subordinate_write_bound: String =
 // policy, which is why they are rows here rather than a fleet row: fleet_converge_locked_apply_script runs
 // plain `flock -x <path> bash -c ...` -- NO -w and NO --conflict-exit-code -- so the apply waits UNBOUNDED
 // and cannot distinguish a conflict from its command's own failure. There is no shared value to import,
-// and minting one the apply does not consume would be a dangling declaration (§3c) carrying a meaning the
+// and minting one the apply does not consume would be a dangling declaration (gunbc.design_argument::consumption) carrying a meaning the
 // apply does not honour. This write bounds its wait instead: an actuator that cannot say why it is still
 // waiting has no business holding a converge open, and the host-mutation concurrency group
 // (gunbc-host-mutation-{host}) is what is supposed to keep the two actuators off one host, so contention

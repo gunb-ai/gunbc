@@ -63,7 +63,7 @@ import std.host_text { chars }
 // gunbc.spark.model_snapshot_materialize spark_remote_run is the one route the corpus models for
 // reaching it. This module binds to that route exactly as retired gunbc.spark.v41_runtime_image_probe (deleted #13779) and
 // retired gunbc.spark.vllm_runtime_image_build (deleted #13779) already do; a second remote-execution path for the same
-// daemon would be the fork DESIGN section 3 forbids.
+// daemon would be the fork gunbc.design_argument::single_authority forbids.
 type ObservedRankSubject sole_constructor {
   host: HostIdentity
   container: NonEmptyStr
@@ -303,7 +303,7 @@ data rank_transport_step: NonEmptyStr = "nccl-transport-readback" as NonEmptyStr
 // TWO FACTS LIVE IN ONE STREAM. NCCL's transport announcement and the engine's KV residuals are both
 // in the container's stdout, and a reader that fetched it once per fact would transfer the whole log
 // twice per rank -- eight transfers for this arm where four are needed, of a stream whose size grows
-// with uptime. That is DESIGN section 2's duplicated work at its most expensive: the cost is paid on
+// with uptime. That is gunbc.design_argument::minimize_redundancy's duplicated work at its most expensive: the cost is paid on
 // the wire, per rank, every time the arm is observed.
 //
 // SO THE CAPTURE IS ITS OWN STEP AND THE TWO FOLDS ARE PURE. Each fold takes the text, which is also
@@ -388,7 +388,7 @@ fn nccl_transport_read_from(t: NcclRealizedTransport) -> NonEmptyStr {
 // gunbc.spark.spark_gpu_direct_capability carried the two CUresult outcomes as literals with the
 // host, driver and date in prose beside them, and the live route consumed those literals as the
 // authority that decides whether a staged memory path is a defect. That is a transcribed instrument
-// output standing where its producer already existed (DESIGN §6), and it rots the moment the driver
+// output standing where its producer already existed (gunbc.design_argument::how_to_work), and it rots the moment the driver
 // or the image moves under it without either end being touched.
 //
 // SO THE QUERY RUNS IN THE CONTAINER THE ENGINE RUNS IN, for the same reason the revision readback
@@ -523,7 +523,7 @@ type RankNcclMemoryPathReceipt {
 }
 
 // BUILT ONLY FROM A TYPED CAPTURE, AND ONLY WHEN THAT CAPTURE WAS TAKEN FROM THIS INCARNATION. The log
-// is captured once and read for transport, startup and memory path (DESIGN section 2: one capture,
+// is captured once and read for transport, startup and memory path (gunbc.design_argument::demand_before_materialization: one capture,
 // several pure folds), so the receipt is minted from that capture rather than by a second read -- and
 // a capture taken from any other subject refuses rather than being relabelled as this one.
 type RankNcclReceiptReading

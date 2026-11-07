@@ -148,7 +148,7 @@ fn resolve_declaration_ref(
 // the caller's fold holds, read once at that fold; each reference is then joined against it by its
 // own key (decl_facts_matching_qualified_name), which returns exactly the rows a one-key read would
 // have, multiplicity included. A fold that asked the pool once per reference re-walked it per
-// reference wherever no census provider was registered (DESIGN section 2: share the read at the
+// reference wherever no census provider was registered (gunbc.design_argument::minimize_redundancy: share the read at the
 // demands' common ancestor; never cache the later asks).
 fn resolve_declaration_ref_live_over(
   ref: DeclarationRef,

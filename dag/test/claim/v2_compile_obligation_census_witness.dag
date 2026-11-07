@@ -49,7 +49,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CHECKS THAT MATTER HERE ARE THE ONES THAT READ SOMEBODY ELSE'S DATA. An earlier cut of this
 // file folded over rows the census itself authored and called the result a check; review 63152 named
-// that correctly as a change detector over a copy of the current tree, and DESIGN section 5 says the
+// that correctly as a change detector over a copy of the current tree, and gunbc.design_argument::fail_closed says the
 // same thing in its own words. The census now DERIVES each obligation's per-PR standing by asking
 // gunbc.witness.witness_deferral_freeze and gunbc.ci.ci_layer_roots, so the arms below exercise a join against
 // two live rosters this file does not own and cannot edit — which is what makes them oracles rather
@@ -174,7 +174,7 @@ test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_h
 // path no obligation in the corpus can reach a both-routes-executing state, so a test that went
 // through a fixture ROW could only ever observe Mitigatable and would be permanently green by
 // construction. Handing the law its two arguments keeps its RED authorable, which is the boundary
-// DESIGN section 4b draws before a check is worth writing.
+// gunbc.design_argument::guarantee_ladder draws before a check is worth writing.
 //
 // claimed_rung is absent from all four cases on purpose: the law must not read it, and the way to
 // show that is to never give it one to read.

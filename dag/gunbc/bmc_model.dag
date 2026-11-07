@@ -163,7 +163,7 @@ type BmcWorld {
   // The Redfish account service this controller serves (the AccountService/ManagerAccountCollection
   // surface). One entry per account the Redfish surface lists; the forced-change flag and failed-login
   // counter live here. See the Redfish account section below for the shared-vs-own-credential store.
-  // A typed surface read, NOT a defaulted collection (DESIGN 5): `none` means the Redfish surface was
+  // A typed surface read, NOT a defaulted collection (gunbc.design_argument::fail_closed): `none` means the Redfish surface was
   // never modeled for this scenario (an unreadable surface, which the dry read reports as absence, never
   // as an empty census); `Present { [] }` means the surface is modeled and serves zero accounts. The two
   // are distinct facts and the dry read must not collapse them. Every literal names it (explicit-present
@@ -687,7 +687,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
 // the build does not ground.
 
 // The credential is the ONLY thing that differs between the two account kinds; everything else is modeled
-// once (DESIGN §2). A shared account references the ONE credential's home -- the IPMI user id, whose password
+// once (gunbc.design_argument::minimize_redundancy). A shared account references the ONE credential's home -- the IPMI user id, whose password
 // the IPMI user table stores -- so there is never a second copy of a secret the world did not earn.
 type BmcRedfishCredential
   = BmcRedfishCredentialSharesIpmi { ipmi_user: IpmiUserId }
@@ -833,7 +833,7 @@ type RedfishAuthOutcome
 // ("Base.1.16.0.PasswordChangeRequired" for 03.22.00), supplied by the caller from its policy row -- the
 // world does not hardcode a build's message registry version. The surface is read TYPED first: an UNMODELED
 // surface answers RedfishAuthSurfaceUnmodeled, never 401 -- inventing "bad credentials" for a controller that
-// serves no Redfish account service is a fabricated answer (DESIGN 5). On a modeled surface the fail-closed
+// serves no Redfish account service is a fabricated answer (gunbc.design_argument::fail_closed). On a modeled surface the fail-closed
 // order is: an unknown account, a disabled account, a locked account, or a mismatched credential is 401; a
 // correct credential is 403-forced while the flag stands UNLESS the request is the admitted PATCH, and 200
 // otherwise.
@@ -876,10 +876,10 @@ fn bmc_redfish_authorize(
 // record. A change that cannot fully apply -- the surface unmodeled, the account not in the census, or a shared
 // account whose IPMI user is not in the table -- returns the world UNCHANGED (flag still set, counter untouched)
 // refused with its typed reason (BmcRedfishChangeRefused); a half-applied "cleared flag, no credential written" is the
-// fabricated default DESIGN 5 refuses. The failed-login counter resets only on a completed change. The caller's
-// re-read, not this reply, decides whether the account is secured (DESIGN 4b rung discipline).
+// fabricated default gunbc.design_argument::fail_closed refuses. The failed-login counter resets only on a completed change. The caller's
+// re-read, not this reply, decides whether the account is secured (gunbc.design_argument::guarantee_ladder rung discipline).
 // Why a password change did not complete -- typed, so an UNMODELED surface is never reported as "no such
-// account" and a missing shared user is never confused with either (DESIGN 5: a located reason, never a
+// account" and a missing shared user is never confused with either (gunbc.design_argument::fail_closed: a located reason, never a
 // widened plausible answer).
 type BmcRedfishChangeBlocked
   = BmcRedfishChangeSurfaceUnmodeled {}
@@ -894,7 +894,7 @@ type BmcRedfishPasswordChangeStep
 
 // Replace ONE account record in the world's Redfish census by name -- the SINGLE record-replace every Redfish
 // world writer performs (both bmc_redfish_change_password arms and bmc_redfish_note_failed_login), so a future
-// change to how a record is matched (say, by @odata.id) reaches all of them at once (DESIGN 6b: one rule, no second leaf).
+// change to how a record is matched (say, by @odata.id) reaches all of them at once (gunbc.design_argument::earliest_unjustified_boundary: one rule, no second leaf).
 fn bmc_redfish_set_record(world: BmcWorld, name: String, cleared: BmcRedfishAccount) -> BmcWorld {
   bmc_with_redfish_accounts(
     world: world,
@@ -936,7 +936,7 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
           // A shared account moves ONE credential: the password is written to the IPMI user, and the Redfish
           // record's flag clears and its counter resets ONLY on a completed write. If the user is not in the
           // table the write is not completed and NOTHING changes -- no fabricated cleared flag, no reset counter
-          // (DESIGN 5: fully succeed, or fail with the world untouched, never a half-applied change).
+          // (gunbc.design_argument::fail_closed: fully succeed, or fail with the world untouched, never a half-applied change).
           BmcRedfishCredentialSharesIpmi { ipmi_user: i } =>
             let wrote = bmc_ipmi_set_user_password(world: world, user: i, password: new_password)
             if wrote.completed {

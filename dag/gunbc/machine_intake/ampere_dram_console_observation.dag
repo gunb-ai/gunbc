@@ -24,7 +24,7 @@ import std.optional { Present }
 // first NOTICE; both are removed before a line is read. Indentation (a leading two spaces) is
 // what places a line inside a subsection, so it is read before trimming.
 //
-// WHAT IS NOT CLAIMED (DESIGN section 4d). No param value has a meaning here, mcu_enable_mask
+// WHAT IS NOT CLAIMED (gunbc.design_argument::epistemic_humility). No param value has a meaning here, mcu_enable_mask
 // included: a param is its name, value and printed default, recorded as an observation. That a
 // value differs from its default is not an adverse fact (earlier successful sparse boots printed
 // mcu_enable_mask 00000001 against default ff), so it is never a finding. "SK", "MC" and "S" are
@@ -33,7 +33,7 @@ import std.optional { Present }
 //
 // AN INDENTED LINE INSIDE A RECOGNISED SUBSECTION THAT DOES NOT PARSE IS KEPT AS MALFORMED, never
 // dropped, so a firmware release that changes the row format shows up in the receipt rather than
-// as a shorter roster (DESIGN section 5).
+// as a shorter roster (gunbc.design_argument::fail_closed).
 
 data ampere_dram_fw_version_marker: String = "DRAM FW version "
 

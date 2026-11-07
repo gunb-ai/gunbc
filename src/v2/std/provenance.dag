@@ -42,9 +42,9 @@ fn origin_event_from_source(locus: Locus) -> OriginEvent {
 // consumed while building the node, written once when the production completes, from the first
 // consumed token's start to the last consumed token's end. A terminal's extent is its FromSource
 // locus and is not recorded twice. Consumers that need containment read span_index_extent; nobody
-// reconstructs a range from descendants (DESIGN 6b: the parser held it, so the parser publishes it).
+// reconstructs a range from descendants (gunbc.design_argument::earliest_unjustified_boundary: the parser held it, so the parser publishes it).
 //
-// DECLARED FRONTIER (DESIGN 3c). No production fold reads `extents` in this change. Its consumer is
+// DECLARED FRONTIER (gunbc.design_argument::consumption). No production fold reads `extents` in this change. Its consumer is
 // roadmap node parse-comment-gap-attachment (gunbc.roadmap.roadmap_authority): attaching a comment
 // to the gap between ordered source children of its innermost containing scope reads
 // span_index_extent for containment. Trigger: that node's change lands; until it does, the only
@@ -76,7 +76,7 @@ fn span_index_with_scope(scope: Fnv1a64Structural) -> SpanIndex {
 // entries against a running mark; normalize states every projected cause in the ingest's source-ref
 // digest (v2.compiler.program_assembly program_assembly_ingest_scope). Binding that digest here is
 // the production consumer of span_index_with_scope: without it the index's scope stays Absent and
-// node_authored_projected_cause_in_index can never recover a same-graph cause (DESIGN §3c).
+// node_authored_projected_cause_in_index can never recover a same-graph cause (gunbc.design_argument::consumption).
 fn span_index_in_scope(index: SpanIndex, scope: Fnv1a64Structural) -> SpanIndex {
   span_index_merge(base: span_index_with_scope(scope: scope), incoming: index)
 }
@@ -104,7 +104,7 @@ fn span_index_record_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) 
 // stage derived, a generated node, a production that consumed no token -- answers Absent, because
 // no producer recorded a range for it and inventing one from its causes is the reconstruction the
 // extents table exists to replace. Unrepresentable is never folded into Absent: a containment reader
-// told "no extent" for a node that consumed input would answer as if it were empty (DESIGN 5).
+// told "no extent" for a node that consumed input would answer as if it were empty (gunbc.design_argument::fail_closed).
 fn span_index_extent(index: SpanIndex, id: OccurrenceId) -> Optional<RecordedSourceExtent> {
   match index.extents.lookup(id) {
     Present { value: recorded } => Present { value: recorded }
@@ -230,7 +230,7 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witne
 //
 // IT LIVES HERE RATHER THAN AT EACH CONSUMER (review 70027). This diff first minted the same
 // three-arm projection twice, arm for arm -- once in `v2.std.lens_verdict` for the renderer and
-// once in the attribution claim -- which is DESIGN section 3's nickname: a second name for one
+// once in the attribution claim -- which is gunbc.design_argument::single_authority's nickname: a second name for one
 // concept, duplicating work at the meaning layer. That is the same reasoning the sibling below
 // already states for the resolution rule ("a consumer re-deciding it would be a second authority"),
 // and it applies to this projection for the same reason. The home is this module because the join
@@ -254,7 +254,7 @@ fn occurrence_identity_id_optional(identity: NodeOccurrenceIdentity) -> Optional
 
 // THE AUTHORED SPAN OF A NODE. A projected identity is a later-stage id; the SpanIndex is keyed
 // by the parse-minted ids that actually have FromSource entries. Following OccurrenceProjected.caused_by
-// to that authored occurrence is ONE fact (DESIGN 6b: repair at the earliest link), and it is
+// to that authored occurrence is ONE fact (gunbc.design_argument::earliest_unjustified_boundary: repair at the earliest link), and it is
 // lawful only in the allocator domain the cause names: an ordinal is not a name across graphs
 // (std.occurrence_identity ScopedOccurrenceRef). Looking up caused_by.occurrence while dropping
 // .scope fabricates a local span when another domain minted the same ordinal. When the index has
@@ -294,7 +294,7 @@ fn node_authored_span_optional(node: Node, index: SpanIndex) -> Optional<Locus> 
 // It exists as a projection rather than as a re-match on the index because the resolution RULE --
 // follow a DerivedBy or GeneratedBy origin to its causes, accept only a Textual locus -- is one
 // fact, and a consumer re-deciding it would be a second authority for where an occurrence comes
-// from (DESIGN section 3).
+// from (gunbc.design_argument::single_authority).
 fn span_index_textual_locus_optional(index: SpanIndex, id: OccurrenceId) -> Optional<Locus> {
   match span_index_resolve_textual_locus(index: index, id: id) {
     Holds { value: locus } => Present { value: locus }

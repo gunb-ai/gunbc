@@ -46,7 +46,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // The authorized-user ADC document is a JSON object, so the seam from a file to
 // these three fields is read-then-decode over two authorities that already
 // exist. A `transport file` carries bytes and models eight channels; naming a
-// document key as a channel would mint a gcp-specific one beside them (§3), and
+// document key as a channel would mint a gcp-specific one beside them (gunbc.design_argument::single_authority), and
 // a bytes channel additionally cannot carry that `client_secret` and
 // `refresh_token` are Secret while `client_id` is String -- the distinction this
 // record keeps.

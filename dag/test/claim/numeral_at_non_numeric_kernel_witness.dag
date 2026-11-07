@@ -17,8 +17,8 @@ import std.algebra {
   FreeMonoidCollectionProfile,
 }
 
-// A NUMERAL INHABITS A DECLARED KERNEL TYPE ONLY WHEN THAT TYPE ADMITS A NUMERAL (DESIGN 4b floor:
-// values inhabit declared types; DESIGN 4: a Bool literal is not an Int literal, no implicit route).
+// A NUMERAL INHABITS A DECLARED KERNEL TYPE ONLY WHEN THAT TYPE ADMITS A NUMERAL (gunbc.design_argument::guarantee_ladder floor:
+// values inhabit declared types; gunbc.design_argument::closed_grounded_substrate: a Bool literal is not an Int literal, no implicit route).
 // Class row: gunbc.recurring_failure_mode.numeral_admitted_at_every_kernel_declared_type.
 // Before the repair v1.compiler.infer declared_realizes_as_kernel_numeric answered Inhabits for an
 // Int or Float at ANY kernel-minted declared type. At the positions below the older kernel chain
@@ -29,7 +29,7 @@ import std.algebra {
 // of the two classes below. The positive control at the end of the file carries every admitted pair
 // one term away from a RED, so a blanket refusal of literals or conditions goes red there.
 //
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 // TWO CLASSES REFUSE THIS STATE, AND WHICH ONE DEPENDS ON THE POSITION -- measured, not assumed.
 // At the record field, declared return, call argument and list element the older kernel chain

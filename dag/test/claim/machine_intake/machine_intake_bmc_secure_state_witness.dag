@@ -785,7 +785,7 @@ fn applied_with(
 // THE APPLY-AND-READ-BACK, IN ONE PLACE. applied_with above is its label form; a claim that needs the
 // receipt the application converges to -- the standing projection's witnesses -- reads the outcome here
 // instead of relabeling it, so the dry application, the independent re-read and the mint exist once
-// (DESIGN §2: the label is derived from this, not carried beside it). Sealed carrier: the outcome holds
+// (gunbc.design_argument::minimize_redundancy: the label is derived from this, not carried beside it). Sealed carrier: the outcome holds
 // the sealed receipt, so it is admitted only to the label form and to the claims that consume the
 // receipt and return Bool.
 fn applied_outcome_of_plan(
@@ -1287,7 +1287,7 @@ test fn one_approval_admits_exactly_the_convergence_it_names() -> Bool {
 
 // ── THE STANDING PROJECTION (bmc_secure_standing_of_phase_receipt) ────────────────────────────────
 //
-// RUNG (§4b). THE ONE ROUTE FROM THIS FOLD TO THE CARRIER EVERY CONSUMER READS. BmcSecureStanding is what
+// RUNG (gunbc.design_argument::guarantee_ladder). THE ONE ROUTE FROM THIS FOLD TO THE CARRIER EVERY CONSUMER READS. BmcSecureStanding is what
 // gunbc.host.managed_host, gunbc.host.bmc_control_binding, gunbc.host.managed_host_boot_federation and
 // gunbc.fleet.mtcollins_firmware_converge join on; until this projection its only mint consumed the
 // rotation-EVENT observation, so a controller THIS fold converged could not be handed to any of them, and

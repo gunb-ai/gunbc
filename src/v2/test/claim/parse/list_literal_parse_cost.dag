@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // this claim does establish, by execution on every floor, is that the real route accepts a
 // multi-element list literal.
 //
-// THE PAIRING OBLIGATION (DESIGN section 3): the generator is a hypothesis about what tokenize
+// THE PAIRING OBLIGATION (gunbc.design_argument::witness_one_interface): the generator is a hypothesis about what tokenize
 // emits; lpc_fidelity_small runs the real tokenizer over the same generator's text and compares
 // canonically. The generator's shape does not depend on N beyond the element offset 41 + 3i.
 

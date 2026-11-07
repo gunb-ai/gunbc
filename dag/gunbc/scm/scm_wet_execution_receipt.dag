@@ -49,7 +49,7 @@ import gunbc.open_node_partial_evidence { OpenNodePartialEvidenceReceipt }
 // WHAT IS DELIBERATELY ABSENT. No child-process count, no per-step durations, no rendered verdict
 // string. The instrument re-derives all of it, and a transcribed count is stale the moment the step
 // list changes -- the same refusal gunbc.native_witness_transition_receipt makes against storing a
-// pass count, and DESIGN section 6's rule to name the instrument rather than transcribe its output.
+// pass count, and gunbc.design_argument::how_to_work's rule to name the instrument rather than transcribe its output.
 // executed_evidence on the shared receipt cites the producer; a reader who wants the step trace runs
 // it.
 type WorktreeState
@@ -62,7 +62,7 @@ type WorktreeState
 // reading cannot say whether it moved. Arms are named for the SUBJECT's position rather than for a
 // deployment role, because gunbc.live_deploy.revision DeployRevisionRelation spells its arms
 // DeployedIsAncestor and CandidateIsAncestor -- roles this receipt has neither of, and reusing the
-// spelling here would give one name two meanings across layers (DESIGN section 3).
+// spelling here would give one name two meanings across layers (gunbc.design_argument::single_authority).
 type SubjectMainRelation
   = SubjectIsMainTip
   | SubjectPrecedesMainTip

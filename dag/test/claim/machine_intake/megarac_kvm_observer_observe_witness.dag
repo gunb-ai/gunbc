@@ -27,7 +27,7 @@ import gunbc.machine_intake.megarac_kvm_observer_observe {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE VERDICT IS READ FROM THE RECORD megarac_kvm_observer_finish RETURNS, so its inputs are SUPPLIED
-// records (DESIGN §3: a witness discriminates at one interface). The real producer runs twice elsewhere:
+// records (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). The real producer runs twice elsewhere:
 // against the loopback controller in test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness,
 // which holds the same finish, stop and release to what the controller saw, and against the real BMC
 // in the fleet-converge mode this module's subject belongs to.

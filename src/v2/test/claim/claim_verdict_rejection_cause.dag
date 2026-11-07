@@ -27,7 +27,7 @@ import v2.std.node {
 import v2.std.verdict { SemanticMismatch, Verdict }
 
 // The claim-verdict helpers once relabelled ANY Rejected actual as
-// eval_rejected_invalid_node, erasing the real refusal cause (§5). These claims
+// eval_rejected_invalid_node, erasing the real refusal cause (gunbc.design_argument::fail_closed). These claims
 // pin the pass-through: a known foreign reason survives the verdict, and a
 // genuinely ill-formed input still reports invalid_node through the real producer.
 

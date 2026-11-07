@@ -143,7 +143,7 @@ fn decl_fact_skeleton_for_resolution(
 
 // AUTHORED ATOM LEXEMES, EXCLUDING CONSTRUCTOR SPELLINGS — the discriminator the
 // floor_expected_red coherence check needs, derived from edge PROVENANCE rather than
-// lexeme shape (DESIGN §4: a heuristic is never necessary in a closed system).
+// lexeme shape (gunbc.design_argument::closed_grounded_substrate: a heuristic is never necessary in a closed system).
 //
 // The host marks a record-literal's authored constructor name with a SECOND, NAMED
 // edge (record_construction_spelling) beside the ordinary positional child edge — both
@@ -163,7 +163,7 @@ fn decl_fact_skeleton_for_resolution(
 // "authored" set rather than being silently dropped. That is the safe failure
 // direction for a coherence check — a spurious member produces a located, nameable
 // refusal; a heuristic that instead matched on shape could instead OMIT an authored
-// identity from the compared set, which is the empty-observation narrow DESIGN §5
+// identity from the compared set, which is the empty-observation narrow gunbc.design_argument::fail_closed
 // forbids. A consumer that hits this residue should model the missing atom kind at
 // this derivation, not add an exclusion lexeme here — an exclusion list is the shape
 // filter this function exists to avoid, reintroduced one lexeme at a time.

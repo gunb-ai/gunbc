@@ -27,7 +27,7 @@ type MtCollinsBmcImplementationExpected {
 // EXPECTATION, NOT AN UPSTREAM FACT (machine-intake ruling 2026-08-29 §1, on gunbc#9690). This
 // module's external authority is Ampere's public product page, which does not state the BMC
 // firmware product; the expectation traces to an unpreserved operator report from one held
-// unit, and a report rendered as an extdeps fact would be the provenance inversion DESIGN §3
+// unit, and a report rendered as an extdeps fact would be the provenance inversion gunbc.design_argument::single_authority
 // names. So the row is typed as what it is — what a workflow holding a Mt. Collins should
 // EXPECT to find — and the observation that would confirm or contradict it is a workflow-layer
 // gunbc.machine_intake.access BmcImplementationObserved receipt keyed to unit, attempt,

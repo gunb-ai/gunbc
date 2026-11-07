@@ -51,7 +51,7 @@ test fn w_the_altra_max_citation_is_superseded() -> Bool {
 // PARTITION whose host branches on it at two production dispatch sites; what was deleted is the
 // single-variant VARIANT TEST. One arm true and two false, with no production consumer, is the
 // deleted shape, and a file-local copy of a dissolved concept is still the concept re-invented --
-// DESIGN section 2, net concepts must not grow by re-invention.
+// gunbc.design_argument::minimize_redundancy, net concepts must not grow by re-invention.
 //
 // WHAT THE INLINING PRESERVES, which is the whole reason the helper looked worth having: each
 // match below is exhaustive, so a fourth arm still reds this file. That property belongs to the
@@ -74,7 +74,7 @@ test fn w_neither_citation_claims_to_be_current() -> Bool {
 
 // THE POSITIVE CONTROL STAYS ENROLLED. Dissolving the production predicate does not retire the
 // evidence that the current arm is reachable and distinguishable from the superseded ones --
-// section 4b(4) deletes the obsoleted production machinery, never the discriminating control.
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) deletes the obsoleted production machinery, never the discriminating control.
 test fn w_RED_the_current_arm_is_reachable_and_separates_from_superseded() -> Bool {
   let current: HeldSpecificationSupersessionStanding = HeldRevisionIsCurrentPublicCopy
   let current_reads_current = match current {

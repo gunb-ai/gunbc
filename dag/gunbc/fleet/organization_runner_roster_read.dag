@@ -225,7 +225,7 @@ fn decode_roster_page_json(body: String) -> RosterPageDecode {
 
 // ONE INCLUDED RESPONSE TO ONE PAGE READ. This is the pure half of the fetch, so the decision a
 // response produces -- status, continuation, body -- is exercisable over a supplied response
-// without a network (DESIGN section 3: a witness discriminates at one interface).
+// without a network (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface).
 fn link_field_text(link: GitHubLinkHeader) -> String {
   match link {
     LinkHeaderPresent { field_value: v } => v

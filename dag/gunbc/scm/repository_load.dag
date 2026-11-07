@@ -4,7 +4,7 @@ module gunbc.scm.repository_load
 //
 // `gunbc.scm.repository_envelope` decodes a JsonValue and is PURE. This module is the effectful
 // seam above it: a path becomes bytes, bytes become a document, a document becomes an envelope.
-// The split follows DESIGN section 3 -- the codec owns the interface shape, the host effect is one
+// The split follows gunbc.design_argument::single_authority -- the codec owns the interface shape, the host effect is one
 // realization bound to it -- so the decoder stays testable without a filesystem and this module
 // carries the only host effect in the read path.
 //
@@ -96,7 +96,7 @@ import gunbc.scm.repository_envelope {
 // available, and here is which of the three owners is responsible". If that layer's arm carried a
 // whole `RepositoryLoad`, its unavailable case could be constructed holding `RepositoryLoaded`, and
 // nothing would refuse it. Splitting the refusals off makes that pair unwritable rather than merely
-// unwise, which is DESIGN section 5's construction-over-validation at the seam where the value
+// unwise, which is gunbc.design_argument::fail_closed's construction-over-validation at the seam where the value
 // travels.
 //
 // IT ALSO MAKES THIS MODULE MATCH ITS NEIGHBOURS. `RepositoryDecodeOutcome`,
@@ -119,7 +119,7 @@ type RepositoryLoadRefusal
 //
 // AND NO PROJECTION OVER THE REFUSAL EITHER. Every refusal carries `path`, so a
 // `refusal -> String` accessor is authorable and was authored here and removed: with no consumer it
-// is DESIGN section 6 residue, and with one it is worse -- a fourth refusal arm would be absorbed by
+// is gunbc.design_argument::how_to_work residue, and with one it is worse -- a fourth refusal arm would be absorbed by
 // the projection instead of failing to compile at each site that must decide about it. This exact
 // shape has now been removed three times (`checkout_succeeded`, `gunbc.scm.ancestry` under review
 // 56207, and here). Consumers match the arms.

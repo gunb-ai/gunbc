@@ -22,7 +22,7 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE DAG EMIT, CLAIMED AT ITS OWN INTERFACES (DESIGN section 3, a witness discriminates at one
+// THE DAG EMIT, CLAIMED AT ITS OWN INTERFACES (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). Each claim supplies its input instead of parsing a source: a parse of any construct
 // larger than a one-line data declaration exceeds the new-witness budget on its own, and the
 // parse is not this module's subject. The real route -- parse, emit, re-ingest -- is the
@@ -199,7 +199,7 @@ fn ei_text_doubled(seed: String, doublings: Int) -> String {
 // A >=100,000-scalar string literal lexed natively. THE RED: the lexeme's body must reach the decoder
 // by SLICE. The shape this replaces unfolded the lexeme to scalars and rebuilt the body one Cons at a
 // time (skip + list_init), and list_init recursed once per member — so a literal past ~10^5 scalars
-// overflowed the seed interpreter. The producer that re-derives it (§6: name the
+// overflowed the seed interpreter. The producer that re-derives it (gunbc.design_argument::how_to_work: name the
 // instrument, never transcribe its output) is THIS claim run by the claim-batch binary,
 // src/v1/stage0/src/bin/claim_batch.rs, with --entry naming this file and --functions
 // naming this claim and --claim-run; on the replaced shape that run aborts by stack

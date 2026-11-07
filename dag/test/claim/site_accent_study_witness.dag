@@ -51,7 +51,7 @@ test fn witness_g_class_is_the_live_night_figure() -> Bool {
 // WHAT IS LEFT TO CHECK ONCE THE SIGNATURE IS A REFERENCE. This claim used to repeat the three
 // field comparisons in witness_g_class_is_the_live_night_figure verbatim, because
 // signed_accent_render was a second literal that could drift from g_render. It is now g_render, so
-// those comparisons are the same expression twice and prove nothing the sibling does not — §2. What
+// those comparisons are the same expression twice and prove nothing the sibling does not — gunbc.design_argument::minimize_redundancy. What
 // survives is the part that is still falsifiable: WHICH class the signature selects. That is a real
 // claim about the cited classification rather than about a copy, and it reds if the selection is
 // re-pointed at another class.

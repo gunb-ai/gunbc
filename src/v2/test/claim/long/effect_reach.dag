@@ -57,7 +57,7 @@ data fixture_empty_data_inits: List<DataInitDecl> = []
 // v2.std.fn_index call_reachable_decls filters decls by qualified-name membership in the fixture's own
 // closure_modules ("fix.*"), and no real corpus decl is ever named "fix.*" — so the
 // live-scan result is filtered to nothing for these specimens regardless, and substituting
-// it costs a whole-tree scan for zero signal (DESIGN §5 witness-cost-derives-from-purpose:
+// it costs a whole-tree scan for zero signal (gunbc.design_argument::fail_closed witness-cost-derives-from-purpose:
 // a test is not entitled to arbitrary computation merely because it is a test).
 //
 // AN EARLIER REVISION OF THIS PARAGRAPH ENDED "Only the one named live integration below
@@ -72,10 +72,10 @@ data fixture_empty_data_inits: List<DataInitDecl> = []
 // derived_host_reading still holds; with the LIVE decls and data_inits EMPTY, derived_host_reading
 // is FALSE and effect_reach_flow_count is 0 — the live scan contributes zero flows from this entry.
 // So the "live" name and the whole-tree fill it bought were carried entirely by a hand-authored
-// fixture arm, which is the decoration DESIGN §4b calls worse than absent because it is cited as
+// fixture arm, which is the decoration gunbc.design_argument::guarantee_ladder calls worse than absent because it is cited as
 // coverage. The row is deleted rather than renamed because its deciding arm is already enrolled,
 // over the identical literal_fp, as effect_reach_path_data_init_derived_host_reading_holds in this module —
-// renaming would have kept a §2 duplicate of that row spelled with real module names.
+// renaming would have kept a gunbc.design_argument::minimize_redundancy duplicate of that row spelled with real module names.
 //
 // AND NO LIVE ROW IS AUTHORABLE ON THIS LENS TODAY, which is why the deletion leaves no gap to fill
 // here: effect_reach_classification_from_facts takes its closure from ModuleImportFact, and

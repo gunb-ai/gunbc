@@ -46,12 +46,12 @@ import std.logic { Bool }
 // WHY IT IS NOT IN THE LENS. A lens reads a tree and judges the SOURCE. Whether a realization
 // preserves the cost its model declares is a fact about the realization, joined at the identity the
 // realization was selected under; putting it in the complexity lens would make the lens the
-// authority on a fact it cannot see (DESIGN sections 3, 3b) -- and the failure mode
+// authority on a fact it cannot see (gunbc.design_argument::single_authority, gunbc.design_argument::conformance) -- and the failure mode
 // gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization is
 // exactly what happens when the two are conflated.
 //
 // WHO CONSUMES THIS, AND WHEN — A DECLARED FRONTIER, STATED HERE AND NOT ONLY IN A PULL REQUEST
-// (DESIGN section 3c). As landed, the only executing consumer of this module is its own witness,
+// (gunbc.design_argument::consumption). As landed, the only executing consumer of this module is its own witness,
 // `test.claim.realization_cost_fidelity_witness`, which exercises every arm of the join over
 // authored costs. That is deliberately NOT enough on its own, and the honest classification is the
 // middle one: a named consumer landing in a named later change.
@@ -105,13 +105,13 @@ import std.logic { Bool }
 // SAME rank that disagree about WHICH operand they read. A comparison that reduced each side to a
 // rank first would return "preserved" on the specimen this authority exists for.
 
-// THE DOMINANCE ALGEBRA IS std.pareto's AND IS NOT RESTATED HERE (DESIGN section 3d: growing a
+// THE DOMINANCE ALGEBRA IS std.pareto's AND IS NOT RESTATED HERE (gunbc.design_argument::selection_precedes_convergence: growing a
 // second decision algebra beside Pareto is the fork that law exists to prevent). One axis per
 // operand, LowerIsBetter on cost rank, and std.pareto folds the axis comparisons into a verdict --
 // including its separation of Incomparable from DominanceUndecided, which is precisely the
 // distinction a cost report must not lose.
-// THE SUCCESS ARM NAMES THE COST, NOT A SHAPE, and the earlier name was a meaning fork (DESIGN
-// section 3): it said CostShapePreserved while this join compares CostBounds through std.pareto and
+// THE SUCCESS ARM NAMES THE COST, NOT A SHAPE, and the earlier name was a meaning fork (
+// gunbc.design_argument::single_authority): it said CostShapePreserved while this join compares CostBounds through std.pareto and
 // never asks for a CostShape at all. The module's own witnesses proved it in opposite directions --
 // the_rank_only_reading_cannot_see_the_concat_divergence asserts that the concat specimen has NO
 // shape, and identical_costs_are_preserved compares that same bound against itself and got a
@@ -134,14 +134,14 @@ type CostFidelity
 // EVERY ARM BEYOND THE OBVIOUS TWO EXISTS TO KEEP AN HONEST ANSWER FROM BEING REPORTED AS ONE OF
 // THE OTHERS, and the roster is the declaration above rather than a count in this sentence -- a
 // counted annotation goes stale the moment an arm lands, which is what happened to the number that
-// used to open this paragraph (DESIGN section 4c: an annotation must not restate what the
+// used to open this paragraph (gunbc.design_argument::source_annotations: an annotation must not restate what the
 // declaration structurally says). RealizationCostBodyDependent is the newest: when two
 // costs agree on growth in every operand and differ in whether a caller-supplied body runs per
 // element, neither is known to be worse -- the body may be O(1) -- so the comparison is UNDECIDED
 // on evidence, which std.pareto already separates from Incomparable. Answering preserved there
 // would hide a real difference and answering slower would invent one. RealizationDivergesByOperand is a PROVEN TRADE-OFF -- cheaper in one operand,
 // dearer in another -- which is a finding, not an absence, and collapsing it into Unknown would be
-// the absorbing fallback (DESIGN section 5): it would read as "measured, nothing to report" while
+// the absorbing fallback (gunbc.design_argument::fail_closed): it would read as "measured, nothing to report" while
 // meaning "measured, and the two disagree". ModeledCostNotStructured is the migration frontier: a
 // contract that has not yet stated its cost in the structured form cannot be compared at all, and
 // that is a COUNTED coverage obligation rather than a pass. RealizationCostUnknown stays reachable
@@ -161,7 +161,7 @@ type RealizationCostFact {
 
 // EQUALITY ON A CLOSED COPRODUCT IS A MATCH, NOT A STRING COMPARE. An earlier revision minted a
 // slug per arm and compared the slugs, which is a second naming scheme for arms the type already
-// names (DESIGN section 3) — and it fails silently in the direction that matters: add a fourth
+// names (gunbc.design_argument::single_authority) — and it fails silently in the direction that matters: add a fourth
 // target and the match below stops compiling, while a slug table would have answered "not equal"
 // for the new arm against itself the moment someone forgot a row.
 fn realization_target_eq(left: RealizationTarget, right: RealizationTarget) -> Bool {
@@ -222,7 +222,7 @@ fn param_union(modeled: CostBound, realized: CostBound) -> List<String> {
 // ForeverBound and ErrorBound answer NOT ORDERABLE whatever they are asked, and a SumBound recurses
 // to its terms through the same fold. That deleted cost_bound_is_orderable,
 // atomic_cost_is_orderable and atomic_factors_are_orderable -- three predicates that re-walked
-// CostBound's arms in parallel with the fold that already owns them (DESIGN section 5: prefer the
+// CostBound's arms in parallel with the fold that already owns them (gunbc.design_argument::fail_closed: prefer the
 // single authority the realization derives from over a check that re-states it).
 fn no_parameter_probe() -> String {
   ""
@@ -370,8 +370,8 @@ type RealizationCostFidelityRow {
 // A KEY WITH TWO FACTS IS A CONTRADICTED KEY, NOT A FIRST ONE. The earlier fold stopped at the
 // first match, so [linear, quadratic] and [quadratic, linear] over one (primitive, target) answered
 // DIFFERENTLY -- the verdict was decided by list order, which is a property of the caller's
-// accumulator rather than of the realization. That is the fabricated plausible output DESIGN
-// section 5 forbids, and it is worse than a refusal because the wrong answer is well-formed.
+// accumulator rather than of the realization. That is the fabricated plausible output
+// gunbc.design_argument::fail_closed forbids, and it is worse than a refusal because the wrong answer is well-formed.
 //
 // The three arms are the three facts a lookup can establish, and the fold reaches Duplicated from
 // EITHER order, which is what makes the answer independent of how the caller built its list.
@@ -461,21 +461,21 @@ fn uncomparable_modeled_row(
 // ModeledCostNotStructured, leaving a reader to pick. A duplicate within either list is the same
 // defect at a shorter range. None of it is a per-row fact: it is the input's SHAPE that is wrong,
 // so the whole report refuses rather than emitting rows derived from a premise that does not hold
-// (DESIGN section 5: a failure arm refuses, it never widens).
+// (gunbc.design_argument::fail_closed: a failure arm refuses, it never widens).
 // THE PARTITION REFUSAL LOST TWO OF ITS THREE ARMS TO CONSTRUCTION, WHICH IS A CLIMB AND NOT A
 // DELETION. This join used to take two lists -- `modeled` and `unstructured` -- and a primitive
 // appearing in BOTH was a contradiction about one key that only a check could catch, so
 // `PrimitiveIsBothStructuredAndUnstructured` and `UnstructuredPrimitiveDuplicated` existed to catch
 // it. It now takes ONE list of `PrimitiveCostFact`, whose `cost` is a coproduct: a row is
-// structured or coarse-only, never both, because there is no way to write both. DESIGN section 5
+// structured or coarse-only, never both, because there is no way to write both. gunbc.design_argument::fail_closed
 // prefers a single authority the realization is derived from over a check that flags the bad state
-// afterwards, and section 4b calls this the climb from mechanically preventable to structurally
+// afterwards, and gunbc.design_argument::guarantee_ladder calls this the climb from mechanically preventable to structurally
 // impossible. The surviving arm is the one that is still writable: the same primitive on two rows.
 //
 // AND IT IS RENAMED, because the old name stopped being true. `StructuredPrimitiveDuplicated` said
 // "structured" when there were two lists; the single list holds structured and coarse-only rows
 // alike, so the arm now fires for a duplicate of either kind. Keeping the old spelling would leave
-// one name covering two materially different populations -- the DESIGN section 3 meaning fork this
+// one name covering two materially different populations -- the gunbc.design_argument::single_authority meaning fork this
 // PR is closing one layer up.
 type FidelityInputRefusal
   = PrimitiveDuplicatedInSubjects { primitive: PrimitiveIdentity }
@@ -543,7 +543,7 @@ fn realization_cost_fidelity_rows(
 // to be classified correctly six times by hand. I know the cost of that shape exactly, because I
 // added the seventh arm and the substrate made me touch four folds here and twelve matches in the
 // witnesses; the exhaustiveness check caught every one, which is what kept it correct and is NOT
-// the same as it being right (DESIGN section 2: net concepts must not grow by re-invention).
+// the same as it being right (gunbc.design_argument::minimize_redundancy: net concepts must not grow by re-invention).
 //
 // THE PARTITION IS NOW TOTAL BY CONSTRUCTION rather than by six coincidences: every arm maps to
 // exactly one population, so the counts cannot overlap and cannot leave an arm uncounted. Nothing

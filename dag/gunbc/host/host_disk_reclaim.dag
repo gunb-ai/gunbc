@@ -58,7 +58,7 @@ type StoreWedgeCause
 // mechanism unsafe. The script decides busy-ness by cgroup -- every Runner.Worker lives in its
 // slot's actions-runner@<slot>.service cgroup -- an observation that can itself fail. Busy means
 // "do not touch git here"; unobservable means "we could not tell"; both refuse git work while being
-// different facts with different repairs (DESIGN section 5: a failure arm refuses, never widens,
+// different facts with different repairs (gunbc.design_argument::fail_closed: a failure arm refuses, never widens,
 // and could-not-observe must never render as a verdict about the subject).
 //
 // WHY THIS IS NOT std.upsert_decision.ObservationVerdict, asked by review 54879; the two are

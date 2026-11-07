@@ -23,7 +23,7 @@ import gunbc.github_effect_perform {
 }
 
 // THE ONE RULE EVERY ON-HOST MINT SHARES, put at the boundary the cell-bound microVM attempt and the
-// bound host-unit service slot both cross (DESIGN section 6b, root generalization). The two bindings
+// bound host-unit service slot both cross (gunbc.design_argument::root_generalization, root generalization). The two bindings
 // differ in exactly four facts -- WHO is registered (the sealed subject standing), WHICH runner group
 // admits it and the one workflow that group must be restricted to, and WHICH key signs the App JWT --
 // so those four are the binding's fields and everything else is this module: observe the control
