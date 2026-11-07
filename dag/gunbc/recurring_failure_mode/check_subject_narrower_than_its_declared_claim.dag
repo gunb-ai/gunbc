@@ -50,7 +50,7 @@ data check_subject_narrower_than_its_declared_claim: RecurringFailureMode = Recu
 
     "The six above narrow WHICH INPUTS a check sees; this one narrows WHAT IT COMPARES, so it is invisible even over a complete corpus.",
 
-    "`v1_compiler.behavioral_receipt_host` `behavioral_differential` is cited as the executing evidence for DESIGN section 7 behavioural equivalence, and its own doc comment cites section 7 by name.",
+    "`v1_compiler.behavioral_receipt_host` `behavioral_differential` (since removed) was cited as the executing evidence for DESIGN section 7 behavioural equivalence, and its own doc comment cites section 7 by name.",
 
     "What it RANGES OVER is the seed-Rust versus emitted-Rust axis: `generate_receipt_driver` emits a Rust main that prints each planned call, and the differential runs that ONE driver twice -- against the tree as committed, then after the candidate overwrites its mirror and the crate is rebuilt.",
 

@@ -31,9 +31,8 @@
 
 use crate::cli_run;
 use crate::instrument_registry_generated::{
-    bare_reference_channel_source_roots, behavioral_receipt_source_roots,
-    emitted_crate_workspace_source_roots, heads_reading_differential_source_roots,
-    self_host_source_roots, v2_native_cli_source_roots,
+    bare_reference_channel_source_roots, emitted_crate_workspace_source_roots,
+    heads_reading_differential_source_roots, self_host_source_roots, v2_native_cli_source_roots,
 };
 
 /// The label subset `extdeps.bazel.label` admits, and its refusal vocabulary, mirrored.
@@ -259,9 +258,6 @@ pub enum TargetProducer {
     V2NativeFrontier,
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
-    BehavioralReceiptPlan,
-    BehavioralReceiptCensus,
-    BehavioralReceiptSelftest,
     EvaluationStoreAddressExactHead,
     TypedGraphExclusiveBytes,
     TypedGraphExclusiveBytesFloorSubject,
@@ -742,15 +738,6 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::HeadsReadingDifferential => {
             run_heads_reading_differential(&heads_reading_differential_source_roots())
         }
-        TargetProducer::BehavioralReceiptPlan => behavioral_outcome(
-            cli_run::behavioral_receipt_host::run_plan(&behavioral_receipt_source_roots()),
-        ),
-        TargetProducer::BehavioralReceiptCensus => behavioral_outcome(
-            cli_run::behavioral_receipt_host::run_census(&behavioral_receipt_source_roots()),
-        ),
-        TargetProducer::BehavioralReceiptSelftest => behavioral_outcome(
-            cli_run::behavioral_receipt_host::run_selftest(&behavioral_receipt_source_roots()),
-        ),
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
@@ -2148,21 +2135,6 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
             run.announcement,
             run.stderr.trim_end(),
         ),
-    }
-}
-
-fn behavioral_outcome(
-    outcome: cli_run::behavioral_receipt_host::BehavioralHostOutcome,
-) -> InvocationOutcome {
-    use cli_run::behavioral_receipt_host::BehavioralHostTermination;
-    InvocationOutcome {
-        termination: match outcome.termination {
-            BehavioralHostTermination::ObservationHeld => Termination::ObservationHeld,
-            BehavioralHostTermination::ObservationDidNotHold => Termination::ObservationDidNotHold,
-            BehavioralHostTermination::SubjectUnreached => Termination::SubjectUnreached,
-            BehavioralHostTermination::Refused => Termination::Refused,
-        },
-        message: outcome.message,
     }
 }
 
