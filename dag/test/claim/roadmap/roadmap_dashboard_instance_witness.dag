@@ -130,6 +130,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_path_is_under,
   srv1_linux_toolchain,
   dispatch_worker_memory_ceiling,
+  compute_build_memory_ceiling_default,
   belt_max_concurrent_default,
   srv1_lab_belt_max_concurrent,
 }
@@ -851,6 +852,7 @@ fn witness_production_slot(
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
     worker: WorkerIsServiceUser,
@@ -1222,6 +1224,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: live.compute_build_memory_ceiling,
     belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,

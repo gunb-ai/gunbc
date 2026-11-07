@@ -1571,7 +1571,7 @@ jobs:
         env:
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
         if: "!cancelled() && github.event.inputs.mode == 'mtcollins1_fan_observe'"
-        timeout-minutes: 18
+        timeout-minutes: 19
       - name: Upload Mt. Collins vendor UI status mapping observation
         id: mtcollins1_ui_status_asset_observe_receipt_upload
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
