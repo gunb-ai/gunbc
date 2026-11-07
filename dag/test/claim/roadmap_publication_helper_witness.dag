@@ -540,3 +540,9 @@ fn spool_witness_dir(kind: SpoolKind, instance_root: String, role: SpoolRole) ->
     Absent => "<the spool declares no directory for this role>"
   }
 }
+
+// THE ROLE THIS FILE'S CLAIMS ADDRESS IS DECLARED. spool_witness_dir answers a placeholder for an undeclared role, which no
+// line matches; this claim is where that cause is NAMED, so a RED reads "role undeclared" and not "line missing".
+test fn the_witnessed_spool_roles_are_declared_for_roadmap_publication_helper_witness() -> Bool {
+  spool_role_path(store: spool_open(kind: SpoolPublication, instance_root: "/opt/gunbc"), role: RolePending) != Absent && spool_role_path(store: spool_open(kind: SpoolPublication, instance_root: "/opt/gunbc"), role: RoleRefused) != Absent
+}

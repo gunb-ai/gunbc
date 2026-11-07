@@ -520,18 +520,10 @@ type SpoolDirectoryShape
   | SpoolDirectoryGroupBlindWrite
 
 fn spool_role_directory_shape(kind: SpoolKind, role: SpoolRole) -> SpoolDirectoryShape {
-  if spool_role_writers(kind: kind, role: role) |> any(w => spool_principal_is_not_drainer(p: w)) {
+  if spool_role_writers(kind: kind, role: role) |> any(w => w != PrincipalDrainer) {
     SpoolDirectoryGroupBlindWrite
   } else {
     SpoolDirectoryOwnerOnly
-  }
-}
-
-fn spool_principal_is_not_drainer(p: SpoolPrincipal) -> Bool {
-  match p {
-    PrincipalDrainer => false
-    PrincipalRequester => true
-    PrincipalExternalHook => true
   }
 }
 
@@ -573,11 +565,15 @@ fn spool_role_path(store: SpoolStore, role: SpoolRole) -> Optional<String> {
 // THE ONE KIND ADMISSION. A key carries the spool kind it was minted for and a store carries the kind it opens; the
 // directory comes from the store and the wire name from the key, so a pair that disagrees addresses an entry that
 // neither spool declares. Every path, and so every observe, create, claim, complete and requeue, is built here.
-fn spool_key_kind_refusal(store: SpoolStore, key: SpoolEntryKey) -> String? {
+type SpoolKeyKindVerdict
+  = SpoolKeyKindAdmitted
+  | SpoolKeyKindRefused { detail: String }
+
+fn spool_key_kind_refusal(store: SpoolStore, key: SpoolEntryKey) -> SpoolKeyKindVerdict {
   if key.kind == store.kind {
-    Absent
+    SpoolKeyKindAdmitted
   } else {
-    Present { value: join(["a key minted for one spool kind was presented to a store of another kind: ", key.name as String], "") }
+    SpoolKeyKindRefused { detail: join(["a key minted for one spool kind was presented to a store of another kind: ", key.name as String], "") }
   }
 }
 
@@ -590,8 +586,8 @@ type SpoolEntryPath
 
 fn spool_entry_path(store: SpoolStore, role: SpoolRole, key: SpoolEntryKey) -> SpoolEntryPath {
   match spool_key_kind_refusal(store: store, key: key) {
-    Present { value: d } => SpoolEntryKindRefused { detail: d }
-    Absent =>
+    SpoolKeyKindRefused { detail: d } => SpoolEntryKindRefused { detail: d }
+    SpoolKeyKindAdmitted =>
       match spool_role_path(store: store, role: role) {
         Present { value: d } => SpoolEntryPathReady { path: join([d, "/", spool_entry_wire_name(key: key)], "") }
         Absent => SpoolEntryRoleUndeclared { role: role }
@@ -667,8 +663,8 @@ fn spool_role_dirs(kind: SpoolKind, instance_root: String, roles: List<SpoolRole
 // unavailable (it is never read as absent); two roles holding the key is Ambiguous.
 fn spool_queue_observe(store: SpoolStore, key: SpoolEntryKey) -> SpoolEntryState {
   match spool_key_kind_refusal(store: store, key: key) {
-    Present { value: why } => EntryObservationUnavailable { detail: why }
-    Absent => spool_queue_observe_admitted(store: store, key: key)
+    SpoolKeyKindRefused { detail: why } => EntryObservationUnavailable { detail: why }
+    SpoolKeyKindAdmitted => spool_queue_observe_admitted(store: store, key: key)
   }
 }
 
@@ -695,20 +691,24 @@ fn spool_queue_observe_admitted(store: SpoolStore, key: SpoolEntryKey) -> SpoolE
 }
 
 // THE ONE RENAME. A directory entry moves by NoReplaceDirectory (a destination that exists refuses); a file entry by Move.File.
-fn spool_move_between(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, into: SpoolRole) -> String? {
+type SpoolMoveOutcome
+  = SpoolMoved
+  | SpoolMoveRefused { detail: String }
+
+fn spool_move_between(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, into: SpoolRole) -> SpoolMoveOutcome {
   match spool_entry_path(store: store, role: from, key: key) {
-    SpoolEntryRoleUndeclared { role: _ } => Present { value: "the source role has no directory" }
-    SpoolEntryKindRefused { detail: d } => Present { value: d }
+    SpoolEntryRoleUndeclared { role: _ } => SpoolMoveRefused { detail: "the source role has no directory" }
+    SpoolEntryKindRefused { detail: d } => SpoolMoveRefused { detail: d }
     SpoolEntryPathReady { path: source } =>
       match spool_entry_path(store: store, role: into, key: key) {
-        SpoolEntryRoleUndeclared { role: _ } => Present { value: "the destination role has no directory" }
-        SpoolEntryKindRefused { detail: d } => Present { value: d }
+        SpoolEntryRoleUndeclared { role: _ } => SpoolMoveRefused { detail: "the destination role has no directory" }
+        SpoolEntryKindRefused { detail: d } => SpoolMoveRefused { detail: d }
         SpoolEntryPathReady { path: destination } => {
           let moved = match spool_declaration(kind: store.kind).entry_kind {
             SpoolEntryDirectory => shell.Move.NoReplaceDirectory(source: source as FilePath, destination: destination as FilePath).success
             SpoolEntryFile => shell.Move.File(source: source as FilePath, destination: destination as FilePath).success
           }
-          if moved { Absent } else { Present { value: join(["the rename ", source, " -> ", destination, " failed"], "") } }
+          if moved { SpoolMoved } else { SpoolMoveRefused { detail: join(["the rename ", source, " -> ", destination, " failed"], "") } }
         }
       }
   }
@@ -763,27 +763,31 @@ type SpoolClaimOutcome
   | SpoolClaimNotDone { assessment: SpoolClaimAssessment }
   | SpoolClaimUnmovable { from: SpoolRole, into: SpoolRole, cause: String }
 
-fn spool_claim_record_boot(store: SpoolStore, key: SpoolEntryKey, into: SpoolRole) -> String? {
+type SpoolClaimRecordVerdict
+  = SpoolClaimRecorded
+  | SpoolClaimRecordRefused { detail: String }
+
+fn spool_claim_record_boot(store: SpoolStore, key: SpoolEntryKey, into: SpoolRole) -> SpoolClaimRecordVerdict {
   if !spool_role_is_last(kind: store.kind, role: into) {
-    Absent
+    SpoolClaimRecorded
   } else {
     match spool_declaration(kind: store.kind).entry_kind {
-      SpoolEntryFile => Absent
+      SpoolEntryFile => SpoolClaimRecorded
       SpoolEntryDirectory =>
         match spool_entry_path(store: store, role: into, key: key) {
-          SpoolEntryRoleUndeclared { role: _ } => Present { value: "the claimed role has no directory" }
-          SpoolEntryKindRefused { detail: d } => Present { value: d }
+          SpoolEntryRoleUndeclared { role: _ } => SpoolClaimRecordRefused { detail: "the claimed role has no directory" }
+          SpoolEntryKindRefused { detail: d } => SpoolClaimRecordRefused { detail: d }
           SpoolEntryPathReady { path: entry } =>
             match spool_current_boot_id() {
-              Absent => Present { value: "the current boot id could not be read" }
+              Absent => SpoolClaimRecordRefused { detail: "the current boot id could not be read" }
               Present { value: boot } => {
                 let path = join([entry, "/", spool_claim_boot_file], "")
                 let written = Filesystem.WriteCreateNew(path: path, content: boot as String)
                 match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
-                  FilesystemCreated { path: _ } => Absent
-                  FilesystemCreateTargetOccupied { path: p } => Present { value: join(["a claim record already stands at ", p], "") }
-                  FilesystemCreateRefused { path: p, kind: _, error: e } => Present { value: join(["the claim record ", p, " was refused: ", e], "") }
-                  FilesystemCreateKindUnrecognized { path: p, observed: _, error: e } => Present { value: join(["the claim record ", p, " failed: ", e], "") }
+                  FilesystemCreated { path: _ } => SpoolClaimRecorded
+                  FilesystemCreateTargetOccupied { path: p } => SpoolClaimRecordRefused { detail: join(["a claim record already stands at ", p], "") }
+                  FilesystemCreateRefused { path: p, kind: _, error: e } => SpoolClaimRecordRefused { detail: join(["the claim record ", p, " was refused: ", e], "") }
+                  FilesystemCreateKindUnrecognized { path: p, observed: _, error: e } => SpoolClaimRecordRefused { detail: join(["the claim record ", p, " failed: ", e], "") }
                 }
               }
             }
@@ -801,12 +805,12 @@ fn spool_queue_claim(store: SpoolStore, key: SpoolEntryKey) -> SpoolClaimOutcome
     ClaimAlreadyClaimed => SpoolClaimLost
     ClaimEligible { from, into } =>
       match spool_move_between(store: store, key: key, from: from, into: into) {
-        Absent =>
+        SpoolMoved =>
           match spool_claim_record_boot(store: store, key: key, into: into) {
-            Absent => SpoolClaimWon { from: from, into: into }
-            Present { value: why } => SpoolClaimWonUnrecorded { from: from, into: into, cause: why }
+            SpoolClaimRecorded => SpoolClaimWon { from: from, into: into }
+            SpoolClaimRecordRefused { detail: why } => SpoolClaimWonUnrecorded { from: from, into: into, cause: why }
           }
-        Present { value: why } =>
+        SpoolMoveRefused { detail: why } =>
           match spool_queue_observe(store: store, key: key) {
             EntryStanding { role: r } => if (r == into) { SpoolClaimLost } else { SpoolClaimUnmovable { from: from, into: into, cause: why } }
             EntryAbsent => SpoolClaimAbsentEntry
@@ -830,8 +834,8 @@ fn spool_queue_complete(store: SpoolStore, key: SpoolEntryKey, outcome: SpoolOut
       match observed {
         EntryStanding { role: from } =>
           match spool_move_between(store: store, key: key, from: from, into: into) {
-            Absent => SpoolCompleted { into: into }
-            Present { value: why } => SpoolCompleteUnmovable { from: from, into: into, cause: why }
+            SpoolMoved => SpoolCompleted { into: into }
+            SpoolMoveRefused { detail: why } => SpoolCompleteUnmovable { from: from, into: into, cause: why }
           }
         other => SpoolCompleteNotDone { assessment: CompleteNotClaimed { state: other } }
       }
@@ -894,8 +898,8 @@ fn spool_queue_requeue_on_evidence(store: SpoolStore, key: SpoolEntryKey, eviden
 
 fn spool_requeue_move(store: SpoolStore, key: SpoolEntryKey, from: SpoolRole, into: SpoolRole) -> SpoolRequeueOutcome {
   match spool_move_between(store: store, key: key, from: from, into: into) {
-    Absent => SpoolRequeued { into: into }
-    Present { value: why } => SpoolRequeueUnmovable { cause: why }
+    SpoolMoved => SpoolRequeued { into: into }
+    SpoolMoveRefused { detail: why } => SpoolRequeueUnmovable { cause: why }
   }
 }
 
