@@ -1160,12 +1160,22 @@ fn emitted_tree_packages(
                  {roots:?}, so the emitted tree's package graph cannot be read"
             )
         })?;
-    // ITS OWN INDEX, RELEASED WITH THIS READ. The regen roots are read here for this one entry
-    // and by nothing after it, so the pool is not put in the thread's shared memo, where it
-    // would sit beside the round's source-roots index for the life of the thread.
-    let index = super::build_multi_entry_index(&roots);
-    let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+    // ONE ROUTE, THE CHEAP ONE. This read resolves ONE entry, and it used to build the whole
+    // regen tree's index to do it -- `build_multi_entry_index`, the route this file measures at
+    // 169 s and 10.13 GB for a 26-module closure (see `resolve_orchestrator_model`), paid inside
+    // the orchestrator between generations. That is what `GenerationStateRetainedByOrchestrator`
+    // caught: the peak is the orchestrator's own, so the ~8 GB stayed resident after the read
+    // ended and the next generation was refused. Every other orchestrator-side model load goes
+    // through `resolve_orchestrator_model` and pays ~150 MB; this was the one site that forked to
+    // the whole-tree route (DESIGN section 6b: a cost's costliest route avoided by one caller and
+    // paid by another is a fork, and the rule is one route at the owed cost). The child that
+    // answers the partition-move question took the same route and exited -- "process exit frees
+    // the index" -- which is why the round peaked in a child while the orchestrator alone was
+    // charged for the memory.
+    report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.begin");
+    let (graph, indices) = resolve_orchestrator_model(&roots, &entry.to_string_lossy())
         .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.end");
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
     // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
@@ -1186,9 +1196,11 @@ fn emitted_tree_packages(
     }
     let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
         decode(&ctx, "generated_partition_crate_rows")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.rows");
     let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
     let host_shell_dependencies: im::Vector<String> =
         decode(&ctx, "generated_host_shell_partition_dependencies")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
     Ok(Rc::new(Stage0EmittedTreePackages {
         rows: Rc::new(rows),
         host_shell_package_name,
@@ -5956,6 +5968,7 @@ fn admit_derived_partition_move(
         packages.rows.clone(),
         crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
     );
+    report_cgroup_memory_diagnostic("parent.partition_move.boundary_fold.end");
     Ok((*outcome).clone())
 }
 
@@ -7170,20 +7183,100 @@ fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid
     )
 }
 
-/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round. The
-/// parent and the rebuilt-seed child call it with their own `phase` labels; a child spawned without
-/// a cgroup move shares its parent's cgroup, so the two share a `cgroup=` value and the `pid=`
-/// field says which process read it. Nothing reads the line back, no cap moves, nothing refuses.
+/// This process's own `/proc/self/status` memory lines, in the same field shape the residency
+/// gate reads.
+///
+/// THE TWO HALVES OF ONE QUESTION, PRINTED TOGETHER. `admit_generation_begin` reports the
+/// ORCHESTRATOR (`VmRSS`); `cgroup_memory_diagnostic_line` reports the SLOT (`memory.current`).
+/// They were printed by separate lines that never appeared at the same instant, so a reader
+/// comparing a generation-begin `VmRSS` against the last slot reading two steps earlier saw a
+/// contradiction that was only a gap in the log. Every diag line now carries both, and the
+/// high-water mark beside the current value, so a peak the allocator did not return is
+/// distinguishable from state the process still holds.
+fn status_memory_fields_from(status: &str) -> String {
+    let mut fields = Vec::new();
+    for name in ["VmRSS", "VmHWM", "VmSize"] {
+        // THE KEY AND THE VALUE ARE ONE WHITESPACE-FREE TOKEN APART: a status line is
+        // "VmRSS:\t  216968 kB", so the key arrives WITH its colon and the number is the second
+        // field. Stripping the bare name and taking the next token yields ":" and every number on
+        // the line reads as `VmRSS=:kB` -- an instrumentation bug that reports itself as a real
+        // reading, which is the one thing a measurement line must not do. `admit_generation_begin`'s
+        // own probe reads the same line by field position; this parses it the same way.
+        let key = format!("{name}:");
+        let value = status
+            .lines()
+            .find(|line| line.split_whitespace().next() == Some(key.as_str()))
+            .and_then(|line| line.split_whitespace().nth(1))
+            .filter(|value| !value.is_empty() && value.chars().all(|c| c.is_ascii_digit()));
+        if let Some(value) = value {
+            fields.push(format!("{name}={value}kB"));
+        }
+    }
+    fields.join(" ")
+}
+
+fn self_status_memory_fields() -> String {
+    status_memory_fields_from(&std::fs::read_to_string("/proc/self/status").unwrap_or_default())
+}
+
+/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round, beside
+/// this process's own memory lines. The parent and the rebuilt-seed child call it with their own
+/// `phase` labels; a child spawned without a cgroup move shares its parent's cgroup, so the two
+/// share a `cgroup=` value and the `pid=` field says which process read it. Nothing reads the line
+/// back, no cap moves, nothing refuses.
+///
+/// IT NAMES THE BINARY THAT PRINTED IT, because a round that cannot say which executable ran it is
+/// not evidence. A srv1 pair of rounds was run at two heads and refused identically to the unpatched
+/// reproduction, with none of the phases that had just been added to the source firing -- including a
+/// diag line sitting four lines above one that did fire, in the same straight-line function. That is
+/// only possible if the image that ran was not the tree that was checked out, and nothing in the log
+/// could say so: the `pid` and `cgroup` fields identify the process, never the file it was launched
+/// from. So every diag line now carries the resolved `exe=` path and that file's modification time.
+/// Render the executing image's identity for a diagnostic line.
+///
+/// The path is always printed; the modification time is printed only when it
+/// was actually read. An unreadable timestamp must not appear as `0`, because
+/// this field exists to tell two builds of the same-named file apart, and a
+/// placeholder that looks like a reading is how a stale binary gets credited
+/// as the one under test. Absent is rendered as absent, matching the
+/// `/proc/self/status` parser, which omits an unreadable field rather than
+/// printing it as zero.
+fn self_exe_field() -> String {
+    let mtime = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs());
+    let path = std::env::current_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unresolved".to_string());
+    self_exe_field_with(path, mtime)
+}
+
+fn self_exe_field_with(path: String, mtime: Option<u64>) -> String {
+    match mtime {
+        Some(secs) => format!("exe={path} exe_mtime={secs}"),
+        None => format!("exe={path}"),
+    }
+}
+
 fn report_cgroup_memory_diagnostic(phase: &str) {
+    let process = self_status_memory_fields();
+    let exe = self_exe_field();
     let line = match crate::memory_governor::leaf_cgroup_dir() {
-        Some(dir) => cgroup_memory_diagnostic_line(
-            &dir,
-            Path::new("/sys/fs/cgroup"),
-            phase,
-            std::process::id(),
+        Some(dir) => format!(
+            "{} {process} {exe}",
+            cgroup_memory_diagnostic_line(
+                &dir,
+                Path::new("/sys/fs/cgroup"),
+                phase,
+                std::process::id()
+            )
         ),
         None => format!(
-            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent",
+            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent {process} {exe}",
             std::process::id()
         ),
     };
@@ -7302,6 +7395,15 @@ fn admit_generation_begin(
         )
     })?;
     let first = resident_at_first.unwrap_or(now);
+    // THE INSTANT THE GATE DECIDES, in both currencies. This is the only place the orchestrator's
+    // own `VmRSS` and the slot's `memory.current` are read at the same instant. The gate printed
+    // only the process and the periodic diag only the slot, never at the instant that matters, so
+    // a reader comparing a generation-begin `VmRSS` with the last slot reading (taken steps
+    // earlier) could mistake a log gap for a contradiction -- which is how a correct refusal came
+    // to be argued about instead of read.
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.generation_begin_admission ordinal={ordinal} orchestrator_resident={now}"
+    ));
     eprintln!(
         "required-regen: generation {ordinal} begins; orchestrator resident={now} \
          (at generation 0: {first})"
@@ -12473,9 +12575,64 @@ pub fn run_dag_artifact_identity() -> Result<DagArtifactIdentityOutcome, String>
 }
 
 #[cfg(test)]
+/// The residency observation the generation gate is argued from, read the way the gate reads it.
+///
+/// WHY THIS TEST EXISTS: these lines are the evidence a correct refusal is judged on, and the one
+/// failure mode that makes them worse than nothing is a field that parses to something plausible
+/// and wrong. Stripping the bare name from `"VmRSS:\t 216968 kB"` leaves `":"` as the next token,
+/// which prints as `VmRSS=:kB` -- a number-shaped field that is not a number, in the one line a
+/// reviewer is reading to decide whether a retention is real.
+mod orchestrator_residency_observation_tests {
+    use super::{self_exe_field_with, status_memory_fields_from};
+
+    #[test]
+    fn status_memory_fields_parse_the_number_not_the_colon() {
+        // Real `/proc/self/status` padding: a tab after the key, then the value right-aligned.
+        let status = "Name:\tclaim_executor\nVmHWM:\t  8272424 kB\nVmSize:\t 123456789 kB\n\
+                      VmRSS:\t   216968 kB\nUid:\t1000\t1000\t1000\t1000\n";
+        let line = status_memory_fields_from(status);
+        assert_eq!(
+            line, "VmRSS=216968kB VmHWM=8272424kB VmSize=123456789kB",
+            "the fields a reader judges a refusal by must carry the numbers, not the key's colon"
+        );
+        // A name that is a PREFIX of another key's line must not be confused with it: `VmRSS` and
+        // `VmHWM` are distinct keys, and `Name:` starts with no field we read.
+        assert!(
+            !line.contains("Name"),
+            "only the memory fields are printed: {line}"
+        );
+    }
+
+    #[test]
+    fn an_unreadable_field_is_omitted_rather_than_printed_as_zero() {
+        // Absent, not zero: a diag line claiming `VmRSS=0kB` would read as an orchestrator that
+        // released everything, which is the exact claim this whole observation is asked about.
+        let line = status_memory_fields_from("Name:\tgum\nThreads:\t1\n");
+        assert_eq!(line, "");
+        let partial = status_memory_fields_from("VmRSS:\t 12 kB\nVmHWM:\t junk kB\n");
+        assert_eq!(partial, "VmRSS=12kB");
+    }
+
+    #[test]
+    fn an_unreadable_exe_mtime_is_omitted_rather_than_printed_as_a_reading() {
+        // The same discipline on the field whose entire job is to tell two builds of the
+        // same-named file apart. `exe_mtime=0` is a value, and a value is read as an observation:
+        // an unreadable timestamp printed as zero is how a stale image gets credited as the one
+        // under test, which is the failure this branch was diagnosed under.
+        let known = self_exe_field_with("/tmp/claim_executor".to_string(), Some(1_730_000_000));
+        assert_eq!(known, "exe=/tmp/claim_executor exe_mtime=1730000000");
+        let unknown = self_exe_field_with("/tmp/claim_executor".to_string(), None);
+        assert_eq!(unknown, "exe=/tmp/claim_executor");
+        assert!(
+            !unknown.contains("exe_mtime"),
+            "an unreadable timestamp must not print at all: {unknown}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod dag_artifact_identity_tests {
     use super::{run_dag_artifact_identity, DAG_ARTIFACT_IDENTITY_MIN_REGISTRY_KEYS};
-
     /// THE LOCAL ARM OF THE REQUIRED RIDER, so the control can be run against a tree without
     /// driving a whole required lane. It is not the enrolled consumer -- that is the
     /// `dag-artifact-identity` rider inside `RequiredCiPhase::GeneratedArtifact`, which is what
@@ -13138,11 +13295,361 @@ mod partition_move_explanation_tests {
     }
 }
 
-/// THE ORCHESTRATOR LOADS ITS MODELS FROM THEIR OWN CLOSURES, never through the whole-tree shared
-/// index. The discriminator is the thread's shared-index memo (`PROCESS_RESOLVE_INDEX` is
-/// thread-local and each test runs on its own thread): replaying the re-exec'd orchestrator's loads
-/// in PRODUCTION ORDER -- the liveness model, the convergence model, the round-cost decider -- must
-/// leave it empty, and a shared-index build over even a tiny root must not.
+/// THE ROUTE REPLACEMENT'S EQUIVALENCE CONTROL, at the one interface the shipped change can change
+/// in generated bytes: the rows `admit_derived_partition_move` hands to
+/// `partition_crate_boundary_emit_outcome_over`.
+///
+/// WHY THIS AND NOT THE WHOLE-GRAPH DIFFERENTIAL. The broader
+/// `both_routes_resolve_every_orchestrator_entry_identically` compares two live graphs, so one
+/// process must hold the ~10 GB whole-tree index AND the demand graph at the comparison point. That
+/// peak was measured at more than 48 GiB for a single site (srv1, 9a5da065: wall-stalled at the cap
+/// with `oom_kill=0`, and at 25 GiB with rc=101/rc=124) -- an environment fact, not a verdict, and
+/// not a question this control has to ask. The routes are answers to ONE question here, and the
+/// answer is a row list: each route is resolved in its OWN child process, sequentially, and only
+/// the serialized rows survive, so the peak is the costlier single route rather than their sum.
+/// Consequences worth stating: an equal-by-construction comparison would read green, so
+/// `a_planted_row_difference_fails_the_row_comparison` alters one dumped row and requires the
+/// comparison to refuse; and two empty row lists would also read green, so an empty projection
+/// refuses on its own rather than agreeing with another empty.
+#[cfg(test)]
+mod route_projection_control {
+    use super::*;
+
+    const ROUTE_ENV: &str = "GUNBC_ORCH_DUMP_ROUTE";
+    const OUT_ENV: &str = "GUNBC_ORCH_DUMP_OUT";
+    const DUMP_TEST: &str = "orchestrator_route_row_projection_dump";
+    /// Only the child that actually performed a dump prints this. A child that matched no
+    /// test, or returned early, exits 0 without it - see the parent's non-vacuity assert.
+    const DONE_MARKER: &str = "route_projection_done:";
+    const SHARED_ROUTE: &str = "shared_index";
+    const DEMAND_ROUTE: &str = "demand";
+
+    /// The site that forked, over the corpus its production caller uses -- `regen_source_roots()`,
+    /// exactly as `emitted_tree_packages` builds them. Asking either route about `[dag, src/v2]`
+    /// would compare two answers to a question no caller asks.
+    fn emitted_tree_site() -> (Vec<String>, String) {
+        let roots: Vec<String> = super::super::regen_source_roots()
+            .all()
+            .iter()
+            .map(|root| {
+                workspace_root()
+                    .join(root.repo_relative_path())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        let entry = roots
+            .iter()
+            .map(|root| {
+                Path::new(root)
+                    .join("gunbc/stage0/stage0_emitted_edge_admission.dag")
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .find(|path| Path::new(path).is_file())
+            .unwrap_or_else(|| {
+                panic!(
+                    "gunbc.stage0.stage0_emitted_edge_admission is under no regen source root \
+                     {roots:?}, so there is no emitted-tree site to compare"
+                )
+            });
+        (roots, entry)
+    }
+
+    /// THE CONSUMED PROJECTION, in canonical order: the value of `generated_partition_crate_rows`
+    /// as the interpreter answers it under `route`, one canonical JSON line per row, sorted.
+    ///
+    /// ALL ROW FIELDS ARE COMPARED, deliberately. The manager's condition was that the diff must not
+    /// pass or fail on ordering or on unconsumed fields; ordering is removed by sorting, and the two
+    /// host-shell values that `admit_derived_partition_move` does not read are excluded. Row fields
+    /// are NOT excluded on a partial reading of the plan's call chain: dropping a field on an
+    /// incomplete read risks a false PASS, which is the worse error, and a field that genuinely
+    /// differs between the routes is worth a human seeing rather than a green line.
+    ///
+    /// Decoded to `serde_json::Value` rather than the mirror's row type on purpose: the mirror type
+    /// would silently normalise what the two routes produced, and this control exists to catch the
+    /// routes producing different things.
+    fn row_projection(route: &str) -> Result<Vec<String>, String> {
+        use crate::v1_interpreter::{self, ExecutionMode};
+        let (roots, entry) = emitted_tree_site();
+        let (graph, indices) = match route {
+            DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry)
+                .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
+            SHARED_ROUTE => {
+                let shared = super::super::process_shared_index_or_refuse(&roots);
+                super::super::resolve_entry_with_index(&shared, &entry)
+                    .map_err(|e| format!("the whole-tree route refused: {e}"))?
+            }
+            other => {
+                return Err(format!(
+                    "unknown route {other:?}; expected {SHARED_ROUTE} or {DEMAND_ROUTE}"
+                ))
+            }
+        };
+        let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let value = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(
+                &ctx,
+                "generated_partition_crate_rows",
+                &[],
+                false,
+            )
+        })
+        .map_err(|e| format!("{route}: generated_partition_crate_rows did not evaluate: {e}"))?;
+        let wire = super::super::value_to_wire_json(&value, &ctx).map_err(|e| {
+            format!("{route}: generated_partition_crate_rows did not wire-encode: {e}")
+        })?;
+        let rows: Vec<serde_json::Value> = serde_json::from_value(wire)
+            .map_err(|e| format!("{route}: generated_partition_crate_rows did not decode: {e}"))?;
+        let mut lines: Vec<String> = rows
+            .iter()
+            .map(|row| {
+                serde_json::to_string(row)
+                    .map_err(|e| format!("{route}: a row did not re-encode: {e}"))
+            })
+            .collect::<Result<_, _>>()?;
+        lines.sort();
+        Ok(lines)
+    }
+
+    /// THE COMPARISON, as a pure function so the planted control can test it without a 10 GB run.
+    fn compare_row_projections(
+        route_a: &str,
+        a: &[String],
+        route_b: &str,
+        b: &[String],
+    ) -> Result<(), String> {
+        if a.is_empty() || b.is_empty() {
+            return Err(format!(
+                "the row projection is empty on {route_a} ({} row(s)) or {route_b} ({} row(s)); an \
+                 empty projection is not an agreement -- it is the route answering nothing",
+                a.len(),
+                b.len()
+            ));
+        }
+        if a == b {
+            return Ok(());
+        }
+        let first = a
+            .iter()
+            .zip(b.iter())
+            .position(|(x, y)| x != y)
+            .unwrap_or_else(|| a.len().min(b.len()));
+        Err(format!(
+            "the two routes returned different partition-crate rows: {route_a} gave {} row(s), \
+             {route_b} gave {} row(s); first difference at index {first}: \
+             {route_a} = {} | {route_b} = {}",
+            a.len(),
+            b.len(),
+            a.get(first).map(String::as_str).unwrap_or("<none>"),
+            b.get(first).map(String::as_str).unwrap_or("<none>"),
+        ))
+    }
+
+    /// One route, one process, one file. Run by the parent below as a child so each route's peak is
+    /// its own; the parent never holds either.
+    ///
+    /// NOT `#[ignore]`d, and that is deliberate rather than sloppy: an ignored test is SKIPPED when a
+    /// child asks for it by name, the child still exits 0, and the parent would then compare nothing
+    /// and call that agreement. So this helper runs when, and only when, it is asked -- with
+    /// {ROUTE_ENV} set -- and returns without work when the parent is not driving it. Half a
+    /// configuration is a refusal, not a skip: name a route without an output path and it panics.
+    #[test]
+    fn orchestrator_route_row_projection_dump() {
+        let Ok(route) = std::env::var(ROUTE_ENV) else {
+            eprintln!(
+                "route_projection: {ROUTE_ENV} unset, so this is the parent's helper, not a run"
+            );
+            return;
+        };
+        let out = std::env::var(OUT_ENV).unwrap_or_else(|_| {
+            panic!(
+                "{} is unset; this dump test writes one canonical row file",
+                OUT_ENV
+            )
+        });
+        let lines = row_projection(&route).unwrap_or_else(|e| panic!("{route}: {e}"));
+        std::fs::write(&out, lines.join("\n") + "\n")
+            .unwrap_or_else(|e| panic!("could not write the {route} projection to {out}: {e}"));
+        eprintln!(
+            "{DONE_MARKER} {route} wrote {} row(s) to {out}",
+            lines.len()
+        );
+    }
+
+    /// THE CONTROL. Two children, one per route, run SEQUENTIALLY so the second starts after the
+    /// first's index is gone with its process; then the two files are compared. This is the receipt
+    /// that the shipped route returns the rows the whole-tree route returned, for the real
+    /// emitted-tree entry, inside a slot a normal machine has.
+    ///
+    /// RESOURCE NOTE, measured. The two children run SEQUENTIALLY, so the peak is the costlier
+    /// single route rather than the sum of both; the shared arm still builds the whole-tree index
+    /// over the `dag` corpus, so budget generously. A sibling control that held the whole index
+    /// and the demand graph at once was measured on srv1 at head 9a5da065: one site hit a 25 GiB
+    /// cap and was wall-timed out (`rc=124`, `memory.peak` AT the cap), and at a 48 GiB cap the
+    /// same site sat at the limit for 2 h with `oom_kill=0` and `memory.events max=19179707`. Run
+    /// with swap 0, a generous timeout, and `--nocapture`. Absence of a line is not a verdict:
+    /// this test's own verdict is always a printed line (`shared index returned N row(s)`,
+    /// `EQUIVALENT ...`, or a `panic!` naming the difference), so `rc=101`, `rc=124`, or an exit 1
+    /// carrying only `shared index refused:` / `module index refused:` with no such line is a fact
+    /// about the machine, not about the routes.
+    #[test]
+    #[ignore = "spawns one child per route over the real emitted tree; run with --nocapture"]
+    fn orchestrator_route_row_projections_agree_in_separate_processes() {
+        let exe = std::env::current_exe().expect("the test binary should know its own path");
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-route-projection-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("the projection directory should be creatable");
+        let mut files: Vec<(String, std::path::PathBuf)> = Vec::new();
+        for route in [SHARED_ROUTE, DEMAND_ROUTE] {
+            // SEQUENTIAL ON PURPOSE. Two concurrent children would peak at the sum again, which is
+            // the very property that made the in-process comparison unrunnable.
+            let file = dir.join(format!("{route}.rows"));
+            let child = std::process::Command::new(&exe)
+                // SUBSTRING FILTER, deliberately, and no `--exact`. Two measured traps: a bare
+                // test name with `--exact` matches ZERO tests, and a `module_path!()` prefix does
+                // not match the harness's own spelling of the path either. Both leave the child
+                // printing "running 0 tests" and exiting 0 having written nothing. The name below
+                // is unique as a substring, and the marker assert is what actually proves the dump
+                // ran - a filter that matches nothing cannot produce it.
+                .arg(DUMP_TEST)
+                .arg("--nocapture")
+                .arg("--test-threads=1")
+                .env(ROUTE_ENV, route)
+                .env(OUT_ENV, &file)
+                .output()
+                .unwrap_or_else(|e| panic!("the {route} child could not start: {e}"));
+            let child_out = format!(
+                "{}{}",
+                String::from_utf8_lossy(&child.stdout),
+                String::from_utf8_lossy(&child.stderr)
+            );
+            for line in child_out.lines() {
+                // Forwarded rather than swallowed, so a child that refuses for a stated reason
+                // (a closure error, an index refusal) is still readable in the parent's log.
+                eprintln!("route_projection: [{route} child] {line}");
+            }
+            assert!(
+                child.status.success(),
+                "the {route} child exited with {:?}; its lines are above",
+                child.status
+            );
+            assert!(
+                child_out
+                    .lines()
+                    .any(|l| l.starts_with(DONE_MARKER) && l.contains(route)),
+                "the {route} child exited 0 without printing its {DONE_MARKER} line, so it never \
+                 ran the dump - a filter that matches no test looks like this. Its lines are above."
+            );
+            let rows = std::fs::read_to_string(&file).unwrap_or_else(|e| {
+                panic!(
+                    "the {route} child left no projection at {}: {e}",
+                    file.display()
+                )
+            });
+            let rows: Vec<String> = rows
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect();
+            assert!(
+                !rows.is_empty(),
+                "the {route} child wrote an empty projection"
+            );
+            eprintln!("route_projection: {route} returned {} row(s)", rows.len());
+            files.push((route.to_string(), file));
+        }
+        let read = |f: &std::path::PathBuf| -> Vec<String> {
+            std::fs::read_to_string(f)
+                .unwrap_or_else(|e| panic!("{} should be readable: {e}", f.display()))
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect()
+        };
+        let shared = read(&files[0].1);
+        let demand = read(&files[1].1);
+        compare_row_projections(SHARED_ROUTE, &shared, DEMAND_ROUTE, &demand)
+            .unwrap_or_else(|e| panic!("EQUIVALENCE REFUSED: {e}"));
+        eprintln!(
+            "EQUIVALENT (canonical rows, consumed projection only): both routes gave {} row(s) for \
+             gunbc.stage0.stage0_emitted_edge_admission",
+            shared.len()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE PLANTED CONTROL, without which the comparison above could be equal by construction.
+    /// Same rows, one field altered, and the comparison must refuse. Also holds for an added row, a
+    /// dropped row, and an empty projection, none of which the shipped route could produce by
+    /// accident but all of which a green run would otherwise survive.
+    #[test]
+    fn a_planted_row_difference_fails_the_row_comparison() {
+        let rows = || {
+            vec![
+                r#"{"package_name":"a","modules":["m1"]}"#.to_string(),
+                r#"{"package_name":"b","modules":["m2"]}"#.to_string(),
+                r#"{"package_name":"c","modules":[]}"#.to_string(),
+            ]
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &rows()).is_ok());
+
+        let altered = {
+            let mut r = rows();
+            r[1] = r#"{"package_name":"b","modules":["m2","EXTRA"]}"#.to_string();
+            r
+        };
+        let why = compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &altered)
+            .expect_err("an altered module list in one row must refuse");
+        assert!(why.contains("different partition-crate rows"), "{why}");
+
+        let renamed = {
+            let mut r = rows();
+            r[0] = r#"{"package_name":"a-renamed","modules":["m1"]}"#.to_string();
+            r.sort();
+            r
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &renamed).is_err());
+
+        let dropped = {
+            let mut r = rows();
+            r.remove(2);
+            r
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &dropped).is_err());
+
+        let added = {
+            let mut r = rows();
+            r.push(r#"{"package_name":"d","modules":[]}"#.to_string());
+            r.sort();
+            r
+        };
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &added).is_err());
+
+        // TWO EMPTIES ARE NOT AGREEMENT, and one empty against one non-empty is not either.
+        let why_empty = compare_row_projections(SHARED_ROUTE, &[], DEMAND_ROUTE, &[])
+            .expect_err("two empty projections must refuse");
+        assert!(why_empty.contains("empty projection"), "{why_empty}");
+        assert!(compare_row_projections(SHARED_ROUTE, &rows(), DEMAND_ROUTE, &[]).is_err());
+    }
+
+    /// Canonical order is part of the claim, so a dump that came out unsorted is a bug in the
+    /// control rather than a difference between routes.
+    #[test]
+    fn the_projection_is_canonically_ordered() {
+        let mut unsorted = vec![
+            r#"{"package_name":"z"}"#.to_string(),
+            r#"{"package_name":"a"}"#.to_string(),
+        ];
+        unsorted.sort();
+        assert_eq!(
+            unsorted.first().map(String::as_str),
+            Some(r#"{"package_name":"a"}"#)
+        );
+        assert!(compare_row_projections(SHARED_ROUTE, &unsorted, DEMAND_ROUTE, &unsorted).is_ok());
+    }
+}
+
 #[cfg(test)]
 mod orchestrator_model_load_tests {
     use super::*;
@@ -13331,23 +13838,118 @@ mod orchestrator_model_load_tests {
     /// item's resolved content, the same diagnostics -- and the model functions the five sites call
     /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
     /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
-    /// 10 GB, so this runs on demand: --ignored --test-threads=1 on a release build.
+    /// 10 GB on the small fixture, so this runs on demand: `--ignored --test-threads=1` on a
+    /// release build.
+    ///
+    /// RESOURCE, MEASURED - and corrected. An earlier version of this comment told the rerunner
+    /// that a 25 GiB slot suffices if sites are run one at a time. That was wrong, and the
+    /// correction is here because following it wastes a slot: srv1 ran one site per process at a
+    /// 25 GiB cap and returned no verdict (wall-timed out with `memory.peak` AT the cap), then ran
+    /// the gating site ALONE at a 48 GiB cap with swap 0 and sat at the limit for 2 h with
+    /// `oom_kill=0` and `memory.events max=19179707`. The differential holds the whole-tree index
+    /// and the demand-acquired graph at the same comparison point, so budget well above 48 GiB.
+    /// A death under the cap is a fact about the machine, not a verdict: this control's verdict is
+    /// always a printed line, so no line means it did not run.
+    ///
+    /// This is the full-graph cross-check. The receipt that gates the route swap is the narrower
+    /// `route_projection_control`, which compares only the rows `admit_derived_partition_move`
+    /// consumes and answered in a 25 GiB unit in 188 s at 9.88 GB peak.
+    ///
+    /// To narrow this one, set `GUNBC_ORCH_ROUTE_SITE` to a substring of exactly one site's file
+    /// name (e.g. `stage0_emitted_edge_admission`); a value matching no site fails rather than
+    /// skipping. Unset runs all four, on a machine that can hold them.
     #[test]
     #[ignore]
     fn both_routes_resolve_every_orchestrator_entry_identically() {
         use crate::v1_interpreter::{self, ExecutionMode, Value};
         let roots = roots();
-        let entries = [
-            Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
-            Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
-            PathBuf::from(round_cost_entry(&roots).unwrap()),
+        // EACH SITE CARRIES THE CORPUS ITS PRODUCTION CALLER INDEXES -- the whole point of the
+        // control. A route replacement is equivalent only if both routes are asked the same
+        // question over the same corpus. The emitted-tree site does not read the claim corpus:
+        // `emitted_tree_packages` builds its roots from `regen_source_roots()` -- the seed's
+        // `src/v1` plus the `dag` corpus, in the round's workspace. Indexing it over `[dag, src/v2]`
+        // asks about a corpus no caller ever used, and the shared-index route then correctly
+        // refuses an entry whose closure is not in the index it was handed.
+        let regen_roots: Vec<String> = super::super::regen_source_roots()
+            .all()
+            .iter()
+            .map(|root| {
+                workspace_root()
+                    .join(root.repo_relative_path())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        let sites: Vec<(Vec<String>, PathBuf)> = vec![
+            (
+                roots.clone(),
+                Path::new(&roots[1]).join("workflow/regen_convergence_transaction.dag"),
+            ),
+            (
+                roots.clone(),
+                Path::new(&roots[0]).join("gunbc/host/memory_stall_refusal.dag"),
+            ),
+            (
+                roots.clone(),
+                PathBuf::from(round_cost_entry(&roots).unwrap()),
+            ),
+            // THE SITE THAT FORKED. This entry resolved over the whole-tree route while every
+            // site above was on the demand-acquired one, and it ran inside the orchestrator
+            // between generations -- ~10 GB, which is why a round that needed a second generation
+            // was refused by GenerationStateRetainedByOrchestrator. Its rows feed the partition
+            // boundary emit and reach generated bytes, so a divergence between the routes here
+            // would be a divergence in the seed, not only in a log line.
+            (
+                regen_roots,
+                Path::new(&roots[0]).join("gunbc/stage0/stage0_emitted_edge_admission.dag"),
+            ),
         ];
-        let shared = super::super::process_shared_index_or_refuse(&roots);
-        for entry in &entries {
-            let entry = entry.to_string_lossy().into_owned();
-            let (demand, demand_si) = resolve_orchestrator_model(&roots, &entry).unwrap();
-            let (whole, whole_si) =
-                super::super::resolve_entry_with_index(&shared, &entry).unwrap();
+        // ONE SITE PER INVOCATION, AND THAT IS NOT A WEAKENING. Each site builds a whole-tree
+        // index (~10 GB) and a demand graph; the allocator does not return a released index to the
+        // OS, so four sites in one process accumulate to ~26 GB and are OOM-killed in a 25 GiB
+        // slot -- measured, not predicted. Selecting a site by name keeps every site covered
+        // without lowering a bound or dropping the site that forked: the operator runs this once
+        // per site. With the variable unset all four run, which is the right thing on a machine
+        // that can hold them and the wrong thing in a CI-sized slot.
+        let wanted = std::env::var("GUNBC_ORCH_ROUTE_SITE").unwrap_or_default();
+        let entries: Vec<(Vec<String>, PathBuf)> = if wanted.is_empty() {
+            sites
+        } else {
+            sites
+                .into_iter()
+                .filter(|(_, p)| p.to_string_lossy().contains(&wanted))
+                .collect()
+        };
+        assert!(
+            !entries.is_empty(),
+            "GUNBC_ORCH_ROUTE_SITE named no site: {wanted}"
+        );
+        eprintln!(
+            "both_routes: comparing {} of 4 site(s): {}",
+            entries.len(),
+            entries
+                .iter()
+                .map(|(_, p)| p
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        for (site_roots, entry_path) in &entries {
+            let entry = entry_path.to_string_lossy().into_owned();
+            // The DEMAND side is resolved first, deliberately: it is the route this change ships,
+            // and it needs no memory budget. Building the ~10 GB shared index first meant an
+            // environment without an enforceable limit refused before the shipped route was asked
+            // anything, so the half that was answerable went unobserved.
+            let (demand, demand_si) = resolve_orchestrator_model(site_roots, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the demand-acquired route refused: {e:?}"));
+            // The shared side indexes exactly what the demand side indexes, or the two sides are
+            // answering two different questions and the comparison proves nothing.
+            let shared = super::super::process_shared_index_or_refuse(site_roots);
+            let (whole, whole_si) = super::super::resolve_entry_with_index(&shared, &entry)
+                .unwrap_or_else(|e| panic!("{entry}: the shared-index route refused: {e}"));
             // EQUAL UP TO OCCURRENCE NUMBERING. Occurrence identities are minted from a per-process
             // counter (std.occurrence_identity), so the route that resolved a whole tree first numbers
             // the same occurrences from a different base (measured: 6877 against 1276332 for one
@@ -13490,6 +14092,12 @@ mod orchestrator_model_load_tests {
                         ]
                     }),
                 )]
+            } else if entry.ends_with("stage0_emitted_edge_admission.dag") {
+                // NO ARGUMENTS: the rows are the emitted tree's own. Compared RAW, un-renumbered,
+                // like the other arms -- these are the rows the boundary emit digests into
+                // generated bytes, so an occurrence identity reaching one would change the seed
+                // between routes and must fail this claim rather than be renumbered away.
+                vec![("generated_partition_crate_rows", Box::new(|_ctx| vec![]))]
             } else {
                 vec![]
             };
@@ -13521,6 +14129,12 @@ mod orchestrator_model_load_tests {
         }
     }
 
+    /// THE ORCHESTRATOR LOADS ITS MODELS FROM THEIR OWN CLOSURES, never through the whole-tree shared
+    /// index. The discriminator is the thread's shared-index memo (`PROCESS_RESOLVE_INDEX` is
+    /// thread-local and each test runs on its own thread): replaying the re-exec'd orchestrator's loads
+    /// in PRODUCTION ORDER -- the liveness model, the convergence model, the round-cost decider -- must
+    /// leave it empty, and a shared-index build over even a tiny root must not.
+    ///
     /// The footprint, in production order, on a release build in a fresh process: run alone with
     /// --ignored --nocapture --test-threads=1. Prints the readings the RFM row cites.
     #[test]

@@ -1,6 +1,9 @@
 module extdeps.units.iso8601_calendar
 
 import std.types { Int, String }
+import std.measure { Second, second }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.algebra { trim }
 import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour, iso8601_hours_per_day }
 
 // THE ISO 8601 CALENDAR over extdeps.units.iso8601's time-unit constants: the proleptic Gregorian day
@@ -95,4 +98,84 @@ fn iso8601_utc_text(unix: Int) -> String {
     to_string(date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day),
     "T", iso8601_two_digits(n: hour), ":", iso8601_two_digits(n: minute), ":", iso8601_two_digits(n: within_hour - minute * (iso8601_seconds_per_minute() as Int)), "Z",
   ], "")
+}
+
+// ── THE INSTANT, PARSED ──────────────────────────────────────────────────────────────────────────
+// `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
+// Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
+// every date the format can spell; the calendar is this module's, which also formats the same instants. Anything that is not exactly that shape refuses.
+fn two_digits_at(s: String, i: Int) -> Int? {
+  parse_int(s: substring(s: s, start: i, end: i + 2))
+}
+
+fn iso8601_utc_epoch_seconds(text: String) -> Second? {
+  let t = trim(s: text)
+  if string_length(s: t) != 20 {
+    none
+  } else if substring(s: t, start: 4, end: 5) != "-" || substring(s: t, start: 7, end: 8) != "-"
+      || substring(s: t, start: 10, end: 11) != "T" || substring(s: t, start: 13, end: 14) != ":"
+      || substring(s: t, start: 16, end: 17) != ":" || substring(s: t, start: 19, end: 20) != "Z" {
+    none
+  } else {
+    match parse_int(s: substring(s: t, start: 0, end: 4)) {
+      Absent => none
+      Present { value: y } =>
+        match two_digits_at(s: t, i: 5) {
+          Absent => none
+          Present { value: m } =>
+            match two_digits_at(s: t, i: 8) {
+              Absent => none
+              Present { value: d } =>
+                match two_digits_at(s: t, i: 11) {
+                  Absent => none
+                  Present { value: hh } =>
+                    match two_digits_at(s: t, i: 14) {
+                      Absent => none
+                      Present { value: mm } =>
+                        match two_digits_at(s: t, i: 17) {
+                          Absent => none
+                          Present { value: ss } =>
+                            if m < 1 || m > 12 || d < 1 || d > iso8601_gregorian_days_in_month(y: y, m: m) || hh > 23 || mm > 59 || ss > 60 {
+                              none
+                            } else {
+                              {
+                                let epoch = iso8601_unix_seconds_at(
+                                  date: Iso8601CivilDate { year: y, month: m, day: d },
+                                  since_midnight: iso8601_seconds_since_midnight(hour: hh, minute: mm, second: ss),
+                                )
+                                if epoch < 0 {
+                                  none
+                                } else {
+                                  match checked_int_magnitude(a: epoch) {
+                                    CheckedNatOverflow { cause: _ } => none
+                                    CheckedNatReady { value: n } => Present { value: second(count: n) }
+                                  }
+                                }
+                              }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+// THE SAME INSTANT WITH A FRACTION OF A SECOND (`YYYY-MM-DDTHH:MM:SS.f+Z`, the form a GitHub Actions job log prefixes to
+// every line), floored to its whole second. A fraction that is empty or not all digits is no instant; the whole-second
+// form reads as itself.
+fn iso8601_utc_epoch_seconds_floor(text: String) -> Second? {
+  let t = trim(s: text)
+  let n = string_length(s: t)
+  if n == 20 {
+    iso8601_utc_epoch_seconds(text: t)
+  } else if n > 21 && substring(s: t, start: 19, end: 20) == "." && substring(s: t, start: n - 1, end: n) == "Z" {
+    match parse_int(s: substring(s: t, start: 20, end: n - 1)) {
+      Absent => none
+      Present { value: f } => if f < 0 { none } else { iso8601_utc_epoch_seconds(text: concat(substring(s: t, start: 0, end: 19), "Z")) }
+    }
+  } else {
+    none
+  }
 }
