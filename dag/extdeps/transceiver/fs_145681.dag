@@ -21,7 +21,7 @@ import extdeps.uri { Uri, Https }
 // retires is priced in product.breakout_leg_programming, not here: what this fleet has to do by hand
 // is a fact about this fleet.
 //
-// ONE SUBJECT, AND A READING RATHER THAN A REDEFINITION. Per DESIGN section 3's external upstream
+// ONE SUBJECT, AND A READING RATHER THAN A REDEFINITION. Per gunbc.design_argument::external_upstreams's external upstream
 // decomposition this module owns this one orderable part. It owns no byte meanings -- those are
 // sff_8636's -- and no observation: nothing here says anyone has read a delivered leg.
 //
@@ -34,7 +34,7 @@ import extdeps.uri { Uri, Https }
 //
 // NO FS COMPANY ENTITY IS MINTED HERE. extdeps.vendor rows carry a legal name, and no FS legal name
 // was read -- the same client-side page withheld it. A Vendor row with a guessed name would be the
-// fabricated plausible output DESIGN section 5 forbids, so the entity is a frontier: it lands as
+// fabricated plausible output gunbc.design_argument::fail_closed forbids, so the entity is a frontier: it lands as
 // extdeps.vendor.fs when a document naming the legal entity is read, and this row gains its vendor
 // field then.
 

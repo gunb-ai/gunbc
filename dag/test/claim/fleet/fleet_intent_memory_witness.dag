@@ -48,7 +48,7 @@ data srv4_bmc_observed_total_gib: Gibibyte = gibibyte(512)
 // upgrade is operator-relayed at the population grain, as gunbc.fleet.fleet_intent says in the row's own
 // note. Feeding that figure through redfish_memory_summary_from_gib and asserting the population
 // matched it proved 512 == 512 -- the answer under test retyped as a receipt, which is the
-// fabricated-evidence failure DESIGN 5 forbids, committed inside the witness that exists to catch it.
+// fabricated-evidence failure gunbc.design_argument::fail_closed forbids, committed inside the witness that exists to catch it.
 //
 // WHAT THE VALUE HONESTLY IS: the total the operator reported, against which the population row was
 // transcribed. Checking the population against it is a TRANSCRIPTION check -- it catches a

@@ -70,7 +70,7 @@ import product.fabric.supply {
 // site rather than being silently unpriced at one of them.
 //
 // Each axis is a fact about the OFFER at the moment a decision is taken, and each is
-// observed rather than assumed. The unread arms are the whole point: DESIGN section 5 rules
+// observed rather than assumed. The unread arms are the whole point: gunbc.design_argument::fail_closed rules
 // that a failure arm must refuse and never widen, and the widening available here is
 // arithmetic -- an unknown cost silently entering a sum as zero, which does not merely lose
 // information, it flatters exactly the supplier nobody measured.
@@ -222,7 +222,7 @@ type DispatchInputs<P> {
 
 // A CANDIDATE IS A SEALED PAIR, so a mismatched one has no spelling rather than being caught
 // by a check the fold has to remember to run. sole_constructor confines construction to
-// bind_candidate below, which refuses the mismatch; DESIGN section 4b's ceiling applies
+// bind_candidate below, which refuses the mismatch; gunbc.design_argument::guarantee_ladder's ceiling applies
 // unchanged -- this confines WHO may construct and establishes nothing about whether the
 // observations themselves were honestly taken, which stays a boundary obligation on whoever
 // produced them.
@@ -318,7 +318,7 @@ type CandidateBinding<P>
 // ITS OWN TWO-ARM RESULT RATHER THAN CandidateBinding, because the other five arms of that coproduct
 // are decided by capacity admission and cannot be reached from here. Returning the wider type would
 // force every caller to match five variants this function can never produce, and an unreachable arm
-// reads as coverage while establishing nothing (DESIGN section 4b).
+// reads as coverage while establishing nothing (gunbc.design_argument::guarantee_ladder).
 type AdmittedCapacityBinding<P>
   = CapacityCandidateBound { candidate: CandidateOffer<P> }
   | CapacityDispatchInputsNameAnotherOffer {
@@ -477,7 +477,7 @@ fn saturating_difference(from: Nat, take: Nat) -> Nat {
 
 // AN UNREAD AXIS IS A TYPED, LOCATED, COUNTABLE REFUSAL rather than a zero entering a sum.
 // The axis is carried beside the obligation so a consumer can rank which measurement is
-// blocking the most supply, which is the property DESIGN section 5 asks of a degradation:
+// blocking the most supply, which is the property gunbc.design_argument::fail_closed asks of a degradation:
 // its frequency must be observable.
 type UnpricedInput {
   axis: SelectionInputAxis
@@ -858,7 +858,7 @@ fn price_available_candidate<P>(
 // it is not, and cannot be, an upper bound on how long the work runs. Comparing a window
 // against it admitted an offer available for eight minutes to a job of unknown length, on the
 // strength of a number that was never a duration. That is a fabricated bound standing where a
-// guarantee was required, which DESIGN section 5 forbids outright.
+// guarantee was required, which gunbc.design_argument::fail_closed forbids outright.
 //
 // So the finite-window arm refuses an unbounded duration BY NAME rather than comparing.
 // OfferCannotHoldAnUnboundedGrant is a separate arm from OfferUnavailableForGrant for the
@@ -1259,7 +1259,7 @@ fn candidate_digest<P>(c: PricedCandidate<P>, affinity: PlacementAffinityKey) ->
 
 // EACH CANDIDATE IS DIGESTED EXACTLY ONCE. The obvious shape -- ask, for each member, how many
 // members share its digest -- is a quadratic fold that recomputes the hash inside its own inner loop,
-// and §6's bare-minimum-cost rule fixes a proven cost shape regardless of the realized n. n is not
+// and gunbc.design_argument::how_to_work's bare-minimum-cost rule fixes a proven cost shape regardless of the realized n. n is not
 // fixed by any one caller: select_supply is the shared fabric selector. So the cohort is keyed once,
 // and every later question -- the maximum, whether a digest repeats, which candidate carries it -- is
 // a linear pass over the keyed list.

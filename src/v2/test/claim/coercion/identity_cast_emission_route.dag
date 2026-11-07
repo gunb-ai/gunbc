@@ -25,8 +25,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CLOSURE DOOR'S REPORT SHAPE FOR AN IDENTITY CAST, AND THE INTERFACES THE FLOOR ROWS INSPECT.
 // identity_cast_route_verdict runs v2.compiler.self_host.closure_emission
 // emit_closure_from_ingest_located under the production Rust model (the door v2.cli.compile_cli
-// drives). Two rows discriminate at coercion_cast_crossing over supplied Int/Bool atoms (DESIGN
-// section 3). Two inhabitance rows still drive the door on this module, on the required gate.
+// drives). Two rows discriminate at coercion_cast_crossing over supplied Int/Bool atoms (
+// gunbc.design_argument::single_authority). Two inhabitance rows still drive the door on this module, on the required gate.
 // gunbc.rung_drop identity_cast_route_new_witness_eval_step_cost retired when those inhabitance
 // identities billed inside the new-witness eval-step budget on gunbc#13489 required floor run
 // 37522243686 (artifact required-floor-claim-cost). Native builds the same member text this

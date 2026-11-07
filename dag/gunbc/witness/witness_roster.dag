@@ -118,7 +118,7 @@ fn roster_needs_declared_cause_arms(entries: List<RosterEntry>) -> Bool {
 // quoting belongs to the grammar and a shape it cannot express comes back Refused rather than as a string
 // that quietly means something else. The earlier version of this file assembled these same lines from
 // string literals with join and +, which is the hand-shell the ctrl review policy blocks as a hard
-// blocker and DESIGN 6 lists as the unmodelled-realization tell; its cost was that the roster's verdict
+// blocker and gunbc.design_argument::how_to_work lists as the unmodelled-realization tell; its cost was that the roster's verdict
 // was only as faithful to the roster as someone's quoting of a here-string.
 fn roster_word(text: String) -> Node {
   bash_build_word_lit(text: text)

@@ -73,7 +73,7 @@ type ProgramAssemblyFoldState
 // A normalized root together with the path of the read that produced it. The assembly fold
 // iterates the reads, so it is the one place the path-to-tree association exists by
 // construction; a consumer that needs it reads this pair, never a positional zip of two lists
-// across this module's boundary (DESIGN 5: completeness is an identity join, not a count
+// across this module's boundary (gunbc.design_argument::fail_closed: completeness is an identity join, not a count
 // equality). The tree-only fold state above is a projection of the located one. A plain
 // record, not sole_constructor: the pair carries no invariant beyond its fields. G0 used to
 // refuse a modifier between the type name and its field block (gunbc#11461 srv2 pair,
@@ -94,7 +94,7 @@ type LocatedNormalizedTree {
 // THE ORDER OF THOSE TWO SENTENCES IS THE WHOLE DESIGN. Merging per-file indices WITHOUT seeding
 // would be the silent-wrongness arm: two files both mint occurrence #3, one entry overwrites or
 // shadows the other, and a node from file B resolves to a byte range in file A -- a confident,
-// plausible, wrong answer, which DESIGN section 5 forbids more strongly than no answer at all.
+// plausible, wrong answer, which gunbc.design_argument::fail_closed forbids more strongly than no answer at all.
 // `std.occurrence_identity` `occurrence_identity_scope_law` already said so ("a production source
 // graph threads one allocator across every parsed source"; module-local reset is a FORBIDDEN
 // identity input); the fold simply stopped obeying it. Seeding is not an optimization here, it is
@@ -144,7 +144,7 @@ fn program_assembly_fold_state_from_located(
 // realization needs: each phase is pure in its inputs, so the per-file sequence is also the
 // parallel unit.
 //
-// DIVERGENCE, STATED (DESIGN section 3b, review 65114). `v2.compiler.staged_front_end` is the
+// DIVERGENCE, STATED (gunbc.design_argument::conformance, review 65114). `v2.compiler.staged_front_end` is the
 // declared authority for the .dag front-end ORDER, and its own header warns that re-inlining the
 // calls beside it is "a second copy of the order -- the section-3 nickname class". These phases
 // ARE a second stepwise spelling of tokenize -> parse -> normalize, and the divergence is
@@ -329,7 +329,7 @@ fn program_assembly_phase_token_count(tokens: Outcome<TokenStream>) -> Int {
 //
 // (This paragraph described an earlier carrier, `ProgramAssemblySeededRead`, which the restructure
 // to the three-field result below replaced and which survived as an unconstructed declaration --
-// DESIGN section 3c's "pub declaration with no call site in the closure", found by review 70027.
+// gunbc.design_argument::consumption's "pub declaration with no call site in the closure", found by review 70027.
 // The type is deleted and its reasoning folded here, onto the carrier that exists.)
 
 // THE SPANS SURVIVE THIS READ'S OWN REFUSAL, which is the same reason IngestAssembly exists one
@@ -396,10 +396,10 @@ fn program_assembly_read_to_normalized_root_seeded(
 // `program_assembly_read_to_normalized_root`: a second per-file front-end composition that still
 // performed the per-file allocator reset. This change moved its last real consumer
 // (`v2.compiler.source_root_eval` `native_test_context_fold_step`) onto the seeded door, which left the pair
-// reachable from nothing -- DESIGN section 3c's "a pub declaration with no call site in the
+// reachable from nothing -- gunbc.design_argument::consumption's "a pub declaration with no call site in the
 // closure".
 //
-// DELETED RATHER THAN LEFT STANDING, because a surviving unseeded composition is DESIGN section 3's
+// DELETED RATHER THAN LEFT STANDING, because a surviving unseeded composition is gunbc.design_argument::single_authority's
 // attractor: while it stands, the next fold that needs a per-file front end answers in its
 // vocabulary and silently reintroduces the reset. This module's own annotation on `02_parse`
 // already concedes that hazard is real and that no wall catches it -- "a NEW ingest fold that calls
@@ -415,7 +415,7 @@ fn program_assembly_read_to_normalized_root_seeded(
 // refusal and the module-name derivation's -- carry it, so neither loses what was recorded.
 // AN ACCEPTED FILE'S ADVISORIES JOIN THE INGEST'S CHAIN WITHOUT RE-COPYING IT. diagnostics_merge
 // rebuilds the accumulated chain on every call (list_append is O(n) per call), so folding it once
-// per file made the ingest quadratic in its total advisory count (DESIGN section 6, bare minimum
+// per file made the ingest quadratic in its total advisory count (gunbc.design_argument::how_to_work, bare minimum
 // cost). The new file's diagnostics are pushed one at a time onto the accumulated tail
 // (list_snoc_item, amortized O(log n)); the chain's order is unchanged -- earlier files first, each
 // file's own order kept.
@@ -498,12 +498,12 @@ fn program_assembly_fold_step(
   }
 }
 
-// §5 fail-closed repair (Phase 1, docs/plans/module-identity-storage-binding-design.md): the
+// gunbc.design_argument::fail_closed fail-closed repair (Phase 1, docs/plans/module-identity-storage-binding-design.md): the
 // Rejected arm of qualified_name_from_module_node previously kept the root and left the
 // SourceRootIndex UNCHANGED — a module whose name could not be derived was silently dropped from
 // the index while its root stayed in the program, so every downstream lookup missed it with no
 // diagnostic and no count. That is an absorbing fallback in drop form: the deficit's frequency was
-// zero by construction, so it could never rank for fixing (§6 prices by displaced cost, and a
+// zero by construction, so it could never rank for fixing (gunbc.design_argument::how_to_work prices by displaced cost, and a
 // masked cost displaces nothing). The arm now refuses with the located diagnostic the name
 // derivation produced. The binding itself is homed on v2.compiler.source_authority
 // (ModuleStorageBinding); this fold keeps the SourceRootIndex it already owned, and its
@@ -550,7 +550,7 @@ fn program_assembly_ingest_scope(ingest: SourceRootIngest) -> SourceRefListDiges
 
 // THE PREPARED LANGUAGE: A MODEL AND THE PREPARATION OF THAT SAME MODEL, ONE VALUE. A claim frame that
 // assembles many sources under one language model builds the model and prepares its grammar and lex
-// rules once, here, and carries the value as an ordinary argument to every assembly (DESIGN section 2,
+// rules once, here, and carries the value as an ordinary argument to every assembly (gunbc.design_argument::minimize_redundancy,
 // step 1: a shared-state ancestor carries the first value; no cache, no served value).
 // THE PAIRING HOLDS BY CONVENTION, NOT BY CONSTRUCTION: the record has public fields, so a mismatched
 // model and preparation is still writable by hand; `prepare_language` is the only constructor this
@@ -645,8 +645,8 @@ fn located_module_roots_from_source_root_ingest(
 
 // ONE FOLD, BOTH HALVES OF THE IDENTITY JOIN. A consumer that needs to relate a node back to the
 // file it came from needs the per-file roots AND the index those roots' occurrences are keyed in,
-// and taking them from two separate calls would parse the ingest twice for one question (DESIGN
-// section 2) while leaving the two results free to disagree. They are one fold's output, so they are
+// and taking them from two separate calls would parse the ingest twice for one question (
+// gunbc.design_argument::minimize_redundancy) while leaving the two results free to disagree. They are one fold's output, so they are
 // returned together.
 type LocatedIngestRoots {
   located: FreeMonoid<LocatedNormalizedTree>,

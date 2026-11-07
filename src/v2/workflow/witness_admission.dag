@@ -107,12 +107,12 @@ fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
   any(xs: subs, predicate: fn(sub) { path_contains_substring(path: path, sub: sub) })
 }
 
-data consumer_for_explicit_rosters_cadence_fork_removed_note: String = "THE FORK THIS FUNCTION CARRIED WAS A FAIL-OPEN, NOT A STALE VALUE (2026-08-26, dashboard node adhoc-a660c665-d46). The first arm read `if falsifier_self_host_wet_cadence_is_active() { FalsifierSelfHostWet } else { OfflineLocalRecipe }`. Both arms are answers to the question this function asks -- WHICH POLICY CLAIMS THIS ROW -- but the flag they switched on answered a different question entirely: does that policy currently execute. Mixing them made the classification move when the schedule moved, and it moved in the wrong direction: FalsifierSelfHostWet has no scheduled route, so it derives DeclaredCadenceUnrealized and reads as uncovered, while OfflineLocalRecipe has a route by definition and reads as COVERED. A dark lane therefore promoted its own rows to covered. That is DESIGN section 5's absorbing fallback -- a failure arm that widens instead of refusing -- and it is why the flag was deleted at its root rather than set to its honest value (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_cadence_flag_deleted_note). Membership on the roster now decides the cadence, full stop; whether that cadence runs is decided once, in std.witness_admission witness_cadence_has_scheduled_route, and read here only by witness_execution_standing_for_row."
+data consumer_for_explicit_rosters_cadence_fork_removed_note: String = "THE FORK THIS FUNCTION CARRIED WAS A FAIL-OPEN, NOT A STALE VALUE (2026-08-26, dashboard node adhoc-a660c665-d46). The first arm read `if falsifier_self_host_wet_cadence_is_active() { FalsifierSelfHostWet } else { OfflineLocalRecipe }`. Both arms are answers to the question this function asks -- WHICH POLICY CLAIMS THIS ROW -- but the flag they switched on answered a different question entirely: does that policy currently execute. Mixing them made the classification move when the schedule moved, and it moved in the wrong direction: FalsifierSelfHostWet has no scheduled route, so it derives DeclaredCadenceUnrealized and reads as uncovered, while OfflineLocalRecipe has a route by definition and reads as COVERED. A dark lane therefore promoted its own rows to covered. That is gunbc.design_argument::fail_closed's absorbing fallback -- a failure arm that widens instead of refusing -- and it is why the flag was deleted at its root rather than set to its honest value (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_cadence_flag_deleted_note). Membership on the roster now decides the cadence, full stop; whether that cadence runs is decided once, in std.witness_admission witness_cadence_has_scheduled_route, and read here only by witness_execution_standing_for_row."
 
 // THE NARROWER CLAIM WINS, AND IT IS FIRST. Every local-repo wet member is also a `bin_wet` row,
 // so if this branch sat below the BinWitnessWet one the new cadence would classify nothing and its
 // `witness_cadence_has_scheduled_route` = true would be a claim about an empty population --
-// DESIGN section 4b rung inflation. The membership authority is the schedule the required floor's
+// gunbc.design_argument::guarantee_ladder rung inflation. The membership authority is the schedule the required floor's
 // executor decodes, so the classification and the execution cannot disagree about who is claimed.
 fn local_repo_wet_lane_claims(entry: String, function: String) -> Bool {
   any(
@@ -574,8 +574,8 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
 // question with a different authority (std.witness_admission witness_cadence_has_scheduled_route).
 // Until 2026-08-26 the check opened with `if !falsifier_self_host_wet_cadence_is_active() { true
 // }`, so a dark lane made it return true over every row without examining any: a check whose RED
-// becomes unreachable exactly when the lane it guards stops running is a decoration, and DESIGN
-// section 4b rates that worse than absent because it is still cited as coverage. The flag stood at
+// becomes unreachable exactly when the lane it guards stops running is a decoration, and
+// gunbc.design_argument::guarantee_ladder rates that worse than absent because it is still cited as coverage. The flag stood at
 // true, so the real check was running and removing the arm changes no result measured today; what
 // it removes is the state in which this function silently stops checking.
 

@@ -116,13 +116,13 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
 // install_directory_owned_command (mode/owner/group/path -> rendered install text) is DELETED here:
 // its one body was the exact composition shell_privileged_command_text_of_argv(coreutils_install_
 // directory_owned_argv(...)) that gunbc.live_deploy.emit install_d_owned_for_user now spells
-// directly against the argv authorities -- a second spelling of the same install words (§3). It had
+// directly against the argv authorities -- a second spelling of the same install words (gunbc.design_argument::single_authority). It had
 // no production consumer (grep-verified). The live ACT on an owned-directory leaf goes through the
 // ONE provider, gunbc.owned_directory owned_directory_ensure -- called for every ApplyLegEnsureDirectory
 // by gunbc.host.host_effect_realize live_deploy_apply_ensure_directory_on_host and by
 // gunbc.roadmap.roadmap_dashboard_instance_apply. The roadmap node "Realize live_deploy's
 // install-owned leaves as typed fs writes with an ownership effect" is REALIZED THERE at an
-// ESTABLISHED RUNG (§4b, review 90635): the acting route re-observes and re-decides at apply time
+// ESTABLISHED RUNG (gunbc.design_argument::guarantee_ladder, review 90635): the acting route re-observes and re-decides at apply time
 // and refuses a handover between the handover baseline and the act re-read
 // (owned_directory_act_time_handover); today every caller passes no carried plan reading, so the
 // window established by executed evidence is the decide-to-act window inside the provider call.

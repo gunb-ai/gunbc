@@ -6,7 +6,7 @@ use v1_compiler::v1_std_core::{
     CompilerDiagnostic, DiagnosticGateDisposition,
 };
 
-// THE FLOOR (§4b): a value inhabits its DECLARED type, and the values a type name admits are fixed
+// THE FLOOR (gunbc.design_argument::guarantee_ladder): a value inhabits its DECLARED type, and the values a type name admits are fixed
 // by the shape that name declares. A name declaring a coproduct carries NO record constructor, so
 // `Union { field: ... }` names a value no type inhabits --- whatever the fields, wherever the
 // literal stands.
@@ -22,7 +22,7 @@ use v1_compiler::v1_std_core::{
 // "does this name have a record constructor at all". So the refusal is taken off the resolved
 // declaration, at the literal's name span, BEFORE the field walk, and it is prepended into the
 // diagnostic concat rather than returned early (an early return absorbs the later TypeMismatch the
-// stop-observation witness claims --- the fail-open DESIGN §5 refuses).
+// stop-observation witness claims --- the fail-open gunbc.design_argument::fail_closed refuses).
 
 /// The typecheck pass, which is the boundary this refusal belongs to: it resolves, reconciles and
 /// typechecks, and keeps the source indices so a diagnostic's span can be read back as text.

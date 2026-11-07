@@ -17,7 +17,7 @@ import gunbc.fleet.fleet_fan_wiring {
 
 // WHAT H11SSL UNIT 1 (BMC ac:1f:6b:e3:f5:7b, the host h11-a16 that serves the A16 Strata pool) IS BUILT
 // AND BEHAVING AS, beside the first-contact and observation receipts in this namespace and keyed the same
-// way. Receipts, not upstream facts (DESIGN section 3): the board's own facts stay in
+// way. Receipts, not upstream facts (gunbc.design_argument::single_authority): the board's own facts stay in
 // extdeps.boards.supermicro_h11ssl.
 //
 // WHY A SIBLING MODULE AND NOT ROWS IN gunbc.machine_intake.supermicro_h11ssl_unit_observation: that

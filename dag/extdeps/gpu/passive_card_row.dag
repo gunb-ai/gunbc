@@ -10,7 +10,7 @@ import extdeps.cited_field {RowField, FromCitedFigure, NeedsReading, row_field_v
 
 // ═══ A CARD ROW: ONE DUCT DESIGN, CARDS AS DATA ═══
 //
-// The duct is ONE concept (DESIGN.md section 2): a fan, a plug and flange onto a card's end face, and a
+// The duct is ONE concept (gunbc.design_argument::minimize_redundancy): a fan, a plug and flange onto a card's end face, and a
 // route into that card's fin opening. What differs per card is the ENVELOPE the duct has to match and
 // the AIR the card needs. So a card is a row, held in its own vendor product's module
 // (extdeps.gpu.nvidia_a16, nvidia_t4, nvidia_a2, nvidia_t10), and nothing in product.printed_chassis
@@ -27,7 +27,7 @@ import extdeps.cited_field {RowField, FromCitedFigure, NeedsReading, row_field_v
 //
 // What a caliper reads on a held card -- the end face the duct seats on, its fin window, the threaded
 // inserts in its end cap, where the 8-pin header sits on that face -- is NOT here: it is a receipt of
-// this repository's observation, not a fact of NVIDIA's (DESIGN section 3, external upstream
+// this repository's observation, not a fact of NVIDIA's (gunbc.design_argument::external_upstreams, external upstream
 // decomposition), so it lives in the observing layer (product.printed_chassis.duct_card_catalog), and a
 // card that has not been read there is a coverage obligation of that layer, never an Unobserved field of
 // this one.

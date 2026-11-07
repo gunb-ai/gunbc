@@ -687,7 +687,7 @@ fn declaration_exposed_on_reference_chain(
 // ValidatedOccurrenceTransport in hand; it discarded four fifths of it. Retaining it is strictly
 // FEWER representations of one fact, not more: entries_by_id is reached as
 // `index.validated.entries_by_id`, there is no second copy to drift, and the cardinality decision
-// still happens exactly once downstream. This is DESIGN section 6's bare-minimum-cost standing
+// still happens exactly once downstream. This is gunbc.design_argument::how_to_work's bare-minimum-cost standing
 // rule, whose n here is every type occurrence in the corpus.
 
 type OccurrenceCandidateIndex {
@@ -2743,7 +2743,7 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
 ]
 
 // Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/'
-// or '.dag'). This is a §5 heuristic standing where a type should stand — the same class
+// or '.dag'). This is a gunbc.design_argument::fail_closed heuristic standing where a type should stand — the same class
 // occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs
 // positional module identity.
 

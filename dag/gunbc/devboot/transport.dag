@@ -28,7 +28,7 @@ import extdeps.git.plumbing {
 
 // THE SEVENTEEN GIT ROWS THAT USED TO SIT HERE ARE DELETED RATHER THAN REPOINTED, and the
 // distinction is the point. Every row in this roster declares the same dissolution target,
-// gunbc.host.host_effect_realize host_effect_apply, which is a TRANSPORT (DESIGN section 3 (b)).
+// gunbc.host.host_effect_realize host_effect_apply, which is a TRANSPORT (gunbc.design_argument::single_authority (b)).
 // That target is correct for the host-effect rows below -- rm, mkdir, cp, mv, chmod, sleep,
 // uname, ldd, sha256sum, cargo, rustc, execute -- and it was WRONG for the git rows: a git
 // operation's terminus is a modeled interface shape, which extdeps owns, and routing
@@ -187,13 +187,13 @@ fn devboot_witness_run(
 // SIX CALL SITES SPELLED THIS THEMSELVES, AND THE SPELLING WAS A SECOND AUTHORITY. Each of
 // build.dag's four and produce.dag's two named the binary as bare "mkdir" and rebuilt ["-p", dir]
 // beside it, while extdeps.tools.mkdir already owned both halves -- the binary path, and -p as the
-// idempotent ensure form rather than a create. That is DESIGN section 3's fork: the same fact
+// idempotent ensure form rather than a create. That is gunbc.design_argument::single_authority's fork: the same fact
 // written seven times, six of them without the citation that says why -p is there.
 //
 // The retained row does NOT dissolve with this. The site still reaches the host through a raw
 // WitnessBin.Run, so retained_devboot_mkdir stays exactly where it was and still points at
 // host_effect_apply; what ends is devboot's private spelling of the tool, not the untyped effect.
-// The honest rung is mitigatable (DESIGN section 4b): one construction site instead of six is
+// The honest rung is mitigatable (gunbc.design_argument::guarantee_ladder): one construction site instead of six is
 // fewer places to diverge, not a wall -- a caller can still hand devboot_witness_run a bare
 // "mkdir", and nothing in the corpus refuses it. The next rung is the same host_effect_apply
 // migration the row already names.
@@ -205,7 +205,7 @@ fn devboot_witness_run(
 // Linux; extdeps.tools.env landed the distinction that shows why that was wrong. What a host must
 // SATISFY is not what its filesystem LOOKS LIKE, and devboot's producer compiles on whichever box
 // the operator invoked it from -- a host this repository has not read. Asserting a path there
-// fabricates a host fact (DESIGN section 5) rather than repairing an unspecific one.
+// fabricates a host fact (gunbc.design_argument::fail_closed) rather than repairing an unspecific one.
 fn devboot_ensure_directory(repo_root: String, path: String) -> WitnessBinRunOutcome {
   devboot_witness_run(
     site: retained_devboot_mkdir,

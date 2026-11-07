@@ -92,7 +92,7 @@ data control_plane_probe_ref: DeclarationRef = DeclarationRef {
 // reads nothing but the grant it carries. Until this cut the grant was resolved out of a live
 // production workflow's checkout step, so this file's subject silently included that resolver and
 // that workflow's `permissions:` key -- an edit to either could move what these arms establish
-// about the CREDENTIAL fold. DESIGN §3: a witness discriminates at one interface, and its inputs
+// about the CREDENTIAL fold. gunbc.design_argument::witness_one_interface: a witness discriminates at one interface, and its inputs
 // belong there as supplied values.
 //
 // The control-plane fixture below is deliberately NOT supplied that way: it runs the real
@@ -1006,7 +1006,7 @@ test fn witness_producer_binding_is_per_app_not_module_wide() -> Bool {
 // JIT MINT PLANNING. These witnesses live here rather than beside extdeps.github.actions_jit_runner
 // because the discrimination they exist for is a CREDENTIAL one, and every fixture that can state a
 // credential's observed grant already lives in this module. Rebuilding a control plane next door
-// would be a second authority for what an installation holds (DESIGN §3), and it would drift.
+// would be a second authority for what an installation holds (gunbc.design_argument::single_authority), and it would drift.
 
 data org_runners_write_perm: GitHubAppPermission = perm(
   axis: OrganizationSelfHostedRunnersAxis, access: AppAccessWrite

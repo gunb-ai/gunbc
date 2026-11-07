@@ -166,7 +166,7 @@ data review_sheet_header_row_count: Int = 1
 // THE EXTENT IS READ THROUGH review_sheet_header_count AND THIS MODULE DECLARES NO NAME FOR IT.
 // An earlier revision kept a local `schema_column_count(validated)` whose whole body had become
 // `review_sheet_header_count(validated: validated)` -- one concept answering to two exported names
-// across two modules, which is the DESIGN section 3 fork, and the witness was importing both. The
+// across two modules, which is the gunbc.design_argument::single_authority fork, and the witness was importing both. The
 // passthrough was load-bearing while it folded `count(schema.columns)`; once the extent moved to
 // the projection it was a nickname (review 68548).
 
@@ -341,7 +341,7 @@ fn standing_rule_request(
 
 // A RULE IS A ROW: the column it colours by NAME, the substring it matches and the colour it paints.
 // The format of a kind is the list of these, so a kind that colours three columns and a kind that
-// colours one are the same shape and a new kind adds rows rather than fields (DESIGN section 6b).
+// colours one are the same shape and a new kind adds rows rather than fields (gunbc.design_argument::earliest_unjustified_boundary).
 // The column is a name because a position is a second authority for what the schema already says;
 // it resolves against the validated header, and a name the header does not carry refuses the plan.
 type FormatRule {
@@ -685,7 +685,7 @@ fn read_format_meta(tab: LocatedReviewTab, grid: SpreadsheetRead) -> FormatObser
 // unreadable grid answers `header_matches` false, answers `format_is_converged` false, and the
 // converge proceeds to issue batchUpdates against a spreadsheet whose grid response it never read:
 // the rostered class absent_reads_identically_to_never_looked, and a widening failure arm where
-// DESIGN §5 requires a refusal.
+// gunbc.design_argument::fail_closed requires a refusal.
 type HeaderFormatReading
   = HeaderFormatRead { format: SheetsCellFormatRead? }
   | HeaderFormatUnreadable { cause: NonEmptyStr }
@@ -810,7 +810,7 @@ fn first_cell(items: List<SheetsCellDataRead>) -> SheetsCellDataRead? {
 // THE ABSENT-IS-ZERO RULE IS CALLED, NOT RESTATED. An earlier cut of this predicate spelled the
 // proto3 omission inline as `Absent => sheet_id == 0`, in the same change that declared
 // extdeps.google.sheets sheets_sheet_id_read as the single authority for exactly that fact
-// (review 68663). Two spellings of one rule is the fork DESIGN section 3 exists to prevent, and it
+// (review 68663). Two spellings of one rule is the fork gunbc.design_argument::single_authority exists to prevent, and it
 // is the same defect shape this change already repaired between the field masks and the decode:
 // correcting or widening the omission rule must be ONE edit, not an edit plus a search. Absent
 // PROPERTIES stays distinct and stays here -- a sheet whose properties were never read is not a
@@ -951,7 +951,7 @@ fn observed_header_format(sheet: SheetsSheetRead) -> SheetsCellFormatRead? {
 // interesting defect. Quoting makes a space, a bang and a colon perfectly legal in an A1 title;
 // refusing them was forbidding more of the world than the evidence supported, and the cost of that
 // arm was invisible -- a correctly formattable workbook declining to format, with the refusal
-// reading like rigour (DESIGN section 4d). The codec refuses exactly one thing, an apostrophe,
+// reading like rigour (gunbc.design_argument::epistemic_humility). The codec refuses exactly one thing, an apostrophe,
 // because its WIRE SPELLING is genuinely unobserved and it says so with a read obligation.
 type HeaderRangeStanding
   = HeaderRangeWire { range: String }

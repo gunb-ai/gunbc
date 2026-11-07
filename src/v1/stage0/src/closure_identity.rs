@@ -1,4 +1,4 @@
-// Seed-retained keying (§7 seed-retained HAND-RUST). These derivations name WHAT a resolve or a
+// Seed-retained keying (gunbc.design_argument::self_hosting seed-retained HAND-RUST). These derivations name WHAT a resolve or a
 // witness is about -- a closure's content, the compiler that judges it, and a witness function
 // over that closure -- and are consumed by the in-process resolved-graph memo, the typed-module
 // key (std.interface_summary typed_module_key), the floor's per-row work key and the emitted

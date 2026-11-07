@@ -103,7 +103,7 @@ fn initialized_host_contract() -> List<MarkdownBlock> {
 
 fn verification() -> List<MarkdownBlock> {
   [
-    p(text: "Tests owed by each implementing change (hermetic witnesses, with a discriminating RED plus a positive control, and an inhabitance claim from a real producer per DESIGN section 3): a request with InstallThenUse and no explicit target or intent refuses before any effect; a UseInstalled converge whose installed identity already matches does nothing destructive; selection excludes an unverified route and asks for evidence on an uncatalogued firmware; one transaction serves at least two route x persistence rows with no host-name branch; the initialized-host record refuses without a matched pin; a runner initialization refuses an unaccepted revision before any hold. Live receipts come later, per host, and are not prerequisites for the model."),
+    p(text: "Tests owed by each implementing change (hermetic witnesses, with a discriminating RED plus a positive control, and an inhabitance claim from a real producer per gunbc.design_argument::witness_one_interface): a request with InstallThenUse and no explicit target or intent refuses before any effect; a UseInstalled converge whose installed identity already matches does nothing destructive; selection excludes an unverified route and asks for evidence on an uncatalogued firmware; one transaction serves at least two route x persistence rows with no host-name branch; the initialized-host record refuses without a matched pin; a runner initialization refuses an unaccepted revision before any hold. Live receipts come later, per host, and are not prerequisites for the model."),
   ]
 }
 

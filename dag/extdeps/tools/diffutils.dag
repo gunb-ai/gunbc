@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// GNU diffutils interface shapes, one file per upstream (DESIGN 3: cite the real upstream - diff is
+// GNU diffutils interface shapes, one file per upstream (gunbc.design_argument::single_authority: cite the real upstream - diff is
 // diffutils, not coreutils or the shell). Homed in its own module rather than extdeps.shell so that
 // consumers of the diff operation do not couple to the whole shell-utilities surface, and a change
 // here does not put every extdeps.shell importer in the affected set.

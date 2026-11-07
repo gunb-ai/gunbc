@@ -15,7 +15,7 @@ module gunbc.instruments.scm_acceptance
 // That property was previously demonstrated by a shell script living in a session scratchpad. The
 // demonstration was real, but it was not part of the repository, so the result was not re-derivable
 // from the tree and would not survive the session that produced it -- a measurement with no
-// instrument, which DESIGN section 6 rejects for exactly this reason. Committing that script would
+// instrument, which gunbc.design_argument::how_to_work rejects for exactly this reason. Committing that script would
 // have traded one defect for another: a hand-authored workflow implementing semantics already
 // expressible in `.dag` is section 6's out-of-band-actuation tell, and the repository's existing
 // shell evidence drivers already describe themselves as scaffolds awaiting modeled orchestration --
@@ -84,7 +84,7 @@ type ScmStep
 
 // THE OUTCOME IS LOCATED, NOT A BOOLEAN. A conjunction over twenty steps answers false and tells the
 // reader nothing about which obligation failed, which is the state-space conflation on the diagnostic
-// that DESIGN section 5 refuses: the line must stop, and the stop must say where. Each arm below names
+// that gunbc.design_argument::fail_closed refuses: the line must stop, and the stop must say where. Each arm below names
 // the thing that went wrong and the step it went wrong at.
 type ScmAcceptanceOutcome
   = ScmAcceptancePassed { receipt: ScmAcceptanceReceipt }
@@ -942,7 +942,7 @@ fn scm_acceptance_exit(outcome: ScmAcceptanceOutcome) -> ProcessExit {
 // `{ scenarios: 3 }` over a hand-nested run of three arms, so a fourth `ScmScenario` arm would force
 // edits to `scm_scenario_name` and `scm_scenario_steps`, compile silently here, never run, and
 // still mint `scenarios: 3` -- the scenario-for-population bypass above, reintroduced at the roster.
-// Completeness is an identity join, not a count equality (DESIGN section 5). So the run is a fold
+// Completeness is an identity join, not a count equality (gunbc.design_argument::fail_closed). So the run is a fold
 // over ONE roster, and the receipt holds the identities the fold actually executed, minted only
 // when that list is the roster itself.
 //

@@ -12,7 +12,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 // <file> --claim-run` refuses grounding_lens ("effect summary incomplete: call to
 // candidates_over_decls has no established callee identity") and concept_index_enumeration ("no
 // field concept on type QualifiedConcept"); with roots dag + src/v2 the implicit-scope modules
-// refuse "unresolved type Symbol". No required job evaluates a witness (DESIGN, Building & checks).
+// refuse "unresolved type Symbol". No required job evaluates a witness (gunbc.design_document::ci_contract_blocks).
 // Current is Mitigatable and not a dropped rung: the migrated readers were never executed, so no
 // held rung is recorded as lost for the migrated readers. grounding_lens and concept_index_enumeration
 // DID run in July on a lane since withdrawn; that lost lane is already covered by `gunbc.rung_drop`

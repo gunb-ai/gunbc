@@ -41,7 +41,7 @@ import std.types { List, String, Map, Bool }
 // returns the INPUT to normalization and inference rather than the tree emit_artifact consumes,
 // so it asked whether inference had happened before the phase responsible for it had run. Its
 // author withdrew that census's subject claim. It is DELETED here rather than kept beside this
-// one: two instruments answering one question is the parallel authority DESIGN section 3 forbids,
+// one: two instruments answering one question is the parallel authority gunbc.design_argument::single_authority forbids,
 // and the withdrawn one still runs and still produces a number, which is the shape a later reader
 // quotes by accident.
 //

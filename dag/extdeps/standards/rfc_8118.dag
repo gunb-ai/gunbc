@@ -80,7 +80,7 @@ data rfc_8118: NonEmptyStr = "RFC 8118"
 // references move with it.
 //
 // THE CHECK ITSELF IS STILL THE DEEPER DEFECT and is not this change's to fix: reading bytes for a
-// declaration the namespace tree already carries is the positional citation DESIGN section 3 rules
+// declaration the namespace tree already carries is the positional citation gunbc.design_argument::single_authority rules
 // out, and it is why a correctly scoped module could sit red for a week without anyone noticing.
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

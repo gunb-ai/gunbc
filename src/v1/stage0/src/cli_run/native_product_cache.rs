@@ -12,7 +12,7 @@
 //! and NOT `std.materialization_provider` `request_key`: those are structural Fnv folds (the digest
 //! combines the last two axes as a pair, and `request_key` wraps it in an evaluation bucket with demand
 //! kind and declared inputs, a 16-hex `ContentHash`). This one left-folds six SHA-256 digests under a
-//! fixed tag into a 64-hex key. STATED REASON FOR THE DIVERGENCE (DESIGN 3b, diverges with a reason):
+//! fixed tag into a 64-hex key. STATED REASON FOR THE DIVERGENCE (gunbc.design_argument::conformance, diverges with a reason):
 //! a collision here serves a wrong compiler rather than missing, so the store address must be
 //! cryptographic, and the provider does not yet serve the native artifact so there is no `request_key`
 //! to inhabit. Axis identity and order are the shared fact; the fold and the wrapper are this seed's.

@@ -17,7 +17,7 @@ data join_answers_with_one_arm_others_unjudged: RecurringFailureMode = Recurring
 
     "SPECIMEN, measured 2026-09-02 on gunbc, two modules identical except for arm order: v1.compiler.infer folded match arm body types through v1.compiler.infer_types prefer_specific_type, whose tie-break for two disjoint coproducts is the LEFT operand, so `match fl \{ FYes => FResA  FNo => FOthA \}` passed to a formal declared FRes was ACCEPTED, while the same module with those two arms swapped was REFUSED at the direct-call argument seam with `declared 'Coproduct(FRes)', produced 'Coproduct(FOth)'`.",
 
-    "One of those is wrong and it is the ACCEPTED one -- values inhabit their declared types is the ordinary compiler floor, which DESIGN section 4b puts BELOW the ladder rather than on a rung of it.",
+    "One of those is wrong and it is the ACCEPTED one -- values inhabit their declared types is the ordinary compiler floor, which gunbc.design_argument::guarantee_ladder puts BELOW the ladder rather than on a rung of it.",
 
     "DISTINGUISHING FACT FOR THE KERNEL-SCALAR SPECIMEN: the identical Int-versus-String mismatch in a plain function body IS refused with a located `type mismatch: expected 'Primitive(Int)', got 'Primitive(String)'` diagnostic. The checker therefore exists and holds outside the join; the match fold walks around it by selecting the conforming Int arm, after which the declared-return seam compares Int with Int.",
 

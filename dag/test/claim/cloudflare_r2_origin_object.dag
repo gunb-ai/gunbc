@@ -443,7 +443,7 @@ test fn origin_write_target_resolves_to_the_declared_bucket_and_write_credential
   }
 }
 
-// THE UNMINTED-WRITE REFUSAL STAYS ENROLLED ON A SUPPLIED ORIGIN (DESIGN section 4b(4)). The
+// THE UNMINTED-WRITE REFUSAL STAYS ENROLLED ON A SUPPLIED ORIGIN (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The
 // declarations no longer inhabit this arm, so the origin is a constructed value: an allocated bucket
 // whose write credential is unminted must refuse, naming the entry that mints it, and never resolve.
 test fn origin_write_target_refuses_while_the_write_credential_is_unminted() -> Bool {

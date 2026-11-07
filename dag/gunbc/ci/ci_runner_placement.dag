@@ -119,7 +119,7 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 // it, extdeps.systemd carries no AllowedCPUs= to render it, and the emitter answered it with an empty
 // knob list -- so a deployment carrying that boundary converged SUCCESSFULLY while the host was never
 // told any CPU ceiling at all. A variant whose only realization is silence is a fail-open path
-// (DESIGN 5), and labelling it "unemitted" in a manifest does not make the operational path refuse.
+// (gunbc.design_argument::fail_closed), and labelling it "unemitted" in a manifest does not make the operational path refuse.
 //
 // So the arm is DELETED rather than answered with a refusal. Both remedies close the hole, and DESIGN
 // 4b ranks them: construction over proof. A typed refusal would leave the invalid state writable and
@@ -420,7 +420,7 @@ type HostSessionSliceResolution
 // TWO AUTHORITIES, TWO QUESTIONS, AND THEY ARE DELIBERATELY NOT MERGED. gunbc.session_residency
 // owns WHETHER a host carries interactive sessions; gunbc.session_reservation_policy owns HOW MUCH
 // is reserved for them. Sourcing both from the reservation table would have made it a second
-// answer to the residency question, which is the nicknaming violation DESIGN 3 forbids -- and the
+// answer to the residency question, which is the nicknaming violation gunbc.design_argument::single_authority forbids -- and the
 // residency module's unknown arm charges rather than exempts on purpose, a polarity a size table
 // has no business re-deciding.
 //
@@ -561,12 +561,12 @@ fn host_deployment_refusal_text(c: HostRunnerDeploymentRefusal) -> String {
 // -- the srv5 case gunbc.host.host_memory_observation exists to make expressible -- still passes the
 // denominator check and divides an envelope the Int shim flattened to zero.
 //
-// IT IS A STATED FRONTIER, NOT A DANGLING FOLD (review 69200, DESIGN 3c). An earlier revision of
+// IT IS A STATED FRONTIER, NOT A DANGLING FOLD (review 69200, gunbc.design_argument::consumption). An earlier revision of
 // this branch carried host_width_unmeasured_reasons to render those causes into this refusal. Its
 // consumer was deleted when this arm adopted main's causeless variant, and the fold was deleted
 // with it rather than left standing under a note claiming it was read -- a declaration nothing
 // consumes is red however well modelled, and an annotation asserting a consumer it does not have is
-// the 4b(1) inflation this file has already been caught at once.
+// the gunbc.design_argument::guarantee_ladder (rung honesty) inflation this file has already been caught at once.
 //
 // TRIGGER: MemoryDenominatorStanding keyed on host_runner_memory_envelope_resolution rather than on
 // session_reservation_bytes alone, so the memory axis states the unread INPUT. The rendering seam

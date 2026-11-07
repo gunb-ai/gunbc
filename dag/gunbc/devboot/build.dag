@@ -187,7 +187,7 @@ type TextFileReadOutcome
   | TextFileAbsent
 
 // ABSENCE USED TO BE INFERRED FROM AN EMPTY ERROR STRING, which is a heuristic over a host message
-// standing where a declared operation was available -- and DESIGN section 4 rules a heuristic never
+// standing where a declared operation was available -- and gunbc.design_argument::closed_grounded_substrate rules a heuristic never
 // necessary in a closed system. Worse than the parsing, it was silent about the case that matters:
 // a produced artifact that exists and cannot be read reported the same TextFileAbsent as one the
 // producer never wrote, and the exchange walk below treats absent as "the producer had nothing to
@@ -914,7 +914,7 @@ fn read_request_source_tree(repo_root: String, ref_name: String) -> SourceTreeOu
 // a re-serve of one token silently replaces a previously published answer, so a client that
 // read the old one and a client reading the new one disagree with NO SIGNAL. The ref is
 // write-once by intent, so the transition is GitCreateRefIfAbsent and a second publish for
-// one token is a real conflict that refuses loudly (DESIGN section 5: a failure arm refuses,
+// one token is a real conflict that refuses loudly (gunbc.design_argument::fail_closed: a failure arm refuses,
 // it does not widen).
 //
 // The outcome is decided by READ-BACK and not by the exit code, because losing the
@@ -1290,7 +1290,7 @@ fn observed_producer_host(repo_root: String) -> String {
   if !named.success { "unknown-host" } else { trim(s: named.stdout) }
 }
 
-// THE ENTRY POINTS RETURN PROCESS EXIT CODES, NOT SENTENCES. gunbc run treats a non-ProcessExit return as a refusal, so a String-returning entry that had genuinely built an executable exited nonzero and printed BUILT underneath REFUSED -- success reported as failure (DESIGN section 5). The typed outcome is decided first; prose is written to the receipt file; the shell reads the exit code.
+// THE ENTRY POINTS RETURN PROCESS EXIT CODES, NOT SENTENCES. gunbc run treats a non-ProcessExit return as a refusal, so a String-returning entry that had genuinely built an executable exited nonzero and printed BUILT underneath REFUSED -- success reported as failure (gunbc.design_argument::fail_closed). The typed outcome is decided first; prose is written to the receipt file; the shell reads the exit code.
 fn render_build_outcome(outcome: BuildOutcome) -> String {
   match outcome {
     BuildRefused { cause } => join(["REFUSED: ", build_refusal_sentence(cause: cause)], "")

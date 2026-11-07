@@ -141,7 +141,7 @@ fn family_cache_root_for(test_id: String) -> String {
 // Int is still weaker than the values deserve: an octet is 0..255 and nothing here says so. The
 // correctly shaped, grounded type exists -- extdeps.network.ipv4 `Octet`, Int refined by
 // range(min: 0, max: 255) -- but it is homed in the IPv4 domain, and reaching into a network
-// module for a compiler-emission byte would be the layer inversion DESIGN 3 warns about, not a
+// module for a compiler-emission byte would be the layer inversion gunbc.design_argument::single_authority warns about, not a
 // reuse. What is missing is a domain-agnostic octet carrier, not a new spelling of one that exists.
 //
 // The pointer, stated as rationale rather than a machine claim: when such a carrier lands, these

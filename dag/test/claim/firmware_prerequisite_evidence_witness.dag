@@ -55,7 +55,7 @@ data reversed_evidence: List<FirmwarePrerequisiteObservation> = [
 // 3.22.00 here and claimed in a comment to be comparing the same number the
 // catalog declares — which it was not: changing the release row would have
 // left these tests green until someone remembered to edit the witness too.
-// That is the tree-copied oracle DESIGN section 5 forbids, and the comment
+// That is the tree-copied oracle gunbc.design_argument::fail_closed forbids, and the comment
 // asserting otherwise is what made it look already checked. The minimum now
 // comes from the release row itself, so editing the catalog moves the tests.
 //
@@ -85,7 +85,7 @@ fn same_firmware_version(a: FirmwareSemanticVersion, b: FirmwareSemanticVersion)
 // orderings below, so an ordering that answered differently could not be papered
 // over by a second copy of the expected numbers.
 //
-// The join is the point, not a stylistic preference (DESIGN §5 test-oracle rule,
+// The join is the point, not a stylistic preference (gunbc.design_argument::fail_closed test-oracle rule,
 // and the same pattern this file already uses for the declared minimum): written
 // as literals, `2/7` and `3/22` were a second copy of two numbers whose single
 // authority is the gating_version on each row. Re-flashing at a different version

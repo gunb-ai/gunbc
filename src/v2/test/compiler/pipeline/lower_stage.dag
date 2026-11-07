@@ -10,7 +10,7 @@ import v2.test.claim.manual.rust_add_emit_translate { rust_add_inferred_tree }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Relationship witness: InferredTree -> emitted Node via translate, on the canonical
-// rust_add_inferred_tree fixture. The TARGET IS A SUPPLIED VALUE (DESIGN section 3, a witness
+// rust_add_inferred_tree fixture. The TARGET IS A SUPPLIED VALUE (gunbc.design_argument::witness_one_interface, a witness
 // discriminates at one interface): rust_emit_small_add_translate_target carries exactly the two
 // bundle edges translate_node reaches for this tree (type-expression projection, translation
 // rules). The production rust_target_model() was measured at 67,629 eval steps of construction

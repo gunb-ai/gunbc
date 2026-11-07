@@ -87,7 +87,7 @@ type RecordingId {
 //     for a model. It is NOT a receipt of anything a worker did, and the type says so: nothing in this module can
 //     turn one into the other, and capture's only constructor fills `captured` while prepare's fills `prepared`.
 // The field is REQUIRED with no default word, so a recording that does not say how it came to exist has no value
-// (DESIGN 5: impossible to drop, not checked after the fact). The provenance also picks the namespace
+// (gunbc.design_argument::fail_closed: impossible to drop, not checked after the fact). The provenance also picks the namespace
 // (recording_ref_of), so an id can never name a ref in the other arm's namespace: a prepared recording is
 // unreachable through a captured id and the reverse, with no separate request word that could disagree with the
 // ref it names.
@@ -306,7 +306,7 @@ type RecordingCapture
 // the same hex, and `update-ref` peels nothing and hashes nothing). So the commit was a step NO CONSUMER ASKED FOR,
 // and `git commit-tree` takes its author and committer from ambient config, which made whether a recording could be
 // written depend on which account ran it and what that account's ~/.gitconfig holds -- an undeclared input, the
-// DESIGN 5 class. Under the dedicated account, which holds no identity, the mint died with `empty ident name not
+// gunbc.design_argument::fail_closed class. Under the dedicated account, which holds no identity, the mint died with `empty ident name not
 // allowed`. The base and the id's text were already carried by the ref NAME, so the commit held no fact anyone reads;
 // deleting it removes the undeclared input rather than supplying a value for one. THE CLAIMS THIS MAKES RED are the
 // wet witness's `cat-file -t` assertions in the captured and prepared claims, and the mutation is to mint the commit

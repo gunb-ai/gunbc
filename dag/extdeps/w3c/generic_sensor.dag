@@ -29,7 +29,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // states, the exact error taxonomy with each error's own triggering condition, and the
 // specification's own warning about feature detection. It contains NO browser and NO platform
 // behavior: whether a particular engine can connect to a particular machine's hardware is an
-// execution fact about that engine and that host, and it belongs downstream (DESIGN §3 external
+// execution fact about that engine and that host, and it belongs downstream (gunbc.design_argument::single_authority external
 // upstream decomposition).
 
 data spec_edition: String = "Candidate Recommendation Draft, 14 May 2026"

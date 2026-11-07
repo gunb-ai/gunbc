@@ -181,7 +181,7 @@ fn bash_emit_wrong_spelling_oracle_holds(emit_o: Outcome<String>, golden: String
 // The part list is validated in one pass that builds no text, and the validated parts are then
 // materialized by ONE join, which copies each part exactly once. A fold that appends parts onto a
 // growing result copies that result again at every step in the String realization, which pushes
-// the RIGHT operand -- whichever side the accumulator sits on (review 5333525589; DESIGN §6: a
+// the RIGHT operand -- whichever side the accumulator sits on (review 5333525589; gunbc.design_argument::how_to_work: a
 // copied accumulator is fixed regardless of n). Equal output bytes cannot tell the two apart, and
 // NO executing discriminator exists yet: one is owed, and the accumulator-copy lens cannot serve
 // until the v2 front end normalizes this file -- gunbc.recurring_failure_mode
@@ -234,7 +234,7 @@ fn bash_emit_program_sequence(programs: List<String>) -> Outcome<String> {
 // The String seam every run: builder returns cannot carry diagnostics, so a refused join becomes a
 // marker that is not valid workflow shell and turns the committed-workflow drift gate red, the same
 // discipline as v2.workflow.ci_retry_emit ci_retry_emit_refused_poison. Never a partial join.
-data bash_emit_program_sequence_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ bash_emit_program_sequence refused: a non-final program did not end its last line, so joining it would fuse two commands into one line; this marker is not valid workflow shell (DESIGN 5: refuse, never widen)\n"
+data bash_emit_program_sequence_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ bash_emit_program_sequence refused: a non-final program did not end its last line, so joining it would fuse two commands into one line; this marker is not valid workflow shell (gunbc.design_argument::fail_closed: refuse, never widen)\n"
 
 fn bash_emit_program_sequence_script(programs: List<String>) -> String {
   match bash_emit_program_sequence(programs: programs) {

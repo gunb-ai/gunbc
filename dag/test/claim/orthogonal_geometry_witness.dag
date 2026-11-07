@@ -278,7 +278,7 @@ test fn self_intersecting_loop_refuses() -> Bool {
 }
 
 // A BOUNDING BOX OF NOTHING IS NOT A DEGENERATE BOX AT THE ORIGIN. Returning one would be the
-// fabricated plausible output DESIGN 5 forbids, so the empty list is the one refusal.
+// fabricated plausible output gunbc.design_argument::fail_closed forbids, so the empty list is the one refusal.
 test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
   let derived = match bounding_box3(points: [p3(x: 10, y: 0 - 5, z: 3), p3(x: 0 - 2, y: 40, z: 3), p3(x: 7, y: 1, z: 99)]) {
     OrthogonalRefused { cause: _ } => false

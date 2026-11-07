@@ -81,8 +81,21 @@ fn argument_is_non_vacuous(a: Argument) -> Bool {
   (a.axioms |> count) > 0 && (a.propositions |> count) > 0
 }
 
+// EVERY AXIOM AND PROPOSITION HAS ITS OWN IDENTITY. Premises name nodes by id, so two nodes sharing
+// an id make every premise naming it ambiguous, and a consumer that renders or keys on the id (a
+// document section, a review criterion's grounding) silently reads one of them.
+fn argument_ids_are_unique(a: Argument) -> Bool {
+  let ids = argument_node_ids(a)
+  ids |> all(i => (ids |> filter(j => j == i) |> count) == 1)
+}
+
+// WHAT THIS ESTABLISHES: a well-formed argument GRAPH -- non-empty, every proposition reachable from
+// the axioms, acyclic, every premise naming a node, every node uniquely identified. Statements are
+// strings, so it does NOT establish that a conclusion follows from its premises; that remains a
+// judgment.
 fn argument_form_is_valid(a: Argument) -> Bool {
   argument_is_non_vacuous(a)
+    && argument_ids_are_unique(a)
     && argument_has_no_orphan(a)
     && argument_is_acyclic(a)
     && argument_axiom_set_is_closed(a)

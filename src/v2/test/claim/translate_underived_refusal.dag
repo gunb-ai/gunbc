@@ -444,7 +444,7 @@ fn translate_accepts_synthetic_empty_facts_tree() -> Bool {
 // same end-to-end compile and asserted the same bytes as
 // v2.test.claim.long.inhabitant_neutralization_e2e_witness
 // inhabitant_neutralization_python_to_ts_cross_language_compile_round_trip_holds, which also
-// asserts the route (DESIGN section 3, a witness discriminates at one interface). The
+// asserts the route (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). The
 // translate-level grounding-gate refusal class stays covered by the synthetic underived controls in
 // this file.
 

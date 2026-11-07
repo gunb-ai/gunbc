@@ -44,7 +44,7 @@ import std.algebra { Cons, Empty }
 // OBSERVED ONLY (operator ruling via fierce-lark-661, 2026-09-12 and 2026-09-13). This module is
 // that ruling's executing evidence.
 //
-// WHY A WITNESS AND NOT A REVIEW OF THE DIFF. DESIGN section 5 rules that a typecheck and a grep
+// WHY A WITNESS AND NOT A REVIEW OF THE DIFF. gunbc.design_argument::fail_closed rules that a typecheck and a grep
 // are not consumers, and the thing that has to be refutable here is a set of DIRECTIONS: a
 // derivation collapsed to a constant refusal satisfies a red-only fixture, one collapsed to a
 // constant pass satisfies a control-only fixture, and one that ignores the tier satisfies either
@@ -153,7 +153,7 @@ test fn the_roster_identity_join_is_exact_in_both_directions() -> Bool {
 }
 
 // THE ROSTER IS NOT TRUNCATED. A size floor is a weaker check than the identity join above and is
-// deliberately NOT the membership test -- DESIGN section 5 requires completeness at identity grain,
+// deliberately NOT the membership test -- gunbc.design_argument::fail_closed requires completeness at identity grain,
 // never by count. What it catches is a different failure: a roster that decoded partially, or a
 // chunk fold that lost its tail, would still answer correctly for the one identity the join probes.
 test fn the_roster_is_not_truncated() -> Bool {
@@ -181,7 +181,7 @@ test fn a_roster_addition_refuses() -> Bool {
 }
 
 // RED: a row that simply disappears, with no typed disposition naming it, refuses. Shrinking is the
-// only admitted direction, and DESIGN section 5 admits it only when every removal is typed.
+// only admitted direction, and gunbc.design_argument::fail_closed admits it only when every removal is typed.
 test fn a_removal_without_a_typed_disposition_refuses() -> Bool {
   match roster_change_verdict(
     current: fixture_current_roster(),
@@ -256,7 +256,7 @@ test fn a_rename_disposition_retires_the_old_row_and_does_not_admit_the_new_one(
 // heads that changed no executable source.
 //
 // IT ASSERTS THE OBSERVATION SURVIVED, not merely that the gate stood down. A mechanism that
-// stopped refusing AND stopped counting is the absorbing fallback DESIGN section 5 forbids, so the
+// stopped refusing AND stopped counting is the absorbing fallback gunbc.design_argument::fail_closed forbids, so the
 // control is "it passes AND the 4000ms is still reachable in the receipt".
 test fn a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier() -> Bool {
   cpu_does_not_gate(budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}))
@@ -393,7 +393,7 @@ test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
 //       scale, where both sides ARE declarations.
 //
 // NO COUNT STANDS IN FOR EITHER HALF. An earlier revision of this witness asserted
-// `removal_count(...) == 4` beside (a), which is exactly the substitution DESIGN section 5
+// `removal_count(...) == 4` beside (a), which is exactly the substitution gunbc.design_argument::fail_closed
 // forbids -- "Completeness is an identity join, not a count equality". Four is not a property of
 // the contract; it is how many rows happened to leave in this change, and the assertion would go
 // red on a fifth honest removal while passing over four wrong ones. What replaces it is a
@@ -482,7 +482,7 @@ test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool {
 //
 // THIS IS THE CONSTRUCTION THAT REPLACES THE TWO PARAGRAPHS THAT SAID IT COULD NOT HAPPEN. Both the
 // roster header and the calibration header asserted the rule while the mechanism broke it, which is
-// precisely why DESIGN section 5 prefers a wall to prose. Each goes red if a later re-cut of the
+// precisely why gunbc.design_argument::fail_closed prefers a wall to prose. Each goes red if a later re-cut of the
 // roster takes a run that post-dates a lane's own additions again.
 //
 // ONE IDENTITY PER WITNESS, AND THE SPLIT IS THE CEILING'S OWN DOING RATHER THAN A DODGE. A single
@@ -529,7 +529,7 @@ test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
   }
 }
 
-// ── THE DECLARED 4b(3) EVAL-STEP COST DROP IS NARROW, AND THE WALL STILL STANDS OUTSIDE IT ─────
+// ── THE DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) EVAL-STEP COST DROP IS NARROW, AND THE WALL STILL STANDS OUTSIDE IT ─────
 //
 // ONE FACT, TESTED FROM BOTH SIDES AT THE SAME COST. A member of `v2.workflow.floor_eval_step_cost_drop`
 // and an identity outside it, over the same new-witness budget by the same amount: only membership
@@ -621,7 +621,7 @@ test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool {
 // Deliberately NOT asserted here: that the roster is non-empty or holds the member above -- the
 // control pair already goes red if the member leaves -- and that the rows' recorded eval_steps
 // exceed the budget, which would be authored on both sides of the comparison and could never go
-// red (DESIGN section 4b, section 5). The drop's retirement clause (ii) is read out of band.
+// red (gunbc.design_argument::guarantee_ladder, section 5). The drop's retirement clause (ii) is read out of band.
 test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
   floor_eval_step_cost_drop_has_duplicate() == false
 }

@@ -140,12 +140,12 @@ fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
 // BELONG TOGETHER. Those are two independent ways one operation has no answer, and they are separate
 // arms rather than one "failed" arm because the remedies differ absolutely: an overflow means the
 // question was right and the carrier too small, a frame mismatch means the question was meaningless.
-// Collapsing them would be the state-space conflation DESIGN 5 names.
+// Collapsing them would be the state-space conflation gunbc.design_argument::fail_closed names.
 //
 // ONE RESULT TYPE, NOT TWO NESTED ONES. An earlier sketch of this repair proposed a separate
 // FrameRelationResult wrapping the arithmetic result. That forks the "this operation may have no
 // answer" concept in two and forces every caller to unwrap twice for a question that is one
-// question; the causes are what differ, and a coproduct is exactly the carrier for that (DESIGN 2).
+// question; the causes are what differ, and a coproduct is exactly the carrier for that (gunbc.design_argument::minimize_redundancy).
 // THE REFUSAL NAMES ROLES, NOT AN "EXPECTED" AND AN "OBSERVED". An earlier cut of this carrier had
 // exactly those two fields, and they are misleading for a SYMMETRIC operation: in add_vector3(a, b)
 // neither frame is normatively expected - the first operand merely happens to establish the result's
@@ -155,7 +155,7 @@ fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
 //
 // OpProjectPoint3 IS std.planar_projection's point projection, registered HERE rather than in a
 // refusal sum of its own because the frame-mismatch fact is one concept: a second
-// operation-identity enum beside this one would be the nicknaming DESIGN section 3 forbids, and a
+// operation-identity enum beside this one would be the nicknaming gunbc.design_argument::single_authority forbids, and a
 // consumer matching on frame refusals would then have to know which of two vocabularies produced
 // the one it holds.
 type SpatialOperationIdentity

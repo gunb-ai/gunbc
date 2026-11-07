@@ -9,7 +9,7 @@ import gunbc.site.gunb_ai_tokens { review_render, ReviewHtml, ReviewEmitRefused 
 
 // Writes the tokens-layer review page to an out-dir so it can be served on srv1
 // over the tailnet (`python3 -m http.server <port> --bind <tailnet address>`).
-// Fail closed (DESIGN §5): BOTH failure channels exit non-zero with the typed
+// Fail closed (gunbc.design_argument::fail_closed): BOTH failure channels exit non-zero with the typed
 // cause — an emit refusal (ReviewEmitRefused from gunbc.site.gunb_ai_tokens)
 // never reaches the filesystem at all, and an unwritable path reports its cause.
 // There is no path where a refused render is written or exits success.
@@ -22,7 +22,7 @@ import gunbc.site.gunb_ai_tokens { review_render, ReviewHtml, ReviewEmitRefused 
 //
 data compiler_pipeline_entry: CompilerEntryDriver = NativeCliDriver
 
-// Consumers (DESIGN §3c): the operator's browser on the tailnet review site, and
+// Consumers (gunbc.design_argument::consumption): the operator's browser on the tailnet review site, and
 // the srv1 headless-chromium screenshot pass that precedes showing the page. One
 // file, one render home: gunbc.site.gunb_ai_tokens.review_render().
 
