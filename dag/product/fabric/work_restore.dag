@@ -195,7 +195,7 @@ fn tokenize(text: String, index: Int) -> Tokenized {
     TokenizedOk { fields: [] }
   } else {
     match length_prefixed_decode(s: text) {
-      Absent => TokenizedRefused { cause: RestoreTruncated {} }
+      Absent => TokenizedOk { fields: [] }
       Present { value: f } =>
         if join([length_prefixed_encode(s: f.value), f.rest], "") != text {
           TokenizedRefused { cause: RestoreNotCanonical { field_index: index } }
@@ -222,7 +222,7 @@ fn decoded_then<A, B>(d: Decoded<A>, f: fn(A, List<String>) -> Decoded<B>) -> De
 
 fn rd_text(fields: List<String>) -> Decoded<String> {
   match list_at_optional(xs: fields, index: 0) {
-    Absent => DecodedRefused { cause: RestoreTruncated {} }
+    Absent => DecodedRefused { cause: RestoreFieldInvalid { field: "x" } }
     Present { value: v } => DecodedOk { value: v, rest: fields |> skip(n: 1) }
   }
 }
