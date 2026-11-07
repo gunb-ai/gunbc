@@ -2,7 +2,7 @@ module test.claim.printer_state_parent_reown_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.dissolution { dissolution_description, dissolution_is_bound }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import std.optional { Present, Absent }
 import extdeps.shell
 import extdeps.shell.exec
@@ -400,7 +400,16 @@ test fn witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_
 // stands in for the host fact that actually ends the migration.
 test fn witness_the_migration_carries_the_condition_that_ends_it() -> Bool {
   let condition = printer_state_parent_reown_migration_dissolve_on
-  let described = dissolution_description(condition: condition) != ""
+  let text = dissolution_description(condition: condition)
+  let described = text != ""
   let honestly_unbound = !dissolution_is_bound(condition: condition)
-  described && honestly_unbound
+  // CONTENT, not presence. The tree does the same with its own carriers -- gunbc.ci.ci_layer_roots asserts
+  // on dissolution descriptions through string_contains rather than trusting they were written -- and here
+  // two phrases carry the whole obligation: the end is the leg's own read-back receipt, and the deletion is
+  // coupled to withdrawing the grant that lets the leg speak. A reword that quietly drops either one reddens
+  // this claim, which is the only way a condition like this stays load-bearing after the sentence that wrote
+  // it is forgotten.
+  let ends_on_its_own_receipt = string_contains(s: text, pattern: "Reowned")
+  let coupled_to_the_grant = string_contains(s: text, pattern: "install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts")
+  described && honestly_unbound && ends_on_its_own_receipt && coupled_to_the_grant
 }
