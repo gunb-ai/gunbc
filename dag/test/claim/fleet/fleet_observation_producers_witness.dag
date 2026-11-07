@@ -41,11 +41,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // EVERY FRONTIER BELOW IS A SET OF NAMED HOSTS, NOT A TALLY. The four fleet counts these replaced
 // were deleted from production entirely: they had no production consumer, and a function whose only
 // consumer is evidence is the no-final-consumer tell. The evidence stays, rebuilt here at identity
-// grain -- DESIGN 4b(4) dissolves the lower-rung machinery a climb obsoletes and keeps the evidence
+// grain -- gunbc.design_argument::guarantee_ladder (dissolution on climb) dissolves the lower-rung machinery a climb obsoletes and keeps the evidence
 // that the rung is real; the two were separable because a witness can fold the enrolled population
 // itself.
 //
-// WHAT IDENTITY GRAIN BUYS OVER THE COUNTS. DESIGN section 5 requires completeness to be an identity
+// WHAT IDENTITY GRAIN BUYS OVER THE COUNTS. gunbc.design_argument::fail_closed requires completeness to be an identity
 // join, not a count equality. A count says six hosts are unobserved but never WHICH, so a producer
 // arriving moves a number and the diff cannot say what acquired one. The sharper reason: a count
 // and its own prose cannot contradict each other detectably -- a count has no members, so nothing

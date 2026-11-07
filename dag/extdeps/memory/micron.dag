@@ -122,7 +122,7 @@ data stick_capacity_bytes_16g: ByteSize = byte_size(17179869184)
 // figures corroborate a fourth the way the Samsung row's do. The 18.75 mm outline is a
 // FORM-FACTOR fact the catalogue row type has no field for; it is stated here and in the
 // numbering decode, and becomes a typed carrier when a chassis DIMM-clearance consumer exists
-// to read it (DESIGN 3c: no dangling height row).
+// to read it (gunbc.design_argument::consumption: no dangling height row).
 //
 // The eBay listing that sold these modules described them as "2Rx4"; the physical label reads
 // "2DRx4". The listing is not a source for any field of this row.

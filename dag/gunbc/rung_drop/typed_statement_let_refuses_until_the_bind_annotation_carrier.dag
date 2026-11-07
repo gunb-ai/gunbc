@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Retired, Enumerated, ReplacementStaged, RetiredTypedDeclaration }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// THE DECLARED RUNG DROP for the typed statement-form let on the v2 route (DESIGN 4b(3)), landed by
+// THE DECLARED RUNG DROP for the typed statement-form let on the v2 route (gunbc.design_argument::guarantee_ladder (no silent regression)), landed by
 // gunbc#12248, which turned a silently dropped let annotation into a typed refusal.
 //
 // WHAT FELL. v2.test.claim.body_lowering.statement_let_bind typed_statement_let_lowers_holds -- a

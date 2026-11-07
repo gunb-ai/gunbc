@@ -505,7 +505,7 @@ fn eq_the_committed_build(f: BmcFirmwareReleaseIdentity) -> Bool {
 //   filter finds no entry whose establishment derives the machine-read build;
 // RED-2 the auxiliary bytes folded into the release (an Active cell rendered "0.45.3 03000000" instead of
 //   the controller's verbatim "0.45 03000000"): the establishment would then derive the PAGE LABEL -- an
-//   identity nothing has ever read -- and the !eq arm below goes red. §4d: no equality by resemblance;
+//   identity nothing has ever read -- and the !eq arm below goes red. gunbc.design_argument::epistemic_humility: no equality by resemblance;
 // RED-3 the table refused to parse (a garbled artifact, an upgrade listing): the ByRead arm below fails
 //   on a Refused establishment, so a row whose bytes cannot be read cannot claim a release either.
 // The identity is checked against the ONE mint (bmc_firmware_release_identity_of_wire of the derived
@@ -592,7 +592,7 @@ test fn w_the_0_45_row_names_no_release_it_did_not_read() -> Bool {
 // compare a literal against: gunbc.machine_intake.mtcollins1_access_observation ASKS the catalogue for it
 // (megarac_committed_hpm_check_readout) and receives either an identity or a TYPED REFUSAL -- never a
 // stand-in (review 86103 finding 1: the previous shape fabricated a "no version stored" identity for every
-// failure, DESIGN.md §5 "no plausible output is fabricated"). Four discriminations, each failing
+// failure, gunbc.design_argument::fail_closed "no plausible output is fabricated"). Four discriminations, each failing
 // independently:
 // 1. THE DERIVED IDENTITY IS WHAT THE ROW'S OWN BYTES SAY -- re-deriving the row's identity through the
 //    establishment here and comparing to the consumed value means a consumer that STARTED typing its own
@@ -727,7 +727,7 @@ fn both_or_neither(a: NonEmptyStr?, b: NonEmptyStr?) -> Bool {
 // at attach until the cutover": the machine-read identity earns no redirection knowledge it has not read.
 // RED: a redirection catalogue that NAMED 19 at the machine-read identity (hand-written to make this boot
 // pass) turns the refusal into a walk-through and this witness goes red; so does a catalogue that started
-// treating the machine-read identity as the page label (the §4d confusion, from the other side).
+// treating the machine-read identity as the page label (the gunbc.design_argument::epistemic_humility confusion, from the other side).
 // THE SAME FIXTURE AFTER THE TABLE MOVED, AND WHAT THAT CHANGED. Before the move this identity had no
 // catalogue at all: every wire came back RedirectionUnreadFirmware and the stop exception's arm for that
 // is a flat false, so this refused. Now the identity the committed hpm read derives IS the evidenced
@@ -882,7 +882,7 @@ test fn w_the_two_releases_report_different_wires_for_a_row_that_is_not_presenti
 // row names nothing) is OURS, not the vendor's, and it is carried as what it is: the upstream fold answers the
 // row as an uncatalogued wire, exactly as far as the vendor's catalogue goes, and
 // gunbc.machine_intake.megarac_media_attach megarac_status_zero_row_inference -- the observing layer, where
-// observations this repository makes live -- carries the resemblance as a bet (DESIGN.md §4d). The claim below
+// observations this repository makes live -- carries the resemblance as a bet (gunbc.design_argument::epistemic_humility). The claim below
 // is that nothing which could boot a host over it consumes the bet as a state: the bet is not a status, the
 // presentation standing whose RedirectionKnownStopped is what licenses StartMedia answers Unknown for that
 // wire, and the exception that lets a stop through on an unread code is closed to the refusal it produces. The
@@ -1213,7 +1213,7 @@ test fn w_the_0_32_interlude_code_would_refuse_at_this_build() -> Bool {
 // from the committed receipt rather than restated as literals here). Each claim below changes ONE dimension of
 // the read row and must answer with its own typed cause; were the guard written from the code alone -- status 0,
 // marker, no name -- a hard-disk row or a second image-list entry would be given an interpretation this
-// repository never observed, which is the §4d defect this closes.
+// repository never observed, which is the gunbc.design_argument::epistemic_humility defect this closes.
 test fn w_the_guard_refuses_a_row_of_another_media_type() -> Bool {
   match mtcollins1_current_build_firmware {
     Absent => false

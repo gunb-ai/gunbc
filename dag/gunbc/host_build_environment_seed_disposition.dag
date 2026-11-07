@@ -16,7 +16,7 @@ import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedIt
 // PURPOSE (gunbc.v1.v1_maintenance_standing v1_seed_standing): the required floor executes
 // emit_host witnesses in the seed, and a seed whose realization silently varies with the
 // CI shell's flags makes those witnesses assert about the shell -- the class named in
-// DESIGN section 3 (policy leaking into realization) and in gunbc.recurring_failure_mode
+// gunbc.design_argument::single_authority (policy leaking into realization) and in gunbc.recurring_failure_mode
 // cache_impurity. NOT NewEscapeHatchOrAdmissionRow: the change REMOVES an admission (three
 // prefixes) and adds none; the only way to admit a variable is to name it in the .dag row.
 fn host_build_environment_dag_authority() -> DeclarationRef {

@@ -15,7 +15,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INHABITANCE OF THE PURE BOUNDARIES IN test.claim.workspace_transcript_rate (DESIGN 3: supplied
+// THE INHABITANCE OF THE PURE BOUNDARIES IN test.claim.workspace_transcript_rate (gunbc.design_argument::single_authority: supplied
 // inputs never remove the last execution of the real path). A real agent-state tree is planted in a
 // directory the witness mints and removes, and the production sampler -- the real find walk, the
 // pack's real matcher -- reads it, is written to, and reads it again. The route is asserted, not only

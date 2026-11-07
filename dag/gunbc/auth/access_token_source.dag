@@ -56,7 +56,7 @@ type AccessTokenResolution
 // and OperatorSuppliedToken needs a human to have put a token somewhere. So every typed
 // gcp.SecretManager.* effect in the tree was unreachable from a workflow run, and CI reached Secret
 // Manager the only way left to it -- hand-written shell preludes that curl the REST API with the
-// WIF step's token. That is one fact with two realizations (§3): the modeled effect and the
+// WIF step's token. That is one fact with two realizations (gunbc.design_argument::single_authority): the modeled effect and the
 // prelude answer the same question, and only the prelude ever runs.
 //
 // This arm is the missing realization, not a new capability. GitHub OIDC -> Workload Identity
@@ -181,7 +181,7 @@ fn ensure_access_token(source: AccessTokenSource) -> AccessTokenResolution
   }
 }
 
-data ensure_access_token_eager_bootstrap_fork_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3 still eagerly calls shell.GCloud.AuthPrintAccessToken() at node auth (pre-existing, out of #7423 scope) — a second §3 authority beside ensure_access_token for the same access-token concept. DISSOLVES WHEN bootstrap provision acquires tokens only through ensure_access_token(source: GcloudPrintToken) (or a typed wra")
+data ensure_access_token_eager_bootstrap_fork_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.assimilate.bmc_bootstrap_provision bmc_bootstrap_provision_srv3 still eagerly calls shell.GCloud.AuthPrintAccessToken() at node auth (pre-existing, out of #7423 scope) — a second gunbc.design_argument::single_authority authority beside ensure_access_token for the same access-token concept. DISSOLVES WHEN bootstrap provision acquires tokens only through ensure_access_token(source: GcloudPrintToken) (or a typed wra")
 
 // THE TOKEN ARRIVES BY PATH, NEVER BY VALUE, for the reason gunbc.spark.grant_privileged_operation
 // spark_grant_credential_path_env states: an environment
@@ -267,7 +267,7 @@ fn read_supplied_access_token() -> SuppliedTokenResolution {
 // an automatic fold that could
 // fall back to it would make an unattended run block on a human prompt it cannot answer.
 //
-// THE WORKLOAD ARM WINS ON PRESENCE, NOT ON SUCCESS, and that is what keeps this fail-closed (§5).
+// THE WORKLOAD ARM WINS ON PRESENCE, NOT ON SUCCESS, and that is what keeps this fail-closed (gunbc.design_argument::fail_closed).
 // WIF_ACCESS_TOKEN is exported by the Workload Identity Federation auth step and by nothing else,
 // so its presence IS the statement "this is a federated workflow run". If it is present and empty
 // the run refuses through the workload arm rather than reaching for an operator file: a workflow

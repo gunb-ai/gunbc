@@ -62,7 +62,7 @@ import gunbc.parse_verdict_publish {
 // `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
 // standing. NOTHING HERE DECIDES REUSE: a restore that found no entry leaves no file, and the verb
 // reads that as a typed miss (MissIdentityAbsent / MissEntryAbsent), so eviction is a re-parse and
-// never a pass and never an error (DESIGN.md section 5). The restore keys are exact; there are no
+// never a pass and never an error (gunbc.design_argument::fail_closed). The restore keys are exact; there are no
 // restore-keys, because a prefix hit would be a near identity and reuse is exact or it is a miss.
 //
 // The guard is derived from the pull-request scope in the cache model, as the publisher's is from the

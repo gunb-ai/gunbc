@@ -52,8 +52,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // population, so a check that found nothing to conserve cannot pass as clean.
 //
 // THE DROP CLAIMS ARE STATED AS TODAY'S MEASUREMENT. When a lowering repair lands, its fixture's
-// drop claim reds; the repair re-states it as a conserved control rather than deleting it (DESIGN
-// section 4b(4): the discriminating evidence stays enrolled after the climb). The `a + b` fixture
+// drop claim reds; the repair re-states it as a conserved control rather than deleting it (
+// gunbc.design_argument::guarantee_ladder (dissolution on climb): the discriminating evidence stays enrolled after the climb). The `a + b` fixture
 // is the one #12145 repaired; it is now a conserved control.
 
 fn conservation_fixture_read(id_tail: String, source: String) -> DagSourceReadWitness {
@@ -191,8 +191,8 @@ fn block_second_statement_numbers() -> ProcessExit {
 // MEASURED BOTH WAYS. Before gunbc#12221 the if-arm's call argument `rc_arm_arg` reached no reference
 // site and this check reported it as exactly one DroppedReference. After #12221 (if-arms lower
 // through the statement authority) the argument keeps its occurrence, and the pinned-drop claim went
-// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (DESIGN
-// section 4b(4)): it is now the permanent regression control that the if-arm argument is conserved.
+// red on origin/main 53828ae4b2 (fierce-gull-556, seed-interpreted). Restated, not deleted (
+// gunbc.design_argument::guarantee_ladder (dissolution on climb)): it is now the permanent regression control that the if-arm argument is conserved.
 // The argument is POSITIONAL on purpose: a named argument's label is its own, separately rostered
 // drop (a_named_argument_label_is_reported_dropped_holds below), which would red this control for a
 // reason that is not the if-arm. The argument's spelling is used NOWHERE else in its declaration, so
@@ -216,7 +216,7 @@ test fn the_if_arm_call_argument_is_conserved_holds() -> Bool {
 
 // MEASURED BOTH WAYS. On main fec339d561 (before #12145) this check reported `rc_rhs` as exactly one
 // DroppedReference. On #12145's head babf511 and on main after it, the operand keeps its occurrence
-// and the row is gone. The fixture stays enrolled as the regression control DESIGN section 4b(4)
+// and the row is gone. The fixture stays enrolled as the regression control gunbc.design_argument::guarantee_ladder (dissolution on climb)
 // asks for: if the operator tower ever drops a later operand again, this goes red on that atom.
 data infix_right_operand_source: String = "module v2.test.reference_conservation_infix\n\nimport std.types { Bool }\n\ndata rc_lhs: Int = 1\n\ndata rc_rhs: Int = 2\n\nfn rc_compare() -> Bool { rc_lhs == rc_rhs }\n"
 
@@ -263,7 +263,7 @@ test fn caret_symbol_payloads_are_conserved_holds() -> Bool {
 // arguments positionally -- and was the declared drop KnownDropShape NamedArgumentLabel. MQ-1
 // (v2.compiler.body_lowering_fold body_lower_call_arg_edge) carries it as the application's Named
 // edge, the edge the Arrow domain already keys its binders by, so the drop is retired and this is
-// restated as a CONSERVED control (DESIGN section 4b(4)): the callee, the label and the value all
+// restated as a CONSERVED control (gunbc.design_argument::guarantee_ladder (dissolution on climb)): the callee, the label and the value all
 // reach the lowered tree, and nothing is dropped. MUTATION RECEIPT: lowering the named actual as a
 // Positional edge reds it with rc_label dropped.
 data named_argument_label_source: String = "module v2.test.reference_conservation_label\n\nimport std.types { Bool }\n\nfn rc_callee(rc_label: Bool) -> Bool { rc_label }\n\nfn rc_labelled(c: Bool) -> Bool { rc_callee(rc_label: c) }\n"
@@ -290,7 +290,7 @@ test fn a_named_argument_label_is_conserved_holds() -> Bool {
 // module at normalize, so every atom of the module was lost with no refusal at or above it
 // (RefusalNotAtOrAbove rows). v2.compiler.body_lowering_fold body_lower_list_literal now lowers the
 // literal as its free-monoid construction with every element whole, so this is restated as a
-// conserved control (DESIGN section 4b(4)): both elements, and the callee, reach the lowered tree.
+// conserved control (gunbc.design_argument::guarantee_ladder (dissolution on climb)): both elements, and the callee, reach the lowered tree.
 // A producer that kept only the first element drops `rc_list_second` and reds this. The argument
 // is POSITIONAL on purpose, so this control reds only for the list; the named-argument label has its
 // own conserved control (a_named_argument_label_is_conserved_holds).
@@ -320,7 +320,7 @@ test fn a_list_literal_call_argument_conserves_every_element_holds() -> Bool {
 // occurrence, so a pool that failed to consume would CONCEAL drops (an unmatched atom would find the
 // copy an earlier atom already accounted for) and a pool that was never read would report the binder
 // as dropped.
-// RESTATED as a conserved control (DESIGN section 4b(4)). It was pinned at "exactly ONE
+// RESTATED as a conserved control (gunbc.design_argument::guarantee_ladder (dissolution on climb)). It was pinned at "exactly ONE
 // DroppedReference" while the statement let binder was a rostered drop; the binder atom is now built
 // from its own token (v2.compiler.body_lowering_fold body_lower_stmt_spine), the drop is retired,
 // and no shape remains that still drops (every other fixture in this module asserts zero drops), so
@@ -343,7 +343,7 @@ test fn a_repeated_spelling_is_conserved_with_no_row_holds() -> Bool {
 
 // ---- supplied trees: one authored atom removed from a REAL normalized root --------------------
 
-// A witness discriminates at one interface (DESIGN section 3): the report's input is a subject, so the
+// A witness discriminates at one interface (gunbc.design_argument::witness_one_interface): the report's input is a subject, so the
 // REDs below SUPPLY the subject. The root is the real production normalize of the fixture source with
 // exactly one authored atom's edge deleted, re-admitted through normalized_tree admit_normalized_tree
 // (the structural admission every production tree passes), and paired with the ORIGINAL parse. The
@@ -464,7 +464,7 @@ test fn two_removed_let_binders_beside_one_parameter_label_are_exactly_one_drop_
 // Lowering now carries every predicate of the clause at its own occurrence, with its arguments
 // (v2.compiler.body_lowering_fold body_lower_kept_where_clause), so the same shape -- two predicates,
 // the first with labelled arguments -- conserves every authored atom. This was the drop's pin; it is
-// kept as the regression control that the drop stays retired (DESIGN 4b(4)).
+// kept as the regression control that the drop stays retired (gunbc.design_argument::guarantee_ladder (dissolution on climb)).
 data where_refinement_predicate_source: String = "module v2.test.reference_conservation_where\n\ntype RcTight = Int where rc_pred(min: 1, max: 5), rc_other\n"
 
 fn where_refinement_predicate_subject() -> ReferenceConservationSubject {
@@ -484,7 +484,7 @@ test fn the_where_refinement_predicates_are_conserved_holds() -> Bool {
 // spine as one arm. Match arms are now read through v2.compiler.body_lowering_fold
 // body_lower_match_arms_from_list (the one comma-list reader), the MatchLaterArm drop shape is
 // retired, and this claim flips from reporting the drop to asserting its absence: it stays enrolled
-// as the regression control (DESIGN section 4b(4)). It keeps the ACCEPTED conjunct, so a module that
+// as the regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)). It keeps the ACCEPTED conjunct, so a module that
 // refused outright cannot satisfy "rc_third is not dropped" vacuously. The arm's body spelling is
 // used nowhere else in the declaration, so a returning drop reds at it.
 data match_later_arm_source: String = "module v2.test.reference_conservation_match\n\ntype RcT = RcA | RcB | RcC\n\ndata rc_first: Int = 1\n\ndata rc_second: Int = 2\n\ndata rc_third: Int = 3\n\nfn rc_match(t: RcT) -> Int {\n  match t {\n    RcA => rc_first\n    RcB => rc_second\n    RcC => rc_third\n  }\n}\n"
@@ -498,7 +498,7 @@ test fn the_third_match_arm_is_conserved_holds() -> Bool {
 // binder kept neither its occurrence nor an unconsumed copy of its spelling (its atom was rebuilt from
 // the enclosing let construct, whose occurrence is not the binder token's). The binder atom is now
 // built from the binder token itself, so the drop is retired and this claim flips from reporting it
-// to asserting its absence: it stays enrolled as the regression control (DESIGN section 4b(4)). The
+// to asserting its absence: it stays enrolled as the regression control (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The
 // spelling is used again in the body, so the use's conservation cannot satisfy it vacuously only when
 // the binder's own atom also reaches the tree: the dropped count is read for the spelling and for the
 // whole report.
@@ -693,7 +693,7 @@ fn normalization_refused_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "normalization_refused", source: normalization_refused_source)
 }
 
-// THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation). The two claims below
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, the pairing obligation). The two claims below
 // need normalization to REFUSE and read only the refusal's accounting, so a fixture that stopped
 // refusing, or refused for some other reason, would leave them red or green for the wrong cause.
 // This pins the modeled refusal the fixture exists to carry. It went silent once (#12812: #12713
@@ -813,7 +813,7 @@ test fn a_string_literal_is_conserved_by_its_value_holds() -> Bool {
 // carrying one body-lowering advisory in place of its own; the real accepted arm's inhabitance is
 // the claim above. The supplied reason must be rendered, and the residue the real report carried
 // must not -- the census renders the advisories it was given, it does not re-derive them. Supplying
-// at this interface rather than re-running a front end is DESIGN section 3's witness rule: a
+// at this interface rather than re-running a front end is gunbc.design_argument::single_authority's witness rule: a
 // re-parse here cost the claim past the floor's new-witness budget and asserted nothing more.
 test fn a_supplied_accepted_advisory_is_rendered_by_identity_holds() -> Bool {
   let report = report_with_advisories(

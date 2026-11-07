@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // PINNED DROPS, STATED AS TODAY'S MEASUREMENT, the convention of
 // v2.test.claim.namespace_xl0.reference_conservation (whose fixture helpers this module uses rather
 // than restating): each claim holds while lowering loses the named atom and reds when a repair
-// stops the loss; the repair re-states it as a conserved control (DESIGN section 4b(4)). A located
+// stops the loss; the repair re-states it as a conserved control (gunbc.design_argument::guarantee_ladder (dissolution on climb)). A located
 // refusal at or above the atom is not a drop under the census's own rule, so a repair that refuses
 // the shape at normalize also reds these, and re-states them the same way. Each subject is nullary
 // and enrolled WARM in v2.workflow.floor_pure_producer_share, so a claim pays for the check alone.
@@ -78,7 +78,7 @@ fn map_literal_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "map_literal_value", source: map_literal_value_source)
 }
 
-// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
+// FLIPPED 2026-10-01 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): enrolled as "refuses at the literal", it went red when
 // gunbc#12758 elaborated map literals from the declared Map type, so the literal lowers whole and its
 // module normalizes. Permanent control: the module is accepted and the entry's value is conserved.
 test fn a_map_literal_value_is_conserved_holds() -> Bool {
@@ -92,7 +92,7 @@ fn qualified_constructor_value_subject() -> ReferenceConservationSubject {
   conservation_subject(id_tail: "qualified_constructor_value", source: qualified_constructor_value_source)
 }
 
-// FLIPPED 2026-10-01 (DESIGN 4b(4)): enrolled as "refuses at the literal", it went red when
+// FLIPPED 2026-10-01 (gunbc.design_argument::guarantee_ladder (dissolution on climb)): enrolled as "refuses at the literal", it went red when
 // gunbc#12714 made the construct tag a declaration reference, so a module-qualified construction
 // lowers whole. Permanent control: the module normalizes and the field value is conserved.
 test fn a_qualified_constructor_literal_value_is_conserved_holds() -> Bool {

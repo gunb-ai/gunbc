@@ -1,6 +1,6 @@
 module test.claim.runner.runner_slot_cap_observe_route_witness
 
-// P4 (clever-crane-830's ruling; DESIGN sections 3d, 4d, 5, 6): OBSERVE MODE LOOKS AT THE CGROUP
+// P4 (clever-crane-830's ruling; gunbc.design_argument::selection_precedes_convergence, gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed, gunbc.design_argument::how_to_work): OBSERVE MODE LOOKS AT THE CGROUP
 // FILES. At the base commit (750c5a01427) the cap phase's ObserveOnly arm answered the two-valued
 // `CapPhaseNotOwed` straight -- no ssh leg, no `systemctl show`, no cgroup file read. A host whose
 // slots were owed or drifted was reported settled by a run that looked at nothing (section 5, a
@@ -97,7 +97,7 @@ import test.claim.typed_remote_file_write_fleet_ssh_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// ONE FACT DECIDES EVERYTHING BELOW (DESIGN 3d): the desired slot row, read from its home -- never a
+// ONE FACT DECIDES EVERYTHING BELOW (gunbc.design_argument::selection_precedes_convergence): the desired slot row, read from its home -- never a
 // second copy. memory_max is the 22 GiB the executor binds under GUNBC_BIND_MEMORY_CGROUP_BYTES; the
 // at-desired control names 26843545600 in text, so a silent re-pin disagrees with this witness.
 fn desired_memory_text() -> String { to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) }

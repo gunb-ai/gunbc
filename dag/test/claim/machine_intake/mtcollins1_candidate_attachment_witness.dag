@@ -183,7 +183,7 @@ test fn other_ocp2_physical_variants_still_refuse_wrong_generation() -> Bool {
 // real_candidates_reach_typed_verdicts now asserts an admission and this refusal would have had no caller
 // left. Deleting it would retire the wall along with the gap it was watching, and the gap is permanent: a
 // unit whose interior nobody has reported must still refuse rather than be admitted on a platform
-// capacity. DESIGN section 4b(4) -- the production handling dissolves on a climb, the evidence does not.
+// capacity. gunbc.design_argument::guarantee_ladder (dissolution on climb) -- the production handling dissolves on a climb, the evidence does not.
 test fn pcie_refusals_survive_the_candidate_join() -> Bool {
   let occupied = UnitExpansionEvidence {
     observation: mtcollins1_expansion_observation,

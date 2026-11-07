@@ -20,7 +20,7 @@ import gunbc.fleet.fleet_host_grant_coverage {
 import gunbc.fleet.fleet_converge_plan { fleet_converge_host_grant_queries, fleet_converge_lease_owner }
 import extdeps.sudo.nopasswd_decision { SudoDecision, SudoDecisionAdmits, SudoDecisionNeedsPassword, SudoDecisionDenied, SudoDecisionUnobserved, SudoVersionObserved }
 
-// SUPPLIED OBSERVATIONS (§3): each fixture is the text a host would return for the host's own
+// SUPPLIED OBSERVATIONS (gunbc.design_argument::single_authority): each fixture is the text a host would return for the host's own
 // host-wide operations, so the witnesses decide the classifier over values and never run `sudo`.
 // The rule strings come from the grant renderer, which is the only spelling of them; the
 // inhabitance control in fleet_host_grant_coverage_witness pairs this with the real observer shape.

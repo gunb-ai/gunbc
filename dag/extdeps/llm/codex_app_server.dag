@@ -91,7 +91,7 @@ service codex_app_server.Cli {
 // Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string
 // literals (review 50540). The literals they replace carried their own JSON grammar — braces,
 // quoting and separators spelled out in \{ and \" escapes — which is a second JSON representation
-// sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the
+// sitting beside the module that already owns one (gunbc.design_argument::single_authority dual representation), and it is the
 // representation that cannot escape a value: a method name or client field containing a quote would
 // have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping,
 // so the wire bytes are a consequence of the modeled value rather than of an author getting the
@@ -275,7 +275,7 @@ data codex_structured_error_code_authentication_required: NonEmptyStr = "authent
 // PlanType IS A CLOSED ENUM of exactly 13 values, cited from the same v2/GetAccountResponse.json
 // definitions block at 0.146.0. It is enumerated here rather than kept as an open string because
 // upstream closes it, and modeling a closed upstream vocabulary as an open one is the anemic leaf
-// §2 names.
+// gunbc.design_argument::minimize_redundancy names.
 //
 // THE LOAD-BEARING MEMBER IS `unknown`. It is a real enum value, so the wire can carry a plan whose
 // identity upstream itself does not assert. Treating any decoded planType as a positive entitlement

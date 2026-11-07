@@ -55,7 +55,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // address and the value size in bytes, [reg, 0x02], then READ two bytes. The bus is declared
 // REGMAP_ENDIAN_BIG, so the FIRST byte on the wire is the value's HIGH byte.
 //
-// WHAT A READ IS KNOWN TO DO (DESIGN §4d, three standings kept apart by type). Ampere's
+// WHAT A READ IS KNOWN TO DO (gunbc.design_argument::epistemic_humility, three standings kept apart by type). Ampere's
 // documentation of these registers (the Altra Family SoC BMC Interface Specification, which the ABI
 // file cites for its sections 5.11 and 6) has not been obtained. So the read-safety of every
 // register here is a CITED INFERENCE from how the upstream driver uses it, not a vendor statement,

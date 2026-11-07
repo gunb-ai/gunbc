@@ -40,7 +40,7 @@ import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //
 // gunbc.runner.runner_jit_mint plans a JIT registration over a slot; a microVM cell is one realization of
-// a slot and this is the other. The mint is not forked per binding (DESIGN §3: transport is
+// a slot and this is the other. The mint is not forked per binding (gunbc.design_argument::single_authority: transport is
 // realization) -- this module only decides whether a host-unit slot EXISTS, and the mint decides
 // everything else over the sum both bindings inhabit.
 //
@@ -125,7 +125,7 @@ fn host_unit_slot_listener_argv(root: NonEmptyStr) -> List<String> {
   [concat(root as String, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
 }
 
-// THE LISTENER LAUNCH, ONE BUILDER FOR EVERY HOST-UNIT SLOT (DESIGN section 6b): the service slot and the
+// THE LISTENER LAUNCH, ONE BUILDER FOR EVERY HOST-UNIT SLOT (gunbc.design_argument::earliest_unjustified_boundary): the service slot and the
 // qualification attempt slot each start the listener the same way and differ in exactly three facts -- the
 // transient unit's name, the account it runs as and the root it runs from -- so those are the parameters. The unit
 // carries the fleet slot shape (ephemeral_slot_properties over gunbc_runner_slot_desired) as that user, under a
@@ -214,7 +214,7 @@ fn host_unit_slot_for(host: HostControlStanding, purpose: HostUnitSlotPurpose, w
   }
 }
 
-// ARCHITECTURE FRONTIER (DESIGN section 3c): the runner binary is selected for Aarch64 unconditionally,
+// ARCHITECTURE FRONTIER (gunbc.design_argument::consumption): the runner binary is selected for Aarch64 unconditionally,
 // which holds for every host that registers through this fold today (all Altra boards). Trigger: a
 // non-AArch64 service host's compute offer. It must be sufficient for deriving the runner binary's
 // architecture from gunbc.runner.runner_spec_from_offer (the same offer the registration labels read),
@@ -382,7 +382,7 @@ fn service_slot_selected_workflow() -> NonEmptyStr {
 // from the host's fleet compute offer (gunbc.runner.runner_slot_allocation gunbc_runner_committed_width);
 // an unresolved width is a refusal, never read as zero. No host is named: a host's population differs
 // from another's only by its offer.
-// CONSUMER FRONTIER (DESIGN section 3c): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
+// CONSUMER FRONTIER (gunbc.design_argument::consumption): consumed today only by test.claim.runner.runner_jit_listed_registration_witness.
 // Its production consumer is the fleet-converge mode that registers the current boot's slots, which waits
 // on operator answer Q3 of the mtcollins1 stateless-registration design; lost_boot_sweep (gunbc.runner.runner_jit_deregistration)
 // is the same mode's other half.

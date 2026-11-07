@@ -17,7 +17,7 @@ import std.types { Bool, List, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE PAIRING CLAIM FOR v2.test.claim.compiler.width_literal_admission (DESIGN section 3: a supplied boundary owes ONE
+// THE PAIRING CLAIM FOR v2.test.claim.compiler.width_literal_admission (gunbc.design_argument::witness_one_interface: a supplied boundary owes ONE
 // inhabitance claim that the real producer reaches it). That file restates std.integer's Int, UInt, UInt8 and Int8 as
 // peers; THIS file assembles the REAL std.integer import closure from dag/ and infers a call that passes 300 to a
 // UInt8 formal, so the real producer's Compose<UInt, MachineWidth<8>> is what reaches infer. Deleting the

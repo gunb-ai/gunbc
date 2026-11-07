@@ -669,16 +669,16 @@ fn malformed(origin: String, fill: List<String>, retained: List<String>, token_t
 // This control used to carry five arms. Four of them handed the compiler a shape that no longer has a
 // constructor: a SECOND durable origin, a chain with NO hops, a chain with no token-time hop, and TWO
 // token-time hops. `MaterializationRoute` now has one `origin` field and one `token_time` field, so
-// none of those four states is writable in any .dag a fixture could author -- and DESIGN 4b is explicit
+// none of those four states is writable in any .dag a fixture could author -- and gunbc.design_argument::guarantee_ladder is explicit
 // that a check whose RED cannot be authored is not a weak wall but a decoration, permanently green by
 // construction and worse than absent because it would be cited as coverage. They retire WITH the
-// production checks they exercised; that pairing is the 4b(4) rule and the reason this comment exists
+// production checks they exercised; that pairing is the gunbc.design_argument::guarantee_ladder (dissolution on climb) rule and the reason this comment exists
 // rather than the arms being quietly deleted.
 //
 // THE ARM THAT SURVIVES IS THE ONE WHOSE RED IS STILL AUTHORABLE. A peer host standing at the origin is
 // a perfectly constructible route -- `origin` accepts any provider -- so the question "is the origin the
 // DECLARED origin" remains a value check with a reachable red, and it stays enrolled.
-// SECTION 4b(4) ON THE ADMISSION RED, ASKED THE WAY THE SHAPE CHECKS WERE ASKED: is a route hop with an
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) ON THE ADMISSION RED, ASKED THE WAY THE SHAPE CHECKS WERE ASKED: is a route hop with an
 // unadmitted provider STILL AUTHORABLE now that the route names ids and resolves through the roster?
 //
 // YES, AND THAT IS WHY THESE CONTROLS STAY. A fixture hands the builder the string "peer-serving-host";
@@ -831,11 +831,11 @@ test fn no_arrangement_inside_the_memory_pool_yields_relief_and_storage_is_not_f
 // mapped both "the setting is memory-backed" and "no setting was found" to false, and the consumer
 // turned false into MechanismEstablishedAbsent -- so a search that found NOTHING excluded routes B, C
 // and D exactly as hard as a reading that found the setting and read it. Finding the setting is
-// falsifiable; finding nothing is a statement about the SEARCH. Review 66335, DESIGN sections 5 and 3d.
+// falsifiable; finding nothing is a statement about the SEARCH. Review 66335, gunbc.design_argument::fail_closed, gunbc.design_argument::selection_precedes_convergence.
 //
 // NO WITNESS COVERED THE SettingsAbsent PATH, which is why the mapping now takes the placement as a
 // parameter: the pinned image has one arm, so a control over the pinned value could only ever exercise
-// that arm and would be a decoration by DESIGN 4b's own test. All three reds are authorable here.
+// that arm and would be a decoration by gunbc.design_argument::guarantee_ladder's own test. All three reds are authorable here.
 test fn an_absent_placement_setting_is_unobserved_rather_than_an_established_absence() -> Bool {
   match mechanism_standing_from_placement(m: EngramPlacementSettingsAbsent {
     searched: ["/opt/vllm/engine/config.py" as NonEmptyStr],
@@ -2176,11 +2176,11 @@ fn live_published_realization() -> FaithfulComponentRealization {
 // ── THE SPEC MODULE'S OWN GROUND IS A VALUE, AND THE TWO HALVES ARE SEPARATE ──────────────────
 //
 // `extdeps.safetensors.format` transcribes a spec in its entirety, and a first cut named the source
-// only in an annotation -- which DESIGN §4c says is never evidence a machine claim holds, because no
+// only in an annotation -- which gunbc.design_argument::source_annotations says is never evidence a machine claim holds, because no
 // Accepted program can read one. The source is now an `ExternalAuthority` value and the VERSION is a
 // separate standing that says it is uncited, because the format is documented in a repository rather
 // than as a numbered standard and this module was written against no pinned revision. Inventing a
-// version label would have been the over-assertion arm of §4d.
+// version label would have been the over-assertion arm of gunbc.design_argument::epistemic_humility.
 //
 // THIS EXERCISES THE FOLD RATHER THAN ASSERTING THE DECLARATIONS EXIST. Both arms of
 // `cited_figure_read_obligation` run: the source citation yields nothing to read, the version yields
@@ -2393,7 +2393,7 @@ fn repacked_encoding() -> PhysicalEncoding {
 
 // ── FIXTURE IDENTITIES CITE A DECLARATION THAT EXISTS ──────────────────────────────────────────
 //
-// A `decl_ref` naming something no module declares is a §3 citation defect, and the floor's
+// A `decl_ref` naming something no module declares is a gunbc.design_argument::single_authority citation defect, and the floor's
 // declarations phase reports it as CITED-DECLARATION-ABSENT. These helpers each self-cite, so every
 // fixture identity resolves to real consumed code rather than to a name that only ever appeared inside
 // the reference. They are deliberately NOT one shared identity: a component this subject does not

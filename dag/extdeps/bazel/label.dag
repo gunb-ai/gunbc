@@ -23,7 +23,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // The cited authority admits four families this module does NOT: the canonical repository form
 // `@@repo//pkg:t`, the apparent form `@repo//pkg:t`, the package-relative forms `:t` and `t`, and
 // the target PATTERNS (`...`, `:all`, `:*`) that denote a set rather than a target. Every one of
-// them refuses here with its own named cause. That is the §5 shape rather than a limitation
+// them refuses here with its own named cause. That is the gunbc.design_argument::fail_closed shape rather than a limitation
 // apologised for in prose: a form outside the subset produces a typed, located refusal, never a
 // best-effort reading, so widening the subset later is adding a constructor to `Label` and an arm
 // to `parse_label` — it is not repairing values that silently parsed wrong in the meantime.
@@ -32,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // `Label` here denotes a target in the MAIN repository, and there is no field in which a
 // different repository could be written. An `@repo//` string cannot become a `Label` that later
 // readers must remember to check the repository of, because the state has no representation
-// (DESIGN §4b, structural impossibility) rather than a validator standing over a writable one.
+// (gunbc.design_argument::guarantee_ladder, structural impossibility) rather than a validator standing over a writable one.
 
 // THE PACKAGE, WITH THE ROOT PACKAGE AS ITS OWN ARM.
 //

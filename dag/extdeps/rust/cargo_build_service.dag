@@ -4,7 +4,7 @@
 // compiler-route denominator is ruled to admit (gunbc.design_ruling
 // native_compiler_route_admits_the_declared_cargo_build). IN THIS CUT THE EFFECT IS NOT IN THAT DECLARED
 // LIST: it joins it in the cut that carries the binding described below, because admitting a spawn effect
-// whose ruled guard does not exist yet is what DESIGN 5 refuses.
+// whose ruled guard does not exist yet is what gunbc.design_argument::fail_closed refuses.
 // It is its own module for the reason extdeps.docker.cli_service states at its head (2026-10-25): a
 // program that PERFORMS must not be fused to the module that assembles the argv and JSON vocabulary for
 // other hosts, because emission is per module -- one .rs per module, measured at the 2026-11-01 native
@@ -166,7 +166,7 @@ service CargoBuild {
     // points the reader at a ShellOutcome output field the native realization cannot lower), and no module
     // that declares one has ever been realized natively. HOW MANY declare it, and which, is that row's
     // fact to state and not this comment's to restate: an earlier cut of this comment kept its own list,
-    // went stale against the row it cited, and drew a review finding for it (DESIGN 3: one place states a
+    // went stale against the row it cited, and drew a review finding for it (gunbc.design_argument::single_authority: one place states a
     // fact). The gap is filed as gunbc.recurring_failure_mode
     // transport_output_field_without_a_native_realization_channel; it is not papered over by declaring the
     // field and letting the emission refuse.

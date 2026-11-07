@@ -128,7 +128,7 @@ fn param_collides_with_a_declaration(
 // COUNTED AS Int, NOT COLLECTED AS A LIST, deliberately. The first form of this measurement
 // deduplicated lexemes with a linear `contains` inside a per-node fold, which is quadratic in the
 // accumulated list over a 60k-node corpus and did not terminate in twenty minutes. A cost shape
-// that bad is fixed rather than tolerated even in an instrument (DESIGN section 6, bare minimum
+// that bad is fixed rather than tolerated even in an instrument (gunbc.design_argument::how_to_work, bare minimum
 // cost), and the distinct-callee refinement buys nothing a raw count does not already decide.
 // ONE application_read PER NODE, three counts. `refused_applications` is the population
 // the old node_query reader folded into "not a call": a Transform whose shape the read refuses.

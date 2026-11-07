@@ -23,7 +23,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // w_wrong_element_type_in_a_list_at_a_direct_call_argument_is_refused). It is list-typed-value
 // compatibility: both sides are List applications, the disagreement is the type argument.
 //
-// PATH SCOPE (DESIGN 4b, minimum across in-scope paths): this file asserts source -> seed
+// PATH SCOPE (gunbc.design_argument::guarantee_ladder, minimum across in-scope paths): this file asserts source -> seed
 // acceptance through compile_dag_diagnostic_census, the same infer the `gunbc compile` typecheck
 // uses. An entry compile of this exact pair on main bd509bb84e7 refused
 // DeclaredTypeNotInhabited at PositionGenericTypeArgument

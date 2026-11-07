@@ -56,7 +56,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_attempt_identit
 // one monotonic clock. An attempt on the belt is not one VM: it is N harness launches (the worker, a
 // reviewer per criterion and head, an auditor per head, a supervisor per escalation turn), each
 // holding its own serving seat on the fabric ledger and each reporting model tokens, which
-// RunnerUsageReceipt has no field for. So this record DIVERGES (DESIGN §3b) and keeps only what
+// RunnerUsageReceipt has no field for. So this record DIVERGES (gunbc.design_argument::conformance) and keeps only what
 // transfers: an interval is a difference of two observed instants that refuses when reversed, and a
 // missing meter is a typed refusal, never a zero. No price, credit or rounding enters here.
 //

@@ -141,7 +141,7 @@ import test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // CUT O1c-1, THE ARRIVAL PREFIX OVER THE CONVERGENCE FOLD. The real-path claim is the ONE execution of
-// the real path (DESIGN §3 pairing obligation): mtjade1's committed Manager, FRU and SMBIOS captures go
+// the real path (gunbc.design_argument::witness_one_interface pairing obligation): mtjade1's committed Manager, FRU and SMBIOS captures go
 // through both protocol steps, the census-joined and rank-checked plan, and the fold, and the claim
 // asserts the ROUTE -- which instance converged with which receipt fields -- not only the verdict.
 // The controls after it reuse the real Manager read; where one supplies a value
@@ -1830,7 +1830,7 @@ test fn w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply() -> Bool {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────────────────────
-// FORCED-CHANGE ARRIVAL: the §3b divergence row ForcedFirstRotationPrecedesPriorLife, and the typed
+// FORCED-CHANGE ARRIVAL: the gunbc.design_argument::conformance divergence row ForcedFirstRotationPrecedesPriorLife, and the typed
 // third outcome PriorLifeIndeterminateAcrossForcedWrite. Design approved by merry-fox-82 on 2026-10-29;
 // arrival_phases_all is UNTOUCHED -- the row places one EFFECT before a standing, it does not reorder the
 // order of standings. NO live effect: the whole sequence runs over the dry model.
@@ -2266,7 +2266,7 @@ test fn w_forced_change_unit_sequence_converges_under_the_row() -> Bool uses fs:
 // (i) RED. A NON-FORCING build cannot take the row. mtjade1's build row answers no forced-change verdict, so
 // admit_published_credential_change_forced mints no forced state at all -- condition (a) is carried by the
 // sealed PublishedCredentialChangeForced, and re-testing the policy row here would be a validation where
-// construction holds (DESIGN §5). The control's second half then shows the row cannot be borrowed either: hand
+// construction holds (gunbc.design_argument::fail_closed). The control's second half then shows the row cannot be borrowed either: hand
 // srv13's own admitted write to a fold running under mtjade1's subject, authenticated read and identity inputs,
 // and the row admission refuses. Paired positive: the srv13 control above, identical but for the unit.
 // Rung: the real credential-policy verdict, then the real fold driver over the real producers.

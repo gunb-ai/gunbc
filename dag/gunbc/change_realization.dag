@@ -29,7 +29,7 @@ type ChangeSubject
 // must be retired, which is a staged operation with observable intermediate states. Continuity is
 // DERIVED by comparing the address projection of from and to (address_continuity), never asserted
 // by a caller-supplied Bool: an address that is claimed preserved while actually moving is exactly
-// the silent wrong answer DESIGN §5 forbids.
+// the silent wrong answer gunbc.design_argument::fail_closed forbids.
 
 type AddressContinuity = AddressPreserved | AddressChanged
 
@@ -41,7 +41,7 @@ fn address_continuity<A>(from: A, to: A, address_eq: fn(A, A) -> Bool) -> Addres
 // build-cache server died with its cgroup, never unlinked its socket, and ran uncached for weeks
 // because nobody modeled the intermediate state. gunbc.build_cache.build_cache_instance already says IN PROSE
 // that a managed unit must clear a stale endpoint on start — and a sentence in prose is the one
-// place no machine can read it (DESIGN §4c: any machine-consumed fact belongs in a typed carrier).
+// place no machine can read it (gunbc.design_argument::source_annotations: any machine-consumed fact belongs in a typed carrier).
 // StagedIntermediates dissolved: a nonempty sequence of StagedIntermediate is
 // std.algebra FreeSemigroup. Emptiness is unrepresentable by construction.
 
@@ -67,7 +67,7 @@ type ChangeRealization
 
 // A staged replacement whose intermediates were never declared REFUSES; it does not fall back to an
 // in-place update and it does not proceed with an empty plan. Both fallbacks are the absorbing
-// fallback DESIGN §5 forbids, and the second is the srv4 outcome exactly. The refusal is typed and
+// fallback gunbc.design_argument::fail_closed forbids, and the second is the srv4 outcome exactly. The refusal is typed and
 // LOCATED — it carries subject_label, the identity of the resource whose intermediates are missing,
 // so a refusal points at a thing rather than merely reporting that something somewhere is
 // undeclared so the deficit is countable and ranks for fixing, rather than having its frequency

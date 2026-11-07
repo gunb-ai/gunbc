@@ -183,7 +183,7 @@ fn flex_entry_member(entry: FlexShadowFieldEntry) -> Bool {
 
 // The cheapest member by bid floor (min_bid). A tie keeps the earlier offer in the answer's order.
 // ---- NO SELECTION HERE. Choosing which offer to rent is a matching decision, owned by product.fabric.selection
-// select_supply under std.decision (DESIGN 3b, 3d); this entry never ranks members itself. That route is the
+// select_supply under std.decision (gunbc.design_argument::conformance, gunbc.design_argument::selection_precedes_convergence); this entry never ranks members itself. That route is the
 // declared frontier product.fabric.flex_vast_loop flex_select_supply_consumer_frontier: no bid attempt is
 // built and no member's quote is established, so a selection would answer needs-evidence. Until it lands,
 // the pass is run with NO intent and the receipt reports, for EVERY member, the create it would ask for and

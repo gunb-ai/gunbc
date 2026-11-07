@@ -75,7 +75,7 @@ fn rented_device_fits(device: RentedGpuDevice, model: RentedServedModel) -> Bool
   byte_size_count(b: device.memory) >= byte_size_count(b: model.resident_bytes)
 }
 
-// DECLARED FRONTIER (DESIGN.md 3c): rented_replica_collection's consumer is the warm-trace producer
+// DECLARED FRONTIER (gunbc.design_argument::consumption): rented_replica_collection's consumer is the warm-trace producer
 // and the rented cohort's enrollment (the next PR of docs/plans/serving-hardware-neutral-cutover.md),
 // which builds the pool keys from the collected replicas and drives harness_bind_seat. Trigger: that
 // PR landing; until then only the witnesses call it.

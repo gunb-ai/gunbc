@@ -25,19 +25,19 @@ import product.fan_policy_standing {
 //
 // WHAT IT IS NOT: a dB(A) figure. No sound level was measured at any position and the operator
 // stated none, so this module declares no acoustic ceiling row. That absence is deliberate and it is
-// the §4d discipline applied to the easiest possible place to violate it - a plausible number here
+// the gunbc.design_argument::epistemic_humility discipline applied to the easiest possible place to violate it - a plausible number here
 // (45 dB(A) at one metre, say) would read as the operator's constraint forever, and the person it
 // misrepresents is the one who has to live with the result.
 //
 // THE SITE IS THE ONE ALREADY DECLARED. gunbc.fleet.fleet_physical_inventory operator_site is where these
 // machines are; minting a second identity for the same place - "operator-residence" beside
-// "operator-lab" - would be the §3 fork, arrived at from the direction where both spellings look
+// "operator-lab" - would be the gunbc.design_argument::single_authority fork, arrived at from the direction where both spellings look
 // reasonable.
 //
 // AND AN ALIAS ROW IS THAT FORK, which this module argued against and then committed anyway. It
 // carried `data operator_residence_site: SiteIdentity = operator_site` directly beneath the
-// paragraph above - a second name for one concept, with no consumer at all, so it was §3 nicknaming
-// and §3c dangling at once. Deleted rather than wired up: a caller that needs this site imports
+// paragraph above - a second name for one concept, with no consumer at all, so it was gunbc.design_argument::single_authority nicknaming
+// and gunbc.design_argument::consumption dangling at once. Deleted rather than wired up: a caller that needs this site imports
 // operator_site, which is the name that already exists.
 // THE DUTY THE OPERATOR WILL TOLERATE SUSTAINED, AS A CEILING AND NOT A TARGET.
 //
@@ -52,7 +52,7 @@ import product.fan_policy_standing {
 // revision claimed the ceiling did not apply to a pre-POST failsafe "which is why the consuming
 // function takes a standing rather than a bare reading" - while that function projected the drive
 // out of the standing and compared it, so a pre-POST failsafe at 100% came back plain over-ceiling.
-// The prose promised a discrimination the fold did not make (DESIGN §4c: an annotation is never
+// The prose promised a discrimination the fold did not make (gunbc.design_argument::source_annotations: an annotation is never
 // evidence that a machine claim holds).
 //
 // The fold now branches, and what it branches to is NOT an exemption: a controller with no host
@@ -75,7 +75,7 @@ fn residence_duty_verdict(standing: FanPolicyStanding) -> FanDutyCeilingVerdict 
   fan_policy_against_duty_ceiling(standing: standing, ceiling: operator_residence_duty_ceiling.duty)
 }
 
-// THE ACOUSTIC ROUTE IS A DECLARED FRONTIER, NOT A DANGLING DECLARATION (DESIGN §3c).
+// THE ACOUSTIC ROUTE IS A DECLARED FRONTIER, NOT A DANGLING DECLARATION (gunbc.design_argument::consumption).
 //
 // A SIGNATURE-IDENTICAL WRAPPER STOOD HERE AND WAS THE SAME NICKNAME THIS MODULE DELETED FOUR
 // PARAGRAPHS ABOVE, in function form rather than row form: residence_duty_ceiling_from_datasheet
