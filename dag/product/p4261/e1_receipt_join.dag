@@ -7,7 +7,7 @@ import std.optional { Absent, Present }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
 import std.list { list_member }
 import product.electrical.connectivity { ComponentInstanceIdentity }
-import product.electrical.photograph { BytesNotInStore, InStore, PhotographCitation, PixelRegion, pixel_region_eq }
+import product.electrical.photograph { BytesNotInStore, InStore, PhotographCitation, PixelRegion, pixel_region_eq, same_boxed_frame }
 import product.electrical.identification {
   ComponentIdentification,
   FootprintUnpopulated,
@@ -124,23 +124,7 @@ fn same_box(a: PhotographCitation?, b: PhotographCitation?) -> Bool {
     Present { value: ca } =>
       match b {
         Absent => false
-        Present { value: cb } =>
-          match ca {
-            BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
-            InStore { content: da, region: ra } =>
-              match cb {
-                BytesNotInStore { taken_on: _, locator: _, obligation: _ } => false
-                InStore { content: db, region: rb } =>
-                  match ra {
-                    Absent => false
-                    Present { value: xa } =>
-                      match rb {
-                        Absent => false
-                        Present { value: xb } => digest_eq(a: da, b: db) && pixel_region_eq(a: xa, b: xb)
-                      }
-                  }
-              }
-          }
+        Present { value: cb } => same_boxed_frame(a: ca, b: cb)
       }
   }
 }
@@ -151,7 +135,7 @@ fn line_sep(started: Bool, slash: Bool) -> String {
 
 // Fold the spans: groups of consecutive glyph spans sharing one boxed sighting (a span with no boxed
 // sighting is its own group). `done` holds closed groups, `cur` the open one.
-fn group_fold(spans: List<MarkingSpan>, done: List<GlyphGroup>, cur: GlyphGroup?, slash: Bool) -> List<GlyphGroup> {
+fn group_fold(spans: List<MarkingSpan>, done: List<GlyphGroup>, cur: GlyphGroup?, slash: Bool, whole: Bool) -> List<GlyphGroup> {
   match spans {
     Empty => match cur {
       Absent => done
@@ -159,16 +143,16 @@ fn group_fold(spans: List<MarkingSpan>, done: List<GlyphGroup>, cur: GlyphGroup?
     }
     Cons { head: h, tail: t } =>
       match h {
-        Annotation { annotation: a } => group_fold(spans: t, done: done, cur: cur, slash: slash || has_slash(s: annotation_pb(a: a)))
+        Annotation { annotation: a } => group_fold(spans: t, done: done, cur: cur, slash: slash || has_slash(s: annotation_pb(a: a)), whole: whole)
         Glyphs { glyphs: g } => {
           let slash2 = slash || has_slash(s: g.preceded_by)
           match cur {
-            Absent => group_fold(spans: t, done: done, cur: Present { value: GlyphGroup { sighting: g.sighting, text: g.span as String } }, slash: false)
+            Absent => group_fold(spans: t, done: done, cur: Present { value: GlyphGroup { sighting: g.sighting, text: g.span as String } }, slash: false, whole: whole)
             Present { value: c } =>
-              if same_box(a: c.sighting, b: g.sighting) {
-                group_fold(spans: t, done: done, cur: Present { value: GlyphGroup { sighting: c.sighting, text: string_join(fields: [c.text as String, line_sep(started: true, slash: slash2), g.span as String], separator: "") as String } }, slash: false)
+              if whole || same_box(a: c.sighting, b: g.sighting) {
+                group_fold(spans: t, done: done, cur: Present { value: GlyphGroup { sighting: c.sighting, text: string_join(fields: [c.text as String, line_sep(started: true, slash: slash2), g.span as String], separator: "") as String } }, slash: false, whole: whole)
               } else {
-                group_fold(spans: t, done: done + [c], cur: Present { value: GlyphGroup { sighting: g.sighting, text: g.span as String } }, slash: false)
+                group_fold(spans: t, done: done + [c], cur: Present { value: GlyphGroup { sighting: g.sighting, text: g.span as String } }, slash: false, whole: whole)
               }
           }
         }
@@ -177,7 +161,7 @@ fn group_fold(spans: List<MarkingSpan>, done: List<GlyphGroup>, cur: GlyphGroup?
 }
 
 fn glyph_groups(c: MarkingContent) -> List<GlyphGroup> {
-  group_fold(spans: content_spans(c: c), done: [], cur: Absent, slash: false)
+  group_fold(spans: content_spans(c: c), done: [], cur: Absent, slash: false, whole: false)
 }
 
 // The glyph text of a whole content (every glyph span in one group), or Absent when it records none.
@@ -192,24 +176,13 @@ fn receipt_glyph_text(c: MarkingContent) -> NonEmptyStr? {
   }
 }
 
-fn one_group_fold(spans: List<MarkingSpan>, text: String?, slash: Bool) -> String? {
-  match spans {
-    Empty => text
-    Cons { head: h, tail: t } =>
-      match h {
-        Annotation { annotation: a } => one_group_fold(spans: t, text: text, slash: slash || has_slash(s: annotation_pb(a: a)))
-        Glyphs { glyphs: g } =>
-          match text {
-            Absent => one_group_fold(spans: t, text: Present { value: g.span as String }, slash: false)
-            Present { value: so_far } =>
-              one_group_fold(spans: t, text: Present { value: string_join(fields: [so_far as String, line_sep(started: true, slash: slash || has_slash(s: g.preceded_by)), g.span as String], separator: "") as String }, slash: false)
-          }
-      }
-  }
-}
-
+// One group for the whole content: the same fold with the box test forced true, so the line-break rule
+// is decided in group_fold alone.
 fn glyph_groups_one(c: MarkingContent) -> String? {
-  one_group_fold(spans: content_spans(c: c), text: Absent, slash: false)
+  match group_fold(spans: content_spans(c: c), done: [], cur: Absent, slash: false, whole: true) {
+    Empty => Absent
+    Cons { head: g, tail: _ } => Present { value: g.text }
+  }
 }
 
 fn cannot_align(model: NonEmptyStr, r: ReceiptMarking, why: NonEmptyStr) -> SpanJoin {
