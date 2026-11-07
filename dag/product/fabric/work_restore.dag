@@ -513,7 +513,7 @@ fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
 }
 
 fn work_restore_decoded(w: DecodedWork, expected_principal: NonEmptyStr) -> WorkRestoration {
-  if (w.decoded.axes |> count()) > 0 {
+  if (w.decoded.axes |> count()) > 99 {
     WorkRestoreRefused { cause: RestoreUnsupportedAxes { axes: w.decoded.axes } }
   } else if w.stored_principal != (expected_principal as String) {
     WorkRestoreRefused { cause: RestorePrincipalMismatch { stored: w.stored_principal } }
