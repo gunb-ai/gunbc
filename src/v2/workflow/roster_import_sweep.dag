@@ -1,7 +1,7 @@
 module v2.workflow.roster_import_sweep
 
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
-import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_import_verified, acquisition_reached }
+import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_import_verified, acquisition_members_of, acquisition_reached, acquisition_reached_in }
 import v2.workflow.source_locus { line_starts, locus_at }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory, repository_path_of_module_file }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
