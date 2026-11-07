@@ -3,7 +3,8 @@ module v2.test.claim.compiler.equality_judged
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
 import v2.test.claim.compiler.literal_elaboration { lel_inferred }
 import v2.compiler.infer { infer }
-import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, DeclaredTypePosition, PositionDeclaredReturn, diagnostics_inhabitance_position }
+import std.optional { Optional, Present, optional_absent }
 import v2.std.node { Symbol }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String }
@@ -44,6 +45,20 @@ fn eqj_reason(body: String) -> Symbol {
   }
 }
 
+// THE POSITION BESIDE THE REASON: same assembly, same infer call, and the one accessor that reads a judgment
+// position out of a diagnostic. Reason and position are two facts about one refusal, so a claim asserts them
+// twice and each half can fail alone.
+fn eqj_position(body: String) -> Optional<DeclaredTypePosition> {
+  match bla_assemble_with_peers(p_src: eqj_src(body: body), peers: []) {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+      }
+  }
+}
+
 // The advisories an accepted program carries; a refusal or a fixture that never assembled is
 // ^eqj_not_accepted, so no claim reads it as accepted.
 fn eqj_accepted_carries(body: String, reason: Symbol) -> Bool {
@@ -74,7 +89,8 @@ test fn eqj_an_int_equality_and_inequality_are_derived() -> Bool {
 // THE RESULT IS Bool: the same comparison returned where Int is declared refuses at that return.
 // An underived comparison would be accepted there undecided.
 test fn eqj_an_equality_returned_as_int_refuses_at_the_declared_return() -> Bool {
-  eqj_reason(body: "fn k(a: Int, b: Int) -> Int {\n  a == b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+  eqj_reason(body: "fn k(a: Int, b: Int) -> Int {\n  a == b\n}\n") == ^inhabitance_structural_roots_differ
+  eqj_position(body: "fn k(a: Int, b: Int) -> Int {\n  a == b\n}\n") == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
 }
 
 // THE OPERANDS ARE JUDGED: two bound operands of different types refuse at the comparison.
@@ -125,7 +141,8 @@ test fn eqj_a_literal_that_elaborates_at_the_other_operand_is_not_a_mismatch() -
 // codomain is the carrier, so `a + b` over Int still derives Int (and is refused where Bool is declared).
 test fn eqj_a_closed_operation_still_derives_its_carrier() -> Bool {
   eqj_derived(body: "fn k(a: Int, b: Int) -> Int {\n  a + b\n}\n")
-    && eqj_reason(body: "fn k(a: Int, b: Int) -> Bool {\n  a + b\n}\n") == ^arrow_body_does_not_inhabit_declared_return
+    && eqj_reason(body: "fn k(a: Int, b: Int) -> Bool {\n  a + b\n}\n") == ^inhabitance_structural_roots_differ
+    && eqj_position(body: "fn k(a: Int, b: Int) -> Bool {\n  a + b\n}\n") == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
 }
 
 // An operation field with no row is still refused: Bool has no `+`.

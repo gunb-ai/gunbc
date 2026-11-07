@@ -6,9 +6,9 @@ import v2.std.integer { integer_int_type_node }
 import v2.extdeps.languages.dag { dag_algebra_inhabitance_decls }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import std.types { List }
-import std.optional { Absent, Present }
+import std.optional { Absent, Present, Optional, optional_absent }
 import v2.test.claim.type_param_binder_frame { tpb_assemble }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, DeclaredTypePosition, PositionDeclaredReturn, diagnostics_inhabitance_position }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool, bool_node }
 import v2.std.node { node_same_occurrence, Arrow, Conj, Edge, Node, Positional, Symbol, TypeNode, NotADeclaration }
@@ -35,14 +35,39 @@ fn aod_reason(src: String) -> Symbol {
   }
 }
 
+// THE POSITION BESIDE THE REASON: same assembly, same infer call, the one accessor that reads a judgment position
+// out of a diagnostic. Two facts about one refusal, asserted twice, each able to fail alone.
+fn aod_position(src: String) -> Optional<DeclaredTypePosition> {
+  match tpb_assemble(src: src) {
+    Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+      }
+  }
+}
+
 // EACH FIXTURE PROGRAM IS ASSEMBLED AND INFERRED ONCE, by a NULLARY producer enrolled in
 // v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the claims read the decided reason.
 fn aod_bool_join_declared_int_reason() -> Symbol {
   aod_reason(src: "module p\n\nfn f(a: Bool, b: Bool) -> Int {\n  a || b\n}\n")
 }
 
+// THE WRAPPER MIRRORS ITS REASON WRAPPER ONE FOR ONE: same specimen text, so the reason a claim reads and
+// the position it reads come from one program, not from a second fixture.
+fn aod_bool_join_declared_int_position() -> Optional<DeclaredTypePosition> {
+  aod_position(src: "module p\n\nfn f(a: Bool, b: Bool) -> Int {\n  a || b\n}\n")
+}
+
 fn aod_int_add_declared_bool_reason() -> Symbol {
   aod_reason(src: "module p\n\nfn f(a: Int, b: Int) -> Bool {\n  a + b\n}\n")
+}
+
+// THE WRAPPER MIRRORS ITS REASON WRAPPER ONE FOR ONE: same specimen text, so the reason a claim reads and
+// the position it reads come from one program, not from a second fixture.
+fn aod_int_add_declared_bool_position() -> Optional<DeclaredTypePosition> {
+  aod_position(src: "module p\n\nfn f(a: Int, b: Int) -> Bool {\n  a + b\n}\n")
 }
 
 fn aod_bool_add_reason() -> Symbol {
@@ -64,12 +89,14 @@ fn aod_int_add_ok_reason() -> Symbol {
 // (1) `||` OVER BOOL DERIVES BOOL: declared Int, so the derived Bool body refuses. RED ON THE BASE: no arm
 // derived `||`, the body was underived, and the program was accepted with an undecidable advisory.
 test fn aod_bool_join_derives_bool() -> Bool {
-  aod_bool_join_declared_int_reason() == ^arrow_body_does_not_inhabit_declared_return
+  aod_bool_join_declared_int_reason() == ^inhabitance_structural_roots_differ
+    && aod_bool_join_declared_int_position() == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
 }
 
 // (2) `+` OVER INT STILL DERIVES INT, now through Int's ordered-ring row: declared Bool, so it refuses.
 test fn aod_int_add_still_derives_int() -> Bool {
-  aod_int_add_declared_bool_reason() == ^arrow_body_does_not_inhabit_declared_return
+  aod_int_add_declared_bool_reason() == ^inhabitance_structural_roots_differ
+    && aod_int_add_declared_bool_position() == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
 }
 
 // (3) NO ROW, NO DERIVATION: Bool carries no ring add, and Int no lattice join -- each refuses at the operator.
