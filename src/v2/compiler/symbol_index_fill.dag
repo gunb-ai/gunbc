@@ -214,7 +214,12 @@ fn symbol_index_fill_realization_node(index: SymbolIndex, path: QualifiedName, n
       match entry.label {
         Authored { name: op } =>
           if op == realization_config_label() { acc }
-          else { symbol_index_mark_operation_realization(index: acc, qualified_path: qualified_name_snoc(qn: path, segment: op), realization: realization_entry_standing(entry: entry.target)) }
+          else {
+            match realization_entry_standing(entry: entry.target) {
+              Present { value: standing } => symbol_index_mark_operation_realization(index: acc, qualified_path: qualified_name_snoc(qn: path, segment: op), realization: standing)
+              Absent => acc
+            }
+          }
         Positional => acc
         StructuralLabel { label: _ } => acc
       }
@@ -240,41 +245,47 @@ fn realization_node_is_service_leaf(node: Node) -> Bool {
   })
 }
 
+// Routed through the one lookup this pass already uses for an authored label: ambiguous counts as present
+// here (the entry is a leaf member), and realization_entry_standing then refuses to record it.
 fn realization_entry_has_label(entry: Node, label: Symbol) -> Bool {
-  fold(entry.children, init: false, f: fn(acc, e) {
-    acc || match e.label {
-      Authored { name: n } => n == label
-      Positional => false
-      StructuralLabel { label: _ } => false
-    }
-  })
-}
-
-fn realization_entry_standing(entry: Node) -> OperationRealization {
-  match named_edge_target_lookup(children: entry.children, name: realization_unrealizable_label()) {
-    Found { target: at } =>
-      OperationUnrealizable { reason: realization_unrealizable_reason(entry: entry), at: at }
-    Ambiguous => OperationRealizable
-    NotFound => OperationRealizable
+  match named_edge_target_lookup(children: entry.children, name: label) {
+    Found { target: _ } => true
+    Ambiguous => true
+    NotFound => false
   }
 }
 
-fn realization_unrealizable_reason(entry: Node) -> Symbol {
+// A malformed marker (two unrealizable edges, or a missing, ambiguous or non-atom reason) records NOTHING:
+// the operation then has no entry, and the infer reader refuses a callee under a marked service with no
+// entry as realization-unknown. Never realizable, never a made-up reason.
+fn realization_entry_standing(entry: Node) -> Optional<OperationRealization> {
+  match named_edge_target_lookup(children: entry.children, name: realization_unrealizable_label()) {
+    Found { target: at } =>
+      match realization_unrealizable_reason(entry: entry) {
+        Present { value: reason } => Present { value: OperationUnrealizable { reason: reason, at: at } }
+        Absent => Absent
+      }
+    Ambiguous => Absent
+    NotFound => Present { value: OperationRealizable }
+  }
+}
+
+fn realization_unrealizable_reason(entry: Node) -> Optional<Symbol> {
   match named_edge_target_lookup(children: entry.children, name: realization_unrealizable_reason_label()) {
     Found { target: r } =>
       match r.kind {
         TypeNode { connective: c } =>
           match c {
-            Atom { identity: id } => id
-            Conj => realization_unrealizable_label()
-            Disj => realization_unrealizable_label()
-            Arrow => realization_unrealizable_label()
-            Instantiation => realization_unrealizable_label()
+            Atom { identity: id } => Present { value: id }
+            Conj => Absent
+            Disj => Absent
+            Arrow => Absent
+            Instantiation => Absent
           }
-        ComputationNode { behavior: _ } => realization_unrealizable_label()
+        ComputationNode { behavior: _ } => Absent
       }
-    Ambiguous => realization_unrealizable_label()
-    NotFound => realization_unrealizable_label()
+    Ambiguous => Absent
+    NotFound => Absent
   }
 }
 
