@@ -1,0 +1,107 @@
+module v2.test.lens_common.loop_eval_fixture
+
+import std.optional { Optional, optional_present }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.types { List }
+import v2.compiler.infer { InferredFacts }
+import v2.std.cardinality { RankingComponent, TerminationProof }
+import v2.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+import v2.std.machine { Byte }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Completed,
+  ControlTransfer,
+  Iterate,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter,
+  runtime_reject_match_arm
+}
+import v2.std.witness { Holds }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+
+// A NON-CLAIM FIXTURE for a claim that evaluates a Loop through v2.compiler.eval eval with a stub
+// step_loop. It imports no claim module, no emit_host and no host_transport. The value type and the facts'
+// resolved type are ONE node (lef_value_type), because eval_runtime_value_acceptance_witness compares them.
+fn lef_value_type() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^lef_value_type } }, occurrence_id: OccurrenceSynthetic, children: [] }
+}
+
+fn lef_marker_bytes() -> List<Byte> {
+  [Byte { bits: [true] }]
+}
+
+// A DIFFERENT byte, for the wrong-value red: it must never equal what the Completed read returns.
+fn lef_other_marker_bytes() -> List<Byte> {
+  [Byte { bits: [false] }]
+}
+
+fn lef_marker_value() -> RuntimeValue {
+  RuntimePrimitive { value: RuntimePrimitiveValue { primitive_type: lef_value_type(), bytes: lef_marker_bytes() } }
+}
+
+fn lef_facts(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
+    resolved: key,
+    algebra: lef_value_type(),
+    descent: Holds { value: TerminationProof { non_increasing: [], strict: RankingComponent { measured: ^lef_descent } } }
+  ))
+}
+
+fn lef_refusal(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic { reason: reason, at: node_locus(node: node), correction: Unavailable { reason: ExternalContractUnknown } }
+}
+
+fn lef_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: lef_refusal(reason: ^lef_literal_unused, node: node))
+}
+
+fn lef_call_primitive(node: Node, _args: List<RuntimeValue>, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: lef_refusal(reason: ^lef_call_unused, node: node))
+}
+
+fn lef_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  outcome_rejected(d: lef_refusal(reason: ^lef_branch_unused, node: node))
+}
+
+fn lef_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: EvaluationEnvironment) -> Outcome<EvaluationEnvironment> {
+  outcome_accepted(value: env)
+}
+
+// STUB: step_loop answers Completed or Iterate directly. The loop BODY is not exercised; only the route
+// eval_loop_node -> control_transfer_value -> v2_eval_terminal_value is real.
+fn lef_completed_step(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Completed { value: lef_marker_value() })
+}
+
+fn lef_iterate_step(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Iterate { carrier: lef_marker_value() })
+}
+
+fn lef_loop_interpreter(completes: Bool) -> LoopInterpreter {
+  if completes {
+    LoopInterpreter { step_loop: lef_completed_step, identity: ^lef_completed_step }
+  } else {
+    LoopInterpreter { step_loop: lef_iterate_step, identity: ^lef_iterate_step }
+  }
+}
+
+fn lef_interpretation(completes: Bool) -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: lef_allocate_literal, identity: ^lef_allocate_literal },
+    transform: TransformInterpreter { call_primitive: lef_call_primitive, identity: ^lef_call_primitive },
+    branch: BranchInterpreter { choose_branch: lef_choose_branch, identity: ^lef_choose_branch },
+    loop: lef_loop_interpreter(completes: completes),
+    bind: BindInterpreter { bind_value: lef_bind_value, identity: ^lef_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm, identity: ^runtime_reject_match_arm }
+  }
+}

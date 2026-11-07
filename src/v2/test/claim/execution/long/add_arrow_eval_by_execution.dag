@@ -51,6 +51,7 @@ import v2.std.cardinality {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.diagnostic {
+  diagnostics_fatal_reason,
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
@@ -70,7 +71,7 @@ import v2.std.integer {
   integer_int_to_signed_i32_le_bytes,
   integer_signed_i32_le_bytes_to_int
 }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { symbol_lexeme, positional_child_target_nodes,
   Arrow,
   Atom,
   Branch,
@@ -93,7 +94,7 @@ import v2.std.node_query { pattern_wildcard_name, binder_edge }
 import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
-  Continue,
+  Completed,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationEnvironment,
@@ -108,7 +109,7 @@ import v2.std.runtime {
   runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
-import v2.std.verdict { Pass }
+import v2.std.verdict { Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred, Verdict }
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -820,7 +821,7 @@ test fn add_arrow_eval_lazy_arm_branch_suppression_holds() -> Bool {
 }
 
 fn add_arrow_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_accepted(value: Continue { value: add_arrow_eval_int_runtime_value(n: 5) })
+  outcome_accepted(value: Completed { value: add_arrow_eval_int_runtime_value(n: 5) })
 }
 
 fn add_arrow_eval_lazy_arm_loop_interpretation() -> InterpretationAlgebra {
@@ -886,9 +887,193 @@ test fn add_arrow_eval_lazy_arm_loop_suppression_holds() -> Bool {
     interpretation: add_arrow_eval_lazy_arm_loop_interpretation(),
     inputs: inputs_root_only(root: loop_node)
   ) {
-    Accepted { value: v, diagnostics: _ } =>
-      add_arrow_eval_runtime_int_equals(value: v, n: 5)
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } =>
+      symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) == "v2_eval_loop_requires_termination_proof"
   }
 }
 
+// ===== DISCRIMINATOR (source only; ENROLLED-NOT-EXECUTED; no run) =====
+// Cells return Bool, so a bare FAIL names no cause. These sibling cells PARTITION each positive cell's outcome.
+// Pre-registered reading: for EACH route group below EXACTLY ONE member cell PASSes (one member per
+// enumerated reason, Accepted, and one REMAINDER). Zero or two PASSing members in a group = the partition or
+// the receipt is broken, not a verdict. The PA refinements (value == 5, diagnostics None) are the positive cells
+// themselves and sit OUTSIDE the exactly-one count; Accepted in a group says only that eval accepted.
+// KNOWN LIMITS of the remainder (reasons NOT enumerated because their bodies were not read):
+//   eval_bind_positional_domain, eval_formal_binding_key, eval_list_introduction_value (eval.dag), and the
+//   infer-owned descent reason of inferred_facts_descent (a Violates diagnostic). The run_test_claim groups
+//   see the verdict arm only (V1..V5) and not the inner actual's reason; Rejected-before-verdict shows the reason.
+// JOINT READING: a positive cell PASS with its group's Accepted PASS = accepted by execution. A positive FAIL is
+// attributed ONLY by the group member that PASSes (a remainder PASS = unattributed, an open cause). A red cell
+// PASS counts as discriminating ONLY with its exact-reason sibling PASS (a red is vacuously true under any
+// refusal); a red whose sibling FAILs is read as UNPROVEN, not green. Reds' non-Pass hypotheses are PRE-REGISTERED
+// and may FAIL.
+
+fn aa_reason_of_eval(o: Outcome<RuntimeValue>) -> String {
+  match o {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+fn aa_direct_reason_for(call_optional: Optional<Node>, callee: Node) -> String {
+  match call_optional {
+    Present { value: call_node } =>
+      match add_arrow_eval_inferred_run_tree(callee: callee, left_lex: "2", right_lex: "3", expected_lex: "5") {
+        Accepted { value: tree, diagnostics: _ } =>
+          aa_reason_of_eval(o: eval(tree: tree, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call_node)))
+        Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+      }
+    Absent => "fixture_absent"
+  }
+}
+
+fn aa_direct_reason() -> String {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      aa_direct_reason_for(call_optional: add_arrow_eval_add_call_optional(callee: arrow, left_lex: "2", right_lex: "3"), callee: arrow)
+    Rejected { diagnostics: _ } => "fixture_absent"
+  }
+}
+
+fn aa_verdict_label<S, A>(v: Verdict<S, A>) -> String {
+  match v {
+    Pass => "v1_pass"
+    SemanticMismatch { actual: _, falsification: _ } => "v2_semantic_mismatch"
+    BuildFailed { actual: _, diagnostic: _ } => "v3_build_failed"
+    RunFailed { actual: _, diagnostic: _ } => "v4_run_failed"
+    Deferred { actual: _, diagnostic: _ } => "v5_deferred"
+  }
+}
+
+fn aa_run_reason_of(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> String {
+  match run {
+    Accepted { value: r, diagnostics: _ } => aa_verdict_label(v: test_claim_run_verdict(run: r))
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+fn aa_run_reason(left: String, right: String, expected: String) -> String {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      aa_run_reason_of(run: add_arrow_eval_run(callee: arrow, left_lex: left, right_lex: right, expected_lex: expected))
+    Rejected { diagnostics: _ } => "fixture_absent"
+  }
+}
+
+fn aa_source_reason() -> String { aa_run_reason(left: "2", right: "3", expected: "5") }
+fn aa_generality_reason() -> String { aa_run_reason(left: "7", right: "8", expected: "15") }
+fn aa_wrong_value_reason() -> String { aa_run_reason(left: "7", right: "8", expected: "16") }
+
+fn aa_branch_reason() -> String {
+  let branch = add_arrow_eval_lazy_arm_branch_node()
+  aa_reason_of_eval(
+    o: eval(
+      tree: add_arrow_eval_admitted_tree(root: branch),
+      interpretation: add_arrow_eval_lazy_arm_interpretation(),
+      inputs: inputs_root_only(root: branch)
+    )
+  )
+}
+
+fn aa_swapped_reason() -> String {
+  aa_run_reason_of(run: add_arrow_eval_run(callee: add_arrow_swapped_add_arrow(), left_lex: "2", right_lex: "3", expected_lex: "6"))
+}
+fn aa_excess_signature_reason() -> String {
+  aa_run_reason_of(run: add_arrow_eval_run(callee: add_arrow_excess_signature_arrow(), left_lex: "2", right_lex: "3", expected_lex: "5"))
+}
+fn aa_excess_body_reason() -> String {
+  aa_run_reason_of(run: add_arrow_eval_run(callee: add_arrow_excess_body_arrow(), left_lex: "2", right_lex: "3", expected_lex: "5"))
+}
+fn aa_excess_actual_reason() -> String {
+  match table_fixture_add_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      aa_direct_reason_for(call_optional: add_arrow_excess_actual_call_optional(callee: arrow), callee: arrow)
+    Rejected { diagnostics: _ } => "fixture_absent"
+  }
+}
+
+// PARTITION of aa_direct_reason (exactly one PASSes).
+test fn add_arrow_direct_partition_accepted_holds() -> Bool { aa_direct_reason() == "accepted" }
+test fn add_arrow_direct_partition_eval_rejected_invalid_node_holds() -> Bool { aa_direct_reason() == "eval_rejected_invalid_node" }
+test fn add_arrow_direct_partition_eval_rejected_unsupported_callee_holds() -> Bool { aa_direct_reason() == "eval_rejected_unsupported_callee" }
+test fn add_arrow_direct_partition_eval_rejected_runtime_binding_lookup_miss_holds() -> Bool { aa_direct_reason() == "eval_rejected_runtime_binding_lookup_miss" }
+test fn add_arrow_direct_partition_eval_rejected_callee_absent_holds() -> Bool { aa_direct_reason() == "eval_rejected_callee_absent" }
+test fn add_arrow_direct_partition_eval_rejected_argument_bind_absent_holds() -> Bool { aa_direct_reason() == "eval_rejected_argument_bind_absent" }
+test fn add_arrow_direct_partition_eval_rejected_branch_argument_absent_holds() -> Bool { aa_direct_reason() == "eval_rejected_branch_argument_absent" }
+test fn add_arrow_direct_partition_eval_rejected_grounding_not_derived_holds() -> Bool { aa_direct_reason() == "eval_rejected_grounding_not_derived" }
+test fn add_arrow_direct_partition_eval_rejected_grounding_node_mismatch_holds() -> Bool { aa_direct_reason() == "eval_rejected_grounding_node_mismatch" }
+test fn add_arrow_direct_partition_eval_rejected_canonical_mismatch_holds() -> Bool { aa_direct_reason() == "eval_rejected_canonical_mismatch" }
+test fn add_arrow_direct_partition_eval_rejected_resolved_type_mismatch_holds() -> Bool { aa_direct_reason() == "eval_rejected_resolved_type_mismatch" }
+test fn add_arrow_direct_partition_eval_rejected_inhabitance_mismatch_holds() -> Bool { aa_direct_reason() == "eval_rejected_inhabitance_mismatch" }
+test fn add_arrow_direct_partition_infer_facts_lookup_miss_holds() -> Bool { aa_direct_reason() == "infer_facts_lookup_miss" }
+test fn add_arrow_direct_partition_v2_eval_semantics_deferred_holds() -> Bool { aa_direct_reason() == "v2_eval_semantics_deferred" }
+test fn add_arrow_direct_partition_add_arrow_eval_runtime_rejected_holds() -> Bool { aa_direct_reason() == "add_arrow_eval_runtime_rejected" }
+test fn add_arrow_direct_partition_add_arrow_eval_literal_miss_holds() -> Bool { aa_direct_reason() == "add_arrow_eval_literal_miss" }
+test fn add_arrow_direct_partition_fixture_absent_holds() -> Bool { aa_direct_reason() == "fixture_absent" }
+test fn add_arrow_direct_partition_remainder_holds() -> Bool {
+  let r = aa_direct_reason()
+  !(r == "accepted" || r == "eval_rejected_invalid_node" || r == "eval_rejected_unsupported_callee" || r == "eval_rejected_runtime_binding_lookup_miss" || r == "eval_rejected_callee_absent" || r == "eval_rejected_argument_bind_absent" || r == "eval_rejected_branch_argument_absent" || r == "eval_rejected_grounding_not_derived" || r == "eval_rejected_grounding_node_mismatch" || r == "eval_rejected_canonical_mismatch" || r == "eval_rejected_resolved_type_mismatch" || r == "eval_rejected_inhabitance_mismatch" || r == "infer_facts_lookup_miss" || r == "v2_eval_semantics_deferred" || r == "add_arrow_eval_runtime_rejected" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
+}
+
+
+// PARTITION of aa_branch_reason (exactly one PASSes).
+test fn add_arrow_branch_partition_accepted_holds() -> Bool { aa_branch_reason() == "accepted" }
+test fn add_arrow_branch_partition_eval_rejected_invalid_node_holds() -> Bool { aa_branch_reason() == "eval_rejected_invalid_node" }
+test fn add_arrow_branch_partition_eval_rejected_unsupported_callee_holds() -> Bool { aa_branch_reason() == "eval_rejected_unsupported_callee" }
+test fn add_arrow_branch_partition_eval_rejected_runtime_binding_lookup_miss_holds() -> Bool { aa_branch_reason() == "eval_rejected_runtime_binding_lookup_miss" }
+test fn add_arrow_branch_partition_eval_rejected_callee_absent_holds() -> Bool { aa_branch_reason() == "eval_rejected_callee_absent" }
+test fn add_arrow_branch_partition_eval_rejected_argument_bind_absent_holds() -> Bool { aa_branch_reason() == "eval_rejected_argument_bind_absent" }
+test fn add_arrow_branch_partition_eval_rejected_branch_argument_absent_holds() -> Bool { aa_branch_reason() == "eval_rejected_branch_argument_absent" }
+test fn add_arrow_branch_partition_eval_rejected_grounding_not_derived_holds() -> Bool { aa_branch_reason() == "eval_rejected_grounding_not_derived" }
+test fn add_arrow_branch_partition_eval_rejected_grounding_node_mismatch_holds() -> Bool { aa_branch_reason() == "eval_rejected_grounding_node_mismatch" }
+test fn add_arrow_branch_partition_eval_rejected_canonical_mismatch_holds() -> Bool { aa_branch_reason() == "eval_rejected_canonical_mismatch" }
+test fn add_arrow_branch_partition_eval_rejected_resolved_type_mismatch_holds() -> Bool { aa_branch_reason() == "eval_rejected_resolved_type_mismatch" }
+test fn add_arrow_branch_partition_eval_rejected_inhabitance_mismatch_holds() -> Bool { aa_branch_reason() == "eval_rejected_inhabitance_mismatch" }
+test fn add_arrow_branch_partition_infer_facts_lookup_miss_holds() -> Bool { aa_branch_reason() == "infer_facts_lookup_miss" }
+test fn add_arrow_branch_partition_v2_eval_semantics_deferred_holds() -> Bool { aa_branch_reason() == "v2_eval_semantics_deferred" }
+test fn add_arrow_branch_partition_add_arrow_eval_runtime_rejected_holds() -> Bool { aa_branch_reason() == "add_arrow_eval_runtime_rejected" }
+test fn add_arrow_branch_partition_add_arrow_eval_literal_miss_holds() -> Bool { aa_branch_reason() == "add_arrow_eval_literal_miss" }
+test fn add_arrow_branch_partition_fixture_absent_holds() -> Bool { aa_branch_reason() == "fixture_absent" }
+test fn add_arrow_branch_partition_remainder_holds() -> Bool {
+  let r = aa_branch_reason()
+  !(r == "accepted" || r == "eval_rejected_invalid_node" || r == "eval_rejected_unsupported_callee" || r == "eval_rejected_runtime_binding_lookup_miss" || r == "eval_rejected_callee_absent" || r == "eval_rejected_argument_bind_absent" || r == "eval_rejected_branch_argument_absent" || r == "eval_rejected_grounding_not_derived" || r == "eval_rejected_grounding_node_mismatch" || r == "eval_rejected_canonical_mismatch" || r == "eval_rejected_resolved_type_mismatch" || r == "eval_rejected_inhabitance_mismatch" || r == "infer_facts_lookup_miss" || r == "v2_eval_semantics_deferred" || r == "add_arrow_eval_runtime_rejected" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
+}
+
+
+// VERDICT PARTITION V1..V5 of aa_source_reason (exactly one PASSes; Pass is the positive cell's own verdict).
+test fn add_arrow_source_partition_v1_pass_holds() -> Bool { aa_source_reason() == "v1_pass" }
+test fn add_arrow_source_partition_v2_semantic_mismatch_holds() -> Bool { aa_source_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_source_partition_v3_build_failed_holds() -> Bool { aa_source_reason() == "v3_build_failed" }
+test fn add_arrow_source_partition_v4_run_failed_holds() -> Bool { aa_source_reason() == "v4_run_failed" }
+test fn add_arrow_source_partition_v5_deferred_holds() -> Bool { aa_source_reason() == "v5_deferred" }
+test fn add_arrow_source_partition_add_arrow_eval_literal_miss_holds() -> Bool { aa_source_reason() == "add_arrow_eval_literal_miss" }
+test fn add_arrow_source_partition_fixture_absent_holds() -> Bool { aa_source_reason() == "fixture_absent" }
+test fn add_arrow_source_partition_remainder_holds() -> Bool {
+  let r = aa_source_reason()
+  !(r == "v1_pass" || r == "v2_semantic_mismatch" || r == "v3_build_failed" || r == "v4_run_failed" || r == "v5_deferred" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
+}
+
+
+// VERDICT PARTITION V1..V5 of aa_generality_reason (exactly one PASSes; Pass is the positive cell's own verdict).
+test fn add_arrow_generality_partition_v1_pass_holds() -> Bool { aa_generality_reason() == "v1_pass" }
+test fn add_arrow_generality_partition_v2_semantic_mismatch_holds() -> Bool { aa_generality_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_generality_partition_v3_build_failed_holds() -> Bool { aa_generality_reason() == "v3_build_failed" }
+test fn add_arrow_generality_partition_v4_run_failed_holds() -> Bool { aa_generality_reason() == "v4_run_failed" }
+test fn add_arrow_generality_partition_v5_deferred_holds() -> Bool { aa_generality_reason() == "v5_deferred" }
+test fn add_arrow_generality_partition_add_arrow_eval_literal_miss_holds() -> Bool { aa_generality_reason() == "add_arrow_eval_literal_miss" }
+test fn add_arrow_generality_partition_fixture_absent_holds() -> Bool { aa_generality_reason() == "fixture_absent" }
+test fn add_arrow_generality_partition_remainder_holds() -> Bool {
+  let r = aa_generality_reason()
+  !(r == "v1_pass" || r == "v2_semantic_mismatch" || r == "v3_build_failed" || r == "v4_run_failed" || r == "v5_deferred" || r == "add_arrow_eval_literal_miss" || r == "fixture_absent")
+}
+
+
+// EXACT-REASON SIBLINGS of the five reds. swapped_operands and wrong_value are SemanticMismatch by design
+// (value computed, wrong expectation). The three excess reds are PRE-REGISTERED HYPOTHESES (the cause was not
+// derived from source for body/signature) and may FAIL; a FAIL reads the red as UNPROVEN.
+test fn add_arrow_swapped_operands_red_reason_is_semantic_mismatch_holds() -> Bool { aa_swapped_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_wrong_value_red_reason_is_semantic_mismatch_holds() -> Bool { aa_wrong_value_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_excess_signature_red_reason_is_argument_bind_absent_holds() -> Bool { aa_excess_signature_reason() == "eval_rejected_argument_bind_absent" }
+test fn add_arrow_excess_body_red_reason_is_hypothesis_semantic_mismatch_holds() -> Bool { aa_excess_body_reason() == "v2_semantic_mismatch" }
+test fn add_arrow_excess_actual_red_reason_is_argument_bind_absent_holds() -> Bool { aa_excess_actual_reason() == "eval_rejected_argument_bind_absent" }

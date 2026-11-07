@@ -1,0 +1,42 @@
+module gunbc.rung_drop.stub_loop_value_claims_lose_value_path_at_admission
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, LostAsPassenger }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for the stub-driven Loop claims whose value path ended when
+// v2.compiler.eval eval_loop_admission began refusing every Loop that lacks a termination fact or a
+// fold realization (DESIGN 4b(3)). Those claims reached a value through an interpreter stub's
+// step_loop, which bypassed realization; admission now stops the Loop before the stub, so each
+// claim asserts the typed refusal and no longer discriminates a wrong carrier. Enrolled, not executed:
+// nothing here has been compiled or run, and the previous rung is the rung the claims were enrolled at.
+// ============================================================================================
+data stub_loop_value_claims_lose_value_path_at_admission: RungDrop = RungDrop {
+  identity: "stub_loop_value_claims_lose_value_path_at_admission" as NonEmptyStr,
+
+  subject: "the value (and wrong-value RED) discrimination of stub-driven Loop claims in loop_eval_by_execution, emit_host_loop_equals_eval, loop_demand_driven_eval and add_arrow_eval_by_execution",
+
+  declared: "2026-11-06",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: LostAsPassenger { carrier: "admission now refuses every Loop that lacks a realized edge, so the stub's value path is gone; the stubs' hand-supplied termination facts are not read by admission (v2.compiler.eval eval_loop_admission)" },
+    population: Enumerated { members: FreeSemigroup { head: "v2.test.claim.execution.long.loop_eval_by_execution loop_source_driven_executes_holds", tail: [
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_source_driven_wrong_value_red_holds",
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_direct_runtime_holds",
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_value_perturbation_red_holds",
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_fixture_producer_holds",
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_fixture_wrong_value_red_holds",
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_executes_holds",
+      "v2.test.claim.execution.long.loop_eval_by_execution loop_census_ingested_wrong_value_red_holds",
+      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_equals_eval_holds (also its emit-vs-eval ROUTE: v2.compiler.emit_host run_test_claim_emit_vs_eval is no longer called by either emit_host_loop claim, so the emitted-host run of a Loop fixture is unexercised here)",
+      "v2.test.claim.execution.emit_host_loop_equals_eval emit_host_loop_wrong_fixture_refuses_holds",
+      "v2.test.claim.manual.loop_demand_driven_eval loop_demand_driven_eval_keystone_holds",
+      "v2.test.claim.execution.long.add_arrow_eval_by_execution add_arrow_eval_lazy_arm_loop_suppression_holds"
+    ] } },
+    restoration_trigger: "the emit-vs-eval route over a fold-realized Loop is re-entered by the two emit_host_loop claims, and the fold driver evaluates a fold-realized Loop's step body over its domain, sufficient for these value claims to discriminate a wrong carrier again; each wrong-value RED listed (the *_wrong_value_red_holds, loop_value_perturbation_red_holds and emit_host_loop_wrong_fixture_refuses_holds claims) regains its wrong-value RED when that capability is executed, not when the driver is merely enrolled."
+  } }
+}

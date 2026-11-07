@@ -402,8 +402,13 @@ type EvaluationCall {
   arguments: List<RuntimeValue>
 }
 
+// A step's answer to "what happens next". Iterate means the loop is NOT finished and carries the
+// state the next iteration starts from; Completed means this transfer finished with its value. They were
+// one constructor (Continue), which let a terminal reader accept a loop continuation as a result
+// (gunbc.recurring_failure_mode a_terminal_reader_accepts_a_loop_continuation_as_a_result).
 type ControlTransfer
-  = Continue { value: RuntimeValue }
+  = Iterate { carrier: RuntimeValue }
+  | Completed { value: RuntimeValue }
   | Return { value: RuntimeValue }
   | Raise { diagnostic: Diagnostic }
   | Suspend { continuation: EvaluationFrame }

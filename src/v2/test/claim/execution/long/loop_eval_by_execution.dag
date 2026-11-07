@@ -52,12 +52,13 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   bind_outcome,
+  diagnostics_fatal_reason,
   node_locus,
   outcome_accepted,
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node { node_same_occurrence, positional_child_target_nodes,
+import v2.std.node { symbol_lexeme, node_same_occurrence, positional_child_target_nodes,
   Atom,
   Arrow,
   ComputationNode,
@@ -76,7 +77,7 @@ import v2.std.runtime {
   BindInterpreter,
   BranchInterpreter,
   ControlTransfer,
-  Continue,
+  Completed,
   EnvironmentBindingKey,
   EvaluationEnvironment,
   InterpretationAlgebra,
@@ -104,6 +105,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.test.claim.execution.loop_admission_refusal { loop_verdict_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -205,7 +207,7 @@ fn loop_step_loop(node: Node, env: EvaluationEnvironment) -> Outcome<ControlTran
       bind_outcome(
         o: loop_allocate_literal(node: body, env: env),
         f: fn(value) {
-          outcome_accepted(value: Continue { value: value })
+          outcome_accepted(value: Completed { value: value })
         }
       )
     Absent =>
@@ -382,13 +384,15 @@ fn loop_run(
   )
 }
 
-fn loop_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+// ADMISSION: these fixtures bound their Loop by the registered dag_loop_measure (loop_multiplicity proves
+// termination) but carry NO ^loop_realized_declaration_edge, so they are not fold realizations and
+// v2.compiler.eval eval_loop_admission refuses them bound_not_executable BEFORE the stub's step_loop. The
+// old value came from a stub bypassing realization; the claim now asserts the typed refusal, for the
+// positive fixture and the wrong-value fixture alike (the value is no longer reached).
+fn loop_run_admission_refused(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
   match run {
     Accepted { value: r, diagnostics: _ } =>
-      match test_claim_run_verdict(run: r) {
-        Pass => true
-        _ => false
-      }
+      loop_verdict_reason(v: test_claim_run_verdict(run: r)) == "v2_eval_loop_bound_not_executable"
     Rejected { diagnostics: _ } => false
   }
 }
@@ -403,7 +407,7 @@ test fn loop_source_pipeline_admits_holds() -> Bool {
 test fn loop_source_driven_executes_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
@@ -416,12 +420,12 @@ test fn loop_source_driven_executes_holds() -> Bool {
 test fn loop_source_driven_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
-      ) == false
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -440,8 +444,8 @@ test fn loop_direct_runtime_holds() -> Bool {
             interpretation: loop_interpretation(),
             inputs: inputs_root_only(root: input)
           ) {
-            Accepted { value: actual, diagnostics: None } =>
-              loop_runtime_int_is_one(value: actual)
+            Rejected { diagnostics: d } =>
+              symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) == "v2_eval_loop_bound_not_executable"
             _ => false
           }
         Rejected { diagnostics: _ } => false
@@ -454,12 +458,12 @@ test fn loop_direct_runtime_holds() -> Bool {
 test fn loop_value_perturbation_red_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_two_node()
         )
-      ) == false
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -467,7 +471,7 @@ test fn loop_value_perturbation_red_holds() -> Bool {
 test fn loop_fixture_producer_holds() -> Bool {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
@@ -480,12 +484,12 @@ test fn loop_fixture_producer_holds() -> Bool {
 test fn loop_fixture_wrong_value_red_holds() -> Bool {
   match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
-      ) == false
+      )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -493,7 +497,7 @@ test fn loop_fixture_wrong_value_red_holds() -> Bool {
 test fn loop_census_ingested_executes_holds() -> Bool {
   match ingested_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
@@ -506,12 +510,12 @@ test fn loop_census_ingested_executes_holds() -> Bool {
 test fn loop_census_ingested_wrong_value_red_holds() -> Bool {
   match ingested_loop_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
-      loop_run_passes(
+      loop_run_admission_refused(
         run: loop_run(
           callee: arrow,
           expected: loop_literal_one_node()
         )
-      ) == false
+      )
     Rejected { diagnostics: _ } => false
   }
 }

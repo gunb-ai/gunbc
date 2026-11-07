@@ -1,0 +1,178 @@
+module v2.test.claim.execution.loop_fold_driver
+
+import v2.compiler.eval { eval, eval_loop_admission, inputs_root_only }
+import v2.compiler.infer { InferredTree }
+import v2.test.lens_common.loop_eval_fixture { lef_facts, lef_interpretation, lef_marker_bytes, lef_other_marker_bytes }
+import v2.compiler.fold_lowering { fold_family_realization, fold_realization_declaration_path }
+import v2.extdeps.languages.dag { dag_loop_measure_node }
+import v2.extdeps.runtimes.v2_evaluator { v2_eval_terminal_value }
+import std.algebra { empty_map }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.node { symbol_lexeme, ComputationNode, Edge, Loop, Node, NotADeclaration, Positional, core_edge_label, LoopBoundEdge, LoopRealizedDeclarationEdge, TypeNode, Atom }
+import v2.std.qualified_name { declaration_reference_node }
+import v2.std.runtime { EvaluationEnvironment, EvaluationFrame, Iterate, RuntimePrimitive, RuntimeUnit, RuntimeUnitValue, RuntimeValue }
+
+// THE ADMISSION CONTROLS OF THE FOLD-FIRST LOOP DRIVER (PR-1). ENROLLED, NOT EXECUTED: CI evaluates no
+// witness, so none of these has run; each is source-only until an executed receipt exists at the exact head.
+// C1 and C2 (the driver honouring the DERIVED direction on a CONSTRUCTED Loop whose realized edge is
+// std.algebra fold_list_right; NOT surface-to-Loop right folds, a route that does not exist) belong to PR-2.
+
+fn fd_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, occurrence_id: OccurrenceSynthetic, children: [] }
+}
+
+fn fd_step() -> Node {
+  fd_atom(s: ^fd_step_body)
+}
+
+fn fd_loop_bound_only(bound: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    occurrence_id: OccurrenceSynthetic,
+    children: [
+      Edge { label: Positional, target: fd_step(), declaration: NotADeclaration },
+      Edge { label: core_edge_label(marker: LoopBoundEdge), target: bound, declaration: NotADeclaration }
+    ]
+  }
+}
+
+fn fd_loop_realized(head: Symbol) -> Node {
+  match fold_family_realization(head: head) {
+    Absent => fd_loop_bound_only(bound: dag_loop_measure_node())
+    Present { value: r } =>
+      Node {
+        kind: ComputationNode { behavior: Loop },
+        occurrence_id: OccurrenceSynthetic,
+        children: [
+          Edge { label: Positional, target: fd_step(), declaration: NotADeclaration },
+          Edge { label: core_edge_label(marker: LoopBoundEdge), target: dag_loop_measure_node(), declaration: NotADeclaration },
+          Edge {
+            label: core_edge_label(marker: LoopRealizedDeclarationEdge),
+            target: declaration_reference_node(qn: fold_realization_declaration_path(r: r), occurrence_id: OccurrenceSynthetic),
+            declaration: NotADeclaration
+          }
+        ]
+      }
+  }
+}
+
+fn fd_admit_reason(n: Node) -> String {
+  match eval_loop_admission(node: n) {
+    Absent => "admitted"
+    Present { value: d } => symbol_lexeme(sym: d.reason)
+  }
+}
+
+// C3: no bound at all, so termination is not proven.
+test fn a_loop_with_no_bound_is_refused_requires_termination_proof_holds() -> Bool {
+  fd_admit_reason(n: Node { kind: ComputationNode { behavior: Loop }, occurrence_id: OccurrenceSynthetic, children: [] }) == "v2_eval_loop_requires_termination_proof"
+}
+
+// C4: the bound is proven (the registered dag_loop_measure) but no realized edge names a fold family
+// declaration, so the Loop is not a fold realization and its bound is not executable.
+test fn a_proven_loop_without_a_fold_realization_is_refused_bound_not_executable_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_bound_only(bound: dag_loop_measure_node())) == "v2_eval_loop_bound_not_executable"
+}
+
+// Direction absent: proven, realized on fold_node (a role without a member, no iteration order).
+test fn a_proven_fold_node_loop_is_refused_iteration_direction_absent_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_realized(head: ^fold_node)) == "v2_eval_loop_iteration_direction_absent"
+}
+
+// Admitted: proven, fold-realized (fold_list), directed. Admission passes and the Loop proceeds to the
+// interpreter's step_loop as before (production's step_loop refuses ^v2_eval_semantics_deferred).
+test fn a_proven_fold_realized_directed_loop_passes_admission_holds() -> Bool {
+  fd_admit_reason(n: fd_loop_realized(head: ^fold_list)) == "admitted"
+}
+
+// C5: an Iterate control transfer is not a result; the terminal reader refuses it.
+test fn an_iterate_at_the_terminal_is_refused_iterate_at_terminal_holds() -> Bool {
+  let unit = RuntimeUnit { value: RuntimeUnitValue { unit_type: fd_atom(s: ^fd_unit) } }
+  match v2_eval_terminal_value(control: Iterate { carrier: unit }, frame: EvaluationFrame { current: fd_step(), environment: EvaluationEnvironment { bindings: empty_map() } }) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) == "v2_eval_loop_iterate_at_terminal"
+  }
+}
+
+// THE COMPLETED ARM ON THE REAL ROUTE (ENROLLED, NOT EXECUTED). eval of an admitted, proven, fold-realized,
+// directed Loop (fd_loop_realized(^fold_list)) reaches eval_loop_node, whose step_loop stub (fixture
+// v2.test.lens_common.loop_eval_fixture) answers a ControlTransfer; eval_loop_node hands it to
+// control_transfer_value, which calls the runtime's terminal_value (v2_eval_terminal_value). Nothing here
+// hands a ControlTransfer straight to the reader. The positive stub answers Completed { value: marker };
+// the paired red answers Iterate with the same value.
+// THE STEP IS A STUB: step_loop answers Completed or Iterate directly, so the loop BODY is not exercised. The
+// route eval_loop_node -> control_transfer_value -> v2_eval_terminal_value is the real part.
+// A refusal EARLIER or LATER than the terminal reader makes a cell false for another reason: the ill-formed
+// check (eval_rejected_invalid_node), inferred_facts_for_eval (infer_facts_lookup_miss,
+// eval_rejected_grounding_not_derived, _grounding_node_mismatch, _canonical_mismatch, or the descent
+// diagnostic) and eval_runtime_value_acceptance_witness (eval_rejected_grounding_not_derived,
+// _resolved_type_mismatch, _inhabitance_mismatch, _canonical_mismatch). The sibling cells below partition
+// that set so a FAIL is attributed instead of read as the terminal reader.
+fn fd_eval_admitted_loop(completes: Bool) -> Outcome<RuntimeValue> {
+  let loop_node = fd_loop_realized(head: ^fold_list)
+  eval(
+    tree: InferredTree { root: loop_node, facts: PartialFunction { lookup: lef_facts } },
+    interpretation: lef_interpretation(completes: completes),
+    inputs: inputs_root_only(root: loop_node)
+  )
+}
+
+fn fd_completed_reason() -> String {
+  match fd_eval_admitted_loop(completes: true) {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+  }
+}
+
+test fn a_completed_step_on_an_admitted_loop_is_accepted_as_its_value_holds() -> Bool {
+  match fd_eval_admitted_loop(completes: true) {
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimePrimitive { value: p } => p.bytes == lef_marker_bytes()
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// WRONG-VALUE RED (pre-registered FAIL): the same Completed read compared to a DIFFERENT byte. If a reader
+// accepted Completed but dropped or replaced the value, the positive cell and this one could both pass.
+test fn a_completed_step_on_an_admitted_loop_equals_a_different_byte_holds() -> Bool {
+  match fd_eval_admitted_loop(completes: true) {
+    Accepted { value: v, diagnostics: _ } =>
+      match v {
+        RuntimePrimitive { value: p } => p.bytes == lef_other_marker_bytes()
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Paired RED: the same Loop and value, but the step answers Iterate; the terminal reader must tell them
+// apart, refusing with v2_eval_loop_iterate_at_terminal.
+test fn an_iterate_step_on_an_admitted_loop_is_refused_iterate_at_terminal_holds() -> Bool {
+  match fd_eval_admitted_loop(completes: false) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) == "v2_eval_loop_iterate_at_terminal"
+  }
+}
+
+// PARTITION of the positive cell's outcome (pre-registered: exactly ONE of the following PASSes).
+test fn fd_completed_partition_accepted_holds() -> Bool { fd_completed_reason() == "accepted" }
+test fn fd_completed_partition_invalid_node_holds() -> Bool { fd_completed_reason() == "eval_rejected_invalid_node" }
+test fn fd_completed_partition_lookup_miss_holds() -> Bool { fd_completed_reason() == "infer_facts_lookup_miss" }
+test fn fd_completed_partition_grounding_not_derived_holds() -> Bool { fd_completed_reason() == "eval_rejected_grounding_not_derived" }
+test fn fd_completed_partition_grounding_node_mismatch_holds() -> Bool { fd_completed_reason() == "eval_rejected_grounding_node_mismatch" }
+test fn fd_completed_partition_canonical_mismatch_holds() -> Bool { fd_completed_reason() == "eval_rejected_canonical_mismatch" }
+test fn fd_completed_partition_resolved_type_mismatch_holds() -> Bool { fd_completed_reason() == "eval_rejected_resolved_type_mismatch" }
+test fn fd_completed_partition_inhabitance_mismatch_holds() -> Bool { fd_completed_reason() == "eval_rejected_inhabitance_mismatch" }
+test fn fd_completed_partition_iterate_at_terminal_holds() -> Bool { fd_completed_reason() == "v2_eval_loop_iterate_at_terminal" }
+test fn fd_completed_partition_remainder_holds() -> Bool {
+  let r = fd_completed_reason()
+  r != "accepted" && r != "eval_rejected_invalid_node" && r != "infer_facts_lookup_miss"
+    && r != "eval_rejected_grounding_not_derived" && r != "eval_rejected_grounding_node_mismatch"
+    && r != "eval_rejected_canonical_mismatch" && r != "eval_rejected_resolved_type_mismatch"
+    && r != "eval_rejected_inhabitance_mismatch" && r != "v2_eval_loop_iterate_at_terminal"
+}
