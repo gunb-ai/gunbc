@@ -1456,10 +1456,11 @@ fn megarac_ui_asset_observation_run(
         // The session's own values, read once and carried: a page body is checked against them before
         // its octets are written (ui_body_octets_of). A jar that cannot be read yields no
         // values, and the check then refuses to write rather than writing unchecked.
+        let jar_read = Filesystem.Read(path: cookie_jar as String)
         let jar_values = match filesystem_read_outcome(
-          content: Filesystem.Read(path: cookie_jar as String).content,
-          success: Filesystem.Read(path: cookie_jar as String).success,
-          error: Filesystem.Read(path: cookie_jar as String).error,
+          content: jar_read.content,
+          success: jar_read.success,
+          error: jar_read.error,
         ) {
           FilesystemReadSucceeded { content: jar_text } => ui_cookie_values_of_jar(jar_text: jar_text)
           FilesystemReadRefused { error: _ } => []
