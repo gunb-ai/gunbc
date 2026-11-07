@@ -10080,6 +10080,10 @@ type BeltVerifyOneResult
 // only an absent receipt runs the shared verify machinery (belt_verify_attempt_for_instance,
 // unchanged). The operation touches no sibling attempt and no envelope.
 fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
+  belt_verify_one_gated(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
+}
+
+fn belt_verify_one_gated(instance: HostDashboardInstance, node_id: String, attempt_key: String, mode: BeltVerifyMode) -> BeltVerifyOneResult {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key)
   match belt_worktree_head_observe(instance: instance, worktree: worktree) {
@@ -10098,18 +10102,25 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
             head: revision as CommitSha,
             selection: selection,
           ) {
-            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
+            VerificationSubjectUnobserved { reason: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
             VerificationSubjectObserved { subject } =>
-              match belt_verify_one_gate(observation: belt_verify_one_receipt_observation_of(
-                evidence: verification_file_evidence_for(
-                  expected: subject,
-                  source: belt_verification_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, selection: selection),
-                )
-              )) {
-                VerifyOneNoOp { verdict_key, detail } =>
-                  VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
-                VerifyOneRefuse { reason } => VerifyOneRefused { reason: reason }
-                VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsBelt)
+              {
+                let receipt_source = belt_verification_receipt_source(instance: instance, node_id: nid, attempt_key: attempt_key, selection: selection)
+                match belt_verify_one_gate(observation: belt_verify_one_receipt_observation_of(
+                  evidence: verification_file_evidence_for(expected: subject, source: receipt_source)
+                )) {
+                  VerifyOneNoOp { verdict_key, detail } =>
+                    match mode {
+                      VerifyAsBelt => VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
+                      VerifyAsOperatorResume =>
+                        match belt_verification_refused_cause(source: receipt_source) {
+                          Present { value: _ } => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
+                          Absent => VerifyOneAlreadyRecorded { verdict_key: verdict_key, detail: detail }
+                        }
+                    }
+                  VerifyOneRefuse { reason } => VerifyOneRefused { reason: reason }
+                  VerifyOneRun => belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: mode)
+                }
               }
           }
         }
@@ -10119,10 +10130,11 @@ fn belt_verify_one_for_instance(instance: HostDashboardInstance, node_id: String
 
 // THE OPERATOR'S RESUME OF ONE ATTEMPT'S REFUSED VERIFICATION. It runs the shared verify machinery in
 // resume mode, which re-runs only a recorded REFUSED verdict at the attempt's exact head; the new
-// verdict replaces the refused receipt. Nothing else changes: a passed or failed verdict answers
-// already-recorded, exactly as belt_verify_one_for_instance does.
+// verdict replaces the refused receipt. It goes through the same receipt-observation gate as
+// belt_verify_one_for_instance: a passed or failed verdict answers VerifyOneAlreadyRecorded, and only a
+// recorded refused cause is re-run.
 fn belt_verify_resume_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> BeltVerifyOneResult {
-  belt_verify_one_run(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsOperatorResume)
+  belt_verify_one_gated(instance: instance, node_id: node_id, attempt_key: attempt_key, mode: VerifyAsOperatorResume)
 }
 
 fn belt_verify_one_run(instance: HostDashboardInstance, node_id: String, attempt_key: String, mode: BeltVerifyMode) -> BeltVerifyOneResult {
