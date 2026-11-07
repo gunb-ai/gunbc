@@ -916,7 +916,7 @@ fn first_field(line: String) -> String {
 }
 
 fn attempt_system_unit_byte_admission(instance: HostDashboardInstance) -> AttemptByteAdmission {
-  attempt_worker_byte_admission(in_flight: attempt_system_unit_in_flight_caps(), candidate: byte_size_count(b: instance.dispatch_worker_memory_max))
+  attempt_worker_byte_admission(in_flight: attempt_system_unit_in_flight_caps(), candidate: instance.dispatch_worker_memory_max)
 }
 
 fn attempt_system_unit_byte_bound_waits(instance: HostDashboardInstance?) -> Bool {
