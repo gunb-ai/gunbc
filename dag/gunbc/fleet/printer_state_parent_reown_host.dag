@@ -48,7 +48,7 @@ fn printer_state_parent_identity_leg_on_host(tree: HostStateTree, transport: Hos
           target: target,
           prior: printer_state_parent_reown_prior(),
           observe: path => deploy_apply_directory_observe(path: path, transport: transport),
-          apply: plan => run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode }), transport: transport)),
+          apply: plan => run_argv_transport_succeeded(outcome: run_argv_over_host_effect_transport(command: executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory { path: plan.path as String as NonEmptyStr, owner: plan.owner.user, group: plan.owner.group, mode: plan.mode }), transport: transport))
         ) {
           PrinterStartsParentReowned { path: _, before: _, after: _ } => none
           PrinterStartsParentReownPreconditionFailed { path, cause } => Present { value: printer_state_parent_reown_refusal_text(path: path, cause: cause) }

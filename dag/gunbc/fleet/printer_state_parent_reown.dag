@@ -244,6 +244,17 @@ type PrinterStateParentPassGate
   = ParentPassRefused { path: String, cause: PrinterStartsParentReownRefusal }
   | ParentPassProceedToFold { licensed_transition_due: Bool }
 
+// WHAT TO DO WITH A PARENT THAT EXISTS AND DOES NOT READ THE DECLARED IDENTITY: the pinned prior is the one
+// state this leg is licensed to act from, so it proceeds WITH the transition; everything else is refused by
+// the cause the compare already produces. A function of its own rather than a match hanging off an else, so
+// the gate above stays a single readable match and this keeps its own name in diagnostics.
+fn parent_held_but_not_at_the_prior(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>, path: String) -> PrinterStateParentPassGate {
+  match printer_state_parent_prior_match(prior: printer_state_parent_reown_prior(), observation: observation) {
+    PriorMatches { reading: _ } => ParentPassProceedToFold { licensed_transition_due: true }
+    PriorRefuses { cause: cause } => ParentPassRefused { path: path, cause: cause }
+  }
+}
+
 fn printer_state_parent_pass_gate(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> PrinterStateParentPassGate {
   let path = owned_directory_path(t: target) as String
   match observation {
@@ -252,9 +263,8 @@ fn printer_state_parent_pass_gate(target: OwnedDirectoryTarget, observation: Ens
     EnsureObserved { evidence: _ } =>
       if owned_directory_satisfied(t: target, o: observation) {
         ParentPassProceedToFold { licensed_transition_due: false }
-      } else match printer_state_parent_prior_match(prior: printer_state_parent_reown_prior(), observation: observation) {
-        PriorMatches { reading: _ } => ParentPassProceedToFold { licensed_transition_due: true }
-        PriorRefuses { cause: cause } => ParentPassRefused { path: path, cause: cause }
+      } else {
+        parent_held_but_not_at_the_prior(target: target, observation: observation, path: path)
       }
   }
 }
