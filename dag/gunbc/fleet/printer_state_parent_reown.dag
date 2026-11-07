@@ -12,7 +12,7 @@ import gunbc.managed_directory { DirectoryOwnerGroupWritableSetgid, declared_dir
 import gunbc.owned_directory {
   OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan,
   owned_directory_install_plan_of, owned_directory_satisfied,
-  owned_directory_owner_matches, owned_directory_path,
+  owned_directory_owner_matches, owned_directory_path, owned_directory_present_owner_is_foreign,
 }
 import gunbc.fleet.printer_workflow_artifact { printer_starts_directory, printer_state_group }
 import gunbc.host_state_root { HostStateTree }
@@ -261,7 +261,8 @@ fn printer_state_parent_reown_refusal_text(path: String, cause: PrinterStartsPar
 // matches its way forward and cannot re-branch into a state the comparison never granted. Every state is
 // still decided here, once -- an absent parent GOES ON because the fold creates it, an unreadable one STOPS
 // because no transition may commit against a state it cannot read, one already at the declared identity
-// GOES ON without a transition, and one held any other way STOPS. The transition underneath re-reads and
+// GOES ON without a transition, one the demanded principal already owns at a drifted mode GOES ON because
+// repairing that mode is the provider's own declared job, and anything else STOPS. The transition underneath re-reads and
 // re-compares for itself, so being asked can never license an adoption: it asks for the compare-and-set, and
 // the compare-and-set still decides.
 type PrinterStateParentPassGate
@@ -277,10 +278,33 @@ type PrinterStateParentPassGate
 // state this leg is licensed to act from, so it proceeds WITH the transition; everything else is refused by
 // the cause the compare already produces. A function of its own rather than a match hanging off an else, so
 // the gate above stays a single readable match and this keeps its own name in diagnostics.
+// IS THIS A DIRECTORY THE DEMANDED PRINCIPAL ALREADY OWNS? The gate asked owned_directory_satisfied first and
+// it was false, so a matching owner pair here can only mean the MODE is what differs. That is exactly the one
+// state gunbc.owned_directory repairs -- its owned_directory_plan says so: "Only a mode that differs on a
+// directory the demanded principal already owns is repaired." So the fold below has a plan for it and is what
+// converges it; refusing here would stop the only effect that fixes it. A non-directory is excluded by name:
+// the provider never replaces one, and neither does this pass.
+fn parent_is_the_targets_own_directory_at_a_drifted_mode(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match observation {
+    EnsureObserved { evidence } =>
+      evidence.is_directory && !owned_directory_present_owner_is_foreign(t: target, got: evidence.owner)
+    EnsureAbsent { reason: _ } => false
+    EnsureInaccessible { reason: _ } => false
+  }
+}
+
 fn parent_held_but_not_at_the_prior(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>, path: String) -> PrinterStateParentPassGate {
   match printer_state_parent_prior_match(prior: printer_state_parent_reown_prior(), observation: observation) {
     PriorMatches { reading: _ } => ParentPassRunTransition { }
-    PriorRefuses { cause: cause } => ParentPassRefused { path: path, cause: cause }
+    // NOT THE PRIOR. The pass may still have nothing to do: a directory the demanded principal already owns at
+    // a drifted mode is the provider's to repair, so it goes on rather than stopping the fold. Everything else
+    // the compare refused stays refused, by the cause the compare itself produced.
+    PriorRefuses { cause: cause } =>
+      if parent_is_the_targets_own_directory_at_a_drifted_mode(target: target, observation: observation) {
+        ParentPassProceedToFold { }
+      } else {
+        ParentPassRefused { path: path, cause: cause }
+      }
   }
 }
 

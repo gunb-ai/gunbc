@@ -14,7 +14,7 @@ import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerGroupWrita
 import gunbc.owned_directory {
   OwnedDirectoryDeclared, OwnedDirectoryTarget, OwnedDirectoryReading, OwnedDirectoryInstallPlan,
   ObserverRead, ObserverReadOut, ObserverReadFailed, ObserverExited, ForeignOwnershipRefuses,
-  owned_directory_observe, owned_directory_install_plan_of,
+  owned_directory_observe, owned_directory_install_plan_of, owned_directory_plan,
   owned_directory_stat_format,
 }
 import gunbc.fleet.printer_state_parent_reown {
@@ -353,9 +353,11 @@ fn pass_gate_outcome(observation: EnsureObservation<OwnedDirectoryReading>) -> S
 // the prior row is the one that goes false.
 test fn witness_the_pass_gate_answers_every_parent_state_by_name() -> Bool {
   let already_declared = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let the_root_owns_it_at_a_drifted_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerOnly) } }
   let the_pinned_prior = EnsureObserved { evidence: printer_state_parent_reown_prior() }
   let a_symlink_there = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: PosixOwnerNames { user: "gunbc-fleet" as NonEmptyStr, group: "gunbc-fleet" as NonEmptyStr }, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) } }
   pass_gate_outcome(observation: already_declared) == "proceed-to-fold"
+    && pass_gate_outcome(observation: the_root_owns_it_at_a_drifted_mode) == "proceed-to-fold"
     && pass_gate_outcome(observation: the_pinned_prior) == "proceed-licensed-transition"
     && pass_gate_outcome(observation: a_symlink_there) == "refused:path-is-not-a-directory"
     && pass_gate_outcome(observation: EnsureInaccessible { reason: "the witness listing of its parent failed" }) == "refused:path-unreadable"
@@ -392,6 +394,72 @@ test fn witness_the_pass_gate_defers_an_absent_parent_and_refuses_an_unreadable_
   let target = printer_state_parent_reown_target(tree: host_state_tree())
   gate_defers_absent_parent(target: target)
     && gate_refuses_unreadable_parent_at_a_path(target: target)
+}
+
+// THE STATE A ROOT-OWNED PARENT ACTUALLY DRIFTS INTO -- a chmod by hand, a umask accident: a directory the
+// demanded principal already owns, at a mode that is not the declared one. gunbc.owned_directory's own plan
+// repairs exactly that ("Only a mode that differs on a directory the demanded principal already owns is
+// repaired"), so a pass that refuses it would stop the only effect that fixes it -- the same mistake the
+// absent parent was. The pass must GO ON and must license NOTHING while doing so: equality with
+// "proceed-to-fold" is what excludes the licensed arm, so a gate that handed this state to the
+// compare-and-set reddens here instead of printing anyway. The two refusals beside it are the controls that
+// keep the deferral confined -- a foreign GROUP is still never adopted even at the declared mode, and a
+// non-directory the root owns is still never replaced -- so this claim cannot be satisfied by widening the
+// deferral into a general "let everything through".
+test fn witness_the_pass_gate_defers_a_target_owned_mode_drift_and_licenses_nothing() -> Bool {
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  let root_under_another_group = PosixOwnerNames { user: "root" as NonEmptyStr, group: "wheel" as NonEmptyStr }
+  let drifted_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root, mode: declared_directory_mode(m: DirectoryOwnerOnly) } }
+  let foreign_group_at_the_declared_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root_under_another_group, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let root_owned_non_directory = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: root, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  pass_gate_outcome(observation: drifted_mode) == "proceed-to-fold"
+    && pass_gate_outcome(observation: foreign_group_at_the_declared_mode) == "refused:prior-not-matched"
+    && pass_gate_outcome(observation: root_owned_non_directory) == "refused:path-is-not-a-directory"
+}
+
+// WHAT THE PROVIDER COULD DO WITH THE SAME READING, asked so the pass and the provider can be compared
+// instead of argued about.
+fn provider_has_no_install_for(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match owned_directory_plan(t: target, o: observation) {
+    EnsurePlanAvailable { plan: _ } => false
+    EnsurePlanUnavailable { reason: _ } => true
+  }
+}
+
+// THE INVARIANT THAT MAKES THIS LEG SAFE TO KEEP, claimed rather than argued: the pass refuses only where the
+// provider could not have acted anyway -- fold where there was something to do, stop where there was nothing.
+// One exception is NAMED rather than hidden: the unreadable parent is refused because no transition may commit
+// against a state the pass cannot read, which is not the provider lacking a plan (gunbc.ensure refuses an
+// unreadable observation under every policy, whatever the plan says, and this pass must never be the one that
+// reads unreadable as permission). The licensed arm is pinned by its own claim, so admitting it here costs
+// nothing.
+fn gate_agrees_with_the_provider(target: OwnedDirectoryTarget, observation: EnsureObservation<OwnedDirectoryReading>) -> Bool {
+  match printer_state_parent_pass_gate(target: target, observation: observation) {
+    ParentPassRunTransition { } => true
+    ParentPassProceedToFold { } => !provider_has_no_install_for(target: target, observation: observation)
+    ParentPassRefused { path: _, cause: cause } =>
+      reown_refusal_cause_name(cause: cause) == "path-unreadable"
+        || provider_has_no_install_for(target: target, observation: observation)
+  }
+}
+
+test fn witness_the_gate_refuses_exactly_where_the_provider_has_no_plan() -> Bool {
+  let target = printer_state_parent_reown_target(tree: host_state_tree())
+  let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+  let root_under_another_group = PosixOwnerNames { user: "root" as NonEmptyStr, group: "wheel" as NonEmptyStr }
+  let fleet = PosixOwnerNames { user: "gunbc-fleet" as NonEmptyStr, group: "gunbc-fleet" as NonEmptyStr }
+  let at_the_declared_identity = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let at_the_pinned_prior = EnsureObserved { evidence: printer_state_parent_reown_prior() }
+  let at_a_drifted_mode = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root, mode: declared_directory_mode(m: DirectoryOwnerOnly) } }
+  let under_a_foreign_group = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: true, owner: root_under_another_group, mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse) } }
+  let a_non_directory = EnsureObserved { evidence: OwnedDirectoryReading { is_directory: false, owner: fleet, mode: declared_directory_mode(m: DirectoryOwnerGroupWritableSetgid) } }
+  gate_agrees_with_the_provider(target: target, observation: at_the_declared_identity)
+    && gate_agrees_with_the_provider(target: target, observation: at_the_pinned_prior)
+    && gate_agrees_with_the_provider(target: target, observation: at_a_drifted_mode)
+    && gate_agrees_with_the_provider(target: target, observation: under_a_foreign_group)
+    && gate_agrees_with_the_provider(target: target, observation: a_non_directory)
+    && gate_agrees_with_the_provider(target: target, observation: EnsureAbsent { reason: "the listing of the state root did not name the path" })
+    && gate_agrees_with_the_provider(target: target, observation: EnsureInaccessible { reason: "the listing of the state root failed" })
 }
 
 // §6 asks a migration to carry the condition that ends it; §5 asks that the carrying be checkable, not
