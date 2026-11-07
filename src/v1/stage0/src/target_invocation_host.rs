@@ -30,6 +30,7 @@
 // of witness selection, which is `gunbc.compute.test_selection`'s to own.
 
 use crate::cli_run;
+use crate::gunbc_target_invocation::{invocation_exit_status, InvocationTermination};
 use crate::instrument_registry_generated::{
     bare_reference_channel_source_roots, behavioral_receipt_source_roots,
     emitted_crate_workspace_source_roots, heads_reading_differential_source_roots,
@@ -351,7 +352,7 @@ pub enum InvocationRefusal {
     /// A generated row names a subject -- the entry path the host would evaluate -- that this
     /// checkout does not carry. The table and the corpus disagree; running the row would report on a
     /// subject that is gone, so the dispatch refuses instead (DESIGN §5: a refusal, not a plausible
-    /// line). `Termination::Refused` is the instrument contract's exit 2.
+    /// line). `InvocationTermination::InvocationRefused` is the instrument contract's exit 2.
     InstrumentSubjectAbsent {
         label: String,
         field: String,
@@ -393,28 +394,6 @@ fn invocation_refusal_rendered(refusal: &InvocationRefusal) -> String {
     }
 }
 
-/// `gunbc.target_invocation` `InvocationTermination`. `SubjectUnreached` is NOT
-/// `ObservationDidNotHold`: a nonexistent root observed nothing, and that is not a defect finding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Termination {
-    ObservationHeld,
-    ObservationDidNotHold,
-    SubjectUnreached,
-    Refused,
-}
-
-/// Three statuses, not two: 1 is an observation that did not hold, 2 is no observation — conflating
-/// them is the absorbing answer DESIGN section 5 forbids. Wildcard-free: a fifth termination must
-/// fail to compile rather than inherit a `_` status.
-pub fn invocation_exit_status(t: Termination) -> i32 {
-    match t {
-        Termination::ObservationHeld => 0,
-        Termination::ObservationDidNotHold => 1,
-        Termination::SubjectUnreached => 2,
-        Termination::Refused => 2,
-    }
-}
-
 /// AN OUTCOME, DELIBERATELY NOT A RECEIPT, AND THE NAME IS THE WHOLE OF WHAT IS CLAIMED.
 ///
 /// The producer executes against an UNPINNED LIVE WORKING TREE: the corpus may change mid-walk,
@@ -430,7 +409,7 @@ pub fn invocation_exit_status(t: Termination) -> i32 {
 /// NOT CLAIMED: target-result caching, cross-run comparison, remote execution, replay, or "this
 /// standing was about source X". Each needs source binding first.
 pub struct InvocationOutcome {
-    pub termination: Termination,
+    pub termination: InvocationTermination,
     pub message: String,
 }
 
@@ -447,7 +426,7 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     if !missing.is_empty() {
         let named: Vec<String> = missing.into_iter().cloned().collect();
         return InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: format!(
                 "heads-reading-differential: subject unreached (source root absent): {}",
                 named.join(", ")
@@ -457,7 +436,7 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     let d = cli_run::heads_reading_differential(source_roots);
     if d.modules_compared == 0 {
         return InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: format!(
                 "heads-reading-differential: subject unreached (source population index refused): {}",
                 source_roots.join(", ")
@@ -511,9 +490,9 @@ fn run_heads_reading_differential(source_roots: &[String]) -> InvocationOutcome 
     ));
     InvocationOutcome {
         termination: if d.holds() {
-            Termination::ObservationHeld
+            InvocationTermination::InvocationObservationHeld
         } else {
-            Termination::ObservationDidNotHold
+            InvocationTermination::InvocationObservationDidNotHold
         },
         message,
     }
@@ -590,7 +569,7 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
         .collect();
     if !missing.is_empty() {
         return InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: format!(
                 "bare-reference-channel-outcome: subject unreached (fixture source root absent): {}",
                 missing.join(", ")
@@ -606,7 +585,7 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
         Ok(readings) => readings,
         Err(detail) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!(
                     "bare-reference-channel-outcome: subject unreached (module index refused): {detail}"
                 ),
@@ -679,9 +658,9 @@ fn run_bare_reference_channel_outcome() -> InvocationOutcome {
     }
     InvocationOutcome {
         termination: if unmet.is_empty() {
-            Termination::ObservationHeld
+            InvocationTermination::InvocationObservationHeld
         } else {
-            Termination::ObservationDidNotHold
+            InvocationTermination::InvocationObservationDidNotHold
         },
         message,
     }
@@ -704,7 +683,7 @@ fn instrument_subject_is_present(path: &str) -> bool {
 /// not carry can only mean the committed table is stale against the corpus -- the shape of the defect
 /// this change removes, where the host read its own copy and a gone subject kept being reported on as
 /// though it were present. The dispatch therefore refuses, located and typed, at the instrument
-/// contract's exit 2 (`Termination::Refused`), rather than run what is no longer there.
+/// contract's exit 2 (`InvocationTermination::InvocationRefused`), rather than run what is no longer there.
 fn instrument_subject_absence_refusal(
     producer: &TargetProducer,
     label: &str,
@@ -734,7 +713,7 @@ fn instrument_subject_absence_refusal(
 fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
     if let Some(refusal) = instrument_subject_absence_refusal(&producer, label) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: invocation_refusal_rendered(&refusal),
         };
     }
@@ -790,7 +769,7 @@ fn run_cli_wire_program(entry: &'static str, function: &'static str) -> Invocati
 
 /// ONE RUNNER FOR EVERY INSTRUMENT WHOSE `.dag` ENTRY ANSWERS A `CliWireResponse`: resolve the
 /// entry, evaluate the named function, print the wire bytes on every termination, and map the
-/// wire exit to a Termination through the one classifier in `cli_run`. A new instrument of that
+/// wire exit to a InvocationTermination through the one classifier in `cli_run`. A new instrument of that
 /// shape is a label row plus one arm naming its entry and function, never a second runner.
 fn run_cli_wire_census(
     label: &'static str,
@@ -801,7 +780,7 @@ fn run_cli_wire_census(
     let function_name = function;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
@@ -810,7 +789,7 @@ fn run_cli_wire_census(
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label_name}: resolve failed for {entry}: {cause}"),
             };
         }
@@ -824,7 +803,7 @@ fn run_cli_wire_census(
         );
     if !blocking.is_empty() {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!(
                 "{label_name}: {entry} has blocking diagnostics: {}",
                 blocking.iter().cloned().collect::<Vec<_>>().join("; ")
@@ -841,7 +820,7 @@ fn run_cli_wire_census(
             Ok(value) => value,
             Err(cause) => {
                 return InvocationOutcome {
-                    termination: Termination::SubjectUnreached,
+                    termination: InvocationTermination::InvocationSubjectUnreached,
                     message: format!("{label_name}: eval failed: {cause}"),
                 }
             }
@@ -849,10 +828,14 @@ fn run_cli_wire_census(
     match cli_run::classify_cli_wire(&value, &ctx) {
         cli_run::CliWireClass::Printable { bytes, exit } => {
             let termination = match &exit {
-                cli_run::ExitClass::Success => Termination::ObservationHeld,
-                cli_run::ExitClass::Failure { code: 1, .. } => Termination::ObservationDidNotHold,
-                cli_run::ExitClass::Failure { .. } => Termination::Refused,
-                cli_run::ExitClass::NotProcessExit { .. } => Termination::Refused,
+                cli_run::ExitClass::Success => InvocationTermination::InvocationObservationHeld,
+                cli_run::ExitClass::Failure { code: 1, .. } => {
+                    InvocationTermination::InvocationObservationDidNotHold
+                }
+                cli_run::ExitClass::Failure { .. } => InvocationTermination::InvocationRefused,
+                cli_run::ExitClass::NotProcessExit { .. } => {
+                    InvocationTermination::InvocationRefused
+                }
             };
             let reason = match exit {
                 cli_run::ExitClass::Success => format!("{label_name}: held"),
@@ -869,17 +852,17 @@ fn run_cli_wire_census(
             }
         }
         cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label_name}: renderer refused: {cause}"),
         },
         cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!(
                 "{label_name}: {function_name} returned `{type_name}`, not a CliWireResponse"
             ),
         },
         cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label_name}: malformed CliWireResponse: {detail}"),
         },
     }
@@ -890,7 +873,7 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
     const FUNCTION: &str = "evaluation_store_address_census_joins_exact_head_declaration_graph";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!(
                 "evaluation-store-address-exact-head: refused: could not anchor at the workspace root: {e}"
             ),
@@ -901,7 +884,7 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!(
                     "evaluation-store-address-exact-head: resolve failed for {ENTRY}: {cause}"
                 ),
@@ -917,7 +900,7 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
         );
     if !blocking.is_empty() {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!(
                 "evaluation-store-address-exact-head: {ENTRY} has blocking diagnostics: {}",
                 blocking.iter().cloned().collect::<Vec<_>>().join("; ")
@@ -932,7 +915,7 @@ fn run_evaluation_store_address_exact_head() -> InvocationOutcome {
     match crate::v1_interpreter::run_in_context_with_args(&ctx, FUNCTION, &[], true) {
         Ok(value) => exact_head_standing_outcome(&ctx, FUNCTION, &value),
         Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: format!("evaluation-store-address-exact-head: eval failed: {cause}"),
         },
     }
@@ -948,7 +931,7 @@ fn exact_head_standing_outcome(
             if ctx.sym_eq(*variant_name, "ExactHeadHeld") =>
         {
             InvocationOutcome {
-                termination: Termination::ObservationHeld,
+                termination: InvocationTermination::InvocationObservationHeld,
                 message: format!("evaluation-store-address-exact-head: held ({function})"),
             }
         }
@@ -956,7 +939,7 @@ fn exact_head_standing_outcome(
             if ctx.sym_eq(*variant_name, "ExactHeadDidNotHold") =>
         {
             InvocationOutcome {
-                termination: Termination::ObservationDidNotHold,
+                termination: InvocationTermination::InvocationObservationDidNotHold,
                 message: format!(
                     "evaluation-store-address-exact-head: {}",
                     ctx.format_value(value)
@@ -967,7 +950,7 @@ fn exact_head_standing_outcome(
             if ctx.sym_eq(*variant_name, "ExactHeadRefused") =>
         {
             InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!(
                     "evaluation-store-address-exact-head: {}",
                     ctx.format_value(value)
@@ -975,7 +958,7 @@ fn exact_head_standing_outcome(
             }
         }
         other => InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!(
                 "evaluation-store-address-exact-head: {function} returned a non-standing value: {}",
                 ctx.format_value(other)
@@ -1010,9 +993,9 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
                 &held.warning_headers,
             );
             let termination = if not_clean.is_none() {
-                Termination::ObservationHeld
+                InvocationTermination::InvocationObservationHeld
             } else {
-                Termination::ObservationDidNotHold
+                InvocationTermination::InvocationObservationDidNotHold
             };
             let counters = format!(
                 "self-host v1->v2: closure={} binary={} seed={} exit_status={} warning_count={} \
@@ -1033,7 +1016,7 @@ fn run_self_host(source_roots: &[String]) -> InvocationOutcome {
             }
         }
         Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: cause,
         },
     }
@@ -1059,12 +1042,12 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_native_frontier(source_roots) {
         Ok(run) => {
             let termination = match run.frontier.as_str() {
-                "held" | "advanced" | "grew-by-owned-correctness-flip" => Termination::ObservationHeld,
-                "lost" | "unminted" => Termination::ObservationDidNotHold,
-                "not-a-measurement" => Termination::SubjectUnreached,
+                "held" | "advanced" | "grew-by-owned-correctness-flip" => InvocationTermination::InvocationObservationHeld,
+                "lost" | "unminted" => InvocationTermination::InvocationObservationDidNotHold,
+                "not-a-measurement" => InvocationTermination::InvocationSubjectUnreached,
                 other => {
                     return InvocationOutcome {
-                        termination: Termination::SubjectUnreached,
+                        termination: InvocationTermination::InvocationSubjectUnreached,
                         message: format!(
                             "v2-native-frontier: the emitted binary reported an unknown frontier word {other:?}; \
                              v2.workflow.native_frontier_ratchet native_frontier_verdict_word and this match must agree"
@@ -1082,7 +1065,7 @@ fn run_v2_native_frontier(source_roots: &[String]) -> InvocationOutcome {
             }
         }
         Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: cause,
         },
     }
@@ -1120,9 +1103,9 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
                 &held.warning_headers,
             );
             let termination = if not_clean.is_none() {
-                Termination::ObservationHeld
+                InvocationTermination::InvocationObservationHeld
             } else {
-                Termination::ObservationDidNotHold
+                InvocationTermination::InvocationObservationDidNotHold
             };
             let counters = format!(
                 "v2-native-cli: closure={} binary={} seed={} exit_status={} warning_count={} \
@@ -1147,7 +1130,7 @@ fn run_v2_native_cli(source_roots: &[String]) -> InvocationOutcome {
             }
         }
         Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: cause,
         },
     }
@@ -1161,9 +1144,9 @@ fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_emitted_crate_workspace(source_roots) {
         Ok(held) => InvocationOutcome {
             termination: if held.green_exit_status == 0 && held.green_warning_count == 0 {
-                Termination::ObservationHeld
+                InvocationTermination::InvocationObservationHeld
             } else {
-                Termination::ObservationDidNotHold
+                InvocationTermination::InvocationObservationDidNotHold
             },
             message: format!(
                 "emitted-crate-workspace: head={} closure_modules={} crates={}                  facade_is_whole_closure={} rustc={} green_exit_status={} green_warning_count={}                  red=drop {} from {} ({} -> {}) red_refused=\"{}\"",
@@ -1182,7 +1165,7 @@ fn run_emitted_crate_workspace(source_roots: &[String]) -> InvocationOutcome {
             ),
         },
         Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: cause,
         },
     }
@@ -1203,7 +1186,7 @@ fn native_claim_child_deadline_from_binding(
     let authority = NATIVE_CLAIM_RUNTIME_AUTHORITY_MODULES[0];
     let ungrounded = |detail: String| -> InvocationOutcome {
         InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!(
                 "{label_name}: NATIVE-CLAIM REFUSAL cause=NativeClaimDeadlineUngrounded \
                  module={authority} entry={entry} — {detail}"
@@ -1283,12 +1266,12 @@ fn run_cardinality_realization() -> InvocationOutcome {
     let label_name = "cardinality-realization";
     const READER: &str = "src/v2/test/claim/cardinality_realization_coverage.dag";
     let unreached = |message: String| InvocationOutcome {
-        termination: Termination::SubjectUnreached,
+        termination: InvocationTermination::InvocationSubjectUnreached,
         message: format!("{label_name}: {message}"),
     };
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
@@ -1523,17 +1506,20 @@ fn run_cardinality_realization() -> InvocationOutcome {
         Err(cause) => return unreached(format!("the standing failed: {cause}")),
     };
     let (termination, verdict) = match standing {
-        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Success => (
+            InvocationTermination::InvocationObservationHeld,
+            "held".to_string(),
+        ),
         cli_run::ExitClass::Failure { code: 1, reason } => (
-            Termination::ObservationDidNotHold,
+            InvocationTermination::InvocationObservationDidNotHold,
             reason.unwrap_or_else(|| "not held".to_string()),
         ),
         cli_run::ExitClass::Failure { reason, .. } => (
-            Termination::SubjectUnreached,
+            InvocationTermination::InvocationSubjectUnreached,
             reason.unwrap_or_else(|| "no observation".to_string()),
         ),
         cli_run::ExitClass::NotProcessExit { type_name } => (
-            Termination::Refused,
+            InvocationTermination::InvocationRefused,
             format!("the standing returned `{type_name}`, not a ProcessExit"),
         ),
     };
@@ -1547,7 +1533,7 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-claim";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
@@ -1571,7 +1557,7 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             warning_count,
         }) => {
             return InvocationOutcome {
-                termination: Termination::ObservationDidNotHold,
+                termination: InvocationTermination::InvocationObservationDidNotHold,
                 message: format!(
                     "{label_name}: deadline exceeded entry={entry} budget_ms={} elapsed_ms={} closure={closure_identity} binary={binary_identity} seed={seed_identity} warning_count={warning_count}",
                     budget.as_millis(),
@@ -1581,7 +1567,7 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
         }
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: cause.message,
             }
         }
@@ -1592,7 +1578,7 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label_name}: resolve failed for {READER}: {cause}"),
             };
         }
@@ -1622,23 +1608,26 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
         Ok(value) => cli_run::classify_exit(&value, &ctx),
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label_name}: the report reader failed: {cause}"),
             }
         }
     };
     let (termination, verdict) = match standing {
-        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Success => (
+            InvocationTermination::InvocationObservationHeld,
+            "held".to_string(),
+        ),
         cli_run::ExitClass::Failure { code: 1, reason } => (
-            Termination::ObservationDidNotHold,
+            InvocationTermination::InvocationObservationDidNotHold,
             reason.unwrap_or_else(|| "not held".to_string()),
         ),
         cli_run::ExitClass::Failure { reason, .. } => (
-            Termination::SubjectUnreached,
+            InvocationTermination::InvocationSubjectUnreached,
             reason.unwrap_or_else(|| "no observation".to_string()),
         ),
         cli_run::ExitClass::NotProcessExit { type_name } => (
-            Termination::Refused,
+            InvocationTermination::InvocationRefused,
             format!("the report reader returned `{type_name}`, not a ProcessExit"),
         ),
     };
@@ -1759,7 +1748,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
     let label_name = "native-serve";
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
         };
     }
@@ -1767,7 +1756,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(binding) => binding,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!("{label_name}: the binding row is unreadable: {cause}"),
             }
         }
@@ -1779,7 +1768,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label_name}: resolve failed for {READER}: {cause}"),
             };
         }
@@ -1820,7 +1809,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(crate::v1_interpreter::Value::List(items)) => {
             let causes: Vec<String> = items.iter().filter_map(|item| text(item)).collect();
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!(
                     "{label_name}: NATIVE-SERVE REFUSAL cause=PhaseUnsatisfied entry={entry} reader={READER} — {}",
                     causes.join("; ")
@@ -1829,7 +1818,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         }
         Ok(other) => {
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!(
                 "{label_name}: {READER} native_serve_probe_phases_refused is not a List: {other:?}"
             ),
@@ -1837,7 +1826,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         }
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!(
                     "{label_name}: {READER} native_serve_probe_phases_refused failed: {cause}"
                 ),
@@ -1923,7 +1912,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         };
         if let Err(cause) = created {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!(
                     "{label_name}: NATIVE-SERVE REFUSAL cause=SocketDirectoryUncreated path={} — {cause}",
                     dir.display()
@@ -2003,7 +1992,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(plan) => plan,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label_name}: the probe plan is unreadable: {cause}"),
             }
         }
@@ -2020,7 +2009,7 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(run) => run,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: cause,
             }
         }
@@ -2116,23 +2105,26 @@ fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
         Ok(value) => cli_run::classify_exit(&value, &ctx),
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label_name}: the probe reader failed: {cause}"),
             }
         }
     };
     let (termination, verdict) = match standing {
-        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Success => (
+            InvocationTermination::InvocationObservationHeld,
+            "held".to_string(),
+        ),
         cli_run::ExitClass::Failure { code: 1, reason } => (
-            Termination::ObservationDidNotHold,
+            InvocationTermination::InvocationObservationDidNotHold,
             reason.unwrap_or_else(|| "not held".to_string()),
         ),
         cli_run::ExitClass::Failure { reason, .. } => (
-            Termination::SubjectUnreached,
+            InvocationTermination::InvocationSubjectUnreached,
             reason.unwrap_or_else(|| "no observation".to_string()),
         ),
         cli_run::ExitClass::NotProcessExit { type_name } => (
-            Termination::Refused,
+            InvocationTermination::InvocationRefused,
             format!("the probe reader returned `{type_name}`, not a ProcessExit"),
         ),
     };
@@ -2157,10 +2149,16 @@ fn behavioral_outcome(
     use cli_run::behavioral_receipt_host::BehavioralHostTermination;
     InvocationOutcome {
         termination: match outcome.termination {
-            BehavioralHostTermination::ObservationHeld => Termination::ObservationHeld,
-            BehavioralHostTermination::ObservationDidNotHold => Termination::ObservationDidNotHold,
-            BehavioralHostTermination::SubjectUnreached => Termination::SubjectUnreached,
-            BehavioralHostTermination::Refused => Termination::Refused,
+            BehavioralHostTermination::ObservationHeld => {
+                InvocationTermination::InvocationObservationHeld
+            }
+            BehavioralHostTermination::ObservationDidNotHold => {
+                InvocationTermination::InvocationObservationDidNotHold
+            }
+            BehavioralHostTermination::SubjectUnreached => {
+                InvocationTermination::InvocationSubjectUnreached
+            }
+            BehavioralHostTermination::Refused => InvocationTermination::InvocationRefused,
         },
         message: outcome.message,
     }
@@ -2283,7 +2281,7 @@ fn run_native_test_route(pattern: &TargetPattern) -> InvocationOutcome {
             )
         }
         cli_run::NativeRouteOutcome::Unreached { cause } => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: format!("native test route: {rendered} — {cause}"),
         },
     }
@@ -2302,11 +2300,15 @@ fn native_member_outcome(
     summary: &str,
 ) -> InvocationOutcome {
     let member_termination = match members {
-        cli_run::NativeMemberTermination::ObservationHeld => Termination::ObservationHeld,
-        cli_run::NativeMemberTermination::ObservationDidNotHold => {
-            Termination::ObservationDidNotHold
+        cli_run::NativeMemberTermination::ObservationHeld => {
+            InvocationTermination::InvocationObservationHeld
         }
-        cli_run::NativeMemberTermination::SubjectUnreached => Termination::SubjectUnreached,
+        cli_run::NativeMemberTermination::ObservationDidNotHold => {
+            InvocationTermination::InvocationObservationDidNotHold
+        }
+        cli_run::NativeMemberTermination::SubjectUnreached => {
+            InvocationTermination::InvocationSubjectUnreached
+        }
     };
     // `v2.workflow.native_route_member_termination` `native_route_termination_under_qualification`, mirrored: the
     // lane's qualification GATES a positive answer and nothing else. Several of its clauses are
@@ -2320,7 +2322,9 @@ fn native_member_outcome(
         member_termination
     } else {
         match member_termination {
-            Termination::ObservationHeld => Termination::SubjectUnreached,
+            InvocationTermination::InvocationObservationHeld => {
+                InvocationTermination::InvocationSubjectUnreached
+            }
             other => other,
         }
     };
@@ -2394,13 +2398,13 @@ fn claim_route_verdict(outcome: &cli_run::ClaimOutcome) -> ClaimRouteVerdict {
 
 /// `gunbc.target_invocation` `claim_route_termination`, mirrored: a definite failure dominates, an
 /// unobserved member or an empty selection is `SubjectUnreached`.
-fn claim_route_termination(verdicts: &[ClaimRouteVerdict]) -> Termination {
+fn claim_route_termination(verdicts: &[ClaimRouteVerdict]) -> InvocationTermination {
     if verdicts.contains(&ClaimRouteVerdict::ClaimDidNotHold) {
-        Termination::ObservationDidNotHold
+        InvocationTermination::InvocationObservationDidNotHold
     } else if verdicts.contains(&ClaimRouteVerdict::ClaimUnobserved) || verdicts.is_empty() {
-        Termination::SubjectUnreached
+        InvocationTermination::InvocationSubjectUnreached
     } else {
-        Termination::ObservationHeld
+        InvocationTermination::InvocationObservationHeld
     }
 }
 
@@ -2434,7 +2438,7 @@ fn run_claim_route(pattern: &TargetPattern) -> InvocationOutcome {
         Ok(members) => members,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("claim route: {rendered} — {cause}"),
             }
         }
@@ -2796,7 +2800,7 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
     eprintln!("{}", crate::memory_governor::cgroup_bind_note(&bind));
     if let Some(diagnostic) = crate::memory_governor::cgroup_bind_refusal_diagnostic(&bind) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: diagnostic,
         };
     }
@@ -2812,7 +2816,7 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
         Err(refusal) => {
             eprintln!("{refusal}");
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: refusal,
             };
         }
@@ -2833,7 +2837,7 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
         Some(Err(violation)) => {
             eprintln!("{violation}");
             InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!("{}\n{violation}", outcome.message),
             }
         }
@@ -3334,7 +3338,7 @@ fn stale_binary_refusal(freshness: &BinaryFreshness) -> Option<InvocationOutcome
         }
         BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => {
             Some(InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: line,
             })
         }
@@ -3346,7 +3350,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
         Ok(pattern) => pattern,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!(
                     "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
                     target_pattern_refusal_text(&cause)
@@ -3358,7 +3362,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
         Ok(universe) => universe,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!(
                     "gunbc test: the native route's boundary, {:?}, is not an admitted target pattern; \
                      src/v1/stage0/src/native_route_seed_boundary_generated.rs is rendered from \
@@ -3380,7 +3384,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
         TargetPattern::SingleTarget(label) => label,
         TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: test_operand_set_form_refusal_rendered(operand),
             };
         }
@@ -3393,7 +3397,7 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
         None => {
             let refusal = InvocationRefusal::TargetIsUnknown { target: key };
             InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: invocation_refusal_rendered(&refusal),
             }
         }
@@ -3481,7 +3485,7 @@ fn typed_graph_exclusive_bytes_over(
     use cli_run::TypedModuleClass as C;
     if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label}: refused: could not anchor at the workspace root: {e}"),
         };
     }
@@ -3506,7 +3510,7 @@ fn typed_graph_exclusive_bytes_over(
             Ok(g) => g,
             Err(e) => {
                 return InvocationOutcome {
-                    termination: Termination::SubjectUnreached,
+                    termination: InvocationTermination::InvocationSubjectUnreached,
                     message: format!("{label}: subject unreached: {e}"),
                 }
             }
@@ -3515,7 +3519,7 @@ fn typed_graph_exclusive_bytes_over(
             Ok(r) => raw.push((class_name, r)),
             Err(cause) => {
                 return InvocationOutcome {
-                    termination: Termination::Refused,
+                    termination: InvocationTermination::InvocationRefused,
                     message: format!("{label}: class {class_name} unattributable: {cause}"),
                 }
             }
@@ -3529,7 +3533,7 @@ fn typed_graph_exclusive_bytes_over(
         Ok(resolved) => resolved,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label}: resolve failed for {ENTRY}: {cause}"),
             }
         }
@@ -3558,7 +3562,7 @@ fn typed_graph_exclusive_bytes_over(
             .collect::<Result<Vec<_>, _>>()
         else {
             return InvocationOutcome {
-                termination: Termination::Refused,
+                termination: InvocationTermination::InvocationRefused,
                 message: format!(
                     "{label}: class {} carries a count past the i64 the fold reads",
                     class
@@ -3596,7 +3600,7 @@ fn typed_graph_exclusive_bytes_over(
         Ok(v) => v,
         Err(cause) => {
             return InvocationOutcome {
-                termination: Termination::SubjectUnreached,
+                termination: InvocationTermination::InvocationSubjectUnreached,
                 message: format!("{label}: the report could not be reached: {cause}"),
             }
         }
@@ -3618,13 +3622,13 @@ fn typed_graph_exclusive_bytes_over(
     } = &report
     else {
         return InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: format!("{label}: unrecognised report {}", ctx.format_value(&report)),
         };
     };
     if !ctx.sym_eq(*variant_name, "ExclusiveBytesReported") {
         return InvocationOutcome {
-            termination: Termination::Refused,
+            termination: InvocationTermination::InvocationRefused,
             message: format!("{label}: {}", ctx.format_value(&report)),
         };
     }
@@ -3660,7 +3664,7 @@ fn typed_graph_exclusive_bytes_over(
         bytes(ctx.field(fields, "sum_of_exclusives")),
     ));
     InvocationOutcome {
-        termination: Termination::ObservationHeld,
+        termination: InvocationTermination::InvocationObservationHeld,
         message: lines.join("\n"),
     }
 }
@@ -3697,6 +3701,20 @@ mod native_route_termination_tests {
     /// `gunbc.target_invocation` `claim_route_termination`, mirrored: the same five rows
     /// `test.claim.target_invocation_witness` `the_claim_route_termination_maps_to_the_three_exit_statuses`
     /// pins on the model, so the host mirror cannot drift from it silently.
+    // THE TEST ROUTE'S STATUS TABLE IS THE EMITTED ONE. `invocation_exit_status` here is
+    // `gunbc.target_invocation` `invocation_exit_status` as emitted into this crate, the function
+    // the generated `test` arm calls; the host keeps no table. Altering the .dag table and
+    // regenerating the mirror turns this red, and the refusal/unreached pair pins the
+    // distinction the arm exists to keep (both status 2, neither status 1).
+    #[test]
+    fn the_test_arms_status_is_the_emitted_table() {
+        use InvocationTermination::*;
+        assert_eq!(invocation_exit_status(InvocationObservationHeld), 0);
+        assert_eq!(invocation_exit_status(InvocationObservationDidNotHold), 1);
+        assert_eq!(invocation_exit_status(InvocationSubjectUnreached), 2);
+        assert_eq!(invocation_exit_status(InvocationRefused), 2);
+    }
+
     #[test]
     fn claim_route_termination_matches_the_model() {
         use ClaimRouteVerdict::*;
@@ -3741,7 +3759,10 @@ mod native_route_termination_tests {
             "refused",
             "s",
         );
-        assert_eq!(out.termination, Termination::SubjectUnreached);
+        assert_eq!(
+            out.termination,
+            InvocationTermination::InvocationSubjectUnreached
+        );
     }
 
     /// AND A QUALIFIED ROUTE PASSES THE MEMBER STANDING THROUGH, which is what makes the clamp a
@@ -3756,7 +3777,10 @@ mod native_route_termination_tests {
             "held",
             "s",
         );
-        assert_eq!(out.termination, Termination::ObservationHeld);
+        assert_eq!(
+            out.termination,
+            InvocationTermination::InvocationObservationHeld
+        );
     }
 
     /// A DEFINITE FAILURE SURVIVES A REFUSED QUALIFICATION. Demoting it would bury a located defect
@@ -3770,7 +3794,10 @@ mod native_route_termination_tests {
             "refused",
             "s",
         );
-        assert_eq!(out.termination, Termination::ObservationDidNotHold);
+        assert_eq!(
+            out.termination,
+            InvocationTermination::InvocationObservationDidNotHold
+        );
     }
 }
 
@@ -3950,7 +3977,10 @@ mod binary_freshness_tests {
             why: "changed after the binary was built".into(),
         };
         let outcome = stale_binary_refusal(&stale).expect("a stale binary is refused");
-        assert_eq!(outcome.termination, Termination::Refused);
+        assert_eq!(
+            outcome.termination,
+            InvocationTermination::InvocationRefused
+        );
         assert!(
             outcome.message.contains("cause=StaleBinary"),
             "{}",
@@ -3964,16 +3994,16 @@ fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> In
     match cli_run::run_self_host_frontier(source_roots, stage0_crate_dir) {
         Ok(code) => InvocationOutcome {
             termination: match code {
-                0 => Termination::ObservationHeld,
-                1 => Termination::ObservationDidNotHold,
-                _ => Termination::SubjectUnreached,
+                0 => InvocationTermination::InvocationObservationHeld,
+                1 => InvocationTermination::InvocationObservationDidNotHold,
+                _ => InvocationTermination::InvocationSubjectUnreached,
             },
             message: format!(
                 "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
             ),
         },
         Err(cause) => InvocationOutcome {
-            termination: Termination::SubjectUnreached,
+            termination: InvocationTermination::InvocationSubjectUnreached,
             message: cause,
         },
     }
@@ -3989,7 +4019,7 @@ const REGEN_ROUND_COST_PROBE_MIRROR: &str = "std_measure.rs";
 
 fn run_regen_round_cost_instrument() -> InvocationOutcome {
     let unreached = |detail: String| InvocationOutcome {
-        termination: Termination::SubjectUnreached,
+        termination: InvocationTermination::InvocationSubjectUnreached,
         message: format!("regen-round-cost: subject unreached: {detail}"),
     };
     let roots = self_host_source_roots();
@@ -4024,7 +4054,7 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
     }
     if round.round_failures.is_empty() {
         InvocationOutcome {
-            termination: Termination::ObservationHeld,
+            termination: InvocationTermination::InvocationObservationHeld,
             message: format!(
                 "regen-round-cost: round clean; receipt={}",
                 round.receipt_path.display()
@@ -4032,7 +4062,7 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
         }
     } else {
         InvocationOutcome {
-            termination: Termination::ObservationDidNotHold,
+            termination: InvocationTermination::InvocationObservationDidNotHold,
             message: format!(
                 "regen-round-cost: round not clean: {}",
                 round.round_failures.join("; ")
@@ -4318,7 +4348,7 @@ mod instrument_registry_generated_falsifier {
             let outcome = run_producer(producer, label);
             assert_eq!(
                 outcome.termination,
-                Termination::Refused,
+                InvocationTermination::InvocationRefused,
                 "an absent subject must refuse, not run: {label}"
             );
             assert!(

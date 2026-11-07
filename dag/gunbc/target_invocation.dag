@@ -15,6 +15,7 @@ import gunbc.target_binding {
   TargetProducerBound, KnownTargetBindingMissing, TargetUnknown, TargetLookupLabelNotCanonical,
   build_target_binding_index, target_binding_lookup,
 }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, Bool, List }
 import std.integer { Int }
 import extdeps.bazel.target_pattern {
@@ -324,6 +325,19 @@ fn invocation_exit_status(t: InvocationTermination) -> Int {
     InvocationObservationDidNotHold => 1
     InvocationSubjectUnreached => 2
     InvocationRefused => 2
+  }
+}
+
+// THE DECLARATION THE EMITTED `test` ARM CALLS FOR ITS PROCESS STATUS. The generated dispatch
+// (v1.compiler.emit_rust emit_bound_target_producer_match_arm) derives its call spelling from this
+// reference, so `invocation_exit_status` above is the only status table: the host keeps no copy, and
+// editing the table edits what the arm calls. CONSUMER: the `test` arm of the shipped CLI
+// dispatch, route `gunbc test <label>` -> test_verb_checked -> InvocationTermination -> this fn.
+fn bound_target_producer_status_declaration() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.target_invocation",
+    decl_name: "invocation_exit_status",
+    field: WholeDeclaration,
   }
 }
 

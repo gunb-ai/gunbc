@@ -22,8 +22,11 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // parses every module twice, which is a host effect the required floor's hermetic envelope refuses
 // by construction -- a .dag witness whose subject is that walk is counted executed while its
 // assertion never runs. So the leaf is Rust for the same reason ingestion is. The MIRROR is
-// hand-authored for a different and more mundane reason: none of the three .dag modules above is in
-// the v1 seed's emitted closure. src/gunbc_cli_dispatch_surface.rs is the only gunbc.* mirror the
+// hand-authored for a different and more mundane reason: when this verb landed none of the three .dag modules above was in
+// the v1 seed's emitted closure. gunbc.target_invocation now IS: the emitter imports it to derive the
+// emitted `test` arm's status call (bound_target_producer_status_declaration), so its
+// InvocationTermination and invocation_exit_status are emitted and the host's Termination enum and
+// status table are deleted. The other two modules remain unemitted. src/gunbc_cli_dispatch_surface.rs is the only gunbc.* mirror the
 // emitter produces, because the emitter imports that one module to render its own subcommand
 // surface. Nothing imports gunbc.target_invocation, so nothing emits it.
 //
@@ -266,16 +269,6 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "invocation_refusal_rendered",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.target_invocation_host",
-      decl_name: "Termination",
-      field: WholeDeclaration
-    },
-    DeclarationRef {
-      module_path: "v1_compiler.target_invocation_host",
-      decl_name: "invocation_exit_status",
       field: WholeDeclaration
     },
     DeclarationRef {

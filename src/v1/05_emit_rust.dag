@@ -108,6 +108,7 @@ import gunbc.stage0.stage0_partition_package_graph {
   stage0_partition_row_is_module_bearing_package
 }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
+import gunbc.target_invocation { bound_target_producer_status_declaration }
 import gunbc.cli_dispatch_surface {
   admitted_bootstrap_operation_declaration,
   CliArmRealization,
@@ -20096,6 +20097,7 @@ fn emit_candidate_cli_host(crate_name: String) -> String {
     "struct CandidateCliHost;\n\n",
     "impl ", crate_name, "::gunbc_cli_dispatch_generated::CliDispatchHost for CandidateCliHost {\n",
     methods,
+    emit_candidate_cli_host_terminal_verdict_method(rows: gunbc_cli_generated_dispatch_subcommands()),
     "}\n\n")
 }
 
@@ -20103,7 +20105,7 @@ fn cli_dispatch_host_method_name(sub: CliSubcommandRow) -> String? {
   match sub.realization {
     CliRetainedHostKernel => Present { value: "retained_host_kernel" }
     CliDelegatesToHostFn { symbol } => Present { value: symbol }
-    CliInvokesBoundTargetProducer => Present { value: "invoke_bound_target_producer" }
+    CliInvokesBoundTargetProducer => none
     CliRefusesUnwired { successor: _ } => none
     CliKnownOperationNoRealization { operation: _ } => none
     CliInvokesBootstrapDagOperation { binding: _ } => none
@@ -20126,9 +20128,57 @@ fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, 
       CliInvokesBootstrapDagOperation { binding } => emit_bootstrap_dag_operation_match_arm(sub: sub, binding: binding, crate_name: crate_name)
       CliRetainedHostKernel => ""
       CliDelegatesToHostFn { symbol: _ } => ""
-      CliInvokesBoundTargetProducer => ""
+      CliInvokesBoundTargetProducer => emit_bound_target_producer_match_arm(sub: sub, executor_name: executor_name)
     }
   }
+}
+
+// THE `test` ARM IS EMITTED, NOT DELEGATED. It runs the bound producer (the retained host kernel,
+// cli_run::target_invocation_host test_verb_checked, whose outcome is typed
+// gunbc.target_invocation InvocationTermination) and takes the process status from the ONE status
+// table, gunbc.target_invocation invocation_exit_status, emitted into the crate as its own module.
+// The spelling of that function is derived from its declaration reference, never typed here, so
+// altering the table in .dag alters the emitted function the arm calls. The only host act left is
+// the terminal verdict (print message and receipt, end without teardown), reached through the
+// one generic method below.
+fn emit_bound_target_producer_match_arm(sub: CliSubcommandRow, executor_name: String) -> String {
+  let status = bound_target_producer_status_declaration()
+  match modeled_subcommand_bound_fields(sub: sub) |> first {
+    Present { value: operand } => concat(
+      "        (Commands::", sub.variant, " { ", operand, " }, _) => {\n",
+      "            let outcome = crate::cli_run::target_invocation_host::test_verb_checked(&", operand, ");\n",
+      "            ", executor_name, ".", cli_dispatch_terminal_verdict_method(), "(\n",
+      "                crate::", module_to_filename(name: status.module_path as String), "::", status.decl_name as String, "(outcome.termination) as i32,\n",
+      "                Some(outcome.message),\n",
+      "            )\n",
+      "        }")
+    Absent => "compile_error!(\"REFUSED: bound target producer arm has no operand\");"
+  }
+}
+
+fn cli_dispatch_terminal_verdict_method() -> String { "end_process_with_verdict" }
+
+fn cli_dispatch_rows_end_with_verdict(rows: List<CliSubcommandRow>) -> Bool {
+  (rows |> filter(sub => match sub.realization {
+    CliInvokesBoundTargetProducer => true
+    _ => false
+  }) |> count) > 0
+}
+
+fn emit_cli_dispatch_terminal_verdict_trait_method(rows: List<CliSubcommandRow>) -> String {
+  if cli_dispatch_rows_end_with_verdict(rows: rows) {
+    concat("    fn ", cli_dispatch_terminal_verdict_method(), "(&self, status: i32, message: Option<String>) -> !;\n")
+  } else { "" }
+}
+
+fn emit_candidate_cli_host_terminal_verdict_method(rows: List<CliSubcommandRow>) -> String {
+  if cli_dispatch_rows_end_with_verdict(rows: rows) {
+    concat(
+      "    fn ", cli_dispatch_terminal_verdict_method(), "(&self, status: i32, message: Option<String>) -> ! {\n",
+      "        if let Some(message) = message \{ eprintln!(\"\{message}\"); \}\n",
+      "        std::process::exit(status);\n",
+      "    }\n")
+  } else { "" }
 }
 
 fn emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name: String, rows: List<CliSubcommandRow>, executor_name: String) -> TextFile {
@@ -20146,7 +20196,7 @@ fn emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name: String, rows
       "use clap::\{Parser, Subcommand};\n\n",
       emit_cli_root_struct(binary_name: gunbc_cli_binary_name(), about: gunbc_cli_about(), version_attr: ", version = env!(\"GUNBC_BUILD_IDENTITY\")", public: true), "\n\n",
       "#[derive(Subcommand)]\npub enum Commands {\n", variants, "\n}\n\n",
-      "pub trait CliDispatchHost {\n", host_methods, "}\n\n",
+      "pub trait CliDispatchHost {\n", host_methods, emit_cli_dispatch_terminal_verdict_trait_method(rows: rows), "}\n\n",
       "pub fn dispatch<H: CliDispatchHost>(command: Commands, dry_run: bool, ", executor_name, ": &H) -> ! {\n    match (command, dry_run) {\n",
       arms, "\n    }\n}\n")
   }
