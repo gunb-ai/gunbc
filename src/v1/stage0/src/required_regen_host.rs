@@ -13330,7 +13330,7 @@ mod route_projection_control {
     /// exactly as `emitted_tree_packages` builds them. Asking either route about `[dag, src/v2]`
     /// would compare two answers to a question no caller asks.
     fn emitted_tree_site() -> (Vec<String>, String) {
-        let roots: Vec<String> = super::regen_source_roots()
+        let roots: Vec<String> = super::super::regen_source_roots()
             .all()
             .iter()
             .map(|root| {
@@ -13379,7 +13379,7 @@ mod route_projection_control {
                 .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
             SHARED_ROUTE => {
                 let shared = super::process_shared_index_or_refuse(&roots);
-                super::resolve_entry_with_index(&shared, &entry)
+                super::super::resolve_entry_with_index(&shared, &entry)
                     .map_err(|e| format!("the whole-tree route refused: {e}"))?
             }
             other => {
@@ -13388,7 +13388,7 @@ mod route_projection_control {
                 ))
             }
         };
-        let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+        let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
         let value = v1_interpreter::with_active_context(&ctx, || {
             v1_interpreter::run_in_context_with_args(
                 &ctx,
@@ -13398,7 +13398,7 @@ mod route_projection_control {
             )
         })
         .map_err(|e| format!("{route}: generated_partition_crate_rows did not evaluate: {e}"))?;
-        let wire = value_to_wire_json(&value, &ctx).map_err(|e| {
+        let wire = super::super::value_to_wire_json(&value, &ctx).map_err(|e| {
             format!("{route}: generated_partition_crate_rows did not wire-encode: {e}")
         })?;
         let rows: Vec<serde_json::Value> = serde_json::from_value(wire)
