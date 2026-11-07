@@ -1,6 +1,6 @@
 module test.claim.compute.durable_attempt_controller_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import std.temporal_effect { HeldLease, LeaseRunningExpected }
 import std.durable_exclusive_hold {
@@ -9,7 +9,7 @@ import std.durable_exclusive_hold {
 }
 import std.measure { kibibyte }
 import product.fabric.identity { FabricIdentity, DemandKey, ExecutionAttemptKey }
-import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted }
+import gunbc.durable_handoff_host { host_request_submit, HostRequestAccepted, host_request_directories }
 import gunbc.compute.durable_attempt_controller {
   ControllerAttemptOpened, ControllerAttemptReattached, ControllerAttemptOpeningRefused, ControllerDelegation,
   ControllerDelegated, controller_store, controller_delegate, controller_attempt_open, controller_attempt_read,
@@ -42,8 +42,20 @@ import std.content_hash { content_hash_of_value }
 // These controls execute the production request acceptance, delegation, codec,
 // prepare and file CAS paths. The pause is an explicit prepared proposal, not
 // a sleep or a simulated scheduler. No process launch is performed by PR3.
+// The service's declared directories are prerequisites, not effects of submit.
+// Derive both populations from their existing owners; every mkdir must succeed.
+fn fixture_prepare_root(root: String) -> Bool {
+  let store = controller_store(root: join([root, "/controller"], "") as NonEmptyStr, principal: "gunbc" as NonEmptyStr)
+  let directories = host_request_directories(root: join([root, "/accepted"], "") as NonEmptyStr) +
+    [store.requests.root as String, store.attempts.root as String]
+  directories.map(path => shell.Mkdir.Parents(path: path as FilePath).success).all(ok => ok)
+}
+
 fn delegated_fixture() -> ControllerDelegation? {
-  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_controller.XXXXXX").path
+  let temporary = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_controller.XXXXXX")
+  if !temporary.success || (temporary.path as String) == "" { return none }
+  let root = temporary.path as String
+  if !fixture_prepare_root(root: root) { return none }
   match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
     identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
     HostRequestAccepted { request } => match controller_delegate(
@@ -329,7 +341,10 @@ test fn malformed_attempt_refuses_claim_and_reopen_without_remint() -> Bool {
 }
 
 test fn independent_principal_mismatch_refuses_delegation_with_matching_positive() -> Bool {
-  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_principal.XXXXXX").path
+  let temporary = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_principal.XXXXXX")
+  if !temporary.success || (temporary.path as String) == "" { return false }
+  let root = temporary.path as String
+  if !fixture_prepare_root(root: root) { return false }
   match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
     identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
     HostRequestAccepted { request } => {
@@ -344,7 +359,10 @@ test fn independent_principal_mismatch_refuses_delegation_with_matching_positive
 }
 
 test fn competing_delegators_resume_the_committed_link_not_their_new_candidate() -> Bool {
-  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_delegate.XXXXXX").path
+  let temporary = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_delegate.XXXXXX")
+  if !temporary.success || (temporary.path as String) == "" { return false }
+  let root = temporary.path as String
+  if !fixture_prepare_root(root: root) { return false }
   match host_request_submit(root: join([root, "/accepted"], "") as NonEmptyStr,
     identity: FabricIdentity { principal: "gunbc" as NonEmptyStr, key: "request-one" as DemandKey }, payload: base_wire() as NonEmptyStr) {
     HostRequestAccepted { request } => {
