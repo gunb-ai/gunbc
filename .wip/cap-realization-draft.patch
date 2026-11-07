@@ -1,0 +1,193 @@
+diff --git a/dag/gunbc/live_deploy/srv1_gpu_power_cap_unit.dag b/dag/gunbc/live_deploy/srv1_gpu_power_cap_unit.dag
+new file mode 100644
+index 0000000000..470a14a00b
+--- /dev/null
++++ b/dag/gunbc/live_deploy/srv1_gpu_power_cap_unit.dag
+@@ -0,0 +1,124 @@
++module gunbc.live_deploy.srv1_gpu_power_cap_unit
++
++import std.types { Bool, List, NonEmptyStr, String }
++import std.optional { Absent, Present }
++import product.host_identity { HostIdentity, host_identity_eq }
++import extdeps.systemd.unit_file {
++  SystemdUnitFile, ServiceUnitFile,
++  Description, After, Before,
++  ServiceType, OneshotMode, RemainAfterExit, ExecStart,
++  Installable, WantedBy,
++}
++import extdeps.nvidia.system_management_interface { nvidia_smi_set_power_limit_argv, nvidia_smi_set_persistence_mode_argv }
++import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
++import gunbc.live_deploy.srv1_serving_engine_unit { srv1_serving_engine_unit_name, srv1_serving_engine_retired_hand_units }
++import gunbc.serving.gpu_power_state_policy {
++  GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDeviceUnread,
++  gpu_cap_admissions_on,
++}
++
++// SRV1'S GPU POWER CAPS, RE-APPLIED AT EVERY BOOT (operator, 2026-11-07: "the intent should be persistent").
++// `nvidia-smi -pl` lasts until the driver unloads or the host reboots, and srv1 ran with persistence mode
++// off, so a cap set by hand silently reverts at the next boot. The cap's authority is
++// gunbc.serving.gpu_power_state_policy installed_gpu_cap_intents; this unit is that intent's realization on
++// srv1: for every ADMITTED cap, persistence mode on and the limit set, each card addressed by its GPU UUID so
++// a card moving between slots keeps its cap. It runs before the serving engine starts, so the engine never
++// loads its weights onto an uncapped card.
++//
++// WHAT IT DOES NOT DO. It reads nothing back: nvidia-smi exits nonzero when it refuses a limit, which fails
++// this oneshot loudly, but an accepted command is not an observed limit. The independent readback (query
++// power.limit per UUID and compare it with the intent) is gunbc.plans.gpu_card_host_program row N10's converge
++// leg, and this unit retires into that leg when it lands.
++//
++// A CAP THAT IS NOT ADMITTED IS NEVER RENDERED. A card whose device range is unread (srv1's Workstation card,
++// unpowered on 2026-11-07) is carried as a pending read the apply REPORTS on every deploy; a cap outside its
++// card's device range refuses the whole rendering, because a limit nvidia-smi would refuse fails the unit at
++// boot, and with it every card's cap.
++
++data srv1_gpu_power_cap_unit_name: NonEmptyStr = "gunbc-srv1-gpu-power-cap.service"
++
++fn srv1_gpu_power_cap_unit_path() -> NonEmptyStr {
++  join(["/etc/systemd/system/", srv1_gpu_power_cap_unit_name as String], "") as NonEmptyStr
++}
++
++fn srv1_gpu_power_cap_hosted_on(host: HostIdentity) -> Bool {
++  host_identity_eq(a: host, b: operator_host_srv1)
++}
++
++type Srv1GpuPowerCapUnitRendering
++  = Srv1GpuPowerCapUnitReady { file: SystemdUnitFile, pending: List<GpuCapAdmission> }
++  | Srv1GpuPowerCapUnitRefused { refused: List<GpuCapAdmission> }
++
++fn exec_line(argv: List<String>) -> NonEmptyStr {
++  join(argv, " ") as NonEmptyStr
++}
++
++fn admitted_exec_lines(a: GpuCapAdmission) -> List<NonEmptyStr> {
++  match a {
++    GpuCapAdmitted { host: _, board: _, gpu_uuid: u, cap: c } => [
++      exec_line(argv: nvidia_smi_set_persistence_mode_argv(device: u, enabled: true)),
++      exec_line(argv: nvidia_smi_set_power_limit_argv(device: u, limit: c)),
++    ]
++    GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => []
++    GpuCapDeviceUnread { board: _, cap: _, read_obligation: _ } => []
++  }
++}
++
++fn admission_is_pending(a: GpuCapAdmission) -> Bool {
++  match a {
++    GpuCapDeviceUnread { board: _, cap: _, read_obligation: _ } => true
++    GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: _ } => false
++    GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => false
++  }
++}
++
++fn admission_is_refused(a: GpuCapAdmission) -> Bool {
++  match a {
++    GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => true
++    GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: _ } => false
++    GpuCapDeviceUnread { board: _, cap: _, read_obligation: _ } => false
++  }
++}
++
++// The serving engine's unit, and the hand unit it retires, both start the engine at boot today; this unit
++// orders before each, so whichever is installed waits for the caps.
++fn srv1_serving_engine_units() -> List<NonEmptyStr> {
++  concat([srv1_serving_engine_unit_name], map(srv1_serving_engine_retired_hand_units, r => r.unit))
++}
++
++fn srv1_gpu_power_cap_unit_over(admissions: List<GpuCapAdmission>) -> Srv1GpuPowerCapUnitRendering {
++  let refused = filter(admissions, a => admission_is_refused(a: a))
++  if refused.length() > 0 {
++    Srv1GpuPowerCapUnitRefused { refused: refused }
++  } else {
++    Srv1GpuPowerCapUnitReady {
++      file: ServiceUnitFile {
++        unit: concat(
++          [
++            Description { text: "srv1 GPU power caps at boot (gunbc.live_deploy.srv1_gpu_power_cap_unit)" as NonEmptyStr },
++            After { target: "systemd-modules-load.service" as NonEmptyStr },
++          ],
++          map(srv1_serving_engine_units(), u => Before { target: u }),
++        ),
++        service: concat(
++          [ServiceType { mode: OneshotMode }, RemainAfterExit { active: true }],
++          map(flat_map(admissions, a => admitted_exec_lines(a: a)), l => ExecStart { command: l }),
++        ),
++        install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
++      },
++      pending: filter(admissions, a => admission_is_pending(a: a)),
++    }
++  }
++}
++
++fn srv1_gpu_power_cap_unit() -> Srv1GpuPowerCapUnitRendering {
++  srv1_gpu_power_cap_unit_over(admissions: gpu_cap_admissions_on(host: operator_host_srv1))
++}
++
++fn pending_read_line(a: GpuCapAdmission) -> String {
++  match a {
++    GpuCapDeviceUnread { board: b, cap: _, read_obligation: o } => join(["gpu power cap pending for ", b as String, ": ", o as String], "")
++    GpuCapAdmitted { host: _, board: b, gpu_uuid: _, cap: _ } => join(["gpu power cap admitted for ", b as String], "")
++    GpuCapOutsideDeviceRange { board: b, cap: _, minimum: _, maximum: _ } => join(["gpu power cap outside device range for ", b as String], "")
++  }
++}
+diff --git a/dag/test/claim/live_deploy/srv1_gpu_power_cap_unit_witness.dag b/dag/test/claim/live_deploy/srv1_gpu_power_cap_unit_witness.dag
+new file mode 100644
+index 0000000000..58a7067294
+--- /dev/null
++++ b/dag/test/claim/live_deploy/srv1_gpu_power_cap_unit_witness.dag
+@@ -0,0 +1,57 @@
++module test.claim.live_deploy.srv1_gpu_power_cap_unit_witness
++
++import std.types { Bool, List, NonEmptyStr, String }
++import std.measure { watt }
++import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
++import extdeps.systemd.unit_file { serialize_systemd_unit_file }
++import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2 }
++import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
++import gunbc.serving.gpu_power_state_policy { GpuCapOutsideDeviceRange, GpuCapDeviceUnread }
++import gunbc.live_deploy.srv1_gpu_power_cap_unit {
++  srv1_gpu_power_cap_unit, srv1_gpu_power_cap_unit_over, srv1_gpu_power_cap_hosted_on,
++  Srv1GpuPowerCapUnitReady, Srv1GpuPowerCapUnitRefused,
++}
++
++data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
++
++fn rendered_text() -> String {
++  match srv1_gpu_power_cap_unit() {
++    Srv1GpuPowerCapUnitReady { file: f, pending: _ } => serialize_systemd_unit_file(file: f)
++    Srv1GpuPowerCapUnitRefused { refused: _ } => ""
++  }
++}
++
++// THE REAL RENDERING: a boot oneshot ordered before both units that start the serving engine, setting
++// persistence mode and the 300 W limit on the Max-Q by its UUID -- and nothing for the Workstation card,
++// whose range is unread, which is carried as the one pending read instead.
++test fn the_unit_caps_the_max_q_by_uuid_before_the_engine_and_reports_the_workstation_pending() -> Bool {
++  let t = rendered_text()
++  contains(t, "Type=oneshot")
++    && contains(t, "RemainAfterExit=yes")
++    && contains(t, "ExecStart=nvidia-smi -i GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 -pm 1")
++    && contains(t, "ExecStart=nvidia-smi -i GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 -pl 300")
++    && contains(t, "Before=gunbc-srv1-serving-engine.service")
++    && contains(t, "Before=srv1-lil-serve.service")
++    && contains(t, "WantedBy=multi-user.target")
++    && !contains(t, "ExecStop")
++    && match srv1_gpu_power_cap_unit() {
++      Srv1GpuPowerCapUnitReady { file: _, pending: p } => p.length() == 1 && all(p, a => match a {
++        GpuCapDeviceUnread { board: b, cap: _, read_obligation: _ } => (b as String) == (gpu_board_01 as String)
++        _ => false
++      })
++      Srv1GpuPowerCapUnitRefused { refused: _ } => false
++    }
++}
++
++// A CAP OUTSIDE ITS DEVICE RANGE REFUSES THE WHOLE UNIT: rendering the others would boot a unit whose
++// refused line fails it, taking every card's cap down with it.
++test fn a_cap_outside_the_device_range_refuses_the_rendering() -> Bool {
++  match srv1_gpu_power_cap_unit_over(admissions: [GpuCapOutsideDeviceRange { board: gpu_board_04, cap: watt(count: 600), minimum: watt(count: 250), maximum: watt(count: 325) }]) {
++    Srv1GpuPowerCapUnitRefused { refused: r } => r.length() == 1
++    Srv1GpuPowerCapUnitReady { file: _, pending: _ } => false
++  }
++}
++
++test fn the_cap_unit_is_srv1s_only() -> Bool {
++  srv1_gpu_power_cap_hosted_on(host: operator_host_srv1) && !srv1_gpu_power_cap_hosted_on(host: operator_host_srv2)
++}
