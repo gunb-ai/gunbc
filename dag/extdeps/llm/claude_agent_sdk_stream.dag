@@ -118,7 +118,7 @@ fn parser_drop_receipt_required_member(v: JsonValue, key: String) -> JsonMemberR
 // actionable and "the receipt has no sdk_parsed_event_types member" is. The gap deliberately does
 // NOT name the parse cause: a caller acts on whether it holds evidence, and re-spelling a JSON
 // tokenizer's complaint here would make this module's vocabulary a second naming scheme for the
-// codec's (DESIGN section 3). ReceiptBytesUnreadable is a fact about our evidence in our own terms.
+// codec's (gunbc.design_argument::single_authority). ReceiptBytesUnreadable is a fact about our evidence in our own terms.
 type ParserDropEvidenceGap
   = ReceiptBytesUnreadable
   | ReceiptMemberMissingOrAmbiguous { member: String }

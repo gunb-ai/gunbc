@@ -160,7 +160,7 @@ data ipmitool_hpm_upgrade_app_row_bmc0_45_3: String = "|*  1|APP          |   0.
 // ── THE BOOTDEV ECHO, AND WHAT KIND OF EVIDENCE IT IS ─────────────────────────────────────────────
 // THE CDROM ECHO, AS CAPTURED -- cited once. It is the standing the dry BMC carries when it answers
 // `chassis bootdev cdrom` (gunbc.bmc_dry_realization bmc_bootdev_set_reply), so the bytes the world prints
-// and where they came from travel together and cannot be quoted apart (DESIGN §4d: bytes and standing may
+// and where they came from travel together and cannot be quoted apart (gunbc.design_argument::epistemic_humility: bytes and standing may
 // not travel apart; separated, a consumer can quote a guess as a capture).
 data bootdev_cdrom_echo_capture: NonEmptyStr = "artifacts/bmc/mtcollins1-32dimm/30-bootdev.txt (sha256 6488554239e12f033203c9589285bd6ce27dfb5716658be931e2422ea238c4ba) line 2: 'Set Boot Device to cdrom'" as NonEmptyStr
 

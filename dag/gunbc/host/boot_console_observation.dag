@@ -12,7 +12,7 @@ module gunbc.host.boot_console_observation
 // ConsoleMilestoneObservation, mtcollins1_console_milestones and console_milestone_sighting_text
 // from gunbc.machine_intake.mtcollins1_console_milestone_observation -- and those imports dragged
 // the machines' protocol closure (SEL/SDR/Redfish line parsers) into the core's. The debt was
-// admitted with a retirement trigger a program can read (review 81187, DESIGN §5): the fold
+// admitted with a retirement trigger a program can read (review 81187, gunbc.design_argument::fail_closed): the fold
 // boot_attempt_console_debt_status over std.dissolution retires_dissolution of those six
 // declarations. This module is the re-home that fires it: the six names are no longer declared
 // where the carrier says they were, so the census lacks every item and the fold reads Fired --
@@ -61,7 +61,7 @@ module gunbc.host.boot_console_observation
 // bundle still gets it from gunbc.machine_intake.megarac_boot_diagnostic_bundle, which depends on
 // this module, never the reverse (imports point toward the core, never the core on an adapter).
 //
-// WHAT THE CLOSURE ACTUALLY IS -- AND THE LEAK, ADMITTED (review 87173; DESIGN §4d: "do not assert
+// WHAT THE CLOSURE ACTUALLY IS -- AND THE LEAK, ADMITTED (review 87173; gunbc.design_argument::epistemic_humility: "do not assert
 // as deduced what is only inferred"). An earlier draft of this header claimed the closure was "the
 // console readers plus std/extdeps -- no bmc, no megarac_*, no ipmi_*, no redfish_* name". That claim
 // was false the day it was written: a header advertising a property the imports contradict is exactly
@@ -81,7 +81,7 @@ module gunbc.host.boot_console_observation
 // and its six-item carrier folds Fired on the real corpus (megarac_boot_record_mapping_witness's
 // console-debt claims read BOTH carriers out of the corpus through the declaration index).
 //
-// THE CARRIED DEBTS OF THIS MODULE (DESIGN §5: debt is admitted on a carrier a program can read, not
+// THE CARRIED DEBTS OF THIS MODULE (gunbc.design_argument::fail_closed: debt is admitted on a carrier a program can read, not
 // in prose alone). TWO debts, ONE population, both on boot_console_observation_debt_refs below --
 // because a carrier whose fold reads only part of the population is the same fact with two answers
 // (review 85810, the rule that made the core's carrier six items):
@@ -215,7 +215,7 @@ type ConsoleReading
 // mtcollins1-boot-sol.capture" (a directory whose name merely ends in "artifacts") and
 // "/tmp/evil/artifacts/mtcollins1-boot-sol.capture" alike read as retained, and console_text then
 // told the reader the capture was "retained in this artifact" for a file that is nowhere near the
-// row's artifact root (review 81108; DESIGN §5: a failure arm refuses, never widens). Here the path
+// row's artifact root (review 81108; gunbc.design_argument::fail_closed: a failure arm refuses, never widens). Here the path
 // is compared segment by segment: the root's directory segments must be WHOLE segments of the path
 // immediately before the file name, and only the file name itself may be a prefix-match, because the
 // root name is a prefix by construction (it is "…-boot-", and the attempt suffix follows).
@@ -233,7 +233,7 @@ fn console_path_retained(path: String, prefix: NonEmptyStr) -> Bool {
     false
   } else {
     // Both ends of the comparison are answered by matching, never by inventing a stand-in (review 81263
-    // F2, §5 "no plausible output is fabricated"). This arm is reached only with a non-empty root and,
+    // F2, gunbc.design_argument::fail_closed "no plausible output is fabricated"). This arm is reached only with a non-empty root and,
     // because count(segs) >= count(root), a non-empty path, so last() answers both; the Absent arms exist
     // so that if that shape ever changes the answer is "not retained" rather than a name nobody chose.
     match last(root) {
@@ -296,7 +296,7 @@ fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture
 // classified at all: the path is empty, the path is not under the row's retained-artifact root, and
 // the capture is bigger than console_bound. An earlier revision stated all three TWICE -- once in the
 // reading, once in the write -- which is the same class of defect the reviewer called out for the
-// capture read (review 81117; DESIGN §5): two copies of a guard are two chances to disagree about
+// capture read (review 81117; gunbc.design_argument::fail_closed): two copies of a guard are two chances to disagree about
 // whether a capture may be read at all. Now each answer exists once and both halves ask it. They are
 // two functions rather than one because the write half cannot ask the size question until stat has
 // answered, while the path questions must be settled BEFORE any filesystem call: the reading asks
@@ -609,7 +609,7 @@ fn console_milestone_sighting_text(s: ConsoleMilestoneSighting) -> String {
   concat(console_milestone_name(m: s.milestone), " at line ", to_string(s.line_index), " (span ", to_string(s.span), "): ", s.line as String)
 }
 
-// ── THE CARRIED DEBTS, AS DATA (DESIGN §5; review 87173) ────────────────────────────
+// ── THE CARRIED DEBTS, AS DATA (gunbc.design_argument::fail_closed; review 87173) ────────────────────────────
 // ONE population for BOTH debts of this module -- the non-neutral ConsoleReading and the
 // BMC-closure leak -- because a carrier whose fold reads only part of the population is the
 // same fact with two answers (the rule that made boot_attempt's carrier six items, review
@@ -651,7 +651,7 @@ fn boot_console_observation_debt_outstanding(present_decls: List<DeclarationRef>
     DissolutionPending => true
     DissolutionFired => false
     // Unbound (only reachable for an UnboundDissolution condition, which none of these are) counts
-    // as OUTSTANDING: a condition nobody wired up is not evidence the debt is gone (§5, a failure
+    // as OUTSTANDING: a condition nobody wired up is not evidence the debt is gone (gunbc.design_argument::fail_closed, a failure
     // arm refuses, never widens).
     DissolutionUnbound => true
   })

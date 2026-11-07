@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // hostname before any fetch, install or receipt write, reading that choice from
 // FLEET_CONVERGE_EXPECTED_HOST -- and both micro-VM steps carried `env: none`, so every dispatch of
 // either mode would have exited ExpectedHostAbsent having done nothing. The readback the repair
-// exists to deliver had a route that terminated in a refusal, which is DESIGN section 3c's
+// exists to deliver had a route that terminated in a refusal, which is gunbc.design_argument::consumption's
 // consumption question answered in the negative: a named consumer that cannot start.
 //
 // This asserts over the STEP VALUES rather than the emitted YAML text, because the text is a

@@ -49,7 +49,7 @@ fn sudo_program() -> ProgramIdentity = uncataloged_program(invocation: "/usr/bin
 // THERE IS NO MODE PARAMETER, AND THAT IS THE MODEL RATHER THAN AN OMISSION. An earlier draft of
 // this module carried a SudoElevation type with one variant, so every caller passed the same value
 // and no arm ever discriminated -- a type with a single inhabitant that nothing matches on is
-// vocabulary, not information (DESIGN section 2). What it was reaching for is real: interactive
+// vocabulary, not information (gunbc.design_argument::minimize_redundancy). What it was reaching for is real: interactive
 // sudo must be unreachable here. That is achieved by this module minting only the non-interactive
 // form, which is strictly stronger than a parameter a caller could someday be given another value
 // for. If a second mode is ever genuinely needed, it arrives as a variant WITH a call site that
@@ -69,7 +69,7 @@ data sudo_non_interactive_flag: NonEmptyStr = "-n"
 // would run unelevated. Elevation is therefore a transformation OF an invocation, not a separate
 // spelling of one, so a caller cannot elevate a command it could not otherwise name.
 // ONE APPEND, NOT A SNOC PER ELEMENT. The fold this replaces walked `command` appending to a
-// growing accumulator, which is quadratic in argv length. DESIGN section 6's bare-minimum-cost rule
+// growing accumulator, which is quadratic in argv length. gunbc.design_argument::how_to_work's bare-minimum-cost rule
 // fixes a proven cost shape regardless of the realized n, precisely because "n is small here" is
 // not time-stable -- this function is the one place every privileged invocation in the repository
 // is assembled, so its n is whatever a future caller's argv turns out to be.

@@ -211,7 +211,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }
 
-// PARTITION (DESIGN 4b / C0(c)): Established-bound vs declared technique is WallAfterGrounding
+// PARTITION (gunbc.design_argument::guarantee_ladder / C0(c)): Established-bound vs declared technique is WallAfterGrounding
 // (`gunbc.guarantee_stall.synthesis_established_bound_patch_stall`).
 // Rice-complete "ANY cheaper equivalent" is off the ladder until that decision procedure is authored.
 data synthesis_rice_residual_boundary: ConstructionJustification = ConstructionJustification {

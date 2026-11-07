@@ -869,7 +869,7 @@ fn route_hop_reaches_storage(h: RouteHop) -> Bool {
 // This carried `hops: List<RouteHop>` with an in-band role tag, and five hand-written checks asked
 // whether the list happened to be a chain: non-empty, exactly one durable origin, exactly one
 // token-time hop, head is the origin, tail is the token-time hop. Every one of those invalid states
-// was WRITABLE, and DESIGN section 5 ranks making a state unwritable above catching it. Section 4b
+// was WRITABLE, and gunbc.design_argument::fail_closed ranks making a state unwritable above catching it. Section 4b
 // puts the ceiling for a decidable, fully modeled class at structural impossibility and says
 // below-ceiling is a correctness gap rather than optional elegance.
 //
@@ -895,7 +895,7 @@ fn route_hop_reaches_storage(h: RouteHop) -> Bool {
 // keeping an admitted id and changing its tier PASSED admission and then drove the pool-relief verdict
 // and the integrity standing. That was a live defect, not a hypothetical.
 //
-// THE FIX IS TO DELETE THE COPY, NOT TO CHECK IT. DESIGN section 3: minimization holds only if each fact
+// THE FIX IS TO DELETE THE COPY, NOT TO CHECK IT. gunbc.design_argument::single_authority: minimization holds only if each fact
 // lives in exactly one place. A provider's tier, scope, coverage and retention live in the roster; a route
 // names an id and every consumer resolves through that roster, so there is no second copy to disagree with
 // the first and no equality is needed to keep them honest. The alternative -- comparing whole records at
@@ -1048,7 +1048,7 @@ fn route_defects(
     route_shape_defects(r: r, origin_provider_id: origin_provider_id))
 }
 
-// ── SECTION 4b(4) ON THE ADMISSION CHECK ITSELF ────────────────────────────────────────────────
+// ── gunbc.design_argument::guarantee_ladder (dissolution on climb) ON THE ADMISSION CHECK ITSELF ────────────────────────────────────────────────
 //
 // The old fold walked the chain and compared each hop's carried provider id against a list of admitted
 // ids. It is retired as a WALK, because there is no longer a carried provider to compare -- a route names
@@ -1071,7 +1071,7 @@ fn route_provider_resolution_defects(r: MaterializationRoute, roster: List<Cache
   }
 }
 
-// ── WHAT SURVIVED THE CLIMB, AND WHAT DID NOT (DESIGN 4b(4)) ──────────────────────────────────
+// ── WHAT SURVIVED THE CLIMB, AND WHAT DID NOT (gunbc.design_argument::guarantee_ladder (dissolution on climb)) ──────────────────────────────────
 //
 // Five checks stood here. A climb dissolves the redundant lower-rung PRODUCTION machinery, and the
 // decision is taken per check rather than for the family, because the question is whether each
@@ -1311,7 +1311,7 @@ fn route_verification_gap(
 // taken under, and a reading taken under a different one is refused rather than reused.
 //
 // THE KEY IS OPAQUE HERE ON PURPOSE. This module must not import the serving module -- that would
-// be a cycle -- and it must not re-spell a serving execution profile, which would be the §3 fork.
+// be a cycle -- and it must not re-spell a serving execution profile, which would be the gunbc.design_argument::single_authority fork.
 // So it holds whatever digest the consumer derives from its own profile authority, beside the
 // declaration that produced it.
 type RouteSubjectKey sole_constructor {
@@ -1397,7 +1397,7 @@ type PoolReliefStanding
 // naming a provider the roster does not admit, which is honest for the PREDICATES that read it --
 // their true answer is "no hops with that property". This consumer is not a predicate: it turned
 // that silence into the affirmative sentence "the token-time hop of X has a derived placement
-// inside the memory pool", about a route with no resolvable token-time hop at all. DESIGN section 5:
+// inside the memory pool", about a route with no resolvable token-time hop at all. gunbc.design_argument::fail_closed:
 // a failure arm must refuse, never widen, and no fabricated plausible output. Found by review 66208.
 //
 // THE QUESTION IS WHERE THE BYTES LIVE AT TOKEN TIME, NOT WHERE THEY CAME FROM. Every route's head
@@ -1552,7 +1552,7 @@ fn route_evidence(
 // AN AMBIGUOUS LOOKUP REFUSES RATHER THAN PICKING. A first cut took `.first()` of the rows matching
 // this route and context, so two rows keyed to the SAME pair that disagreed about mechanism
 // availability or resident memory were resolved BY LIST ORDER -- reversing them changed whether the
-// route was excluded. That is DESIGN §5's fabricated plausible output: the input is ambiguous and the
+// route was excluded. That is gunbc.design_argument::fail_closed's fabricated plausible output: the input is ambiguous and the
 // fold answered anyway. Duplicate keys are a refusal, and the arm carries the count so the diagnostic
 // says how many rows claimed the pair rather than only that something was wrong.
 type RouteEvidenceLookup
@@ -1620,7 +1620,7 @@ data id_route_constraint_authority: DeclarationRef = decl_ref(module_path: "gunb
 // THE POLICY AUTHORITY FOR THIS SUBJECT. There is deliberately NO tie-break rule: a front of two
 // fully-measured non-dominated routes must reach SelectionNeedsPolicy rather than be separated by a
 // preference invented in the fold, and deciding one is an operator ruling. That ruling is an
-// annotation here rather than a String row -- §4c's point is that prose belongs in a typed carrier or
+// annotation here rather than a String row -- gunbc.design_argument::source_annotations's point is that prose belongs in a typed carrier or
 // in an annotation, and a String declared only so a citation resolves is dead data. The identity
 // follows the corpus convention for a policy authority: a self-citing DeclarationRef, as
 // product.fleet_operating_point fleet_operating_point_policy does.
@@ -1702,7 +1702,7 @@ data component_route_constraints: List<HardConstraint> = [
 // every topology.
 //
 // SO THE BUDGET ARRIVES AS EVIDENCE FROM THE CONSUMER, AND IT IS A COPRODUCT. An unknown budget must
-// not become a permissive bound -- that is DESIGN section 5's absorbing fallback, and it would fail
+// not become a permissive bound -- that is gunbc.design_argument::fail_closed's absorbing fallback, and it would fail
 // open on the one screen whose job is to rule out the impossible. The unestablished arm therefore
 // produces NO READING on the constrained axis, which makes the axis an unresolved input and the
 // selection an evidence need, rather than admitting every route against a fabricated ceiling.
@@ -1737,7 +1737,7 @@ fn component_budget_subject(b: ComponentMemoryBudget) -> RouteSubjectKey {
 // BUDGET EQUALITY EXISTS SO A CONSUMER CAN KEY A REUSE TABLE ON IT. A cached route standing is only
 // the same fact for the same budget: the whole point of the screen is that the answer changes with the
 // capacity, so a table keyed on (component, context) alone would return one candidate's answer for
-// another candidate's capacity. That is DESIGN section 2's rule that a provider's key must represent
+// another candidate's capacity. That is gunbc.design_argument::minimize_redundancy's rule that a provider's key must represent
 // every declared input the result depends on, and this is the input that was added.
 fn component_budget_eq(a: ComponentMemoryBudget, b: ComponentMemoryBudget) -> Bool {
   match a {
@@ -1882,7 +1882,7 @@ fn mechanism_gap(m: NonResidentMechanismStanding) -> List<AxisGap> {
 // one token-time path's launch evidence can satisfy the other's runtime axis under the same context.
 // THE COMPARISON IS EXPOSED, THE CONSTRUCTOR IS NOT. `RouteLaunchReceipt` is sole_constructor with no
 // builder precisely so a caller cannot mint "the runtime served this route" -- and that seal makes the
-// RED for this check unauthorable in a witness, which DESIGN section 4b says to resolve by exposing
+// RED for this check unauthorable in a witness, which gunbc.design_argument::guarantee_ladder says to resolve by exposing
 // the evidence, not by opening the wall. So the join over a receipt's FIELDS is public and the receipt
 // itself stays sealed: a fixture can ask whether these three facts agree without being able to claim
 // they were observed.
@@ -2218,7 +2218,7 @@ fn route_entry_without_evidence(
 // closure, which merges into the pick as `SubjectClosureIncomplete` needs and leaves
 // `NoFeasibleRealization` intact. So an established mechanism ABSENCE still excludes and still
 // reports as infeasible, while everything else reports as needing evidence. Declaring an
-// established model here to obtain a cleaner arm would be the inflation DESIGN §4b(1) forbids.
+// established model here to obtain a cleaner arm would be the inflation gunbc.design_argument::guarantee_ladder (rung honesty) forbids.
 data var_materialization_route: DecisionVariable = DecisionVariable { identity: id_route_var_route }
 data var_consumer_context: DecisionVariable = DecisionVariable { identity: id_route_var_context }
 data component_route_region: DecisionRegion = DecisionRegion { identity: id_route_region }
@@ -2229,7 +2229,7 @@ data component_route_question: NonEmptyStr = "which materialization route places
 // documentation index -- a storage-format page that grounds nothing whatever about the serving cost of
 // holding a component where a route puts it -- while this module's own assessment declared
 // PhysicalModelUnestablished for the same term forty lines below. Two declarations contradicting each
-// other, and the URL was chosen so the reference would resolve. §4d: an inference is a bet, typed as a
+// other, and the URL was chosen so the reference would resolve. gunbc.design_argument::epistemic_humility: an inference is a bet, typed as a
 // bet, and `TranscribedUncited` is the arm that exists for exactly this.
 data term_total_serving_cost: ObjectiveTerm = ObjectiveTerm {
   identity: id_route_term_serving_cost,
@@ -2343,7 +2343,7 @@ fn select_component_route(
 //
 // The result carried here IS `std.decision`'s `RealizationSelectionResult`, not a local spelling of
 // it. A three-armed projection would preserve the words and delete `SelectionNeedsPolicy` and the
-// difference between an infeasible field and a defective one -- which is the fork §3d exists to
+// difference between an infeasible field and a defective one -- which is the fork gunbc.design_argument::selection_precedes_convergence exists to
 // prevent. The only thing added is the arm for a component this subject is not about.
 // THREE ARMS, BECAUSE "THE QUESTION DOES NOT APPLY" AND "THE QUESTION WAS ASKED AND NOTHING ANSWERED
 // IT" ARE DIFFERENT FACTS. A first cut had two, and the consumer scored `NotThisSubject` as a settled
@@ -2967,7 +2967,7 @@ fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryS
 // absence; finding NO setting is a statement about the search, and a search cannot rule out a
 // mechanism it did not look for. A Bool bridge collapsed both to false and this fold turned that into
 // MechanismEstablishedAbsent, so the weaker reading excluded routes exactly as hard as the stronger
-// one -- an answer outrunning its evidence (DESIGN sections 5 and 3d). Found by review 66335.
+// one -- an answer outrunning its evidence (gunbc.design_argument::fail_closed, gunbc.design_argument::selection_precedes_convergence). Found by review 66335.
 // observed arm; if a later reading of a different image returns the storage-backed arm, these routes
 // become prerequisite-observed here with no edit to this function. That is also why the absence is not
 // hardcoded: the fact that B, C and D are excluded today is a CONSEQUENCE of a reading, and a reading
@@ -2979,7 +2979,7 @@ fn engram_resident_standing_for(r: MaterializationRoute) -> RouteResidentMemoryS
 // candidate whose serving still has to be observed in a launch, which is the separate axis below.
 // THE MAPPING TAKES THE PLACEMENT AS A PARAMETER so each arm's RED is authorable by a fixture.
 // `engram_mechanism_standing_for` reads the pinned image, which has exactly one arm today -- so a
-// control over it could only ever exercise that arm, and DESIGN 4b calls a check whose red cannot be
+// control over it could only ever exercise that arm, and gunbc.design_argument::guarantee_ladder calls a check whose red cannot be
 // authored a decoration rather than a weak wall. Passing the value in makes all three reachable.
 fn mechanism_standing_from_placement(m: ImageEngramPlacementMechanism) -> NonResidentMechanismStanding {
   match m {

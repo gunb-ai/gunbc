@@ -2,7 +2,7 @@ module gunbc.site.gunb_ai_page
 
 // gunb.ai's one page, as a typed std.markup MarkupDocument.
 //
-// THIS MODULE IS THE CONSUMER (§3c). It is the reason the layers under it are not modelled "for
+// THIS MODULE IS THE CONSUMER (gunbc.design_argument::consumption). It is the reason the layers under it are not modelled "for
 // later": every sentence, link, prompt and command line is read from gunbc.site.gunb_ai_content;
 // the masthead seal is drawn by gunbc.design.brand_mark's own box/disc builders; the theme colour
 // is a gunbc.design.gunb_ai_hues swatch reached through gunbc.site.gunb_ai_tokens' role
@@ -31,7 +31,7 @@ module gunbc.site.gunb_ai_page
 //     data-deck attribute is a mount hint the script reads, not a file request). This module emits
 //     the mount element and nothing else of the deck.
 //
-// FAIL CLOSED (§5). render_page yields PageRendered only when the document serializes; a guard
+// FAIL CLOSED (gunbc.design_argument::fail_closed). render_page yields PageRendered only when the document serializes; a guard
 // refusal yields PageRefused { reason }, the language layer's own located reason (it names the
 // offending url, terminator or close sequence), and the writer exits non-zero HAVING WRITTEN
 // NOTHING — the bytes are produced before any Filesystem call, so no path exists on which a refused

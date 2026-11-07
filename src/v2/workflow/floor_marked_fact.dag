@@ -13,7 +13,7 @@ import std.types { List, Map, String }
 // lookup and of what an absent or a self-contradicting supply means.
 //
 // The index is built ONCE per observation because the supply is thousands of files: a List scan per
-// file is the quadratic fold DESIGN section 6 fixes regardless of realized n. A path named by two
+// file is the quadratic fold gunbc.design_argument::how_to_work fixes regardless of realized n. A path named by two
 // facts is its own arm and not a last-write-wins entry, because a supplier that disagrees with itself
 // about one file has no answer for it; an absent path is a Map miss the consumer refuses on, and is
 // never read as an empty list of tests.

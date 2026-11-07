@@ -50,7 +50,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 // THE TRANSITION LEASE, A HOLD ON THE HOLD LIBRARY. gunbc.deploy_transition decides what the lease
 // SERIALIZES; this leaf module is the only place that knows where it lives and how it is held. It
 // replaces a hand lock -- an owner-only exclusive create of transition-lease.json, released by a
-// Delete -- which forked std.durable_exclusive_hold (the leasing row of DESIGN 3b). Acquire and the
+// Delete -- which forked std.durable_exclusive_hold (the leasing row of gunbc.design_argument::conformance). Acquire and the
 // holder's release are now gunbc.durable_exclusive_hold_file_store's, over the compare-and-set file
 // store, so the lease has the protocol's one holder equality, its one codec and its typed refusals,
 // and a stale holder can no longer free a successor's lease by deleting a path.
@@ -63,7 +63,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboa
 // gunbc.recurring_failure_mode.a_generic_release_assess_accepts_evidence_its_caller_authored.
 //
 // KEEP-ALL RETENTION, because the generation line is the lease's audit trail: every acquire and every
-// release is a generation naming its owner or its releaser (DESIGN 3b, leasing boundary). It is also
+// release is a generation naming its owner or its releaser (gunbc.design_argument::conformance, leasing boundary). It is also
 // the only route open to this store: the windowed acquire admits its callers by roster, and this
 // change adds no roster member.
 

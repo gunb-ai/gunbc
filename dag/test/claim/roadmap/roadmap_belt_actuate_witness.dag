@@ -843,7 +843,7 @@ fn band_key_for_label(label: String) -> String {
 // COVERAGE IS AN IDENTITY JOIN OVER THE ARMS, NOT A COUNT OF THE ROWS. This witness pinned
 // `belt_dispatch_label_band_rows().length() == 22` while the roster had grown to 25 -- a count says
 // a NUMBER moved and never says WHICH vocabulary went unpinned, so the repair is always to bump the
-// literal, which is the change detector DESIGN 5 names. Joining the coproduct's own arm keys against
+// literal, which is the change detector gunbc.design_argument::fail_closed names. Joining the coproduct's own arm keys against
 // the exemplars instead means a new LaunchRefusal arm reds this by NAMING the arm that carries no
 // exemplar, and the fix is to exemplify it rather than to edit a number.
 //

@@ -47,7 +47,7 @@ data github_actions_runtime: GitHubActionsRuntime = {
 // GITHUB_BASE_REF carries the base (target) branch name of a pull request — set ONLY on
 // pull_request / pull_request_target events, empty for every other event. extdeps owns these names
 // (the shape GitHub provides); the policy that maps them to a diff baseline is a workflow-layer
-// fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — DESIGN §3(c)).
+// fact (gunbc.diff_baseline), not modeled here (extdeps must not depend upward — gunbc.design_argument::single_authority(c)).
 
 data github_event_name_env: NonEmptyStr = "GITHUB_EVENT_NAME"
 
@@ -62,7 +62,7 @@ data github_event_path_env: NonEmptyStr = "GITHUB_EVENT_PATH"
 // beside it, and not a fact about any one event. It previously lived in extdeps.github.push_event,
 // which made the push payload reader the authority for a variable that carries the pull_request,
 // schedule, and workflow_run payloads just as much. That homing only looked right while push was
-// the sole reader; adding a second event reader made it a §3 fork in waiting — two modules
+// the sole reader; adding a second event reader made it a gunbc.design_argument::single_authority fork in waiting — two modules
 // declaring one upstream name, drifting independently. Moved here rather than copied: push_event
 // and workflow_run_event both import it, and there is exactly one declaration of this name in the
 // tree.
@@ -160,7 +160,7 @@ type WorkflowTrigger
 //
 // THE MATCH IS EXHAUSTIVE ON PURPOSE AND THE WILDCARD IS THE DEFECT IT REPLACES. The original read
 // `MergeGroup => true _ => false`, so a new trigger constructor would have answered `false`
-// silently -- a fabricated default in the position DESIGN section 5 reserves for a refusal. Written
+// silently -- a fabricated default in the position gunbc.design_argument::fail_closed reserves for a refusal. Written
 // out, adding a constructor to this type fails to compile here until someone decides what it means,
 // which is the point of a closed vocabulary.
 fn workflow_trigger_is_merge_group(trigger: WorkflowTrigger) -> Bool {

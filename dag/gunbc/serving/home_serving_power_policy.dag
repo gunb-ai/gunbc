@@ -127,7 +127,7 @@ fn home_serving_power_admission_applied(admission: HomeServingPowerAdmission) ->
 // WHY THERE ARE NO STANDING ACCESSORS. Each standing is carried so the admitted pair travels with
 // its own warrant, but nothing reads it apart from the fold that wrapped it — the fold hands back
 // the very standing it was given, so an accessor here would be a pass-through with no consumer,
-// which is §2 growth. The candidate field that must CITE these figures adds its accessor in the
+// which is gunbc.design_argument::minimize_redundancy growth. The candidate field that must CITE these figures adds its accessor in the
 // same change that consumes it, so the accessor and its reader land together.
 
 // The ceiling is established first, because a refusal asserted against a ceiling nobody stated

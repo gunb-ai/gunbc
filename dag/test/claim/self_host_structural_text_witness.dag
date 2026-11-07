@@ -121,7 +121,7 @@ test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool {
   )
 }
 
-// THE FLIPPED RESTORATION PROBE (gunbc.rung_drop text_boundary_identity_wall; DESIGN 4b(4)). This
+// THE FLIPPED RESTORATION PROBE (gunbc.rung_drop text_boundary_identity_wall; gunbc.design_argument::guarantee_ladder (dissolution on climb)). This
 // row used to assert the GAP: a non-literal kernel-String value (the kernel concat builtin's result)
 // at an exact qualified v2.std.text.String return boundary was accepted with no homomorphism and no
 // refusal. The wall now keys on text representation rather than leaf spelling

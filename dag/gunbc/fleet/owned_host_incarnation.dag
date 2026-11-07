@@ -11,7 +11,7 @@ module gunbc.fleet.owned_host_incarnation
 // holds the eight prior-life carriers, the content-addressed archive, the independent readback, and the
 // sealed receipt that says a boundary was established (PriorLifeBoundaryEstablished). An incarnation model
 // that minted its own notion of "the previous life ended" beside that would give the fleet two answers to
-// the one question the boundary exists to answer -- DESIGN 3's ungrounded duplicate, in the exact place
+// the one question the boundary exists to answer -- gunbc.design_argument::single_authority's ungrounded duplicate, in the exact place
 // where a duplicate is most expensive, because a machine whose prior life was never bounded can come back
 // as a "new" member carrying an old machine's identity. So the fields below are READ from the boundary's
 // receipt and no field here means what a field there already means (the plan's wording: "the fields are

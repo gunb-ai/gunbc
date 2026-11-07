@@ -522,10 +522,10 @@ thread_local! {
 ///
 /// THE NAME LOST ITS `floor_` PREFIX WHEN IT ACQUIRED A SECOND REGISTRANT, and the rename is the
 /// point rather than tidying: the memo is not a floor mechanism, it is the census provider whose
-/// retention has to span the demands that share it (DESIGN §2 — one computation identity joined to
+/// retention has to span the demands that share it (gunbc.design_argument::demand_before_materialization — one computation identity joined to
 /// a provider whose scope reaches the demands' least common ancestor). The floor was simply the
 /// first caller that had a bounded subject to hang it on. Keeping `floor_` in the name while
-/// `claim_batch` registered it too would be a §3 nickname: one concept answering to a name that
+/// `claim_batch` registered it too would be a gunbc.design_argument::single_authority nickname: one concept answering to a name that
 /// says it belongs to one of its callers.
 ///
 /// WHY A SECOND REGISTRANT EXISTS AT ALL. A keyed read (`decl_facts_at`) is one demand of one
@@ -866,7 +866,7 @@ pub(crate) fn data_item_declared_type_name(
 /// THE HOST SHAPE EXISTS SO THE BUILTIN AND ITS ONE HOST CONSUMER ARE NOT TWO PRODUCERS.
 /// `v1_compiler.cli_run.rostered_row_join` runs the declared-versus-rostered identity join
 /// inside required CI, where there is no `InterpContext` to marshal a `Value` into; deriving
-/// the same population a second way would be exactly the second authority DESIGN §3 refuses,
+/// the same population a second way would be exactly the second authority gunbc.design_argument::single_authority refuses,
 /// agreeing today and diverging on the first amendment. So the walk, the filter and the
 /// declared-type projection stay here, and the builtin is a marshaller over these rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1176,8 +1176,8 @@ fn node_kind_computation_node(ctx: &InterpContext, behavior: Value) -> Value {
 // including calls, so `node_is_call` was false on every skeleton node the corpus can produce, and
 // each lens folding a skeleton through it (`v2.lens.determinism` transitive findings,
 // `v2.lens.machine_shape`, the origin probe's call walk) was GREEN BY CONSTRUCTION: the state it
-// refuses had no constructor on its own input. That is DESIGN §4b's decoration -- worse than an
-// absent check, because it was cited as coverage -- and its §3 receipt was already standing in
+// refuses had no constructor on its own input. That is gunbc.design_argument::guarantee_ladder's decoration -- worse than an
+// absent check, because it was cited as coverage -- and its gunbc.design_argument::single_authority receipt was already standing in
 // `v2.lens.no_dual_representation_test.scan`, which carried a SECOND call predicate spelled against
 // the Conj shape because the shared one could not answer here.
 fn transform_record(ctx: &InterpContext, edges: Vec<Value>) -> Value {
@@ -1208,7 +1208,7 @@ fn marshal_skeleton(
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
+// SCAFFOLD (gunbc.design_argument::self_hosting hand-Rust shrink-to-zero): G2 live-read skeleton marshal expansion
 // (`marshal_string_literal_atom`, `hoist_call_arg_string_literal_edges`, callee atoms on
 // `ExprCall`) — see `v2.std.fn_index::fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger`.
 // Host SOURCE half for P1 G2 call-reachability (live-read-witness-classification-design (plan doc deleted 2026-08-28) §9 P1 / §14).
@@ -2003,7 +2003,7 @@ fn marshal_decl_fact_node(
     }
 }
 
-// SCAFFOLD (§7 hand-Rust shrink-to-zero): see
+// SCAFFOLD (gunbc.design_argument::self_hosting hand-Rust shrink-to-zero): see
 // `v2.std.decl_index::export_signature_facts_host_scaffold_dissolution_trigger`.
 // Host SOURCE half for `export_signature_facts`; strict sibling of `marshal_decl_fact_node` /
 // `eval_decl_facts`. Reuses `decl_facts_for_roots` (#5966 neat-fox-279) — no new corpus walk.
@@ -2141,7 +2141,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
 /// (`gunbc run` registers none) each ask re-walked and re-parsed the whole pool. Measured on
 /// BuildBuddy 2026-10-25: one lookup 91s, six lookups 506s. The demands share their least common
 /// ancestor — the fold already holds every key — so the fold reads once with all of them and joins
-/// each key against the returned rows in the substrate (DESIGN section 2, the materialization
+/// each key against the returned rows in the substrate (gunbc.design_argument::demand_before_materialization, the materialization
 /// ladder's first question: carry the value at the ancestor, never cache the later asks). The
 /// bare-name read that used to be its own seam (`type_declarer_qualified_names`) was the same rule
 /// at a sibling leaf and is this read's `type_names` arm, so a reflection that needs a type by bare
@@ -2241,7 +2241,7 @@ fn nullary_coproduct_variant_value(
     }
 }
 
-// DESIGN section 7 seed-retained repair. This bridge retires with
+// gunbc.design_argument::self_hosting seed-retained repair. This bridge retires with
 // `coproduct_reflection` under ROADMAP "Drain the hand-maintained v1 product
 // queue" (`dag/gunbc/v1/v1_deletion_plan.dag` milestone `^hand_queue_drain`).
 // Checkable receipt: the imported-named-coproduct generic-wrapper witness must
@@ -2623,7 +2623,7 @@ mod parse_only_uppercase_variant_regression_tests {
     // THE WHOLE ACCEPTED SHAPE, NOT ITS OUTER TAG. `node_is_call` reads two nested variants -- the
     // kind's `behavior` and the callee child's `connective` -- so a probe asserting only
     // `ComputationNode` and `TypeNode` is satisfied by a marshal emitting `behavior: Loop` over a
-    // `connective: Conj` child, which `node_is_call` refuses. That is the §5 tell in this module's
+    // `connective: Conj` child, which `node_is_call` refuses. That is the gunbc.design_argument::fail_closed tell in this module's
     // own test: an assertion that passes while the realization lies. These two read the full path.
     fn is_transform_computation_node(ctx: &InterpContext, skel: &Value) -> bool {
         match field(ctx, skel, "kind") {

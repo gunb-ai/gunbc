@@ -155,7 +155,7 @@ test fn direct_layout_emits_storage_yaml() -> Bool {
 // NoCloud volume, where the seed contract admits keytype+blob and no comment, while the identity route's goes
 // to a hand-delivered volume (the Altra admin-password seed) that is never publicized. Canonicalizing the
 // identity route too would have stripped the comments off documents LIVE INSTALLS consume, with nothing
-// recording it (DESIGN.md §4b).
+// recording it (gunbc.design_argument::guarantee_ladder).
 //
 // THE SPLIT THIS WITNESS NOW PINS BOTH WAYS: srv3's and srv4's live autoinstalls took the key-only route when
 // their committed password hashes were deleted (dashboard node adhoc-dfa3a487), so THEY must render the

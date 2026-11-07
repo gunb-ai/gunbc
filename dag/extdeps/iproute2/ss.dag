@@ -31,7 +31,7 @@ import std.algebra { trim, length }
 // The invocation is described here rather than minted as an argv builder, and the success status is
 // not minted at all, because nothing reads either yet: the probe capture site that will issue this
 // command is P0's wet half. A row authored ahead of its consumer is the artifact-with-no-consumer
-// §6 warns about, and this module had two of them within an hour of the same trim being applied to
+// gunbc.design_argument::how_to_work warns about, and this module had two of them within an hour of the same trim being applied to
 // its curl and pgrep neighbours -- which is why the rule is written down here rather than remembered.
 // AN EMPTY COMPLETED ENUMERATION IS AN OBSERVATION, and the trimmed-empty test is what separates it
 // from a query that printed nothing because it never ran. The caller only reaches this on a capture

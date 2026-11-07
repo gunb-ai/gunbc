@@ -22,6 +22,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
+import extdeps.whatwg.html_attribute_tokenization { html_index_of_octet, html_octets_index_from, html_octets_count_walk }
 import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
@@ -1579,6 +1580,26 @@ fn witness_jar_summary(jar: String) -> String {
     Absent => "REFUSED"
     Present { value: values } => join(map(values, v => ui_octets_text(octets: v)), ",")
   }
+}
+
+// The scans over a page or script are not recursive per octet: run 42383617138 died with
+// CallDepthExceeded { limit: 100000 } inside a decompressed script. 131072 octets (2^17) of "a", then
+// "xyz" twice, exceeds that limit; each scan still answers, and the answers are exact (the index of the
+// first needle, the byte index of a single target, two non-overlapping needles).
+fn witness_doubled(octets: List<Int>, times: Int) -> List<Int> {
+  if times <= 0 { octets } else { witness_doubled(concat(octets, octets), times - 1) }
+}
+
+test fn w_the_octet_scans_read_a_page_longer_than_the_call_depth() -> Bool {
+  let filler = witness_doubled([97], 17)
+  let hay = concat(concat(filler, [120, 121, 122]), concat([97, 97], [120, 121, 122]))
+  let total = count(hay)
+  count(filler) == 131072 &&
+    (match html_octets_index_from(hay, [120, 121, 122], 0) { Present { value: i } => i == 131072 Absent => false }) &&
+    (match html_octets_index_from(hay, [120, 121, 123], 0) { Present { value: _ } => false Absent => true }) &&
+    (match html_index_of_octet(hay, 122, 0) { Present { value: i } => i == 131074 Absent => false }) &&
+    html_octets_count_walk(hay, [120, 121, 122], 3, total, 0, 0, 0) == 2 &&
+    html_octets_count_walk(hay, [97, 97], 2, total, 0, 0, 0) == 65537
 }
 
 test fn w_the_first_octet_classes_are_distinguished() -> Bool {

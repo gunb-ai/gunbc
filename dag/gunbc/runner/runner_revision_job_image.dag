@@ -50,7 +50,7 @@ import gunbc.runner.workspace_guest_image { workspace_image_file_protected }
 // toolchain the tree actually carries (`rustc --version` run against the installed tree), which the
 // job reads as the image's toolchain; rust-toolchain.toml stays the only channel authority.
 //
-// DECLARED FRONTIER (DESIGN 3c): built by the revision-job image build entry and installed under the
+// DECLARED FRONTIER (gunbc.design_argument::consumption): built by the revision-job image build entry and installed under the
 // controller release by an operator-approved deploy (bright-moth-475's srv1 ask); TRIGGER: S4b-3b's
 // stand-in inhabitance claim on srv1.
 

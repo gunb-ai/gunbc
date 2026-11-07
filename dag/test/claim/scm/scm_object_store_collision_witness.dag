@@ -6,7 +6,7 @@ module test.claim.scm.scm_object_store_collision_witness
 // and that carrier is `sole_constructor`, so only its defining module may construct one. They also
 // cannot be declared `test fn` in that module, because floor discovery collects witnesses by a
 // `_test.dag` path suffix and would never see them. And the module cannot be split across two files
-// -- DESIGN §3 refuses a module-path collision outright.
+// -- gunbc.design_argument::single_authority refuses a module-path collision outright.
 //
 // So the bodies are plain functions there and the enrolled declarations are here. Only a Bool
 // verdict crosses the boundary; no forged material is exported.

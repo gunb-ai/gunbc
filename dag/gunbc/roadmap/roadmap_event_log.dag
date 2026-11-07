@@ -661,7 +661,7 @@ fn roadmap_standing_step_acc(acc: RoadmapStandingAcc, env: RoadmapEventEnvelope,
 // retire route's terminality refusal both ask; named once here so both ask the same thing.
 fn roadmap_standing_is_retired(standing: RoadmapNodeStanding) -> Bool {
   // Every standing named: an arm added to RoadmapNodeStanding must be decided HERE, not swallowed
-  // by a wildcard into "open" — which would keep the belt spawning work for it in silence (§5).
+  // by a wildcard into "open" — which would keep the belt spawning work for it in silence (gunbc.design_argument::fail_closed).
   match standing {
     NodeRetired { by: _, reason: _ } => true
     NodeOpen => false

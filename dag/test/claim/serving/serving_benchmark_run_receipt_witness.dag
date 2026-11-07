@@ -38,7 +38,7 @@ import gunbc.serving.serving_benchmark_run_receipt {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE ADMISSION BOUNDARY, DRIVEN WITH SUPPLIED VALUES (DESIGN section 3, a witness discriminates at
+// THE ADMISSION BOUNDARY, DRIVEN WITH SUPPLIED VALUES (gunbc.design_argument::witness_one_interface, a witness discriminates at
 // one interface). The version is a two-session cut of serving-benchmark/1's contract (same retained
 // context, tool delta and output length, levels 1 and 2, one round each) so a run is five request/v4
 // lines; admission is parametric in the version, and the pinned serving_benchmark_v1 is exercised by

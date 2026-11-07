@@ -554,7 +554,7 @@ data attempt_directory_wire_frontier_rows: List<FrontierRow> = [frontier_row_dec
 
 
 // THE SLOT TABLE FOR THE EIGHT LOG MEMBERS, keyed by the VARIANT ITSELF. A closed set gets one spelling
-// (DESIGN 3), so there is no census key, no second table of names and no string-equality join (review 90246):
+// (gunbc.design_argument::single_authority), so there is no census key, no second table of names and no string-equality join (review 90246):
 // the match below is TOTAL over AttemptLogMember, which means a renamed variant does not resolve and a new
 // variant has no arm -- both are compile errors on the real path, not a runtime Unready. A helper takes the
 // framing so the writer policy is spelled once; it is not a second authority, it is the only place a slot is

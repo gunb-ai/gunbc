@@ -25,7 +25,7 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 //
 // WHY THIS IS A STALL AND NOT A REFUSAL. An earlier revision of gunbc#11625 modelled the sealed join
 // -- retirement AND registration-absence -- so that a handover whose registration is unobserved
-// could not report relinquished. Nothing consumed it, which DESIGN 3c makes red on its own, and
+// could not report relinquished. Nothing consumed it, which gunbc.design_argument::consumption makes red on its own, and
 // wiring it into the fabric-cell plan would have refused convergence for cells the operator has
 // explicitly admitted: the runners on all four slots are live and their takeover is authorized
 // (operator, 2026-09-19). A guard that contradicts a standing decision is not a guard, so the class

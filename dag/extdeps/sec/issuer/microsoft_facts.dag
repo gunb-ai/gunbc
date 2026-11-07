@@ -55,7 +55,7 @@ data microsoft_facts_subject: IssuerCatalogRow = microsoft_issuer_catalog
 // disaggregation naming GitHub, or ingesting the SEC Financial Statement Data Sets for segment
 // members.
 
-data microsoft_operating_expenses_element_gap_note: String = "Microsoft's FY2022 10-K does not tag OperatingExpenses on the us-gaap axis (the element first appears in the FY2025 filing, which carries FY2023-FY2025). The FY2022 total is therefore Unfiled with a stated cause rather than back-computed from its three components -- deriving it and storing it as filed would fabricate a filed fact (DESIGN section 5). The FY2022 components and OperatingIncomeLoss below are all filed, so the component-sum identity is still witnessed for that year without inventing the total."
+data microsoft_operating_expenses_element_gap_note: String = "Microsoft's FY2022 10-K does not tag OperatingExpenses on the us-gaap axis (the element first appears in the FY2025 filing, which carries FY2023-FY2025). The FY2022 total is therefore Unfiled with a stated cause rather than back-computed from its three components -- deriving it and storing it as filed would fabricate a filed fact (gunbc.design_argument::fail_closed). The FY2022 components and OperatingIncomeLoss below are all filed, so the component-sum identity is still witnessed for that year without inventing the total."
 
 data microsoft_fy2022_citation: FiledFactCitation = FiledFactCitation {
   accession: "0001564590-22-026876",

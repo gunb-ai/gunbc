@@ -3,9 +3,9 @@ module std.key_relation
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 
-// NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of,
+// NAMING MOVE, NOT A WALL (honest rung, gunbc.design_argument::guarantee_ladder). KeyRelation packages scope_of, key_of,
 // scope_eq, key_eq, and a phantom Relation brand so each consumer names the relation under which
-// its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs that
+// its population reconciles — a real gunbc.design_argument::single_authority improvement over anonymous key_of/key_eq pairs that
 // coincidentally share carriers. The Relation type parameter is a legitimate bodyless type-tag
 // (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce
 // the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a
@@ -22,7 +22,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: key_relation_identity_wall — introduce SubjectKey<K> / ResourceLocator<L> / ContentIdentity<H> impostor carriers (keying-relation-design.md Separating the impostors) and constrain production key_of projections to return SubjectKey only, so a content-derived key stops compiling. Until then KeyRelation remains a naming authority only; identity-not-content stays an author/review obligation, not a construction refusal.")
 
 // THE IDENTITY WALL'S FIRST COMPILER-SCALE CONSUMER, NAMED HERE BECAUSE THE WALL
-// IS TRACKED HERE. DESIGN section 4b(2) obliges a class below its ceiling to name
+// IS TRACKED HERE. gunbc.design_argument::guarantee_ladder (no untracked stall) obliges a class below its ceiling to name
 // its next-rung trigger, and a trigger with no consumer is the untracked stall
 // that clause forbids. That consumer is now identified: the compiler itself,
 // where source text at a span is used as the identity key.

@@ -1190,7 +1190,7 @@ test fn fci1_control_slice_unit_file_is_emitted_from_the_row() -> Bool {
     && string_contains(s: fci1_controls_slice_unit_path(), pattern: join(["/run/systemd/system/", fci1_controls_slice_unit_name as String], ""))
 }
 
-// INHABITANCE (DESIGN section 3 pairing): the real producer of the `.env` wrappers names the slice in
+// INHABITANCE (gunbc.design_argument::single_authority pairing): the real producer of the `.env` wrappers names the slice in
 // exactly the bounded wrappers, and the unbounded control wrapper stays outside it, so its refusal is
 // the wrap policy's UncappedSystemSlice rather than an absent control.
 test fn fci1_bounded_wrappers_carry_the_slice_and_the_unbounded_control_does_not() -> Bool {

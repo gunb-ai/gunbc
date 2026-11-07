@@ -6,7 +6,7 @@ import gunbc.native_claim_program { native_claim_program_standing }
 
 // gunbc.native_claim_program native_claim_program_standing, at ITS interface: reports are SUPPLIED
 // here, because the claim is what the reader decides for a report of each shape, not whether some
-// program produces one (DESIGN section 3, a witness discriminates at one interface). THE REAL PATH
+// program produces one (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface). THE REAL PATH
 // IS RUN ELSEWHERE, as the pairing obligation requires: `gunbc test
 // //gunbc/instruments:native-crypto-vectors` emits, builds and runs the NativeClaimDriver program
 // and hands its actual stdout and status to this same fold.

@@ -52,7 +52,7 @@ import gunbc.host_convergence_census {
 // RUNG: mechanically preventable on the enrolled REDs; empty GoalDiverged remains
 // structurally impossible in std.goal_assessment.
 // HostEffectDomainProjection is observe, assess, decide. inspect_via consumes
-// observe/assess this cut. decide is a §3c declared frontier typed onto
+// observe/assess this cut. decide is a gunbc.design_argument::consumption declared frontier typed onto
 // std.upsert_decision UpsertDecision. C3 named live_deploy_inspect_member and
 // admit_live_deploy_member_basis as plan-side consumers; apply stays C4.
 // Readiness is NOT a field on this projection. C5 landed gunbc.readiness
@@ -352,7 +352,7 @@ data host_effect_decide_plan_frontier: ProtocolDeclaredFrontier = ProtocolDeclar
 // The discharge is UNBOUND on purpose. The capability that would discharge it (C8:
 // apply routed through the projection's decide) has no declaration in the corpus yet.
 // A DeclarationAppears trigger on a symbol nobody has declared is the fabricated
-// citation class (DESIGN §3); gunbc.runner.runner_spec_from_offer made the same
+// citation class (gunbc.design_argument::single_authority); gunbc.runner.runner_spec_from_offer made the same
 // choice for the same reason. host_effect_apply is not a DeclarationRetires candidate
 // either, because C8 keeps it as the realization and routes to it.
 // NEXT RUNG: when C8 names its projection-routed apply carrier, this row moves to

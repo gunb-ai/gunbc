@@ -39,7 +39,7 @@ fn ci_release_build_sccache_stats_stmt() -> Node {
 }
 
 // A refused emission is a marker that is not valid workflow shell, so the committed-workflow drift
-// gate turns red. It is never a partial script (DESIGN 5: refuse, never widen).
+// gate turns red. It is never a partial script (gunbc.design_argument::fail_closed: refuse, never widen).
 data ci_release_build_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ v2.workflow.ci_release_build_emit ci_release_build_script: the bash serializer refused a release-build statement; this marker is not valid workflow shell\n"
 
 fn ci_release_build_emit_stmts(statements: List<Node>) -> String {

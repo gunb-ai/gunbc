@@ -17,14 +17,14 @@ module gunbc.host.host_budget_preflight
 // instead of a fold post-mortem. This is the earliest unjustified boundary for failure (c) (run
 // 38865847078, srv1, HostBudgetUnreadable at resolve): the deploy paid fold-cost on a host whose
 // budget was never declared; the admission moves the SAME question earlier, which is moving it
-// cheaper, not widening anything (§5).
+// cheaper, not widening anything (gunbc.design_argument::fail_closed).
 //
 // WHY THE REQUIREMENT IS memory.max (OR ITS v1 ANALOGUE) AND NOT memory.high. The authority is
 // gunbc.host.host_budget_source, and this admission asks it the question rather than re-deriving an
 // answer: host_budget_source_bounds_this_process is the single place that says which sources constrain
 // allocation (memory.max: observed AND enforced; memory.high: an observed throttle that allocation may
 // cross while the kernel reclaims; MemTotal/MemAvailable and any environment integer: not bounds at
-// all). Probing memory.high only, and calling it an envelope, would be the second representation §3
+// all). Probing memory.high only, and calling it an envelope, would be the second representation gunbc.design_argument::single_authority
 // forbids -- an envelope that allocation walks through is not an envelope.
 //
 // WHY THE CACHE-CAP ENVIRONMENT GUARD IS PART OF THE REQUIREMENT.
@@ -72,7 +72,7 @@ data gunbc_typed_module_cache_max_entries_env_name: String = "GUNBC_TYPED_MODULE
 
 // ONE PROBE RESULT: the authority's own source (gunbc.host.host_budget_source already distinguishes
 // which file was probed; a string key here would be a SECOND representation of that fact, and the
-// Absent arms of a string dispatch are exactly the validation §5's correctness-by-construction
+// Absent arms of a string dispatch are exactly the validation gunbc.design_argument::fail_closed's correctness-by-construction
 // forbids -- "Stronger than catching a wrong state is making it unwritable") and what the file said.
 // Only the two probe constructors below build one, so source and file are born together and cannot
 // desynchronize. Unreadable carries the transport's own words -- "absent" and "not readable to this
@@ -205,7 +205,7 @@ fn probe_cgroup_high(cgroup_dir: String) -> BudgetProbe {
 // UNIT directory (actions-runner@srv1.service) and a step process may sit in a child of it
 // (gunbc.host.memory_envelope: the governor's leaf-to-root binding-cap walk). Asking only the leaf
 // here would refuse deploys the authoritative gate admits -- answering a NARROWER question than
-// the gate is exactly the §3 drift this step exists to prevent. Pure so the witness pins the
+// the gate is exactly the gunbc.design_argument::single_authority drift this step exists to prevent. Pure so the witness pins the
 // shape without a host: parent(dir) truncates at the last '/' above the mount, and the chain
 // always terminates at the mount itself.
 fn cgroup_parent_dir(path: String, mount: String) -> String {

@@ -6,7 +6,7 @@ import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // total_blocking_count_for answers -1 on CensusNotRunnable, so could-not-measure REDS every row
-// below and greens none (DESIGN section 5: bottom-as-answer must never be readable as
+// below and greens none (gunbc.design_argument::fail_closed: bottom-as-answer must never be readable as
 // bottom-as-ignorance). That arm is the canonical helper's, not a convention re-stated here.
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -14,13 +14,13 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE INSTRUMENT FOR TWO ROWS, AND THE REASON IT IS A MODULE RATHER THAN A PARAGRAPH.
 // gunbc.recurring_failure_mode.unapplied_function_value_admitted_at_a_value_position and the
 // ceiling receipt on gunbc.recurring_failure_mode.generic_application_admits_distinct_unit_variant_arguments
-// both rest on ONE comparison, and DESIGN section 6 requires that comparison to be cited by naming
+// both rest on ONE comparison, and gunbc.design_argument::how_to_work requires that comparison to be cited by naming
 // the producer that re-derives it rather than by copying its output into prose. This module IS that
 // producer: four sources, one blocking-count fold, run by the ordinary claim route.
 //
 // WHY THE FIXTURE IS SOURCE HANDED TO THE COMPILER RATHER THAN A CORPUS MODULE. Two of these four
 // programs are INVALID, and one of them the compiler correctly refuses -- so as corpus members they
-// would break every build that resolved them. DESIGN section 4b answers this directly: a state
+// would break every build that resolved them. gunbc.design_argument::guarantee_ladder answers this directly: a state
 // unrepresentable in the accepted corpus may still be representable as source handed to the compiler
 // by a fixture, and a compiler is precisely a thing whose regression probes are invalid programs.
 // The refusal is authorable here, so the evidence is enrollable here, and declining it would be
@@ -42,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // out against anything: acceptance there is already entailed by the two arms above it, since the
 // position defers on every argument and the argument is refused at no position. An arm that cannot
 // produce a result contradicting what its neighbours already establish is not a measurement, it is a
-// fifth witness to author, review, maintain and eventually run, which DESIGN section 2 counts as
+// fifth witness to author, review, maintain and eventually run, which gunbc.design_argument::minimize_redundancy counts as
 // redundant work on all three of section 1's quantities. It was compiled once during the
 // investigation and behaved as entailed; that is not evidence this module carries, and it is not
 // cited as any.
@@ -52,7 +52,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the rows would go green today and become DEFENDERS OF THE DEFECT, cited afterwards as coverage of
 // a wall that does not exist. So an_unapplied_function_at_a_concrete_position_is_refused and
 // a_string_at_a_generic_position_is_refused assert REFUSAL, with the observed acceptance recorded
-// above, and flip green of their own accord when the wall lands. Per DESIGN section 4b
+// above, and flip green of their own accord when the wall lands. Per gunbc.design_argument::guarantee_ladder
 // meta-obligation (4) they do not retire at that point: they convert to permanent regression
 // controls.
 //

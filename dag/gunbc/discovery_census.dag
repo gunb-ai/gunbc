@@ -334,7 +334,7 @@ fn required_aggregate_from_census(census: SiteCensus) -> RequiredAggregateDeriva
 // partition-exactness check here. Each row holds exactly one disposition and the fold below
 // matches it with no wildcard, so `offered` is the sum of the three arms because there is nowhere
 // else for a row to go — a check restating that would be validation standing where construction
-// already holds (DESIGN §5). The floor's own host-side partition check exists because THERE the
+// already holds (gunbc.design_argument::fail_closed). The floor's own host-side partition check exists because THERE the
 // counters are incremented independently and can drift; here they cannot.
 //
 // A FOURTH DISPOSITION ARM MUST FAIL TO COMPILE IN THIS FOLD. That is the reason the match is

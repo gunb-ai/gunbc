@@ -300,7 +300,7 @@ fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
 // THE SIX INGESTED ARROWS ARE NULLARY PRODUCERS, rostered warm in
 // v2.workflow.floor_pure_producer_share: each is the whole tokenize->parse->normalize->resolve->
 // find-arrow route over one module-constant source, the work no execution row below is about. The
-// rows read the produced arrow and pay only for evaluating it (DESIGN section 3: a witness
+// rows read the produced arrow and pay only for evaluating it (gunbc.design_argument::single_authority: a witness
 // discriminates at one interface, and supplies the layers beneath it). The route itself stays
 // executed: by these producers at preparation, and by the pipeline, parse and normalize rows above,
 // which run it per claim.

@@ -61,7 +61,7 @@ import std.algebra { fold_list }
 // Building exactly-one first is not a weaker substitute for that convergence; it is its
 // OBSERVATION HALF, which the named-tab rule needs anyway to read its own write back. Nothing here
 // has to be deleted when the write half lands: a named converge adds an Apply arm ahead of this
-// read, and this read stays the independent readback (DESIGN section 3d -- selection precedes
+// read, and this read stays the independent readback (gunbc.design_argument::selection_precedes_convergence -- selection precedes
 // convergence, and a convergence primitive reads back independently).
 //
 // AND THE FIT IS REAL RATHER THAN CONVENIENT. The only creator of this file is
@@ -97,7 +97,7 @@ type ReviewTabCandidate {
 // is further admit_callers-sealed so that even inside it, only the function that performed the
 // metadata read may call it.
 //
-// WHICH PATH THE SEAL IS EVIDENCED ON, because DESIGN section 4b(1) takes a class's rung as the
+// WHICH PATH THE SEAL IS EVIDENCED ON, because gunbc.design_argument::guarantee_ladder (rung honesty) takes a class's rung as the
 // MINIMUM across its in-scope paths and citing the strongest one is inflation. The evidence here
 // is source -> v1 interpretation: the probe's refusals are raised by the seed's
 // parsed_sole_constructor_properties, which is the compiler claim_batch runs. Native v2 refuses
@@ -110,7 +110,7 @@ type ReviewTabCandidate {
 // own argument rather than a value read back out of the response. The response does carry
 // spreadsheetId, and cross-checking it is the next rung; it is not done here because
 // GetSpreadsheetMetadata's field mask selects sheets.properties and would have to widen, and a
-// widened mask changes what every existing caller of that operation pays. DESIGN section 4b(2):
+// widened mask changes what every existing caller of that operation pays. gunbc.design_argument::guarantee_ladder (no untracked stall):
 // this is a class below its ceiling naming its trigger, which is a spreadsheetId in the mask.
 type LocatedReviewTab sole_constructor {
   spreadsheet_id: NonEmptyStr
@@ -182,7 +182,7 @@ fn review_tab_candidate_titled(props: SheetsSheetPropertiesRead, title: String) 
 // different arms: the candidates are what TabAmbiguous must show an operator, and one unreadable
 // sheet poisons the whole reading rather than being skipped -- a tab this module could not read is
 // a tab it cannot rule out as the review tab, so silently dropping it would turn a two-tab
-// workbook into a confident one-tab answer. That is the absorbing fallback DESIGN section 5
+// workbook into a confident one-tab answer. That is the absorbing fallback gunbc.design_argument::fail_closed
 // refuses, and it is the exact widen this scan exists to avoid.
 type ReviewTabScan {
   candidates: List<ReviewTabCandidate>

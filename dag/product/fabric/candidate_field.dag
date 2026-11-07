@@ -26,8 +26,8 @@ import product.fabric.selection {
 // was missing is a place where that ordering is a STRUCTURE rather than a convention every caller
 // re-implements. product.fabric.selection prices a List<CandidateOffer> it is handed; who decides
 // what goes in that list was answered nowhere, so each witness and each prospective consumer wrote
-// its own fold that dropped the unadmitted arms - the same judgement written N times, which DESIGN
-// section 2 prices as duplicated work and section 3 refuses as N authorities for one fact.
+// its own fold that dropped the unadmitted arms - the same judgement written N times, which
+// gunbc.design_argument::minimize_redundancy prices as duplicated work and gunbc.design_argument::single_authority refuses as N authorities for one fact.
 //
 // This module is that one fold. THE PRODUCTION COPY IS CUT IN THE SAME CHANGE rather than left
 // standing beside it: gunbc.instruments.fabric_control_plane_live_probe's cp_probe_roster matched
@@ -193,7 +193,7 @@ fn entry_exclusions<P>(entry: FieldEntry<P>) -> List<FieldExclusion<P>> {
 // THE DECISION IS TAKEN ONCE PER REQUEST AND THE TWO LISTS ARE PROJECTIONS OF IT, which is both the
 // cheaper shape and the one that cannot disagree with itself. An earlier revision folded an
 // accumulating CandidateField, rebuilding both lists with concat on every step - quadratic in the
-// roster, and DESIGN section 6's standing rule is that a proven cost-shape defect is always fixed
+// roster, and gunbc.design_argument::how_to_work's standing rule is that a proven cost-shape defect is always fixed
 // regardless of the realised n, because "n is small here" stops being true the moment the fold is
 // reused. Mapping to entries first also removes the seed the accumulator needed: there is no
 // half-built field for a later step to read, so admitted and excluded cannot drift apart or double

@@ -88,7 +88,7 @@ fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
 //   srv3's seeded ISO. Those volumes are not published, and the fleet's own live installs (srv3_ubuntu_autoinstall,
 //   srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso — all WithIdentity, all with an ssh section)
 //   have ALWAYS carried the commented line. Canonicalizing there would have been a quiet edit to documents
-//   live installs consume, stripping their key comments with nothing recording it — DESIGN.md §4b, no silent
+//   live installs consume, stripping their key comments with nothing recording it — gunbc.design_argument::guarantee_ladder, no silent
 //   regression. The witness test the_identity_route_still_writes_commented_authorized_keys pins those bytes.
 //
 // So this is not "two renderers for the same thing": the posture is the fact that determines the rules, and

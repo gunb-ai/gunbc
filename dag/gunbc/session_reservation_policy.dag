@@ -16,7 +16,7 @@ import gunbc.session_residency {
 // gunbc_ci_session_reservation_mode declared SessionAggregateMeasured { 21474836480 } -- the
 // MEASURED constructor over a round power of two that its own module note admits has "no derivation
 // from the thirteen measured per-session samples beside it". That is rung inflation in a
-// constructor name (DESIGN 4b): the carrier claims the evidence class it does not hold, and no
+// constructor name (gunbc.design_argument::guarantee_ladder): the carrier claims the evidence class it does not hold, and no
 // reader can tell a measurement from a policy literal because the type cannot express the
 // difference.
 //
@@ -187,7 +187,7 @@ data srv2_session_aggregate_denominator: SessionAggregateEvidence = SessionAggre
 // existed before this and was consumed by ONE fixture assertion against srv1 only -- so the invariant
 // held for the host someone had thought to assert about, and any row added later could hand a lying
 // number straight through host_session_reservation_outcome to SessionReservationCharged. That is
-// DESIGN section 5's validation-standing-where-construction-was-available in its exact form: a check
+// gunbc.design_argument::fail_closed's validation-standing-where-construction-was-available in its exact form: a check
 // satisfied by editing the declaration while the realization keeps lying.
 //
 // The predicate is unchanged and still has its fixture; what changed is that the PRODUCTION path now

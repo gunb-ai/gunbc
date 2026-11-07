@@ -31,7 +31,7 @@ fn workspace_emission() -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_fleet_page())
 }
 
-// A REFUSED SERIALIZATION MUST NOT ANSWER AS AN EMPTY PAGE (review 55040, DESIGN §5).
+// A REFUSED SERIALIZATION MUST NOT ANSWER AS AN EMPTY PAGE (review 55040, gunbc.design_argument::fail_closed).
 //
 // This arm returned "" on EmitRejected, which is the absorbing fallback in the direction that
 // costs the most here: every !string_contains assertion in this file is SATISFIED by the empty

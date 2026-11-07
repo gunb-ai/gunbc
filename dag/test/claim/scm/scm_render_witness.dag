@@ -181,7 +181,7 @@ test fn the_three_load_refusals_render_distinguishably() -> Bool {
 }
 
 // A REFUSAL NAMES THE PATH IT REFUSED ON. A diagnostic that says only "could not load" leaves the
-// reader with no located subject, which DESIGN section 5 requires of every failure arm.
+// reader with no located subject, which gunbc.design_argument::fail_closed requires of every failure arm.
 test fn a_refusal_names_the_path() -> Bool {
   refusal_render(
     cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
@@ -289,7 +289,7 @@ test fn bytes_and_exit_status_are_independent_facts() -> Bool {
 //
 // THE COMPLEMENTARY STRUCTURAL FACT IS DELIBERATELY NOT ASSERTED. "No response pairs refusal with
 // success" is now UNWRITABLE rather than false, so a fixture asserting it could not be authored and
-// the check would be permanently green BY CONSTRUCTION -- the decoration section 4b names as worse
+// the check would be permanently green BY CONSTRUCTION -- the decoration gunbc.design_argument::guarantee_ladder names as worse
 // than absent. What is asserted is the reachable behaviour a caller can still get wrong.
 fn control_byte_response(message: String) -> CliWireResponse {
   scm_status_cli_response(

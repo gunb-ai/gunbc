@@ -34,7 +34,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // The VarStore (GUID, VarStoreId 0x1234, size 0x2F, name RasIfrNVData) is read from the image's IFR with LongSoft
 // IFRExtractor-RS 1.6.1 (commit b1b9b36c00e3209ff0b1d2a76f10cb17e339473d).
 //
-// STANDING (§4d). The static IFR holds only the FormSet, the VarStore and two labels: the RAS page's items are
+// STANDING (gunbc.design_argument::epistemic_humility). The static IFR holds only the FormSet, the VarStore and two labels: the RAS page's items are
 // created at runtime by the driver. Each item's VarOffset, width and default below were therefore read from the
 // driver's aarch64 code (the HII checkbox and numeric helper arguments and the default-callback jump table), not
 // from an IFR opcode. They agree with the bytes read on srv2 (every default) and with srv1 on the offsets the
