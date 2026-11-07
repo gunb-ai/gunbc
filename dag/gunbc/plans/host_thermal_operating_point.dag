@@ -11,6 +11,7 @@ import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { list_head, take_prefix }
 import product.host_identity { HostIdentity }
+import extdeps.systemd { SystemdUnitActiveState, systemd_unit_active_state_is_stopped }
 
 // THE ADMISSION GATE: the thermal operating point is an ADMISSION CONDITION on the runner converge,
 // not a file left unmanaged. The 2026-11-05 incident (19 CI runners + Strata engines pushed DIMMs to
@@ -53,6 +54,46 @@ fn thermal_admitted_concurrency(host: HostIdentity) -> Nat? {
 type ThermalActiveReading
   = ThermalActiveObserved { names: List<String> }
   | ThermalActiveUnobserved { reason: String }
+
+// ONE UNIT'S ACTIVESTATE AS THE CALLER READ IT: a parsed member of the closed systemd.unit(5) sum, or UNREAD
+// (the show block did not name the unit, or ActiveState was a word the sum does not carry). Unread is its own
+// arm, never an empty string and never "not running".
+type ThermalUnitReading
+  = ThermalUnitRead { unit: NonEmptyStr, state: SystemdUnitActiveState }
+  | ThermalUnitUnread { unit: NonEmptyStr }
+
+// WHAT COUNTS AS LIVE: every state that is not definitely stopped. activating and reloading are hot and
+// deactivating still holds processes; all three count. FAILED is decided as NOT live, by the extdeps sum
+// (systemd.unit(5): failed and inactive are the two states with no process running or being started or
+// stopped). The direction is forced: a live unit passes the gate without consuming headroom (it is "already
+// active"), so counting a failed unit live would let its re-activation start a runner past the cap for free.
+// The one residual: a failed unit whose cgroup still holds processes (KillMode=none); this reading does not
+// carry the cgroup, so that case is not seen here.
+fn thermal_unit_state_is_live(s: SystemdUnitActiveState) -> Bool {
+  !systemd_unit_active_state_is_stopped(s: s)
+}
+
+// THE LIVE POPULATION FROM PER-UNIT READINGS. A non-fabric unit whose state was not read makes the whole
+// population unobserved, naming each such unit (DESIGN fail_closed: runtime uncertainty is a typed refusal,
+// never a widened count). Fabric members are not counted, so their reading is irrelevant here.
+fn thermal_active_reading_from_units(units: List<ThermalUnitReading>, fabric: List<NonEmptyStr>) -> ThermalActiveReading {
+  let counted = filter(units, r => match r {
+    ThermalUnitRead { unit: u, state: _ } => !any(fabric, f => (f as String) == (u as String))
+    ThermalUnitUnread { unit: u } => !any(fabric, f => (f as String) == (u as String))
+  })
+  let unread = flat_map(counted, r => match r {
+    ThermalUnitRead { unit: _, state: _ } => []
+    ThermalUnitUnread { unit: u } => [u as String]
+  })
+  if length(unread) > 0 {
+    ThermalActiveUnobserved { reason: join(["ActiveState was not read for: ", join(unread, " ")], "") }
+  } else {
+    ThermalActiveObserved { names: flat_map(counted, r => match r {
+      ThermalUnitRead { unit: u, state: st } => if thermal_unit_state_is_live(s: st) { [u as String] } else { [] }
+      ThermalUnitUnread { unit: _ } => []
+    }) }
+  }
+}
 
 // THE ADMISSION OUTCOME. Admitted carries the units a converge may bring up or restore; Refused names why
 // no unit may be started on a capped host. There is no sentinel budget: an uncapped host is its own branch.

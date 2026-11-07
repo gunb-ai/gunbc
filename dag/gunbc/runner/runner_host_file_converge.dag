@@ -7,7 +7,7 @@ import std.algebra { list_flat_map, trim, list_head, take_prefix, FreeSemigroup,
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
-import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
+import extdeps.systemd { parse_systemd_unit_load_state, parse_systemd_unit_active_state, SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed, UnitLoaded, UnitLoadNotFound, UnitLoadBadSetting, UnitLoadError, UnitLoadMasked, systemd_unit_load_state_not_found_wire, CPUQuotaPerSecUSec, EnvironmentProperty, parse_systemd_cpu_quota_per_sec_show, systemd_cpu_quota_per_sec_identity, systemd_cpu_quota_per_sec_magnitude_identity, systemd_cpu_quota_per_sec_of_threads, systemd_cpu_quota_property, systemd_unit_load_state_masked_wire, IdProperty, LoadState, NeedDaemonReload, KillModeProperty, ExitTypeProperty, UnitFileState, ActiveState, ControlGroup, DropInPathsProperty, systemd_unit_property_wire }
 import extdeps.tools.grep { grep_fixed_string_in_tree_argv, grep_files_with_fixed_strings_argv, grep_fixed_word_quiet_argv, grep_exit_selected, grep_exit_not_selected }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_show_units_properties_command, systemctl_list_all_service_units_command, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
@@ -157,13 +157,13 @@ import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotActuationSkippedThermal, SlotDrainPending, SlotActivated, DrainPendingJobRunningLeftUnmasked, drain_runner_slot_under_over, NeverMaskARunningUnit, slot_drain_pending_cause_wire,
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
-  slot_actuation_settled, slot_actuation_outcome_wire,
+  slot_actuation_settled, slot_actuation_held_by_cooling, slot_actuation_exhausted, slot_actuation_outcome_wire,
 }
 import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, deploy_slot_identities, committed_slot_identities, CommittedPopulationDerived, host_transitional_ci_slot_identities, identity_in_list, gunbc_runner_slot_desired_for }
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
 import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
 import std.measure { byte_size_count }
-import gunbc.plans.host_thermal_operating_point { thermal_activatable_units, ThermalAdmission, ThermalAdmitted, ThermalAdmissionRefused, ThermalActiveReading, ThermalActiveObserved, ThermalActiveUnobserved }
+import gunbc.plans.host_thermal_operating_point { thermal_activatable_units, thermal_active_reading_from_units, ThermalUnitReading, ThermalUnitRead, ThermalUnitUnread, ThermalAdmission, ThermalAdmitted, ThermalAdmissionRefused, ThermalActiveReading, ThermalActiveObserved, ThermalActiveUnobserved }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -1083,7 +1083,7 @@ type RunnerSlotUnitReading {
   exit_type: String
   cpu_quota_per_sec: String
   environment: String
-  active_state: String
+  active_state: SystemdUnitActiveState?
 }
 
 // WHAT A SLOT MUST CARRY BEYOND ITS TEARDOWN: the derived CPU ceiling, always; CARGO_BUILD_JOBS at
@@ -1283,12 +1283,14 @@ type RunnerSlotUnitResult {
   standing: RunnerSlotUnitStanding
   reload: SlotReloadStatus
   reach: SlotReloadReach
-  active_state: String
+  active_state: SystemdUnitActiveState?
 }
 
-fn slot_active_state_for(unit: NonEmptyStr, show_stdout: String) -> String {
+// ABSENT is UNREAD (no block names the unit, or ActiveState is a word the closed sum does not carry); it is
+// never "stopped". The thermal gate refuses on it (ThermalActiveUnobserved), it does not count it as idle.
+fn slot_active_state_for(unit: NonEmptyStr, show_stdout: String) -> SystemdUnitActiveState? {
   match parse_runner_slot_reading_for(unit: unit, show_stdout: show_stdout) {
-    Absent => ""
+    Absent => none
     Present { value: rd } => rd.active_state
   }
 }
@@ -1440,7 +1442,7 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
                                 Absent => none
                                 Present { value: act } =>
                                   if id == "" { none } else {
-                                    Present { value: RunnerSlotUnitReading { unit: id as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit, cpu_quota_per_sec: cpu, environment: env, active_state: act } }
+                                    Present { value: RunnerSlotUnitReading { unit: id as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit, cpu_quota_per_sec: cpu, environment: env, active_state: parse_systemd_unit_active_state(raw: trim(s: act)) } }
                                   }
                               }
                           }
@@ -3250,8 +3252,8 @@ fn runner_host_manager_reload_step(
 // The converge must not perform an activation that would take the host's ACTIVE runner count above
 // the admitted concurrency. Fabric members and retirees are excluded from the count.
 //
-// Counting: from the post-reload population, count desired units whose active_state is "active" AND
-// are not fabric members. The budget (admitted - active) is how many MORE activations this pass may
+// Counting: from the post-reload population, count every non-fabric unit whose ActiveState is not
+// definitely stopped (activating/reloading/deactivating count; an unread unit refuses admission). The budget (admitted - active) is how many MORE activations this pass may
 // perform. Already-active units are always passed to activation (they return SlotActuationNoop — no
 // start is performed), so they don't consume budget. Units NOT yet active consume one budget slot
 // each; once budget is exhausted, further non-active units get SlotActuationSkippedThermal.
@@ -3265,7 +3267,12 @@ fn runner_host_manager_reload_step(
 fn runner_host_thermal_activated_units(host: HostIdentity, population: RunnerSlotPopulation, desired: List<NonEmptyStr>, fabric: List<NonEmptyStr>) -> ThermalAdmission {
   let active = match population {
     SlotPopulationUnobservable { reason: r } => ThermalActiveUnobserved { reason: r }
-    SlotPopulationObserved { units: us } => ThermalActiveObserved { names: map(filter(us, r => r.active_state == "active"), r => r.unit as String) }
+    SlotPopulationObserved { units: us } => thermal_active_reading_from_units(
+      units: map(us, r => match r.active_state {
+        Absent => ThermalUnitUnread { unit: r.unit }
+        Present { value: st } => ThermalUnitRead { unit: r.unit, state: st }
+      }),
+      fabric: fabric)
   }
   thermal_activatable_units(host: host, active: active, desired: desired, fabric: fabric)
 }
@@ -3328,7 +3335,7 @@ fn runner_host_cpu_dropin_gate(
   actuations: List<SlotActuationOutcome>,
   admission: RunnerHostActuationAdmission,
 ) -> RunnerHostCpuDropinGate {
-  let unsettled = filter(actuations, a => !slot_actuation_settled(o: a))
+  let unsettled = filter(actuations, a => !slot_actuation_exhausted(o: a))
   let skipped = match admission { ActuationAdmitted => false ActuationSkipped { cause: _ } => true }
   if length(unsettled) == 0 && !skipped {
     RunnerHostCpuDropinGate { files: files, withheld: withheld }
@@ -4303,8 +4310,8 @@ fn runner_host_file_run_succeeded(run: RunnerHostFileRun) -> Bool {
         && length(run.withheld) == 0
         && runner_host_manager_reload_settled(r: run.pre_actuation_reload)
         && (match run.actuation_admission { ActuationAdmitted => true ActuationSkipped { cause: _ } => false })
-        && all(run.actuations, a => slot_actuation_settled(o: a))
-        && all(run.retiree_drain, a => slot_actuation_settled(o: a))
+        && all(run.actuations, a => slot_actuation_exhausted(o: a))
+        && all(run.retiree_drain, a => slot_actuation_exhausted(o: a))
         && retired_residue_settled(result: run.residue)
         && (match run.reload {
           ManagerReloadNotOwed => true
@@ -4347,6 +4354,23 @@ fn runner_slot_population_text(population: RunnerSlotPopulation) -> String {
   }
 }
 
+// COOLING-HELD SLOTS ARE REPORTED APART: they are desired, deliberately not started, and so NOT converged.
+// A success verdict means the run did all it may, never that these slots are at the committed width.
+fn runner_host_cooling_held_line(actuations: List<SlotActuationOutcome>) -> String {
+  let held = filter(actuations, a => slot_actuation_held_by_cooling(o: a))
+  if length(held) == 0 { "" } else {
+    join(["cooling-held=", to_string(length(held)), " (desired, NOT converged): ", join(map(held, a => match a {
+      SlotActuationSkippedThermal { unit: u } => u as String
+      SlotActuationNoop { unit: u, state: _ } => u as String
+      SlotActivated { unit: u } => u as String
+      SlotNotInstalled { unit: u } => u as String
+      SlotDrainedAndMasked { unit: u } => u as String
+      SlotDrainPending { unit: u, cause: _ } => u as String
+      SlotActuationRefused { unit: u, step: _, reason: _ } => u as String
+    }), " "), "\n"], "")
+  }
+}
+
 fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
   join([
     "host=", run.subject.host as String,
@@ -4363,6 +4387,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
     match run.actuation_admission { ActuationAdmitted => "" ActuationSkipped { cause: c } => join(["actuations SKIPPED ", c, "\n"], "") },
     join(map(run.actuations, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),
+    runner_host_cooling_held_line(actuations: run.actuations),
     runner_host_cap_phase_text(phase: run.cap_phase),
     retired_residue_result_line(result: run.residue),
     "manager-reload=", runner_host_manager_reload_wire(reload: run.reload), "\n",

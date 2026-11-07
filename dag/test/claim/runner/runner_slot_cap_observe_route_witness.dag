@@ -88,6 +88,7 @@ import gunbc.runner.runner_slot_cap_converge {
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_slot_retirement { retirement_cgroup_unescaped_root }
+import extdeps.systemd { Inactive }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv }
 import extdeps.tools.grep { grep_nonempty_lines_in_tree_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_mount_point }
@@ -152,7 +153,7 @@ fn cap_population() -> RunnerSlotPopulation {
   match cap_featured_unit() {
     Absent => SlotPopulationObserved { units: [] }
     Present { value: u } => SlotPopulationObserved {
-      units: [RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending, reach: ReachesLiveCgroup, active_state: "inactive" }],
+      units: [RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending, reach: ReachesLiveCgroup, active_state: Present { value: Inactive } }],
     }
   }
 }

@@ -20,7 +20,10 @@ module test.claim.host_thermal_admission_gate_witness
 
 import gunbc.plans.host_thermal_operating_point { thermal_activatable_units, ThermalAdmission, ThermalAdmitted, ThermalAdmissionRefused, ThermalActiveReading, ThermalActiveObserved, ThermalActiveUnobserved }
 import product.host_identity { HostIdentity }
+import extdeps.systemd { Active, Activating, Reloading, Deactivating, Failed, Inactive, SystemdUnitActiveState }
+import gunbc.plans.host_thermal_operating_point { thermal_active_reading_from_units, ThermalUnitReading, ThermalUnitRead, ThermalUnitUnread }
 import std.types { List, String, Bool, NonEmptyStr }
+import std.algebra { string_contains }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly
 
@@ -120,4 +123,70 @@ test fn w_surplus_active_unit_counts_against_budget() -> Bool {
   let r = units_of(a: thermal_activatable_units(
     host: srv4_host, active: ThermalActiveObserved { names: srv4_surplus_active }, desired: srv4_desired, fabric: srv4_fabric))
   !started(r, "srv4-13") && !started(r, "srv4-14") && length(r) == 10
+}
+
+// Readings for srv4's 12 admitted slots: the first ten are Active, srv4-11 and srv4-12 take the given states.
+fn reading(u: String, st: SystemdUnitActiveState) -> ThermalUnitReading {
+  ThermalUnitRead { unit: u as NonEmptyStr, state: st }
+}
+fn ten_active() -> List<ThermalUnitReading> {
+  map(["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05", "srv4-08", "srv4-09", "srv4-10", "srv4-11", "srv4-12"], u => reading(u: u, st: Active))
+}
+fn admit_from(rs: List<ThermalUnitReading>) -> List<NonEmptyStr> {
+  units_of(a: thermal_activatable_units(
+    host: srv4_host, active: thermal_active_reading_from_units(units: rs, fabric: srv4_fabric), desired: srv4_desired, fabric: srv4_fabric))
+}
+
+// RED A (review 91956 finding 1): activating, reloading and deactivating runners are hot. Ten Active plus
+// surplus srv4-15 Activating and srv4-16 Reloading is 12 live, so the inactive srv4-13/14 must NOT start; the
+// bare "active" string match counted only ten and admitted both.
+test fn w_activating_and_reloading_units_count_as_live() -> Bool {
+  let r = admit_from(concat(ten_active(), [reading(u: "srv4-15", st: Activating), reading(u: "srv4-16", st: Reloading),
+    reading(u: "srv4-13", st: Inactive), reading(u: "srv4-14", st: Inactive)]))
+  !started(r, "srv4-13") && !started(r, "srv4-14") && length(r) == 10
+}
+test fn w_deactivating_unit_counts_as_live() -> Bool {
+  let r = admit_from(concat(ten_active(), [reading(u: "srv4-15", st: Deactivating), reading(u: "srv4-16", st: Activating),
+    reading(u: "srv4-13", st: Inactive)]))
+  !started(r, "srv4-13")
+}
+// Positive control: one hot non-Active unit leaves headroom for exactly one more start.
+test fn w_one_reloading_unit_leaves_one_headroom() -> Bool {
+  let r = admit_from(concat(ten_active(), [reading(u: "srv4-15", st: Reloading), reading(u: "srv4-13", st: Inactive), reading(u: "srv4-14", st: Inactive)]))
+  started(r, "srv4-13") && !started(r, "srv4-14") && length(r) == 11
+}
+
+// Failed is decided NOT live (no process runs; extdeps.systemd systemd_unit_active_state_is_stopped). It must
+// consume headroom when re-activated, not pass free as "already active": with 11 live, only ONE of the two
+// failed desired slots may start.
+test fn w_failed_unit_is_not_live_and_consumes_headroom() -> Bool {
+  let r = admit_from(concat(ten_active(), [reading(u: "srv4-13", st: Failed), reading(u: "srv4-14", st: Failed)]))
+  // 10 live, headroom 2: both failed slots start, and each consumed budget (result = 10 live + 2 started).
+  length(r) == 12 && started(r, "srv4-13") && started(r, "srv4-14")
+}
+test fn w_failed_unit_does_not_pass_free_past_the_cap() -> Bool {
+  // 12 live (ten Active + two more Active surplus srv4-15/16 outside desired) and srv4-13 Failed: headroom 0,
+  // so the failed slot must NOT start. Counting Failed as live would have returned it as already-active.
+  let rs = concat(ten_active(), [reading(u: "srv4-15", st: Active), reading(u: "srv4-16", st: Active), reading(u: "srv4-13", st: Failed)])
+  let r = admit_from(rs)
+  !started(r, "srv4-13")
+}
+
+// RED B (finding 2): a unit inside an observed population whose ActiveState was not read refuses admission;
+// it is never counted as stopped. A fabric member's unread state is irrelevant (it is never counted).
+test fn w_unread_unit_refuses_admission() -> Bool {
+  let rs = concat(ten_active(), [ThermalUnitUnread { unit: "srv4-13" as NonEmptyStr }])
+  is_refused(a: thermal_activatable_units(
+    host: srv4_host, active: thermal_active_reading_from_units(units: rs, fabric: srv4_fabric), desired: srv4_desired, fabric: srv4_fabric))
+}
+test fn w_unread_fabric_member_does_not_refuse() -> Bool {
+  let rs = concat(ten_active(), [ThermalUnitUnread { unit: "srv4-06" as NonEmptyStr }])
+  !is_refused(a: thermal_activatable_units(
+    host: srv4_host, active: thermal_active_reading_from_units(units: rs, fabric: srv4_fabric), desired: srv4_desired, fabric: srv4_fabric))
+}
+test fn w_unread_reason_names_the_unit() -> Bool {
+  match thermal_active_reading_from_units(units: [ThermalUnitUnread { unit: "srv4-13" as NonEmptyStr }], fabric: []) {
+    ThermalActiveUnobserved { reason: r } => string_contains(s: r, pattern: "srv4-13")
+    ThermalActiveObserved { names: _ } => false
+  }
 }
