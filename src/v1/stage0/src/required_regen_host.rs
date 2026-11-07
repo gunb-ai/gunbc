@@ -13378,7 +13378,7 @@ mod route_projection_control {
             DEMAND_ROUTE => resolve_orchestrator_model(&roots, &entry)
                 .map_err(|e| format!("the demand-acquired route refused: {e:?}"))?,
             SHARED_ROUTE => {
-                let shared = super::process_shared_index_or_refuse(&roots);
+                let shared = super::super::process_shared_index_or_refuse(&roots);
                 super::super::resolve_entry_with_index(&shared, &entry)
                     .map_err(|e| format!("the whole-tree route refused: {e}"))?
             }
@@ -13483,6 +13483,18 @@ mod route_projection_control {
     /// first's index is gone with its process; then the two files are compared. This is the receipt
     /// that the shipped route returns the rows the whole-tree route returned, for the real
     /// emitted-tree entry, inside a slot a normal machine has.
+    ///
+    /// RESOURCE NOTE, measured. The two children run SEQUENTIALLY, so the peak is the costlier
+    /// single route rather than the sum of both; the shared arm still builds the whole-tree index
+    /// over the `dag` corpus, so budget generously. A sibling control that held the whole index
+    /// and the demand graph at once was measured on srv1 at head 9a5da065: one site hit a 25 GiB
+    /// cap and was wall-timed out (`rc=124`, `memory.peak` AT the cap), and at a 48 GiB cap the
+    /// same site sat at the limit for 2 h with `oom_kill=0` and `memory.events max=19179707`. Run
+    /// with swap 0, a generous timeout, and `--nocapture`. Absence of a line is not a verdict:
+    /// this test's own verdict is always a printed line (`shared index returned N row(s)`,
+    /// `EQUIVALENT ...`, or a `panic!` naming the difference), so `rc=101`, `rc=124`, or an exit 1
+    /// carrying only `shared index refused:` / `module index refused:` with no such line is a fact
+    /// about the machine, not about the routes.
     #[test]
     #[ignore = "spawns one child per route over the real emitted tree; run with --nocapture"]
     fn orchestrator_route_row_projections_agree_in_separate_processes() {
