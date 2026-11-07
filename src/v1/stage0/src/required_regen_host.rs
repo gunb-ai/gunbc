@@ -13838,11 +13838,26 @@ mod orchestrator_model_load_tests {
     /// item's resolved content, the same diagnostics -- and the model functions the five sites call
     /// answer identically on fixed inputs. Two resolutions that could diverge silently would be two
     /// authorities for one model (DESIGN section 3). The shared-index side costs about 169 s and
-    /// 10 GB, so this runs on demand: `--ignored --test-threads=1` on a release build. In a
-    /// 25 GiB slot it must be run ONE SITE AT A TIME, because a released index is not returned to
-    /// the OS and four sites accumulate past the cap: set `GUNBC_ORCH_ROUTE_SITE` to a substring
-    /// of exactly one site's file name (e.g. `stage0_emitted_edge_admission`) and invoke once per
-    /// site. Unset runs all four, for a machine that can hold them.
+    /// 10 GB on the small fixture, so this runs on demand: `--ignored --test-threads=1` on a
+    /// release build.
+    ///
+    /// RESOURCE, MEASURED - and corrected. An earlier version of this comment told the rerunner
+    /// that a 25 GiB slot suffices if sites are run one at a time. That was wrong, and the
+    /// correction is here because following it wastes a slot: srv1 ran one site per process at a
+    /// 25 GiB cap and returned no verdict (wall-timed out with `memory.peak` AT the cap), then ran
+    /// the gating site ALONE at a 48 GiB cap with swap 0 and sat at the limit for 2 h with
+    /// `oom_kill=0` and `memory.events max=19179707`. The differential holds the whole-tree index
+    /// and the demand-acquired graph at the same comparison point, so budget well above 48 GiB.
+    /// A death under the cap is a fact about the machine, not a verdict: this control's verdict is
+    /// always a printed line, so no line means it did not run.
+    ///
+    /// This is the full-graph cross-check. The receipt that gates the route swap is the narrower
+    /// `route_projection_control`, which compares only the rows `admit_derived_partition_move`
+    /// consumes and answered in a 25 GiB unit in 188 s at 9.88 GB peak.
+    ///
+    /// To narrow this one, set `GUNBC_ORCH_ROUTE_SITE` to a substring of exactly one site's file
+    /// name (e.g. `stage0_emitted_edge_admission`); a value matching no site fails rather than
+    /// skipping. Unset runs all four, on a machine that can hold them.
     #[test]
     #[ignore]
     fn both_routes_resolve_every_orchestrator_entry_identically() {
