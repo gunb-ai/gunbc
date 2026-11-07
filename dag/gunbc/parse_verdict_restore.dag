@@ -180,12 +180,10 @@ fn parse_verdict_locate_step() -> Step {
   }
 }
 
-// FIRST HIT WINS, AND A MISMATCH NEVER FALLS THROUGH. Every ordinal restores onto the SAME path the
-// publisher saved (a cache entry's version hashes its path, so the path is part of the entry's identity
-// and must be the workspace-relative one on both sides), so the chain is gated: ordinal i restores its
-// identity only while no earlier ordinal's identity restore hit. The first published identity is the
-// one the verb decides against; whether its compiler matches is the verb's exact comparison, never a
-// reason to look at the next ancestor.
+// Every ordinal restores onto the SAME path the publisher saved (a cache entry's version hashes its
+// path, so the path is part of the entry's identity and must be the workspace-relative one on both
+// sides). The identity blob is restored only for the selected ancestor; see the SELECTION POLICY note on
+// parse_verdict_identity_restore_condition for which ancestor that is and why.
 fn parse_verdict_identity_restore_id(ordinal: Int) -> String {
   join(["parse_identity_", int_to_decimal_string(value: ordinal)], "")
 }
