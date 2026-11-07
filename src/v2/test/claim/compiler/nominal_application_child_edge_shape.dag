@@ -9,10 +9,16 @@ module v2.test.claim.compiler.nominal_application_child_edge_shape
 // mismatch on every nominal application. The cells below separate the two readings without a local run:
 // every cell is a whole-module read through the real resolver and infer, and each asks one question.
 //
-// Reading the table: a cell that is RED where it is written ACCEPT means the two sides of that program are
-// NOT structurally identical, which is the lowering mismatch; a cell that is RED where it is written REFUSE
-// means the judge is answering for the wrong reason. Nothing here is a claim of the final contract; these
-// are the measurements the fix is written against.
+// DISSOLUTION CONDITION, stated up front because §6 asks for it: this file is the instrument that
+// measures the mismatch, and it does not outlive the fix it measures. When the lowering lands, every cell
+// whose verdict is SETTLED stays -- renamed to the contract it guards, in the PR that carries the fix, as
+// the regression control that would have caught the bug -- and every cell that only measured is DELETED in
+// that same commit. Nothing here is left standing as scaffold: no cell survives unless it asserts a
+// settled verdict about the fixed contract.
+//
+// Reading the table while the measurement is open: a cell RED where it is written ACCEPT means the two
+// sides of that program are NOT structurally identical, which is the lowering mismatch; a cell RED where it
+// is written REFUSE means the judge is answering for a reason other than the one named.
 import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.resolve { ResolvedTree }
@@ -200,17 +206,26 @@ fn nal_symbol(resolved: Outcome<ResolvedTree>, dotted: String) -> Optional<Node>
   }
 }
 
+fn nal_produced_node_of(resolved: Outcome<ResolvedTree>, subject: String) -> Optional<Node> {
+  nal_symbol(resolved: resolved, dotted: join([subject, ".nal_take.p"], ""))
+}
+
 fn nal_produced_node(subject: String) -> Optional<Node> {
-  nal_symbol(resolved: nal_resolved(subject: subject), dotted: join([subject, ".nal_take.p"], ""))
+  nal_produced_node_of(resolved: nal_resolved(subject: subject), subject: subject)
+}
+
+fn nal_fn_node_of(resolved: Outcome<ResolvedTree>, subject: String) -> Optional<Node> {
+  nal_symbol(resolved: resolved, dotted: join([subject, ".nal_take"], ""))
 }
 
 fn nal_fn_node(subject: String) -> Optional<Node> {
   nal_symbol(resolved: nal_resolved(subject: subject), dotted: join([subject, ".nal_take"], ""))
 }
 
-// The return annotation, read the way infer reads an Arrow's body.
-fn nal_declared_node(subject: String) -> Optional<Node> {
-  match nal_fn_node(subject: subject) {
+// The return annotation, read the way infer reads an Arrow's body. Each cell resolves its source root
+// ONCE and hands the resolved tree to every reader, so one program costs one resolve.
+fn nal_declared_node_of(resolved: Outcome<ResolvedTree>, subject: String) -> Optional<Node> {
+  match nal_fn_node_of(resolved: resolved, subject: subject) {
     Absent => optional_absent()
     Present { value: n } =>
       match arrow_body_target_lookup(children: n.children) {
@@ -223,6 +238,10 @@ fn nal_declared_node(subject: String) -> Optional<Node> {
           }
       }
   }
+}
+
+fn nal_declared_node(subject: String) -> Optional<Node> {
+  nal_declared_node_of(resolved: nal_resolved(subject: subject), subject: subject)
 }
 
 fn nal_arrow_body_optional(children: List<Edge>) -> Optional<Node> {
@@ -273,11 +292,11 @@ fn nal_denotation_reads(n: Node) -> Bool {
   }
 }
 
-fn nal_normalized_produced(subject: String) -> Optional<Node> {
-  match nal_resolved(subject: subject) {
+fn nal_normalized_of(resolved: Outcome<ResolvedTree>, at: Optional<Node>) -> Optional<Node> {
+  match resolved {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: tree, diagnostics: _ } =>
-      match symbol_index_lookup(index: tree.resolved_declarations, qualified_path: qualified_name_from_dotted_string(dotted: join([subject, ".nal_take.p"], ""))) {
+      match at {
         Absent => optional_absent()
         Present { value: n } =>
           optional_present(value: infer_type_alias_normalized_at(t: n, bodies: tree.resolved_declarations, bindings: tree.symbol_index))
@@ -285,16 +304,14 @@ fn nal_normalized_produced(subject: String) -> Optional<Node> {
   }
 }
 
+fn nal_normalized_produced(subject: String) -> Optional<Node> {
+  let resolved = nal_resolved(subject: subject)
+  nal_normalized_of(resolved: resolved, at: nal_produced_node_of(resolved: resolved, subject: subject))
+}
+
 fn nal_normalized_declared(subject: String) -> Optional<Node> {
-  match nal_resolved(subject: subject) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: tree, diagnostics: _ } =>
-      match nal_declared_node(subject: subject) {
-        Absent => optional_absent()
-        Present { value: n } =>
-          optional_present(value: infer_type_alias_normalized_at(t: n, bodies: tree.resolved_declarations, bindings: tree.symbol_index))
-      }
-  }
+  let resolved = nal_resolved(subject: subject)
+  nal_normalized_of(resolved: resolved, at: nal_declared_node_of(resolved: resolved, subject: subject))
 }
 
 fn nal_on_normalized_produced(subject: String, f: fn(Node) -> Bool) -> Bool {
@@ -359,7 +376,11 @@ test fn nal_node_concrete_declared_arguments_positional_holds() -> Bool {
 // THE SOUNDNESS CELL. Both sides spell Pair<Int, String> and the body is the parameter itself, so the
 // program is correct; if this is red the two producers disagree about a node that names one type.
 test fn nal_node_concrete_sides_are_structurally_equal_holds() -> Bool {
-  nal_sides_equal(a: nal_produced_node(subject: "gunbc.nal_concrete_ident"), b: nal_declared_node(subject: "gunbc.nal_concrete_ident"))
+  let resolved = nal_resolved(subject: "gunbc.nal_concrete_ident")
+  nal_sides_equal(
+    a: nal_produced_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident"),
+    b: nal_declared_node_of(resolved: resolved, subject: "gunbc.nal_concrete_ident")
+  )
 }
 
 test fn nal_node_concrete_produced_denotation_reads_holds() -> Bool {
