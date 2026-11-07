@@ -2452,8 +2452,328 @@ fn write_receipt(path: &Path, receipt: &RegenReceipt) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------------------------
+// THE SLOT PROGRESS WATCHDOG (host side). `gunbc.runner.runner_slot_desired` declares the three
+// thresholds, `gunbc.host.memory_stall_refusal` `supervised_slot_verdict` decides, and the unit that
+// runs this (`gunbc.runner.runner_slot_watchdog_unit`) passes the sampling shape on argv from rows.
+// Nothing here restates a threshold or a verdict arm: this file reads one slot cgroup on a clock,
+// asks the authority through `SupervisedSubjectModel::judge_with`, and on a refusal ends the JOB's
+// process tree -- every pid in the slot's cgroup.procs except the Listener and its ancestors -- and
+// leaves the authority's own refusal text as the receipt.
+//
+// WHY A SEED VERB AND NOT A .dag DAEMON, stated for the dissolution: the only modeled kill is
+// cgroup.kill on a subtree (extdeps.linux.cgroup_v2 cgroup_v2_kill_path), and today's fleet slot is
+// one flat leaf holding Listener and job together, so that kill would end the Listener too. Per-pid
+// signalling is not a modeled effect (extdeps.posix.signal is SIGTERM to one pid). DISSOLVES WHEN
+// the slot unit delegates a cgroup subtree and places each job in its own leaf, at which point the
+// kill is cgroup.kill on that leaf and this verb's kill half is deleted.
+// ---------------------------------------------------------------------------------------------
+
+pub struct SlotWatchdogConfig {
+    pub slot_cgroup: PathBuf,
+    pub source_roots: Vec<String>,
+    /// The binary's own build identity (`GUNBC_BUILD_IDENTITY`): the commit it was built from.
+    pub build_identity: String,
+}
+
+/// One revision must name both the binary and the verdict it evaluates (gunbc.live_deploy.serve_binary_build):
+/// the source root's checkout HEAD must EQUAL the binary's build identity. A `-dirty` identity, a materialized
+/// tree identity or a different HEAD is a typed refusal, never a warning.
+pub(crate) fn slot_watchdog_identity_refusal(build_identity: &str, head: &str) -> Option<String> {
+    if build_identity == head {
+        None
+    } else {
+        Some(format!(
+            "refusal: SlotWatchdogSourceIdentityMismatch: the binary was built from `{build_identity}` but the source root's checkout HEAD is `{head}`; one revision must name both"
+        ))
+    }
+}
+
+fn slot_watchdog_source_head(root: &str) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(["--no-optional-locks", "-C", root, "rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| format!("refusal: SlotWatchdogSourceHeadUnreadable: git -C {root}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "refusal: SlotWatchdogSourceHeadUnreadable: git -C {root} rev-parse HEAD exited {}",
+            out.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// The four answers the authority gives about the verb's own shape (see
+/// `gunbc.host.memory_stall_refusal supervised_slot_*`): nothing here is a Rust literal.
+struct SlotWatchdogShape {
+    sample_interval_ms: u64,
+    baseline_window_ms: u64,
+    term_grace_ms: u64,
+    receipt_dir: PathBuf,
+}
+
+const SLOT_LISTENER_COMM: &str = "Runner.Listener";
+
+/// `/proc/<pid>/stat`: (comm, ppid). comm sits in parentheses and may contain either, so the split
+/// is on the FIRST `(` and LAST `)`, the same discipline as `memory_governor::self_major_faults`.
+fn slot_proc_comm_and_ppid(stat: &str) -> Option<(String, i32)> {
+    let open = stat.find('(')?;
+    let close = stat.rfind(')')?;
+    let comm = stat.get(open + 1..close)?.to_string();
+    let mut rest = stat.get(close + 1..)?.split_whitespace();
+    let _state = rest.next()?;
+    let ppid = rest.next()?.parse().ok()?;
+    Some((comm, ppid))
+}
+
+/// The pids to end and the pids to spare, from ONE snapshot of the cgroup's membership. `proc_of`
+/// answers (comm, ppid) for a pid, `None` where it already exited. The Listener is spared with its
+/// ancestors; with no Listener in the snapshot nothing is chosen -- a slot whose Listener cannot be
+/// found is not one this verb may decide the survivors of.
+fn slot_job_tree_victims(
+    members: &[i32],
+    own_pid: i32,
+    proc_of: &dyn Fn(i32) -> Option<(String, i32)>,
+) -> Result<(Vec<i32>, std::collections::BTreeSet<i32>), String> {
+    let mut spared = std::collections::BTreeSet::new();
+    let listeners: Vec<i32> = members
+        .iter()
+        .copied()
+        .filter(|pid| proc_of(*pid).is_some_and(|(comm, _)| comm == SLOT_LISTENER_COMM))
+        .collect();
+    if listeners.is_empty() {
+        return Err(format!(
+            "refusal: no {SLOT_LISTENER_COMM} among the slot's {} cgroup members; not choosing survivors",
+            members.len()
+        ));
+    }
+    for listener in listeners {
+        let mut pid = listener;
+        while pid > 1 && spared.insert(pid) {
+            match proc_of(pid) {
+                Some((_, ppid)) => pid = ppid,
+                None => break,
+            }
+        }
+    }
+    let victims = members
+        .iter()
+        .copied()
+        .filter(|pid| *pid != own_pid && !spared.contains(pid))
+        .collect();
+    Ok((victims, spared))
+}
+
+fn slot_cgroup_members(dir: &Path) -> Vec<i32> {
+    std::fs::read_to_string(dir.join("cgroup.procs"))
+        .unwrap_or_default()
+        .split_whitespace()
+        .filter_map(|w| w.parse().ok())
+        .collect()
+}
+
+fn slot_proc_of(pid: i32) -> Option<(String, i32)> {
+    std::fs::read_to_string(format!("/proc/{pid}/stat"))
+        .ok()
+        .and_then(|stat| slot_proc_comm_and_ppid(&stat))
+}
+
+/// Ends the job's tree: SIGTERM to the snapshot's victims, a grace, then SIGKILL to whatever of the
+/// CURRENT membership is still not spared. Returns the receipt fields; an unreadable Listener
+/// refuses before any signal is sent.
+fn slot_kill_job_tree(
+    cfg: &SlotWatchdogConfig,
+    shape: &SlotWatchdogShape,
+) -> Result<String, String> {
+    let before = crate::memory_governor::read_cgroup_u64(&cfg.slot_cgroup, "memory.current");
+    let members = slot_cgroup_members(&cfg.slot_cgroup);
+    let own = std::process::id() as i32;
+    let (victims, spared) = slot_job_tree_victims(&members, own, &slot_proc_of)?;
+    let signal = |pids: &[i32], sig: i32| {
+        let live: std::collections::BTreeSet<i32> =
+            slot_cgroup_members(&cfg.slot_cgroup).into_iter().collect();
+        for pid in pids.iter().filter(|p| live.contains(p)) {
+            // SAFETY: kill(2) on a pid just re-read from the cgroup's own membership.
+            unsafe { libc::kill(*pid, sig) };
+        }
+    };
+    signal(&victims, libc::SIGTERM);
+    let deadline = Instant::now() + std::time::Duration::from_millis(shape.term_grace_ms);
+    let remaining = |dir: &Path| -> Vec<i32> {
+        slot_cgroup_members(dir)
+            .into_iter()
+            .filter(|p| !spared.contains(p) && *p != own)
+            .collect()
+    };
+    while Instant::now() < deadline && !remaining(&cfg.slot_cgroup).is_empty() {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let after_term = remaining(&cfg.slot_cgroup);
+    let escalated = after_term.len();
+    signal(&after_term, libc::SIGKILL);
+    let settle = Instant::now() + std::time::Duration::from_secs(10);
+    while Instant::now() < settle && !remaining(&cfg.slot_cgroup).is_empty() {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let survivors = remaining(&cfg.slot_cgroup).len();
+    let listener_alive = slot_cgroup_members(&cfg.slot_cgroup)
+        .iter()
+        .any(|p| slot_proc_of(*p).is_some_and(|(c, _)| c == SLOT_LISTENER_COMM));
+    let after = crate::memory_governor::read_cgroup_u64(&cfg.slot_cgroup, "memory.current");
+    let show = |v: Option<u64>| v.map_or("unreadable".to_string(), |b| b.to_string());
+    Ok(format!(
+        "victims={} sigkill_escalated={escalated} survivors={survivors} listener_alive={listener_alive} \
+         memory_current_before={} memory_current_after={}",
+        victims.len(),
+        show(before),
+        show(after)
+    ))
+}
+
+/// One atomic receipt per slot: the authority's refusal text, then the kill report. Written to a tmp
+/// name and renamed so a reader never sees half of one.
+fn slot_write_refusal_receipt(
+    cfg: &SlotWatchdogConfig,
+    shape: &SlotWatchdogShape,
+    body: &str,
+) -> Result<PathBuf, String> {
+    let slot = cfg
+        .slot_cgroup
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "slot".to_string());
+    std::fs::create_dir_all(&shape.receipt_dir)
+        .map_err(|e| format!("create {}: {e}", shape.receipt_dir.display()))?;
+    let path = shape.receipt_dir.join(format!("{slot}.refusal"));
+    let tmp = shape.receipt_dir.join(format!("{slot}.refusal.tmp"));
+    std::fs::write(&tmp, body).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("rename to {}: {e}", path.display()))?;
+    Ok(path)
+}
+
+/// The watchdog loop. Returns only on a setup refusal (the authority did not load): a watchdog that
+/// cannot judge exits non-zero so its unit shows failed rather than standing guard over nothing.
+pub fn run_slot_watchdog(cfg: SlotWatchdogConfig) -> i32 {
+    for root in &cfg.source_roots {
+        let verdict = slot_watchdog_source_head(root)
+            .map(|head| slot_watchdog_identity_refusal(&cfg.build_identity, &head));
+        match verdict {
+            Ok(None) => {}
+            Ok(Some(refusal)) | Err(refusal) => {
+                eprintln!("{refusal}");
+                return 2;
+            }
+        }
+    }
+    let model = match SupervisedSubjectModel::load(&cfg.source_roots) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    let shape = match model.slot_watchdog_shape() {
+        Ok(shape) => shape,
+        Err(e) => {
+            eprintln!("{e}");
+            return 2;
+        }
+    };
+    let mut samples: std::collections::VecDeque<(
+        Instant,
+        crate::memory_governor::SlotStallCounters,
+    )> = std::collections::VecDeque::new();
+    let mut last_line = Instant::now();
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(shape.sample_interval_ms));
+        let now = Instant::now();
+        let counters = match crate::memory_governor::read_slot_stall_counters(&cfg.slot_cgroup) {
+            crate::memory_governor::SlotStallReading::Read(c) => c,
+            crate::memory_governor::SlotStallReading::Unreadable { cause } => {
+                // NOT A ZERO: no reading, no judgment, and the baseline restarts.
+                samples.clear();
+                println!("slot-watchdog: supervision=unavailable cause={cause}");
+                continue;
+            }
+        };
+        samples.push_back((now, counters.clone()));
+        while samples.len() > 1
+            && now.saturating_duration_since(samples[1].0).as_millis() as u64
+                >= shape.baseline_window_ms
+        {
+            samples.pop_front();
+        }
+        let (since, base) = samples.front().expect("pushed above");
+        let wall_ms = now.saturating_duration_since(*since).as_millis() as u64;
+        let (line, refusal) =
+            match model.judge_with("supervised_slot_verdict", base, &counters, wall_ms) {
+                Ok(j) => j,
+                Err(e) => {
+                    println!("slot-watchdog: authority did not answer: {e}");
+                    continue;
+                }
+            };
+        if let Some(refusal) = refusal {
+            let report = match slot_kill_job_tree(&cfg, &shape) {
+                Ok(r) => r,
+                Err(e) => format!("kill_refused={e}"),
+            };
+            let body = format!("{refusal} [{line}; {report}]\n");
+            match slot_write_refusal_receipt(&cfg, &shape, &body) {
+                Ok(path) => println!("slot-watchdog: refused; receipt {}: {body}", path.display()),
+                Err(e) => println!("slot-watchdog: refused; receipt write failed: {e}: {body}"),
+            }
+            samples.clear();
+        } else if now.saturating_duration_since(last_line).as_secs() >= 60 {
+            last_line = now;
+            println!("slot-watchdog: ok {line}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn slot_watchdog_stat_parse_splits_on_the_last_paren() {
+        let (comm, ppid) =
+            slot_proc_comm_and_ppid("42 (Runner (x).Worker) S 7 42 42 0 -1").unwrap();
+        assert_eq!((comm.as_str(), ppid), ("Runner (x).Worker", 7));
+        assert!(slot_proc_comm_and_ppid("garbage").is_none());
+    }
+
+    #[test]
+    fn slot_watchdog_spares_the_listener_and_ancestors_and_ends_everything_else() {
+        // 10 sudo-ish wrapper (ancestor of the Listener), 11 Listener, 12 Worker (child of 11),
+        // 13 step child of 12, 14 orphan reparented to init that escaped the ppid walk.
+        let table = |pid: i32| match pid {
+            10 => Some(("wrapper".to_string(), 1)),
+            11 => Some((SLOT_LISTENER_COMM.to_string(), 10)),
+            12 => Some(("Runner.Worker".to_string(), 11)),
+            13 => Some(("gunbc".to_string(), 12)),
+            14 => Some(("rustc".to_string(), 1)),
+            _ => None,
+        };
+        let (victims, spared) = slot_job_tree_victims(&[10, 11, 12, 13, 14], 999, &table).unwrap();
+        assert_eq!(victims, vec![12, 13, 14]);
+        assert_eq!(spared.into_iter().collect::<Vec<_>>(), vec![10, 11]);
+    }
+
+    #[test]
+    fn slot_watchdog_refuses_a_checkout_that_is_not_the_binarys_revision() {
+        let c = "a".repeat(40);
+        assert!(slot_watchdog_identity_refusal(&c, &c).is_none());
+        assert!(slot_watchdog_identity_refusal(&format!("{c}-dirty"), &c).is_some());
+        assert!(slot_watchdog_identity_refusal(&c, &"b".repeat(40)).is_some());
+    }
+
+    #[test]
+    fn slot_watchdog_with_no_listener_chooses_no_survivors() {
+        let table = |pid: i32| Some((format!("p{pid}"), 1));
+        assert!(slot_job_tree_victims(&[12, 13], 999, &table)
+            .unwrap_err()
+            .contains("no Runner.Listener"));
+    }
+
     use super::*;
     use std::fs;
     use std::path::PathBuf;
@@ -3546,7 +3866,7 @@ pub(crate) struct SupervisedSubjectModel {
 }
 
 impl SupervisedSubjectModel {
-    fn load(source_roots: &[String]) -> Result<Self, String> {
+    pub(crate) fn load(source_roots: &[String]) -> Result<Self, String> {
         let entry = source_roots
             .iter()
             .map(|root| Path::new(root).join("gunbc/host/memory_stall_refusal.dag"))
@@ -3568,6 +3888,59 @@ impl SupervisedSubjectModel {
     /// refusal of the generation, never an admission.
     fn judge(
         &self,
+        base: &crate::memory_governor::SlotStallCounters,
+        now: &crate::memory_governor::SlotStallCounters,
+        wall_ms: u64,
+    ) -> Result<(String, Option<String>), String> {
+        self.judge_with("supervised_subject_verdict", base, now, wall_ms)
+    }
+
+    /// The slot verb's clock, grace and receipt directory, as the authority answers them.
+    fn slot_watchdog_shape(&self) -> Result<SlotWatchdogShape, String> {
+        use crate::v1_interpreter::{self, Value};
+        let ctx = super::make_eval_context(
+            &self.graph,
+            self.indices.clone(),
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        );
+        let ask = |name: &str| {
+            v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(&ctx, name, &[], false)
+            })
+            .map_err(|e| {
+                format!("refusal: gunbc.host.memory_stall_refusal {name} did not answer: {e}")
+            })
+        };
+        let ms = |name: &str| match &ask(name)? {
+            Value::Int(i) if *i > 0 => Ok(*i as u64),
+            other => Err(format!(
+                "refusal: {name} answered {} where a positive Int is owed",
+                other.type_label_public()
+            )),
+        };
+        let receipt_dir = match &ask("supervised_slot_receipt_dir")? {
+            Value::Str(s) if !s.is_empty() => PathBuf::from(s.as_ref().to_string()),
+            other => {
+                return Err(format!(
+                    "refusal: supervised_slot_receipt_dir answered {}",
+                    other.type_label_public()
+                ))
+            }
+        };
+        Ok(SlotWatchdogShape {
+            sample_interval_ms: ms("supervised_slot_sample_interval_ms")?,
+            baseline_window_ms: ms("supervised_slot_baseline_window_ms")?,
+            term_grace_ms: ms("supervised_slot_term_grace_ms")?,
+            receipt_dir,
+        })
+    }
+
+    /// The same evaluation through a named entry of the authority: the regen supervisor asks
+    /// `supervised_subject_verdict`; the slot watchdog asks `supervised_slot_verdict`, the same
+    /// verdict type with the reclaim-livelock arm consulted first (a slot has no progress marks).
+    pub(crate) fn judge_with(
+        &self,
+        verdict_entry: &str,
         base: &crate::memory_governor::SlotStallCounters,
         now: &crate::memory_governor::SlotStallCounters,
         wall_ms: u64,
@@ -3621,10 +3994,7 @@ impl SupervisedSubjectModel {
             "supervised_subject_window_text",
             &[(Some("w".to_string()), window.clone())],
         )?)?;
-        let verdict = call(
-            "supervised_subject_verdict",
-            &[(Some("w".to_string()), window)],
-        )?;
+        let verdict = call(verdict_entry, &[(Some("w".to_string()), window)])?;
         let refuses = match call(
             "supervised_subject_verdict_refuses",
             &[(Some("v".to_string()), verdict.clone())],

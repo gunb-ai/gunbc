@@ -145,6 +145,7 @@ import gunbc.runner.runner_unit_file {
 }
 import gunbc.runner.runner_host_deploy { RunnerHostDeploy, RunnerHostDeployFound, RunnerHostDeployUnmodeled, runner_host_deploy_for, runner_job_user_env_name }
 import extdeps.docker.endpoint { docker_host_env_var }
+import gunbc.runner.runner_slot_watchdog_unit { gunbc_slot_watchdog_unit_path, gunbc_slot_watchdog_slice_path, gunbc_slot_watchdog_unit_text, gunbc_slot_watchdog_slice_text, gunbc_slot_watchdog_wants_dropin_path, gunbc_slot_watchdog_wants_dropin_text }
 import gunbc.runner.runner_slot_provision { desired_runner_slot_members, fleet_runner_slot_artifact }
 import gunbc.runner.runner_lifecycle { runner_slot_dir_path }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
@@ -298,6 +299,53 @@ fn runner_host_teardown_and_needrestart(prefix: NeedrestartUnitNamePrefix) -> Li
       content: needrestart_conf_d_text(overrides: [
         NeedrestartServiceSelectionOverride { units: prefix, selection: RestartDeferredByDefault },
       ]),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
+    },
+  ]
+}
+
+// THE SLOT PROGRESS WATCHDOG'S FILES (gunbc.runner.runner_slot_watchdog_unit): its own slice, the template
+// unit and the slot template's Wants= drop-in. They ride the same converge and byte readback as the teardown
+// drop-in beside them, so a host that has them and a host that lacks them are told apart by the same reading.
+//
+// THE CHECKOUT IS THE BINARY'S OWN: the verb evaluates gunbc.host.memory_stall_refusal from the admitted-revision
+// checkout the binary was built from (gunbc.live_deploy.serve_binary_build), and refuses to start unless that
+// checkout's HEAD equals the binary's build identity. A host that is not a member of that route has no such
+// checkout, so it is given no files: no tree is provisioned or named by hand.
+// FRONTIER, trigger: srv3 and srv4 (the fleet runner hosts) become live_deploy members of the serve-binary route.
+// Until then runner_host_slot_watchdog_checkout answers Absent for every host and nothing below is emitted. No withheld row is added for that absence: a withheld entry on every host would change what every converge reports, and that is the frontier owner's call.
+fn runner_host_slot_watchdog_checkout(host: HostIdentity) -> NonEmptyStr? {
+  Absent
+}
+
+fn runner_host_slot_watchdog_files(checkout: NonEmptyStr?) -> List<FleetHostFileDesired> {
+  match checkout {
+    Absent => []
+    Present { value: root } => runner_host_slot_watchdog_files_at(root: root)
+  }
+}
+
+fn runner_host_slot_watchdog_files_at(root: NonEmptyStr) -> List<FleetHostFileDesired> {
+  [
+    FleetHostFileDesired {
+      subject: "slot-watchdog-slice" as NonEmptyStr,
+      path: gunbc_slot_watchdog_slice_path as FilePath,
+      content: gunbc_slot_watchdog_slice_text(),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
+    },
+    FleetHostFileDesired {
+      subject: "slot-watchdog-unit" as NonEmptyStr,
+      path: gunbc_slot_watchdog_unit_path as FilePath,
+      content: gunbc_slot_watchdog_unit_text(checkout: root),
+      mode: RemoteFileModeOwnerReadWriteWorldRead,
+      validation: NoValidation,
+    },
+    FleetHostFileDesired {
+      subject: "slot-watchdog-wants-dropin" as NonEmptyStr,
+      path: gunbc_slot_watchdog_wants_dropin_path() as FilePath,
+      content: gunbc_slot_watchdog_wants_dropin_text(),
       mode: RemoteFileModeOwnerReadWriteWorldRead,
       validation: NoValidation,
     },
@@ -597,12 +645,12 @@ fn runner_host_file_desired_population_from_uid_reading(
           match runner_host_sudoers_desired(host: host) {
             SudoersFileDesired { file: sf } =>
               RunnerHostFilesDesired {
-                files: concat(concat(fs, [f, sf]), runner_host_slot_role_files(host: host)),
+                files: concat(concat(concat(fs, [f, sf]), runner_host_slot_role_files(host: host)), runner_host_slot_watchdog_files(checkout: runner_host_slot_watchdog_checkout(host: host))),
                 withheld: concat(ws, runner_host_slot_role_withheld_files(host: host)),
               }
             SudoersFileWithheld { withheld: sw } =>
               RunnerHostFilesDesired {
-                files: concat(concat(fs, [f]), runner_host_slot_role_files(host: host)),
+                files: concat(concat(concat(fs, [f]), runner_host_slot_role_files(host: host)), runner_host_slot_watchdog_files(checkout: runner_host_slot_watchdog_checkout(host: host))),
                 withheld: concat(concat(ws, [sw]), runner_host_slot_role_withheld_files(host: host)),
               }
           }

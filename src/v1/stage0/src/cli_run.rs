@@ -206,6 +206,91 @@ pub use demand_acquire::{
 };
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
+
+/// A slot is named by a cgroup directory, or by its unit name (no `/`), which is found as a directory of
+/// that name at most two levels under /sys/fs/cgroup (the fleet slot sits at
+/// system.slice/system-actions_runner.slice/<unit>, a spelling observed to differ between hosts, so it is
+/// found rather than assumed). Zero or several matches refuse; nothing is guessed.
+fn resolve_slot_cgroup(spec: &str) -> Result<std::path::PathBuf, String> {
+    if spec.contains('/') {
+        return Ok(std::path::PathBuf::from(spec));
+    }
+    let root = std::path::Path::new("/sys/fs/cgroup");
+    let mut found = Vec::new();
+    let mut level = vec![root.to_path_buf()];
+    for _ in 0..3 {
+        let mut next = Vec::new();
+        for dir in &level {
+            let Ok(rd) = std::fs::read_dir(dir) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                if p.file_name().and_then(|n| n.to_str()) == Some(spec) {
+                    found.push(p.clone());
+                }
+                next.push(p);
+            }
+        }
+        level = next;
+    }
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        0 => Err(format!(
+            "no cgroup directory named {spec} under /sys/fs/cgroup"
+        )),
+        n => Err(format!(
+            "{n} cgroup directories named {spec}; refusing to choose"
+        )),
+    }
+}
+
+/// The `slot-watchdog` verb's host realization: the loop, the kill and the receipt are
+/// `required_regen_host::run_slot_watchdog`; the verdict and every number are the authority's.
+pub fn run_slot_watchdog_verb(slot_cgroup: String, source_roots: Vec<String>) -> i32 {
+    let slot_cgroup = match resolve_slot_cgroup(&slot_cgroup) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("REFUSED: {e}");
+            return 2;
+        }
+    };
+    // THE CHECKOUT ROOT COMES FROM THE DECLARED SOURCE ROOTS, NOT FROM THE CWD: a unit's cwd is
+    // `/`, and the verb's correctness may not depend on a cwd nothing declares. The root is the
+    // nearest `.git` ancestor of the first --source-root (the same walk `workspace_root_from`
+    // performs, started from the declared root); the identity check in `run_slot_watchdog` then
+    // proves that checkout is the binary's revision.
+    let first = match source_roots.first() {
+        Some(r) => r,
+        None => {
+            eprintln!("REFUSED: slot-watchdog needs at least one --source-root");
+            return 2;
+        }
+    };
+    let start = std::fs::canonicalize(first).unwrap_or_else(|_| PathBuf::from(first));
+    match start.ancestors().find(|d| d.join(".git").exists()) {
+        Some(root) => {
+            let root = root.to_path_buf();
+            let _ = PROCESS_WORKSPACE_ROOT.set((root.clone(), WorkspaceRootBasis::Declared));
+            bind_checkout_root(root);
+        }
+        None => {
+            eprintln!(
+                "REFUSED: SlotWatchdogSourceRootNotInCheckout: {} has no .git ancestor",
+                start.display()
+            );
+            return 2;
+        }
+    }
+    required_regen_host::run_slot_watchdog(required_regen_host::SlotWatchdogConfig {
+        slot_cgroup,
+        source_roots,
+        build_identity: env!("GUNBC_BUILD_IDENTITY").to_string(),
+    })
+}
 // The `gunbc test <label>` seam. Wired by `#[path] mod` rather than as a `pub mod` in lib.rs so
 // the emitted crate's exported surface is unchanged; the obligation is enrolled in
 // `gunbc.target_invocation_seed_growth`.
