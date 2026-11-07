@@ -2,7 +2,7 @@ module gunbc.live_deploy.slice_bounds
 
 import std.types { NonEmptyStr, String, List, Bool }
 import std.optional { Present, Absent }
-import std.nat { Nat, Succ, Zero, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
+import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -338,6 +338,85 @@ fn user_slice_backstop_memory_max_of(work_slice_max: ByteSize) -> ByteSize {
 fn user_slice_backstop_memory_swap_max() -> ByteSize {
   user_work_slice_memory_swap_max
 }
+
+// ── ADMISSION, NOT DEATH: THE SLICE REFUSES WORK THAT DOES NOT FIT BEFORE IT LAUNCHES ────────
+//
+// THE KERNEL IS NOT THIS SLICE'S ADMISSION CONTROLLER. A per-attempt review or audit unit is launched
+// into user_work_slice_unit_name with a per-unit MemoryMax (its own bound); the slice's MemoryMax caps
+// the SUM of every member. When the standing instance obligations -- the lab's six obligation daemons
+// and the observe loop -- already sit inside the slice at their OBSERVED charge, a review that would
+// push the sum past the ceiling is not refused; it is launched and the memcg OOM-kills the newest
+// member. That is srv1 #15822 row 29 at 14:10Z: the goal-audit reviewer was killed because validation,
+// the observe loop and the standing daemons had already filled the slice, and the belt admitted it on
+// belt slot COUNT and process liveness alone -- never on whether the slice could still hold it.
+//
+// THE COMPUTE BUILD POOL DOES NOT BEHAVE THIS WAY, AND THE ASYMMETRY IS THE DEFECT. A build seat is
+// refused TYPED before it starts when the host cannot hold it (gunbc.compute.host_capacity compute_against
+// -> ComputeHostBelowFloor when available < request). §6b: the absence of a check is the earliest boundary
+// when the absence itself is unjustified -- nothing may launch into a pool whose remaining room cannot
+// hold the work. This fold hoists that same decision to before launch for the user-work slice, so the
+// caller defers (a retry) instead of starting a unit the kernel is about to kill mid-run.
+//
+// THE CHARGE IS WHAT THE KERNEL SAYS IS RESIDENT, NOT THE PRODUCER'S CEILING. §3b: an operating limit's
+// budget is the consumer's demand, never the producer's floor. The standing daemons each carry the
+// build-sized per-unit MemoryMax (the runner slot) yet resolve only the corpus at boot (a few GiB each);
+// charging admission at the declared ceiling would refuse reviews that do fit, which is the slice's whole
+// purpose. `charged` is therefore the slice's OBSERVED resident total as the belt reads it, and the fold
+// refuses a new unit only when that resident total plus the unit's bound cannot fit under the ceiling.
+//
+// AN UNREADABLE OR UNBOUNDED CEILING REFUSES, IT DOES NOT ADMIT: a pool with no finite cap cannot
+// establish a fit, and §6b is explicit that nothing launches into an unbounded pool. The caller carries
+// the reason and defers.
+type UserWorkSliceAdmission
+  = UserWorkSliceAdmitted { charged: ByteSize, requested: ByteSize, committed: ByteSize, remaining: ByteSize }
+  | UserWorkSliceFull { requested: ByteSize, available: ByteSize }
+  | UserWorkSliceUnbounded { detail: NonEmptyStr }
+
+// THE FOLD, PURE over three readings: the slice's finite ceiling (user_work_slice_memory_max_of at the
+// pool width, supplied by the caller), the OBSERVED resident charge (the slice cgroup memory.current),
+// and the requesting unit's bound. available = ceiling - charged; a unit whose bound exceeds available is
+// refused Full rather than started to be OOM-killed. Mirrors gunbc.compute.host_capacity compute_against.
+fn user_work_slice_admit_against(
+  ceiling: ByteSize,
+  charged: ByteSize,
+  requested: ByteSize,
+) -> UserWorkSliceAdmission {
+  if byte_size_count(b: ceiling) == 0 {
+    UserWorkSliceUnbounded { detail: "the user-work slice declares no finite MemoryMax, so no fit can be established" }
+  } else if byte_size_count(b: charged) > byte_size_count(b: ceiling) {
+    // Resident above the ceiling before this unit is added: the slice already cannot hold what it holds,
+    // so it certainly cannot hold more. Carried as Full with nothing available rather than admitted.
+    UserWorkSliceFull { requested: requested, available: byte_size(0) }
+  } else {
+    match nat_sub(a: byte_size_count(b: ceiling), b: byte_size_count(b: charged)) {
+      NatSubtrahendExceedsMinuend =>
+        // Named, not defaulted: a fit that cannot be computed is no fit at all, and a default arm reads
+        // as exhaustive while hiding the case (the very defect host_capacity's release fold records).
+        UserWorkSliceFull { requested: requested, available: byte_size(0) }
+      NatDifference { value: available } =>
+        if byte_size_count(b: requested) > available {
+          UserWorkSliceFull { requested: requested, available: byte_size(available) }
+        } else {
+          match nat_sub(a: available, b: byte_size_count(b: requested)) {
+            NatSubtrahendExceedsMinuend =>
+              UserWorkSliceFull { requested: requested, available: byte_size(available) }
+            NatDifference { value: remaining } =>
+              UserWorkSliceAdmitted {
+                charged: charged,
+                requested: requested,
+                committed: byte_size(nat_add(a: byte_size_count(b: charged), b: byte_size_count(b: requested))),
+                remaining: byte_size(remaining),
+              }
+          }
+        }
+    }
+  }
+}
+
+// THE CEILING THIS SLICE RUNS UNDER is user_work_slice_memory_max_of(slots) at the ruled pool width,
+// which lives in gunbc.live_deploy.user_work_pool_slots and is kept out of this leaf on purpose (importing
+// it here would close the cycle unit_bounds relies on this leaf not having). Callers pass that value to
+// user_work_slice_admit_against as `ceiling`, so the fold stays pure over the three readings.
 
 // SYSTEM-MANAGER ATTEMPT WORKERS (PID 1 transients via the attempt-system-unit launcher).
 // Naming Slice= without this file existing is systemd creating an unbounded slice on first use
