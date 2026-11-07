@@ -1,9 +1,19 @@
-# script.sh (frozen copy for fierce-wren-19-r5-dff57af7, v7): acceptance grant set row R5,
+# script.sh (frozen copy for fierce-wren-19-r5-dff57af7, v8): acceptance grant set row R5,
 # gunbc. PREPARE ONLY: this file has not been RUN anywhere. It is the staged script a booked calmcrab-udrv
 # v4 row would execute on srv1, re-framed on keen-otter's hardened srv1 frame (template:
 # wise-moth-707-rdpo's rdpo.sh, sha256 aaf32964184a30d66f6320de707bfb03975f0df683cccd1133dcf2d024ed9366,
 # gunbc#15938 comment 6672252712). No claim execution, no ssh, no partition write happened here.
 #
+# WHAT v8 CHANGES (calm-eagle-670 msg_8ed9b50b), ONE fail-open in the exit decision:
+#   final_verdict looped over whatever $OUT/*.classes files existed. With no classes files at all, or one
+#   leg's file missing or short, it summed nothing, printed VERDICT=AS_EXPECTED and exited 0 - a green
+#   verdict from an empty run. v8 registers the booked claim set into $OUT/claims-registered.txt from the
+#   frozen constants BEFORE the first leg, and final_verdict refuses (NO_OBSERVATION for every claim, exit
+#   2) unless the classes files are EXACTLY that set: one file per booked leg, no file for an unbooked leg,
+#   every booked claim named exactly once, no unregistered name - and the registration itself is re-checked
+#   against this packet's frozen constants, so a half-written or tampered file refuses the run too.
+#   Nothing else changed v7 -> v8: the commands, pins, bounds, wall arithmetic and the command inventory
+#   are byte-identical (the --predict-only diff between v7 and v8 is empty).
 # WHAT v7 CHANGES (calm-eagle-670 msg_ac20c593, from sleek-owl-397 msg_9a42d63c):
 #   (1) the exit decision is one function, final_verdict, reading THIS packet's own evidence files. The v6
 #       verdict block named state variables belonging to the R4 packet (S4A, S4B), which under set -u is
@@ -44,10 +54,10 @@
 #   R5    5 claims  entry dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag
 # Row R4 (six partition-witness claims, pin db56530f) is NOT here either: it is its own job
 # fierce-wren-19-r4-db56530f with its own clone, build and launcher line, in
-# acceptance_r4_claim_run_v7.sh. One row per job is what keeps every RUNTIME_S inside the
+# acceptance_r4_claim_run_v8.sh. One row per job is what keeps every RUNTIME_S inside the
 # installed launcher cap.
 # Row R6 (one live-corpus claim) is NOT here: it reads the live fabric store and is held behind
-# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v7.sh.
+# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v8.sh.
 #
 # PINS (fetched from the hard-coded origin by sha; HEAD and the tree must both match, and the entry
 # files must be the frozen blobs, before anything is built):
@@ -211,6 +221,18 @@ N5="witness_inbox_load_refused_is_refused_not_empty witness_inbox_unreplayable_h
 # the SAME names as one comma-separated --functions argument (the parser does csv.split(',') then trims)
 csv() { local s; s=$(printf '%s,' $1); printf '%s' "${s%,}"; }
 C5=$(csv "$N5")
+# THE BOOKED CLAIM SET: declared once here from the frozen claim-name constants, REGISTERED into OUT
+# before any leg runs, and re-checked against the classes files before any verdict is taken (v8,
+# calm-eagle-670 msg_8ed9b50b). Before v8, final_verdict looped over whatever *.classes files happened to
+# exist: zero files, or one missing or short file, summed nothing and printed VERDICT=AS_EXPECTED with
+# claims=0 and exited 0 - a green verdict from an empty run.
+LEGS_BOOKED="R5"
+CLAIMS_R5="$N5"
+CLAIMS_ALL="$N5"
+N_CLAIMS_BOOKED=$(printf '%s\n' $CLAIMS_ALL | grep -c .)
+# the booked set exactly as first declared, so a fixture that books a synthetic set can put it back
+BOOK_LEGS="$LEGS_BOOKED"; BOOK_ALL="$CLAIMS_ALL"; BOOK_N="$N_CLAIMS_BOOKED"
+
 
 T_SETUP_CLONE=300; T_SETUP_FETCH=300; T_SETUP_CHECKOUT=120; T_BUILD=2400; T_LEG=900
 # the fixture self-run is a step like any other: uncapped, a hung classifier would burn the wall budget
@@ -229,6 +251,111 @@ CMD_BUILD_5='cargo build --locked --release -j 32 -p v1-compiler --bin claim_bat
 CMD_LEG_R5='"$BIN5" --source-root dag --source-root src/v1 --source-root src/v2 --entry "'"$E5"'" --functions "'"$C5"'"'
 
 # ---------------------------------------------------------------- gates and helpers (tested by --classifier-fixtures)
+book_case_set() { # a fixture books its OWN tiny claim set (synthetic legs and names); never the shipped one
+  LEGS_BOOKED="$1"; CLAIMS_ALL="$2"; shift 2
+  N_CLAIMS_BOOKED=$(printf '%s\n' $CLAIMS_ALL | grep -c .)
+  local L v
+  for L in $LEGS_BOOKED; do
+    v="CLAIMS_$L"; [ $# -ge 1 ] || { echo "book_case_set: no claim list for booked leg $L"; return 1; }
+    eval "$v=\"$1\""; shift
+  done
+  [ $# = 0 ] || { echo "book_case_set: more claim lists than booked legs"; return 1; }
+  local seen="" n
+  for n in $CLAIMS_ALL; do
+    case " $seen " in *" $n "*) echo "book_case_set: claim $n booked under two legs"; return 1;; esac
+    seen="$seen $n"
+  done
+  return 0; }
+restore_booked_set() { LEGS_BOOKED="$BOOK_LEGS"; CLAIMS_ALL="$BOOK_ALL"; N_CLAIMS_BOOKED="$BOOK_N"
+  case " $BOOK_LEGS " in
+    *" R4a "*) CLAIMS_R4a="$N4A"; CLAIMS_R4b="$N4B" ;;
+    *" R5 "*)   CLAIMS_R5="$N5" ;;
+    *" R6 "*)   CLAIMS_R6="$N6" ;;
+  esac; }
+
+# THE CLAIM REGISTRATION: written into OUT from the frozen constants BEFORE the first leg runs. The writer
+# checks its own output against those constants, so a half-written, short or tampered registration refuses
+# the run (NO_OBSERVATION, exit 2) instead of mis-deciding it.
+register_claims() { # $OUT/claims-registered.txt, one "<leg> <claim>" line per booked claim
+  local L v n list seen=""
+  : > "$OUT/claims-registered.txt" || { echo "cannot write the claim registration in $OUT"; return 1; }
+  for L in $LEGS_BOOKED; do
+    v="CLAIMS_$L"; list=${!v:-}
+    [ -n "$list" ] || { echo "leg $L is booked but declares no claims"; return 1; }
+    for n in $list; do
+      case " $seen " in *" $n "*) echo "claim $n is registered under two legs"; return 1;; esac
+      seen="$seen $n"
+      printf '%s %s\n' "$L" "$n" >> "$OUT/claims-registered.txt"
+    done
+  done
+  local nn badleg
+  nn=$(awk 'NF' "$OUT/claims-registered.txt" | wc -l)
+  [ "$nn" = "$N_CLAIMS_BOOKED" ] || { echo "the registration names $nn claims, this row books $N_CLAIMS_BOOKED"; return 1; }
+  badleg=$(awk 'NF != 2' "$OUT/claims-registered.txt" | wc -l)
+  [ "$badleg" = 0 ] || { echo "the registration has $badleg malformed lines"; return 1; }
+  local seen2="" n2
+  for n2 in $(awk 'NF {print $2}' "$OUT/claims-registered.txt"); do
+    case " $seen2 " in *" $n2 "*) echo "the registration names $n2 twice"; return 1;; esac
+    seen2="$seen2 $n2"
+    case " $CLAIMS_ALL " in *" $n2 "*) : ;; *) echo "the registration names $n2, which this packet does not book"; return 1;; esac
+  done
+  local miss
+  for miss in $CLAIMS_ALL; do
+    grep -q " $miss\( \|$\)" "$OUT/claims-registered.txt" || { echo "the registration omits the booked claim $miss"; return 1; }
+  done
+  return 0; }
+
+# cs_check: are the classes files EXACTLY the registered claim set? Sets CS_CAUSE to the reason tokens and
+# returns 1 on any of: no registration at all; a registration that disagrees with this packet's frozen
+# constants (wrong line count, wrong leg set, a name this packet does not book, a booked claim it omits, a
+# name twice); a *.classes file count that is not the number of booked legs; a file for a leg that was never
+# booked; a booked leg whose file is missing or empty; a claim named in a file that is not registered; a
+# claim named twice; or a file whose claim count differs from what that leg registered.
+cs_check() {
+  local reg="$OUT/claims-registered.txt" f stem n files=0
+  CS_CAUSE=""
+  [ -s "$reg" ] || { CS_CAUSE="registration-missing-or-empty"; return 1; }
+  if [ "$(awk 'NF' "$reg" | wc -l)" != "$N_CLAIMS_BOOKED" ]; then CS_CAUSE="registration-claim-count"; return 1; fi
+  if [ "$(awk 'NF {print $1}' "$reg" | sort -u | tr '\n' ' ')" != "$(printf '%s\n' $LEGS_BOOKED | sort | tr '\n' ' ')" ]; then
+    CS_CAUSE="registration-leg-count"; return 1; fi
+  if [ "$(awk 'NF {print $2}' "$reg" | sort -u | wc -l)" != "$N_CLAIMS_BOOKED" ]; then CS_CAUSE="$CS_CAUSE claim-duplicated"; fi
+  local rn
+  for rn in $(awk 'NF {print $2}' "$reg"); do
+    case " $CLAIMS_ALL " in *" $rn "*) : ;; *) CS_CAUSE="$CS_CAUSE claim-not-booked" ;; esac
+  done
+  local cn
+  for cn in $CLAIMS_ALL; do
+    grep -q " $cn\( \|$\)" "$reg" || CS_CAUSE="$CS_CAUSE claim-not-registered"
+  done
+  for f in "$OUT"/*.classes; do
+    [ -f "$f" ] || continue
+    files=$((files+1))
+    stem=${f##*/}; stem=${stem%.classes}
+    case " $LEGS_BOOKED " in
+      *" $stem "*)
+        if [ ! -s "$f" ]; then CS_CAUSE="$CS_CAUSE leg-file-missing:$stem"; continue; fi
+        for n in $(awk 'NF {print $1}' "$f"); do
+          grep -q " $n\( \|$\)" "$reg" || CS_CAUSE="$CS_CAUSE claim-unregistered:$n"
+        done
+        if [ "$(awk 'NF {print $1}' "$f" | sort | uniq -d | wc -l)" != 0 ]; then CS_CAUSE="$CS_CAUSE claim-duplicated:$stem"; fi
+        if [ "$(awk 'NF' "$f" | wc -l)" != "$(awk -v l="$stem" '$1==l' "$reg" | wc -l)" ]; then CS_CAUSE="$CS_CAUSE claim-count:$stem"; fi
+        ;;
+      *) CS_CAUSE="$CS_CAUSE classes-file-not-booked:$stem" ;;
+    esac
+  done
+  local nbl; nbl=$(printf '%s\n' $LEGS_BOOKED | grep -c .)
+  [ "$files" = "$nbl" ] || CS_CAUSE="$CS_CAUSE classes-file-count:$files-want-$nbl"
+  local l1
+  for l1 in $LEGS_BOOKED; do
+    [ -s "$OUT/$l1.classes" ] || CS_CAUSE="$CS_CAUSE leg-file-missing:$l1"
+  done
+  if [ -n "$CS_CAUSE" ]; then
+    CS_CAUSE=$(printf '%s\n' $CS_CAUSE | awk '!seen[$0]++' | sort | tr '\n' ' ')
+    CS_CAUSE=${CS_CAUSE% }
+    return 1
+  fi
+  return 0; }
+
 scope_gate() { # $1=/proc/self/cgroup content $2=JOB; prints the cgroup path, or fails
   local n; n=$(printf '%s\n' "$1" | grep -c .)
   [ "$n" = 1 ] && [ -n "$2" ] || return 1
@@ -454,6 +581,13 @@ post_leg_gate() { # $1=worktree $2=runner binary $3=pre-leg sha256 ; writes $OUT
 # set -u is not a typo but an exit 127 in the middle of the verdict.
 final_verdict() {
   local pc="" f n c sum="" anyF=0 anyN=0 nclaims=0 nlegs=0
+  if ! cs_check; then
+    local cscause=""; local cx
+    for cx in $CS_CAUSE; do cscause="$cscause $cx"; done
+    echo "VERDICT=NO_OBSERVATION claims=0 legs-booked=$N_LEGS claims-booked=$N_CLAIMS_BOOKED claim-set refused:$cscause (the classes files are not exactly the booked claim set, so nothing in this run is countable)" >> "$O"
+    echo "DONE $(date -u +%FT%TZ)" >> "$O"
+    echo "NO_OBSERVATION:claim-set$cscause" >&2; exit 2
+  fi
   [ -s "$OUT/post-leg.cause" ] && pc=$(cat "$OUT/post-leg.cause")
   for f in "$OUT"/*.classes; do
     [ -f "$f" ] || continue
@@ -852,6 +986,113 @@ STUBPB
   ck producer-two-render-sites-refuses "expected exactly one completion-record render site, found 2" "$(producer_gate "$T/pb_two.rs" | cut -d' ' -f1-8)"
   ck producer-unreadable-refuses "the pinned claim_batch.rs is unreadable: $T/nope.rs" "$(producer_gate "$T/nope.rs")"
   ck completion-predicates-empty-refuses "the completion predicates are empty; a vacuous pattern would count every line" "$(PP_PREFIX= ; pp_check "$T/pp_real.txt")"
+  # ---- v8 (calm-eagle-670 msg_8ed9b50b): the exit decision is anchored to a registered claim set ------
+  # The fail-open v8 closes: final_verdict looped over whatever *.classes files existed. With no files at
+  # all, or one leg's file missing or short, it summed nothing and printed VERDICT=AS_EXPECTED and exited 0.
+  # The decision must be taken against the claim set this packet REGISTERED before its legs ran, exactly:
+  # one file per booked leg, every booked claim named exactly once, no extras, no omissions - anything else
+  # is NO_OBSERVATION and exit 2. cs_case books a SYNTHETIC set (it never weakens the shipped one) and puts
+  # the booked constants back before it returns.
+  cs_case() { # cs_case <name> <legs> <all claims> <registration text or -> [LEG:<claims of one leg>] [stem=<file body> | stem=EMPTY]
+    local nm=$1 legs=$2 all=$3 reg=$4; shift 4
+    local Q=$T/cs-$nm legargs=() files=() a spec lg body rc svOUT svO
+    rm -rf "$Q"; mkdir -p "$Q"
+    for a in "$@"; do case "$a" in LEG:*) legargs+=("${a#LEG:}");; *) files+=("$a");; esac; done
+    book_case_set "$legs" "$all" ${legargs[@]+"${legargs[@]}"} || { echo "FIXTURE FAIL cs-$nm could not book its own claim set"; badn=$((badn+1)); return; }
+    svOUT=$OUT; svO=$O
+    if [ "$reg" != "-" ]; then printf '%s\n' "$reg" > "$Q/claims-registered.txt"; fi
+    for spec in ${files[@]+"${files[@]}"}; do
+      lg=${spec%%=*}; body=${spec#*=}
+      if [ "$body" = EMPTY ]; then : > "$Q/$lg.classes"; else printf '%s\n' "$body" > "$Q/$lg.classes"; fi
+    done
+    OUT=$Q; O=$Q/receipt.txt
+    ( final_verdict ) > "$Q/fv.out" 2>&1; rc=$?
+    printf '%s\n' "$rc" > "$Q/fv.rc"
+    OUT=$svOUT; O=$svO
+    restore_booked_set; }
+  # the writer: it produces exactly the booked set, and refuses a set it cannot produce
+  svOUT=$OUT; svO=$O
+  mkdir -p "$T/cs-w1"; OUT=$T/cs-w1
+  register_claims > "$T/cs-w1/w.out" 2>&1; rcw=$?
+  ck cs-writer-produces-the-booked-registration 0 "$rcw"
+  ck cs-writer-legs "$LEGS_BOOKED" "$(awk 'NF {print $1}' "$T/cs-w1/claims-registered.txt" | sort -u | tr '\n' ' ' | sed 's/ $//')"
+  ck cs-writer-claim-count "$N_CLAIMS_BOOKED" "$(awk 'NF' "$T/cs-w1/claims-registered.txt" | wc -l)"
+  ck cs-writer-registration-shape 0 "$(awk 'NF != 2' "$T/cs-w1/claims-registered.txt" | wc -l)"
+  OUT=$svOUT; O=$svO
+  ckp cs-writer-refuses-a-leg-with-no-claims "declares no claims" "$( mkdir -p "$T/cs-w2"; OUT="$T/cs-w2"
+      book_case_set "Xa Xb" "a b" "a" "" >/dev/null 2>&1; register_claims 2>&1; restore_booked_set )"
+  ckp cs-writer-refuses-a-short-registration "names 1 claims, this row books 2" "$( mkdir -p "$T/cs-w3"; OUT="$T/cs-w3"
+      book_case_set "X" "a b" "a" >/dev/null 2>&1; register_claims 2>&1; restore_booked_set )"
+  ckp cs-booking-refuses-an-empty-claim-set "no claim list for booked leg" "$( book_case_set "LEGX" "" 2>&1 )"
+  # the shipped set itself: registered by the writer, then handed to final_verdict as exactly matching files
+  mkdir -p "$T/cs-SHIPPED"; svOUT=$OUT; svO=$O; OUT="$T/cs-SHIPPED"
+  register_claims > /dev/null 2>&1
+  for lgt in $LEGS_BOOKED; do
+    eval "shplist=\"\$CLAIMS_$lgt\""
+    : > "$T/cs-SHIPPED/$lgt.classes"
+    for clm in $shplist; do printf '%s HELD\n' "$clm" >> "$T/cs-SHIPPED/$lgt.classes"; done
+  done
+  O="$T/cs-SHIPPED/receipt.txt"
+  ( final_verdict ) > "$T/cs-SHIPPED/fv.out" 2>&1; rcsh=$?
+  ck "cs-shipped-set-registers-and-is-countable" 0 "$rcsh"
+  ck "cs-shipped-set-counts-every-claim" "$N_CLAIMS_BOOKED" "$(awk '/^claims classified:/{ sub(/ post_leg_cause.*$/,""); print gsub(/=[A-Z_]+/,"&") }' "$T/cs-SHIPPED/receipt.txt" | head -1)"
+  ckp cs-shipped-set-verdict-is-all-held "VERDICT=AS_EXPECTED" "$(cat "$T/cs-SHIPPED/receipt.txt")"
+  OUT=$svOUT; O=$svO
+  # the five breaches the acceptance owner named, each on a synthetic set
+  cs_case NOFILES "LEGX LEGY" "a b c d" "LEGX a
+LEGY b
+LEGY c
+LEGY d" "LEG:a b" "LEG:c d"
+  ck "cs-no-classes-files-exits-2" 2 "$(cat "$T/cs-NOFILES/fv.rc")"
+  ckp cs-no-classes-names-the-count-cause classes-file-count "$(cat "$T/cs-NOFILES/fv.out")"
+  ckp cs-no-classes-says-why "not exactly the booked claim set" "$(cat "$T/cs-NOFILES/receipt.txt")"
+  ckp cs-no-classes-reports-zero-claims "claims=0" "$(cat "$T/cs-NOFILES/receipt.txt")"
+  cs_case ONELEG "LEGX LEGY" "a b c d" "LEGX a
+LEGY b
+LEGY c
+LEGY d" "LEG:a b" "LEG:c d" "LEGX=a HELD"
+  ck "cs-one-leg-file-missing-exits-2" 2 "$(cat "$T/cs-ONELEG/fv.rc")"
+  ckp cs-one-leg-names-the-cause "leg-file-missing:LEGY" "$(cat "$T/cs-ONELEG/fv.out")"
+  cs_case SHORT "LEGX" "a b c" "LEGX a
+LEGX b
+LEGX c" "LEG:a b c" "LEGX=a HELD
+b HELD"
+  ck "cs-claim-missing-from-a-file-exits-2" 2 "$(cat "$T/cs-SHORT/fv.rc")"
+  ckp cs-short-names-the-cause "claim-count:LEGX" "$(cat "$T/cs-SHORT/fv.out")"
+  cs_case EMPTYFILE "LEGX" "a b" "LEGX a
+LEGX b" "LEG:a b" "LEGX=EMPTY"
+  ck "cs-empty-classes-file-exits-2" 2 "$(cat "$T/cs-EMPTYFILE/fv.rc")"
+  ckp cs-empty-file-names-a-cause leg-file-missing "$(cat "$T/cs-EMPTYFILE/fv.out")"
+  cs_case DUP "LEGX" "a b" "LEGX a
+LEGX b" "LEG:a b" "LEGX=a HELD
+b HELD
+b FAILED"
+  ck "cs-duplicate-claim-exits-2" 2 "$(cat "$T/cs-DUP/fv.rc")"
+  ckp cs-dup-names-the-cause "claim-duplicated:LEGX" "$(cat "$T/cs-DUP/fv.out")"
+  cs_case EXTRA "LEGX" "a b" "LEGX a
+LEGX b" "LEG:a b" "LEGX=a HELD
+b HELD
+zzz HELD"
+  ck "cs-extra-unbooked-claim-exits-2" 2 "$(cat "$T/cs-EXTRA/fv.rc")"
+  ckp cs-extra-names-the-cause claim-unregistered "$(cat "$T/cs-EXTRA/fv.out")"
+  cs_case EXTRAFILE "LEGX" "a b" "LEGX a
+LEGX b" "LEG:a b" "LEGX=a HELD
+b HELD" "LEGZ=a PASS"
+  ck "cs-extra-classes-file-exits-2" 2 "$(cat "$T/cs-EXTRAFILE/fv.rc")"
+  ckp cs-extra-file-names-the-file-cause classes-file-not-booked "$(cat "$T/cs-EXTRAFILE/fv.out")"
+  ckp cs-extra-file-names-the-count-cause classes-file-count "$(cat "$T/cs-EXTRAFILE/fv.out")"
+  cs_case TAMPER "LEGX" "a b" "LEGX a" "LEG:a b" "LEGX=a HELD"
+  ck "cs-tampered-registration-exits-2" 2 "$(cat "$T/cs-TAMPER/fv.rc")"
+  ckp cs-tamper-names-the-cause registration-claim-count "$(cat "$T/cs-TAMPER/fv.out")"
+  cs_case NOREG "LEGX" "a b" "-" "LEG:a b" "LEGX=a HELD"
+  ck "cs-missing-registration-exits-2" 2 "$(cat "$T/cs-NOREG/fv.rc")"
+  ckp cs-missing-registration-names-the-cause registration-missing-or-empty "$(cat "$T/cs-NOREG/fv.out")"
+  # a complete, well-formed set with a bare FAIL is still FALSIFIED: the gate must not swallow a refutation
+  cs_case FAILSTILL1 "LEGX" "a b" "LEGX a
+LEGX b" "LEG:a b" "LEGX=a HELD
+b FAILED"
+  ck "cs-complete-set-with-a-fail-is-still-1" 1 "$(cat "$T/cs-FAILSTILL1/fv.rc")"
+  ckp cs-fail-still-decides-per-claim FALSIFIED "$(cat "$T/cs-FAILSTILL1/fv.out")"
   # ---- THE MULTI-CLAIM LEG CONTRACT end to end, through this packet's real leg() and its real exit
   # ---- decision. A stub stands in for claim_batch: bare verdict lines on stdout, the frozen completion
   # ---- record on stderr, and the exit code the case asks for. Every case reports
@@ -868,8 +1109,13 @@ STUBPB
     printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > "$EV"
     mkstub "$D/stub" "$rc" "$@"
     BIN4=$D/stub; BIN5=$D/stub; BIN6=$D/stub; export BIN4 BIN5 BIN6
+    # v8: a fixture leg books and REGISTERS its own tiny claim set first, exactly as the run path does, so
+    # the claim-set gate under final_verdict is decided against a complete registration for this case.
+    book_case_set "$nm" "a b" "a b" || { echo "fixture could not book its own claim set: $nm"; return 1; }
+    local rr; rr=$(register_claims 2>&1) || { echo "fixture could not register its own claim set: $rr"; return 1; }
     leg "$nm" "\"\$BIN4\" --source-root dag --entry x.dag --functions a,b" "a b"
     ( final_verdict ) > "$D/fv.txt" 2>&1; ex=$?
+    restore_booked_set
     echo "$(awk '$1=="a"{print $2}' "$D/$nm.classes") $(awk '$1=="b"{print $2}' "$D/$nm.classes") $(cat "$D/$nm.state") $ex"; }
   ck contract-pass-and-fail-at-rc1 "HELD FAILED FALSIFIED 1" "$(cc_case MIX1 1 "PASS a" "FAIL b")"
   ck contract-all-pass-at-rc1 "NO_OBSERVATION NO_OBSERVATION NOOBS 2" "$(cc_case ALLP1 1 "PASS a" "PASS b")"
@@ -884,6 +1130,8 @@ STUBPB
   D=$T/cc_ACROSS; mkdir -p "$D/mem" "$D/logs"
   OUT=$D; O=$D/receipt.txt; MEMDIR=$D/mem; EV=$D/events
   printf 'low 0\nhigh 3\nmax 1\noom 0\noom_kill 0\nfail 0\ndiscard_oom 0\n' > "$EV"
+  book_case_set "GOODFAIL NORC" "a b c" "a b" "c" || echo "fixture could not book its own claim set: ACROSS"
+  arr=$(register_claims 2>&1) || echo "fixture could not register its own claim set: $arr"
   mkstub "$D/stub1" 1 "PASS a" "FAIL b"
   BIN4=$D/stub1; BIN5=$D/stub1; BIN6=$D/stub1; export BIN4 BIN5 BIN6
   leg GOODFAIL "\"\$BIN4\" --source-root dag --entry x.dag --functions a,b" "a b"
@@ -893,6 +1141,7 @@ STUBPB
   ( final_verdict ) > "$D/fv.txt" 2>&1; rc=$?
   ck falsified-outranks-no-observation 1 "$rc"
   ck across-legs-the-clean-claims-still-classify "HELD FAILED NO_OBSERVATION" "$(awk '{printf "%s ", $2}' "$D/GOODFAIL.classes" "$D/NORC.classes" | sed 's/ $//')"
+  restore_booked_set
   # ---- POST-LEG GATES. Real git in a throwaway repo, because the gate runs real git and a stub of git
   # ---- would test the stub. Clean worktree + unchanged binary = no cause; either failure names every
   # ---- claim NO_OBSERVATION in final_verdict, even a bare FAIL that was otherwise well formed.
@@ -905,6 +1154,8 @@ STUBPB
     git -C "$wt" add file </dev/null >/dev/null 2>&1
     git -C "$wt" commit -q -m seed </dev/null >/dev/null 2>&1
     OUT=$D; O=$D/receipt.txt
+    book_case_set "LEGX" "a b" "a b" || { echo "fixture could not book its own claim set: pg"; return 1; }
+    pgr=$(register_claims 2>&1) || { echo "fixture could not register its own claim set: $pgr"; return 1; }
     printf 'a HELD\nb FAILED\n' > "$D/LEGX.classes"
     : > "$D/bin"
     pre=$(bin_sha "$D/bin" || echo unreadable)
@@ -914,6 +1165,7 @@ STUBPB
     esac
     post_leg_gate "$wt" "$D/bin" "$pre"
     ( final_verdict ) > "$D/fv.txt" 2>&1; ex=$?
+    restore_booked_set
     echo "$(cut -c1-28 "$D/post-leg.cause") exit=$ex"; }
   ckp post-leg-clean-no-cause "exit=1" "$(pg_case clean clean)"
   ckp post-leg-dirty-worktree-refuses "the worktree" "$(pg_case dirtywt dirtywt)"
@@ -962,7 +1214,7 @@ bytes_of() { printf '%s' "$1" | wc -c | tr -d ' '; }
 if [ "${1:-}" = "--predict-only" ]; then
   # Writes NOTHING, contacts nothing: no run dir, no clone, no build, no store. The bytes and sha256 below
   # are over the LITERAL frozen string, before $OUT / $BIN4 / $BIN5 are expanded at run time.
-  echo "PREDICT-ONLY row=R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v7_manifest.md"
+  echo "PREDICT-ONLY row=R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v8_manifest.md"
   echo "THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed."
   echo "pin_r5=$H5 tree_r5=$T5"
   printf 'blob %s %s\n' "$E5" "$B5"
@@ -1080,6 +1332,13 @@ PREBIN5=$(bin_sha "$BIN5" || echo unreadable)
 WT=$OUT/wt-r5; RUNNER=$BIN5; PREBIN=$PREBIN5
 export OUT BIN5
 
+# v8 (msg_8ed9b50b): the booked claim set is REGISTERED into OUT from the frozen constants before any leg
+# can write evidence, so the exit decision is anchored to it. A registration that disagrees with this
+# packet's own constants refuses the run (NO_OBSERVATION, exit 2) rather than mis-deciding it.
+nbl_booked=$(printf '%s
+' $LEGS_BOOKED | grep -c .)
+[ "$nbl_booked" = "$N_LEGS" ] || nox "the booked claim set names $nbl_booked legs, this row runs $N_LEGS" register
+regmsg=$(register_claims 2>&1) || nox "the booked claim set could not be registered: $regmsg" register
 leg R5  "$CMD_LEG_R5"  "$N5"
 
 FA=$(oom_snap "$EV" final)

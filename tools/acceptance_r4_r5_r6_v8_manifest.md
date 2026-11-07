@@ -1,4 +1,4 @@
-# R4, R5, R6 acceptance execution packets — v7: per-claim verdicts, closing gates, post-leg identity (PREPARE ONLY)
+# R4, R5, R6 acceptance execution packets — v8: the exit decision is anchored to a registered claim set (PREPARE ONLY)
 
 Prepared by `fierce-wren-19` for `calm-eagle-670`, on keen-otter's hardened srv1 frame (templates: #15938's
 `rdpo.sh` `aaf32964…` and rrc `a1de55aa`). **Nothing here has been executed.** No ssh, no claim run, no
@@ -6,9 +6,24 @@ partition write happened in the preparing container; the only modes run locally 
 and `--predict-only`, which write nothing outside a `mktemp -d` scratch and never touch a repository.
 Execution grants come only from keen-otter via sleek-owl-397. **No row here is grantable by this document.**
 
-v7 keeps v6's three single-row bookings and its command inventory **byte-identical**, and changes how the
-packets *decide*: which exit code means what, which gate is allowed to close, and what has to be true after
-the legs for a leg's output to count as an observation at all.
+v8 changes ONE thing, and changes nothing else: the v7 packets summed whatever `$OUT/*.classes` files
+happened to exist and could reach `VERDICT=AS_EXPECTED` with `claims=0` — a green verdict from an empty
+run. v8 registers the booked claim set into `$OUT/claims-registered.txt` from the frozen constants before
+the first leg, and `final_verdict` refuses unless the classes files are exactly that set. The three
+bookings, their bounds, their wall arithmetic and their command inventory are byte-identical to v7:
+the `--predict-only` diff v7 → v8 is empty except for the manifest file name it prints.
+
+## v7 -> v8: what changed, and which assertion proves it (manager msg_8ed9b50b)
+
+| # | the fail-open | what landed | asserted by |
+|---|---|---|---|
+| 1 | `final_verdict` looped over whatever `$OUT/*.classes` files existed. With none at all — or one leg's file missing or short — it summed nothing, printed `VERDICT=AS_EXPECTED` and exited 0. `nclaims=0` made every-claim-held true vacuously, so a run that produced no evidence at all was reported as as-expected | the booked claim set is declared once from the frozen claim-name constants (`LEGS_BOOKED`, `CLAIMS_<leg>`, `CLAIMS_ALL`, `N_CLAIMS_BOOKED`), written into `$OUT/claims-registered.txt` by `register_claims` in the run path **before** the first `leg` call (and the writer refuses a registration that disagrees with its own constants), and `final_verdict` consults `cs_check` **before** it reads any classes file: one file per booked leg, no file for an unbooked leg, every booked claim named exactly once, no unregistered name, and the registration re-checked against the packet's frozen constants. Any breach: every claim NO_OBSERVATION, `claim-set refused:<tokens>` in the receipt, exit 2 |
+|   |  |  | packet fixtures `cs-complete-set-is-countable` (0), `cs-no-classes-files-exits-2`, `cs-one-leg-file-missing-exits-2`, `cs-claim-missing-from-a-file-exits-2`, `cs-empty-classes-file-exits-2`, `cs-duplicate-claim-exits-2`, `cs-extra-unbooked-claim-exits-2`, `cs-extra-classes-file-exits-2`, `cs-tampered-registration-exits-2`, `cs-missing-registration-exits-2` (all 2, each naming its reason token), `cs-complete-set-with-a-fail-is-still-1` (a real refutation is not swallowed), `cs-writer-*` (the writer refuses sets it cannot produce); the self-check re-runs the shipped `cs_check` on synthetic states (`csx` controls) and runs three mutation controls per packet — neutering `cs_check`, removing the classes-file count, and never writing the registration — each of which must break the packet's own fixtures |
+
+The self-check also proves, computed rather than grepped, that each packet's booked claim set is exactly
+the set its leg commands carry, that the registration call precedes the first leg in the run path, and
+that `cs_check` is consulted before any summation (`lsum` is taken after `final_verdict`'s own line, so
+`cs_check`'s own loop cannot satisfy the ordering check).
 
 ## The exit contract, verbatim as pre-registered by the acceptance owner (calm-eagle-670, msg_ac20c593)
 
@@ -25,7 +40,7 @@ its own claims NO_OBSERVATION and lets the other legs stand. The same block is q
 packet headers, and the fixtures drive it end to end (see the `contract-*` fixtures and the self-check's
 `fv_*` controls, which assert the exit code, not a description of it).
 
-## v6 -> v7: what changed, and which assertion proves it
+## History — v6 -> v7: what changed, and which assertion proved it (carried unchanged into v8)
 
 | # | change (manager msg_ac20c593, from sleek-owl-397 msg_9a42d63c) | what landed | asserted by |
 |---|---|---|---|
@@ -36,7 +51,7 @@ packet headers, and the fixtures drive it end to end (see the `contract-*` fixtu
 | 5 | the six non-blocking items | the one argument is gated by `out_gate` (absolute, `<JOB>/out` shape, the booked job name); the fixture self-run runs under `timeout $T_SELFRUN` (300 s, inside the wall margin); `CARGO_HOME=$OUT/cargo-home`; `stray_verdict_lines` fails closed on an unreadable file; the gate/build/teardown OOM labels carry the verdict they got (`gate-read-UNKNOWN`, `…-COUNTER_INCOHERENT`) instead of guessing | `out_gate` behavioural controls in both the packets and the self-check; structural greps for `timeout "$T_SELFRUN"`, `export CARGO_HOME=$OUT/cargo-home`, `gate-read-$GV`; mutation 22 removes the relative-OUT refusal and must break the fixtures |
 | 6 | keep the command inventory byte-identical, same wall arithmetic | `--predict-only` output is **identical** to v6 for all three packets (0 differing lines); `RUNTIME_S` 5400/4500/4800, capped sums 4920/4020/4020, drivers 5700/4800/5100 | `diff` of the `--predict-only` output v6 vs v7 is empty, asserted in the build; `wall_gate` is called with those constants and refuses on any mismatch |
 
-## Refusal-position audit (v7 item 2, the list the acceptance owner asked for)
+## Refusal-position audit (computed from the shipped bytes at manifest time; includes v8's two new gates)
 
 Every function below is called as `X=$(fn …) || nox …` or `OG=$(fn …) || { … }`, so it decides by **exit
 code**. Each has at least one non-zero return arm and no bare `return` arm; the self-check recomputes this
@@ -47,9 +62,9 @@ verdict file is refused rather than counted.
 
 | packet | functions in refusal position | non-zero arms / bare arms (computed from the shipped file) |
 |---|---|---|
-| R4 | `bin_sha`, `blob_gate`, `bounds_check`, `names_gate`, `out_gate`, `producer_gate`, `scope_gate`, `wall_gate` | `bin_sha` 2/0, `blob_gate` 2/0, `bounds_check` 3/0, `names_gate` 2/0, `out_gate` 5/0, `producer_gate` 3/0, `scope_gate` 3/0, `wall_gate` 3/0 |
-| R5 | `bin_sha`, `blob_gate`, `bounds_check`, `names_gate`, `out_gate`, `producer_gate`, `scope_gate`, `wall_gate` | `bin_sha` 2/0, `blob_gate` 2/0, `bounds_check` 3/0, `names_gate` 2/0, `out_gate` 5/0, `producer_gate` 3/0, `scope_gate` 3/0, `wall_gate` 3/0 |
-| R6 | `bin_sha`, `blob_gate`, `bounds_check`, `grant_gate`, `names_gate`, `out_gate`, `producer_gate`, `scope_gate`, `wall_gate` | `bin_sha` 2/0, `blob_gate` 2/0, `bounds_check` 3/0, `grant_gate` 3/0, `names_gate` 2/0, `out_gate` 5/0, `producer_gate` 3/0, `scope_gate` 3/0, `wall_gate` 3/0 |
+| R4 | `bin_sha`, `blob_gate`, `bounds_check`, `cs_check`, `names_gate`, `out_gate`, `producer_gate`, `register_claims`, `scope_gate`, `wall_gate` | `bin_sha` 2/0, `blob_gate` 2/0, `bounds_check` 3/0, `cs_check` 4/0, `names_gate` 2/0, `out_gate` 5/0, `producer_gate` 3/0, `register_claims` 8/0, `scope_gate` 3/0, `wall_gate` 3/0 |
+| R5 | `bin_sha`, `blob_gate`, `bounds_check`, `cs_check`, `names_gate`, `out_gate`, `producer_gate`, `register_claims`, `scope_gate`, `wall_gate` | `bin_sha` 2/0, `blob_gate` 2/0, `bounds_check` 3/0, `cs_check` 4/0, `names_gate` 2/0, `out_gate` 5/0, `producer_gate` 3/0, `register_claims` 8/0, `scope_gate` 3/0, `wall_gate` 3/0 |
+| R6 | `bin_sha`, `blob_gate`, `bounds_check`, `cs_check`, `grant_gate`, `names_gate`, `out_gate`, `producer_gate`, `register_claims`, `scope_gate`, `wall_gate` | `bin_sha` 2/0, `blob_gate` 2/0, `bounds_check` 3/0, `cs_check` 4/0, `grant_gate` 3/0, `names_gate` 2/0, `out_gate` 5/0, `producer_gate` 3/0, `register_claims` 8/0, `scope_gate` 3/0, `wall_gate` 3/0 |
 
 ## History: why the rows are one job each (v5 -> v6, manager msg_384bca0f)
 
@@ -62,7 +77,7 @@ as #15695 diag-v2 booked at 11700. Changing the launcher is out of scope, so the
 
 | # | change (manager msg_384bca0f, from sleek-owl-397 msg_995f146b) | what landed | asserted by |
 |---|---|---|---|
-| 1 | split R4/R5 into two jobs, R4 first then R5; each its own clone/fetch/checkout/build/legs | three packets: `acceptance_r4_claim_run_v7.sh` (`fierce-wren-19-r4-db56530f`), `acceptance_r5_claim_run_v7.sh` (`fierce-wren-19-r5-dff57af7`), `acceptance_r6_live_read_claim_run_v7.sh` (`fierce-wren-19-r6-dff57af7`) | the self-check greps each packet for its own `J=` job token, and asserts no job clones or builds the other row's pin (`pin_clone "$WT5"` absent from R4, `pin_clone "$WT4"` absent from R5, `wt-r4` absent from R6) |
+| 1 | split R4/R5 into two jobs, R4 first then R5; each its own clone/fetch/checkout/build/legs | three packets: `acceptance_r4_claim_run_v8.sh` (`fierce-wren-19-r4-db56530f`), `acceptance_r5_claim_run_v8.sh` (`fierce-wren-19-r5-dff57af7`), `acceptance_r6_live_read_claim_run_v8.sh` (`fierce-wren-19-r6-dff57af7`) | the self-check greps each packet for its own `J=` job token, and asserts no job clones or builds the other row's pin (`pin_clone "$WT5"` absent from R4, `pin_clone "$WT4"` absent from R5, `wt-r4` absent from R6) |
 | 2 | `RUNTIME_S <= 7200` per job, with the capped sum stated in the header | R4 `RUNTIME_S=5400`, R5 `4500`, R6 `4800`; each header carries `WALL ACCOUNTING` with the per-step timeouts and `CAPPED SUM = <n> s` | the self-check recomputes `T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT+T_BUILD+N_LEGS*T_LEG` from each packet's own frozen timeouts, requires it to equal the `wall_capped_sum_s=` line that packet prints, and re-states the three bookings independently (4920/4020/4020) so a packet cannot satisfy it by moving a constant |
 | 3 | a self-check that the booking fits, before any fetch | new `wall_gate WALL_SUM RUNTIME_S LAUNCHER_CAP DRIVER_S` in **all three** packets, called in the run path immediately after the bounds gate and before any clone/fetch: refuses `RUNTIME_S > LAUNCHER_CAP` (`PRE_SCOPE_REFUSAL: RUNTIME_S <n> exceeds the installed calmcrab-udrv v4 preflight cap of 7200`), `sum > RUNTIME_S`, and a driver wall that is not `RUNTIME_S + 300` | per packet: 7 wall fixtures (`wall-gate-accepts-this-row`, `capped-sum`, `runtime-s-within-installed-launcher-cap`, `driver-wall-is-scope-plus-300`, and three refusals), plus self-structure needles that the gate is *used* as a gate (`WM=$(wall_ga` + `te`), and negative control `mut15` (rewrite `RUNTIME_S` to 9900) which makes each packet fail its own `wall-gate-accepts-this-row` |
 | 4 | driver service = `RUNTIME_S + 300` | stated in each header, frozen as `DRIVER_S`, printed by `--predict-only` as `driver_service=calmcrab-drv-<JOB>.service RuntimeMaxSec=<n> (RUNTIME_S plus 300 s)` | header grep + `wall_gate`'s third comparison + the manifest line shape check in the self-check |
@@ -77,11 +92,11 @@ as #15695 diag-v2 booked at 11700. Changing the launcher is out of scope, so the
 
 | path | bytes | sha256 |
 |---|---|---|
-| `tools/acceptance_r4_claim_run_v7.sh` | 89561 | `661707c40250edfa0f1ab79360411d26a75c0c93f6ab68b30cf6051a6001f694` |
-| `tools/acceptance_r5_claim_run_v7.sh` | 88631 | `8870b6f3b8747f311f6dded0b1f80c6104ad78646e04e27ce50ee3f607a928e8` |
-| `tools/acceptance_r6_live_read_claim_run_v7.sh` | 82441 | `bdfd1fa32173cf6c847645cc6d990244f18ab1d5ed84407dec8a599ff30d146f` |
-| `tools/acceptance_r4_r5_r6_selfcheck_v7.sh` | 81943 | `6df3b3c61676a36340e6ff20dcf78d3b8556936f36013c560fe8f98ac4961c9e` |
-| `tools/acceptance_r4_r5_r6_v7_manifest.md` | (this file) | stated in the PR comment and the message to calm-eagle-670, because a file cannot carry its own digest |
+| `tools/acceptance_r4_claim_run_v8.sh` | 105232 | `41d4e59ad5d0dbe8829947397f6800fa258fa124098efe43dcabf932629a4c6f` |
+| `tools/acceptance_r5_claim_run_v8.sh` | 104270 | `1015ea78cb7ee68de251c1a3ab243fcda7b4017b7736442653aeb67487315cd2` |
+| `tools/acceptance_r6_live_read_claim_run_v8.sh` | 98080 | `5c083e77cbee4b2aac1b50847b866d35ec266b36ac03f24347f01073bec3ee17` |
+| `tools/acceptance_r4_r5_r6_selfcheck_v8.sh` | 92641 | `7c1de663eb251c4d403901a2d37ec995b2484b7d4a72fdf0709ee6db38f5d69d` |
+| `tools/acceptance_r4_r5_r6_v8_manifest.md` | (this file) | stated in the PR comment and the message to calm-eagle-670, because a file cannot carry its own digest |
 
 The launcher is handed the **staged script's** sha256 as argv[8]: that is the sha256 of the packet file above
 (the one the launcher verifies against the staged copy), not a source-commit sha. `script_sha256_frozen=see-tools/…`
@@ -94,9 +109,9 @@ memory in GiB, CPU with `%`, `OUT` as the literal token; memory bounds are the R
 (S row), and the D row is the scope itself (`cap 0`):
 
 ```
-calmcrab-udrv.sh fierce-wren-19-r4-db56530f 5400 32 28 4096 3200% <STAGED_SCRIPT> 661707c40250edfa0f1ab79360411d26a75c0c93f6ab68b30cf6051a6001f694 OUT
-calmcrab-udrv.sh fierce-wren-19-r5-dff57af7 4500 32 28 4096 3200% <STAGED_SCRIPT> 8870b6f3b8747f311f6dded0b1f80c6104ad78646e04e27ce50ee3f607a928e8 OUT
-calmcrab-udrv.sh fierce-wren-19-r6-dff57af7 4800 32 28 4096 3200% <STAGED_SCRIPT> bdfd1fa32173cf6c847645cc6d990244f18ab1d5ed84407dec8a599ff30d146f OUT   # HELD
+calmcrab-udrv.sh fierce-wren-19-r4-db56530f 5400 32 28 4096 3200% <STAGED_SCRIPT> 41d4e59ad5d0dbe8829947397f6800fa258fa124098efe43dcabf932629a4c6f OUT
+calmcrab-udrv.sh fierce-wren-19-r5-dff57af7 4500 32 28 4096 3200% <STAGED_SCRIPT> 1015ea78cb7ee68de251c1a3ab243fcda7b4017b7736442653aeb67487315cd2 OUT
+calmcrab-udrv.sh fierce-wren-19-r6-dff57af7 4800 32 28 4096 3200% <STAGED_SCRIPT> 5c083e77cbee4b2aac1b50847b866d35ec266b36ac03f24347f01073bec3ee17 OUT   # HELD
 ```
 
 | job | clone | fetch | checkout | build | legs | capped sum | scope `RuntimeMaxSec` | launcher cap | driver `RuntimeMaxSec` |
@@ -121,7 +136,7 @@ proposed here. A pass says the witness claims exist and hold in the pinned tree;
 that. R6 asks whether the roadmap acceptance inbox projects on a live corpus; a refusal there is a FINDING,
 and R6 is HELD (below).
 
-## Row R4 — `tools/acceptance_r4_claim_run_v7.sh` (job `fierce-wren-19-r4-db56530f`)
+## Row R4 — `tools/acceptance_r4_claim_run_v8.sh` (job `fierce-wren-19-r4-db56530f`)
 
 * pin `db56530fcb186370e3dbf1aa3c69ded324daa25d` (the grant's R4 pin; tree `48be84d8b18a9530e3a5c42adf8c24b19e1aa4dc`);
   entry blobs `332cc981fd194bb9f02f16ff6e3c14d81b874e2b` (`src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag`)
@@ -131,7 +146,7 @@ and R6 is HELD (below).
 * `--predict-only` prints exactly the six command strings (four setup + two legs), each with bytes and sha256:
 
 ```
-PREDICT-ONLY row=R4 job=fierce-wren-19-r4-db56530f host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v7_manifest.md
+PREDICT-ONLY row=R4 job=fierce-wren-19-r4-db56530f host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v8_manifest.md
 THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed.
 pin_r4=db56530fcb186370e3dbf1aa3c69ded324daa25d tree_r4=48be84d8b18a9530e3a5c42adf8c24b19e1aa4dc
 blob src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag 332cc981fd194bb9f02f16ff6e3c14d81b874e2b
@@ -163,7 +178,7 @@ cmd CMD_LEG_R4B bytes=184 sha256=98211ed70494ef8c9b85eed3b1e39e4cfd29b975d8b059c
   "$BIN4" --source-root dag --source-root src/v1 --source-root src/v2 --entry "src/v2/test/claim/rust_crate_partition_witness.dag" --functions "witness_r4_refuses_unit_graph_cycle_holds"
 ```
 
-## Row R5 — `tools/acceptance_r5_claim_run_v7.sh` (job `fierce-wren-19-r5-dff57af7`)
+## Row R5 — `tools/acceptance_r5_claim_run_v8.sh` (job `fierce-wren-19-r5-dff57af7`)
 
 * pin `dff57af790f923066d61721e89ff751a91021278` (the #15936 squash; tree `356f2894a60edda51cdbe79879b2fb3b7aea75c4`);
   entry blob `adfeb29426eac9d4da67630a12d89f8eabe8754b` (`dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag`).
@@ -173,9 +188,13 @@ cmd CMD_LEG_R4B bytes=184 sha256=98211ed70494ef8c9b85eed3b1e39e4cfd29b975d8b059c
   whose completion record is missing, marks its five (or one) claims NO_OBSERVATION without touching the
   other leg; `post_leg_gate` then requires the worktree to be clean and the runner to still hash to the
   bytes hashed before the legs, or every claim in the row becomes NO_OBSERVATION.
+* v7: the two legs are classified per claim; a leg whose exit code disagrees with its own verdict lines, or
+  whose completion record is missing, marks its five (or one) claims NO_OBSERVATION without touching the
+  other leg; `post_leg_gate` then requires the worktree to be clean and the runner to still hash to the
+  bytes hashed before the legs, or every claim in the row becomes NO_OBSERVATION.
 
 ```
-PREDICT-ONLY row=R5 job=fierce-wren-19-r5-dff57af7 host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v7_manifest.md
+PREDICT-ONLY row=R5 job=fierce-wren-19-r5-dff57af7 host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v8_manifest.md
 THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed.
 pin_r5=dff57af790f923066d61721e89ff751a91021278 tree_r5=356f2894a60edda51cdbe79879b2fb3b7aea75c4
 blob dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag adfeb29426eac9d4da67630a12d89f8eabe8754b
@@ -204,7 +223,7 @@ cmd CMD_LEG_R5 bytes=397 sha256=c5f7fe87f6130cc3ad2cf1f60dc99be4457f0e81a419b702
   "$BIN5" --source-root dag --source-root src/v1 --source-root src/v2 --entry "dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag" --functions "witness_inbox_load_refused_is_refused_not_empty,witness_inbox_unreplayable_history_is_refused_not_empty,witness_inbox_live_receipt_removes_node_from_rows,witness_inbox_revoked_receipt_reappears_with_prior,witness_inbox_stale_live_receipt_refuses"
 ```
 
-## Row R6 — HELD — `tools/acceptance_r6_live_read_claim_run_v7.sh` (job `fierce-wren-19-r6-dff57af7`)
+## Row R6 — HELD — `tools/acceptance_r6_live_read_claim_run_v8.sh` (job `fierce-wren-19-r6-dff57af7`)
 
 * same pin and tree as R5; entry blob `969b980b189dafa81df4045f62f7d2e70dcc50ad`
   (`dag/test/claim/roadmap/roadmap_acceptance_inbox_live_witness.dag`), one claim `witness_inbox_on_authority_projects_on_live_corpus`.
@@ -287,9 +306,9 @@ cmd CMD_LEG_R6 bytes=207 sha256=0053be34fb87d635cd5664cccd7880bd014a18417ca24bfc
 
 ## Self-test result (recorded, not asserted vaguely)
 
-* `bash tools/acceptance_r4_r5_r6_selfcheck_v7.sh <repo>` (run in this container against this session's worktree,
-  which carries both pins) → **845 passed, 0 failed, 0 skipped**.
-* embedded packet fixtures: R4 **227 pass / 0 fail**, R5 **225 pass / 0 fail**, R6 **229 pass / 0 fail**.
+* `bash tools/acceptance_r4_r5_r6_selfcheck_v8.sh <repo>` (run in this container against this session's worktree,
+  which carries both pins) → **952 passed, 0 failed, 0 skipped**.
+* embedded packet fixtures: R4 **260 pass / 0 fail**, R5 **258 pass / 0 fail**, R6 **262 pass / 0 fail**.
 * skips are named, not silent. There are exactly two conditional skips, both labelled in the script:
   `claim_batch.rs at the pin is not byte-identical to the working copy: parser checks skipped` and
   `no repo with the pinned commits: the pinned render-site grep was not run`. In the recorded run above neither
@@ -306,71 +325,80 @@ cmd CMD_LEG_R6 bytes=207 sha256=0053be34fb87d635cd5664cccd7880bd014a18417ca24bfc
 
 | control | first fixture failure |
 |---|---|
-| mutation 3 applied to the R4 job | FIXTURE FAIL self-structure: the booked bounds are gated before any work expected 1 got 0 / FIXTURES pass=225 fail=2 (rc=1) |
-| mutation 4 applied to the R4 job | FIXTURE FAIL snap-parsed expected 0/0 got UNKNOWN/UNKNOWN / FIXTURES pass=218 fail=9 (rc=1) |
-| mutation 5 applied to the R4 job | FIXTURE FAIL self-structure: no fourth exit code exists anywhere in the script expected 0 got 1 / FIXTURES pass=226 fail=1 (rc=1) |
-| mutation 6 applied to the R4 job | FIXTURE FAIL self-structure: each leg boundary pair is compared, not merely recorded expected 1 got 0 / FIXTURES pass=226 fail=1 (rc=1) |
-| mutation 8 applied to the R4 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=222 fail=5… |
-| mutation 9 applied to the R4 job | FIXTURE FAIL verdict-bare-pass-plus-qualified-fail expected NO_OBSERVATION got HELD / FIXTURES pass=226 fail=1 (rc=1) |
-| mutation 10 applied to the R4 job | FIXTURE FAIL bare-pass expected HELD got NO_OBSERVATION / FIXTURES pass=217 fail=10 (rc=1) |
+| mutation 3 applied to the R4 job | FIXTURE FAIL self-structure: the booked bounds are gated before any work expected 1 got 0 / FIXTURES pass=258 fail=2 (rc=1) |
+| mutation 4 applied to the R4 job | FIXTURE FAIL snap-parsed expected 0/0 got UNKNOWN/UNKNOWN / FIXTURES pass=251 fail=9 (rc=1) |
+| mutation 5 applied to the R4 job | FIXTURE FAIL self-structure: no fourth exit code exists anywhere in the script expected 0 got 1 / FIXTURES pass=259 fail=1 (rc=1) |
+| mutation 6 applied to the R4 job | FIXTURE FAIL self-structure: each leg boundary pair is compared, not merely recorded expected 1 got 0 / FIXTURES pass=259 fail=1 (rc=1) |
+| mutation 8 applied to the R4 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=255 fail=5… |
+| mutation 9 applied to the R4 job | FIXTURE FAIL verdict-bare-pass-plus-qualified-fail expected NO_OBSERVATION got HELD / FIXTURES pass=259 fail=1 (rc=1) |
+| mutation 10 applied to the R4 job | FIXTURE FAIL bare-pass expected HELD got NO_OBSERVATION / FIXTURES pass=250 fail=10 (rc=1) |
 | mutation 11 applied to the R4 job | FIXTURE FAIL completion-duplicate expected completion records: 2 matched the prefix, exactly 1 is required got OK [process-partition] total_ms=340188 … |
-| mutation 12 applied to the R4 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=216 fail=1… |
-| mutation 13 applied to the R4 job | FIXTURE FAIL self-structure: the pin proves the pinned producer emits the record to stderr expected 1 got 0 / FIXTURES pass=226 fail=1 (rc=1) |
-| mutation 16 applied to the R4 job | FIXTURE FAIL rc1-pass-plus-fail expected OK got MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required / FIXTURES pass=217 fail=10 (rc=1) |
-| mutation 17 applied to the R4 job | FIXTURE FAIL wall-gate-refuses-over-cap-nonzero expected 1 got 0 / FIXTURES pass=224 fail=3 (rc=1) |
-| mutation 18 applied to the R4 job | FIXTURE FAIL producer-gate-stdout-render-refuses-nonzero expected 1 got 0 / FIXTURES pass=224 fail=3 (rc=1) |
+| mutation 12 applied to the R4 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=249 fail=1… |
+| mutation 13 applied to the R4 job | FIXTURE FAIL self-structure: the pin proves the pinned producer emits the record to stderr expected 1 got 0 / FIXTURES pass=259 fail=1 (rc=1) |
+| mutation 16 applied to the R4 job | FIXTURE FAIL rc1-pass-plus-fail expected OK got MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required / FIXTURES pass=250 fail=10 (rc=1) |
+| mutation 17 applied to the R4 job | FIXTURE FAIL wall-gate-refuses-over-cap-nonzero expected 1 got 0 / FIXTURES pass=257 fail=3 (rc=1) |
+| mutation 18 applied to the R4 job | FIXTURE FAIL producer-gate-stdout-render-refuses-nonzero expected 1 got 0 / FIXTURES pass=257 fail=3 (rc=1) |
 | mutation 19 applied to the R4 job | FIXTURE FAIL post-leg-dirty-forces-every-claim-nood expected [a=NO_OBSERVATION b=NO_OBSERVATION] inside [claims classified: a=HELD b=FAILED post_leg_c… |
-| mutation 20 applied to the R4 job | FIXTURE FAIL contract-all-pass-at-rc1 expected NO_OBSERVATION NO_OBSERVATION NOOBS 2 got HELD HELD AS_EXPECTED 0 / FIXTURES pass=225 fail=2 (rc=1) |
-| mutation 21 applied to the R4 job | FIXTURE FAIL contract-pass-and-fail-at-rc1 expected HELD FAILED FALSIFIED 1 got HELD FAILED FALSIFIED 2 / FIXTURES pass=218 fail=9 (rc=1) |
-| mutation 22 applied to the R4 job | FIXTURE FAIL out_gate-refusals-exit-nonzero expected 1 got 0 / FIXTURES pass=226 fail=1 (rc=1) |
-| mutation 23 applied to the R4 job | FIXTURE FAIL post-leg-dirty-worktree-refuses expected [the worktree] inside [ exit=1] / FIXTURES pass=224 fail=3 (rc=1) |
-| mutation 24 applied to the R4 job | FIXTURE FAIL post-leg-runner-changed-refuses expected [the runner changed] inside [ exit=1] / FIXTURES pass=225 fail=2 (rc=1) |
-| mutation 3 applied to the R5 job | FIXTURE FAIL self-structure: the booked bounds are gated before any work expected 1 got 0 / FIXTURES pass=223 fail=2 (rc=1) |
-| mutation 4 applied to the R5 job | FIXTURE FAIL snap-parsed expected 0/0 got UNKNOWN/UNKNOWN / FIXTURES pass=216 fail=9 (rc=1) |
-| mutation 5 applied to the R5 job | FIXTURE FAIL self-structure: no fourth exit code exists anywhere in the script expected 0 got 1 / FIXTURES pass=224 fail=1 (rc=1) |
-| mutation 6 applied to the R5 job | FIXTURE FAIL self-structure: each leg boundary pair is compared, not merely recorded expected 1 got 0 / FIXTURES pass=224 fail=1 (rc=1) |
-| mutation 8 applied to the R5 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=220 fail=5… |
-| mutation 9 applied to the R5 job | FIXTURE FAIL verdict-bare-pass-plus-qualified-fail expected NO_OBSERVATION got HELD / FIXTURES pass=224 fail=1 (rc=1) |
-| mutation 10 applied to the R5 job | FIXTURE FAIL bare-pass expected HELD got NO_OBSERVATION / FIXTURES pass=215 fail=10 (rc=1) |
+| mutation 20 applied to the R4 job | FIXTURE FAIL contract-all-pass-at-rc1 expected NO_OBSERVATION NO_OBSERVATION NOOBS 2 got HELD HELD AS_EXPECTED 0 / FIXTURES pass=258 fail=2 (rc=1) |
+| mutation 21 applied to the R4 job | FIXTURE FAIL cs-complete-set-with-a-fail-is-still-1 expected 1 got 2 / FIXTURES pass=249 fail=11 (rc=1) |
+| mutation 22 applied to the R4 job | FIXTURE FAIL out_gate-refusals-exit-nonzero expected 1 got 0 / FIXTURES pass=259 fail=1 (rc=1) |
+| mutation 23 applied to the R4 job | FIXTURE FAIL post-leg-dirty-worktree-refuses expected [the worktree] inside [ exit=1] / FIXTURES pass=257 fail=3 (rc=1) |
+| mutation 24 applied to the R4 job | FIXTURE FAIL post-leg-runner-changed-refuses expected [the runner changed] inside [ exit=1] / FIXTURES pass=258 fail=2 (rc=1) |
+| mutation 3 applied to the R5 job | FIXTURE FAIL self-structure: the booked bounds are gated before any work expected 1 got 0 / FIXTURES pass=256 fail=2 (rc=1) |
+| mutation 4 applied to the R5 job | FIXTURE FAIL snap-parsed expected 0/0 got UNKNOWN/UNKNOWN / FIXTURES pass=249 fail=9 (rc=1) |
+| mutation 5 applied to the R5 job | FIXTURE FAIL self-structure: no fourth exit code exists anywhere in the script expected 0 got 1 / FIXTURES pass=257 fail=1 (rc=1) |
+| mutation 6 applied to the R5 job | FIXTURE FAIL self-structure: each leg boundary pair is compared, not merely recorded expected 1 got 0 / FIXTURES pass=257 fail=1 (rc=1) |
+| mutation 8 applied to the R5 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=253 fail=5… |
+| mutation 9 applied to the R5 job | FIXTURE FAIL verdict-bare-pass-plus-qualified-fail expected NO_OBSERVATION got HELD / FIXTURES pass=257 fail=1 (rc=1) |
+| mutation 10 applied to the R5 job | FIXTURE FAIL bare-pass expected HELD got NO_OBSERVATION / FIXTURES pass=248 fail=10 (rc=1) |
 | mutation 11 applied to the R5 job | FIXTURE FAIL completion-duplicate expected completion records: 2 matched the prefix, exactly 1 is required got OK [process-partition] total_ms=340188 … |
-| mutation 12 applied to the R5 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=214 fail=1… |
-| mutation 13 applied to the R5 job | FIXTURE FAIL self-structure: the pin proves the pinned producer emits the record to stderr expected 1 got 0 / FIXTURES pass=224 fail=1 (rc=1) |
-| mutation 16 applied to the R5 job | FIXTURE FAIL rc1-pass-plus-fail expected OK got MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required / FIXTURES pass=215 fail=10 (rc=1) |
-| mutation 17 applied to the R5 job | FIXTURE FAIL wall-gate-refuses-over-cap-nonzero expected 1 got 0 / FIXTURES pass=222 fail=3 (rc=1) |
-| mutation 18 applied to the R5 job | FIXTURE FAIL producer-gate-stdout-render-refuses-nonzero expected 1 got 0 / FIXTURES pass=222 fail=3 (rc=1) |
+| mutation 12 applied to the R5 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=247 fail=1… |
+| mutation 13 applied to the R5 job | FIXTURE FAIL self-structure: the pin proves the pinned producer emits the record to stderr expected 1 got 0 / FIXTURES pass=257 fail=1 (rc=1) |
+| mutation 16 applied to the R5 job | FIXTURE FAIL rc1-pass-plus-fail expected OK got MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required / FIXTURES pass=248 fail=10 (rc=1) |
+| mutation 17 applied to the R5 job | FIXTURE FAIL wall-gate-refuses-over-cap-nonzero expected 1 got 0 / FIXTURES pass=255 fail=3 (rc=1) |
+| mutation 18 applied to the R5 job | FIXTURE FAIL producer-gate-stdout-render-refuses-nonzero expected 1 got 0 / FIXTURES pass=255 fail=3 (rc=1) |
 | mutation 19 applied to the R5 job | FIXTURE FAIL post-leg-dirty-forces-every-claim-nood expected [a=NO_OBSERVATION b=NO_OBSERVATION] inside [claims classified: a=HELD b=FAILED post_leg_c… |
-| mutation 20 applied to the R5 job | FIXTURE FAIL contract-all-pass-at-rc1 expected NO_OBSERVATION NO_OBSERVATION NOOBS 2 got HELD HELD AS_EXPECTED 0 / FIXTURES pass=223 fail=2 (rc=1) |
-| mutation 21 applied to the R5 job | FIXTURE FAIL contract-pass-and-fail-at-rc1 expected HELD FAILED FALSIFIED 1 got HELD FAILED FALSIFIED 2 / FIXTURES pass=216 fail=9 (rc=1) |
-| mutation 22 applied to the R5 job | FIXTURE FAIL out_gate-refusals-exit-nonzero expected 1 got 0 / FIXTURES pass=224 fail=1 (rc=1) |
-| mutation 23 applied to the R5 job | FIXTURE FAIL post-leg-dirty-worktree-refuses expected [the worktree] inside [ exit=1] / FIXTURES pass=222 fail=3 (rc=1) |
-| mutation 24 applied to the R5 job | FIXTURE FAIL post-leg-runner-changed-refuses expected [the runner changed] inside [ exit=1] / FIXTURES pass=223 fail=2 (rc=1) |
-| mutation 3 applied to the R6 job | FIXTURE FAIL self-structure: the booked bounds are gated before any work expected 1 got 0 / FIXTURES pass=227 fail=2 (rc=1) |
-| mutation 4 applied to the R6 job | FIXTURE FAIL snap-parsed expected 0/0 got UNKNOWN/UNKNOWN / FIXTURES pass=220 fail=9 (rc=1) |
-| mutation 5 applied to the R6 job | FIXTURE FAIL self-structure: no fourth exit code exists anywhere in the script expected 0 got 1 / FIXTURES pass=228 fail=1 (rc=1) |
-| mutation 6 applied to the R6 job | FIXTURE FAIL self-structure: each leg boundary pair is compared, not merely recorded expected 1 got 0 / FIXTURES pass=228 fail=1 (rc=1) |
-| mutation 8 applied to the R6 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=225 fail=4… |
-| mutation 9 applied to the R6 job | FIXTURE FAIL verdict-bare-pass-plus-qualified-fail expected NO_OBSERVATION got HELD / FIXTURES pass=228 fail=1 (rc=1) |
-| mutation 10 applied to the R6 job | FIXTURE FAIL bare-pass expected HELD got NO_OBSERVATION / FIXTURES pass=219 fail=10 (rc=1) |
+| mutation 20 applied to the R5 job | FIXTURE FAIL contract-all-pass-at-rc1 expected NO_OBSERVATION NO_OBSERVATION NOOBS 2 got HELD HELD AS_EXPECTED 0 / FIXTURES pass=256 fail=2 (rc=1) |
+| mutation 21 applied to the R5 job | FIXTURE FAIL cs-complete-set-with-a-fail-is-still-1 expected 1 got 2 / FIXTURES pass=247 fail=11 (rc=1) |
+| mutation 22 applied to the R5 job | FIXTURE FAIL out_gate-refusals-exit-nonzero expected 1 got 0 / FIXTURES pass=257 fail=1 (rc=1) |
+| mutation 23 applied to the R5 job | FIXTURE FAIL post-leg-dirty-worktree-refuses expected [the worktree] inside [ exit=1] / FIXTURES pass=255 fail=3 (rc=1) |
+| mutation 24 applied to the R5 job | FIXTURE FAIL post-leg-runner-changed-refuses expected [the runner changed] inside [ exit=1] / FIXTURES pass=256 fail=2 (rc=1) |
+| mutation 3 applied to the R6 job | FIXTURE FAIL self-structure: the booked bounds are gated before any work expected 1 got 0 / FIXTURES pass=260 fail=2 (rc=1) |
+| mutation 4 applied to the R6 job | FIXTURE FAIL snap-parsed expected 0/0 got UNKNOWN/UNKNOWN / FIXTURES pass=253 fail=9 (rc=1) |
+| mutation 5 applied to the R6 job | FIXTURE FAIL self-structure: no fourth exit code exists anywhere in the script expected 0 got 1 / FIXTURES pass=261 fail=1 (rc=1) |
+| mutation 6 applied to the R6 job | FIXTURE FAIL self-structure: each leg boundary pair is compared, not merely recorded expected 1 got 0 / FIXTURES pass=261 fail=1 (rc=1) |
+| mutation 8 applied to the R6 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=258 fail=4… |
+| mutation 9 applied to the R6 job | FIXTURE FAIL verdict-bare-pass-plus-qualified-fail expected NO_OBSERVATION got HELD / FIXTURES pass=261 fail=1 (rc=1) |
+| mutation 10 applied to the R6 job | FIXTURE FAIL bare-pass expected HELD got NO_OBSERVATION / FIXTURES pass=252 fail=10 (rc=1) |
 | mutation 11 applied to the R6 job | FIXTURE FAIL completion-duplicate expected completion records: 2 matched the prefix, exactly 1 is required got OK [process-partition] total_ms=340188 … |
-| mutation 12 applied to the R6 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=219 fail=1… |
-| mutation 13 applied to the R6 job | FIXTURE FAIL self-structure: the pin proves the pinned producer emits the record to stderr expected 1 got 0 / FIXTURES pass=228 fail=1 (rc=1) |
-| mutation 16 applied to the R6 job | FIXTURE FAIL rc1-pass-plus-fail expected OK got MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required / FIXTURES pass=219 fail=10 (rc=1) |
-| mutation 17 applied to the R6 job | FIXTURE FAIL wall-gate-refuses-over-cap-nonzero expected 1 got 0 / FIXTURES pass=226 fail=3 (rc=1) |
-| mutation 18 applied to the R6 job | FIXTURE FAIL producer-gate-stdout-render-refuses-nonzero expected 1 got 0 / FIXTURES pass=226 fail=3 (rc=1) |
+| mutation 12 applied to the R6 job | FIXTURE FAIL self-structure: the completion gate reads the leg stderr capture, where the record is emitted expected 1 got 0 / FIXTURES pass=252 fail=1… |
+| mutation 13 applied to the R6 job | FIXTURE FAIL self-structure: the pin proves the pinned producer emits the record to stderr expected 1 got 0 / FIXTURES pass=261 fail=1 (rc=1) |
+| mutation 16 applied to the R6 job | FIXTURE FAIL rc1-pass-plus-fail expected OK got MISMATCH rc=1 but no claim printed a bare FAIL, so 0 was required / FIXTURES pass=252 fail=10 (rc=1) |
+| mutation 17 applied to the R6 job | FIXTURE FAIL wall-gate-refuses-over-cap-nonzero expected 1 got 0 / FIXTURES pass=259 fail=3 (rc=1) |
+| mutation 18 applied to the R6 job | FIXTURE FAIL producer-gate-stdout-render-refuses-nonzero expected 1 got 0 / FIXTURES pass=259 fail=3 (rc=1) |
 | mutation 19 applied to the R6 job | FIXTURE FAIL post-leg-dirty-forces-every-claim-nood expected [a=NO_OBSERVATION b=NO_OBSERVATION] inside [claims classified: a=HELD b=FAILED post_leg_c… |
-| mutation 20 applied to the R6 job | FIXTURE FAIL contract-all-pass-at-rc1 expected NO_OBSERVATION NO_OBSERVATION NOOBS 2 got HELD HELD AS_EXPECTED 0 / FIXTURES pass=227 fail=2 (rc=1) |
-| mutation 21 applied to the R6 job | FIXTURE FAIL contract-pass-and-fail-at-rc1 expected HELD FAILED FALSIFIED 1 got HELD FAILED FALSIFIED 2 / FIXTURES pass=220 fail=9 (rc=1) |
-| mutation 22 applied to the R6 job | FIXTURE FAIL out_gate-refusals-exit-nonzero expected 1 got 0 / FIXTURES pass=228 fail=1 (rc=1) |
-| mutation 23 applied to the R6 job | FIXTURE FAIL post-leg-dirty-worktree-refuses expected [the worktree] inside [ exit=1] / FIXTURES pass=226 fail=3 (rc=1) |
-| mutation 24 applied to the R6 job | FIXTURE FAIL post-leg-runner-changed-refuses expected [the runner changed] inside [ exit=1] / FIXTURES pass=227 fail=2 (rc=1) |
-| defect (1) reintroduced: a literal claim_batch token after the binary | FIXTURE FAIL argv-R4a-sound expected  got R4a: argv carries a literal 'claim_batch' token after the binary / FIXTURES pass=225 fail=2 (rc=1) |
-| defect (2) reintroduced: a space-separated name in the CSV | FIXTURE FAIL csv-r4b expected 1 got 3 / FIXTURES pass=224 fail=3 (rc=1) |
-| defect (1) in the R6 packet as well | FIXTURE FAIL argv-R6-sound expected  got R6: argv carries a literal 'claim_batch' token after the binary / FIXTURES pass=227 fail=2 (rc=1) |
-| the end-to-end leg control deleted from the packet fixtures | FIXTURE FAIL self-structure: the fixtures drive a real leg and require the stderr record to be an observation expected 1 got 0 / FIXTURES pass=213 fai… |
-| the end-to-end leg control deleted from the R5 job too | FIXTURE FAIL self-structure: the fixtures drive a real leg and require the stderr record to be an observation expected 1 got 0 / FIXTURES pass=211 fai… |
+| mutation 20 applied to the R6 job | FIXTURE FAIL contract-all-pass-at-rc1 expected NO_OBSERVATION NO_OBSERVATION NOOBS 2 got HELD HELD AS_EXPECTED 0 / FIXTURES pass=260 fail=2 (rc=1) |
+| mutation 21 applied to the R6 job | FIXTURE FAIL cs-complete-set-with-a-fail-is-still-1 expected 1 got 2 / FIXTURES pass=251 fail=11 (rc=1) |
+| mutation 22 applied to the R6 job | FIXTURE FAIL out_gate-refusals-exit-nonzero expected 1 got 0 / FIXTURES pass=261 fail=1 (rc=1) |
+| mutation 23 applied to the R6 job | FIXTURE FAIL post-leg-dirty-worktree-refuses expected [the worktree] inside [ exit=1] / FIXTURES pass=259 fail=3 (rc=1) |
+| mutation 24 applied to the R6 job | FIXTURE FAIL post-leg-runner-changed-refuses expected [the runner changed] inside [ exit=1] / FIXTURES pass=260 fail=2 (rc=1) |
+| defect (1) reintroduced: a literal claim_batch token after the binary | FIXTURE FAIL argv-R4a-sound expected  got R4a: argv carries a literal 'claim_batch' token after the binary / FIXTURES pass=258 fail=2 (rc=1) |
+| defect (2) reintroduced: a space-separated name in the CSV | FIXTURE FAIL csv-r4b expected 1 got 3 / FIXTURES pass=257 fail=3 (rc=1) |
+| defect (1) in the R6 packet as well | FIXTURE FAIL argv-R6-sound expected  got R6: argv carries a literal 'claim_batch' token after the binary / FIXTURES pass=260 fail=2 (rc=1) |
+| the end-to-end leg control deleted from the packet fixtures | FIXTURE FAIL self-structure: the fixtures drive a real leg and require the stderr record to be an observation expected 1 got 0 / /tmp/r4r5r6-selfcheck… |
+| the end-to-end leg control deleted from the R5 job too | FIXTURE FAIL self-structure: the fixtures drive a real leg and require the stderr record to be an observation expected 1 got 0 / /tmp/r4r5r6-selfcheck… |
 | RUNTIME_S booked at 9900, above the installed launcher cap (v6) | FIXTURE FAIL wall-gate-accepts-this-row expected OK got RUNTIME_S 9900 exceeds the installed calmcrab-udrv v4 preflight cap of 7200; the launcher woul… |
 | …the same over-cap booking in the R5 job | FIXTURE FAIL wall-gate-accepts-this-row expected OK got RUNTIME_S 9900 exceeds the installed calmcrab-udrv v4 preflight cap of 7200; the launcher woul… |
 | …and in the R6 job | FIXTURE FAIL wall-gate-accepts-this-row expected OK got RUNTIME_S 9900 exceeds the installed calmcrab-udrv v4 preflight cap of 7200; the launcher woul… |
+| cs_check/registration neutered (mutation 25 applied to the R4 packet) | FIXTURE FAIL cs-no-classes-files-exits-2 expected 2 got 0 / FIXTURES pass=242 fail=18 (rc=1) |
+| cs_check/registration neutered (mutation 25 applied to the R5 packet) | FIXTURE FAIL cs-no-classes-files-exits-2 expected 2 got 0 / FIXTURES pass=240 fail=18 (rc=1) |
+| cs_check/registration neutered (mutation 25 applied to the R6 packet) | FIXTURE FAIL cs-no-classes-files-exits-2 expected 2 got 0 / FIXTURES pass=244 fail=18 (rc=1) |
+| cs_check/registration neutered (mutation 26 applied to the R4 packet) | FIXTURE FAIL cs-shipped-set-registers-and-is-countable expected 0 got 2 / FIXTURES pass=247 fail=13 (rc=1) |
+| cs_check/registration neutered (mutation 26 applied to the R5 packet) | FIXTURE FAIL cs-shipped-set-registers-and-is-countable expected 0 got 2 / FIXTURES pass=245 fail=13 (rc=1) |
+| cs_check/registration neutered (mutation 26 applied to the R6 packet) | FIXTURE FAIL cs-shipped-set-registers-and-is-countable expected 0 got 2 / FIXTURES pass=249 fail=13 (rc=1) |
+| cs_check/registration neutered (mutation 27 applied to the R4 packet) | FIXTURE FAIL cs-writer-produces-the-booked-registration expected 0 got 1 / FIXTURES pass=236 fail=24 (rc=1) |
+| cs_check/registration neutered (mutation 27 applied to the R5 packet) | FIXTURE FAIL cs-writer-produces-the-booked-registration expected 0 got 1 / FIXTURES pass=234 fail=24 (rc=1) |
+| cs_check/registration neutered (mutation 27 applied to the R6 packet) | FIXTURE FAIL cs-writer-produces-the-booked-registration expected 0 got 1 / FIXTURES pass=238 fail=24 (rc=1) |
 
 (Every control above bit. mut1/mut2 (the v1 argv defects) are applied to the R4 packet and mut7 to the R6
 packet, because those command strings no longer exist in the other jobs; mut14 to R4 and R5; mut15 (the

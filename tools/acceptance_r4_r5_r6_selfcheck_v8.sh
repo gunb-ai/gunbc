@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# acceptance_r4_r5_r6_selfcheck_v7 — the fixture self-test for the three v7 packets: one job per row (R4,
+# acceptance_r4_r5_r6_selfcheck_v8 — the fixture self-test for the three v8 packets: one job per row (R4,
 # R5, and R6 held). Item 8 is the v5 stream fix (the completion record is the runner's stderr, not stdout).
 # NOTHING FROM EITHER REPOSITORY IS EXECUTED and nothing is run on srv1: it feeds synthetic claim logs,
 # synthetic cgroup and memory.events files, synthetic run dirs and the packets' OWN tokenized command lines
@@ -26,14 +26,14 @@
 # usage: acceptance_r4r5_selfcheck_v3.sh [repo-with-pinned-commits]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# acceptance_r4_r5_r6_selfcheck_v7 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
+# acceptance_r4_r5_r6_selfcheck_v8 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
 # because the installed calmcrab-udrv v4 (855920ac) refuses any RUNTIME_S above 7200 in its own preflight
 # (sleek-owl-397 via calm-eagle-670 msg_384bca0f; same shape as #15695 diag-v2 booked at 11700). So each
 # row is its own job: its own clone/fetch/checkout/build, its own legs, its own launcher line, and its own
 # wall_gate that refuses a booking over the cap BEFORE any fetch. Every v5 gate stays, in all three.
-P4="$HERE/acceptance_r4_claim_run_v7.sh"
-P5="$HERE/acceptance_r5_claim_run_v7.sh"
-P6="$HERE/acceptance_r6_live_read_claim_run_v7.sh"
+P4="$HERE/acceptance_r4_claim_run_v8.sh"
+P5="$HERE/acceptance_r5_claim_run_v8.sh"
+P6="$HERE/acceptance_r6_live_read_claim_run_v8.sh"
 PKTS="$P4 $P5 $P6"
 REPO="${1:-}"
 for f in "$P4" "$P5" "$P6"; do [ -f "$f" ] || { echo "packet $f not found next to the self-check" >&2; exit 1; }; done
@@ -85,9 +85,9 @@ for f in $PKTS; do grep -q 'LAUNCHER_CAP=7200' "$f" && ok || bad "$(basename "$f
 for f in $PKTS; do
   out=$(bash "$f" --classifier-fixtures 2>&1); rc=$?
   np=$(printf '%s\n' "$out" | grep -c '^FIXTURE PASS'); nf=$(printf '%s\n' "$out" | grep -c '^FIXTURE FAIL')
-  # v6 was 178/176/180; v7 adds the per-claim contract, the post-leg gates and the argument gate, so a
-  # count under 220 means fixtures were dropped, which is the same as a rule losing its proof.
-  if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 220 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf (want rc 0, 0 failures, > 220 assertions)"; fi
+  # v6 was 178/176/180, v7 227/225/229; v8 adds the claim-set gate and its 33 fixtures per packet, so a
+  # count under 250 means fixtures were dropped, which is the same as a rule losing its proof.
+  if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 250 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf (want rc 0, 0 failures, > 250 assertions)"; fi
   echo "  $(basename "$f"): $np embedded fixtures pass, $nf fail (rc=$rc)"
 done
 
@@ -101,7 +101,7 @@ helpers "$P4" > "$SB/h4.sh"; helpers "$P5" > "$SB/h5.sh"; helpers "$P6" > "$SB/h
 # three dialects and one of them is silently weaker than the others.
 gatesection() { sed -n '/# ---------------------------------------------------------------- gates and helpers/,/# ---------------------------------------------------------------- fixture mode/p' "$1" \
   | grep -vE '^[[:space:]]*#' | grep -vE '^[[:space:]]*$' \
-  | grep -vE '\b(E4A|E4B|E5|E6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|wt-r[456]|BIN[456]|WT[456]|grant_gate|GRANT)\b' \
+  | grep -vE '\b(E4A|E4B|E5|E6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|CLAIMS_R4a|CLAIMS_R4b|CLAIMS_R5|CLAIMS_R6|wt-r[456]|BIN[456]|WT[456]|grant_gate|GRANT)\b' \
   | sed -e 's/LEG_R[0-9A-B]*/LEGL/g'; }
 gs4=$(gatesection "$P4"); gs5=$(gatesection "$P5"); gs6=$(gatesection "$P6")
 ngs=$(printf '%s\n' "$gs4" | grep -c .)
@@ -115,7 +115,7 @@ grep -q 'grant_gate' "$P4" && bad "the grantable R4 packet grew a grant gate of 
 grep -q 'grant_gate' "$P6" && ok || bad "the held R6 packet lost its grant gate"
 for f in $PKTS; do grep_in "$(basename "$f") carries the wall gate" "$f" 'wall_gate() {'; done
 for f in "$SB/h4.sh" "$SB/h5.sh" "$SB/h6.sh"; do
-  for fn in scope_gate bounds_check out_absent bin_sha oom_parse oom_key oom_pair oom_verdict oom_pair_verdict oom_snap claim_classify leg_state stray_verdict_lines names_gate tm; do
+  for fn in scope_gate bounds_check out_absent bin_sha oom_parse oom_key oom_pair oom_verdict oom_pair_verdict oom_snap claim_classify leg_state stray_verdict_lines names_gate tm cs_check register_claims book_case_set restore_booked_set; do
     grep -q "^$fn()" "$f" && ok || bad "$(basename "$f") does not define $fn"
   done
 done
@@ -531,7 +531,7 @@ done
 printf '%s\n' "$M6" | grep -qE '^PREDICT-ONLY row=R6 .* state=HELD gate=keen-otter-msg_3407a188' && ok || bad "the R6 manifest does not state the hold and its gate"
 printf '%s\n' "$M4" | grep -qE '^PREDICT-ONLY row=R4 job=fierce-wren-19-r4-db56530f host_booked=srv1' && ok || bad "the R4 manifest does not name its own row and job"
 printf '%s\n' "$M5" | grep -qE '^PREDICT-ONLY row=R5 job=fierce-wren-19-r5-dff57af7 host_booked=srv1' && ok || bad "the R5 manifest does not name its own row and job"
-for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v7_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
+for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v8_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
 for m in M4 M5 M6; do
   f=$(eval printf '%s' "\${P${m#M}}")
   d=$(diff <(printf '%s\n' "${!m}" | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)') <(cd "$SB" && bash "$f" --predict-only | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)'))
@@ -743,20 +743,23 @@ for hpair in "$SB/h4.sh:$P4" "$SB/h5.sh:$P5" "$SB/h6.sh:$P6"; do
   h=${hpair%%:*}; p=${hpair##*:}; b=$(basename "$p")
   # the packet's own exit decision, driven end to end: 0 held, 1 falsified, 2 no-observation, and the
   # precedence rule (falsified outranks no-observation; a post-leg cause outranks both).
-  fvrc() { # $1=dir $2=classes as a printf format $3=post-leg cause ('' = none) -> the exit code
-    local d=$1 rc
+  # v8: final_verdict decides against the REGISTERED claim set, so a probe that drives it has to
+  # register one - otherwise the probe measures the refusal instead of the decision.
+  fvrc() { # $1=dir $2=classes as a printf format $3=post-leg cause ('' = none) $4=claimed names (default a b)
+    local d=$1 rc n4
     rm -rf "$d"; mkdir -p "$d/logs"
     printf '%b\n' "$2" > "$d/LEGX.classes"
+    : > "$d/claims-registered.txt"; for n4 in ${4:-a b}; do printf 'LEGX %s\n' "$n4" >> "$d/claims-registered.txt"; done
     if [ -n "$3" ]; then printf '%s\n' "$3" > "$d/post-leg.cause"; else : > "$d/post-leg.cause"; fi
-    rc=$(OUT="$d" O="$d/receipt.txt" bash -c "source '$h'; final_verdict" >/dev/null 2>&1; echo $?)
+    rc=$(OUT="$d" O="$d/receipt.txt" bash -c "source '$h'; LEGS_BOOKED='LEGX'; CLAIMS_ALL='${4:-a b}'; CLAIMS_LEGX='${4:-a b}'; N_CLAIMS_BOOKED=$(printf '%s\n' ${4:-a b} | wc -l | tr -d ' '); final_verdict" >/dev/null 2>&1; echo $?)
     echo "$rc"; }
   check "$b: every claim held exits 0" 0 test "$(fvrc "$SB/fv_a_$b" 'a HELD\nb HELD' '')" = 0
   check "$b: one falsified claim exits 1" 0 test "$(fvrc "$SB/fv_b_$b" 'a HELD\nb FAILED' '')" = 1
   check "$b: one unobserved claim exits 2" 0 test "$(fvrc "$SB/fv_c_$b" 'a HELD\nb NO_OBSERVATION' '')" = 2
-  check "$b: falsified outranks unobserved" 0 test "$(fvrc "$SB/fv_d_$b" 'a FAILED\nb NO_OBSERVATION\nc NO_OBSERVATION' '')" = 1
+  check "$b: falsified outranks unobserved" 0 test "$(fvrc "$SB/fv_d_$b" 'a FAILED\nb NO_OBSERVATION\nc NO_OBSERVATION' '' 'a b c')" = 1
   check "$b: a post-leg cause voids even a bare FAIL" 0 test "$(fvrc "$SB/fv_e_$b" 'a HELD\nb FAILED' 'the runner changed during the run')" = 2
   check "$b: a post-leg cause with everything held is still 2" 0 test "$(fvrc "$SB/fv_f_$b" 'a HELD\nb HELD' 'the worktree is not clean')" = 2
-  check_out "$b: the verdict names the claims it decided" 0 'claims classified: a=HELD b=FAILED' bash -c "rm -rf '$SB/fv_g_$b'; mkdir -p '$SB/fv_g_$b/logs'; printf 'a HELD\nb FAILED\n' > '$SB/fv_g_$b/LEGX.classes'; : > '$SB/fv_g_$b/post-leg.cause'; ( source '$h'; OUT='$SB/fv_g_$b' O='$SB/fv_g_$b/receipt.txt'; final_verdict ) >/dev/null 2>&1; grep -o 'claims classified:.*' '$SB/fv_g_$b/receipt.txt'"
+  check_out "$b: the verdict names the claims it decided" 0 'claims classified: a=HELD b=FAILED' bash -c "rm -rf '$SB/fv_g_$b'; mkdir -p '$SB/fv_g_$b/logs'; printf 'a HELD\nb FAILED\n' > '$SB/fv_g_$b/LEGX.classes'; printf 'LEGX a\nLEGX b\n' > '$SB/fv_g_$b/claims-registered.txt'; : > '$SB/fv_g_$b/post-leg.cause'; ( source '$h'; LEGS_BOOKED='LEGX'; CLAIMS_ALL='a b'; CLAIMS_LEGX='a b'; N_CLAIMS_BOOKED=2; OUT='$SB/fv_g_$b' O='$SB/fv_g_$b/receipt.txt'; final_verdict ) >/dev/null 2>&1; grep -o 'claims classified:.*' '$SB/fv_g_$b/receipt.txt'"
   # the argument gate, on the shipped helpers
   check "$b: out_gate accepts the booked shape" 0 bash -c "source '$h'; out_gate /home/x/runs/J/out J"
   check "$b: out_gate refuses a relative OUT" 1 bash -c "source '$h'; out_gate runs/J/out J"
@@ -1025,6 +1028,155 @@ cp "$P4" "$SB/neg5.sh"; python3 "$SB/mut5.py" "$SB/neg5.sh" && ok || bad "exit-c
 n3=$(grep -vE '^[[:space:]]*#' "$SB/neg5.sh" | grep -cE '\bexit 3\b'); [ "$n3" = 1 ] && ok || bad "expected the mutated copy to reintroduce an exit 3, got $n3"
 check "…which is the rule the self-test applies to the shipped packets (no exit 3 anywhere)" 0 bash -c "[ \$(grep -vE '^[[:space:]]*#' '$P4' | grep -cE '\bexit 3\b') = 0 ] && [ \$(grep -vE '^[[:space:]]*#' '$P6' | grep -cE '\bexit 3\b') = 0 ]"
 check "…and exactly one executable exit 1 per shipped packet" 0 bash -c "[ \$(grep -vE '^[[:space:]]*#' '$P4' | grep -cE '\bexit 1\b') = 1 ] && [ \$(grep -vE '^[[:space:]]*#' '$P6' | grep -cE '\bexit 1\b') = 1 ]"
+
+
+# ---------------------------------------------------------------- v8 (calm-eagle-670 msg_8ed9b50b): the
+# ---------------------------------------------------------------- exit decision is anchored to a registered claim set
+echo "== v8: the booked claim set, the registration, and the gate under final_verdict"
+for f in $PKTS; do
+  b=$(basename "$f")
+  for fn in cs_check register_claims book_case_set restore_booked_set; do grep_in "$b defines $fn" "$f" "$fn() {"; done
+  grep_in "$b declares LEGS_BOOKED" "$f" 'LEGS_BOOKED='
+  grep_in "$b declares the booked claim list" "$f" 'CLAIMS_ALL='
+  grep_in "$b counts the booked claims" "$f" 'N_CLAIMS_BOOKED=$(printf'
+  grep_in "$b snapshots the booked set so a fixture can restore it" "$f" 'BOOK_LEGS="$LEGS_BOOKED"'
+  grep_in "$b registers into the run directory, not somewhere implied" "$f" '$OUT/claims-registered.txt'
+  grep_in "$b states what v8 changes" "$f" '# WHAT v8 CHANGES (calm-eagle-670 msg_8ed9b50b)'
+  grep_in "$b says plainly what the fail-open was" "$f" 'printed VERDICT=AS_EXPECTED and exited 0'
+done
+grep_in "R4 books its two legs" "$P4" 'LEGS_BOOKED="R4a R4b"'
+grep_in "R4's booked claims are the same names its leg commands name" "$P4" 'CLAIMS_R4a="$N4A"; CLAIMS_R4b="$N4B"'
+grep_in "R5 books its one leg" "$P5" 'LEGS_BOOKED="R5"'
+grep_in "R5's booked claims are the same names its leg command names" "$P5" 'CLAIMS_R5="$N5"'
+grep_in "R6 books its one leg" "$P6" 'LEGS_BOOKED="R6"'
+grep_in "R6's booked claim is the same name its leg command names" "$P6" 'CLAIMS_R6="$N6"'
+# the booked set must be exactly the claim names the leg commands carry, computed, not just grepped
+cl4=$(grep -m1 '^CLAIMS_ALL=' "$P4"); eval "$cl4"
+[ "$(printf '%s\n' $CLAIMS_ALL | sort | tr '\n' ' ')" = "$(printf '%s\n' $N4A $N4B | sort | tr '\n' ' ')" ] && ok || bad "R4's booked claim set is not the set its leg commands name: got [$(printf '%s ' $CLAIMS_ALL)] want [$(printf '%s ' $N4A $N4B)]"
+cl5=$(grep -m1 '^CLAIMS_ALL=' "$P5"); eval "$cl5"
+[ "$(printf '%s\n' $CLAIMS_ALL | sort | tr '\n' ' ')" = "$(printf '%s\n' $N5 | sort | tr '\n' ' ')" ] && ok || bad "R5's booked claim set is not the set its leg command names"
+cl6=$(grep -m1 '^CLAIMS_ALL=' "$P6"); eval "$cl6"
+[ "$(printf '%s\n' $CLAIMS_ALL | sort | tr '\n' ' ')" = "$(printf '%s\n' $N6 | sort | tr '\n' ' ')" ] && ok || bad "R6's booked claim set is not the set its leg command names"
+for f in $PKTS; do
+  n=$(grep -m1 '^N_CLAIMS_BOOKED=' "$f"); c=$(grep -m1 '^CLAIMS_ALL=' "$f"); eval "$c"
+  wc_=$(printf '%s\n' $CLAIMS_ALL | grep -c .)
+  grep -q "N_CLAIMS_BOOKED=\$(printf" "$f" && ok || bad "$(basename "$f") does not compute its booked claim count"
+  case "$(basename "$f")" in *_r4_*) want=6;; *_r5_*) want=5;; *) want=1;; esac
+  [ "$wc_" = "$want" ] && ok || bad "$(basename "$f") books $wc_ claims, this row has $want"
+done
+# ordering: register before any leg writes evidence; cs_check before anything is summed
+for f in $PKTS; do
+  b=$(basename "$f")
+  lreg=$(grep -n 'regmsg=$(register_claims 2>&1)' "$f" | head -1 | cut -d: -f1)
+  lcs=$(grep -n '^cs_check() {' "$f" | head -1 | cut -d: -f1)
+  lfv=$(grep -n 'final_verdict() {' "$f" | head -1 | cut -d: -f1)
+  lgate=$(grep -n 'if ! cs_check; then' "$f" | head -1 | cut -d: -f1)
+  lsum=$(awk -v s="$lfv" 'NR>s && /for f in "\$OUT"\/\*\.classes; do/ {print NR; exit}' "$f")
+  lloop=$(grep -n '^leg \|^leg  ' "$f" | head -1 | cut -d: -f1)
+  [ -n "$lreg" ] && ok || bad "$b never registers the booked claim set in its run path"
+  [ -n "$lloop" ] && [ "$lreg" -lt "$lloop" ] && ok || bad "$b registers the claim set after its first leg call"
+  [ -n "$lgate" ] && [ "$lgate" -gt "$lfv" ] && ok || bad "$b's final_verdict does not call cs_check"
+  [ -n "$lgate" ] && [ "$lgate" -lt "$lsum" ] && ok || bad "$b sums classes files before consulting the claim-set gate"
+  grep_in "$b also gates that the booked leg count is the leg count it runs" "$f" 'nbl_booked='
+  grep_in "$b refuses a registration that disagrees with its own constants" "$f" 'the booked claim set could not be registered'
+done
+# the shipped cs_check, extracted and fed synthetic states, independent of the packet's own fixture harness
+csx() { # csx <label> <expected rc> <expected substring> <setup>
+  local label=$1 wantrc=$2 wantpat=$3 setup=$4 out rc
+  rm -rf "$SB/cs"; mkdir -p "$SB/cs"
+  out=$(bash -c "set -u; source '$SB/h4.sh'; OUT='$SB/cs'; O='$SB/cs/receipt.txt'
+    LEGS_BOOKED='LEGX LEGY'; CLAIMS_ALL='a b c d'; CLAIMS_LEGX='a b'; CLAIMS_LEGY='c d'; N_CLAIMS_BOOKED=4; N_LEGS=2
+    $setup
+    cs_check; printf 'rc=%s cause=[%s]\\n' \"\$?\" \"\$CS_CAUSE\"" 2>&1)
+  rc=$(printf '%s\n' "$out" | sed -n 's/^rc=\([0-9]*\) .*/\1/p')
+  if [ "$rc" = "$wantrc" ] && printf '%s\n' "$out" | grep -q -- "$wantpat"; then
+    echo "  ok   $label"; PASS_N=$((PASS_N+1))
+  else
+    bad "$label (want rc $wantrc and [$wantpat]; got: $(printf '%s\n' "$out" | tail -1))"; return
+  fi; }
+csx "a complete set is countable" 0 'cause=\[\]' '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"
+  printf "%s\n" "a HELD" "b HELD" > "$OUT/LEGX.classes"
+  printf "%s\n" "c HELD" "d HELD" > "$OUT/LEGY.classes"'
+csx "no classes files at all is NOT countable" 1 classes-file-count '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"'
+csx "one booked leg has no classes file at all" 1 leg-file-missing:LEGY '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"
+  printf "%s\n" "a HELD" "b HELD" > "$OUT/LEGX.classes"'
+csx "a booked leg whose classes file is short of its claims is NOT countable" 1 claim-count:LEGX '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"
+  printf "%s\n" "a HELD" > "$OUT/LEGX.classes"
+  printf "%s\n" "c HELD" "d HELD" > "$OUT/LEGY.classes"'
+csx "an extra, unregistered claim is NOT countable" 1 claim-unregistered '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"
+  printf "%s\n" "a HELD" "b HELD" "zzz HELD" > "$OUT/LEGX.classes"
+  printf "%s\n" "c HELD" "d HELD" > "$OUT/LEGY.classes"'
+csx "a claim named twice is NOT countable" 1 claim-duplicated '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"
+  printf "%s\n" "a HELD" "b HELD" "b HELD" > "$OUT/LEGX.classes"
+  printf "%s\n" "c HELD" "d HELD" > "$OUT/LEGY.classes"'
+csx "a file for a leg that was never booked is NOT countable" 1 classes-file-not-booked '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"
+  printf "%s\n" "a HELD" "b HELD" > "$OUT/LEGX.classes"
+  printf "%s\n" "c HELD" "d HELD" > "$OUT/LEGY.classes"
+  printf "%s\n" "a HELD" > "$OUT/LEGZ.classes"'
+csx "a short or tampered registration is refused" 1 registration-claim-count '
+  printf "%s\n" "LEGX a" "LEGX b" > "$OUT/claims-registered.txt"'
+csx "a registration naming a claim this packet does not book is refused" 1 claim-not-booked '
+  printf "%s\n" "LEGX a" "LEGX zzz" "LEGY c" "LEGY d" > "$OUT/claims-registered.txt"'
+csx "no registration at all is refused" 1 registration-missing-or-empty 'true'
+csx "a booked leg whose registered claims are absent from the registration is refused" 1 claim-not-registered '
+  printf "%s\n" "LEGX a" "LEGX b" "LEGY c" "LEGY c" > "$OUT/claims-registered.txt"'
+# the writer itself: exactly the booked pairs, and it refuses sets it cannot produce
+rm -rf "$SB/csw"; mkdir -p "$SB/csw"
+check_out "the writer produces exactly the booked registration" 0 "LEGX a LEGX b LEGY c LEGY d" bash -c "source '$SB/h4.sh'
+  OUT='$SB/csw'; LEGS_BOOKED='LEGX LEGY'; CLAIMS_ALL='a b c d'; CLAIMS_LEGX='a b'; CLAIMS_LEGY='c d'; N_CLAIMS_BOOKED=4
+  register_claims >/dev/null 2>&1; tr '\n' ' ' < \"\$OUT/claims-registered.txt\""
+check_out "the writer refuses a booked leg that declares no claims" 1 "declares no claims" bash -c "source '$SB/h4.sh'
+  OUT='$SB/csw'; LEGS_BOOKED='LEGX LEGY'; CLAIMS_ALL='a b'; CLAIMS_LEGX='a b'; CLAIMS_LEGY=''; N_CLAIMS_BOOKED=2
+  register_claims 2>&1"
+check_out "the writer refuses a registration whose count disagrees with the booked set" 1 "names 1 claims" bash -c "source '$SB/h4.sh'
+  OUT='$SB/csw2'; mkdir -p '$SB/csw2'; LEGS_BOOKED='LEGX'; CLAIMS_ALL='a b'; CLAIMS_LEGX='a'; N_CLAIMS_BOOKED=2
+  register_claims 2>&1"
+# negative controls: each must make the packet's own fixtures fail
+cat > "$SB/mut25.py" <<'PY25'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = '  if ! cs_check; then'
+assert old in s
+open(p,"w").write(s.replace(old,'  if false; then',1))
+PY25
+cat > "$SB/mut26.py" <<'PY26'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = "  local nbl; nbl=$(printf '%s\\n' $LEGS_BOOKED | grep -c .)"
+assert old in s
+open(p,"w").write(s.replace(old,'  local nbl=0',1))
+PY26
+cat > "$SB/mut27.py" <<'PY27'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = "      printf '%s %s\\n' \"$L\" \"$n\" >> \"$OUT/claims-registered.txt\""
+assert old in s
+open(p,"w").write(s.replace(old,'      true',1))
+PY27
+for mu in 25 26 27; do
+  negctl "cs_check/registration neutered (mutation $mu applied to the R4 packet)" "$P4" "$SB/mut$mu.py"
+  negctl "cs_check/registration neutered (mutation $mu applied to the R5 packet)" "$P5" "$SB/mut$mu.py"
+  negctl "cs_check/registration neutered (mutation $mu applied to the R6 packet)" "$P6" "$SB/mut$mu.py"
+done
+# the run-path registration call is not exercised by fixtures, so it is checked by grep on a mutated copy
+cp "$P4" "$SB/negcs.sh"
+python3 - "$SB/negcs.sh" <<'PY28'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'regmsg=$(register_claims 2>&1)'
+assert old in s
+open(p,"w").write(s.replace(old,'regmsg=""',1))
+PY28
+grep -q 'regmsg=$(register_claims 2>&1)' "$P4" && ok || bad "the shipped R4 packet does not register the claim set in its run path"
+grep -q 'regmsg=$(register_claims 2>&1)' "$SB/negcs.sh" && bad "the mutated copy still registers" || ok
+grep -q 'regmsg=$(register_claims 2>&1)' "$P5" && grep -q 'regmsg=$(register_claims 2>&1)' "$P6" && ok || bad "R5 or R6 lost the run-path registration"
 
 echo
 echo "SELF-TEST: $PASS_N passed, $FAIL_N failed, $SKIP_N skipped"
