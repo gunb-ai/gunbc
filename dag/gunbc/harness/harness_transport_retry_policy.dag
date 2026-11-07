@@ -2,6 +2,8 @@ module gunbc.harness.harness_transport_retry_policy
 
 import std.types { String, Int, Bool, EpochSecs }
 import std.measure { Second, second, second_count }
+import std.host_text { chars }
+import std.unicode.char_class { unicode_char_code_point }
 
 // ── WHEN THE BELT RE-DELIVERS A PATIENT REQUEST: the re-delivery schedule, kept apart ────────────────
 //
@@ -80,13 +82,15 @@ fn transport_retry_gap_after(gap: Int, cap: Int, doublings_left: Int) -> Int {
   }
 }
 
-// THE SESSION'S OFFSET: small, stable for one session, different across sessions.
+// THE SESSION'S OFFSET: small, stable for one session, different across sessions. The key is read through
+// the declared host-text unfold (std.host_text chars) and each scalar through its declared code point
+// (std.unicode.char_class unicode_char_code_point), never an implicit Char-to-Int (review 91933).
 fn transport_retry_offset_seconds(policy: HarnessTransportRetryPolicy, session_key: String) -> Int {
   let spread = second_count(s: policy.offset_spread) as Int
   if spread <= 1 {
     0
   } else {
-    fold(chars(s: session_key), init: 0, f: (acc, c) => (acc + c) % spread)
+    fold(chars(text: session_key), init: 0, f: (acc, c) => (acc + unicode_char_code_point(c: c)) % spread)
   }
 }
 
