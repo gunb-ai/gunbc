@@ -1,7 +1,7 @@
 module product.p4261.e1_receipt_join
 
 import std.types { Char, List, NonEmptyStr, String }
-import v2.std.text { char_eq, string_join }
+import v2.std.text { string_join }
 import std.algebra { Cons, Empty, is_empty, string_contains }
 import std.optional { Absent, Present }
 import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
@@ -209,24 +209,13 @@ fn flat_glyphs(lines: List<ReducedLine>) -> List<Char> {
   }
 }
 
-fn chars_eq(a: List<Char>, b: List<Char>) -> Bool {
-  match a {
-    Empty => is_empty(xs: b)
-    Cons { head: x, tail: xs } =>
-      match b {
-        Empty => false
-        Cons { head: y, tail: ys } => char_eq(a: x, b: y) && chars_eq(a: xs, b: ys)
-      }
-  }
-}
-
 fn glyphs_equal_ignoring_separators(model: NonEmptyStr, receipt: NonEmptyStr) -> Bool {
   match reduced_marking(text: model) {
     ReductionUnavailable { why: _ } => false
     Reduced { lines: m } =>
       match reduced_marking(text: receipt) {
         ReductionUnavailable { why: _ } => false
-        Reduced { lines: r } => chars_eq(a: flat_glyphs(lines: m), b: flat_glyphs(lines: r))
+        Reduced { lines: r } => flat_glyphs(lines: m) == flat_glyphs(lines: r)
       }
   }
 }

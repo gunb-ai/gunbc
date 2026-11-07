@@ -494,9 +494,6 @@ fn plain_receipt(r: ReceiptMarking, text: NonEmptyStr) -> ReceiptMarking {
   }
 }
 
-fn relates_as_cannot_align(j: SpanJoin) -> Bool {
-  arm_is_cannot_align(j: j)
-}
 
 test fn join_7_equal_glyphs_with_no_receipt_separator_cannot_align_and_a_glyph_change_conflicts() -> Bool {
   match u49_row() {
@@ -506,15 +503,10 @@ test fn join_7_equal_glyphs_with_no_receipt_separator_cannot_align_and_a_glyph_c
       let unstated = relate_receipt(model: model, r: plain_receipt(r: r, text: "P617A 01 14 226"), rulings: [])
       let mutated = relate_receipt(model: model, r: plain_receipt(r: r, text: "P617B 01 14 226"), rulings: [])
       let moved = relate_receipt(model: model, r: plain_receipt(r: r, text: "P617A 01 / 14 226"), rulings: [])
-      relates_as_cannot_align(j: unstated) && related_is(j: mutated, want_agrees: false) && !relates_as_cannot_align(j: mutated)
-        && related_is(j: moved, want_agrees: false) && !relates_as_cannot_align(j: moved)
+      arm_is_cannot_align(j: unstated) && related_is(j: mutated, want_agrees: false) && !arm_is_cannot_align(j: mutated)
+        && related_is(j: moved, want_agrees: false) && !arm_is_cannot_align(j: moved)
     }
   }
-}
-
-fn only_cannot_align_exactly(designator: NonEmptyStr) -> Bool {
-  let js = joins_of(designator: designator)
-  count_where(xs: js, predicate: arm_is_cannot_align) >= 1 && count_where(xs: js, predicate: arm_is_conflict) == count_where(xs: js, predicate: arm_is_cannot_align)
 }
 
 fn has_definite_conflict(designator: NonEmptyStr) -> Bool {
@@ -523,6 +515,6 @@ fn has_definite_conflict(designator: NonEmptyStr) -> Bool {
 }
 
 test fn join_8_u10_u19_u95_cannot_align_and_u520_stays_a_conflict() -> Bool {
-  only_cannot_align_exactly(designator: "U10") && only_cannot_align_exactly(designator: "U19") && only_cannot_align_exactly(designator: "U95")
+  only_cannot_align(designator: "U10") && only_cannot_align(designator: "U19") && only_cannot_align(designator: "U95")
     && has_definite_conflict(designator: "U520")
 }
