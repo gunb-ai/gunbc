@@ -25,6 +25,11 @@ import product.electrical.bench_session {
   ForcedCurrentReading,
   is_at_baseline,
   NodeVoltageObservation,
+  polarity_text,
+  PolarityUnrecorded,
+  range_text,
+  RedOnFirst,
+  RedOnSecond,
   resistance_display_text,
   ResistanceObservation,
   value_text,
@@ -567,13 +572,17 @@ fn node_lines(x: List<ReadingExclusion>, n: SheetNode) -> List<DrawnLine> {
     map(n.continuations, c => DrawnLine { kind: "unknown", text: join(["? ", c.key as String, ": ", c.unknown as String], "") }))
 }
 
-fn readings_text(os: List<ResistanceObservation>) -> String {
-  join(map(os, o => resistance_display_text(d: o.display)), " / ")
+// Each reading of a link on its own line, with its range and which point the red probe was on: a pair read
+// both ways round, or on more than one range, is evidence by its direction and range, not only its value.
+fn reading_line(o: ResistanceObservation) -> String {
+  join(["      ", resistance_display_text(d: o.display), range_text(r: o.range), polarity_text(o: o)], "")
 }
 
 fn link_lines(s: PartialSheet) -> List<DrawnLine> {
   concat([DrawnLine { kind: "head", text: "MEASURED LINKS (bound the path, join nothing)" }],
-    map(s.links, l => DrawnLine { kind: "link", text: join([l.key as String, ": ", tt(t: l.first), "  to  ", tt(t: l.second), "   ", readings_text(os: l.observed)], "") }))
+    flat_map(s.links, l => concat(
+      [DrawnLine { kind: "link", text: join([l.key as String, ": ", tt(t: l.first), "  to  ", tt(t: l.second)], "") }],
+      map(l.observed, o => DrawnLine { kind: "link", text: reading_line(o: o) }))))
 }
 
 fn role_lines(s: PartialSheet) -> List<DrawnLine> {
@@ -762,9 +771,29 @@ fn connection_svg(s: PartialSheet, c: ProposedConnection) -> List<String> {
   between(l: s.layout, a: c.first.sheet, b: c.second.sheet, style: if connection_joins(x: s.excluded, c: c) { joined_style } else { proposed_style }, label: "", label_style: "")
 }
 
-// A reading as the drawing labels it: the value and the range it was read on, short enough to sit on a
-// line. The report below the drawing carries each reading in full.
-fn short_reading(o: ResistanceObservation) -> String {
+// The terminal the red probe was on, if recorded.
+fn red_terminal(o: ResistanceObservation) -> List<ElectricalTerminalRef> {
+  match o.polarity {
+    RedOnFirst => [o.first]
+    RedOnSecond => [o.second]
+    PolarityUnrecorded => []
+  }
+}
+
+// A link read both ways round: its recorded red probes sit on both of its points.
+fn read_both_ways(k: MeasuredLink) -> Bool {
+  let reds = flat_map(k.observed, o => red_terminal(o: o))
+  count(filter(reds, t => terminal_ref_equal(a: t, b: k.first))) > 0 && count(filter(reds, t => terminal_ref_equal(a: t, b: k.second))) > 0
+}
+
+// A point as the drawing names it: its part's label and its pin's label.
+fn place_name(l: SheetLayout, t: ElectricalTerminalRef) -> String {
+  join(concat(map(symbols_of(l: l, c: t.component), y => y.label as String), flat_map(pins_at(l: l, t: t), p => if p.label == "" { [] } else { [p.label] })), " ")
+}
+
+// A reading as the drawing labels it: the value and the range it was read on, and, on a link read both ways
+// round, where the red probe was. The report below the drawing carries each reading in full.
+fn short_reading(l: SheetLayout, k: MeasuredLink, o: ResistanceObservation) -> String {
   let value = match o.display {
     DisplayValue { ohms, approximate } => join([if approximate { "~" } else { "" }, to_string(ohms)], "")
     DisplayAtProbeBaseline { shown: _, baseline: _ } => "baseline"
@@ -772,19 +801,20 @@ fn short_reading(o: ResistanceObservation) -> String {
     DisplayAboveBaseline => "above baseline"
     DisplayOverRange => "OL"
   }
-  match o.range {
+  let ranged = match o.range {
     RangeFullScale { ohms } => join([value, " (", to_string(ohms), " range)"], "")
     AutoRanging => value
     RangeUnrecorded => value
   }
+  if read_both_ways(k: k) { join(concat([ranged], map(red_terminal(o: o), t => join([" red on ", place_name(l: l, t: t)], ""))), "") } else { ranged }
 }
 
-fn short_readings(os: List<ResistanceObservation>) -> String {
-  join(map(os, o => short_reading(o: o)), " / ")
+fn short_readings(l: SheetLayout, k: MeasuredLink) -> String {
+  join(map(k.observed, o => short_reading(l: l, k: k, o: o)), " / ")
 }
 
 fn link_svg(s: PartialSheet, k: MeasuredLink) -> List<String> {
-  between(l: s.layout, a: k.first, b: k.second, style: link_style, label: join([short_readings(os: k.observed), " ohm"], ""), label_style: "fill=\"#555\"")
+  between(l: s.layout, a: k.first, b: k.second, style: link_style, label: join([short_readings(l: s.layout, k: k), " ohm"], ""), label_style: "fill=\"#555\"")
 }
 
 fn datasheet_svg(l: SheetLayout, n: SheetNode, d: DatasheetMember) -> List<String> {
@@ -850,7 +880,7 @@ fn every_drawn_text(s: PartialSheet) -> List<String> {
     map(s.layout.symbols, y => y.label as String)),
     map(s.layout.pins, p => p.label)),
     map(s.layout.stubs, x => x.key as String)),
-    map(s.links, k => short_readings(os: k.observed)))
+    map(s.links, k => short_readings(l: s.layout, k: k)))
 }
 
 fn sheet_drawable(s: PartialSheet) -> Bool {

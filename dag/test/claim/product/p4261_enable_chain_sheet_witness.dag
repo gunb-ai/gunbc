@@ -9,7 +9,9 @@ module test.claim.product.p4261_enable_chain_sheet_witness
 //   * P6 is pin 7's node by the operator's ruling: the sheet draws the ruling as a continuation and no
 //     node reaches both.
 //   * The kilohm readings from Q300's lead b are links, each citing its readings, and a link citing a
-//     reading between other points is refused.
+//     reading between other points is refused. A link read both ways round keeps its direction: the
+//     report gives every reading's range and red-probe point, and the drawing names the red probe's
+//     point on such a link.
 //   * Lead roles are candidates on physical leads, and an identical correspondence that names two
 //     different terminals is refused.
 //   * The hypothesis is the investigation's own, cited once, with candidates beyond the sheet.
@@ -54,6 +56,7 @@ import product.p4261.sheet {
   nodes_disjoint,
   observed_between,
   ProposedConnection,
+  read_both_ways,
   SeriesUnresolved,
   sheet_drawable,
 }
@@ -101,6 +104,16 @@ test fn an_identical_correspondence_naming_two_terminals_is_refused() -> Bool {
     observed: observed_between(os: e1_resistances, a: e1_q301_lead_a, b: e1_ground_ref),
   }
   count(wrong.observed) > 0 && !connection_admissible(x: enable_chain_sheet.excluded, c: wrong)
+}
+
+// Pin 7 to the return read about 535 ohm with red on J20's lead and 11 kohm with red on pin 7: the
+// direction is the evidence that the path is one-way, so neither the drawing nor the report may drop it.
+test fn a_link_read_both_ways_keeps_its_direction() -> Bool {
+  let svg = enable_chain_sheet_svg()
+  count(filter(enable_links, l => l.key == "pin7-to-return" && read_both_ways(k: l))) == 1
+    && string_contains(s: svg, pattern: "~535 red on J20 return (black lead)")
+    && string_contains(s: svg, pattern: "red on U1_P5 (LM5066I) pin 7")
+    && string_contains(s: svg, pattern: "about 535 ohm, range unrecorded, red probe on")
 }
 
 test fn lead_roles_are_candidates_on_physical_leads() -> Bool {
