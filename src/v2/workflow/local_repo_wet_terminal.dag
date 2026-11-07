@@ -3998,16 +3998,19 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // existed in dag/ with ZERO rows here, so `claim_batch` was skipping every claim in it -- the
     // exact silent-skip the spawn witness's own header records ("my earlier 11-fn run missed 8
     // claims that way"). Scheduling them is what makes them run; it is not new coverage, and the
-    // propositions are the ones those claims already stated. These are the NINETEEN that hold on a
-    // host with NO systemd at all and ONE principal -- measured wet, one process, at the head they
-    // are scheduled at. The ELEVEN that are NOT scheduled are the nine whose verdict needs a root
-    // launcher (the production system-manager route: sudo, `systemd-run`, `User=` from the row), the
-    // unsandboxed control (it reaches the launcher through the same helper and so dies on the absent
+    // propositions are the ones those claims already stated. What is scheduled here is exactly the
+    // set that holds on a host with NO systemd at all and ONE principal -- measured wet, one process,
+    // at the head it is scheduled at; the rows below ARE that set, so no count of it is repeated in
+    // prose here where it would silently disagree with them (a count belongs in a carrier that cannot
+    // drift). What is deliberately NOT scheduled is the set whose verdict needs a root launcher (the
+    // production system-manager route: sudo, `systemd-run`, `User=` from the row), the unsandboxed
+    // control (it reaches the launcher through the same helper and so dies on the absent
     // `systemd-run`), and the serve-binary claim, which needs a binary the operator names in the
-    // environment. On a host without them those eleven are unrunnable, not false, and a lane full of
-    // unrunnable-red rows tells the join nothing. All eleven are named one by one under "Known gaps,
-    // NOT covered" in the PR body of the follow-up that moved them off the live lab root, and they run
-    // on the srv2 host, which answers `sudo -n true` with rc=0.
+    // environment. On a host without those, that set is unrunnable rather than false, and a lane full
+    // of unrunnable-red rows tells the join nothing. Every member of it is named one by one in two
+    // carriers that do not drift: the `FNS_LAUNCH` roster of the srv2 script published in this PR's
+    // body, and the "Known gaps, NOT covered" list beside it. They run on the srv2 host, which
+    // answers `sudo -n true` with rc=0.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "a_refusal_the_principal_could_not_have_been_denied_otherwise_reads_inconclusive" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
@@ -4153,8 +4156,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     // above them in the entry file.
     // THE PRE-LAUNCH ASSERTION OF THE PRODUCTION LAUNCH ROUTE, asserted without a launch: paths in
     // the claim's own root, the row's worker identity in User=, and the claim's mktemp leaf inside the
-    // unit name. It runs here because it needs no systemd and no sudo, which is what keeps the gate
-    // the eleven unscheduled launch claims sit behind falsifiable in the wet lane.
+    // unit name. It runs here because it needs no systemd and no sudo, which is what keeps the gate the
+    // unscheduled launch claims sit behind falsifiable in the wet lane: those legs are unrunnable here,
+    // so the assertion that their argv and paths are shaped right is the part this lane CAN falsify.
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_supplied_plan_reaches_only_the_claim_root" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
