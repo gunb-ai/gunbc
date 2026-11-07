@@ -1,0 +1,47 @@
+module gunbc.recurring_failure_mode.a_wet_claim_that_cannot_observe_reads_green
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A WET CLAIM THAT COULD NOT EXERCISE THE THING IT SET OUT TO MEASURE MUST NOT PRINT PASS. Claims on the wet
+// lane return Bool, so a claim has two ways to answer a host that lacks a capability it needs, and both are
+// wrong: print true with an explanatory stage line (a green whose cost was the shape of a run that never
+// happened), or print false and bury a host limitation among real defects. Found 2026-11-07 while measuring the
+// cost shape of the helper-locus install fold for PR #15794: the whole-tree fold claim PASSED locally in 430,047
+// eval steps where the same claim on a host that could elevate cost 27.47M -- because without sudo the fold
+// refuses at its elevation probe BEFORE it touches a file, and the claim accepted that refusal as a host fact and
+// reported success. Every local "N PASS" number that lane produced was counting greens that had observed nothing.
+
+data a_wet_claim_that_cannot_observe_reads_green: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_wet_claim_that_cannot_observe_reads_green" as NonEmptyStr,
+
+  // OUTSIDE THE LADDER, on DESIGN section 5's rule that wrongness with no observable has no rung: no claim in the
+  // corpus goes red when a claim's subject never ran, because the only thing a reader could test -- "did the thing
+  // I meant to measure actually happen" -- lives in the claim's own head and is reported as the same Bool as a
+  // real green. The ceiling is structural, not procedural: a third verdict on the lane makes the distinction part
+  // of the claim's TYPE, so a claim cannot print PASS without having produced an observation, instead of every
+  // author remembering to annotate. ClimbableButUnbuilt, because the carrier already exists in the sibling lane
+  // and only the wet runner has to accept it.
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the wet lane's runner accepting ClaimRouteVerdict, the carrier target-invocation claims already return, so a claim reports Unobserved with the capability it needed as a verdict and the batch prints UNOBSERVED rather than PASS or FAIL"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE:** a claim whose subject requires a capability the host lacks prints PASS, and the only trace is prose in its stage trail. Measured 2026-11-07: the whole-tree install-fold claim PASSED at 430,047 eval steps / 320 ms cpu on a uid=1000 container with no elevation, against 27.47M eval steps / 668-913 s for the same claim on an elevating host -- the install phase contributed nothing on the first host and the claim did not know. The interim control, added the same day: such an arm fails and writes `[witness] not-observed: <claim> capability=<cap>` to the stage trail, the S1 script tallies NOT_OBSERVED separately from PASS and FAIL, refuses a run on a host that HAS the capability if any not-observed line appears, and the packet reports observed PASS / not-observed / FAIL as three numbers. That is a CONVENTION, and a convention is one careless edit away from being a green again -- which is why the row stands below its ceiling rather than being closed by it.",
+    "**WHERE IT BIT:** the fold-cost claims and the install-half measurement claim. The refusal arm of the install route used to accept `reason == <the documented elevation cause>` as a complete answer, which is true on a sudo-less host and a defect on an elevating one; it now additionally requires the capability to be genuinely absent, so a refusal where elevation exists is a plain red, and the not-observed line is only earned when the host really cannot do it.",
+  ],
+
+  evidence: [
+    "The measurement that exposed it, same corpus and binary lineage: plant+observe+fold over the whole tree PASSED at 430,047 eval steps locally, where the observe pass alone over 10,117 files costs 429,788 and the install half on srv2 costs ~27.47M -- so the local green was plant plus observation with the fold refusing at its elevation probe.",
+    "The distinction the lane is missing exists elsewhere in the corpus: target-invocation claims return route verdicts and `ClaimRouteVerdict::ClaimUnobserved` is rendered as UNOBSERVED by the host, which is the shape this row's ceiling asks the wet lane to adopt.",
+    "Not claimed by this row: that the interim marker is a verdict. It is a log line a runner counts. A claim that stopped writing it, or wrote it while returning true, would be caught only by the S1 script's tally -- which is not a claim, and not a gate on any other host.",
+  ],
+}
