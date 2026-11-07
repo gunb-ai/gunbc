@@ -320,6 +320,7 @@ fn stage0_std_core_modules() -> List<String> {
       "std_generated_provider",
       "std_source_annotation",
       "std_kernel_type_name",
+      "std_kernel_declaration_binding",
       "std_target_representation",
       "std_literal_elaboration",
       "std_operator_realization",

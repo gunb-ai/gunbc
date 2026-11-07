@@ -26,6 +26,7 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_kernel_declaration_binding::kernel_binding_for_declaration;
 use crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound;
 pub use crate::std_literal_elaboration::{
     kernel_mint_declaration_for, KernelMintDeclarationLookup,
@@ -4454,23 +4455,32 @@ pub fn kernel_settled_name(
                     declaration: d,
                     ..
                 } => {
-                    if (fuel.clone() <= 0) {
-                        break std::option::Option::None;
-                    } else {
-                        match alias_rhs_of_declaration(d.clone(), env.clone()) {
-                            std::option::Option::None => {
+                    match crate::std_kernel_declaration_binding::kernel_binding_for_declaration(
+                        d.clone(),
+                    ) {
+                        Some(row) => {
+                            break Some(row.spelling.clone());
+                        }
+                        std::option::Option::None => {
+                            if (fuel.clone() <= 0) {
                                 break std::option::Option::None;
-                            }
-                            Some(rhs) => {
-                                let __tco_0 = rhs.clone();
-                                let __tco_1 = source_indices;
-                                let __tco_2 = env;
-                                let __tco_3 = v1_rt::int_sub(fuel, 1);
-                                __tco_loop_n = __tco_0;
-                                __tco_loop_source_indices = __tco_1;
-                                __tco_loop_env = __tco_2;
-                                __tco_loop_fuel = __tco_3;
-                                continue;
+                            } else {
+                                match alias_rhs_of_declaration(d.clone(), env.clone()) {
+                                    std::option::Option::None => {
+                                        break std::option::Option::None;
+                                    }
+                                    Some(rhs) => {
+                                        let __tco_0 = rhs.clone();
+                                        let __tco_1 = source_indices;
+                                        let __tco_2 = env;
+                                        let __tco_3 = v1_rt::int_sub(fuel, 1);
+                                        __tco_loop_n = __tco_0;
+                                        __tco_loop_source_indices = __tco_1;
+                                        __tco_loop_env = __tco_2;
+                                        __tco_loop_fuel = __tco_3;
+                                        continue;
+                                    }
+                                }
                             }
                         }
                     }
