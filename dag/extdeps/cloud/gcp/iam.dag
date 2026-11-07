@@ -904,7 +904,7 @@ fn acquire_impersonated_access(
   target_service_account: ServiceAccountEmail,
   scopes: List<String>,
   lifetime: String,
-) -> GcpImpersonatedAccessAcquisition uses net: Network {
+) -> GcpImpersonatedAccessAcquisition uses net: Network, clk: std.resources.Clock {
   match observe_acquisition_clock(label: "gcp-iam-generate-access-token") {
     AcquisitionClockUnread { detail: d } => GcpImpersonatedAccessClockUnread { detail: d }
     AcquisitionClockObserved { reading: acq } =>

@@ -1956,7 +1956,7 @@ fn acquire_scoped_installation_token(
   installation_id: Int,
   repositories: List<String>,
   permissions: List<GitHubAppPermission>,
-) -> GitHubInstallationAcquisition uses net: Network {
+) -> GitHubInstallationAcquisition uses net: Network, clk: std.resources.Clock {
   match first_duplicated_permission(perms: permissions) {
     Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
     Absent => acquire_scoped_installation_token_unambiguous(app_jwt: app_jwt, installation_id: installation_id, repositories: repositories, permissions: permissions)
@@ -1968,7 +1968,7 @@ fn acquire_scoped_installation_token_unambiguous(
   installation_id: Int,
   repositories: List<String>,
   permissions: List<GitHubAppPermission>,
-) -> GitHubInstallationAcquisition uses net: Network {
+) -> GitHubInstallationAcquisition uses net: Network, clk: std.resources.Clock {
   match observe_acquisition_clock(label: "github-installation-access-token") {
     AcquisitionClockUnread { detail: d } => GitHubInstallationClockUnread { detail: d }
     AcquisitionClockObserved { reading: acq } =>

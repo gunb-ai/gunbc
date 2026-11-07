@@ -3,14 +3,14 @@ module extdeps.time.rfc3339
 import std.types { Bool, String, NonEmptyStr, Int, brand }
 import std.optional { Present, Absent }
 import std.decimal { decimal_digit_char }
-import std.checked_arithmetic { CheckedInt, CheckedIntReady, checked_add_results, checked_int_multiply }
+import std.checked_arithmetic { CheckedInt, CheckedIntReady, CheckedIntOverflow, checked_add_results, checked_int_multiply, checked_int_subtract }
 import extdeps.units.iso8601_calendar {
   Iso8601CivilDate, iso8601_gregorian_days_in_month, iso8601_seconds_since_midnight, iso8601_unix_seconds_at,
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -188,6 +188,11 @@ fn rfc3339_pow10(n: Int) -> Int {
   if n <= 0 { 1 } else { 10 * rfc3339_pow10(n: n - 1) }
 }
 
+// THE STAGED PARSE IS CONFINED. Each stage after the first takes already-decoded fields, so an
+// unrestricted stage would construct an Rfc3339Instant (and trustworthy-looking spelling facts) from
+// caller-supplied values; every stage admits only the stage before it, and the only entry is
+// rfc3339_parse_instant over text.
+//
 // The fixed 19-character prefix date-fullyear "-" date-month "-" date-mday T time-hour ":" time-minute
 // ":" time-second, with the separator in either case (section 5.6 NOTE).
 data rfc3339_fixed_prefix_width: Int = 19
@@ -227,7 +232,11 @@ fn rfc3339_parse_instant(text: String) -> Rfc3339InstantParse {
   }
 }
 
-fn rfc3339_parse_fields(text: String, width: Int) -> Rfc3339InstantParse {
+fn rfc3339_parse_fields(text: String, width: Int) -> Rfc3339InstantParse
+  admit_callers: [
+    decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant"),
+  ]
+{
   let year = rfc3339_number_in(t: text, start: 0, end: 4, acc: 0)
   let month = rfc3339_number_in(t: text, start: 5, end: 7, acc: 0)
   let day = rfc3339_number_in(t: text, start: 8, end: 10, acc: 0)
@@ -258,7 +267,11 @@ fn rfc3339_parse_fields(text: String, width: Int) -> Rfc3339InstantParse {
 
 data rfc3339_max_fraction_digits: Int = 9
 
-fn rfc3339_parse_fraction(text: String, width: Int, local_seconds: Int, separator_uppercase: Bool) -> Rfc3339InstantParse {
+fn rfc3339_parse_fraction(text: String, width: Int, local_seconds: Int, separator_uppercase: Bool) -> Rfc3339InstantParse
+  admit_callers: [
+    decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_fields"),
+  ]
+{
   if char_at(s: text, pos: rfc3339_fixed_prefix_width) == "." {
     let start = rfc3339_fixed_prefix_width + 1
     let end = rfc3339_digit_run_end(t: text, start: start)
@@ -278,7 +291,11 @@ fn rfc3339_parse_fraction(text: String, width: Int, local_seconds: Int, separato
 
 // time-offset = "Z" / time-numoffset ; time-numoffset = ("+" / "-") time-hour ":" time-minute. The
 // local time minus the offset is UTC (section 4.2).
-fn rfc3339_parse_offset(text: String, width: Int, at: Int, local_seconds: Int, nanos: Int, fraction_digits: Int, separator_uppercase: Bool) -> Rfc3339InstantParse {
+fn rfc3339_parse_offset(text: String, width: Int, at: Int, local_seconds: Int, nanos: Int, fraction_digits: Int, separator_uppercase: Bool) -> Rfc3339InstantParse
+  admit_callers: [
+    decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_fraction"),
+  ]
+{
   let c = if at < width { char_at(s: text, pos: at) } else { "" }
   if c == "Z" || c == "z" {
     if at + 1 != width {
@@ -329,10 +346,14 @@ fn rfc3339_instant_compare(left: Rfc3339Instant, right: Rfc3339Instant) -> Rfc33
 // The signed span later - earlier in nanoseconds, CHECKED: a span wider than a 64-bit nanosecond count
 // (about 292 years) refuses rather than wraps.
 fn rfc3339_instant_nanoseconds_after(later: Rfc3339Instant, earlier: Rfc3339Instant) -> CheckedInt {
-  checked_add_results(
-    a: checked_int_multiply(a: later.unix_seconds - earlier.unix_seconds, b: 1000000000),
-    b: CheckedIntReady { value: later.nanos - earlier.nanos },
-  )
+  match checked_int_subtract(a: later.unix_seconds, b: earlier.unix_seconds) {
+    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    CheckedIntReady { value: seconds } =>
+      checked_add_results(
+        a: checked_int_multiply(a: seconds, b: 1000000000),
+        b: CheckedIntReady { value: later.nanos - earlier.nanos },
+      )
+  }
 }
 
 // An instant at unix seconds plus nanoseconds, for a reading this repository took itself (a wall clock
