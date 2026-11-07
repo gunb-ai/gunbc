@@ -15,7 +15,7 @@ import std.annotation_reference {
   annotation_reference_extraction_concat,
   annotation_reference_extraction_empty,
   annotation_reference_marker,
-  annotation_references,
+  annotation_references_text,
 }
 import v2.cli.population_verbs { PopulationReport }
 import v2.cli.repository_layout { repository_storage_layout }
@@ -117,7 +117,7 @@ fn reference_walk_annotations(walk: ReferenceWalk, file: String, annotations: Li
   let extracted = fold_list(
     xs: annotations,
     empty: annotation_reference_extraction_empty(),
-    cons: fn(acc, a) { annotation_reference_extraction_concat(left: acc, right: annotation_references(text: a.lexeme, start: a.start)) }
+    cons: fn(acc, a) { annotation_reference_extraction_concat(left: acc, right: annotation_references_text(text: a.lexeme, start: a.start)) }
   )
   ReferenceWalk {
     members: walk.members,
