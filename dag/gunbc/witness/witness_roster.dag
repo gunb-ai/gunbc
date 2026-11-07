@@ -170,6 +170,13 @@ type RosterAggregate {
   fail_banner: NonEmptyStr
 }
 
+fn roster_streamed_run(overlay: OverlayIngest, source_roots: List<String>, entry: NonEmptyStr, function: NonEmptyStr) -> Node {
+  bash_build_with_redir(
+    inner: compose_gunbc_run_command(overlay: overlay, source_roots: source_roots, entry: entry, function: function),
+    redir: ^bash_production_fold_redir_stderr_to_stdout,
+  )
+}
+
 // THE SUBJECT RUN, ASKED OF THE COMPOSITION MODULE. Which compiler over which corpus is
 // gunbc.ci.repository_compose_overlay's fact (compose_gunbc_run_command), not this module's: a second
 // spelling of the launcher is how a gate ends up judging a corpus other than the one it composed. What
@@ -369,23 +376,28 @@ fn roster_refusal_check(entry: NonEmptyStr, cause: NonEmptyStr) -> Node {
   )
 }
 
-// THE ENFORCED VERDICT, printed as one line. Its wording is the repository's own claim - "every enforced
+// THE ENFORCED VERDICT, printed as one line. The run STREAMS its output to the step log as it happens
+// (roster_streamed_run) so a step that outlives its budget still shows its phase lines; the verdict line and
+// a closing date are the exit receipt.
+// Its wording is the repository's own claim - "every enforced
 // witness, in one process" is a statement about how the gate is run, not a generic success string - so
 // both banners are rows on the profile (gunbc.ci.repository_ci_profile RosterAggregate).
 fn roster_enforced_verdict(aggregate: RosterAggregate, overlay: OverlayIngest, source_roots: List<String>) -> List<Node> {
   [
+    roster_echo(text: "roster aggregate: started (output streams live; exit receipt follows)"),
+    roster_command(words: [roster_word(text: "date"), roster_word(text: "-u")]),
     bash_build_if_else(
-      cond: roster_capture_run(overlay: overlay, source_roots: source_roots, name: "out", entry: aggregate.invocation.entry, function: aggregate.invocation.function),
+      cond: roster_streamed_run(overlay: overlay, source_roots: source_roots, entry: aggregate.invocation.entry, function: aggregate.invocation.function),
       then_body: roster_statements(stmts: [
-        roster_echo_variable(name: "out"),
         roster_echo(text: join(["PASS  ", aggregate.pass_banner, " — ", aggregate.invocation.entry as String], "")),
       ]),
       else_body: roster_statements(stmts: [
-        roster_echo_variable(name: "out"),
         roster_echo(text: join(["::error::", aggregate.fail_banner as String], "")),
         roster_flag(name: "fail", value: "1"),
       ])
-    )
+    ),
+    roster_echo(text: "roster aggregate: finished"),
+    roster_command(words: [roster_word(text: "date"), roster_word(text: "-u")])
   ]
 }
 

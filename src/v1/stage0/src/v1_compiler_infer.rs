@@ -12858,6 +12858,38 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
             },
             kernel_diags: Rc::new(vec![]),
         })
+    } else if (func_name.clone() == "concat".to_string()) {
+        Rc::new(Tier2bBt {
+            bt: match typed_args.clone().first().cloned() {
+                Some(receiver_arg) => match crate::v1_std_core::arg_value(receiver_arg.clone())
+                    .inferred
+                    .clone()
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(InferredNode::Resolved {
+                        node: receiver_type,
+                        ..
+                    }) => {
+                        if crate::v1_compiler_infer_types::node_is_collection(
+                            receiver_type.clone(),
+                            scope.type_env.source_indices.clone(),
+                        ) {
+                            receiver_type.clone()
+                        } else {
+                            crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                func_name.clone(),
+                            )
+                        }
+                    }
+                    _ => crate::v1_std_core::error_type(),
+                },
+                std::option::Option::None => {
+                    crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone())
+                }
+            },
+            kernel_diags: Rc::new(vec![]),
+        })
     } else {
         if (func_name.clone() == "with".to_string()) {
             Rc::new(Tier2bBt {

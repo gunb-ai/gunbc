@@ -39,7 +39,6 @@ import extdeps.github.expressions {
 }
 import gunbc.parse_verdict_schema {
   parse_verdict_request_family,
-  parse_compiler_sha_identity_cache_key,
   parse_verdict_restore_identity_basename,
   parse_verdict_restore_receipts_basename,
   parse_verdict_restore_ancestors_basename,
@@ -52,13 +51,15 @@ import gunbc.parse_verdict_publish {
   parse_verdict_generation_one_bin,
   parse_verdict_identity_blob_file,
   parse_verdict_receipts_file,
+  parse_verdict_unit_path,
   parse_verdict_publish_memory_env,
   parse_verdict_cache_working_directory,
 }
 
 // THE PULL-REQUEST SIDE OF THE PARSE-VERDICT CACHE (gunbc.parse_verdict_publish is the main side).
-// A pull-request run restores the two entries main saved for the nearest published ancestor of
-// base.sha, then walks the population with `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
+// A pull-request run restores the ONE cache unit (identity + receipts, same path set, same key) that
+// main saved for the nearest published ancestor of base.sha, then walks the population with
+// `--reuse-from`; the verb (v2.cli.parse_verdict_reuse) reads them and decides each module's
 // standing. NOTHING HERE DECIDES REUSE: a restore that found no entry leaves no file, and the verb
 // reads that as a typed miss (MissIdentityAbsent / MissEntryAbsent), so eviction is a re-parse and
 // never a pass and never an error (gunbc.design_argument::fail_closed). The restore keys are exact; there are no
@@ -180,40 +181,43 @@ fn parse_verdict_locate_step() -> Step {
   }
 }
 
-// FIRST HIT WINS, AND A MISMATCH NEVER FALLS THROUGH. Every ordinal restores onto the SAME path the
-// publisher saved (a cache entry's version hashes its path, so the path is part of the entry's identity
-// and must be the workspace-relative one on both sides), so the chain is gated: ordinal i restores its
-// identity only while no earlier ordinal's identity restore hit. The first published identity is the
-// one the verb decides against; whether its compiler matches is the verb's exact comparison, never a
-// reason to look at the next ancestor.
-fn parse_verdict_identity_restore_id(ordinal: Int) -> String {
-  join(["parse_identity_", int_to_decimal_string(value: ordinal)], "")
+// The restore step carries its own step id so its cache-hit is addressable: the cache key is
+// <prefix><head compiler identity>-<ancestor sha>, so a cache-hit is the COMPLETE-and-COMPATIBLE
+// signal -- it can only hit if that ancestor published under THIS run's compiler identity, which
+// is exactly "compatible identity AND receipts present". One key, one step, one unit.
+fn parse_verdict_receipts_restore_id(ordinal: Int) -> String {
+  join(["parse_receipts_", int_to_decimal_string(value: ordinal)], "")
 }
 
-fn parse_verdict_identity_hit_output(ordinal: Int) -> Expression {
-  ContextAccess { context: Steps, path: [parse_verdict_identity_restore_id(ordinal: ordinal), "outputs", "cache-hit"] }
+fn parse_verdict_receipts_hit_output(ordinal: Int) -> Expression {
+  ContextAccess { context: Steps, path: [parse_verdict_receipts_restore_id(ordinal: ordinal), "outputs", "cache-hit"] }
 }
 
-fn parse_verdict_identity_hit(ordinal: Int) -> Expression {
-  Equals { left: parse_verdict_identity_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
+fn parse_verdict_receipts_hit(ordinal: Int) -> Expression {
+  Equals { left: parse_verdict_receipts_hit_output(ordinal: ordinal), right: StringLiteral { value: "true" } }
 }
 
-fn parse_verdict_identity_restore_condition(ordinal: Int) -> Expression {
+// SELECTION POLICY (declared): the restore chain selects the NEAREST ancestor with a COMPLETE, COMPATIBLE
+// publication -- the first ordinal whose cache-unit restore hit. Identity and receipts are published as
+// ONE unit under a key that embeds the compiler identity, so an identity is never restorable without its
+// receipts by construction: a miss (evicted, never published, or incompatible compiler identity) means
+// BOTH are absent and the chain proceeds to the next ancestor. Exact-match keys are retained; there is
+// no prefix fallback and no restore-keys. This replaces the prior two-entry form (separate sha-only
+// identity blob + receipts key), where a stale identity blob at a sha-only key could stop the search
+// and degrade to a full walk even when an older ancestor had a usable publication.
+
+fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
   fold_list(
     xs: parse_verdict_restore_ancestor_ordinals,
     empty: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope),
     cons: fn(acc, earlier) {
       if earlier < ordinal {
-        LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_identity_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
+        LogicalAnd { left: acc, right: NotEquals { left: parse_verdict_receipts_hit_output(ordinal: earlier), right: StringLiteral { value: "true" } } }
       } else {
         acc
       }
     }
   )
-}
-
-fn parse_verdict_receipts_restore_condition(ordinal: Int) -> Expression {
-  LogicalAnd { left: materialization_scope_guard(scope: GhaCachePullRequestMergeRefScope), right: parse_verdict_identity_hit(ordinal: ordinal) }
 }
 
 fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: String, cache_key: String, condition: Expression) -> Step {
@@ -234,37 +238,24 @@ fn parse_verdict_cache_restore_step(name: String, id: Optional<String>, path: St
   }
 }
 
-fn parse_verdict_identity_restore_step_name(ordinal: Int) -> String {
-  join(["Restore parse-compiler identity for base ancestor ", int_to_decimal_string(value: ordinal)], "")
-}
-
 fn parse_verdict_receipts_restore_step_name(ordinal: Int) -> String {
-  join(["Restore parse-verdict receipts for base ancestor ", int_to_decimal_string(value: ordinal)], "")
-}
-
-fn parse_verdict_identity_restore_step(ordinal: Int) -> Step {
-  parse_verdict_cache_restore_step(
-    name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
-    id: Present { value: parse_verdict_identity_restore_id(ordinal: ordinal) },
-    path: parse_verdict_identity_blob_file(),
-    cache_key: parse_compiler_sha_identity_cache_key(sha: parse_verdict_ancestor_sha_expr(ordinal: ordinal)),
-    condition: parse_verdict_identity_restore_condition(ordinal: ordinal)
-  )
+  join(["Restore parse-verdict unit for base ancestor ", int_to_decimal_string(value: ordinal)], "")
 }
 
 fn parse_verdict_receipts_restore_step(ordinal: Int) -> Step {
   parse_verdict_cache_restore_step(
     name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
-    id: none,
-    path: parse_verdict_receipts_file(),
+    id: Present { value: parse_verdict_receipts_restore_id(ordinal: ordinal) },
+    path: parse_verdict_unit_path(),
     cache_key: parse_verdict_restore_receipts_key(ordinal: ordinal),
     condition: parse_verdict_receipts_restore_condition(ordinal: ordinal)
   )
 }
 
-// THE ANCESTOR THE WALK WILL REPORT: the sha at the first ordinal whose identity restore hit, or
-// empty when none did. The expression is passed to the record step through env, never spliced into
-// the script, because the emitter quotes literals and a quote inside an expression would split it.
+// THE ANCESTOR THE WALK WILL REPORT: the sha at the first ordinal whose RECEIPTS restore hit (the nearest
+// complete, compatible publication), or empty when none did. The expression is passed to the record step
+// through env, never spliced into the script, because the emitter quotes literals and a quote inside an
+// expression would split it.
 fn parse_verdict_restored_ancestor_expression() -> Expression {
   LogicalOr {
     left: fold_list(
@@ -274,7 +265,7 @@ fn parse_verdict_restored_ancestor_expression() -> Expression {
         LogicalOr {
           left: acc,
           right: LogicalAnd {
-            left: parse_verdict_identity_hit(ordinal: ordinal),
+            left: parse_verdict_receipts_hit(ordinal: ordinal),
             right: ContextAccess { context: Steps, path: [parse_verdict_locate_step_id, "outputs", parse_verdict_ordinal_output(ordinal: ordinal)] }
           }
         }

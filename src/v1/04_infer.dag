@@ -8272,6 +8272,28 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
       },
       kernel_diags: []
     }
+  } else if func_name == "concat" {
+    // THE REGISTRY'S String RESULT IS THE SCALAR FREE-MONOID CLAIM, TRUE ONLY WHEN THE RECEIVER IS A
+    // KERNEL SCALAR. concat's template returns ReceiverSelf, and tier0 resolves a collection receiver
+    // before this arm, so a receiver reaching here that is not a ground kernel scalar is UNESTABLISHED
+    // (a fold-algebra lambda parameter bound to a still-unsolved generic: `acc.xs` through NodeFold<R>).
+    // Its result is unestablished too (that receiver's type, or the unresolved type), never a fabricated
+    // String, which #16027's shared relation then judged against a declared List<T> (decl_facts_skeleton
+    // refused at four record fields).
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Present { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Present { value: Resolved { node: receiver_type } } =>
+              if node_is_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                receiver_type
+              } else { resolve_builtin_call_type(name: func_name) }
+            _ => error_type
+          }
+        Absent => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
+    }
   } else if func_name == "map_keys" || func_name == "sorted_map_keys" {
     match typed_args |> first {
       Present { value: receiver_arg } =>
