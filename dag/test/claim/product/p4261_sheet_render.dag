@@ -1,0 +1,26 @@
+module test.claim.product.p4261_sheet_render
+
+// Writes a P4261 partial schematic sheet's drawing, generated from its rows, to the path given:
+//   gunbc run --entry this file --function render_p4261_sheet --arg sheet=<module> --arg path=<file.svg>
+// where <module> is the sheet's module under product.p4261 (near_u4_converter_sheet, enable_chain_sheet).
+// The drawing is a view of the rows, regenerated whenever they change; it is never edited by hand. A sheet
+// that is not drawable -- a drawn terminal with no place, a continuation with no stub, a pin on no part,
+// or a text holding '&' or '<' -- is refused rather than drawn incomplete.
+import std.types { List, NonEmptyStr, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import product.p4261.sheet { PartialSheet, sheet_drawable, sheet_svg }
+import product.p4261.near_u4_converter_sheet { near_u4_converter_sheet }
+import product.p4261.enable_chain_sheet { enable_chain_sheet }
+
+data p4261_sheets: List<PartialSheet> = [near_u4_converter_sheet, enable_chain_sheet]
+
+fn render_p4261_sheet(sheet: NonEmptyStr, path: NonEmptyStr) -> ProcessExit {
+  let found = filter(p4261_sheets, s => s.source == join(["product.p4261.", sheet as String], ""))
+  if count(found) == 0 { exit_failure(reason: join(["no P4261 sheet is the module product.p4261.", sheet as String], "")) } else {
+    if count(filter(found, s => !sheet_drawable(s: s))) > 0 { exit_failure(reason: "the sheet is not drawable: a drawn terminal has no place, a continuation no stub, a pin no part, or a text holds '&' or '<'") } else {
+      let w = Filesystem.Write(path: path as String, content: join(map(found, s => sheet_svg(s: s)), ""))
+      if w.success { ExitSuccess } else { exit_failure(reason: w.error) }
+    }
+  }
+}
