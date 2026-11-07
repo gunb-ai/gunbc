@@ -536,7 +536,7 @@ fn wet_plant_guest_runtime(instance: HostDashboardInstance) -> Bool {
 // not a `wet_stage` side effect is that three different arms have to branch on it.
 type WetLocusState
   = WetLocusReady { revision: String, dir: String }
-  | WetLocusRefused { cause: String }
+  | WetLocusRefused { cause: String, capability: String }
 
 // PREPARE THE LOCUS THE DRAIN AND THE PROBE RUN FROM: stage the operator-named image where production's
 // install fold reads binaries, read the guest tree's own revision out of git, and hand both to the fold
@@ -544,11 +544,31 @@ type WetLocusState
 // Every leg that asks the image to serve anything calls this first: on a host with the elevation the
 // fold needs it converges, and on a host without it the leg refuses with `witness_sudo_elevation_available`'s
 // answer as the cause, which is a refusal with a reason and not a pass.
+// WHICH REFUSALS ARE CAPABILITY ANSWERS, DECIDED WHERE THE KNOWLEDGE IS. The fold refuses for
+// several reasons -- a tree whose commit did not land, a step that faulted, a target that needs
+// elevation -- and only the last one means the leg could not observe anything at all. Deciding it at
+// the reader by comparing cause TEXTS was tried and is wrong twice over: the trail joins label, cause
+// and verdict with ':' and spaces, so the comparison missed; and it reported a real fault on a host
+// that happens to lack sudo as a capability gap, which is the inversion this whole change exists to
+// stop. Empty string means: this refusal WAS observed.
+fn witness_locus_install_refusal_capability(verdict: ApprovalBrokerTreeInstallVerdict) -> String {
+  match verdict {
+    TreeInstallRefused { step: _, reason: reason } =>
+      if reason == (witness_locus_needs_elevation_cause as String) {
+        "sudo-elevation-for-the-helper-locus-install"
+      } else {
+        ""
+      },
+    _ => ""
+  }
+}
+
 fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
   let named = wet_environment_value(name: wet_served_binary_env_var)
   if named == "" {
     WetLocusRefused {
       cause: "GUNBC_WET_SERVE_BINARY is unset, so there is no image to stage into a locus",
+      capability: "served-image-named-by-the-batch",
     }
   } else {
     let revision = witness_guest_tree_revision(instance: instance)
@@ -592,15 +612,20 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
           ],
           "",
         ),
+        capability: "",
       }
     } else if !witness_stage_release_binary(instance: instance, image: named) {
       WetLocusRefused {
         cause: join(["the release stage could not be written at ", witness_release_stage_member(instance: instance)], ""),
+        capability: "",
       }
     } else {
       let verdict = witness_locus_install(instance: instance, revision_text: revision)
       if !witness_locus_install_converged(verdict: verdict) {
-        WetLocusRefused { cause: witness_locus_install_refusal_cause(verdict: verdict) }
+        WetLocusRefused {
+          cause: witness_locus_install_refusal_cause(verdict: verdict),
+          capability: witness_locus_install_refusal_capability(verdict: verdict),
+        }
       } else if !witness_seal_locus_receipt(instance: instance, revision_text: revision) {
         // THE SEAL IS WRITTEN HERE, after the fold and before the readback, because this is the only
         // caller of the fold: every leg that later REUSES this locus will trust the digest this line
@@ -614,7 +639,8 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
               ", so no leg may reuse this locus on a digest",
             ],
             "",
-          )
+          ),
+          capability: "",
         }
       } else if !wet_locus_reads_as_installed(instance: instance, revision_text: revision) {
         // The fold said it converged; the filesystem still gets the last word, because the question the
@@ -628,6 +654,7 @@ fn wet_locus_prepare(instance: HostDashboardInstance) -> WetLocusState {
             ],
             "",
           ),
+          capability: "",
         }
       } else {
         WetLocusReady {
@@ -759,8 +786,8 @@ fn wet_locus_gate(instance: HostDashboardInstance, label: String, claim: String)
       } else {
         Absent
       }
-    WetLocusRefused { cause: cause } =>
-            if wet_locus_gate_refusal_record(label: label, cause: cause, claim: claim) {
+    WetLocusRefused { cause: cause, capability: capability } =>
+            if wet_locus_gate_refusal_record(label: label, cause: cause, claim: claim, capability: capability) {
         Present { value: "" }
       } else {
         Absent
@@ -1200,18 +1227,22 @@ fn wet_not_observed_cause(claim: NonEmptyStr, capability: NonEmptyStr, cause: St
 // FAILs and the local run cannot tell "this host cannot install the locus" from "the leg ran and its conjunct
 // failed"; the S1 script's rule that a not-observed line on an elevating host fails the whole run is what keeps
 // the eleven legs honest on srv2, where this line should be unreachable.
-fn wet_locus_gate_refusal_record(label: String, cause: String, claim: String) -> Bool {
+fn wet_locus_gate_refusal_record(
+  label: String,
+  cause: String,
+  claim: String,
+  capability: String,
+) -> Bool {
   let refusal_written = wet_stage(stage: join(["claim-locus-refused:", label, ":", cause], ""), ok: false)
-  // THE MARKER FOLLOWS THE CAUSE, NOT THE HOST. "This host has no sudo" is not by
-  // itself a reason a locus was refused: the gate also refuses an unsealed receipt or
-  // an obstructed seal, and those refusals are OBSERVED answers -- marking them as a
-  // capability gap would hide a real defect inside a capability line, which is the
-  // same inversion this whole change exists to stop. Only the refusal whose cause
-  // names the elevation requirement is a capability answer.
-  let refusal_names_the_capability = cause == (witness_locus_needs_elevation_cause as String)
-  if refusal_names_the_capability {
+  // THE REFUSAL ITSELF SAYS WHETHER IT IS A CAPABILITY ANSWER. An empty capability means the
+  // refusal was OBSERVED -- an unsealed receipt, an obstructed seal, a fold step that faulted --
+  // and those must never be printed as a capability gap: that hides a defect inside a line the
+  // reader discounts. The refusal state carries the capability from the place that knows it
+  // (`witness_locus_install_refusal_capability`, and the named sites in `wet_locus_prepare`),
+  // not from a comparison of joined trail text and not from the host's sudo inventory.
+  if capability != "" {
     let marked = wet_stage(
-      stage: join(["[witness] not-observed: ", claim, " capability=sudo-elevation-for-the-helper-locus-install"], ""),
+      stage: join(["[witness] not-observed: ", claim, " capability=", capability], ""),
       ok: true,
     )
     refusal_written && marked
