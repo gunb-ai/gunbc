@@ -14,7 +14,7 @@ import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobRunning, JobFinished, JobExitedOutcome,
   harness_kept_stdio_path, harness_stdio_move_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
-  harness_exit_is_harness_backstop, harness_command_table_exit_label,
+  harness_command_table_exit_label,
   harness_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
 import gunbc.harness.harness_shell_job_policy {
@@ -57,7 +57,7 @@ test fn job_kill_refuses_a_finished_job_by_name() -> Bool {
   )
   let with_job = harness_env_with_jobs(
     environment: env,
-    jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 }, elapsed_at_reap: none })],
+    jobs: [fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 0 }, last_seen_running: none, elapsed_at_reap: none })],
     wait_pace: WaitPaceReset,
   )
   let step = harness_kill_job(environment: with_job, id: "42")
@@ -116,7 +116,7 @@ test fn wait_minutes_from_the_wire_are_a_minute_carrier() -> Bool {
 }
 
 test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 3 }, elapsed_at_reap: none })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 3 }, last_seen_running: none, elapsed_at_reap: none })
   let outcome = harness_job_output_for_state(job: job, jobs: [job], text: "from-job")
   let text = harness_outcome_text(outcome: outcome)
   match outcome {
@@ -129,7 +129,7 @@ test fn job_output_of_a_finished_exit_3_job_does_not_say_exit_0() -> Bool {
 }
 
 test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
-  let job = fixture_job(state: JobRunning)
+  let job = fixture_job(state: JobRunning { last_seen_running: none })
   match harness_job_output_for_state(job: job, jobs: [job], text: "so-far") {
     ToolJob { id, text } => id == "42" && text.contains("so-far")
     ToolCompleted { text: _, exit_code: _, standing: _ } => false
@@ -139,7 +139,7 @@ test fn job_output_of_a_running_job_is_not_an_exit() -> Bool {
 }
 
 test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 }, elapsed_at_reap: none })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 1 }, last_seen_running: none, elapsed_at_reap: none })
   let text = harness_outcome_text(outcome: harness_text_with_table(
     text: "a job finished before the wait elapsed",
     jobs: [job],
@@ -150,10 +150,11 @@ test fn wait_result_over_a_job_that_exited_1_does_not_say_exit_0() -> Bool {
 test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bool {
   let standing = harness_backstop_standing(
     code: 124,
-    elapsed: unknown_elapsed(),
+    lower: unknown_elapsed(),
+    upper: unknown_elapsed(),
     backstop: second(count: 20),
   )
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: none })
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: none, elapsed_at_reap: none })
   let outcome = harness_job_backstop_exit_outcome(
     job: job,
     code: 124,
@@ -168,7 +169,7 @@ test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bo
   }
     && match outcome {
       ToolRefused { disposition: _ } =>
-        text.contains("could not be read") && text.contains("backstop cannot be decided")
+        text.contains("exit 124 between unknown and unknown") && text.contains("whether the backstop fired was not observed")
           && !text.contains("[exit 124]") && !text.contains("exceeded the shell-job backstop")
       ToolCompleted { text: _, exit_code: _, standing: _ } => false
       ToolReport { text: _, standing: _ } => false
@@ -178,10 +179,11 @@ test fn a_124_whose_elapsed_time_is_unknown_refuses_rather_than_guessing() -> Bo
       job: job,
       code: 124,
       standing: JobBackstopUndecided,
-    ).contains("backstop undecided")
+    ).contains("whether the backstop fired was not observed")
     && match harness_backstop_standing(
       code: 0,
-      elapsed: unknown_elapsed(),
+      lower: unknown_elapsed(),
+      upper: unknown_elapsed(),
       backstop: second(count: 20),
     ) {
       JobOwnExit => true

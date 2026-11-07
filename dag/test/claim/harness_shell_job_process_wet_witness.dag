@@ -90,7 +90,7 @@ test fn the_expiry_status_inside_the_backstop_is_the_commands_own_exit() -> Bool
   dir.success && out.success && ok
 }
 
-test fn the_backstop_expiry_kills_the_process_group_and_reads_as_the_backstop() -> Bool {
+test fn the_backstop_expiry_kills_the_process_group_and_an_unobserved_exit_reads_undecided() -> Bool {
   let dir = shell.Mktemp.Dir()
   let out = shell.Mktemp.Dir()
   let marker = join([out.path, "/grandchild-28391.pid"], "")
@@ -108,9 +108,9 @@ test fn the_backstop_expiry_kills_the_process_group_and_reads_as_the_backstop() 
         Exited { code } =>
           code == coreutils_timeout_expired_exit_code
             && (match harness_job_backstop_standing(job: job, code: code) {
-              JobBackstopHit => true
+              JobBackstopUndecided => true
               JobOwnExit => false
-              JobBackstopUndecided => false
+              JobBackstopHit => false
             })
         _ => false
       }

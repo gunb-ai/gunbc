@@ -40,7 +40,7 @@ import gunbc.harness.harness_shell_job {
   WaitLoopFinished, WaitLoopExpired, WaitLoopNoRunningJob, harness_kill_running_job,
   JobKillConfirmed, JobKillUnconfirmed,
   harness_refresh_job, harness_job_is_running,
-  harness_job_backstop_standing, HarnessJobBackstopStanding,
+  harness_job_backstop_standing, harness_job_exit_interval_text, HarnessJobBackstopStanding,
   JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
 
@@ -306,8 +306,7 @@ fn harness_job_backstop_exit_outcome(
       ToolRefused {
         disposition: ToolEffectRefused {
           detail: join([
-            "job ", job.id, " exited ", to_string(value: code),
-            " but elapsed time from started_at could not be read, so the harness backstop cannot be decided",
+            "job ", job.id, ": ", harness_job_exit_interval_text(job: job, code: code),
           ], ""),
         },
       }
@@ -328,9 +327,9 @@ fn harness_job_output_for_state(
     text: join([with_note, "\n", harness_command_table(jobs: jobs)], ""),
   )
   match job.state {
-    JobRunning =>
+    JobRunning { last_seen_running: _ } =>
       ToolJob { id: job.id, text: bounded.text }
-    JobFinished { outcome, elapsed_at_reap: _ } =>
+    JobFinished { outcome, last_seen_running: _, elapsed_at_reap: _ } =>
       match outcome {
         JobExitedOutcome { code } =>
           harness_job_backstop_exit_outcome(

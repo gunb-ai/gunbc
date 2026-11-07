@@ -8,7 +8,7 @@ import gunbc.harness.harness_shell_job {
   HarnessShellJob, HarnessShellJobState, JobFinished, harness_job_backstop_standing, JobExitedOutcome,
   harness_kept_stdio_path, harness_stdio_move_note,
   HarnessTerminateProcessGroup, harness_kill_signal_note,
-  harness_exit_is_harness_backstop, harness_command_table_exit_label,
+  harness_command_table_exit_label,
   harness_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
 }
 
@@ -44,12 +44,9 @@ test fn an_unconfirmed_kill_carries_the_terminate_stderr() -> Bool {
     ) == ""
 }
 
-test fn a_124_at_the_backstop_is_duration_exceeded_and_a_124_inside_it_is_not() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: none })
-  harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 20), backstop: second(count: 20))
-    && !harness_exit_is_harness_backstop(code: 124, elapsed: second(count: 1), backstop: second(count: 20))
-    && !harness_exit_is_harness_backstop(code: 0, elapsed: second(count: 20), backstop: second(count: 20))
-    && harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("duration exceeded")
+test fn the_backstop_label_reads_duration_exceeded_and_an_own_exit_reads_its_code() -> Bool {
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: none, elapsed_at_reap: none })
+  harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("duration exceeded")
     && !harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopHit).contains("exit 124")
     && harness_command_table_exit_label(job: job, code: 124, standing: JobOwnExit).contains("exit 124")
 }
@@ -68,14 +65,14 @@ test fn a_failed_stdio_rename_keeps_the_mktemp_path_and_says_so() -> Bool {
 }
 
 test fn a_124_whose_elapsed_time_is_unknown_is_undecided_not_guessed() -> Bool {
-  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: none })
-  (match harness_backstop_standing(code: 124, elapsed: unknown_elapsed(), backstop: second(count: 20)) {
+  let job = fixture_job(state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: none, elapsed_at_reap: none })
+  (match harness_backstop_standing(code: 124, lower: unknown_elapsed(), upper: unknown_elapsed(), backstop: second(count: 20)) {
     JobBackstopUndecided => true
     JobBackstopHit => false
     JobOwnExit => false
   })
-    && harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopUndecided).contains("backstop undecided")
-    && (match harness_backstop_standing(code: 0, elapsed: unknown_elapsed(), backstop: second(count: 20)) {
+    && harness_command_table_exit_label(job: job, code: 124, standing: JobBackstopUndecided).contains("whether the backstop fired was not observed")
+    && (match harness_backstop_standing(code: 0, lower: unknown_elapsed(), upper: unknown_elapsed(), backstop: second(count: 20)) {
       JobOwnExit => true
       JobBackstopHit => false
       JobBackstopUndecided => false
@@ -102,23 +99,56 @@ test fn a_group_signal_has_no_route_from_pid_1_0_or_a_negative_pid() -> Bool {
     })
 }
 
-// The standing of a FINISHED job reads the elapsed time stored at reap, never the clock at render: the
-// fixture's started_at is 1970, so a live read would be decades and every 124 would read as the backstop.
-test fn a_finished_jobs_standing_is_the_stored_elapsed_not_the_clock_at_render() -> Bool {
-  let early = fixture_job(
-    state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: Present { value: second(count: 10) } },
+fn finished_124(lower: Second?, upper: Second?) -> HarnessShellJob {
+  fixture_job(
+    state: JobFinished { outcome: JobExitedOutcome { code: 124 }, last_seen_running: lower, elapsed_at_reap: upper },
   )
-  let late = fixture_job(
-    state: JobFinished { outcome: JobExitedOutcome { code: 124 }, elapsed_at_reap: Present { value: second(count: 20) } },
-  )
-  (match harness_job_backstop_standing(job: early, code: 124) {
+}
+
+// The standing of a FINISHED job is read from the interval [last_seen_running, elapsed_at_reap] bracketing
+// its exit instant, never the clock at render (the fixture's started_at is 1970) and never the reap
+// instant alone: reaping late bounds the exit from above only.
+test fn a_finished_jobs_standing_is_the_stored_interval_not_the_clock_at_render() -> Bool {
+  (match harness_job_backstop_standing(job: finished_124(lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 10) }), code: 124) {
     JobOwnExit => true
     JobBackstopHit => false
     JobBackstopUndecided => false
   })
-    && (match harness_job_backstop_standing(job: late, code: 124) {
+    && (match harness_job_backstop_standing(job: finished_124(lower: Present { value: second(count: 20) }, upper: Present { value: second(count: 21) }), code: 124) {
       JobBackstopHit => true
       JobOwnExit => false
+      JobBackstopUndecided => false
+    })
+}
+
+test fn a_124_reaped_after_the_backstop_that_was_last_seen_running_before_it_is_undecided_not_the_backstop() -> Bool {
+  let straddling = finished_124(lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 30) })
+  let unseen = finished_124(lower: none, upper: Present { value: second(count: 30) })
+  (match harness_job_backstop_standing(job: straddling, code: 124) {
+    JobBackstopUndecided => true
+    JobBackstopHit => false
+    JobOwnExit => false
+  })
+    && (match harness_job_backstop_standing(job: unseen, code: 124) {
+      JobBackstopUndecided => true
+      JobBackstopHit => false
+      JobOwnExit => false
+    })
+    && harness_command_table_exit_label(job: straddling, code: 124, standing: JobBackstopUndecided)
+      .contains("exit 124 between 5s and 30s; whether the backstop fired was not observed")
+    && harness_command_table_exit_label(job: unseen, code: 124, standing: JobBackstopUndecided)
+      .contains("exit 124 between unknown and 30s; whether the backstop fired was not observed")
+}
+
+test fn a_124_seen_running_at_the_backstop_is_the_backstop_and_a_code_other_than_124_is_its_own_exit() -> Bool {
+  (match harness_backstop_standing(code: 124, lower: Present { value: second(count: 20) }, upper: Present { value: second(count: 25) }, backstop: second(count: 20)) {
+    JobBackstopHit => true
+    JobOwnExit => false
+    JobBackstopUndecided => false
+  })
+    && (match harness_backstop_standing(code: 3, lower: Present { value: second(count: 5) }, upper: Present { value: second(count: 30) }, backstop: second(count: 20)) {
+      JobOwnExit => true
+      JobBackstopHit => false
       JobBackstopUndecided => false
     })
 }

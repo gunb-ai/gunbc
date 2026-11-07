@@ -33,10 +33,13 @@ type HarnessShellJobOutcome
   | JobReapRefusedOutcome { cause: NonEmptyStr }
 
 type HarnessShellJobState
-  = JobRunning
-  // elapsed_at_reap is read ONCE, when the child is reaped, and stored: the standing of a finished job is
-  // a fact about that past event and must not move with the clock at every later render.
-  | JobFinished { outcome: HarnessShellJobOutcome, elapsed_at_reap: Second? }
+  // last_seen_running is the elapsed time at the last observation that saw the child still running: a LOWER
+  // bound on its exit instant. Absent means no such reading was taken, never zero.
+  = JobRunning { last_seen_running: Second? }
+  // elapsed_at_reap is read ONCE, when the child is reaped, and stored: it is an UPPER bound on the exit
+  // instant (a WNOHANG reap at the next refresh cannot read when the child exited), and the standing of a
+  // finished job is a fact about that past event and must not move with the clock at every later render.
+  | JobFinished { outcome: HarnessShellJobOutcome, last_seen_running: Second?, elapsed_at_reap: Second? }
 
 type HarnessShellJob {
   id: String
@@ -53,16 +56,15 @@ type HarnessShellJob {
 // GNU timeout's documented expiry status (extdeps.tools.gnu_coreutils) is
 // coreutils_timeout_expired_exit_code. A command may also exit it itself, so that status is
 // DurationExceeded only when elapsed time from started_at has reached this job's backstop.
-// Elapsed unknown is not "not the backstop": it is a third standing, because guessing either
-// DurationExceeded or ToolCompleted would fabricate the missing clock read.
+// The exit instant itself is never observed; it lies in the interval [last_seen_running, elapsed_at_reap].
+// Code 124 is the backstop only when that whole interval is at or past the backstop, and the command's own
+// exit only when the interval ends before it. An interval that straddles the backstop, or has an unknown
+// bound, is a third standing, because guessing either DurationExceeded or ToolCompleted would fabricate
+// the missing observation.
 type HarnessJobBackstopStanding
   = JobBackstopHit
   | JobOwnExit
   | JobBackstopUndecided
-
-fn harness_exit_is_harness_backstop(code: Int, elapsed: Second, backstop: Second) -> Bool {
-  code == coreutils_timeout_expired_exit_code && measure_le(a: backstop, b: elapsed)
-}
 
 fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
   let now = Clock.Now()
@@ -83,29 +85,77 @@ fn harness_job_elapsed_seconds(job: HarnessShellJob) -> Second? {
   }
 }
 
-fn harness_backstop_standing(code: Int, elapsed: Second?, backstop: Second) -> HarnessJobBackstopStanding {
-  match elapsed {
-    Absent =>
-      if code == coreutils_timeout_expired_exit_code {
-        JobBackstopUndecided
-      } else {
-        JobOwnExit
-      }
-    Present { value: observed } =>
-      if harness_exit_is_harness_backstop(code: code, elapsed: observed, backstop: backstop) {
+fn harness_backstop_standing_from_lower(lower: Second?, backstop: Second) -> HarnessJobBackstopStanding {
+  match lower {
+    Absent => JobBackstopUndecided
+    Present { value: seen } =>
+      if measure_le(a: backstop, b: seen) {
         JobBackstopHit
       } else {
-        JobOwnExit
+        JobBackstopUndecided
       }
   }
 }
 
-fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
-  let elapsed = match job.state {
-    JobFinished { outcome: _, elapsed_at_reap: stored } => stored
-    JobRunning => harness_job_elapsed_seconds(job: job)
+fn harness_backstop_standing(
+  code: Int,
+  lower: Second?,
+  upper: Second?,
+  backstop: Second,
+) -> HarnessJobBackstopStanding {
+  if code == coreutils_timeout_expired_exit_code {
+    match upper {
+      Absent => harness_backstop_standing_from_lower(lower: lower, backstop: backstop)
+      Present { value: reaped } =>
+        if measure_le(a: backstop, b: reaped) {
+          harness_backstop_standing_from_lower(lower: lower, backstop: backstop)
+        } else {
+          JobOwnExit
+        }
+    }
+  } else {
+    JobOwnExit
   }
-  harness_backstop_standing(code: code, elapsed: elapsed, backstop: job.backstop)
+}
+
+fn harness_job_last_seen_running(job: HarnessShellJob) -> Second? {
+  match job.state {
+    JobRunning { last_seen_running: seen } => seen
+    JobFinished { outcome: _, last_seen_running: seen, elapsed_at_reap: _ } => seen
+  }
+}
+
+fn harness_job_backstop_standing(job: HarnessShellJob, code: Int) -> HarnessJobBackstopStanding {
+  let upper = match job.state {
+    JobFinished { outcome: _, last_seen_running: _, elapsed_at_reap: stored } => stored
+    JobRunning { last_seen_running: _ } => harness_job_elapsed_seconds(job: job)
+  }
+  harness_backstop_standing(
+    code: code,
+    lower: harness_job_last_seen_running(job: job),
+    upper: upper,
+    backstop: job.backstop,
+  )
+}
+
+fn harness_second_text(bound: Second?) -> String {
+  match bound {
+    Absent => "unknown"
+    Present { value: s } => join([to_string(value: schedule_seconds(s: s)), "s"], "")
+  }
+}
+
+fn harness_job_exit_interval_text(job: HarnessShellJob, code: Int) -> String {
+  let upper = match job.state {
+    JobFinished { outcome: _, last_seen_running: _, elapsed_at_reap: stored } => stored
+    JobRunning { last_seen_running: _ } => none
+  }
+  join([
+    "exit ", to_string(value: code), " between ",
+    harness_second_text(bound: harness_job_last_seen_running(job: job)), " and ",
+    harness_second_text(bound: upper),
+    "; whether the backstop fired was not observed",
+  ], "")
 }
 
 type HarnessShellJobObservation
@@ -131,16 +181,24 @@ fn harness_job_with_state(job: HarnessShellJob, state: HarnessShellJobState) -> 
 fn harness_job_finished(job: HarnessShellJob, outcome: HarnessShellJobOutcome) -> HarnessShellJob {
   harness_job_with_state(
     job: job,
-    state: JobFinished { outcome: outcome, elapsed_at_reap: harness_job_elapsed_seconds(job: job) },
+    state: JobFinished {
+      outcome: outcome,
+      last_seen_running: harness_job_last_seen_running(job: job),
+      elapsed_at_reap: harness_job_elapsed_seconds(job: job),
+    },
   )
 }
 
 fn harness_refresh_job(job: HarnessShellJob) -> HarnessShellJob {
   match job.state {
-    JobFinished { outcome: _, elapsed_at_reap: _ } => job
-    JobRunning =>
+    JobFinished { outcome: _, last_seen_running: _, elapsed_at_reap: _ } => job
+    JobRunning { last_seen_running: _ } =>
       match posix.Process.Reap(pid: job.pid).reaped {
-        StillRunning => job
+        StillRunning =>
+          harness_job_with_state(
+            job: job,
+            state: JobRunning { last_seen_running: harness_job_elapsed_seconds(job: job) },
+          )
         Exited { code } =>
           harness_job_finished(job: job, outcome: JobExitedOutcome { code: code })
         Signaled { signal } =>
@@ -157,15 +215,15 @@ fn harness_refresh_jobs(jobs: List<HarnessShellJob>) -> List<HarnessShellJob> {
 
 fn harness_job_is_running(job: HarnessShellJob) -> Bool {
   match job.state {
-    JobRunning => true
-    JobFinished { outcome: _, elapsed_at_reap: _ } => false
+    JobRunning { last_seen_running: _ } => true
+    JobFinished { outcome: _, last_seen_running: _, elapsed_at_reap: _ } => false
   }
 }
 
 fn harness_observe_standing(job: HarnessShellJob) -> HarnessShellJobObservation {
   match job.state {
-    JobRunning => JobStillRunning { job: job }
-    JobFinished { outcome, elapsed_at_reap: _ } =>
+    JobRunning { last_seen_running: _ } => JobStillRunning { job: job }
+    JobFinished { outcome, last_seen_running: _, elapsed_at_reap: _ } =>
       match outcome {
         JobExitedOutcome { code } => JobExited { job: job, code: code }
         JobSignaledOutcome { signal } => JobSignaled { job: job, signal: signal }
@@ -190,8 +248,8 @@ fn harness_command_table_exit_label(
       join(["  ", job.id, "  exit ", to_string(value: code), "  $ ", job.command], "")
     JobBackstopUndecided =>
       join([
-        "  ", job.id, "  exit ", to_string(value: code),
-        ", backstop undecided  $ ", job.command,
+        "  ", job.id, "  ", harness_job_exit_interval_text(job: job, code: code),
+        "  $ ", job.command,
       ], "")
   }
 }
@@ -422,7 +480,7 @@ fn harness_start_shell_job(
             ),
             started_at: Clock.Now().timestamp,
             backstop: schedule.backstop,
-            state: JobRunning,
+            state: JobRunning { last_seen_running: none },
           },
         }
       }
