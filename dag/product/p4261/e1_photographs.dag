@@ -1,7 +1,7 @@
 module product.p4261.e1_photographs
 
 // THE E1'S PHOTOGRAPH STORE: the frames the 2026-11-02/03 atlas holds, each identified by the SHA-256
-// of its bytes. Its current source is the NAMED atlas snapshot p4261-e1-b 2026-11-03b, schema 2, supersedes 2026-11-03: an index file beside the
+// of its bytes. Its current source is the NAMED atlas snapshot p4261-e1-b 2026-11-07, schema 2, supersedes 2026-11-03b: an index file beside the
 // receipts says which of them are current, and the generator reads nothing that index does not name by role.
 // Discovery is not allowed -- a recursive glob or a newest-file rule would re-admit the superseded
 // inventories, whose cleanup stripped underscores and silently merged U1_2 with U12, U2_2 with U22 and U3_2
@@ -67,7 +67,7 @@ import gunbc.fleet.fleet_asset_identity { p4261_e1_b }
 data e1_photo_bottom_function_zones_draft: Photograph = Photograph {
   content: Sha256Digest { hex: "f91c0778335e116b033116b2a3757ad9e705717ed3de59caa3de8a87f0117be1" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the bottom overview with our first-draft function zones drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-03", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the bottom overview with our first-draft function zones drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-03", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 638915)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_bottom_function-zones_draft_2026-11-03.jpg" },
 }
@@ -75,7 +75,7 @@ data e1_photo_bottom_function_zones_draft: Photograph = Photograph {
 data e1_photo_bottom_overview_grid: Photograph = Photograph {
   content: Sha256Digest { hex: "95d0d83d149878d3bb551332f46fefb848f1ff2ce9e1800db5f8a14ab0073ae5" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the bottom overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the bottom overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 614766)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_bottom_overview_grid_2026-11-02.jpg" },
 }
@@ -83,7 +83,7 @@ data e1_photo_bottom_overview_grid: Photograph = Photograph {
 data e1_photo_bottom_overview_rectified: Photograph = Photograph {
   content: Sha256Digest { hex: "9c1c6325ab600b6b6b9cb08f163a9ee5098fe443f47aa4a57f276e86a2f4616f" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the bottom overview rectified onto the grid", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the bottom overview rectified onto the grid", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 541912)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_bottom_overview_rectified_2026-11-02.jpg" },
 }
@@ -91,7 +91,7 @@ data e1_photo_bottom_overview_rectified: Photograph = Photograph {
 data e1_photo_power_path_diagram: Photograph = Photograph {
   content: Sha256Digest { hex: "7285782c57847023a7c2bf89d668c10fc7ab769ab1e20ffc8f19ca46206cec67" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "a drawn power-path diagram of the carrier's rails", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "a drawn power-path diagram of the carrier's rails", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 201691)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_power-path-diagram_2026-11-02.png" },
 }
@@ -99,7 +99,7 @@ data e1_photo_power_path_diagram: Photograph = Photograph {
 data e1_photo_top_b6_u10p2_rail_labels_1_11: Photograph = Photograph {
   content: Sha256Digest { hex: "252b5972aa32969f37e007c1f9604af390bccce1471d94e9a898420f94a20691" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the U10_P2 rail close-up with our candidate part labels drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the U10_P2 rail close-up with our candidate part labels drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 1098845)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_B6_U10P2-rail_LABELS-1-11_2026-11-02.jpg" },
 }
@@ -107,7 +107,7 @@ data e1_photo_top_b6_u10p2_rail_labels_1_11: Photograph = Photograph {
 data e1_photo_top_b6_u10p2_pinout: Photograph = Photograph {
   content: Sha256Digest { hex: "090d1b99e2f2e7ae5cd7a71bbd21fca73019593da05705a115fb8308ee563cd8" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "a drawn pinout of the U10_P2 footprint", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-10-31", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "a drawn pinout of the U10_P2 footprint", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-10-31", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 1109875)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_B6_U10P2_PINOUT_2026-10-31.jpg" },
 }
@@ -115,7 +115,7 @@ data e1_photo_top_b6_u10p2_pinout: Photograph = Photograph {
 data e1_photo_top_function_zones_draft: Photograph = Photograph {
   content: Sha256Digest { hex: "015ca94f1644ff8e47d69ca91a98e3bd7ab50ebf7d1223d63b663b0773f2a3ef" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the top overview with our first-draft function zones drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-03", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the top overview with our first-draft function zones drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-03", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 893558)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_function-zones_draft_2026-11-03.jpg" },
 }
@@ -123,7 +123,7 @@ data e1_photo_top_function_zones_draft: Photograph = Photograph {
 data e1_photo_top_overview_a_grid: Photograph = Photograph {
   content: Sha256Digest { hex: "64d6b531bffe4e185e2e989a31f9ef105f46dd610e708b85b6b66cc1aac65b28" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the top overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the top overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 1455982)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_overview_a_GRID_2026-11-02.jpg" },
 }
@@ -131,7 +131,7 @@ data e1_photo_top_overview_a_grid: Photograph = Photograph {
 data e1_photo_top_overview_b_grid: Photograph = Photograph {
   content: Sha256Digest { hex: "2c266d5028cb7c1f18dd1353ba09d8fdd0090187076ab17c2a5bf98e5a1c5e21" as Sha256DigestHex },
   board: p4261_e1_b,
-  origin: GeneratedImage { depicts: "the top overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-03b" },
+  origin: GeneratedImage { depicts: "the top overview with the atlas grid drawn on it", drawn_by: "the E1 atlas scripts, docs/plans/2026-11-03-p4261-e1-atlas/scripts/", drawn_on: "2026-11-02", atlas_revision: "2026-11-07" },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 776685)),
   store: StoreLocation { folder_id: "1nFj8Ot36kVadrgk5b0up_MmaM0hqXyoj", folder_name: "E1/derived", file_name: "p4261_e1b_top_overview_b_GRID_2026-11-02.jpg" },
 }
@@ -1317,7 +1317,7 @@ data e1_sd_photo_p066: Photograph = Photograph {
   board: p4261_e1_b,
   origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-03" } },
   bytes: finite_byte_size(count: positive_measure_count(predecessor: 3178692)),
-  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C6approx_U1_J1_2026-11-03_sd066.JPG" },
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1approx_U1_TSE_J1_2026-11-03_sd066.JPG" },
 }
 
 data e1_sd_photo_p067: Photograph = Photograph {
@@ -1672,6 +1672,262 @@ data e1_sd_photo_p110: Photograph = Photograph {
   store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_D6_U110_U107_2026-11-03_sd110.JPG" },
 }
 
+data e1_sd_photo_p113: Photograph = Photograph {
+  content: Sha256Digest { hex: "1ebfcf7372275188d25ccee3fd5e3afab1eb97aaf446d0c48ae3e8e5fa501628" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2958166)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5-A6_J6_U627_U510_J16_2026-11-06_sd113.JPG" },
+}
+
+data e1_sd_photo_p114: Photograph = Photograph {
+  content: Sha256Digest { hex: "aa70fbdc70dc2fd2a605aa290d41cdc05f8f51864ea3b49e28d63cc16a97e806" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2945980)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6_J7_J5_J8_U88_2026-11-06_sd114.JPG" },
+}
+
+data e1_sd_photo_p115: Photograph = Photograph {
+  content: Sha256Digest { hex: "4ed7c9c833d4b29f6530455bda4e0b2a1d4b4539034fc06841749b92a2ac1b90" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3331688)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6approx_J5-receptacle-face_2026-11-06_sd115.JPG" },
+}
+
+data e1_sd_photo_p116: Photograph = Photograph {
+  content: Sha256Digest { hex: "0cbdb686bb709437688f545da314ac4d874009abf404561fb700a3325e96415b" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3510791)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1approx_U1_P3_D1_P3_2026-11-06_sd116.JPG" },
+}
+
+data e1_sd_photo_p117: Photograph = Photograph {
+  content: Sha256Digest { hex: "6bd88adbe118d92994843f513459acf9084886dac8ef9b297cf70d2a91d64ba3" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2968900)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1approx_U1_P3_2026-11-06_sd117.JPG" },
+}
+
+data e1_sd_photo_p118: Photograph = Photograph {
+  content: Sha256Digest { hex: "909a18e0f5af646b719fead1cca29abee075a0ac6866b7bef95cf3c74a7a8f5d" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2976729)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_U71_J540_U540_U95_2026-11-06_sd118.JPG" },
+}
+
+data e1_sd_photo_p119: Photograph = Photograph {
+  content: Sha256Digest { hex: "4f54d35ecf5cd52ae7ca27b7a5f03ee2fb58d108322ee62dd7060b89bcf3df8b" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2953133)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A6-B6_U71_J540_S1_U540_2026-11-06_sd119.JPG" },
+}
+
+data e1_sd_photo_p120: Photograph = Photograph {
+  content: Sha256Digest { hex: "b4c6f8e13fba78db2cb4003d647203f928cf8f5c860d77831030422ae2fe0fdb" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2963585)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1approx_J2_2026-11-06_sd120.JPG" },
+}
+
+data e1_sd_photo_p121: Photograph = Photograph {
+  content: Sha256Digest { hex: "37519012bc16ca2f457714f93ac8afc4c9111ff6a736f75d9ecc41ba204df1f4" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3451838)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1approx_J2-housing_2026-11-06_sd121.JPG" },
+}
+
+data e1_sd_photo_p122: Photograph = Photograph {
+  content: Sha256Digest { hex: "9e31860f36e649ef3f221f0a7b09a7ae4ea927da1289d18587395e090d82a73e" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2962675)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B5-B6_U51_U49_Q9_P2_Q7_P2_2026-11-06_sd122.JPG" },
+}
+
+data e1_sd_photo_p123: Photograph = Photograph {
+  content: Sha256Digest { hex: "d3c5cfdf628f7fe3029871b8ad125d2369948060bb9a7704aa4cc99caa90366b" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3196437)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A3-A4approx_J20_C12_P5_C10_P5_D2_2026-11-06_sd123.JPG" },
+}
+
+data e1_sd_photo_p124: Photograph = Photograph {
+  content: Sha256Digest { hex: "7d96905c620586e786b6ec020dad7d28c98fbd22256e79013bf79604589035e6" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3418825)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A2-A3-B2-B3_Q21_P5_Q22_P5_Q1_P5_Q6_P5_2026-11-06_sd124.JPG" },
+}
+
+data e1_sd_photo_p125: Photograph = Photograph {
+  content: Sha256Digest { hex: "2f08aa250ff4bd6506159e60799a3e0e2ad7080535f50f9af76ce1bca9591bec" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2958481)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1approx_U1_TSE_J1_2026-11-06_sd125.JPG" },
+}
+
+data e1_sd_photo_p126: Photograph = Photograph {
+  content: Sha256Digest { hex: "f9920bdd656ed2ff90a56034ce162596fa8c376c777562397ecb25f8591752a1" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3542651)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1approx_J2_Q532_2026-11-06_sd126.JPG" },
+}
+
+data e1_sd_photo_p127: Photograph = Photograph {
+  content: Sha256Digest { hex: "2ad812122add6695f874ec219d1177cf2d73266ccd9da40b0982a7c6b1d9fc16" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3253732)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1approx_J2-housing-inferred_2026-11-06_sd127.JPG" },
+}
+
+data e1_sd_photo_p128: Photograph = Photograph {
+  content: Sha256Digest { hex: "ce6fdd6d612767e73fbf949ab7795af6f81a19ffb0d70b2af4159e7fa23f98c0" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3363013)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_C1-D1approx_J2-housing-TE-logo-inferred_2026-11-06_sd128.JPG" },
+}
+
+data e1_sd_photo_p129: Photograph = Photograph {
+  content: Sha256Digest { hex: "c24829c819ca469b38e3b6ac07efb4eecacc49a7243ce38c3505f7360acf10bd" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2957912)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D1approx_U1_P3_2026-11-06_sd129.JPG" },
+}
+
+data e1_sd_photo_p130: Photograph = Photograph {
+  content: Sha256Digest { hex: "cbfc363f954402a78918854709c4b3242671563d64fdb3bd1076b7b852767cea" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2961664)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D2approx_U58_4_2026-11-06_sd130.JPG" },
+}
+
+data e1_sd_photo_p131: Photograph = Photograph {
+  content: Sha256Digest { hex: "d6d33e83628732b8261fbd9d292da788a606841f117b405e8cd26f9f9f397eb3" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2942293)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D5_J190_U6_U91_U89_2026-11-06_sd131.JPG" },
+}
+
+data e1_sd_photo_p132: Photograph = Photograph {
+  content: Sha256Digest { hex: "a86d8301aa35dd8e0c563c04d5525917c1dea2ad63a142e09e3adc0da9325bb4" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2960910)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_D5-D6_U28_U485_U89_U91_2026-11-06_sd132.JPG" },
+}
+
+data e1_sd_photo_p133: Photograph = Photograph {
+  content: Sha256Digest { hex: "e1dd4d7e82116b9c77c01dd3cbcff585362e34621d5fa8da213992ac45a27401" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2970881)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_B6_U71_U95_U540_U1_TNE_2026-11-06_sd133.JPG" },
+}
+
+data e1_sd_photo_p134: Photograph = Photograph {
+  content: Sha256Digest { hex: "c67ab427db653c6acffae21618ba370e84640d53405d4e1e70d3199093a89d49" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2977437)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A5_U40_U627_J16_2026-11-06_sd134.JPG" },
+}
+
+data e1_sd_photo_p135: Photograph = Photograph {
+  content: Sha256Digest { hex: "5ac510dc23c2761ba9efb135794b5e56d645a60f6b347395ab7ee2ce161e9f73" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3328482)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1approx_U1_TSE_J1_2026-11-06_sd135.JPG" },
+}
+
+data e1_sd_photo_p136: Photograph = Photograph {
+  content: Sha256Digest { hex: "526ffea4e69de0d595cce8d120b804f9deaa743ab6a6c12dc412cc1b7e002214" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2970818)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1approx_J1-housing-LCP-moulding-inferred_2026-11-06_sd136.JPG" },
+}
+
+data e1_sd_photo_p137: Photograph = Photograph {
+  content: Sha256Digest { hex: "6250b766c0ff21aacaa774f0d09009c97514796a4792524f2df01a724a299d10" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: TopSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2932197)),
+  store: StoreLocation { folder_id: "1671091bl5rwXNkniFu-dIE_0M8LcxZKa", folder_name: "E1/photos_top", file_name: "p4261_e1b_top_A1approx_J1-housing-end-inferred_2026-11-06_sd137.JPG" },
+}
+
+data e1_sd_photo_p228: Photograph = Photograph {
+  content: Sha256Digest { hex: "010291f5bf8e006c11f15671feef666186ed58a3971d01a4fab9bba39c3b4a77" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2985776)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B5-B6-C5-C6_U49_Q9_P2_Q7_P2_D9_P2_2026-11-06_sd128b.JPG" },
+}
+
+data e1_sd_photo_p229: Photograph = Photograph {
+  content: Sha256Digest { hex: "6161fb32061c16be553e53f877e7a86c14fd5cfda8e582c1236e9451d6067c55" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3489698)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B5_U43_U500_Y50_2026-11-06_sd129b.JPG" },
+}
+
+data e1_sd_photo_p230: Photograph = Photograph {
+  content: Sha256Digest { hex: "f3665b69d135e5dd2d99bb7ae344fc7e992a3c2d95144de24c5fafd324167fb9" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3395452)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6_U11_Q12_P2_Q11_P2_D12_P2_2026-11-06_sd130b.JPG" },
+}
+
+data e1_sd_photo_p231: Photograph = Photograph {
+  content: Sha256Digest { hex: "40effb9867513bd7c3fe016a34825f3e3549635d54a8a38a3901df6bfeaffde8" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3481042)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6_U11_Q8_P2_D12_P2_2026-11-06_sd131b.JPG" },
+}
+
+data e1_sd_photo_p232: Photograph = Photograph {
+  content: Sha256Digest { hex: "8b1326d1076c2bca2f6a101a1d589d11b6bda508df28456c9a12399ff4cae462" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3134734)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6-C6_Q10_P2_Q8_P2_D10_P2_2026-11-06_sd132b.JPG" },
+}
+
+data e1_sd_photo_p233: Photograph = Photograph {
+  content: Sha256Digest { hex: "81bcb8a4610d655072da7021417792e556a9a1a31375bbc9b40ec5da1fb609cb" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 3045620)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_B6-C6_U74_U31_2026-11-06_sd133b.JPG" },
+}
+
+data e1_sd_photo_p234: Photograph = Photograph {
+  content: Sha256Digest { hex: "ab4102495550d9d7e0b0e0b353afe79a952ec1ace9adf6e1a88e9fe5b778f52a" as Sha256DigestHex },
+  board: p4261_e1_b,
+  origin: CapturedFrame { surface: BottomSurface, capture: AndonstarSdCardSensor, taken_on: CapturedOn { on: "2026-11-06" } },
+  bytes: finite_byte_size(count: positive_measure_count(predecessor: 2993202)),
+  store: StoreLocation { folder_id: "1BgOp84lKAOWEl0uxXfJdIkizcFdKVIV7", folder_name: "E1/photos_bottom", file_name: "p4261_e1b_bottom_C6_U16_U74_U4_2_2026-11-06_sd134b.JPG" },
+}
+
 // Every frame the store holds, in the manifest's order. A citation resolves against this list.
 data e1_photographs: List<Photograph> = [
   e1_photo_bottom_function_zones_draft,
@@ -1875,6 +2131,38 @@ data e1_photographs: List<Photograph> = [
   e1_sd_photo_p108,
   e1_sd_photo_p109,
   e1_sd_photo_p110,
+  e1_sd_photo_p113,
+  e1_sd_photo_p114,
+  e1_sd_photo_p115,
+  e1_sd_photo_p116,
+  e1_sd_photo_p117,
+  e1_sd_photo_p118,
+  e1_sd_photo_p119,
+  e1_sd_photo_p120,
+  e1_sd_photo_p121,
+  e1_sd_photo_p122,
+  e1_sd_photo_p123,
+  e1_sd_photo_p124,
+  e1_sd_photo_p125,
+  e1_sd_photo_p126,
+  e1_sd_photo_p127,
+  e1_sd_photo_p128,
+  e1_sd_photo_p129,
+  e1_sd_photo_p130,
+  e1_sd_photo_p131,
+  e1_sd_photo_p132,
+  e1_sd_photo_p133,
+  e1_sd_photo_p134,
+  e1_sd_photo_p135,
+  e1_sd_photo_p136,
+  e1_sd_photo_p137,
+  e1_sd_photo_p228,
+  e1_sd_photo_p229,
+  e1_sd_photo_p230,
+  e1_sd_photo_p231,
+  e1_sd_photo_p232,
+  e1_sd_photo_p233,
+  e1_sd_photo_p234,
 ]
 
 // The store's lookup, bound to these rows so a board record never carries its own list.
