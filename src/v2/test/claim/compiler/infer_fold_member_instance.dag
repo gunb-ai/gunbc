@@ -6,7 +6,7 @@ import std.optional { Absent, Optional, Present, optional_absent, optional_prese
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import std.types { List }
-import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Outcome, Rejected, Unavailable, Some, diagnostics_has_reason, diagnostics_fatal_reason, diagnostics_singleton, node_locus }
+import v2.std.diagnostic { Accepted, CorrectionNotModeled, Diagnostic, Outcome, Rejected, Unavailable, Some, DeclaredTypePosition, PositionDeclaredReturn, diagnostics_has_reason, diagnostics_fatal_reason, diagnostics_inhabitance_position, diagnostics_singleton, node_locus }
 import v2.std.node_query { BinderTypeEdge, declared_field_from_edge, field_projection_optional }
 import v2.std.qualified_name { lexical_reference_label_optional }
 import std.algebra { list_snoc_item }
@@ -95,6 +95,16 @@ fn fmi_record_fold_authored_member_formal_reason(o: Outcome<ResolvedTree>) -> Sy
 fn fmi_undeclared_field_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_undeclared_field_fold)) }
 fn fmi_sum_fold_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_sum_fold)) }
 fn fmi_body_not_carrier_reason() -> Symbol { fmi_reason(o: fmi_infer(src: fmi_body_not_carrier_fold)) }
+
+// The position is the second, separately typed fact about the same refusal (it is not re-encoded in the
+// reason symbol), so the fold-step-body claim can assert WHERE the body was refused without a name that
+// fuses the two.
+fn fmi_body_not_carrier_position() -> Optional<DeclaredTypePosition> {
+  match fmi_infer(src: fmi_body_not_carrier_fold) {
+    Accepted { value: _, diagnostics: _ } => Absent
+    Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+  }
+}
 
 test fn fmi_fold_member_projects_a_declared_field() -> Bool {
   fmi_record_fold_no_projection_refusal(o: fmi_record_fold_assembled())
@@ -250,6 +260,7 @@ data fmi_body_not_carrier_fold: String = "module p\n\nimport std.types { List }\
 
 // (a) A STEP WHOSE BODY DOES NOT INHABIT THE CARRIER REFUSES AT THE BODY: init is Bool, the body is Int.
 test fn fmi_fold_step_body_not_the_carrier_refuses() -> Bool {
-  fmi_body_not_carrier_reason() == ^arrow_body_does_not_inhabit_declared_return
+  fmi_body_not_carrier_reason() == ^inhabitance_structural_roots_differ
+    && fmi_body_not_carrier_position() == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
 }
 
