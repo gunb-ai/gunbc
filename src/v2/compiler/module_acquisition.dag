@@ -917,7 +917,7 @@ fn acquisition_parse(env: AcquisitionEnv, file: ModuleFileRef, content: String) 
 // authored `test` marker, and the marker channel (v2.compiler.test_marker_capture) is a pure reader over
 // the parse tree -- the same capture normalize runs beside lowering -- so the declarations a file marks do not
 // wait on lowering. That is what lets a job whose subject is every governed file ask this of a module
-// that cannot be lowered in isolation (a service declaration whose realization lives in another module
+// that cannot be lowered in isolation (a type declaring one variant twice
 // refuses ordinary normalization, v2.compiler.normalize), without a second reading of the marker and
 // without reading an unlowerable file as an unmarked one: a file that does not parse, or whose shell the
 // capture cannot read, is a refusal and never an empty list.
