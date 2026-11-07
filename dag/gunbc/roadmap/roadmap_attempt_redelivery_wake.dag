@@ -29,8 +29,7 @@ module gunbc.roadmap.roadmap_attempt_redelivery_wake
 // rather than opening a second door into new dispatch (review 87645, decision A1). It is deliberately NOT belt_dispatch_node_cli,
 // whose narrow admitted-instance list refuses this lab's instance id. The authorization
 // pattern is DERIVED, not borrowed: characterized against
-// gunbc.auth.authorization_pattern_selection.select_authorization_pattern (consumed by the witness and
-// evidencing the effect the fold execs), the credential-free / reversible / unattended user-manager unit
+// gunbc.auth.authorization_pattern_selection.select_authorization_pattern (executed by the fold arm), the credential-free / reversible / unattended user-manager unit
 // selects FederatedScopedGrant -- NOT attempt_system_unit_launch's system-manager pattern.
 
 import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
@@ -81,22 +80,29 @@ fn attempt_redelivery_wake_effect(operating_user: NonEmptyStr) -> PrivilegedEffe
   }
 }
 
-// THE SELECTED PATTERN, DERIVED -- never a call-site choice. The wake is credential-free, reversible,
-// unattended, on an API surface with a bindable identity, so the fold must select the federated pattern
-// (the run's own workload identity, zero human actions, receipt is the run), not a human-in-the-loop
-// pattern. The witness asks the selector rather than assuming.
-fn attempt_redelivery_wake_selects_pattern(operating_user: NonEmptyStr) -> Bool {
-  match select_authorization_pattern(e: attempt_redelivery_wake_effect(operating_user: operating_user)) {
-    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
-    _ => false
-  }
-}
+// THE SELECTED PATTERN, DERIVED AND EXECUTED AT THE CHANGED SITE (DESIGN 3b). The wake is credential-free,
+// reversible, unattended, on an API surface with a bindable identity, so the selector must answer the
+// federated pattern (the run's own workload identity, zero human actions, receipt is the run) AND the
+// effect must owe no human witness. The belt's SpawnRouteWake arm calls this and arms the timer ONLY on
+// WakeAuthorized; every other selection (a different pattern, a manual step, no admissible pattern,
+// missing evidence, a witness owed) is a typed WakeAuthorizationRefused that the arm turns into a
+// SpawnFailed, so the route can never arm under a pattern the selector did not give it.
+type WakeAuthorization
+  = WakeAuthorized
+  | WakeAuthorizationRefused { detail: String }
 
-// THE WAKE NEEDS NO HUMAN WITNESS. Reversible by re-apply, mints no credential, bills nothing, not
-// break-glass -- so the derived witness obligation is false: nothing here belongs on an operator's
-// phone, which is what keeps a recurring wake from becoming a queue of taps.
-fn attempt_redelivery_wake_needs_no_witness(operating_user: NonEmptyStr) -> Bool {
-  !witness_required(e: attempt_redelivery_wake_effect(operating_user: operating_user))
+fn attempt_redelivery_wake_authorization(operating_user: NonEmptyStr) -> WakeAuthorization {
+  let effect = attempt_redelivery_wake_effect(operating_user: operating_user)
+  match select_authorization_pattern(e: effect) {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } =>
+      if witness_required(e: effect) {
+        WakeAuthorizationRefused { detail: "the selector chose the federated pattern but the wake effect owes a human witness; an unattended timer may not be armed under it" }
+      } else {
+        WakeAuthorized
+      }
+    PatternSelected { pattern: _, receipt: _ } => WakeAuthorizationRefused { detail: "the selector chose a pattern other than the federated scoped grant for the wake effect" }
+    _ => WakeAuthorizationRefused { detail: "the selector did not select an authorization pattern for the wake effect (manual step, no admissible pattern, or missing evidence)" }
+  }
 }
 
 // THE UNIT STEM NAMES ONE WAKE, AND THE NAME INCLUDES THE INSTANT. The stem is

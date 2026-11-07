@@ -464,7 +464,10 @@ fn systemd_run_user_oneshot_timer_command(unit: NonEmptyStr, on_calendar: NonEmp
 // loaded name and run.c prints 'Failed to create transient ... unit: Unit <name> already exists.' with a
 // nonzero exit. Keyed on BOTH the phrase and the echoed unit stem, so a collision on a DIFFERENT unit is
 // never read as ours; the stem, not the suffixed .timer name, because the manager's echoed suffix need not
-// be the one spelled. Consumer: the belt's wake classifier (belt_redelivery_wake_arm).
+// be the one spelled. LOCALE: the phrase is matched as systemd prints it; systemd's own log messages
+// carry no translation catalog, and were a build to localize it the match would miss and the failure would
+// read as a typed WakeArmFailed (loud, retried next pass), never as a false 'already armed'.
+// Consumer: the belt's wake classifier (belt_redelivery_wake_arm).
 fn systemd_run_reported_unit_already_exists(stderr: String, unit_stem: NonEmptyStr) -> Bool {
   string_contains(s: stderr, pattern: "already exists") && string_contains(s: stderr, pattern: unit_stem as String)
 }

@@ -14,8 +14,9 @@ import std.optional { Present }
 import gunbc.auth.authorization_pattern_selection { PatternSelected, FederatedScopedGrant, select_authorization_pattern, witness_required }
 import gunbc.roadmap.roadmap_attempt_redelivery_wake {
   attempt_redelivery_wake_effect,
-  attempt_redelivery_wake_selects_pattern,
-  attempt_redelivery_wake_needs_no_witness,
+  WakeAuthorized,
+  WakeAuthorizationRefused,
+  attempt_redelivery_wake_authorization,
   attempt_redelivery_wake_unit_name,
   attempt_redelivery_wake_command,
 }
@@ -69,19 +70,20 @@ fn wedged_pri(capture: SubmissionCaptureObservation, last_delivery: EpochSecs, w
   }
 }
 
-// THE WAKE EFFECT'S AUTHORIZATION PATTERN IS DERIVED, NOT BORROWED. Credential-free, reversible,
-// unattended user-manager unit; the fold must select the federated pattern, not a human-in-the-loop one.
-test fn a_wake_effect_selects_federated_grant_by_the_selector() -> Bool {
-  attempt_redelivery_wake_selects_pattern(operating_user: wake_user)
+// THE WAKE IS AUTHORIZED BY THE SELECTOR AT THE INTERFACE THE ROUTE CALLS. attempt_redelivery_wake_authorization is
+// the one function the SpawnRouteWake arm executes before arming: for the real wake effect (credential-free,
+// reversible, unattended, API surface) the selector answers the federated scoped grant AND no human witness is
+// owed, so the reading is WakeAuthorized. The independent selector call beside it cross-checks the answer
+// (the pattern the function accepted is the pattern the selector gives), not a re-derivation of the route.
+test fn a_wake_effect_is_authorized_only_by_the_federated_grant_with_no_witness_owed() -> Bool {
+  (match attempt_redelivery_wake_authorization(operating_user: wake_user) {
+    WakeAuthorized => true
+    WakeAuthorizationRefused { detail: _ } => false
+  })
     && (match select_authorization_pattern(e: attempt_redelivery_wake_effect(operating_user: wake_user)) {
       PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
       _ => false
     })
-}
-
-// A RECURRING WAKE MUST RUN UNATTENDED. Mints no credential, bills nothing, reversible by re-arming.
-test fn a_wake_effect_needs_no_human_witness() -> Bool {
-  attempt_redelivery_wake_needs_no_witness(operating_user: wake_user)
     && !witness_required(e: attempt_redelivery_wake_effect(operating_user: wake_user))
 }
 
