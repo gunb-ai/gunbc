@@ -1163,9 +1163,12 @@ fn emitted_tree_packages(
     // ITS OWN INDEX, RELEASED WITH THIS READ. The regen roots are read here for this one entry
     // and by nothing after it, so the pool is not put in the thread's shared memo, where it
     // would sit beside the round's source-roots index for the life of the thread.
+    report_cgroup_memory_diagnostic("parent.emitted_tree.index.begin");
     let index = super::build_multi_entry_index(&roots);
+    report_cgroup_memory_diagnostic("parent.emitted_tree.index.end");
     let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
         .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.resolve.end");
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
     // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
@@ -1186,9 +1189,11 @@ fn emitted_tree_packages(
     }
     let rows: im::Vector<Rc<GeneratedPartitionCrateRow>> =
         decode(&ctx, "generated_partition_crate_rows")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.rows");
     let host_shell_package_name: String = decode(&ctx, "generated_host_shell_package_name")?;
     let host_shell_dependencies: im::Vector<String> =
         decode(&ctx, "generated_host_shell_partition_dependencies")?;
+    report_cgroup_memory_diagnostic("parent.emitted_tree.decode.end");
     Ok(Rc::new(Stage0EmittedTreePackages {
         rows: Rc::new(rows),
         host_shell_package_name,
@@ -5956,6 +5961,7 @@ fn admit_derived_partition_move(
         packages.rows.clone(),
         crate::v1_compiler_stage0_crates::stage0_foundation_runtime_dependencies(),
     );
+    report_cgroup_memory_diagnostic("parent.partition_move.boundary_fold.end");
     Ok((*outcome).clone())
 }
 
@@ -7170,20 +7176,53 @@ fn cgroup_memory_diagnostic_line(dir: &Path, mount_root: &Path, phase: &str, pid
     )
 }
 
-/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round. The
-/// parent and the rebuilt-seed child call it with their own `phase` labels; a child spawned without
-/// a cgroup move shares its parent's cgroup, so the two share a `cgroup=` value and the `pid=`
-/// field says which process read it. Nothing reads the line back, no cap moves, nothing refuses.
+/// This process's own `/proc/self/status` memory lines, in the same field shape the residency
+/// gate reads.
+///
+/// THE TWO HALVES OF ONE QUESTION, PRINTED TOGETHER. `admit_generation_begin` reports the
+/// ORCHESTRATOR (`VmRSS`); `cgroup_memory_diagnostic_line` reports the SLOT (`memory.current`).
+/// They were printed by separate lines that never appeared at the same instant, so a reader
+/// comparing a generation-begin `VmRSS` against the last slot reading two steps earlier saw a
+/// contradiction that was only a gap in the log. Every diag line now carries both, and the
+/// high-water mark beside the current value, so a peak the allocator did not return is
+/// distinguishable from state the process still holds.
+fn self_status_memory_fields() -> String {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let mut fields = Vec::new();
+    for name in ["VmRSS", "VmHWM", "VmSize"] {
+        let value = status
+            .lines()
+            .find_map(|line| {
+                let rest = line.strip_prefix(name)?;
+                rest.split_whitespace().next().map(|v| (name, v))
+            })
+            .map(|(name, value)| format!("{name}={value}kB"));
+        if let Some(value) = value {
+            fields.push(value);
+        }
+    }
+    fields.join(" ")
+}
+
+/// OBSERVATION ONLY: prints the cgroup this process runs in, at a named point of the round, beside
+/// this process's own memory lines. The parent and the rebuilt-seed child call it with their own
+/// `phase` labels; a child spawned without a cgroup move shares its parent's cgroup, so the two
+/// share a `cgroup=` value and the `pid=` field says which process read it. Nothing reads the line
+/// back, no cap moves, nothing refuses.
 fn report_cgroup_memory_diagnostic(phase: &str) {
+    let process = self_status_memory_fields();
     let line = match crate::memory_governor::leaf_cgroup_dir() {
-        Some(dir) => cgroup_memory_diagnostic_line(
-            &dir,
-            Path::new("/sys/fs/cgroup"),
-            phase,
-            std::process::id(),
+        Some(dir) => format!(
+            "{} {process}",
+            cgroup_memory_diagnostic_line(
+                &dir,
+                Path::new("/sys/fs/cgroup"),
+                phase,
+                std::process::id()
+            )
         ),
         None => format!(
-            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent",
+            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent {process}",
             std::process::id()
         ),
     };
@@ -7302,6 +7341,15 @@ fn admit_generation_begin(
         )
     })?;
     let first = resident_at_first.unwrap_or(now);
+    // THE INSTANT THE GATE DECIDES, in both currencies. This is the only place the orchestrator's
+    // own `VmRSS` and the slot's `memory.current` are read at the same instant. The gate printed
+    // only the process and the periodic diag only the slot, never at the instant that matters, so
+    // a reader comparing a generation-begin `VmRSS` with the last slot reading (taken steps
+    // earlier) could mistake a log gap for a contradiction -- which is how a correct refusal came
+    // to be argued about instead of read.
+    report_cgroup_memory_diagnostic(&format!(
+        "parent.generation_begin_admission ordinal={ordinal} orchestrator_resident={now}"
+    ));
     eprintln!(
         "required-regen: generation {ordinal} begins; orchestrator resident={now} \
          (at generation 0: {first})"
