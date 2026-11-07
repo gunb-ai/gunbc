@@ -130,7 +130,7 @@ use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
 use crate::std_literal_elaboration::KernelGroundingView::{
-    PeanoGroundingView, SignedGroundingView,
+    PeanoGroundingView, SignedGroundingView, WidthGroundingView,
 };
 use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
     KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
@@ -35389,6 +35389,9 @@ pub fn grounded_carrier_state(
     env: Rc<TypeEnv>,
 ) -> Rc<GroundedCarrierState> {
     match (*row.view.clone()).clone() {
+        KernelGroundingView::WidthGroundingView { signedness: _, .. } => {
+            Rc::new(GroundedCarrierState::GroundedCarrierDeclaresNoConstructors)
+        }
         KernelGroundingView::PeanoGroundingView => {
             peano_grounded_carrier_state(row.clone(), decl.clone(), env.clone())
         }

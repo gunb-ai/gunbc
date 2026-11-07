@@ -1,0 +1,378 @@
+module test.claim.fabric.work_restore_witness
+
+// WORK RESTORE CONTROLS (remote-build PR 2b). Separate from the identity witnesses: every RED here is a
+// malformed or tampered WIRE handed to product.fabric.work_restore work_restore, asserting the exact typed
+// cause. What this shows: derivation consistency under a caller-supplied principal. What it does NOT show:
+// payload authenticity (a writer who changes payload and key together is not detected; PR 3 owns trusted
+// ingress), source-file bytes, or malformed UTF-8 (unrepresentable at the String API).
+
+import std.algebra { skip }
+import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.judgment_contract { length_prefixed_encode }
+import std.measure { hardware_thread_count, byte_size }
+import std.nat { Nat }
+import product.fabric.identity { WorkKey, FabricIdentity }
+import std.optional { Present }
+import product.fabric.envelope { GpuRequirement, NetworkRequirement, ResourceEnvelope, CpuRequirement, MemoryRequirement, unstated_envelope, memory_envelope }
+import product.fabric.isolation { shared_kernel_sandbox_profile }
+import product.fabric.work {
+  Work, WorkContract, ExecutionRequirements, MaterializedProgram, OfferedService, WorkStep, ReceiptSatisfiable, IdempotentUnderKey,
+  OpaqueEffects, ControlPlaneCapacity, Shape, HardRequirements, WarmResidencyRequired, declared_terminal_obligations,
+  derive_work_key, work_for, CustomerExecutableCapacity, RevocationAccepted, OutputObligation, DeclaredOutputObligations, output_obligation_id, CapacityClass, RevocationStanding, OutputObligationKind, TerminalResultObligation,
+}
+import gunbc.serving.turn_demand { serving_turn_work, ServingTurnRequest }
+import product.fabric.work_restore {
+  work_persist, work_restore, work_wire_fields, WorkPersistence, WorkPersisted, WorkPersistRefused, WorkRestoration, WorkRestored, WorkRestoreRefused,
+  WorkRestoreRefusal, RestoreTruncated, RestoreNotCanonical, RestoreSchemaUnknown, RestoreFieldInvalid, RestoreTrailingFields,
+  RestoreUnsupportedAxes, RestorePrincipalMismatch, RestoreKeyMismatch, UnsupportedAxis, GpuAxis, StorageAxis, NetworkAxis,
+  all_capacity_classes, all_revocation_standings, all_obligation_kinds, all_isolation_guarantees, all_architectures,
+}
+import product.fabric.isolation { IsolationProfile, IsolationGuarantee }
+import extdeps.toolchain.types { Architecture }
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data principal: NonEmptyStr = "gunbc"
+
+fn requirements_with(envelope: ResourceEnvelope) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: ControlPlaneCapacity,
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(8) }, envelope: envelope },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: shared_kernel_sandbox_profile(),
+    revocation: WarmResidencyRequired,
+  }
+}
+
+fn contract_with(runtime_closure: String, inputs: String, effect: String, reason: String) -> WorkContract {
+  WorkContract {
+    execution: MaterializedProgram { program: "gunbc-required-floor", source: "sha256:tree-abc", runtime_closure: runtime_closure },
+    steps: [
+      WorkStep { step_id: "floor", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "publish", resumability: OpaqueEffects { reason: reason } },
+    ],
+    inputs: inputs,
+    effect_contract: effect,
+    output_contract: "outputs-verdict",
+    output_obligations: declared_terminal_obligations(ids: ["outputs-verdict"]),
+  }
+}
+
+fn base_work() -> Work<NonEmptyStr> {
+  work_for(
+    principal: principal,
+    contract: contract_with(runtime_closure: "toolchain-rust-1.89", inputs: "manifest-inputs-1", effect: "effects-read-only", reason: "publishes"),
+    requirements: requirements_with(envelope: memory_envelope(min_bytes: byte_size(count: 1073741824))),
+  )
+}
+
+fn str_take(s: String, n: Int) -> String {
+  unicode_scalar_fold(xs: unicode_scalar_unfold(s: s) |> take(n: n))
+}
+
+fn str_skip(s: String, n: Int) -> String {
+  unicode_scalar_fold(xs: unicode_scalar_unfold(s: s) |> skip(n: n))
+}
+
+// Whole-value FabricIdentity == waits on the #15972 re-land (#15175 equality wall); the fields that carry
+// identity are compared explicitly.
+fn same_work(a: Work<NonEmptyStr>, b: Work<NonEmptyStr>) -> Bool {
+  (a.id.key as String) == (b.id.key as String) && (a.id.principal as String) == (b.id.principal as String)
+}
+
+fn wire_of(fields: List<String>) -> String {
+  join(fields |> map(f => length_prefixed_encode(s: f)), "")
+}
+
+fn base_fields() -> List<String> {
+  work_wire_fields(work: base_work())
+}
+
+fn base_wire() -> String {
+  match work_persist(work: base_work()) {
+    WorkPersisted { wire } => wire
+    WorkPersistRefused { axes: _ } => ""
+  }
+}
+
+fn replace_at(fields: List<String>, index: Int, value: String) -> List<String> {
+  concat(fields |> take(n: index), [value], fields |> skip(n: index + 1))
+}
+
+fn refused_with(r: WorkRestoration, want: fn(WorkRestoreRefusal) -> Bool) -> Bool {
+  match r {
+    WorkRestored { work: _ } => false
+    WorkRestoreRefused { cause } => want(cause)
+  }
+}
+
+fn is_truncated(c: WorkRestoreRefusal) -> Bool { match c { RestoreTruncated => true  _ => false } }
+fn is_key_mismatch(c: WorkRestoreRefusal) -> Bool { match c { RestoreKeyMismatch { stored: _, derived: _ } => true  _ => false } }
+fn is_not_canonical(c: WorkRestoreRefusal) -> Bool { match c { RestoreNotCanonical { field_index: _ } => true  _ => false } }
+fn is_field_invalid(c: WorkRestoreRefusal) -> Bool { match c { RestoreFieldInvalid { field: _ } => true  _ => false } }
+
+fn restores_to_key(r: WorkRestoration, key: WorkKey) -> Bool {
+  match r {
+    WorkRestored { work } => (work.id.key as String) == (key as String)
+    WorkRestoreRefused { cause: _ } => false
+  }
+}
+
+// Field positions in work_wire_fields for the base work: 0 schema, 1 principal, 2 key, 3 "program", 4 program,
+// 5 source, 6 runtime_closure, 7 step count, 8.. steps, then inputs and effect_contract.
+// base steps: floor,receipt (8,9) publish,opaque,reason (10,11,12); inputs 13, effect 14.
+
+// (1) POSITIVE: persist then restore returns the same Work, key re-derived equal to the original.
+test fn persist_then_restore_round_trips() -> Bool {
+  restores_to_key(r: work_restore(wire: base_wire(), expected_principal: principal), key: base_work().id.key)
+    && (match work_restore(wire: base_wire(), expected_principal: principal) { WorkRestored { work } => same_work(a: work, b: base_work())  _ => false })
+}
+
+// (2) RED truncated: dropping the last scalar, and cutting mid-field, refuse as truncated.
+test fn truncated_wire_refuses() -> Bool {
+  let w = base_wire()
+  refused_with(r: work_restore(wire: str_take(s: w, n: w.length() - 1), expected_principal: principal), want: is_truncated)
+    && refused_with(r: work_restore(wire: str_take(s: w, n: 7), expected_principal: principal), want: is_truncated)
+}
+
+// (3) RED reordered: swapping the same-typed inputs and effect_contract fields, key retained, is a key mismatch.
+test fn reordered_fields_refuse() -> Bool {
+  let f = base_fields()
+  let swapped = replace_at(fields: replace_at(fields: f, index: 13, value: "effects-read-only"), index: 14, value: "manifest-inputs-1")
+  refused_with(r: work_restore(wire: wire_of(fields: swapped), expected_principal: principal), want: is_key_mismatch)
+}
+
+// (4) RED wrong schema version.
+test fn wrong_schema_version_refuses() -> Bool {
+  let w = wire_of(fields: replace_at(fields: base_fields(), index: 0, value: "gunbc.work_restore/2"))
+  refused_with(r: work_restore(wire: w, expected_principal: principal), want: c => match c { RestoreSchemaUnknown { found } => found == "gunbc.work_restore/2"  _ => false })
+}
+
+// (5) RED swapped principal. The expected principal is held fixed and ONLY the wire principal changes:
+// RestorePrincipalMismatch. The principal is not in WorkKey (it sits in FabricIdentity), so rewriting the wire
+// principal to equal a DIFFERENT expected principal is NOT detected by this restore: it restores under that
+// principal. That limitation is stated, not hidden: control (5b) shows the same contract has one key under two
+// principals, and an attacker who controls both the wire and the expected context is outside restore assurance.
+test fn swapped_wire_principal_refuses() -> Bool {
+  let w = wire_of(fields: replace_at(fields: base_fields(), index: 1, value: "intruder"))
+  refused_with(r: work_restore(wire: w, expected_principal: principal), want: c => match c { RestorePrincipalMismatch { stored } => stored == "intruder"  _ => false })
+    && refused_with(r: work_restore(wire: base_wire(), expected_principal: "intruder" as NonEmptyStr), want: c => match c { RestorePrincipalMismatch { stored } => stored == "gunbc"  _ => false })
+}
+
+test fn principal_is_outside_the_key_so_restore_assurance_stops_at_the_expected_context() -> Bool {
+  let a = base_work()
+  let b = work_for(principal: "other" as NonEmptyStr, contract: a.contract, requirements: a.requirements)
+  (a.id.key as String) == (b.id.key as String) && (a.id.principal as String) != (b.id.principal as String)
+}
+
+// (6) RED tampered key text, and a tampered toolchain (runtime_closure) with the key retained.
+test fn tampered_key_and_toolchain_refuse() -> Bool {
+  let k = replace_at(fields: base_fields(), index: 2, value: "wk:0000")
+  let t = replace_at(fields: base_fields(), index: 6, value: "toolchain-rust-1.90")
+  refused_with(r: work_restore(wire: wire_of(fields: k), expected_principal: principal), want: is_key_mismatch)
+    && refused_with(r: work_restore(wire: wire_of(fields: t), expected_principal: principal), want: is_key_mismatch)
+}
+
+// (7) RED trailing: one extra COMPLETE frame counts 1; raw junk after the last frame is truncated/non-canonical.
+test fn trailing_bytes_refuse() -> Bool {
+  let extra = base_wire() + length_prefixed_encode(s: "extra")
+  refused_with(r: work_restore(wire: extra, expected_principal: principal), want: c => match c { RestoreTrailingFields { count } => count == 1  _ => false })
+    && refused_with(r: work_restore(wire: base_wire() + "junk", expected_principal: principal), want: is_truncated)
+}
+
+// (7b) Truncation is guarded twice, and each guard yields exactly RestoreTruncated: the tokenizer (a frame
+// that cannot be read) and the field reader (a field missing from a short wire). A wire cut inside its LAST
+// field is caught by both, so removing the tokenizer guard alone leaves it refused. A COMPLETE valid wire
+// followed by a partial frame ("5#ab" has two scalars where five are declared) isolates the tokenizer guard:
+// every field is present, the only defect is the truncated trailing frame.
+// (7c) The decoder lists the closed variants it accepts (all_* in work_restore). A variant missing from a
+// list would make a Work the writer accepted unrestorable. Each test below persists and restores a Work
+// carrying EVERY listed variant, so a decoder list that cannot read what the writer emits goes red here.
+// LIMIT: a variant ADDED to a source type but absent from the list is not detected by these tests (the
+// substrate offers no variant enumeration; the writer's exhaustive matches fail to compile on the new
+// variant, which is what forces the author to this file). Trigger: a variant-enumeration capability.
+fn requirements_full(cap: CapacityClass, rev: RevocationStanding, guarantees: List<IsolationGuarantee>, arch: Architecture?) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: cap,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: ResourceEnvelope { cpu: Present { value: CpuRequirement { min_threads: hardware_thread_count(8), architecture: arch } }, gpu: none, memory: none, storage: none, network: none },
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: IsolationProfile { guarantees: guarantees },
+    revocation: rev,
+  }
+}
+
+fn contract_with_kind(kind: OutputObligationKind) -> WorkContract {
+  WorkContract {
+    execution: MaterializedProgram { program: "gunbc-required-floor", source: "sha256:tree-abc", runtime_closure: "toolchain-rust-1.89" },
+    steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+    inputs: "manifest-inputs-1",
+    effect_contract: "effects-read-only",
+    output_contract: "outputs-verdict",
+    output_obligations: DeclaredOutputObligations { required: [OutputObligation { id: output_obligation_id(raw: "outputs-verdict"), kind: kind }] },
+  }
+}
+
+fn work_round_trips(w: Work<NonEmptyStr>) -> Bool {
+  match work_persist(work: w) {
+    WorkPersistRefused { axes: _ } => false
+    WorkPersisted { wire } => match work_restore(wire: wire, expected_principal: principal) { WorkRestored { work } => same_work(a: work, b: w)  _ => false }
+  }
+}
+
+test fn every_listed_architecture_round_trips() -> Bool {
+  all(all_architectures, a => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: TerminalResultObligation {}), requirements: requirements_full(cap: ControlPlaneCapacity, rev: WarmResidencyRequired, guarantees: [], arch: Present { value: a }))))
+}
+
+test fn every_listed_isolation_guarantee_round_trips() -> Bool {
+  all(all_isolation_guarantees, g => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: TerminalResultObligation {}), requirements: requirements_full(cap: ControlPlaneCapacity, rev: WarmResidencyRequired, guarantees: [g], arch: none))))
+}
+
+test fn every_listed_capacity_class_and_revocation_round_trips() -> Bool {
+  all(all_capacity_classes, c => all(all_revocation_standings, r => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: TerminalResultObligation {}), requirements: requirements_full(cap: c, rev: r, guarantees: [], arch: none)))))
+}
+
+test fn every_listed_obligation_kind_round_trips() -> Bool {
+  all(all_obligation_kinds, k => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: k), requirements: requirements_full(cap: ControlPlaneCapacity, rev: WarmResidencyRequired, guarantees: [], arch: none))))
+}
+
+test fn a_partial_trailing_frame_is_exactly_truncated() -> Bool {
+  refused_with(r: work_restore(wire: base_wire() + "5#ab", expected_principal: principal), want: is_truncated)
+}
+
+// (8) RED non-canonical spelling: lengths the decoder's parse_int may read but the encoder never writes.
+test fn non_canonical_length_spelling_refuses() -> Bool {
+  let w = base_wire()
+  let first = length_prefixed_encode(s: "gunbc.work_restore/1")
+  let rest = str_skip(s: w, n: first.length())
+  let lead = "020#gunbc.work_restore/1"
+  let plus = "+20#gunbc.work_restore/1"
+  refused_with(r: work_restore(wire: lead + rest, expected_principal: principal), want: is_not_canonical)
+    && refused_with(r: work_restore(wire: plus + rest, expected_principal: principal), want: is_not_canonical)
+}
+
+// (9) RED unsupported axes: exact list and order, at the writer and at the reader.
+fn work_with_envelope(e: ResourceEnvelope) -> Work<NonEmptyStr> {
+  work_for(principal: principal, contract: base_work().contract, requirements: requirements_with(envelope: e))
+}
+
+fn persist_axes(e: ResourceEnvelope) -> List<UnsupportedAxis> {
+  match work_persist(work: work_with_envelope(e: e)) {
+    WorkPersistRefused { axes } => axes
+    WorkPersisted { wire: _ } => []
+  }
+}
+
+test fn writer_names_each_unsupported_axis_in_order() -> Bool {
+  let gpu = Present { value: GpuRequirement { count: 1, min_vram: byte_size(count: 1024), runtimes: [] } }
+  let net = Present { value: NetworkRequirement { egress: none, ambient_allowed: false } }
+  (persist_axes(e: ResourceEnvelope { cpu: none, gpu: gpu, memory: none, storage: none, network: none }) == [GpuAxis {}])
+    && (persist_axes(e: ResourceEnvelope { cpu: none, gpu: none, memory: none, storage: none, network: net }) == [NetworkAxis {}])
+    && (persist_axes(e: ResourceEnvelope { cpu: none, gpu: gpu, memory: none, storage: none, network: net }) == [GpuAxis {}, NetworkAxis {}])
+    && (persist_axes(e: unstated_envelope()) == [])
+}
+
+fn axis_wire(tail: Int, g: String, s: String, nw: String) -> String {
+  wire_of(fields: replace_at(fields: replace_at(fields: replace_at(fields: base_fields(), index: tail, value: g), index: tail + 1, value: s), index: tail + 2, value: nw))
+}
+
+fn restore_axes(w: String) -> List<UnsupportedAxis> {
+  match work_restore(wire: w, expected_principal: principal) {
+    WorkRestoreRefused { cause: RestoreUnsupportedAxes { axes } } => axes
+    _ => []
+  }
+}
+
+test fn reader_names_each_unsupported_axis_in_order() -> Bool {
+  let tail = (base_fields() |> count()) - 3
+  (restore_axes(w: axis_wire(tail: tail, g: "1", s: "0", nw: "0")) == [GpuAxis {}])
+    && (restore_axes(w: axis_wire(tail: tail, g: "0", s: "1", nw: "0")) == [StorageAxis {}])
+    && (restore_axes(w: axis_wire(tail: tail, g: "0", s: "0", nw: "1")) == [NetworkAxis {}])
+    && (restore_axes(w: axis_wire(tail: tail, g: "1", s: "1", nw: "1")) == [GpuAxis {}, StorageAxis {}, NetworkAxis {}])
+}
+
+// (10) Unicode: combining, astral and NUL values round-trip through a field; lengths are scalar counts, so a
+// byte-counted length (4 for the 1-scalar astral char) is exercised standalone below,
+// with no following framing to consume.
+fn work_with_inputs(v: String) -> Work<NonEmptyStr> {
+  work_for(
+    principal: principal,
+    contract: contract_with(runtime_closure: "toolchain-rust-1.89", inputs: v, effect: "effects-read-only", reason: "publishes"),
+    requirements: requirements_with(envelope: unstated_envelope()),
+  )
+}
+
+fn round_trips(v: String) -> Bool {
+  let w = work_with_inputs(v: v)
+  match work_persist(work: w) {
+    WorkPersistRefused { axes: _ } => false
+    WorkPersisted { wire } => match work_restore(wire: wire, expected_principal: principal) { WorkRestored { work } => same_work(a: work, b: w)  _ => false }
+  }
+}
+
+test fn astral_combining_and_nul_values_round_trip() -> Bool {
+  round_trips(v: "\u{1F600}") && round_trips(v: "e\u{0301}") && round_trips(v: "a\u{0}b")
+}
+
+// The length is a SCALAR count: one astral scalar is 4 UTF-8 bytes but length 1.
+test fn length_is_a_scalar_count_not_a_byte_count() -> Bool {
+  let astral = "\u{1F600}"
+  astral.length() == 1 && length_prefixed_encode(s: astral) == "1#" + astral
+}
+
+// A byte-counted length (4) over a field with only one scalar remaining exceeds the remaining scalars, so the
+// frame cannot be read: exactly RestoreTruncated, from constructed bytes (no following framing to consume).
+test fn byte_counted_length_exceeding_remaining_scalars_is_truncated() -> Bool {
+  refused_with(r: work_restore(wire: "4#\u{1F600}", expected_principal: principal), want: is_truncated)
+}
+
+// (11) Invalid values: an empty NonEmptyStr field and an unknown tag refuse as invalid fields.
+test fn empty_and_unknown_values_refuse() -> Bool {
+  let empty = replace_at(fields: base_fields(), index: 13, value: "")
+  let tag = replace_at(fields: base_fields(), index: 3, value: "warp")
+  refused_with(r: work_restore(wire: wire_of(fields: empty), expected_principal: principal), want: is_field_invalid)
+    && refused_with(r: work_restore(wire: wire_of(fields: tag), expected_principal: principal), want: is_field_invalid)
+}
+
+// (12) OpaqueEffects.reason is DIAGNOSTIC, not bound by the key (module header): an edit to it restores the same
+// key. This control pins the stated limitation so a change to either side reds.
+// Key equality (same_work) cannot see a carried field outside the key. The transported-field check is the
+// canonical wire itself: persist(restored) must equal the wire that was restored, byte for byte, so a
+// decoder that drops or rewrites ANY carried field (the OpaqueEffects reason included) turns this red
+// while the key stays the same.
+fn repersisted(r: WorkRestoration) -> String {
+  match r {
+    WorkRestored { work } => match work_persist(work: work) { WorkPersisted { wire } => wire  WorkPersistRefused { axes: _ } => "PERSIST-REFUSED" }
+    WorkRestoreRefused { cause: _ } => "RESTORE-REFUSED"
+  }
+}
+
+test fn restored_work_repersists_to_the_exact_wire() -> Bool {
+  let wire = wire_of(fields: base_fields())
+  repersisted(r: work_restore(wire: wire, expected_principal: principal)) == wire
+}
+
+test fn opaque_reason_is_diagnostic_not_bound_but_is_carried_exactly() -> Bool {
+  let edited = wire_of(fields: replace_at(fields: base_fields(), index: 12, value: "edited"))
+  restores_to_key(r: work_restore(wire: edited, expected_principal: principal), key: base_work().id.key)
+    && repersisted(r: work_restore(wire: edited, expected_principal: principal)) == edited
+    && edited != wire_of(fields: base_fields())
+}
+
+// (13) INHABITANCE: a Work produced by the real serving route (gunbc.serving.turn_demand serving_turn_work)
+// persists and restores, with a re-derived key equal to the produced one. Deleting restore reds this.
+test fn a_real_produced_work_persists_and_restores() -> Bool {
+  let request = ServingTurnRequest { interface: "svc-1", inputs: "in-1", model_requirement: "model-1", effect_contract: "effects-1", output_contract: "outputs-1" }
+  let produced = serving_turn_work(principal: principal, request: request, requirements: requirements_with(envelope: unstated_envelope()))
+  match work_persist(work: produced) {
+    WorkPersistRefused { axes: _ } => false
+    WorkPersisted { wire } => restores_to_key(r: work_restore(wire: wire, expected_principal: principal), key: produced.id.key)
+  }
+}
