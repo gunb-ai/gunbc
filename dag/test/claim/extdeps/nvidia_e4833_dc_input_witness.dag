@@ -1,0 +1,54 @@
+module test.claim.extdeps.nvidia_e4833_dc_input_witness
+
+// The E4833's DC input as recorded, and the one fold that reads it: a plug is named only from a jack read
+// in full. The held unit's jack is read in one of three figures today (the sleeve, 5.5 mm), so the real row
+// refuses and names the two owed; a jack read in full names its plug; a jack read in two of three still
+// refuses and names only the third. The refusal is the record of what the bench still owes, not a guess.
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { micrometer, micrometer_count }
+import extdeps.nvidia.e4833 {
+  CentrePositive, DcBarrelJack, DcPlugRequirement, PinMeasured, PlugNamed, PlugUndetermined,
+  e4833_dc_input, plug_for_dc_input,
+}
+
+fn with_pin_read(jack: DcBarrelJack, pin_micrometers: Nat) -> DcBarrelJack {
+  DcBarrelJack {
+    designator: jack.designator, label: jack.label, outer_diameter: jack.outer_diameter,
+    pin: PinMeasured { diameter: micrometer(count: pin_micrometers) }, polarity: jack.polarity, standing: jack.standing,
+  }
+}
+
+fn with_polarity_read(jack: DcBarrelJack) -> DcBarrelJack {
+  DcBarrelJack {
+    designator: jack.designator, label: jack.label, outer_diameter: jack.outer_diameter,
+    pin: jack.pin, polarity: CentrePositive, standing: jack.standing,
+  }
+}
+
+fn owed_count(r: DcPlugRequirement) -> Nat {
+  match r {
+    PlugNamed { outer_diameter, pin_diameter, polarity } => 0,
+    PlugUndetermined { owed } => count(owed),
+  }
+}
+
+// The recorded fact, and today's refusal: 5.5 mm sleeve, pin and polarity owed.
+test fn the_held_units_dc_input_is_a_5_5_mm_sleeve_whose_pin_and_polarity_are_owed() -> Bool {
+  micrometer_count(m: e4833_dc_input.outer_diameter) == 5500 && owed_count(r: plug_for_dc_input(jack: e4833_dc_input)) == 2
+}
+
+// The positive control: the same jack read in full names a 5.5 x 2.5 mm centre-positive plug.
+test fn a_jack_read_in_full_names_its_plug() -> Bool {
+  match plug_for_dc_input(jack: with_polarity_read(jack: with_pin_read(jack: e4833_dc_input, pin_micrometers: 2500))) {
+    PlugNamed { outer_diameter, pin_diameter, polarity } => micrometer_count(m: outer_diameter) == 5500 && micrometer_count(m: pin_diameter) == 2500,
+    PlugUndetermined { owed } => false,
+  }
+}
+
+// The discriminating half: two of three read still refuses, and names only the third.
+test fn two_of_three_read_still_refuses_and_names_the_third() -> Bool {
+  owed_count(r: plug_for_dc_input(jack: with_pin_read(jack: e4833_dc_input, pin_micrometers: 2500))) == 1
+    && owed_count(r: plug_for_dc_input(jack: with_polarity_read(jack: e4833_dc_input))) == 1
+}

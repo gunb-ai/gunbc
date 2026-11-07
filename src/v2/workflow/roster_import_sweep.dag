@@ -1458,23 +1458,26 @@ fn roster_edit_replacement(text: String, own_line: Bool) -> String {
 // The row encoding of a replacement, total and invertible: backslash first, then newline, so a row is always one line
 // and roster_unescape_replacement recovers the bytes exactly.
 fn roster_escape_replacement(text: String) -> String {
-  roster_join_exact(xs: split(s: roster_join_exact(xs: split(s: text, delimiter: "\\"), sep: "\\\\"), delimiter: "\n"), sep: "\\n")
+  roster_join(xs: split(s: roster_join(xs: split(s: text, delimiter: "\\"), sep: "\\\\"), delimiter: "\n"), sep: "\\n")
 }
 
 fn roster_unescape_replacement(text: String) -> String {
-  roster_join_exact(
+  roster_join(
     xs: list_map(xs: split(s: text, delimiter: "\\\\"), f: fn(part) { roster_unescape_newlines(part: part) }),
     sep: "\\"
   )
 }
 
 fn roster_unescape_newlines(part: String) -> String {
-  roster_join_exact(xs: split(s: part, delimiter: "\\n"), sep: "\n")
+  roster_join(xs: split(s: part, delimiter: "\\n"), sep: "\n")
 }
 
-// split's inverse: every part kept, the separator between each adjacent pair, so empty parts (a leading or doubled
-// separator) survive. roster_join drops them and is not an inverse.
-fn roster_join_exact(xs: List<String>, sep: String) -> String {
+// THE ONE JOIN of this module, and split's inverse: every part kept, the separator between each adjacent pair, so empty
+// parts (a leading or doubled separator) survive. There was a second join beside it that dropped a LEADING RUN of empty
+// parts (`if acc == "" { x }`), so one name meant two things -- a DESIGN 3 meaning fork, ruled unintended by tidy-ant-251
+// (msg_203d629f, sweep tooling); no consumer depended on the drop, and the row reader roster_edit_row_reads_back was
+// wrong-false through it for a replacement starting with a space. That join is deleted; this one carries the plain name.
+fn roster_join(xs: List<String>, sep: String) -> String {
   match xs {
     Empty => ""
     Cons { head: h, tail: t } => fold_list(xs: t, empty: h, cons: fn(acc, x) { acc + sep + x })
@@ -2983,10 +2986,6 @@ fn roster_id_byte_range(id: OccurrenceId, spans: SpanIndex) -> RosterByteRange? 
   }
 }
 
-fn roster_join(xs: List<String>, sep: String) -> String {
-  fold_list(xs: xs, empty: "", cons: fn(acc, x) { if acc == "" { x } else { acc + sep + x } })
-}
-
 // THE CONTROLS, run as `gunbc run --entry src/v2/workflow/roster_import_sweep.dag --function roster_import_sweep_controls_exit`.
 // Each case is source text pushed through the same tokenize/parse/normalize route and the same pure splice the apply step
 // performs, so a divergence between parser coordinates and applier coordinates fails here with the case named.
@@ -3089,6 +3088,7 @@ fn roster_controls_report() -> String {
         + roster_control_edit_splices()
         + roster_control_status_names()
         + roster_control_ancestor()
+        + roster_control_edit_row_leading_space()
   }
 }
 
@@ -4155,6 +4155,23 @@ fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
   }
 }
 
+// THE ROW READER KEEPS A LEADING SPACE (tidy-ant-251 msg_203d629f). An EDIT row is `EDIT <path> <start> <end> <escaped>`
+// split on " ", so a replacement that STARTS with a space puts an EMPTY field at index 4. The reader rejoins fields 4.. with
+// roster_join; it reads back TRUE only if that join keeps the empty leading part. Intended semantics, stated before any run:
+// the leading-space row reads back true (the RED: under the deleted dropping join it read back false), and the ordinary
+// row reads back true under both joins (the control).
+fn roster_control_edit_row_leading_space() -> String {
+  roster_control_edit_row_leading_space_reads_back() + roster_control_edit_row_ordinary_reads_back()
+}
+
+fn roster_control_edit_row_leading_space_reads_back() -> String {
+  if roster_edit_row_reads_back(row: roster_render_outcome(path: "control/space.dag", outcome: RosterEdit { start: 3, end: 3, text: " list_head", own_line: false }), start: 3, end: 3, replacement: " list_head") { "" } else { "CONTROL-FAIL edit-row-leading-space: a replacement starting with a space does not read back\n" }
+}
+
+fn roster_control_edit_row_ordinary_reads_back() -> String {
+  if roster_edit_row_reads_back(row: roster_render_outcome(path: "control/space.dag", outcome: RosterEdit { start: 3, end: 3, text: "list_head", own_line: false }), start: 3, end: 3, replacement: "list_head") { "" } else { "CONTROL-FAIL edit-row-ordinary: an ordinary replacement does not read back\n" }
+}
+
 // A MODULE WITH NO IMPORT LINE is in reach: pass 1 writes exactly one import, directly after the module header and before
 // the first top-level item, and leaves the header's own bytes untouched; pass 2 (the fixed point) is Clean.
 fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -5194,7 +5211,7 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
 // control report: empty when every control holds.
 // THE HAND-RUN READING: the count and names of the controls that ran, then any failure, then the count check.
 fn roster_rename_controls_ran(verdicts: List<RosterControlVerdict>) -> String {
-  int_to_decimal_string(value: length(xs: verdicts)) + " controls ran: " + roster_join_exact(xs: list_map(xs: verdicts, f: fn(v) { v.name }), sep: ", ") + "\n"
+  int_to_decimal_string(value: length(xs: verdicts)) + " controls ran: " + roster_join(xs: list_map(xs: verdicts, f: fn(v) { v.name }), sep: ", ") + "\n"
     + roster_control_fails(verdicts: verdicts) + roster_rename_control_count_check(verdicts: verdicts)
 }
 
