@@ -10,7 +10,7 @@ module gunbc.roadmap.ld449_lab_render_probe
 // gives the lab instance a modeled render or deploy route (DeploymentIntent, #15826), or with r2's revert.
 
 import std.types { String, List, NonEmptyStr, CommitSha }
-import std.optional { Absent }
+import gunbc.auth.tracker_web_oauth_client { tracker_web_oidc_deploy_now_epoch }
 import std.process { ExitSuccess, exit_failure }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
@@ -40,11 +40,11 @@ fn ld449_section(title: String, body: String) -> String {
 
 // `gunbc run --function` prints only a CliWireResponse (a bare String exits 2, "Wrap the result in ExitSuccess"), so each
 // entry answers CliWirePrintable: the rendered bytes with ExitSuccess, or the producer's refusal with a failing exit.
-// The lab serve unit, rendered for the revision the packet built. No clock is read: an instance whose
-// OIDC placement needs the observer clock answers the producer's own refusal, printed as such.
+// The lab serve unit, rendered for the revision the packet built. The clock is read through the deploy route's own
+// producer (tracker_web_oidc_deploy_now_epoch, as host_effect_realize passes it); a refusal is printed as such.
 fn ld449_render_lab_serve_unit(revision: String) -> CliWireResponse {
   let spec = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: Absent) {
+  match live_deploy_serve_unit_emission(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }, now_epoch: tracker_web_oidc_deploy_now_epoch()) {
     LiveDeployServeUnitEmitted { file } => CliWirePrintable { bytes: serialize_systemd_unit_file(file: file), exit: ExitSuccess }
     LiveDeployServeUnitOidcReadbackRefused { cause } => CliWirePrintable { bytes: ld449_section(title: "serve unit REFUSED", body: cause as String), exit: exit_failure(reason: cause as String) }
   }
