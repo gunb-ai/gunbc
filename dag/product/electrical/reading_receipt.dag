@@ -7,7 +7,14 @@ import std.nat { Nat, Succ, nat_to_decimal_string }
 import std.content_hash { Sha256Digest }
 import std.optional { Absent, Present }
 import v2.std.text { char_eq, string_join }
-import product.electrical.photograph { PixelRegion }
+import product.electrical.photograph {
+  CheckableAgainstStoredBytes,
+  CitationStanding,
+  InStore,
+  Photograph,
+  PixelRegion,
+  cite
+}
 import product.electrical.continuity { evidence_ref_text, OperatorStatement }
 import product.electrical.identification {
   GlyphReduction,
@@ -49,7 +56,32 @@ type CoverageSide
 
 type DirectionBasis
   = OperatorRuling { stated_on: NonEmptyStr, verbatim: NonEmptyStr }
-  | StoredFrameReRead { frame: Sha256Digest, box: PixelRegion, read_by: NonEmptyStr, read_on: NonEmptyStr }
+  | StoredFrameReRead { witness: StoredReReadWitness }
+
+// A re-read of a STORED, CAPTURED frame at a box. Constructed only by mint_stored_reread, which asks the store
+// authority (product.electrical.photograph cite) and mints only for CheckableAgainstStoredBytes: an invented
+// digest, a frame the store does not hold, and a frame we drew ourselves never reach this type.
+type StoredReReadWitness sole_constructor {
+  frame: Sha256Digest
+  box: PixelRegion
+  read_by: NonEmptyStr
+  read_on: NonEmptyStr
+}
+
+// The typed cause is the store authority's own standing, kept rather than collapsed to Absent.
+type ReReadMint
+  = ReReadMinted { basis: DirectionBasis }
+  | ReReadRefused { standing: CitationStanding }
+
+fn mint_stored_reread(store: List<Photograph>, frame: Sha256Digest, box: PixelRegion, read_by: NonEmptyStr, read_on: NonEmptyStr) -> ReReadMint {
+  let standing = cite(store: store, citation: InStore { content: frame, region: Present { value: box } })
+  match standing {
+    CheckableAgainstStoredBytes { surface: _, region: _ } => ReReadMinted {
+      basis: StoredFrameReRead { witness: StoredReReadWitness { frame: frame, box: box, read_by: read_by, read_on: read_on } }
+    }
+    _ => ReReadRefused { standing: standing }
+  }
+}
 
 type ReadingReceiptRelation
   = Agrees { model: NonEmptyStr, receipt: NonEmptyStr }
@@ -69,7 +101,7 @@ fn operator_ruling(stated_on: NonEmptyStr, verbatim: NonEmptyStr) -> DirectionBa
 fn basis_text(b: DirectionBasis) -> String {
   match b {
     OperatorRuling { stated_on, verbatim } => evidence_ref_text(e: OperatorStatement { stated_on: stated_on, verbatim: verbatim })
-    StoredFrameReRead { frame, box, read_by, read_on } => reread_text(frame: frame, box: box, read_by: read_by, read_on: read_on)
+    StoredFrameReRead { witness } => reread_text(frame: witness.frame, box: witness.box, read_by: witness.read_by, read_on: witness.read_on)
   }
 }
 

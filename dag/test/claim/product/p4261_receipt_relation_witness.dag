@@ -5,7 +5,18 @@ import std.algebra { Cons, Empty, count_where, is_empty, string_contains }
 
 import std.optional { Absent, Present }
 import std.content_hash { Sha256Digest, Sha256DigestHex }
-import product.electrical.photograph { InStore, PixelRegion }
+import std.list { first_where }
+import product.electrical.photograph {
+  CapturedFrame,
+  DigestNotInStore,
+  FrameIsOurOwnDrawing,
+  GeneratedImage,
+  InStore,
+  PhotographOrigin,
+  PixelRegion
+}
+import product.p4261.e1_photographs { e1_photographs }
+import product.p4261.photograph_store { p4261_e1_photograph_store }
 import product.electrical.identification { GlyphSpan }
 import product.electrical.reading_receipt {
   Agrees,
@@ -13,7 +24,10 @@ import product.electrical.reading_receipt {
   DiffersOnlyByCoverage,
   DiffersOnlyByUnreadGlyphs,
   DirectionRuling,
-  StoredFrameReRead,
+  ReReadMinted,
+  ReReadRefused,
+  ReReadMint,
+  mint_stored_reread,
   ModelCorrectsReceipt,
   ModelIsRight,
   ModelReadsMore,
@@ -166,19 +180,62 @@ test fn rel_6_contradictory_rulings_refuse_in_both_orders() -> Bool {
   why_has_both(r: ab) && why_has_both(r: ba) && same_relation(a: ab, b: ba) && agreeing
 }
 
-// Both basis arms are admitted when genuine: an operator statement (rel_5) and a boxed stored-frame re-read.
-// The invalid bases (an ordinary photograph as an OperatorRuling; an unstored or unboxed citation as a
-// StoredFrameReRead) have NO constructor: OperatorRuling's fields are the statement's words and day, and
-// StoredFrameReRead's are a Sha256Digest and a PixelRegion, neither optional. Such a RED is fixture source
-// the checker refuses, so it is not authorable as a passing claim here.
-test fn rel_7_a_boxed_stored_reread_is_an_admitted_basis() -> Bool {
-  let frame = Sha256Digest { hex: "0038015efe985ea204335e0771a492c45d393b54738b1fa3acffa011a5578fc0" as Sha256DigestHex }
-  let basis = StoredFrameReRead { frame: frame, box: PixelRegion { left: 1, top: 2, width: 3, height: 4 }, read_by: "royal-boar-195", read_on: "2026-11-07" }
-  let rule = DirectionRuling { model: "ABC / 123", receipt: "ABD / 123", direction: ReceiptIsRight, basis: basis }
-  match relate_with_rulings(model: "ABC / 123", receipt: "ABD / 123", rulings: [rule]) {
-    ReceiptCorrectsModel { model: _, receipt: _, basis: _ } => true
-    _ => false
+fn first_frame_of(captured: Bool) -> Sha256Digest? {
+  match first_where(xs: e1_photographs, keep: p => is_captured(o: p.origin) == captured) {
+    Absent => Absent
+    Present { value: p } => Present { value: p.content }
   }
+}
+
+fn is_captured(o: PhotographOrigin) -> Bool {
+  match o {
+    CapturedFrame { surface: _, capture: _, taken_on: _ } => true
+    GeneratedImage { depicts: _, drawn_by: _, drawn_on: _, atlas_revision: _ } => false
+  }
+}
+
+fn reread_at(frame: Sha256Digest) -> ReReadMint {
+  mint_stored_reread(store: p4261_e1_photograph_store.frames, frame: frame, box: PixelRegion { left: 1, top: 2, width: 3, height: 4 }, read_by: "royal-boar-195", read_on: "2026-11-07")
+}
+
+fn corrects_with(m: ReReadMint) -> Bool {
+  match m {
+    ReReadMinted { basis: b } => match relate_with_rulings(
+      model: "ABC / 123",
+      receipt: "ABD / 123",
+      rulings: [DirectionRuling { model: "ABC / 123", receipt: "ABD / 123", direction: ReceiptIsRight, basis: b }]
+    ) {
+      ReceiptCorrectsModel { model: _, receipt: _, basis: _ } => true
+      _ => false
+    }
+    ReReadRefused { standing: _ } => false
+  }
+}
+
+fn refused_as(m: ReReadMint, want_not_in_store: Bool) -> Bool {
+  match m {
+    ReReadMinted { basis: _ } => false
+    ReReadRefused { standing: DigestNotInStore { content: _ } } => want_not_in_store
+    ReReadRefused { standing: FrameIsOurOwnDrawing { depicts: _, obligation: _ } } => !want_not_in_store
+    ReReadRefused { standing: _ } => false
+  }
+}
+
+// The SAME box with three digests of the REAL E1 store (inhabitance): a captured frame mints and corrects; a
+// digest the store does not hold is refused as DigestNotInStore; one of the board's own drawings is refused as
+// FrameIsOurOwnDrawing. Only the first can be a StoredFrameReRead. The shape-only RED (a literal digest, an
+// omitted box, the old citation shape, the witness built directly) is refused by the checker; see the PR body.
+test fn rel_7_a_stored_reread_mints_only_through_the_store() -> Bool {
+  let invented = Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex }
+  let minted = match first_frame_of(captured: true) {
+    Absent => false
+    Present { value: d } => corrects_with(m: reread_at(frame: d))
+  }
+  let drawn = match first_frame_of(captured: false) {
+    Absent => false
+    Present { value: d } => refused_as(m: reread_at(frame: d), want_not_in_store: false)
+  }
+  minted && drawn && refused_as(m: reread_at(frame: invented), want_not_in_store: true)
 }
 
 // ─── THE JOIN, on a real receipt row ─────────────────────────────────────────────────────────────
