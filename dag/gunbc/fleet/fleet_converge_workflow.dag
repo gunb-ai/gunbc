@@ -86,7 +86,7 @@ import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
 import gunbc.cloudflare.r2_conditional_put_race_probe { race_probe_receipt_path }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
+import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_observe_probe_bound, mtcollins1_fan_observation_receipt_path, mtcollins1_fan_boot_phase_outcome_output, mtcollins1_fan_boot_phase_outcome_observed }
 import gunbc.machine_intake.mtcollins1_kvm_observer_observe { mtcollins1_kvm_observer_probe_bound, mtcollins1_kvm_observer_probe_artifact_glob }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation { mtcollins1_ui_status_asset_observation_receipt_path, mtcollins1_ui_status_asset_probe_bound }
 import gunbc.machine_intake.megarac_kvm_still { megarac_kvm_observer_release_allowance }
@@ -3245,7 +3245,10 @@ fn fleet_converge_mtcollins1_fan_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_mtcollins1_fan_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    // A FOLD, NEVER THE FLAT AUX FIGURE: the resolve of this entry's closure, the credential prelude's one
+    // bounded Secret Manager read, then the series' declared duration. The flat 5 minutes was ~94% spent in
+    // pre-entry resolve on run 42184429821 and killed the step mid-series.
+    timeout_minutes: Present { value: fleet_converge_gunbc_run_step_timeout_minutes(phases: [gunbc_ci_sm_max_time, mtcollins1_fan_observe_probe_bound()]) }
   }
 }
 
@@ -3531,14 +3534,20 @@ fn fleet_converge_mtcollins1_fan_observe_receipt_upload_step() -> Step {
 // declared, and a mode name typed wrong fails at that input rather than running the wrong step), and
 // this probe shares the fan lane's host, credential and read-only authority exactly. A new mode would
 // be a second door to the same box for the same purpose.
-data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
+// NOT GATED ON THE FAN STEP'S SUCCESS: this probe reads the HTTPS interface and the fan step reads RMCP+,
+// so one interface failing must not hide the other's observation. A step whose condition is only the mode
+// is skipped when an earlier step failed (the upload condition below says the same); `!cancelled()` lifts
+// that and still stops a cancelled run from reaching the BMC.
+data fleet_converge_mtcollins1_ui_status_asset_observe_mode_if: String = fleet_converge_mode_step_if(mode: MtCollins1FanObserve)
+
+data fleet_converge_mtcollins1_ui_status_asset_observe_step_if: String = join(["!cancelled() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
 
 // The upload's own condition, named instead of inlined so the policy is a declaration a reader can find:
 // the mode still gates it, and `always()` is what keeps the upload alive when the step it reports on
 // failed. Built the same way as the app-key version's upload condition, so every upload that must survive
 // a failed step reads the same way in the generated workflow; no parentheses, because this condition is a
 // single comparison rather than a disjunction.
-data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_step_if], "")
+data fleet_converge_mtcollins1_ui_status_asset_observe_upload_always_if: String = join(["always() && ", fleet_converge_mtcollins1_ui_status_asset_observe_mode_if], "")
 
 fn fleet_converge_mtcollins1_ui_status_asset_observe_step() -> Step {
   RunStep {
