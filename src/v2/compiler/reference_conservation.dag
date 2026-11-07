@@ -481,11 +481,11 @@ fn population_walk_children(
   })
 }
 
-fn authored_atom_population(artifact: ParseArtifact, token_classes: Map<Symbol, Bool>) -> AuthoredAtomPopulation {
+fn authored_atom_population(artifact: ParseArtifact, span_index: SpanIndex, token_classes: Map<Symbol, Bool>) -> AuthoredAtomPopulation {
   population_walk(
     acc: authored_atom_population_empty(),
     node: artifact.tree,
-    span_index: parse_artifact_span_index(artifact: artifact),
+    span_index: span_index,
     token_classes: token_classes,
     frame: PopulationFrame { context: Empty, innermost: ^reference_conservation_outside_every_production, item: 0 - 1 }
   )
@@ -1212,7 +1212,8 @@ fn reference_conservation_of_subject_admitted(
   match subject.parsed {
     Rejected { diagnostics: d } => reference_conservation_unmeasured(path: subject.path, diagnostics: d)
     Accepted { value: artifact, diagnostics: _ } =>
-      let population = authored_atom_population(artifact: artifact, token_classes: token_classes)
+      let spans = parse_artifact_span_index(artifact: artifact)
+      let population = authored_atom_population(artifact: artifact, span_index: spans, token_classes: token_classes)
       let roles = occurrence_roles_of_admitted(tree: artifact.tree, admission: admission)
       match subject.normalized {
         Accepted { value: tree, diagnostics: advisories } =>
@@ -1226,7 +1227,7 @@ fn reference_conservation_of_subject_admitted(
             advisories: advisories
           )
         Rejected { diagnostics: d } =>
-          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: parse_artifact_span_index(artifact: artifact))
+          let refused = conservation_against_refusal(path: subject.path, population: population, diagnostics: d, spans: spans)
           match roles {
             OccurrenceRolesRead { roles: r } => report_with_role_gaps(report: refused, roles: r)
             OccurrenceRoleTableRefused { unlisted: u, unknown: k, unkeyed: x } =>
