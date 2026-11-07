@@ -416,7 +416,7 @@ data target_syntax_built_by_hand_in_application_modules: IntegrationConcern = In
   identity: "target_syntax_built_by_hand_in_application_modules",
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection"),
-    requirement: "an application written as ordinary .dag is emitted to Swift and TypeScript by the target model and each language's grammar rows, so no application module names a target language's syntax constructors (DESIGN section 4, one grammar read in both directions)",
+    requirement: "an application written as ordinary .dag is emitted to Swift and TypeScript by the target model and each language's grammar rows, so no application module names a target language's syntax constructors (gunbc.design_argument::closed_grounded_substrate, one grammar read in both directions)",
     standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_transcribed_swift_frontier") } },
   },
   affected: FreeSemigroup { head: target_syntax_ledger_ref, tail: flat_map(target_syntax_debts, d => debt_declarations(d: d)) },
@@ -1062,7 +1062,7 @@ data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConce
 
   kind: SuspectedCapabilityGap {
     model: decl_ref(module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_base_ref_verdict"),
-    requirement: "an observation that asks git whether a base ref resolves must yield an outcome its caller cannot drop: a fatal printed on stderr while the round continues and exits 0 is not an outcome, and DESIGN section 5 requires a failure arm to refuse rather than widen",
+    requirement: "an observation that asks git whether a base ref resolves must yield an outcome its caller cannot drop: a fatal printed on stderr while the round continues and exits 0 is not an outcome, and gunbc.design_argument::fail_closed requires a failure arm to refuse rather than widen",
     standing: RequirementUnestablished { decided_by: "identify, in a build pinned to main, the caller that handed a bare `main` to a git operation during `claim_executor --regen-round-cost --base-mirror`; if no such caller exists on main the requirement is not established here and this row closes as branch-side" },
   },
 
