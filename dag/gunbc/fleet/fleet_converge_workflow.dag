@@ -5800,11 +5800,64 @@ fn fleet_converge_job() -> Job {
 // timed-out withdraw cannot have its mask lifted by an always() leg). The withdraw step declares the SAME
 // timeout as the converge step (both from host_cap_bracket_budget) and its upload the same artifact-
 // transfer timeout the release upload declares, so the existing terms already cover the worst case.
-fn fleet_converge_host_cap_job_floor_minutes() -> Int {
-  gunbc_ci_fleet_job_backstop_timeout_minutes()
-    + step_declared_timeout_minutes(st: fleet_converge_runner_host_file_converge_step())
+// THE PLAN TERM AND THE BRACKET NEVER RUN IN ONE DISPATCH, SO THE FLOOR TAKES THE LARGER, NOT THE SUM.
+// The tier backstop carries the plan step's excess over an aux slot as its one long worst-case step; the
+// bracket is the cap-drain converge, its release and the release upload. The plan steps are each gated to
+// exactly one plan mode, the bracket steps to exactly RunnerHostFileConverge (the release legs wrap that
+// gate in always()), and dispatch selects one mode, so no run pays both. Summing them was an
+// over-approximation that became a refusal once the drain budget followed the required job's 120-minute
+// roster timeout (#16019: bracket 239) and the plan step had to cover its ~1604 s pre-entry typecheck
+// (45, gunbc.fleet.fleet_workflow_steps gunbc_ci_fleet_converge_plan_step_timeout_minutes): 115 + 239 + 30
+// over the 360-minute platform ceiling. The exclusivity is READ, not asserted: each step's if_condition
+// must equal what fleet_converge_mode_step_if produces for its mode, and when any gate differs (a plan step
+// widened to a disjunction, a bracket leg regated) the floor falls back to the sum, which stays a correct
+// bound and fails at the ceiling loudly rather than admitting an overlap the max would undercount.
+fn fleet_converge_plan_step_excess_minutes() -> Int {
+  gunbc_ci_fleet_converge_plan_step_timeout_minutes - gunbc_ci_aux_step_timeout_minutes
+}
+
+fn fleet_converge_host_cap_bracket_minutes() -> Int {
+  step_declared_timeout_minutes(st: fleet_converge_runner_host_file_converge_step())
     + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_step())
     + step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
+}
+
+fn step_if_condition_text(st: Step) -> String? {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => c
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } => c
+  }
+}
+
+fn step_gate_is(st: Step, gate: String) -> Bool {
+  match step_if_condition_text(st: st) {
+    Present { value: v } => v == gate
+    Absent => false
+  }
+}
+
+fn always_gate(gate: String) -> String {
+  join(["always() && (", gate, ")"], "")
+}
+
+fn fleet_converge_plan_steps_and_bracket_are_mode_exclusive() -> Bool {
+  step_gate_is(st: fleet_converge_plan_step(), gate: fleet_converge_mode_step_if(mode: FullHostPlan))
+    && step_gate_is(st: fleet_converge_launch_environment_plan_step(), gate: fleet_converge_mode_step_if(mode: LaunchEnvironmentPlan))
+    && step_gate_is(st: fleet_converge_allocation_store_plan_step(), gate: fleet_converge_mode_step_if(mode: AllocationStorePlan))
+    && step_gate_is(st: fleet_converge_workspace_commissioning_plan_step(), gate: fleet_converge_mode_step_if(mode: WorkspaceCommissioningPlan))
+    && step_gate_is(st: fleet_converge_runner_host_file_converge_step(), gate: fleet_converge_mode_step_if(mode: RunnerHostFileConverge))
+    && step_gate_is(st: fleet_converge_runner_host_cap_release_step(), gate: always_gate(gate: fleet_converge_mode_step_if(mode: RunnerHostFileConverge)))
+    && step_gate_is(st: fleet_converge_runner_host_cap_release_receipt_upload_step(), gate: always_gate(gate: fleet_converge_mode_step_if(mode: RunnerHostFileConverge)))
+}
+
+fn fleet_converge_host_cap_job_floor_minutes() -> Int {
+  let excess = fleet_converge_plan_step_excess_minutes()
+  let bracket = fleet_converge_host_cap_bracket_minutes()
+  if fleet_converge_plan_steps_and_bracket_are_mode_exclusive() {
+    (gunbc_ci_fleet_job_backstop_timeout_minutes() - excess) + (if excess >= bracket { excess } else { bracket })
+  } else {
+    gunbc_ci_fleet_job_backstop_timeout_minutes() + bracket
+  }
 }
 
 fn fleet_converge_job_timeout_minutes() -> Int { fleet_converge_host_cap_job_floor_minutes() }

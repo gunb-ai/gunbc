@@ -17,7 +17,18 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_executor_subject_split_gate_if,
   fleet_converge_runner_host_withdraw_step,
   fleet_converge_runner_host_restore_step,
+  fleet_converge_plan_step,
+  fleet_converge_mode_step_if,
+  fleet_converge_any_mode_step_if,
+  fleet_converge_plan_step_excess_minutes,
+  fleet_converge_host_cap_bracket_minutes,
+  fleet_converge_plan_steps_and_bracket_are_mode_exclusive,
+  step_gate_is,
+  always_gate,
+  FullHostPlan,
+  RunnerHostFileConverge,
 }
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_fleet_job_backstop_timeout_minutes }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_refusal_marker, fleet_converge_split_missing_subject_marker }
 import gunbc.actions_run_binding { fleet_converge_subject_host_env_name, fleet_converge_expected_host_env_name }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_withdraw_invoke, gunbc_ci_runner_host_restore_invoke }
@@ -258,4 +269,36 @@ test fn the_subject_named_steps_carry_their_subject_env() -> Bool {
   ], st => any(env_pairs_of(st: st), e => e.key == fleet_converge_subject_host_env_name && env_value_is(e, "${{ github.event.inputs.subject_host }}")))
   all(steps, ok => ok)
     && any(env_pairs_of(st: fleet_converge_runner_host_file_converge_step()), e => e.key == fleet_converge_expected_host_env_name && string_contains(s: env_value_of(e: e), pattern: "github.event.inputs.host"))
+}
+
+// THE PLAN TERM AND THE BRACKET ARE ALTERNATIVES, NOT ADDENDS (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_host_cap_job_floor_minutes). The gates are read from the steps, the floor is the larger
+// of the two branches, and an altered gate falls back to the sum.
+
+test fn the_plan_steps_and_the_bracket_are_gated_to_exclusive_modes() -> Bool {
+  fleet_converge_plan_steps_and_bracket_are_mode_exclusive()
+}
+
+test fn the_floor_is_the_larger_branch_not_the_sum() -> Bool {
+  let excess = fleet_converge_plan_step_excess_minutes()
+  let bracket = fleet_converge_host_cap_bracket_minutes()
+  let base = gunbc_ci_fleet_job_backstop_timeout_minutes() - excess
+  let larger = if excess >= bracket { excess } else { bracket }
+  fleet_converge_host_cap_job_floor_minutes() == base + larger
+    && fleet_converge_host_cap_job_floor_minutes() < gunbc_ci_fleet_job_backstop_timeout_minutes() + bracket
+    && fleet_converge_host_cap_job_floor_minutes() >= gunbc_ci_fleet_job_backstop_timeout_minutes()
+    && fleet_converge_host_cap_job_floor_minutes() >= base + bracket
+}
+
+// The gate reading is exact: a plan step is not read as gated to the cap mode, the bare cap gate is not the
+// release leg's always() gate, and a disjunction that admits both a plan mode and the cap mode is gated to
+// neither, so a widened gate cannot pass as exclusive.
+test fn a_gate_that_is_not_exactly_its_mode_is_not_read_as_exclusive() -> Bool {
+  let widened = fleet_converge_any_mode_step_if(modes: [FullHostPlan, RunnerHostFileConverge])
+  step_gate_is(st: fleet_converge_plan_step(), gate: fleet_converge_mode_step_if(mode: FullHostPlan))
+    && !step_gate_is(st: fleet_converge_plan_step(), gate: fleet_converge_mode_step_if(mode: RunnerHostFileConverge))
+    && !step_gate_is(st: fleet_converge_runner_host_cap_release_step(), gate: fleet_converge_mode_step_if(mode: RunnerHostFileConverge))
+    && step_gate_is(st: fleet_converge_runner_host_cap_release_step(), gate: always_gate(gate: fleet_converge_mode_step_if(mode: RunnerHostFileConverge)))
+    && widened != fleet_converge_mode_step_if(mode: FullHostPlan)
+    && widened != fleet_converge_mode_step_if(mode: RunnerHostFileConverge)
 }
