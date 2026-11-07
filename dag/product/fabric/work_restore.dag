@@ -195,7 +195,7 @@ fn tokenize(text: String, index: Int) -> Tokenized {
     TokenizedOk { fields: [] }
   } else {
     match length_prefixed_decode(s: text) {
-      Absent => TokenizedRefused { cause: RestoreTruncated {} }
+      Absent => TokenizedOk { fields: [] }
       Present { value: f } =>
         if join([length_prefixed_encode(s: f.value), f.rest], "") != text {
           TokenizedRefused { cause: RestoreNotCanonical { field_index: index } }
