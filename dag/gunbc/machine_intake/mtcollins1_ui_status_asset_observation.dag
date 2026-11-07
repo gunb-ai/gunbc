@@ -769,53 +769,53 @@ fn ui_body_before_write_out(stdout: String) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------
-// THE BODY'S OWN OCTETS, on the no-script path only. A page that names no script and carries every
-// counter at zero cannot be told apart (login stub, redirect, landing page, compressed body) by counts
-// alone, so the receipt writes the body itself -- under four refusals that each write nothing:
-//   * larger than the limit: length and digest only, never a truncation (a prefix would read as the page);
-//   * containing a value of THIS session (its CSRF token or any cookie value from its jar): refused,
-//     because "a static page carries no secret" is an assumption about the controller and this file
-//     holds the means to check it;
+// THE CAPTURED TEXT OF THE BODY, on the no-script path only. CONTRACT: this is the UTF-8 octets of the
+// host-String projection of the response, NOT the wire bytes. The capture is a String, so any octet
+// that is not valid UTF-8 was already replaced (U+FFFD) before this file saw it; a round trip below
+// proves only that this text projection survives hex, and `replacement_characters` counts U+FFFD in the
+// text without being able to tell a decoder's insertion from a genuine U+FFFD in the page. So no field
+// here is a wire length or a wire digest, no first-octet class is a compression verdict (gzip's 1f8b is
+// undecidable from text: 0x8b is already gone), and every receipt line says `wire_bytes=not_established`.
+// Deciding stub-versus-compressed needs a byte-preserving acquisition path (a different contract, owed
+// separately). The text is written under four refusals that each write nothing:
+//   * larger than the limit: length and digest only, never a truncation;
+//   * containing a value of THIS session (CSRF token or any cookie value from its jar): refused;
 //   * no session value to check against (an unreadable jar): refused rather than written unchecked;
-//   * a body the encoder or the round trip cannot reproduce exactly.
-// The capture is a host String, so a non-text octet is already replaced (U+FFFD, three octets) before
-// this file sees it: gzip's second lead octet 0x8b cannot survive. The classification therefore reads
-// the first octet only (0x1f), and the count of replacement sequences is published beside it so a
-// reader can tell a text page from a lossy capture of a binary one.
+//   * text the encoder or the round trip cannot reproduce exactly.
 // ---------------------------------------------------------------------------------------------
 
-data megarac_ui_page_body_octets_limit: ByteSize = byte_size(count: 4096)
+data megarac_ui_page_text_limit: ByteSize = byte_size(count: 4096)
 
 data megarac_ui_replacement_sequence_octets: List<Int> = [239, 191, 189]
 
-type MegaRacUiFirstOctets
-  = FirstOctetsNone
-  | FirstOctetsGzipLead
-  | FirstOctetsByteOrderMark
-  | FirstOctetsMarkup
-  | FirstOctetsOther
+type MegaRacUiFirstTextOctet
+  = FirstTextOctetNone
+  | FirstTextOctetControl1f
+  | FirstTextOctetByteOrderMark
+  | FirstTextOctetMarkup
+  | FirstTextOctetOther
 
-type MegaRacUiBodyOctets
-  = BodyOctetsNotOwed
-  | BodyOctetsWritten { length: ByteSize, body_sha256: Sha256Digest, hex: String, hex_sha256: Sha256Digest, first_octets: MegaRacUiFirstOctets, replacement_sequences: Int }
-  | BodyOctetsTooLarge { length: ByteSize, limit: ByteSize, body_sha256: Sha256Digest? }
-  | BodyOctetsMatchSecret
-  | BodyOctetsNothingToCheckAgainst
-  | BodyOctetsNotRenderable { observed: Int }
-  | BodyOctetsHexDoesNotRoundTrip
-  | BodyOctetsDigestUnreadable
+type MegaRacUiCapturedText
+  = CapturedTextNotOwed
+  | CapturedTextWritten { text_utf8_length: ByteSize, text_sha256: Sha256Digest, hex: String, hex_sha256: Sha256Digest, first_text_octet: MegaRacUiFirstTextOctet, replacement_characters: Int }
+  | CapturedTextTooLarge { text_utf8_length: ByteSize, limit: ByteSize, text_sha256: Sha256Digest? }
+  | CapturedTextMatchSecret
+  | CapturedTextNothingToCheckAgainst
+  | CapturedTextNotRenderable { observed: Int }
+  | CapturedTextHexDoesNotRoundTrip
+  | CapturedTextDigestUnreadable
 
-fn ui_first_octets_of(octets: List<Int>) -> MegaRacUiFirstOctets {
+fn ui_first_text_octet_of(octets: List<Int>) -> MegaRacUiFirstTextOctet {
   if count(octets) == 0 {
-    FirstOctetsNone
+    FirstTextOctetNone
   } else if ui_octets_starts_with(hay: octets, needle: [239, 187, 191]) {
-    FirstOctetsByteOrderMark
+    FirstTextOctetByteOrderMark
   } else if ui_octets_starts_with(hay: octets, needle: [31]) {
-    FirstOctetsGzipLead
+    FirstTextOctetControl1f
   } else if ui_octets_starts_with(hay: octets, needle: [60]) {
-    FirstOctetsMarkup
+    FirstTextOctetMarkup
   } else {
-    FirstOctetsOther
+    FirstTextOctetOther
   }
 }
 
@@ -841,36 +841,36 @@ fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>> {
     |> filter(value => count(value) > 0)
 }
 
-fn ui_body_octets_of(body: String, session_values: List<List<Int>>) -> MegaRacUiBodyOctets {
+fn ui_captured_text_of(body: String, session_values: List<List<Int>>) -> MegaRacUiCapturedText {
   let octets = ui_octets_of(body)
   let length = count(octets)
   if count(session_values) == 0 {
-    BodyOctetsNothingToCheckAgainst
-  } else if length > byte_size_count(b: megarac_ui_page_body_octets_limit) {
-    BodyOctetsTooLarge { length: byte_size(count: length), limit: megarac_ui_page_body_octets_limit, body_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)) }
+    CapturedTextNothingToCheckAgainst
+  } else if length > byte_size_count(b: megarac_ui_page_text_limit) {
+    CapturedTextTooLarge { text_utf8_length: byte_size(count: length), limit: megarac_ui_page_text_limit, text_sha256: sha256_hex_digest(hex: sha256_hex_of_text(text: body)) }
   } else if any(session_values, value => ui_octets_contain(hay: octets, needle: value)) {
-    BodyOctetsMatchSecret
+    CapturedTextMatchSecret
   } else {
     match uint8_octets_of_ints(values: octets) {
-      QualifiedOctetsRefused { observed: observed } => BodyOctetsNotRenderable { observed: observed }
+      QualifiedOctetsRefused { observed: observed } => CapturedTextNotRenderable { observed: observed }
       QualifiedOctetsReady { value: qualified } => {
         let hex = base16_encode_lower(octets: qualified)
         match base16_decode_any(hex: hex) {
-          Absent => BodyOctetsHexDoesNotRoundTrip
+          Absent => CapturedTextHexDoesNotRoundTrip
           Present { value: decoded } => if qualified_octet_members(q: decoded) != octets {
-            BodyOctetsHexDoesNotRoundTrip
+            CapturedTextHexDoesNotRoundTrip
           } else {
             match sha256_hex_digest(hex: sha256_hex_of_text(text: body)) {
-              Absent => BodyOctetsDigestUnreadable
+              Absent => CapturedTextDigestUnreadable
               Present { value: body_digest } => match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
-                Absent => BodyOctetsDigestUnreadable
-                Present { value: hex_digest } => BodyOctetsWritten {
-                  length: byte_size(count: length),
-                  body_sha256: body_digest,
+                Absent => CapturedTextDigestUnreadable
+                Present { value: hex_digest } => CapturedTextWritten {
+                  text_utf8_length: byte_size(count: length),
+                  text_sha256: body_digest,
                   hex: hex,
                   hex_sha256: hex_digest,
-                  first_octets: ui_first_octets_of(octets: octets),
-                  replacement_sequences: ui_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0),
+                  first_text_octet: ui_first_text_octet_of(octets: octets),
+                  replacement_characters: ui_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0),
                 }
               }
             }
@@ -881,41 +881,41 @@ fn ui_body_octets_of(body: String, session_values: List<List<Int>>) -> MegaRacUi
   }
 }
 
-fn ui_first_octets_text(first: MegaRacUiFirstOctets) -> String {
+fn ui_first_text_octet_text(first: MegaRacUiFirstTextOctet) -> String {
   match first {
-    FirstOctetsNone => "none"
-    FirstOctetsGzipLead => "gzip_lead_1f"
-    FirstOctetsByteOrderMark => "byte_order_mark_efbbbf"
-    FirstOctetsMarkup => "markup_3c"
-    FirstOctetsOther => "other"
+    FirstTextOctetNone => "none"
+    FirstTextOctetControl1f => "control_1f_not_a_compression_verdict"
+    FirstTextOctetByteOrderMark => "byte_order_mark_efbbbf"
+    FirstTextOctetMarkup => "markup_3c"
+    FirstTextOctetOther => "other"
   }
 }
 
-fn ui_page_body_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
-  let head = join(["page_body path=", reading.path as String], "")
-  match reading.body_octets {
-    BodyOctetsNotOwed => []
-    BodyOctetsWritten { length: n, body_sha256: d, hex: hex, hex_sha256: hd, first_octets: first, replacement_sequences: r } => [join([
-      head, " length=", megarac_ui_count_text(byte_size_count(b: n)),
-      " body_sha256=", megarac_ui_digest_text(d),
-      " first_octets=", ui_first_octets_text(first),
-      " replacement_sequences=", megarac_ui_count_text(r),
+fn ui_page_text_lines(reading: MegaRacUiPageReading) -> List<NonEmptyStr> {
+  let head = join(["page_text path=", reading.path as String], "")
+  match reading.captured_text {
+    CapturedTextNotOwed => []
+    CapturedTextWritten { text_utf8_length: n, text_sha256: d, hex: hex, hex_sha256: hd, first_text_octet: first, replacement_characters: r } => [join([
+      head, " wire_bytes=not_established text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
+      " text_sha256=", megarac_ui_digest_text(d),
+      " first_text_octet=", ui_first_text_octet_text(first),
+      " replacement_characters=", megarac_ui_count_text(r),
       " hex_sha256=", megarac_ui_digest_text(hd),
-      " hex=", hex,
+      " text_hex=", hex,
     ], "") as NonEmptyStr]
-    BodyOctetsTooLarge { length: n, limit: lim, body_sha256: d } => [join([
-      head, " refused=too_large length=", megarac_ui_count_text(byte_size_count(b: n)),
+    CapturedTextTooLarge { text_utf8_length: n, limit: lim, text_sha256: d } => [join([
+      head, " wire_bytes=not_established refused=too_large text_utf8_length=", megarac_ui_count_text(byte_size_count(b: n)),
       " limit=", megarac_ui_count_text(byte_size_count(b: lim)),
-      " body_sha256=", match d {
+      " text_sha256=", match d {
         Absent => "unrenderable"
         Present { value: digest } => megarac_ui_digest_text(digest)
       },
     ], "") as NonEmptyStr]
-    BodyOctetsMatchSecret => [join([head, " refused=matches_session_value"], "") as NonEmptyStr]
-    BodyOctetsNothingToCheckAgainst => [join([head, " refused=no_session_value_to_check"], "") as NonEmptyStr]
-    BodyOctetsNotRenderable { observed: o } => [join([head, " refused=octet_outside_byte_range observed=", megarac_ui_count_text(o)], "") as NonEmptyStr]
-    BodyOctetsHexDoesNotRoundTrip => [join([head, " refused=hex_does_not_round_trip"], "") as NonEmptyStr]
-    BodyOctetsDigestUnreadable => [join([head, " refused=digest_unrenderable"], "") as NonEmptyStr]
+    CapturedTextMatchSecret => [join([head, " refused=matches_session_value"], "") as NonEmptyStr]
+    CapturedTextNothingToCheckAgainst => [join([head, " refused=no_session_value_to_check"], "") as NonEmptyStr]
+    CapturedTextNotRenderable { observed: o } => [join([head, " refused=octet_outside_byte_range observed=", megarac_ui_count_text(o)], "") as NonEmptyStr]
+    CapturedTextHexDoesNotRoundTrip => [join([head, " refused=hex_does_not_round_trip"], "") as NonEmptyStr]
+    CapturedTextDigestUnreadable => [join([head, " refused=digest_unrenderable"], "") as NonEmptyStr]
   }
 }
 
@@ -929,8 +929,8 @@ type MegaRacUiPageReading {
   why: NonEmptyStr
   asset_refs: List<NonEmptyStr>
   shape: MegaRacUiPageShape
-  // The body's own octets, owed only on the no-script path (see ui_body_octets_of).
-  body_octets: MegaRacUiBodyOctets
+  // The body's own octets, owed only on the no-script path (see ui_captured_text_of).
+  captured_text: MegaRacUiCapturedText
 }
 
 // THE SHAPE OF A PAGE BODY, COUNTS ONLY. `refs=0` alone cannot say why a page named no asset: a login or
@@ -1005,7 +1005,7 @@ fn ui_page_shape_of(body: String) -> MegaRacUiPageShape {
 fn ui_page_shape_line(reading: MegaRacUiPageReading) -> NonEmptyStr {
   let shape = reading.shape
   join([
-    "page_shape path=", reading.path as String,
+    "page_shape basis=captured_text_utf8 path=", reading.path as String,
     " body_length=", megarac_ui_count_text(byte_size_count(b: shape.body_length)),
     " body_sha256=", match shape.body_sha256 {
       Absent => "unrenderable"
@@ -1071,10 +1071,10 @@ fn ui_page_reading_of(
     why: candidate.why,
     asset_refs: refs,
     shape: shape,
-    body_octets: if response.transport_ok && response.http_status == 200 && shape.script_tags == 0 && count(refs) == 0 {
-      ui_body_octets_of(body: response.body, session_values: session_values)
+    captured_text: if response.transport_ok && response.http_status == 200 && shape.script_tags == 0 && count(refs) == 0 {
+      ui_captured_text_of(body: response.body, session_values: session_values)
     } else {
-      BodyOctetsNotOwed
+      CapturedTextNotOwed
     },
   }
 }
@@ -1454,7 +1454,7 @@ fn megarac_ui_asset_observation_run(
       }
       Present { value: csrf_token } => {
         // The session's own values, read once and carried: a page body is checked against them before
-        // its octets are written (ui_body_octets_of). A jar that cannot be read yields no
+        // its octets are written (ui_captured_text_of). A jar that cannot be read yields no
         // values, and the check then refuses to write rather than writing unchecked.
         let jar_read = Filesystem.Read(path: cookie_jar as String)
         let jar_values = match filesystem_read_outcome(
@@ -1539,7 +1539,7 @@ fn ui_pages_lines(pages: List<MegaRacUiPageReading>, at: Int, acc: List<NonEmpty
   } else {
     match pages |> get(at) {
       null => acc
-      page => ui_pages_lines(pages: pages, at: at + 1, acc: concat(list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)), ui_page_body_lines(reading: page)))
+      page => ui_pages_lines(pages: pages, at: at + 1, acc: concat(list_push(list_push(acc, ui_page_line(reading: page)), ui_page_shape_line(reading: page)), ui_page_text_lines(reading: page)))
     }
   }
 }

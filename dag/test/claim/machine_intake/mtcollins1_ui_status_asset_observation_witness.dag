@@ -77,25 +77,25 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   ui_page_line,
   ui_page_reading_of,
   ui_receipt_text,
-  MegaRacUiBodyOctets,
-  BodyOctetsNotOwed,
-  BodyOctetsWritten,
-  BodyOctetsTooLarge,
-  BodyOctetsMatchSecret,
-  BodyOctetsNothingToCheckAgainst,
-  BodyOctetsNotRenderable,
-  BodyOctetsHexDoesNotRoundTrip,
-  BodyOctetsDigestUnreadable,
-  FirstOctetsNone,
-  FirstOctetsGzipLead,
-  FirstOctetsByteOrderMark,
-  FirstOctetsMarkup,
-  FirstOctetsOther,
-  ui_first_octets_of,
+  MegaRacUiCapturedText,
+  CapturedTextNotOwed,
+  CapturedTextWritten,
+  CapturedTextTooLarge,
+  CapturedTextMatchSecret,
+  CapturedTextNothingToCheckAgainst,
+  CapturedTextNotRenderable,
+  CapturedTextHexDoesNotRoundTrip,
+  CapturedTextDigestUnreadable,
+  FirstTextOctetNone,
+  FirstTextOctetControl1f,
+  FirstTextOctetByteOrderMark,
+  FirstTextOctetMarkup,
+  FirstTextOctetOther,
+  ui_first_text_octet_of,
   ui_cookie_values_of_jar,
-  ui_body_octets_of,
-  ui_page_body_lines,
-  megarac_ui_page_body_octets_limit,
+  ui_captured_text_of,
+  ui_page_text_lines,
+  megarac_ui_page_text_limit,
   MegaRacUiRunOutcome,
 }
 
@@ -235,7 +235,7 @@ fn witness_page_transport(path: NonEmptyStr, status: Int, body: String, transpor
     why: "witness fixture page" as NonEmptyStr,
     asset_refs: ui_asset_refs_of_page(page_text: body),
     shape: ui_page_shape_of(body: body),
-    body_octets: BodyOctetsNotOwed,
+    captured_text: CapturedTextNotOwed,
   }
 }
 
@@ -1435,21 +1435,21 @@ fn witness_body_reading(body: String, session_values: List<List<Int>>) -> MegaRa
   )
 }
 
-fn witness_body_kind(o: MegaRacUiBodyOctets) -> String {
+fn witness_body_kind(o: MegaRacUiCapturedText) -> String {
   match o {
-    BodyOctetsNotOwed => "not_owed"
-    BodyOctetsWritten { length: _, body_sha256: _, hex: _, hex_sha256: _, first_octets: _, replacement_sequences: _ } => "written"
-    BodyOctetsTooLarge { length: _, limit: _, body_sha256: _ } => "too_large"
-    BodyOctetsMatchSecret => "match_secret"
-    BodyOctetsNothingToCheckAgainst => "nothing_to_check"
-    BodyOctetsNotRenderable { observed: _ } => "not_renderable"
-    BodyOctetsHexDoesNotRoundTrip => "no_round_trip"
-    BodyOctetsDigestUnreadable => "digest_unreadable"
+    CapturedTextNotOwed => "not_owed"
+    CapturedTextWritten { text_utf8_length: _, text_sha256: _, hex: _, hex_sha256: _, first_text_octet: _, replacement_characters: _ } => "written"
+    CapturedTextTooLarge { text_utf8_length: _, limit: _, text_sha256: _ } => "too_large"
+    CapturedTextMatchSecret => "match_secret"
+    CapturedTextNothingToCheckAgainst => "nothing_to_check"
+    CapturedTextNotRenderable { observed: _ } => "not_renderable"
+    CapturedTextHexDoesNotRoundTrip => "no_round_trip"
+    CapturedTextDigestUnreadable => "digest_unreadable"
   }
 }
 
 fn witness_lines_text(reading: MegaRacUiPageReading) -> String {
-  join(map(ui_page_body_lines(reading: reading), l => l as String), "\n")
+  join(map(ui_page_text_lines(reading: reading), l => l as String), "\n")
 }
 
 fn witness_session_values() -> List<List<Int>> {
@@ -1463,31 +1463,31 @@ fn base16_encode_lower_of_text(text: String) -> String {
   }
 }
 
-test fn w_the_written_body_decodes_back_to_the_fetched_octets() -> Bool {
+test fn w_the_written_text_decodes_back_to_the_captured_text_octets() -> Bool {
   let body = "<html><body>\"login\"\n</body></html>"
   let reading = witness_body_reading(body: body, session_values: witness_session_values())
-  match reading.body_octets {
-    BodyOctetsWritten { length: n, body_sha256: _, hex: hex, hex_sha256: hex_digest, first_octets: first, replacement_sequences: r } =>
+  match reading.captured_text {
+    CapturedTextWritten { text_utf8_length: n, text_sha256: _, hex: hex, hex_sha256: hex_digest, first_text_octet: first, replacement_characters: r } =>
       match base16_decode_any(hex: hex) {
         Absent => false
         Present { value: decoded } =>
           qualified_octet_members(q: decoded) == ui_octets_of(body) &&
             byte_size_count(b: n) == count(ui_octets_of(body)) &&
             r == 0 &&
-            first == FirstOctetsMarkup &&
+            first == FirstTextOctetMarkup &&
             (match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
               Absent => false
               Present { value: recomputed } => recomputed == hex_digest
             }) &&
-            string_contains(s: witness_lines_text(reading: reading), pattern: concat(" hex=", hex))
+            string_contains(s: witness_lines_text(reading: reading), pattern: concat(" text_hex=", hex))
       }
-    BodyOctetsNotOwed => false
-    BodyOctetsTooLarge { length: _, limit: _, body_sha256: _ } => false
-    BodyOctetsMatchSecret => false
-    BodyOctetsNothingToCheckAgainst => false
-    BodyOctetsNotRenderable { observed: _ } => false
-    BodyOctetsHexDoesNotRoundTrip => false
-    BodyOctetsDigestUnreadable => false
+    CapturedTextNotOwed => false
+    CapturedTextTooLarge { text_utf8_length: _, limit: _, text_sha256: _ } => false
+    CapturedTextMatchSecret => false
+    CapturedTextNothingToCheckAgainst => false
+    CapturedTextNotRenderable { observed: _ } => false
+    CapturedTextHexDoesNotRoundTrip => false
+    CapturedTextDigestUnreadable => false
   }
 }
 
@@ -1497,34 +1497,34 @@ test fn w_a_body_carrying_the_csrf_token_never_reaches_the_receipt() -> Bool {
   let control = witness_body_reading(body: clean, session_values: witness_session_values())
   let red = witness_body_reading(body: dirty, session_values: witness_session_values())
   let token_hex = base16_encode_lower_of_text(text: "CSRFTOKENVALUE9z")
-  witness_body_kind(o: control.body_octets) == "written" &&
-    witness_body_kind(o: red.body_octets) == "match_secret" &&
+  witness_body_kind(o: control.captured_text) == "written" &&
+    witness_body_kind(o: red.captured_text) == "match_secret" &&
     !string_contains(s: witness_lines_text(reading: red), pattern: "CSRFTOKENVALUE9z") &&
     !string_contains(s: witness_lines_text(reading: red), pattern: token_hex) &&
-    !string_contains(s: witness_lines_text(reading: red), pattern: " hex=") &&
+    !string_contains(s: witness_lines_text(reading: red), pattern: " text_hex=") &&
     string_contains(s: witness_lines_text(reading: red), pattern: "refused=matches_session_value")
 }
 
 test fn w_a_body_carrying_a_cookie_value_never_reaches_the_receipt() -> Bool {
   let red = witness_body_reading(body: "<html><body>x jarcookievalue42 y</body></html>", session_values: witness_session_values())
-  witness_body_kind(o: red.body_octets) == "match_secret" &&
+  witness_body_kind(o: red.captured_text) == "match_secret" &&
     !string_contains(s: witness_lines_text(reading: red), pattern: "jarcookievalue42") &&
-    !string_contains(s: witness_lines_text(reading: red), pattern: " hex=")
+    !string_contains(s: witness_lines_text(reading: red), pattern: " text_hex=")
 }
 
 test fn w_the_body_limit_refuses_without_truncating_and_admits_the_boundary() -> Bool {
   let at_limit = witness_body_reading(body: concat("<p>", witness_fill(n: 4093, acc: "")), session_values: witness_session_values())
   let over = witness_body_reading(body: concat("<p>", witness_fill(n: 4094, acc: "")), session_values: witness_session_values())
-  witness_body_kind(o: at_limit.body_octets) == "written" &&
-    witness_body_kind(o: over.body_octets) == "too_large" &&
-    string_contains(s: witness_lines_text(reading: over), pattern: "refused=too_large length=4097 limit=4096") &&
-    !string_contains(s: witness_lines_text(reading: over), pattern: " hex=")
+  witness_body_kind(o: at_limit.captured_text) == "written" &&
+    witness_body_kind(o: over.captured_text) == "too_large" &&
+    string_contains(s: witness_lines_text(reading: over), pattern: "refused=too_large text_utf8_length=4097 limit=4096") &&
+    !string_contains(s: witness_lines_text(reading: over), pattern: " text_hex=")
 }
 
 test fn w_no_session_value_to_check_against_writes_nothing() -> Bool {
   let r = witness_body_reading(body: "<html><body>x</body></html>", session_values: [])
-  witness_body_kind(o: r.body_octets) == "nothing_to_check" &&
-    !string_contains(s: witness_lines_text(reading: r), pattern: " hex=")
+  witness_body_kind(o: r.captured_text) == "nothing_to_check" &&
+    !string_contains(s: witness_lines_text(reading: r), pattern: " text_hex=")
 }
 
 test fn w_a_page_that_names_a_script_or_failed_owes_no_body_octets() -> Bool {
@@ -1534,10 +1534,10 @@ test fn w_a_page_that_names_a_script_or_failed_owes_no_body_octets() -> Bool {
     response: ui_http_of(get_body: "<html>x</html>\n404", get_succeeded: false),
     session_values: witness_session_values(),
   )
-  witness_body_kind(o: scripted.body_octets) == "not_owed" &&
-    witness_body_kind(o: missing.body_octets) == "not_owed" &&
-    count(ui_page_body_lines(reading: scripted)) == 0 &&
-    count(ui_page_body_lines(reading: missing)) == 0
+  witness_body_kind(o: scripted.captured_text) == "not_owed" &&
+    witness_body_kind(o: missing.captured_text) == "not_owed" &&
+    count(ui_page_text_lines(reading: scripted)) == 0 &&
+    count(ui_page_text_lines(reading: missing)) == 0
 }
 
 test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool {
@@ -1547,9 +1547,21 @@ test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool 
 }
 
 test fn w_the_first_octet_classes_are_distinguished() -> Bool {
-  ui_first_octets_of(octets: []) == FirstOctetsNone &&
-    ui_first_octets_of(octets: [31, 239, 191, 189]) == FirstOctetsGzipLead &&
-    ui_first_octets_of(octets: [239, 187, 191, 60]) == FirstOctetsByteOrderMark &&
-    ui_first_octets_of(octets: [60, 104]) == FirstOctetsMarkup &&
-    ui_first_octets_of(octets: [123]) == FirstOctetsOther
+  ui_first_text_octet_of(octets: []) == FirstTextOctetNone &&
+    ui_first_text_octet_of(octets: [31, 239, 191, 189]) == FirstTextOctetControl1f &&
+    ui_first_text_octet_of(octets: [239, 187, 191, 60]) == FirstTextOctetByteOrderMark &&
+    ui_first_text_octet_of(octets: [60, 104]) == FirstTextOctetMarkup &&
+    ui_first_text_octet_of(octets: [123]) == FirstTextOctetOther
+}
+
+// The receipt names its basis: every captured-text line says the wire bytes are not established, and
+// no line offers a compression verdict (a 0x1f lead is a control octet of the TEXT, nothing more).
+test fn w_the_captured_text_lines_state_that_wire_bytes_are_not_established() -> Bool {
+  let written = witness_body_reading(body: "<html><body>x</body></html>", session_values: witness_session_values())
+  let refused = witness_body_reading(body: "<p>CSRFTOKENVALUE9z</p>", session_values: witness_session_values())
+  let too_large = witness_body_reading(body: concat("<p>", witness_fill(n: 4094, acc: "")), session_values: witness_session_values())
+  string_contains(s: witness_lines_text(reading: written), pattern: "wire_bytes=not_established") &&
+    string_contains(s: witness_lines_text(reading: too_large), pattern: "wire_bytes=not_established") &&
+    !string_contains(s: witness_lines_text(reading: written), pattern: "gzip") &&
+    string_contains(s: join([ui_page_shape_line(reading: written) as String], ""), pattern: "basis=captured_text_utf8")
 }
