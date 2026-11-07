@@ -105,7 +105,7 @@ fn determinism_axis_for_primitive_name(sym: Symbol) -> std.determinism.Determini
 // reads the HEAD only, so it takes the head layer rather than the operand-strict application_read,
 // and one read serves both the compile tree and the fn-arrow skeletons its transitive walk folds.
 // A refused application is not "not a call": it may be exactly the order-leaking call, so an `axis` of Deterministic establishes
-// nothing while `unread` is non-empty, and every consumer below refuses on it (DESIGN §5).
+// nothing while `unread` is non-empty, and every consumer below refuses on it (gunbc.design_argument::fail_closed).
 type DeterminismRead {
   axis: std.determinism.Determinism
   unread: List<Diagnostic>
@@ -276,10 +276,10 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // false on everything else. A Conj TypeNode cannot satisfy that match, so `node_callee_symbol` was
 // Absent at every node of every fn-arrow body skeleton, `local_determinism_axis` returned
 // Deterministic unconditionally, and `determinism_transitive_holds` over a
-// `fn_arrow_decl_facts_live` population was GREEN BY CONSTRUCTION -- DESIGN §4b's own question
+// `fn_arrow_decl_facts_live` population was GREEN BY CONSTRUCTION -- gunbc.design_argument::guarantee_ladder's own question
 // asked too late, a row carrying no information while looking exactly like coverage.
 //
-// THE §4b(2) STALL FILED HERE NAMED THE CAPABILITY AND THE CAPABILITY LANDED, SO THE STALL IS
+// THE gunbc.design_argument::guarantee_ladder (no untracked stall) STALL FILED HERE NAMED THE CAPABILITY AND THE CAPABILITY LANDED, SO THE STALL IS
 // RETIRED BY ITS TRIGGER RATHER THAN BY THIS PARAGRAPH BEING REWRITTEN. The trigger read: the
 // fn-arrow body skeleton represents a call at a shape `node_is_call` accepts. gunbc#10282 reshaped
 // the PRODUCER -- `marshal_generic` emits `ComputationNode { behavior: Transform }` for an
@@ -310,7 +310,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // THIS PARAGRAPH HAS BEEN WRONG ONCE, IN THE OTHER DIRECTION, AND THAT HISTORY IS KEPT BECAUSE IT
 // IS THE USEFUL PART. Until review 59343 caught it, it named that same witness as a live consumer
 // "stamped ReadsLiveTree, whose failure reaches the required PR floor" AFTER gunbc#10156 had
-// withdrawn the consumer and removed the stamp -- rung inflation in the precise §4b(1) sense, a
+// withdrawn the consumer and removed the stamp -- rung inflation in the precise gunbc.design_argument::guarantee_ladder (rung honesty) sense, a
 // module describing a guarantee its own sibling file contradicted. The draft this replaced made the
 // same error a third time and in a subtler place: the consumer was genuinely restored, the stamp
 // genuinely re-added, and three of four criteria genuinely met, so the paragraph read as verified

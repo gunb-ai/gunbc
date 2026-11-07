@@ -16,7 +16,7 @@ import extdeps.common_paper.cloud_service_agreement { common_paper_csa_v2_1_ref 
 import extdeps.bonterms.cloud_terms { bonterms_cloud_terms_v1_0_ref }
 
 // OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN
-// section 3). Each receipt names the upstream declaration it is about and records what gunbc did on
+// gunbc.design_argument::single_authority). Each receipt names the upstream declaration it is about and records what gunbc did on
 // a particular day against a cited locator. WHETHER THE PUBLISHER PUBLISHED THE DOCUMENT PUBLICLY
 // IS A SEPARATE UPSTREAM AXIS: DocumentPublicationStatus is an extdeps.publication fact re-landed
 // by #8260; status values live on document modules; the rule mapping status to whether gunbc may
@@ -104,7 +104,7 @@ data mt_jade_getting_started_guide_subject_ref: DeclarationRef = DeclarationRef 
 // to remove a duplicated literal (review 67907). That collapsed the wall: the comparison below
 // asks pd == md, so feeding both sides the SAME declaration made RecordedReadBytesAgree true by
 // construction, and the witness cited it as coverage (review 68035). Two independent fetches are
-// two OBSERVATIONS, not two copies of a declared fact -- DESIGN section 3 external upstream
+// two OBSERVATIONS, not two copies of a declared fact -- gunbc.design_argument::external_upstreams external upstream
 // decomposition puts our reads in this layer and the document's declared digest in extdeps -- so
 // three rows here are three different facts, and their agreement is the thing worth checking. The
 // Collins pair below has always been written this way.
@@ -320,11 +320,11 @@ data mt_jade_gsg_citation_read_comparison: SpecificationCitationReadByteComparis
 
 // THE PINNED CONTRACT STANDARD'S READS, one typed receipt per locator the extdeps module cites,
 // recorded here and not on the extdeps record because how this repository read a locator is an
-// observation of ours (DESIGN section 3, external upstream decomposition) while what the document
+// observation of ours (gunbc.design_argument::external_upstreams, external upstream decomposition) while what the document
 // says is the upstream's. The anchor receipt's subject is the pinned declaration, imported from
 // the module that declares it; the index and version-history receipts are subject-referenced to
 // the authority declarations they read, so each locator's read is a row a fold can join, not a
-// sentence inside another row's detail (DESIGN section 4c).
+// sentence inside another row's detail (gunbc.design_argument::source_annotations).
 data common_paper_csa_v2_1_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
   subject: common_paper_csa_v2_1_ref,
   provenance: DocumentLocatorFetchedAndTextIngested {

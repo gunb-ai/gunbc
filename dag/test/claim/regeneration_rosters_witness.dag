@@ -15,7 +15,7 @@ import test.claim.heal_witness_fixture_paths { heal_fixture_committed_paths }
 // without loading the registry's closure, so the registry cannot be consulted at runtime to keep them
 // honest; this is where the two are joined. A roster entry the registry does not commit would be an
 // artifact the push-back job or the drift check writes or judges that no authority rosters (a
-// parallel authority, DESIGN section 3).
+// parallel authority, gunbc.design_argument::single_authority).
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn registry_commits(path: String) -> Bool {

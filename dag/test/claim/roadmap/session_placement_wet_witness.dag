@@ -1176,7 +1176,7 @@ fn orphan_launched(dir: String) -> Bool {
 
 // THE ORPHANED LEASE, MADE VISIBLE AGAIN -- the Oct-14 shape. Its slot sits only under the root the
 // re-root abandoned, so no settle pass can ever see it: the pass enumerates the current store, and that
-// store is the whole authority (DESIGN 3). The carry moves the slot into that store in one modeled step
+// store is the whole authority (gunbc.design_argument::single_authority). The carry moves the slot into that store in one modeled step
 // and decides nothing about the holder; the pass then settles it on the evidence it already admits (the
 // manager has no such unit and it left no exit record).
 //

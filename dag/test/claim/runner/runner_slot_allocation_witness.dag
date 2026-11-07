@@ -105,7 +105,7 @@ test fn runner_slot_allocation_committed_hosts_cover_the_fleet_exactly_once() ->
 // subtraction cannot run, and its axis is AxisUnmeasured rather than a number. The five it still
 // runs is not a width this module states at all: its committed width is a typed refusal, asserted
 // below on its own terms by srv2_width_resolves_to_a_typed_refusal_naming_its_denominator.
-// srv1's 11 IS GROUNDED IN ITS INPUTS, NOT COPIED FROM THE FOLD (DESIGN 5). Each input is a cited row
+// srv1's 11 IS GROUNDED IN ITS INPUTS, NOT COPIED FROM THE FOLD (gunbc.design_argument::fail_closed). Each input is a cited row
 // with its own provenance, and the literal is what they entail by hand, independently of
 // memory_admitted_width_of_envelope:
 //   usable 539281129472 B = 502.24 GiB (gunbc_ci_srv1_memtotal_measured, /proc/meminfo 2026-08-23)
@@ -158,7 +158,7 @@ test fn srv1_runner_host_deploy_count_is_the_derived_width() -> Bool {
 // `no_host_bypasses_derivation_with_a_held_width` and matched `host_held_runner_width` -- a
 // function whose only arm answered `none`. Its subject is deleted with the Int width API, so the
 // claim it made has no constructor left to be false about, and keeping it would be a permanently
-// green check cited as coverage (DESIGN 4b: ask whether the RED is authorable).
+// green check cited as coverage (gunbc.design_argument::guarantee_ladder: ask whether the RED is authorable).
 //
 // WHAT REPLACES IT ASSERTS THE ROUTE RATHER THAN THE ABSENCE. srv2's width must come back as
 // UNRESOLVED, carrying the memory-denominator cause -- not as any number. Reinstating a held width
@@ -584,7 +584,7 @@ test fn slot_purposes_partition_every_host_committed_width() -> Bool {
 //
 // Retyping 7 as 22 would re-arm exactly the same landmine one width later. A fixture that picks an
 // out-of-range index by writing down a number that happens to be out of range TODAY is a change
-// detector wearing a property's name (DESIGN section 5: a measurement copied from the same current
+// detector wearing a property's name (gunbc.design_argument::fail_closed: a measurement copied from the same current
 // tree is not an oracle). Deriving committed + 1 makes the fixture discriminating at ANY width,
 // which is what it was always trying to say.
 //

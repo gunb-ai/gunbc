@@ -32,7 +32,7 @@ import std.algebra { length }
 //
 // WHY IT IS BOUND TO std.goal_assessment AND NOT GIVEN ITS OWN LOOP. Observe then assess is not a
 // cabling idea; it is THE assessment idea, and that authority is subject-agnostic by construction.
-// A second loop authored here would be a fork of it (DESIGN section 3) and would arrive with its
+// A second loop authored here would be a fork of it (gunbc.design_argument::single_authority) and would arrive with its
 // own opinion about what "agreement" means.
 //
 // IT NO LONGER CARRIES AN ACTUATION ARM, AND THAT IS WHY THIS READS BETTER THAN IT DID. The shape
@@ -46,7 +46,7 @@ import std.algebra { length }
 // THE INABILITY TO REPAIR IS THE HONEST RUNG, NOT A GAP. A transceiver's coding
 // lives in EEPROM on the leg itself; writing it needs the vendor's programmer and their part
 // definition. This repository can observe the plant and can say exactly which legs diverge, and it
-// cannot repair one. DESIGN section 4b calls that column "outside the modeled guarantee": observed,
+// cannot repair one. gunbc.design_argument::guarantee_ladder calls that column "outside the modeled guarantee": observed,
 // refused, or mitigated at a declared boundary, never fabricated. So divergence terminates at
 // `GoalDiverged` CARRYING THE DIVERGENT LEGS -- located and countable, which is what the operator
 // can act on -- rather than at a silent no-op that would let an unrepaired plant read as agreeing.
@@ -65,7 +65,7 @@ import std.algebra { length }
 // ================= WHAT A LEG READING IS =================
 //
 // AN UNREAD LEG IS THE WHOLE POINT OF THE SUBJECT, so it is a variant of the reading rather than an
-// absence smuggled into the observation. DESIGN section 3: missing observations are coverage
+// absence smuggled into the observation. gunbc.design_argument::single_authority: missing observations are coverage
 // obligations DOWNSTREAM. This module is that downstream, and the obligation surfaces as a refusal
 // to observe the plant at all -- not as a plant that quietly reports on the legs it happened to
 // have.
@@ -137,7 +137,7 @@ type CablePlantReceipt sole_constructor {
 //
 // Every question this module asks about a leg is asked of THIS fold, never of the finding directly.
 // A per-question `match ... -> Bool` over the finding coproduct is the non-fold residue DESIGN
-// section 6 names, and it is what let an earlier module in this same subject drift: two call sites
+// gunbc.design_argument::how_to_work names, and it is what let an earlier module in this same subject drift: two call sites
 // answering the same question by two matches eventually disagree. A new finding arm is one row here
 // and every consumer re-decides at once, because the match is exhaustive.
 type LegStanding
@@ -218,7 +218,7 @@ fn plant_read_legs(readings: List<CableLegReading>) -> List<ObservedLeg> {
 //
 // THE NOTE THIS REPLACES WAS HALF RIGHT AND REACHED THE WRONG ARM. It argued, correctly, that an
 // unread leg must not be DROPPED: a plant reported on its read subset is the absorbing fallback
-// DESIGN section 5 forbids, where narrowing the population to what could be measured makes an
+// gunbc.design_argument::fail_closed forbids, where narrowing the population to what could be measured makes an
 // unmeasured plant look healthy. But it concluded that the whole plant must therefore REFUSE, and
 // refusing is not the only alternative to dropping. Refusal on the first unread endpoint discarded
 // every mis-coded leg that HAD been read -- an unknown fact suppressing a proved one, which is the

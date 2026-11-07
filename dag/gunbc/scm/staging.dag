@@ -7,7 +7,7 @@ module gunbc.scm.staging
 // what a CorpusManifestObject is and exactly what a commit root is. So there is no staging
 // REPRESENTATION here: the envelope's `staged` member selects an ordinary manifest object in the
 // ordinary store. A separate carrier would have been a second answer to one question (DESIGN
-// section 3), owing its own identity rule, its own codec, its own duplicate-path law and its own
+// gunbc.design_argument::single_authority), owing its own identity rule, its own codec, its own duplicate-path law and its own
 // version axis -- four authorities to keep in step with the four this reuses.
 //
 // THIS MODULE IS THE OBSERVATION HALF, AND THE VERBS THAT MOVE THE SELECTION LIVE NEXT DOOR.
@@ -113,7 +113,7 @@ type StagingRefusal
 //
 // Every step is well-formed. The manifest is valid, the commit mints, the document encodes, the
 // checkout recovers exactly what the manifest says -- so nothing anywhere refuses, and the author is
-// told their commit succeeded. That is the fabricated-plausible-output failure (DESIGN section 5)
+// told their commit succeeded. That is the fabricated-plausible-output failure (gunbc.design_argument::fail_closed)
 // with the fabrication being a DELETION.
 //
 // The root cause is that a manifest is a SNAPSHOT and `add` reads as a PATCH. A patch applied to
@@ -133,7 +133,7 @@ type StagingRefusal
 //
 // A DANGLING BASE REFUSES RATHER THAN INHERITING NOTHING, for the same reason: falling back to the
 // empty corpus when the base cannot be read reintroduces the deletion through the failure arm, which
-// is the absorbing fallback DESIGN section 5 names -- a failure widening to the superset instead of
+// is the absorbing fallback gunbc.design_argument::fail_closed names -- a failure widening to the superset instead of
 // refusing.
 // THE PRESENT ARMS CARRY THE RECORD, NOT A REFERENCE BESIDE A LIST. Both fields came from ONE
 // `CorpusManifestRecord` and splitting them threw away the fact that they did -- so a consumer holding
@@ -360,7 +360,7 @@ fn stage_standing(repository: RepositoryEnvelope) -> StageStanding {
 // pending change, and missing bytes do not make two locators harder to compare. Refusing there made
 // source unavailability an ABSORBING WORKSPACE STATE: the workspace could not even check out a
 // different, complete commit to escape it, because the refusal fired before checkout could ask its own
-// question. That is DESIGN section 5's absorbing fallback wearing a wall's clothing.
+// question. That is gunbc.design_argument::fail_closed's absorbing fallback wearing a wall's clothing.
 //
 // So this function stays RELATIONAL -- it answers only whether the candidate differs from the base --
 // and the entries travel on the two committable arms to the one operation that publishes. Carrying them

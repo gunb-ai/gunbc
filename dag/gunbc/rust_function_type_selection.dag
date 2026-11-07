@@ -45,7 +45,7 @@ import extdeps.languages.rust.function_type_forms {
   rustc_error_e0562,
 }
 
-// WHICH RUST FORM REALIZES A RETURNED CLOSURE AT EACH POSITION, AS A SELECTION (DESIGN section 3d).
+// WHICH RUST FORM REALIZES A RETURNED CLOSURE AT EACH POSITION, AS A SELECTION (gunbc.design_argument::selection_precedes_convergence).
 // The candidate field is Rust's two forms (extdeps.languages.rust.function_type_forms); this module
 // projects their facts onto funded axes and runs std.decision select_realization per position. It
 // owns the question, the axes, the hard constraint and the policy -- never the facts.

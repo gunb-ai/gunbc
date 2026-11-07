@@ -49,7 +49,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // validation restating what the carrier's shape already guarantees: both `projected_field` and the
 // `DeclarationRef` components are `NonEmptyStr`, and the attempt to author the discriminating RED
 // row -- a site with an empty `projected_field` -- was REFUSED at resolve with a type mismatch. The
-// invalid state has no constructor, so the check had nothing to catch (DESIGN.md §5, construction
+// invalid state has no constructor, so the check had nothing to catch (gunbc.design_argument::fail_closed, construction
 // over validation), and both predicate and witness are deleted rather than kept as a green that
 // cannot go red.
 //

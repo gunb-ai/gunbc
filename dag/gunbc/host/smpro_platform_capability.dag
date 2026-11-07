@@ -13,7 +13,7 @@
 // type in its own public surface. Both the bundle and the MegaRAC module import the type from here.
 // The raw pass observation it wraps still comes from the observation module this reads through.
 //
-// NO PLAUSIBLE OUTPUT IS FABRICATED (DESIGN.md §5). An earlier version of this module keyed the
+// NO PLAUSIBLE OUTPUT IS FABRICATED (gunbc.design_argument::fail_closed). An earlier version of this module keyed the
 // standing on the platform ARCHITECTURE: `Aarch64 => Present`. That fabricated an output for every
 // ARM machine that is not Ampere silicon — an AWS Graviton or an NVIDIA Grace board is aarch64 with
 // no SMpro interface at all — and it turned a machine with NO reading into
@@ -196,7 +196,7 @@ type SmproPlatformStanding
   // The platform carries the interface but the site is not admissible, WITH THE CAUSE. This arm exists
   // because the alternative was `Carried { site: SmproSiteStanding }` plus a Bool validator that rejected
   // the refused case at runtime: a validator standing in for a sum type that was never declared, which
-  // DESIGN §5 makes the blocking form ("making it unwritable -- correctness by construction, not
+  // gunbc.design_argument::fail_closed makes the blocking form ("making it unwritable -- correctness by construction, not
   // validation"). A refused site cannot be written into the carried arm any more, so there is nothing
   // left for a validator to catch.
   | SmproPlatformSiteRefused { family: SoCFamily, cause: SmproSiteRefusal }
@@ -286,7 +286,7 @@ fn smpro_platform_join_obligation(
 
 // (The well-formedness validator that used to sit here is GONE: SmproPlatformCarried holds an admitted
 // SmproSite directly and a refused site has its own arm, so the state it rejected cannot be built. DESIGN
-// §5 -- correctness by construction, not validation.)
+// gunbc.design_argument::fail_closed -- correctness by construction, not validation.)
 
 // WHY NO SMpro PASS SUBJECT EXISTS, in the machine's own words. The old path collapsed
 // not-licensed to 'no subject' and the boot diagnostic then rendered 'this host has no bound controller

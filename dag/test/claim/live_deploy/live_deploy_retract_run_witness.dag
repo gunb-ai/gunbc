@@ -3,7 +3,7 @@
 // body that retained_srvn shipped.
 //
 // The folds are pinned over SUPPLIED RunArgvTransportOutcome / SystemdPropertyCapture values (DESIGN
-// section 3: a witness discriminates at one interface; deriving them by running the legs would
+// gunbc.design_argument::witness_one_interface: a witness discriminates at one interface; deriving them by running the legs would
 // re-run production these claims are not about). The pairing obligation is the last two claims: the
 // REAL entry point is called, over a transport that refuses before any command, and the srv1 plan it
 // would run is shown to be typed legs and not a script, so deleting the realize leaves a claim red.

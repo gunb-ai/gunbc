@@ -307,7 +307,7 @@ import std.types { NonEmptyStr, List, String, Int, Bool, Duration, Map }
 // an artifact the current run did not produce.
 // THE ENROLLED HOST CHOICES ARE DERIVED, NOT SPELLED, for the reason the Spark target list beside
 // this one already records. The literal that stood here was gunbc.fleet.fleet_runner_connectivity
-// fleet_hosts() written out a second time -- a §3 fork that happened to agree, which is the only
+// fleet_hosts() written out a second time -- a gunbc.design_argument::single_authority fork that happened to agree, which is the only
 // state in which a fork is cheap to remove. It is now the same list its consumers fold as the
 // eligible executor set, so enrolling or retiring an executor host moves this input with it and
 // nobody can dispatch against a host the fleet does not think it has. Each option is the host's
@@ -334,7 +334,7 @@ data fleet_converge_spark_target_options: List<String> = map(spark_administrator
 // them used to spell every mode name independently: once as a bare String in the options
 // list, and again inside each hand-written "github.event.inputs.mode == '<name>'". Seventeen such
 // rows, so a mode's name was authored at least twice and a rename could land in one place and not
-// the other -- the second naming account section 3 refuses, in a shape no lens could see because
+// the other -- the second naming account gunbc.design_argument::single_authority refuses, in a shape no lens could see because
 // both halves are ordinary Strings.
 //
 // The wire form is now derived from the closed vocabulary, and the expressions are derived from the
@@ -530,7 +530,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
 // gunbc.spark.credential_workflow's administrator roster, which is what
 // spark_converge_target_selection actually resolves against -- carries srv5 through srv12. A
 // dispatcher reading the menu would have believed srv12 was not a legal target; the resolution would
-// have accepted it. That is the §3 positional-citation decay in prose: a second spelling of a roster,
+// have accepted it. That is the gunbc.design_argument::single_authority positional-citation decay in prose: a second spelling of a roster,
 // invalidated by an edit somewhere else, with nothing to catch it. It is now joined from the roster.
 fn fleet_converge_spark_target_description() -> String {
   join([
@@ -862,7 +862,7 @@ type FleetSshKeyDemand = FleetSshKeyConsumed | FleetSshKeyNotConsumed
 // gunbc.instruments.generated_artifact_gate failed to resolve with "non-exhaustive match: missing
 // variant(s) ApprovalKeyringConverge, MtCollins1Boot" and the heal job refused. The file is
 // byte-identical to main, so the defect is main's rather than this branch's; it is fixed here
-// because a branch cannot go green around it and DESIGN 6b is explicit that a link read and found
+// because a branch cannot go green around it and gunbc.design_argument::earliest_unjustified_boundary is explicit that a link read and found
 // wrong is followed rather than left.
 //
 // BOTH ANSWER FleetSshKeyConsumed, AND THE DIRECTION IS THE ARGUMENT. Every mode that acts on a host
@@ -1022,7 +1022,7 @@ data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable
 // assignment lookup and never reached the identity check; the walls were then fixture-only on the
 // production route. The entry now refuses rather than falling back to its own hostname, and the
 // hostname is the independent second reading that must agree. A stale account of that is not a
-// wording slip: it is one fact with two incompatible spellings (DESIGN section 3's meaning fork), and
+// wording slip: it is one fact with two incompatible spellings (gunbc.design_argument::single_authority's meaning fork), and
 // the one a later worker would most plausibly act on is the one that disarms the corroboration.
 // gunbc.host.host_reset_return carries the full argument, above reset_return_verdict_of_mint.
 data fleet_converge_reset_subjects: List<NonEmptyStr> = reset_roster_hosts(entries: reset_subject_roster(evidence: megarac_operation_evidence()))
@@ -1054,7 +1054,7 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // SHARED BY EVERY JOB THAT CONVERGES OR READS BACK THAT HOST (RLM-2 ruling section 9) -- and the
 // reason it gives is this mode's exact subject: a readback observing another transaction's mutation.
 // This is the most mutating job in the workflow, because it power-cycles a physical machine, and it
-// was the only host-touching one carrying no group at all. A section 3b divergence in the
+// was the only host-touching one carrying no group at all. A gunbc.design_argument::conformance divergence in the
 // leasing/locking domain with no stated reason, which is the only red that section admits.
 //
 // THE FABRICATION IT ADMITS IS THE ONE THIS MODULE EXISTS TO REFUSE. Two dispatches naming different
@@ -1069,7 +1069,7 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // is derived rather than spelled: a pairing this mint refused cannot appear in it, and an observer
 // absent from the map yields an empty subject, which cannot collide with a real host's domain.
 // THE MAP GOES THROUGH THE JSON EMITTER, NOT THROUGH concat. It hand-built the object with string
-// literals until review 62097, which is the medium-as-string shape and a section 2 re-invention: the
+// literals until review 62097, which is the medium-as-string shape and a gunbc.design_argument::minimize_redundancy re-invention: the
 // authority already exists at extdeps.languages.json.emit, and this module already consumes its YAML
 // sibling, so reaching for the JSON one is the same move rather than a new dependency.
 //
@@ -1082,7 +1082,7 @@ data fleet_converge_reset_observer_options: List<String> = match fleet_converge_
 // not restate it.
 // TAKING THE PAIRINGS AS AN ARGUMENT IS WHAT MAKES THE ESCAPING CHECK AUTHORABLE. Reading the module
 // data row directly left no way to hand this function a hostile label, so a witness could only have
-// restated what the emitter does -- permanently green by construction, which section 4b calls a
+// restated what the emitter does -- permanently green by construction, which gunbc.design_argument::guarantee_ladder calls a
 // decoration and worse than absent. Split so the fold is exercisable and the data row is one call.
 fn reset_subject_map_json(pairings: List<ResetObserverPairing>) -> String {
   serialize_json(
@@ -1551,7 +1551,7 @@ data fleet_converge_workspace_commissioning_plan_step_if: String = fleet_converg
 
 data fleet_converge_any_plan_step_if: String = fleet_converge_any_mode_step_if(modes: [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan])
 
-// THE VERDICT STEP'S OWN GATE (§3c, §6b step 4). The serve-entry verdict is consumed by exactly
+// THE VERDICT STEP'S OWN GATE (gunbc.design_argument::consumption, gunbc.design_argument::earliest_unjustified_boundary step 4). The serve-entry verdict is consumed by exactly
 // one reader -- the dashboard swap's pre-swap admission -- which can only be reached from a
 // pointer run that minted the RUN-BOUND PLAN RECEIPT the receipt assertion demands. That receipt
 // is minted by the two plan modes below (the launch-environment plan carries the same run-bound
@@ -1985,7 +1985,7 @@ fn fleet_converge_plan_step() -> Step {
 // artifact upload, exactly in the modes whose run-bound plan receipt the swap's receipt assertion
 // demands (fleet_converge_serve_entry_verdict_step_if: the full-host and launch-environment plans)
 // -- so no consumable plan artifact ships without the verdict, and the modes that never feed the
-// swap pay no serve-entry fold (§6b step 4).
+// swap pay no serve-entry fold (gunbc.design_argument::earliest_unjustified_boundary step 4).
 fn fleet_converge_serve_entry_verdict_step() -> Step {
   RunStep {
     name: Present { value: "Record the serve-entry compile verdict beside the plan artifact (gunbc.live_deploy.pre_swap_admission)" },
@@ -2131,7 +2131,7 @@ fn fleet_converge_admit_apply_run_pointer_step(if_condition: String) -> Step {
 // THE DISPATCH-INPUT FAIL-FAST (gunbc.fleet.fleet_converge_plan_revision): the inputs the
 // transaction would refuse on are refused in seconds, before the human-approval gate is even
 // filed and long before the fold's resolve is paid (run 39177393512: an empty plan_artifact_hash
-// bought a full-closure resolve and a ten-word refusal; DESIGN §6b puts the missing admission one
+// bought a full-closure resolve and a ten-word refusal; gunbc.design_argument::earliest_unjustified_boundary puts the missing admission one
 // link before the ten-minute symptom, not a timeout on it).
 fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
   RunStep {
@@ -2157,7 +2157,7 @@ fn fleet_converge_admit_dashboard_deploy_inputs_step() -> Step {
 // THE JOB'S FINAL RECEIPT ASSERTION, always run. The transaction mints a document on every terminal
 // arm -- apply receipt or named refusal -- so the job's rule is a count and a pairing, and the rule
 // lives with the documents in gunbc.live_deploy.apply_receipt (admit_dashboard_deploy_receipts), not
-// as hand-written shell here (DESIGN §6: raw shell implementing semantics expressible in .dag is the
+// as hand-written shell here (gunbc.design_argument::how_to_work: raw shell implementing semantics expressible in .dag is the
 // scaffold tell; the rest of this workflow already runs its checks through gunbc run --function).
 // It runs under always(): when the transaction step itself failed, its exit already names the cause
 // -- this step only reports whether the refusal receipt is there to carry it, and never turns a red
@@ -2541,7 +2541,7 @@ fn fleet_converge_executor_subject_split_gate_step() -> Step {
     // THE MODE DISJUNCTION ONLY, as one expression tree from the mode roster's builder. The `if:` says
     // WHEN the precondition applies; the script says WHETHER it holds. A host comparison in the `if:`
     // fails open: `(A || B || C) && host == subject_host` is false when subject_host is empty and host
-    // is not, so a restore with no subject skipped the gate and actuated (review 86194; DESIGN.md §5).
+    // is not, so a restore with no subject skipped the gate and actuated (review 86194; gunbc.design_argument::fail_closed).
     // Before that, gluing two serialized strings made GitHub read `A || B || C && D` as
     // A || B || (C && D) (review 38602, review 386096). With the decision in the script, every
     // dispatch of an act mode executes the gate and no input combination can step around it.
@@ -4213,7 +4213,7 @@ fn fleet_converge_r2_mint_receipt_scope() -> R2MintReceiptAttemptScoped {
 // store-refusal path wrote nothing, so this step claimed to cover the orphan case while the only
 // receipt it could ever find belonged to a run that did not need one. A glob, because the receipt is named for the bucket the mint ran against
 // (gunbc.cloudflare.r2_token_mint_run r2_origin_token_name) and re-spelling that name here would be
-// a second authority for it -- the §3 decay that an edit to the allocation roster would silently
+// a second authority for it -- the gunbc.design_argument::single_authority decay that an edit to the allocation roster would silently
 // invalidate. A missing receipt refuses the upload (gunbc.ci.workflow_artifact_upload AbsenceRefused): a refusal
 // before the Create writes no receipt and already fails the mint step, so failing the upload as well loses nothing,
 // while the only exit-0 path of the mint (mint_origin_token_and_store) writes the receipt first.
@@ -5364,7 +5364,7 @@ fn fleet_converge_boot_federation_admitted() -> Bool {
 // the hold store host, and the concurrency group is srv1's mutation domain. The job condition reads
 // ONLY the mode. A host term here would SKIP the job for a dispatch naming another host, and GitHub
 // reports a skipped job as success -- a green run standing in for a refusal (review 70894, DESIGN
-// section 5). Instead the job starts on srv1 and its credential-free admission step
+// gunbc.design_argument::fail_closed). Instead the job starts on srv1 and its credential-free admission step
 // (fleet_converge_mtcollins1_boot_admit_step, gunbc.machine_intake.mtcollins1_boot_admission
 // mtcollins1_boot_admit_executor) refuses such a dispatch with a typed reason before the WIF token
 // or the fleet key exist; the wet entry re-runs the same fold. Beside the mode it reads only whether the
@@ -5413,7 +5413,7 @@ fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
 
 // The two rendered credential scripts -- the fleet key step and the boot step -- are the job's
 // expensive parts, so the composition takes them as parameters: a witness of the composition supplies
-// them, and the witnesses of each script read that producer alone (DESIGN section 3).
+// them, and the witnesses of each script read that producer alone (gunbc.design_argument::single_authority).
 //
 // THE BOOT BUILDS ITS OWN COMPILER PAIR, NOT THE SIXTEEN-BINARY PACK. The boot runs gunbc, and
 // claim_executor verifies the build; it never ran the other fourteen release binaries, yet it waited
@@ -5543,7 +5543,7 @@ fn fleet_converge_fan_policy_phase_step() -> Step {
     // hung bounded call, the step timeout - is unmodeled and must fail the job HERE, before the boot
     // step, located. continue-on-error absorbed exactly those, and the job still finished green: the
     // operator addendum this step exists for forbids a machine sitting on a controller default
-    // unobserved after boot, and that flag let an unobserved boot pass. DESIGN §5: an escape hatch is
+    // unobserved after boot, and that flag let an unobserved boot pass. gunbc.design_argument::fail_closed: an escape hatch is
     // a hard reject. timeout_minutes stays - a hang dies loudly at this step, not in the runner.
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
@@ -5948,7 +5948,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
 // as its own identity, or it installs onto a host the shared job does not hold). That fact was
 // authored nowhere: each builder spelled its own id, so a witness over the job roster could only
 // compare it to a copied literal, which went red on every added mode while establishing nothing
-// (DESIGN section 5). The match is exhaustive, so a new mode cannot be rostered without naming its
+// (gunbc.design_argument::fail_closed). The match is exhaustive, so a new mode cannot be rostered without naming its
 // job, and each dedicated builder takes its id from its mode's arm here.
 data fleet_converge_shared_job_id: NonEmptyStr = "fleet-converge" as NonEmptyStr
 
@@ -6221,7 +6221,7 @@ fn fleet_converge_hosted_gunbc_build_step(purpose: String) -> Step {
 
 // WHETHER A DISPATCH OF THIS MODE AT THIS REF CLASS REQUIRES A GRANT, from the one eligibility rule
 // (gunbc.auth.branch_dispatch_federation run_scoped_mode_eligible_on), which reads run_scoped_modes and,
-// for the boot, the section 3d selection select_boot_credential_source. The wait job's condition and the
+// for the boot, the gunbc.design_argument::selection_precedes_convergence selection select_boot_credential_source. The wait job's condition and the
 // gates of the jobs that need it are both rendered from this one function, so "the wait was skipped" is
 // admitted only where this function says no grant was required.
 fn fleet_converge_grant_required(mode: FleetConvergeWorkflowMode, on_reviewed_main: Bool) -> Bool {
@@ -7395,7 +7395,7 @@ fn fleet_converge_yml_after_run_scoped_admission() -> FleetConvergeYamlGeneratio
       reason: join([
         "fleet-converge InputChoice has no options: ",
         join(fleet_converge_empty_choice_input_names(), ", "),
-        " (GitHub rejects an empty closed choice; DESIGN §5: refuse, do not emit options: [])",
+        " (GitHub rejects an empty closed choice; gunbc.design_argument::fail_closed: refuse, do not emit options: [])",
       ], "")
     }
   } else if count(fleet_converge_dispatch_inputs) > workflow_dispatch_max_inputs {
@@ -7424,7 +7424,7 @@ fn fleet_converge_yml_after_input_admission() -> FleetConvergeYamlGenerationOutc
 // THE ASSIGNMENT IS CHECKED BEFORE ANYTHING IS SERIALIZED, because an unmintable observer pairing
 // leaves fleet_converge_reset_observer_options empty and an empty choice list is a dispatch form that
 // silently cannot run the mode. A refusal that names its cause is the only honest arm: emitting a
-// workflow whose reset mode is unselectable would be the absorbing fallback DESIGN section 5 forbids,
+// workflow whose reset mode is unselectable would be the absorbing fallback gunbc.design_argument::fail_closed forbids,
 // with the loss denominated in the roster rather than in the change that caused it.
 fn fleet_converge_reset_assignment_refusal_reason(cause: ResetDispatchAssignmentRefusalCause) -> String {
   match cause {

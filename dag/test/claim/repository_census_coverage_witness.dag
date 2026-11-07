@@ -833,7 +833,7 @@ test fn witness_a_contract_naming_another_declaration_yields_no_capability_recei
 // with roughly a HUNDREDFOLD operation count, a linear one with roughly tenfold -- far enough apart
 // that no tolerance argument is needed. The assertion is on the RATIO, not either absolute count:
 // an absolute count copied from a current run is a tree-copied literal, the change detector DESIGN
-// section 5 rejects.
+// gunbc.design_argument::fail_closed rejects.
 //
 // The generator is deliberately dull -- one distinct key per index, no duplicates -- so the ratio
 // measures the reconciliation, not the fixture's shape.

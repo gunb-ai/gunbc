@@ -27,7 +27,7 @@ import gunbc.instruments.host_prelude {
 
 data nic_doc: String = "Wet cargo-compiling receipt for the Gate-1 emit import-closure derivation (emit_import_closure_root, PR 6960): a NAMESPACE module — zero import statements, the v2 corpus shape after namespace wave-1 — that references cross-module names emits VALID, cargo-COMPILING Rust. The regression it guards: before the reference_derived_use_lines pass in v1.compiler.emit_rust, the seed emitter derived Rust use-lines ONLY from authored import name-lists, so an import-free module referencing a sibling emitted bare unqualified names with no use-line and no inline qualification — unresolvable Rust (E0425/E0433). Regen does NOT guard this class (the seed corpus is import-based, so its emit is unchanged by the pass), which is why this receipt is REQUIRED coverage rather than redundant with the self-host fixed point. Live host effects (real gunbc emit, cargo build), so it is CLASSIFIED onto the falsifier Wet follow-on batch (falsifier_self_host_wet_entries) rather than per-PR hermetic discovery -- and classification is membership, not execution: falsifier.yml was deleted at 611fd02770 (#8283, 2026-08-15) and std.witness_admission witness_cadence_has_scheduled_route answers FalsifierSelfHostWet false, so nothing runs this receipt today (censused in gunbc.deleted_cadence_reference_census)."
 
-// DESIGN section 5 discriminating control — the receipt is an A/B on exactly one axis, not a lone
+// gunbc.design_argument::fail_closed discriminating control — the receipt is an A/B on exactly one axis, not a lone
 // green. Both arms write the SAME two file paths into the SAME scratch layout and run the SAME
 // emit+build chain; the ONLY difference is whether the provider module actually DEFINES the names
 // the consumer references. The green arm (nic_provider_source) defines PilotColor /
@@ -41,7 +41,7 @@ data nic_doc: String = "Wet cargo-compiling receipt for the Gate-1 emit import-c
 // UNMECHANIZED — say it plainly rather than let a path imply coverage. It was staged by a hand-run
 // dev script (scripts/namespace_import_closure_witness.sh, deleted 2026-07-23 with the rest of
 // scripts/); a discriminating control whose only realization is a shell file nobody executes on any
-// cadence is coverage by illusion, not a red control (DESIGN section 5), so the file's existence
+// cadence is coverage by illusion, not a red control (gunbc.design_argument::fail_closed), so the file's existence
 // was never the proof its citation implied. The method, if reproducing by hand: build the control
 // emitter from origin/main's v1_compiler_emit_rust.rs, emit the same fixture closure with each
 // binary, and require the with-pass closure to cargo-build and the no-pass closure to fail on
@@ -124,7 +124,7 @@ type NicNoVerdict
 // So a failed emit run is NicEmitRunDidNotSucceed, a no-verdict. The trade is explicit: a genuine
 // emitter refusal on the red arm now reports "subject unreached" and the arm goes RED rather than
 // green. That is a false red, it is loud, and someone investigates -- which is the direction DESIGN
-// section 5 requires when the alternative is a silent false green.
+// gunbc.design_argument::fail_closed requires when the alternative is a silent false green.
 //
 // DISSOLVES WHEN the emitter prints its own refusal marker, the way the self-host drivers already
 // print theirs, at which point "refused" becomes observable rather than inferred from an exit status

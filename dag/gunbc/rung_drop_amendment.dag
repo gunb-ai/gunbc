@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissolved }
 
 // A LATER RULING AMENDING A STANDING RUNG DROP -- THE ONE THING gunbc.rung_drop COULD NOT CARRY.
-// A DESIGN section 4b(3) declaration is written once, at the moment the guarantee falls: previous
+// A gunbc.design_argument::guarantee_ladder (no silent regression) declaration is written once, at the moment the guarantee falls: previous
 // rung, temporary rung, reason, population, restoration trigger. It has no field for what happens
 // NEXT while the row still stands -- and the world does move under a standing drop. gunbc#11774
 // discovered that the hard way: its author had a fact the ruling depended on (the carrier redesign
@@ -13,7 +13,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissol
 // gunbc.rung_drop. Two lanes then met the unexplained deletion in their regeneration diff
 // (gunbc#11732 reverted it, gunbc#11786 was left holding nothing else and was closed), and the
 // third regeneration, gunbc#11789, carried the deletion and the reasoning left the corpus. That is
-// DESIGN section 6's manual application committed as source, and the repair is not to re-hand-edit
+// gunbc.design_argument::how_to_work's manual application committed as source, and the repair is not to re-hand-edit
 // the bytes: it is this carrier.
 //
 // WHY THIS CARRIES NO CLAIM ABOUT THE RESTORATION TRIGGER. The first draft of this type had an
@@ -21,7 +21,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissol
 // what it did to the declaration below it. That is a SECOND AUTHORITY for a fact the drop already
 // owns: whether the guarantee is still down is `RungDropStanding` on the row, and whether the
 // trigger fired is `Retired { trigger_fired }` -- so an amendment asserting the trigger stands
-// whole beside a Retired row would be two answers to one question, and DESIGN section 4b(3) is
+// whole beside a Retired row would be two answers to one question, and gunbc.design_argument::guarantee_ladder (no silent regression) is
 // explicit that a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE. The sentence is therefore
 // DERIVED from the row's own standing at render time and is authored nowhere. An amendment states
 // what happened in the world and what it bears on; it does not get a vote on the declaration.
@@ -41,7 +41,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissol
 //
 // It was left unmodelled rather than built because NOTHING IN THE CORPUS SUPERSEDED A TRIGGER THEN,
 // and an arm with no instance is a constructor that constructs nothing -- the decoration DESIGN
-// section 4b names at the top rung, permanently green and worse than absent because it would be
+// gunbc.design_argument::guarantee_ladder names at the top rung, permanently green and worse than absent because it would be
 // cited as coverage. What arrives with the first real superseding ruling is an authored arm carrying
 // THE SUPERSEDING TRIGGER ITSELF (nobody can derive a new trigger from a row's standing), the
 // closing sentence branching on its presence, and a witness whose red is a superseded row rendered
@@ -58,7 +58,7 @@ import gunbc.rung_drop { RungDropStanding, Standing, Retired, Superseded, Dissol
 // precisely so that separate lanes append without rewriting each other's file, and widening the
 // record rewrites every one of them in a single diff; and an amendment is appended by a DIFFERENT
 // change, at a different time, from the one that declared the drop -- which is the same argument
-// DESIGN section 4b(3) makes for keeping the drop roster and the failure-mode ledger apart.
+// gunbc.design_argument::guarantee_ladder (no silent regression) makes for keeping the drop roster and the failure-mode ledger apart.
 //
 // THE JOIN IS THE RESIDUAL RISK AND IT IS WALLED. A row keyed by `drop_identity` can name a drop
 // that does not exist, or one that was renamed. test.claim.rung_drop_amendment_witness joins

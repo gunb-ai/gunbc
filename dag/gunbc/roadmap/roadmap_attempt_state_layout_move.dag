@@ -10,7 +10,7 @@ import gunbc.durable_exclusive_hold_file_store { hold_slot_payload }
 // MEMBER DIRECTORY. A store that used to keep its entries directly in the shared parent root declares one
 // MoveRow: the member it now owns and the pattern its legacy flat entries match. Every store's mint refuses
 // while any legacy entry remains (move_row_legacy_names), and the deploy legs converge the move with this
-// plan (move_plan). Adding a store to the move is a data row, never new control flow (DESIGN section 6b).
+// plan (move_plan). Adding a store to the move is a data row, never new control flow (gunbc.design_argument::earliest_unjustified_boundary).
 //
 // The refusal is permanent and typed, never a dual read: a mint that read both layouts would let an ordinal
 // claimed in the flat layout be re-claimed in the member.

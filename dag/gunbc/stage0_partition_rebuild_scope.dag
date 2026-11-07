@@ -47,7 +47,7 @@ import gunbc.stage0.stage0_partition_package_graph {
 // NARROWS -- a missing edge would drop a package that must recompile, which is a worse failure
 // than widening because the next pass would then run stale code.
 //
-// REFUSE, NEVER WIDEN (DESIGN section 5, the absorbing fallback). Every arm below that cannot
+// REFUSE, NEVER WIDEN (gunbc.design_argument::fail_closed, the absorbing fallback). Every arm below that cannot
 // compute the precise package set REFUSES with the mirror or package it could not answer for.
 // "Could not determine the owner" is not "build everything": collapsing them would destroy the
 // only signal that the ownership roster has a hole, and the hole would then never rank for
@@ -296,7 +296,7 @@ fn rebuild_scope_reverse_step(
 }
 
 // The fixpoint by construction: a package dependency path over n packages has at most n edges,
-// so n steps reach it (DESIGN section 4 -- bounded and forward, no discovered termination).
+// so n steps reach it (gunbc.design_argument::closed_grounded_substrate -- bounded and forward, no discovered termination).
 fn rebuild_scope_reverse_closure(
   seeds: List<String>,
   rows: List<GeneratedPartitionCrateRow>

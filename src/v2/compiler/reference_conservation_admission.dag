@@ -272,7 +272,7 @@ fn changed_scope_observation_of_subjects(subjects: FreeMonoid<ReferenceConservat
   }
 }
 
-// THE DECLARED FRONTIER OF THIS OBSERVATION (DESIGN section 3c). Nothing gates on it yet. Two
+// THE DECLARED FRONTIER OF THIS OBSERVATION (gunbc.design_argument::consumption). Nothing gates on it yet. Two
 // capabilities are required, neither of which is a declaration today, and both are named for what
 // they are:
 // - a positive production control, which is what makes the observation eligible to be an

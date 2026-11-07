@@ -221,7 +221,7 @@ fn tailscale_status_web_proxies(web: JsonValue, mount: TailscaleServeMount) -> L
 // That sentence used to end 'which the blue/green selector refuses before mutation; they never
 // select a plausible slot', citing srv1_blue_green_slot_selection. That selector was deleted with
 // the blue/green pair on 2026-08-19, so the citation named a symbol that no longer resolves -- the
-// DESIGN section 3 stale-citation class, in an extdeps module. The projection's own behaviour is
+// gunbc.design_argument::single_authority stale-citation class, in an extdeps module. The projection's own behaviour is
 // unchanged: a wrong-shaped member still yields no proxy. What is gone is the consumer that acted
 // on it, and this module states the upstream fact rather than who reads it.
 // tailscale_serve_status_proxy_targets and tailscale_serve_status_json_argv now have no production

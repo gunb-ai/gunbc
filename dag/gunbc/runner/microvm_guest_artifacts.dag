@@ -11,7 +11,7 @@ import extdeps.virtualization.firecracker { firecracker_ci_smoke_kernel_url, fir
 // pin one it MEASURED.
 //
 // Measuring one is what this module does, and the measurement is a RECEIPT IN THIS LAYER rather
-// than a fact appended to the upstream module -- DESIGN section 3's external-upstream rule, exactly
+// than a fact appended to the upstream module -- gunbc.design_argument::single_authority's external-upstream rule, exactly
 // as it reads: observations produced by this repository belong to the observing product, never to
 // the observed upstream. Writing an observed digest into extdeps.virtualization.firecracker would
 // have made this fleet's first fetch look like something the vendor published.
@@ -37,7 +37,7 @@ type GuestArtifactDigestProvenance
 // entry point below exists at all. An unpinned artifact is fetched and MEASURED and the measurement
 // is printed for a human to commit as a row; it is never silently accepted as whatever arrived.
 // Filling the pinned arm with a plausible-looking hex string would be the fabricated output DESIGN
-// section 5 forbids, wearing a security control's clothes.
+// gunbc.design_argument::fail_closed forbids, wearing a security control's clothes.
 // A BUILT ARTIFACT IS NOT "NOT PINNED YET", IT IS NOT PINNABLE, and collapsing the two made the
 // receipt instruct a reader to do what this module forbids: the standing printed "author this as
 // ArtifactDigestPinned with FirstObservedOnFetch provenance" beside the image THIS BUILD had just

@@ -1,6 +1,6 @@
 # Floor cut (FLOOR-Y): delete CI, rebuild from agreement
 
-DESIGN §3 and [replacement-migration doctrine](replacement-migration-doctrine.md) govern this cut. The 2026-08-15 operator ruling requires deletion first, then one agreed job at a time. Each major step stops for operator acceptance; fix-forward runs continuously inside the step. Earlier CI designs supply obligations and terminal shapes, never a reason to postpone deletion.
+gunbc.design_argument::single_authority and [replacement-migration doctrine](replacement-migration-doctrine.md) govern this cut. The 2026-08-15 operator ruling requires deletion first, then one agreed job at a time. Each major step stops for operator acceptance; fix-forward runs continuously inside the step. Earlier CI designs supply obligations and terminal shapes, never a reason to postpone deletion.
 
 The recorded vehicle is `integration/floor-cut`, based on `64ebefa74`, with cutover PR gunbc#8283. These are historical cut coordinates, not a current CI inventory; DESIGN and the live workflow authorities own today's gate. [Original analysis and receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/floor-cut-replacement-plan.md) retains the exact deletion roster and boundary evidence.
 

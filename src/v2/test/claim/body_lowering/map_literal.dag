@@ -141,7 +141,7 @@ data ml_mixed_ingest: SourceRootIngest = [
 // THE FRONT END RUNS ONCE, NOT ONCE PER CLAIM. The fixture ingest and each subject's resolve are
 // nullary pure producers, served across witnesses by v2.workflow.floor_pure_producer_share
 // derive_cross_claim_share (as #12740's anonymous_record producers are); every
-// claim below only inspects a produced value (DESIGN section 3: a witness discriminates at one
+// claim below only inspects a produced value (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface, and the front end is not its subject).
 fn ml_fixture_normalized() -> Outcome<FreeMonoid<NormalizedTree>> {
   module_roots_from_source_root_ingest(ingest: ml_ingest, lm: dag_language_model())
@@ -344,7 +344,7 @@ test fn ml_the_duplicate_refusal_is_located_at_the_second_key_holds() -> Bool {
 // Control 2d: the reason control 2 names is a DISCRIMINATOR, observed. ml_refuses_with answers with
 // one fatal reason per outcome, so asking it about ONE outcome five ways could never fail: distinct
 // symbols are never equal, and a check whose forbidden state is expressible nowhere it runs is a
-// decoration, green by construction (DESIGN.md §4b). The forbidden state IS writable here, by asking
+// decoration, green by construction (gunbc.design_argument::guarantee_ladder). The forbidden state IS writable here, by asking
 // the same question of outcomes that refuse for a DIFFERENT reason or for none. Each negated row has
 // a way to turn red that the first conjunct cannot shield: if the helper ever stopped comparing the
 // reason, the key-kind and name-key refusals would answer true and fail here; if it answered true for

@@ -50,7 +50,7 @@ type SelReadCapability
 // it must name the declaration that carries the decode table so the citation is checkable.
 // OemDecodeRenderedUncited is the fourth state: the controller's surface rendered SOME description
 // for OEM records, but no cited decode table stands behind it, so it licenses nothing either --
-// a rendering is not an authority (DESIGN section 4d).
+// a rendering is not an authority (gunbc.design_argument::epistemic_humility).
 type OemSelDecodeCapability
   = OemDecodeAvailable { decode_authority: DeclarationRef }
   | OemDecodeControllerDeclaredUnknown
@@ -109,7 +109,7 @@ type MemoryPowerTelemetryCapability
   | MemoryPowerNotExposed
 
 // MANAGED AC CARRIES NO OUTLET. This fleet has no managed PDU, and authoring an arm that names an
-// outlet would be DESIGN section 3c's dangling declaration -- a constructor no realization
+// outlet would be gunbc.design_argument::consumption's dangling declaration -- a constructor no realization
 // reaches. The other arm, like PerSlotLocalizationExposed, carries only the DECLARATION of the
 // realization that would perform the cycle, never the hardware; it exists so a platform that
 // gains an actuator can say so without this type growing a PDU model, and the attempt module
@@ -142,7 +142,7 @@ type PreOsObservationCapabilities {
 }
 
 // TWO AXES ARE CARRIED FOR A CONSUMER THAT IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO (DESIGN
-// section 3c). memory_power is the post-boot qualification's input -- whether a soak can read an
+// gunbc.design_argument::consumption). memory_power is the post-boot qualification's input -- whether a soak can read an
 // aggregate memory power figure -- and post-boot qualification is the explicitly separate second
 // change. host_callback is what gunbc.recurring_failure_mode.control_plane_acknowledgement_minted_as_effect
 // names as the constructor input of a subject-level boot terminal; the boot-delivery model that

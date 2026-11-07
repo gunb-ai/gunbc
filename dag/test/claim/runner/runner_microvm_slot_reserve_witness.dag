@@ -142,7 +142,7 @@ test fn a_second_reserve_of_the_held_shakedown_cell_refuses() -> Bool {
   held_refuses && absent_admits
 }
 
-// THE CANDIDATE IS SUPPLIED, NOT PRODUCED (DESIGN 3, a witness discriminates at one interface): its
+// THE CANDIDATE IS SUPPLIED, NOT PRODUCED (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): its
 // permit comes from the shared provider-use fixture, because the production permit's producer -- the
 // fleet CI cell's first-party posture -- is not this claim's subject.
 fn candidate_executed_by(executor: NonEmptyStr) -> List<CandidateOffer<NonEmptyStr>> {

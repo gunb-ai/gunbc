@@ -14,7 +14,7 @@ import gunbc.serving.rented_replica { RentedReplicaIdentity }
 //
 // THE FIELD IS A Port RATHER THAN A Nat, because std.types already carries
 // `type Port = Int where range(min: 1, max: 65535)`: an out-of-range port is unwritable
-// (DESIGN section 4b: construction over validation).
+// (gunbc.design_argument::guarantee_ladder: construction over validation).
 type ServingRouteEndpoint {
   replica: RentedReplicaIdentity
   address: NonEmptyStr
@@ -24,7 +24,7 @@ type ServingRouteEndpoint {
 // THE CEILING IS A DECISION, NOT A READING, AND CANNOT BE SPELLED AS A MEASUREMENT. Neither arm says
 // "somebody measured this route's capacity", because the engine does not export one the harness can
 // read. The attributable-allocation shape is the one gunbc.fleet.fleet_intent_network uses: DESIGN
-// section 5 forbids fabricating an OBSERVATION, and an allocation carrying a decider, a date and a basis
+// gunbc.design_argument::fail_closed forbids fabricating an OBSERVATION, and an allocation carrying a decider, a date and a basis
 // is not one. It bounds optimism and nothing else: admission takes the MINIMUM of this ceiling and what
 // the route says about itself right now, so the live reading may always refuse and may never admit
 // beyond the ceiling.

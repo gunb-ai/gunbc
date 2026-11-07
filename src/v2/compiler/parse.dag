@@ -36,7 +36,7 @@ type ParseProvenanceState {
 // `occurrence_identity_scope_law` names "module-local allocator reset" a FORBIDDEN identity input
 // and requires that "a production source graph threads one allocator across every parsed source" --
 // a per-file reset makes two files' occurrence #3 the same value with different meanings, which is
-// the meaning fork of DESIGN section 3 at the identity layer, and it is what makes the ingest-wide
+// the meaning fork of gunbc.design_argument::single_authority at the identity layer, and it is what makes the ingest-wide
 // span index unbuildable: merging two files' indices would silently take one file's locus for the
 // other file's node. Carrying the high-water mark here is what lets the assembly fold seed each
 // file from the previous file's next id, so an occurrence id is unique across the whole ingest and
@@ -231,7 +231,7 @@ type ParseStampResult {
 // `parse_g0_tokens_remain` used to report the FIRST LEFTOVER token: the start of the module item
 // whose production failed as a whole, after `repeat` stopped. That names the symptom item, not
 // the refusal -- a `test fn` whose body holds one unadmitted construct was reported at `test`
-// (DESIGN section 6b). The rejection that went furthest into the stream is the earliest token no
+// (gunbc.design_argument::earliest_unjustified_boundary). The rejection that went furthest into the stream is the earliest token no
 // admitted production could consume, so it is the locus. A join over one monotone order: the later
 // token wins, end of input beats every token, and the empty value is the unit -- so the POSITION
 // is independent of the order alternatives were tried in.
@@ -475,7 +475,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 }
 
 // grammar_lookup_production is an O(P) filter scan over the full production list; it is the
-// well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6
+// well-formedness/analysis authority, run once per grammar at prepare_grammar time (gunbc.design_argument::how_to_work
 // already-hoisted cost) and is correct to keep as the single-authority derivation of the index
 // below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal
 // reference during recursive-descent parsing calls it (parse_nonterminal), so
@@ -484,7 +484,7 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
 // productions_by_name is that lookup's index, built once by grammar_production_index and carried on
 // ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads
 // all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second
-// production roster (§3). Every ParseTableRealization construction site
+// production roster (gunbc.design_argument::single_authority). Every ParseTableRealization construction site
 // (parse_table_for_stream_analyzed, the real-parse path; parse_table_empty; the furthest and
 // refusal updates, which pass it through) populates this field, so
 // the O(P)->O(1) change is not opt-in per call site. Measured effect (this host,
@@ -885,7 +885,7 @@ fn parse_stamp_derived_repeat(
 // triple of one operator application stamped by parse_stamp_infix_application. Every later stage that
 // must see through projection structure (namespace_graft, name_resolve, symbol_index_fill) asks
 // THIS predicate. It was a lexeme-suffix test on "_node_projection" before, and a suffix is a
-// heuristic (DESIGN section 4): an authored fn or data declaration whose name ends in
+// heuristic (gunbc.design_argument::closed_grounded_substrate): an authored fn or data declaration whose name ends in
 // `_node_projection` (v2.std.runtime runtime_value_node_projection and its siblings) matched it and
 // was dissolved at the module body -- one such declaration vanished SILENTLY, two collided into an
 // ill-formed Conj. The roster is what the grammar_named_edge sites below actually mint; a projection
@@ -944,7 +944,7 @@ fn parse_composite_extent(index: SpanIndex, id: OccurrenceId, children: List<Nod
 // or a child whose extent this cannot compose. A child in another file, a WholeFile locus or a
 // non-textual locus, or a child itself recorded unrepresentable, is UNREADABLE and absorbing: the
 // parent then records itself unrepresentable -- so ITS parent refuses too -- rather than a range
-// that silently omits that child (DESIGN 5: a failure arm refuses, never narrows). A child with no
+// that silently omits that child (gunbc.design_argument::fail_closed: a failure arm refuses, never narrows). A child with no
 // extent at all consumed nothing and leaves the fold unchanged.
 type ParseExtentFold
   = ParseExtentNoneYet

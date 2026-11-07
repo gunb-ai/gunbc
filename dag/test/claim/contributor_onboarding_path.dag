@@ -70,7 +70,7 @@ fn string_contains_marker(haystack: String, marker: String) -> Bool {
 // no constructor, and a fixture cannot express one to hand the predicate.
 //
 // That is the same disposition this module already applied to the verification check: when a
-// state stops being writable, its check is a decoration and DESIGN section 4b calls a decoration
+// state stops being writable, its check is a decoration and gunbc.design_argument::guarantee_ladder calls a decoration
 // worse than absent because it gets cited as coverage. So the arms are deleted rather than kept
 // green, and the count of enrolled witnesses drops by two -- which is the honest direction when a
 // guarantee moves from validation to construction.
@@ -262,7 +262,7 @@ test fn a_producer_for_an_artifact_under_docs_is_fine() -> Bool {
 // the one that refuses tomorrow on a slow one. It would also have been redundant: `main` and
 // `regen` both call the verdict over the real registry on the acceptance path, so production is
 // the positive control for the live population and this file controls the logic. The authored red
-// and its two controls are what DESIGN section 4b asks of the evidence; paying a floor refusal to
+// and its two controls are what gunbc.design_argument::guarantee_ladder asks of the evidence; paying a floor refusal to
 // restate what production already executes is not.
 
 // THE COST REPAIR CHANGES NO VERDICT, ASSERTED RATHER THAN CLAIMED (review 65901). Production

@@ -33,7 +33,7 @@ import gunbc.repo.repo_self_build { repo_self_seed_build_step_run, repo_self_tes
 // shell conditionals folded from them. With one job there is no roster to join, and a claim that
 // the job list equals a one-row roster would be a count of one standing where the job list is.
 //
-// THE INHABITANCE HALF IS THE LIVE WORKFLOW ITSELF (DESIGN section 3, the pairing obligation):
+// THE INHABITANCE HALF IS THE LIVE WORKFLOW ITSELF (gunbc.design_argument::witness_one_interface, the pairing obligation):
 // every claim below reads `compiler_gate_workflow` or `compiler_gate_required_job` on the real
 // value, so a change to the emitted workflow reddens this file.
 
@@ -110,7 +110,7 @@ test fn the_job_runs_both_retained_emit_build_subjects() -> Bool {
 }
 
 // THE ARGV IS `gunbc test <label>` AGAINST THE BUILT SEED BINARY, not a claim_executor flag: the
-// withdrawn `--self-host` route is exactly the fork DESIGN's "Building & checks" section records.
+// withdrawn `--self-host` route is exactly the fork gunbc.design_document::ci_contract_blocks records.
 test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
   all(emitted_subject_build_rows(), row =>
     string_contains(
@@ -563,7 +563,7 @@ test fn the_gha_object_key_carries_compiler_identity_and_sha() -> Bool {
 // builds the compiler with gunbc.repo.repo_self_build's seed preamble, and this lane's other claims
 // read the steps beside it — none of them read THIS step's text, so when the preamble's parameter
 // default took a shape the serializer refuses, the marker went into all nine generated files and no
-// claim reddened (DESIGN section 5: a refused emission is refused; a marker standing in for a build
+// claim reddened (gunbc.design_argument::fail_closed: a refused emission is refused; a marker standing in for a build
 // block is a build block that silently stopped building). The folded half names the three things the
 // block exists to pin: the checkout root, both remap prefixes, and the pinned tree identity.
 test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marker() -> Bool {
@@ -586,7 +586,7 @@ test fn the_seed_build_step_run_block_is_the_folded_preamble_not_a_refusal_marke
 // it asserts the harness is built with the one command the model owns, in the required job, at a point in
 // the job where a failure is a failure -- and it asserts NOTHING about any test's verdict, because
 // `--no-run` executes no test body. A claim that read this step as evidence a unit test passed would be
-// reading a compile for a verdict, which is the same mistake DESIGN section 5 lists as validation
+// reading a compile for a verdict, which is the same mistake gunbc.design_argument::fail_closed lists as validation
 // standing where construction was available.
 //
 // WHY THE THREE PARTS ARE EACH NECESSARY. A step in the model that the job does not carry proves nothing,

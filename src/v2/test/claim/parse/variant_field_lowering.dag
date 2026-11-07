@@ -46,7 +46,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (tag edge + field edges) and a match pattern over a fielded variant is that same shape over its
 // binders. BOUNDARY: source text in, normalized tree out, on the prepared-grammar parse the native
 // route runs (v2.compiler.program_assembly program_assembly_read_to_normalized_root_prepared
-// composes exactly these calls). The inputs are SUPPLIED at that boundary (DESIGN section 3); the
+// composes exactly these calls). The inputs are SUPPLIED at that boundary (gunbc.design_argument::single_authority); the
 // inhabitance claim for the real corpus is the native workload run recorded on the PR
 // (std.content_hash normalizes natively, where before it refused
 // body_lowering_reason_positional_pattern_binder_unlowered), and vf_content_hash_declarations_
@@ -56,7 +56,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE INPUT IS SUPPLIED AT THE BOUNDARY; PARSE AND NORMALIZE STILL EXECUTE. Each claim below
 // discriminates at normalize -- how a variant or record field reaches a declared field identity
 // -- so the token stream is its INPUT and not its claim, and supplying it is what DESIGN
-// section 3 asks for. Parse still runs on the supplied tokens, so a claim whose subject includes
+// gunbc.design_argument::single_authority asks for. Parse still runs on the supplied tokens, so a claim whose subject includes
 // parsing keeps that subject and needs no carve-out. The real tokenizer is not deleted from the
 // evidence: every specimen owes a vfs_fidelity_* claim asserting this stream IS what tokenize
 // emits for the same text (v2.test.claim.parse.supplied_token_stream_support), so deleting the
@@ -146,7 +146,7 @@ fn vf_arm_payload_optional(root: Node, type_lexeme: String, arm_lexeme: String) 
 
 // ONE NORMALIZE PER CLAIM. The *_from_tree readers take the normalized tree a claim already has,
 // so a claim asserting three facts about one specimen pays the route once instead of three times
-// -- the copied-accumulator shape DESIGN section 6 says is always fixed regardless of realized n.
+// -- the copied-accumulator shape gunbc.design_argument::how_to_work says is always fixed regardless of realized n.
 fn vf_arm_payload_from_tree(nt: NormalizedTree, type_lexeme: String, arm_lexeme: String) -> Optional<Node> {
   vf_arm_payload_optional(root: nt.root, type_lexeme: type_lexeme, arm_lexeme: arm_lexeme)
 }

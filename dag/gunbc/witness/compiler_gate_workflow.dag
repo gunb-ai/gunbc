@@ -31,7 +31,7 @@ module gunbc.witness.compiler_gate_workflow
 // shell conditionals folded from them -- existed so that several lanes could block through one
 // required context without a hand-written `needs` edge; with one job there is nothing to join, and
 // keeping the fold over a one-row roster would be a second representation of the job list (DESIGN
-// section 2). A second required job is a roster growth the operator must sign off (the design
+// gunbc.design_argument::minimize_redundancy). A second required job is a roster growth the operator must sign off (the design
 // document's CI row); the job that lands it brings the fold back with it.
 //
 // FORK PULL REQUESTS CARRY NO REQUIRED CONTEXT. The job keeps the fleet guard
@@ -315,7 +315,7 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
     },
     // THE EVIDENCE RUNS IN THE GATE, not in a terminal I happened to open. Review 82145 filed this
     // as blocking and correct: `git grep -n run_evidence` matched only my own fixtures/README.md, so
-    // the RED and its controls were ATTESTED, not enrolled -- while DESIGN section 4b(4) requires the
+    // the RED and its controls were ATTESTED, not enrolled -- while gunbc.design_argument::guarantee_ladder (dissolution on climb) requires the
     // discriminating RED and its positive control to STAY ENROLLED. Placement is deliberate: right
     // behind the guard it exercises, still before any binary is built, so it costs seconds and it
     // still runs on a checkout that the guard alone would already have refused... which is why the
@@ -353,7 +353,7 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
 // every pull request and merge_group, which the operator signed off on 2026-10-02 for the emit-build
 // steps it carries. It carries the exposure the header names: a superseded pull-request run is
 // cancelled, and fleet_compile_cancellation_standing still reads NotSafe. THE WALL IS MEASURED ON
-// THIS RUNNER CLASS BY THIS JOB'S OWN RUNS and is not restated here (DESIGN section 6: name the
+// THIS RUNNER CLASS BY THIS JOB'S OWN RUNS and is not restated here (gunbc.design_argument::how_to_work: name the
 // instrument, never transcribe its output) -- the producer is the required job of any run of this
 // workflow, and the two instrument steps carry one label each so the split between the two
 // compilations is readable from the step timings rather than inferred.
@@ -420,7 +420,7 @@ fn compiler_gate_emit_build_step(subject: RequiredCiEmittedSubjectObligation) ->
 //
 // THE QUOTING IS `extdeps.github.log_annotations` `emit_line_shell` AND NOT A SECOND SPELLING OF
 // IT. That module already owns printf-one-line-shell-quoted for exactly this purpose, and a
-// hand-rolled `echo '...'` here would be the section 3 fork -- with the usual downgrade attached,
+// hand-rolled `echo '...'` here would be the gunbc.design_argument::single_authority fork -- with the usual downgrade attached,
 // since a line containing an apostrophe would terminate its own quote.
 //
 // IT ECHOES RATHER THAN ANNOTATES. A `::error::` would add a second red to a job that already has
@@ -756,7 +756,7 @@ fn compiler_gate_required_job_of(profile: RepositoryCiProfile) -> Job {
 //
 // A RUNNER THIS LAYER CANNOT DECIDE IS COUNTED HOSTED. RunsOnExpression is resolved at dispatch,
 // so whether it lands on the hosted pool is unknowable here; admitting it would be the absorbing
-// fallback DESIGN section 5 names, so it refuses like the hosted label does.
+// fallback gunbc.design_argument::fail_closed names, so it refuses like the hosted label does.
 //
 // PARAMETERIZED on both sets so the RED is authorable at the fixture boundary: a witness hands it a
 // merge path that meets the hosted set and reads the refusal.

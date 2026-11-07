@@ -893,7 +893,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
 // EVERYTHING ELSE KEEPS THE CHARGE: populated, an unreadable manager, an unreadable cgroup, an
 // undecodable body, a property that came back empty. "I could not establish it" is what a lost
 // launcher, a pending job and a broken bus all look like, and reading any of them as permission to
-// take the memory back is the absorbing fallback DESIGN 5 forbids.
+// take the memory back is the absorbing fallback gunbc.design_argument::fail_closed forbids.
 type UnitTermination
   = UnitAttemptCompleted { detail: String }
   | UnitAbsentAuthoritatively { detail: String }
@@ -1126,7 +1126,7 @@ fn read_user_unit_property(unit: NonEmptyStr, property: NonEmptyStr) -> UnitProp
 // THE DECISION IS SEPARATED FROM THE EFFECT SO A CONTROL CAN REACH IT (review 69970). Fused to the
 // ShowUserProperty call, this mapping was only observable on a host with NO systemd user manager,
 // and the one lane the witness runs on HAS one -- so the claim over it was `if present { true }`,
-// permanently green on the only route that executes it, which DESIGN 4b names as worse than absent
+// permanently green on the only route that executes it, which gunbc.design_argument::guarantee_ladder names as worse than absent
 // because it will be cited as coverage. As a fold over a supplied ShellOutcome it is a claim at ONE
 // INTERFACE with both arms authorable anywhere, and the wet witness keeps the inhabitance half:
 // that the real producer on a host WITH a manager emits ShellExited and reaches a queried reading.
@@ -1202,7 +1202,7 @@ type OutputsReturn
 // are exactly THREE outcomes they can produce, because the install runs only once the hash
 // succeeded:
 //   NotHashed  the hash refused the output. THE ABSENT-OUTPUT CASE LIVES HERE. It is fail-closed
-//              and never says "absent" (DESIGN 5): a non-zero hash-object means the output could
+//              and never says "absent" (gunbc.design_argument::fail_closed): a non-zero hash-object means the output could
 //              not be hashed -- absent, unreadable, or not a workspace git can read; the reading
 //              cannot tell them apart -- so the refusal carries the exit code and stderr the
 //              execution reported and invents no cause.
@@ -1212,7 +1212,7 @@ type OutputsReturn
 // The two failure arms are not one arm because their causes come from DIFFERENT executions and
 // name different failures; the two shapes the pair could otherwise hold -- hashed-but-never-
 // installed, and install-run-though-hashing-failed -- have NO CONSTRUCTOR here, so the step needs
-// arm to reject them (DESIGN 5: correctness by construction, not validation; DESIGN 4b rung 4:
+// arm to reject them (gunbc.design_argument::fail_closed: correctness by construction, not validation; gunbc.design_argument::guarantee_ladder rung 4:
 // the invalid state has no constructor in the canonical model).
 type ComputeOutputCaptureReadings
   = NotHashed { exit_code: Int, stderr: String }
@@ -1240,7 +1240,7 @@ fn compute_output_capture_step(declared: String, returned: List<WorkOutput>, rea
   }
 }
 
-// THE VERDICT OVER NO DECLARED OUTPUTS -- the empty list, not a refusal (DESIGN 5: a refusal is
+// THE VERDICT OVER NO DECLARED OUTPUTS -- the empty list, not a refusal (gunbc.design_argument::fail_closed: a refusal is
 // never the shape an empty list takes). THE ONE SEED: production's capture fold starts here every
 // time, the readings fold starts here, and the control
 // no_declared_outputs_is_the_empty_return_never_a_refusal drives this same row.
@@ -1248,7 +1248,7 @@ data capture_verdict_over_no_outputs: OutputsReturn = OutputsReturned { outputs:
 
 // ONE CONTINUATION OF THE CAPTURE -- THE RULE, IN ITS ONE COPY. Given the verdict reached so far
 // and a SUPPLIER of the next declared output's readings, produce the next verdict. The match below
-// is the ONLY site in the capture that reads an OutputsReturn to decide anything (DESIGN 3, 4b): on
+// is the ONLY site in the capture that reads an OutputsReturn to decide anything (gunbc.design_argument::single_authority, gunbc.design_argument::guarantee_ladder): on
 // a refusal it propagates the verdict unchanged and NEVER ASKS FOR READINGS -- which is what stops
 // the effects, with no second stop-test beside the sum; on a success it asks for the readings and
 // lets the step decide.
@@ -1295,7 +1295,7 @@ fn compute_capture_readings_of_output(instance: HostDashboardInstance, layout: C
 // THE CAPTURE, THE ROUTE EVERY CALLER USES. Fold the declared outputs through THE ONE CONTINUATION,
 // handing it the effectful readings producer for each output. An absent or unreadable output is a
 // mismatch, never a success with a hole.
-// COST SHAPE (DESIGN 6): one continuation call and one producer call per declared output, on the
+// COST SHAPE (gunbc.design_argument::how_to_work): one continuation call and one producer call per declared output, on the
 // previous verdict -- no accumulated readings list re-folded, no verdict computed twice for one
 // input. WHAT HERMETIC CONTROLS CANNOT REACH: the effects themselves. The instrument that says so is
 // the hermetic claim run itself -- `gunbc run --claim-run --dry-run --function <row>` refuses a row
@@ -1399,7 +1399,7 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
 // AND THE ASK SITS AFTER THE CHECKOUT, NOT BEFORE IT, because the window the launch deadline
 // protects IS the checkout. Placing the ask before it made the two steps adjacent -- the gate
 // would have been asked microseconds after the open, so the interleaving it exists to refuse could
-// not occur on the real route and the wall would have been a decoration in the DESIGN 4b sense
+// not occur on the real route and the wall would have been a decoration in the gunbc.design_argument::guarantee_ladder sense
 // (ask whether the RED is authorable). Reserve, open, check out, ASK, spawn: the ask is the last
 // thing that happens before a unit exists.
 //
@@ -1407,7 +1407,7 @@ fn compute_attempt_completed(outcome: WorkOutcome) -> Bool {
 // opened and when its pre-launch window closes -- are instants, and a fabricated instant is worse
 // than no attempt: a zero opened_at makes the window look long expired, so recovery would reclaim
 // the seat out from under a producer that is running normally. There is no honest default, so the
-// arm refuses and releases (DESIGN 5: a failure arm refuses, never widens).
+// arm refuses and releases (gunbc.design_argument::fail_closed: a failure arm refuses, never widens).
 type AttemptGate
   = AttemptGateReady { record: AttemptRecord, generation: CasGeneration }
   | AttemptGateRefused { detail: String }
@@ -1913,7 +1913,7 @@ fn compute_run_and_settle(
 // built -- the exact vanish this function exists to prevent, one arm along, in the function whose
 // annotation describes the vanish (review 69724). It was latent only because the single call site
 // passes a fresh result, which is the kind of "safe today" that stops being true at the next call
-// site. Two spellings of one join is the fork DESIGN 3 forbids, so there is now one:
+// site. Two spellings of one join is the fork gunbc.design_argument::single_authority forbids, so there is now one:
 // provide_result_with_host_record, which already handled both arms and accumulates rather than
 // letting either side win.
 fn compute_with_lost_host_record(
@@ -2056,7 +2056,7 @@ data compute_stuck_reservation_remedy: String = "THE REMEDY IS compute_recover_c
 // on which the seat stays held.
 //
 // THE COMMENTS ABOVE USED TO SIT INSIDE THIS FUNCTION'S BODY, and the first real compile of this
-// module on srv1 (2026-09-21) is what moved them: DESIGN 4c admits standalone leading blocks
+// module on srv1 (2026-09-21) is what moved them: gunbc.design_argument::source_annotations admits standalone leading blocks
 // attached to MODULE-SCOPE declarations only, and the interpreter route this provider's witnesses
 // run on tolerates a body-position block that `gunbc compile` refuses outright -- 14 blocking
 // errors on a module every witness had reported green.
@@ -2106,7 +2106,7 @@ fn compute_attach_under_lease(materialization: ComputeMaterialization, layout: C
 //
 // compute_refused_unreserved mapped a failed drop to StoreUnavailable; compute_run_and_settle
 // folded it into the consumption note; and the attach path above would have needed a third. Three
-// places deciding one fact is the DESIGN 3 fork, and the thing to delete rather than to keep
+// places deciding one fact is the gunbc.design_argument::single_authority fork, and the thing to delete rather than to keep
 // consistent by hand -- they were already inconsistent, since one turned the failure into a verdict
 // about the work and another did not.
 //
@@ -2536,7 +2536,7 @@ fn compute_execution_identity(identity: String, plan: ComputeMaterializationPlan
   }
 }
 
-// WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (DESIGN section 3: an operation carrying a literal
+// WHICH STORE IS POLICY, SO IT ARRIVES AS A PARAMETER (gunbc.design_argument::single_authority: an operation carrying a literal
 // it should receive has leaked policy). The production caller names compute_store(instance) once, in
 // compute_provide_admitted; the serve-or-produce decision below is the same code for any store, which
 // is what lets its inhabitance claim execute it against a scratch root.
@@ -2881,7 +2881,7 @@ fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
 //
 // WHAT THIS STILL DOES NOT ESTABLISH, stated rather than implied: a claim cannot observe WHICH
 // function an effectful call site calls, so bypassing this fold entirely is not detectable here. The
-// pairing obligation (DESIGN 3) for that is the real-path run, which is the srv1 inhabitance run
+// pairing obligation (gunbc.design_argument::witness_one_interface) for that is the real-path run, which is the srv1 inhabitance run
 // this PR declares as not executed.
 fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String, exit_code: Int, op: WorkOperation, granted: Kibibyte, grant_was_ceiling: Bool, log_path: String) -> WorkOutcome {
   match compute_unit_ending(summary: summary) {
@@ -3216,7 +3216,7 @@ fn compute_parse_target(target: String) -> WorkTarget? {
 // THE ATTEMPT SLOTS ARE PER-HOST, NOT PER-IDENTITY, which is why this is its own fold rather than
 // a field read off a layout: a layout is built around one work identity and recovery arrives
 // holding a reference, not an identity. Deriving the root through a layout with an empty identity
-// would work and would also be a second spelling of the same path (DESIGN 3).
+// would work and would also be a second spelling of the same path (gunbc.design_argument::single_authority).
 
 // THE TERMINAL TRANSITION AND THE RELEASE ARE TWO FACTS AND THE MIDDLE ARM IS THE ONE THAT
 // MATTERS. The attempt can settle -- history written, generation advanced -- and the seat can still

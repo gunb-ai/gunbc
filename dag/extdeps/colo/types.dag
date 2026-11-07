@@ -137,7 +137,7 @@ type RetailPlanRow {
 // Watt is Measure<Power, One, Nat> and VoltAmpere is Measure<ApparentPower, One, Nat>, carried on
 // SEPARATE dimensions with a note in that module saying that putting both on Power would conflate
 // them. So the kVA arm here is not a new concept - re-minting one would be the re-invention DESIGN
-// section 2 forbids - it is that existing dimension used where an operator published on it.
+// gunbc.design_argument::minimize_redundancy forbids - it is that existing dimension used where an operator published on it.
 //
 // WHY THE DISTINCTION IS LOAD-BEARING RATHER THAN PEDANTIC. kW = kVA x power factor with PF <= 1,
 // so kW <= kVA always, and reading a kVA publication as kilowatts OVERSTATES real capacity - it
@@ -157,7 +157,7 @@ type CabinetPowerFigure
 // THE QUANTIFIER IS ORTHOGONAL TO EVERYTHING ELSE ABOUT THE FIGURE, so it is one type applied at
 // every figure site rather than a new arm per combination. An operator may publish a floor for air
 // and a cap for liquid; a per-combination arm set would need one arm per pairing and would fork the
-// quantifier concept across them, which is the re-invention that fails DESIGN section 2's test.
+// quantifier concept across them, which is the re-invention that fails gunbc.design_argument::minimize_redundancy's test.
 //
 // WHY THE CONFLATION SURVIVED, WHICH IS THE PART WORTH KEEPING: it failed in the SAFE direction. A
 // floor read as a cap makes the screen REFUSE a facility that may well allow far more - a candidate
@@ -208,7 +208,7 @@ type CabinetPowerFigure
 // this wall. OrderedClosedInterval<T> is `sole_constructor`, so no module but its own can write the
 // record or cast into it, and `closed_interval` is the ONE mint and refuses a reversed pair. Declaring
 // a drop against a capability that already exists parks the class forever - nothing arrives to retire
-// it, because the thing it waits for has already landed (DESIGN section 4b, meta-obligation 2).
+// it, because the thing it waits for has already landed (gunbc.design_argument::guarantee_ladder, meta-obligation 2).
 //
 // So the endpoints are gone and the interval arms hold the ordered carrier itself. Reversed endpoints
 // have NO CONSTRUCTOR here - rung four - rather than a check this module could be edited to bypass.
@@ -249,7 +249,7 @@ type PublishedPowerQuantity
 // MEDIUM STANDING is what a page established, which includes the case that it established nothing.
 // The earlier cut folded both into one three-arm type, so `CoolingMediumUnspecified` was accepted as a
 // REQUEST and then special-cased to match nothing - a validation standing exactly where a construction
-// was available (DESIGN section 5). "Give me the unspecified-cooling cabinets" is not a request with an
+// was available (gunbc.design_argument::fail_closed). "Give me the unspecified-cooling cabinets" is not a request with an
 // empty answer; it is not a request. It now has no constructor to write.
 type CoolingMedium
   = AirCooling
@@ -332,7 +332,7 @@ type CabinetDensityClaim
 // measurement because the cabinet may deliver less; a floor is not one in the other direction; and
 // a range names two real numbers while saying nothing about where between them the cabinet sits.
 // Every arm would be Absent, so the function becomes a constant dressed as an accessor - a
-// decoration that gets cited as coverage, which DESIGN section 4b rules worse than absent.
+// decoration that gets cited as coverage, which gunbc.design_argument::guarantee_ladder rules worse than absent.
 //
 // IT HAD NO PRODUCTION CONSUMER TO BREAK: on main its only caller was its own witness, so deleting
 // it costs nothing and that is itself the finding. The accessor had been answering a question
@@ -355,7 +355,7 @@ type CabinetDensityClaim
 // A LOOKUP THAT PICKS IS A LOOKUP THAT WIDENS, AND THE FIRST CUT SHIPPED ONE KNOWINGLY. `air_figure`
 // filtered to air and took `.first()`, so a claim carrying TWO air figures - "up to 30 kW" in one
 // cell and "35kW+" in another - answered with whichever an author happened to type first, and the
-// contradiction left no trace. That is DESIGN section 5's rule inverted: the arm WIDENS where it
+// contradiction left no trace. That is gunbc.design_argument::fail_closed's rule inverted: the arm WIDENS where it
 // should refuse, and absorption destroys the only signal that the row needs a human. The previous
 // note declared it as a future construction rung and shipped it anyway; the honest reading is that
 // the query widened on contradiction TODAY, so it is fixed today.
@@ -364,7 +364,7 @@ type CabinetDensityClaim
 // AN EARLIER DRAFT OF THIS ANNOTATION CLAIMED THE OPPOSITE OF. It said "reused rather than re-coined"
 // while DensityFigureLookup, figure_matches_count and figure_lookup were a line-for-line re-authoring
 // of ReadingLookup, reading_matches and reading_for with the payload and predicate swapped. That is an
-// annotation asserting a machine claim that is false, which DESIGN section 4c forbids outright - and
+// annotation asserting a machine claim that is false, which gunbc.design_argument::source_annotations forbids outright - and
 // worse than a missing note, because it reads as a reuse audit already performed.
 //
 // WHY IT IS RE-AUTHORED, STATED HONESTLY: ReadingLookup is not generic. It carries
@@ -395,7 +395,7 @@ type DensityFigureLookup
 // THE REQUESTED MEDIUM IS A PARAMETER, NOT A FUNCTION NAME. The carrier introduced
 // CoolingMediumStanding as a coordinate and then exported only `air_figure` - baking the first
 // consumer back into the shared authority and inviting a second, slightly different liquid traversal
-// the moment someone needs one. Two traversals of one coordinate is the fork DESIGN section 3
+// the moment someone needs one. Two traversals of one coordinate is the fork gunbc.design_argument::single_authority
 // removes; one function taking the coordinate is the same code doing both jobs.
 //
 // UNSPECIFIED SATISFIES NOTHING IN EITHER DIRECTION, AND THAT IS ONE LINE RATHER THAN TWO RULES. A
@@ -405,7 +405,7 @@ type DensityFigureLookup
 // ONE EQUALITY, AND THE FIRST CUT SPELLED IT THREE TIMES. figure_is_air, figure_is_liquid and
 // figure_is_unspecified were three full matches over one closed three-arm type, each returning true
 // for a single variant, with this function then dispatching across two of them. That is medium
-// equality authored once per variant - the same section 2 re-invention this branch has now removed at
+// equality authored once per variant - the same gunbc.design_argument::minimize_redundancy re-invention this branch has now removed at
 // two other grains, and the third instance was inside the carrier five census lanes consume.
 //
 // THE ASYMMETRY THE THREE PREDICATES WERE DEFENDING SURVIVES THE COLLAPSE, AND IS NOW THE ONLY THING
@@ -654,13 +654,13 @@ fn quantity_requirement_relation(
   }
 }
 
-// FRONTIER, PER DESIGN SECTION 3c, STATED RATHER THAN LEFT TO BE COUNTED. This route is consumed by
+// FRONTIER, PER DESIGN gunbc.design_argument::consumption, STATED RATHER THAN LEFT TO BE COUNTED. This route is consumed by
 // this change's witnesses today and by nothing else in the tree. Its named consumers are the three
 // census lanes holding rebases on this carrier: bright-swift-678 is re-keying three NJ-central
 // witnesses off the deleted air-only accessors onto it, and silent-heron-303 and keen-newt-324 screen
 // their corridor and New York rows through it. The trigger is those re-keyed screens landing.
 //
-// This is the middle state section 3c admits, not the dangling one, and the distinction is the reason
+// This is the middle state gunbc.design_argument::consumption admits, not the dangling one, and the distinction is the reason
 // `cabinet_density_air_established` was deleted while this stays: that accessor had no consumer AND no
 // arm that could honestly answer it - every arm returned Absent, so it was a constant dressed as an
 // accessor. Absence of a caller was the receipt that nobody missed it, not the ground for removing it.
@@ -710,7 +710,7 @@ type RetailGrainStanding
 // was-it-read half and threw the street away, leaving a caller who wanted the street to hand-match -
 // the exact state the accessor was added to remove. cabinet_density_air_established and
 // cabinet_power_established both answer "was it read, and with what" as an Optional; an address axis
-// answering less, in a file where every sibling answers more, is DESIGN section 2 re-invention
+// answering less, in a file where every sibling answers more, is gunbc.design_argument::minimize_redundancy re-invention
 // rather than reuse. The payload is precisely what makes the Optional the right shape.
 fn address_street(a: AddressStanding) -> NonEmptyStr? {
   match a {
@@ -721,7 +721,7 @@ fn address_street(a: AddressStanding) -> NonEmptyStr? {
 
 // THE GRAIN QUESTION A CONSUMER ACTUALLY ASKS, and it lives here because two witness modules had
 // independently folded these three arms into a Bool under two different names - review 62870, and
-// DESIGN section 3's nicknaming failure exactly: one concept, two names, so a later arm added to
+// gunbc.design_argument::single_authority's nicknaming failure exactly: one concept, two names, so a later arm added to
 // RetailGrainStanding would have been handled by one fold and silently missed by the other. The
 // absence of this accessor is what produced the fork, so the repair is the accessor rather than a
 // note telling the two folds to agree.
@@ -762,7 +762,7 @@ type RetailRateStanding
 
 // THE PUBLISHED PLANS NOTE, WHERE ONE EXISTS, AND THIS AXIS HAD NO CONSUMER AT ALL UNTIL NOW.
 // RetailRateStanding was read by nothing anywhere in the corpus - 30 modules author a rate row and
-// no fold, witness or workflow touched the type, which is DESIGN section 3c's dangling state in its
+// no fold, witness or workflow touched the type, which is gunbc.design_argument::consumption's dangling state in its
 // purest form and is the same absence found on AddressStanding earlier in this census.
 //
 // It returns the plans note rather than a Bool for the reason the grain and address accessors do:
@@ -827,7 +827,7 @@ type ClaimWordingStanding
 // a route belongs to. FreeSemigroup because the arm exists only when at least one figure is
 // summarized - an empty unverified set is the verified arm, and it has no constructor here.
 //
-// FRONTIER, PER DESIGN SECTION 3c: consumed by this change's witnesses today, and by
+// FRONTIER, PER DESIGN gunbc.design_argument::consumption: consumed by this change's witnesses today, and by
 // bright-swift-678's split verification count in the NJ-central census, which carries verbatim and
 // summarized readings as separate figures rather than one fused density_read_count. The trigger is
 // that count landing - and it is named as the CONSUMER rather than as a pull request, because four
@@ -835,7 +835,7 @@ type ClaimWordingStanding
 //
 // The recursion preserves authored order and touches each figure once. An accumulating fold would
 // either reverse the population or append, and appending is the copied-accumulator cost shape DESIGN
-// section 6 says to fix regardless of the realized n - a census claim has few figures today and the
+// gunbc.design_argument::how_to_work says to fix regardless of the realized n - a census claim has few figures today and the
 // carrier is the thing that outlives that.
 fn unverified_figures(figs: List<PublishedDensityFigure>) -> List<PublishedDensityFigure> {
   match figs {
@@ -891,8 +891,8 @@ fn claim_wording_standing(d: CabinetDensityClaim) -> ClaimWordingStanding {
 // authored by someone who had read that sentence.
 //
 // THE ARGUMENT FOR KEEPING IT WAS THAT A CLOSED COPRODUCT CANNOT FORK SILENTLY - add a third arm and
-// both functions red at compile time, so the stale-half failure DESIGN section 3 exists to prevent is
-// unwritable. That is true and it proves the duplicate is SAFE, not that it is NEEDED. Section 2
+// both functions red at compile time, so the stale-half failure gunbc.design_argument::single_authority exists to prevent is
+// unwritable. That is true and it proves the duplicate is SAFE, not that it is NEEDED. gunbc.design_argument::minimize_redundancy
 // prices authoring, review and maintenance, not only staleness, and a safe duplicate is still one.
 //
 // A CONTROL THAT WANTS TO ASSERT ARM MEMBERSHIP RATHER THAN A COUNT still can, and should say so in

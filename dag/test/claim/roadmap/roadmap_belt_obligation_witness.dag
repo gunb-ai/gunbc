@@ -25,7 +25,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.host.host_layout { attempt_exit_inbox_dir, attempt_exit_stalled_dir }
 import extdeps.systemd.unit_file { systemd_unit_file_lines }
 
-// THE OBLIGATION MODEL'S DECISIONS over supplied evidence (DESIGN section 3: a witness discriminates at
+// THE OBLIGATION MODEL'S DECISIONS over supplied evidence (gunbc.design_argument::single_authority: a witness discriminates at
 // one interface, so the attempt's segments are supplied, not produced by running a worker). The
 // production route that consumes them -- gunbc.roadmap.roadmap_belt_actuate belt_attempt_obligations_run and
 // belt_discover_for_instance -- reads the same derivation; the wet witness beside this file runs the

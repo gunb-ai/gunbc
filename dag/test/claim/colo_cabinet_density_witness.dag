@@ -100,8 +100,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE CARRIER'S CONSUMER. Review 62722 found the first cut of this module dangling: a type, two
 // functions and six data rows that nothing read, with the controls living only in a scratch probe
 // the author ran and deleted. A probe that is deleted is not evidence the wall stays standing -
-// DESIGN section 3c is explicit that a declaration nobody consumes is red regardless of how well
-// it is modelled, and section 5 that a run nobody can repeat is not a consumer. These are those
+// gunbc.design_argument::consumption is explicit that a declaration nobody consumes is red regardless of how well
+// it is modelled, and gunbc.design_argument::fail_closed that a run nobody can repeat is not a consumer. These are those
 // controls, enrolled.
 
 // A CEILING IS ASKED WHETHER IT REFUSES A REQUIREMENT; IT IS NEVER ASKED WHAT THE CABINET SUPPLIES.
@@ -422,7 +422,7 @@ data duplicated_air_fixture: CabinetDensityClaim = DensityPublished {
 // A REAL-POWER INTERVAL, WHICH NOTHING IN THE CORPUS CONSTRUCTED UNTIL THIS FIXTURE. The dimension
 // split gave MarketedRealInterval and MarketedApparentInterval separate arms, and both live fixtures
 // were apparent - so the REAL arm's covers path, `required <= lower`, was the only new
-// admission-granting path in the change and was reached only by typecheck. DESIGN section 5 is
+// admission-granting path in the change and was reached only by typecheck. gunbc.design_argument::fail_closed is
 // explicit that a typecheck is not a consumer, and an admission path is the worst place to accept
 // one: it is the direction that puts a cabinet on a breaker.
 //
@@ -453,7 +453,7 @@ data real_interval_fixture: CabinetDensityClaim = DensityPublished {
 //
 // A DECLARATION THAT NO OPERATION CONSUMES STILL NEEDS EVIDENCE THAT IT CONSUMES NOTHING. The carrier
 // annotation says "the arm exists and NO OPERATION CONSUMES IT"; that is a machine claim, and DESIGN
-// section 4b(1) says a rung is established by executed evidence rather than by a sentence.
+// gunbc.design_argument::guarantee_ladder (rung honesty) says a rung is established by executed evidence rather than by a sentence.
 data published_average_fixture: CabinetDensityClaim = DensityPublished {
   figures: FreeSemigroup {
     head: PublishedDensityFigure {
@@ -659,7 +659,7 @@ test fn w_nyc_published_grains_match_their_arms() -> Bool {
 
 // THE COVERAGE CARRIER'S CONSUMER, ENROLLED FOR THE SAME REASON AS THE ONES ABOVE. Review 62758
 // found `gunbc.colo_census_coverage` dangling on this branch - a type, two accessors and three
-// rows nothing imported - which is the identical section 3c finding review 62722 made about the
+// rows nothing imported - which is the identical gunbc.design_argument::consumption finding review 62722 made about the
 // density carrier one commit earlier. Landing the same defect twice in one PR is the receipt that
 // the first fix was applied to an instance and not to the habit.
 
@@ -673,7 +673,7 @@ fn facility_count_or_sentinel(c: RegionCoverage) -> Int {
 // A FIXTURE FOR THE UNSURVEYED ARM, AND THE REASON IT HAD TO BE ONE. Writing this witness is what
 // established that `RegionUnsurveyed` HAS NO INHABITANT in the live roster - every rostered row is
 // surveyed - so the distinction the module exists to draw could not be discriminated by any test
-// over the census as it stands. DESIGN section 4b: where the forbidden state is unauthorable on
+// over the census as it stands. gunbc.design_argument::guarantee_ladder: where the forbidden state is unauthorable on
 // the live corpus, the fixture is where the RED becomes expressible, and declining to write one
 // leaves a wall that is permanently green by construction. The roster's own growth note explains
 // why no live unsurveyed row exists yet - an unsurveyed roster over an undecided geographic scope
@@ -754,7 +754,7 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 // THE CONTROLLED FIXTURE THAT MAKES THE READ COUNT FALSIFIABLE. Asserting the live corridor's count
 // against a literal would be a change detector: the roster is authored, so measure() == measure()
 // and the assertion's whole content is that nobody edited the file. This fixture is the grounding
-// DESIGN section 5 asks for instead - a universe of exactly two density claims whose arms are known
+// gunbc.design_argument::fail_closed asks for instead - a universe of exactly two density claims whose arms are known
 // by construction, one published and one unread - so the count is checked against a fact about the
 // claims rather than against a copy of itself. It reds if the count ever answers on the wrong arm,
 // which is the only way the derived count can now be wrong.
@@ -769,7 +769,7 @@ fn density_reads_never_exceed_facilities(c: RegionCoverage) -> Bool {
 // ITS CLAIMS ARE CONSTRUCTED HERE RATHER THAN BORROWED FROM THE CENSUS, WHICH THEY WERE UNTIL
 // review 62966. It read databank_ewr1_density and hivelocity_jfk1_density - live production rows -
 // so the word "fixture" was doing work the declaration did not: a universe built from the corpus is
-// not controlled, and section 5's grounding requirement is precisely that the literal be checked
+// not controlled, and gunbc.design_argument::fail_closed's grounding requirement is precisely that the literal be checked
 // against something the corpus cannot move. The coupling was not hypothetical. databank_ewr1_density
 // is the corridor's only read density and is the row under an operator HOLD; had it been demoted,
 // this witness would have changed what it proves without anyone editing it, and the fold's proof
@@ -836,11 +836,11 @@ test fn w_a_marketed_floor_admits_below_itself_and_a_cap_admits_nothing() -> Boo
 // The survey's headline is that the density axis CANNOT screen this corridor - one readable density
 // across the whole of it - while the grain axis can: the corridor will sell one cabinet, it just will not
 // say in public what that cabinet may draw. Stated in prose that is a claim nobody can re-derive.
-// Stated as this pairing it is a property of named rows, and DESIGN section 6 asks for exactly that
+// Stated as this pairing it is a property of named rows, and gunbc.design_argument::how_to_work asks for exactly that
 // direction - name the producer that re-derives a measurement rather than transcribing its output.
 //
 // EIGHT ROWS ARRIVED WITH NO CONSUMER AND REVIEW 62843 WAS RIGHT TO CALL THEM RED. The offered
-// repair was an annotation naming a later consumer, which section 3c does admit; this takes the
+// repair was an annotation naming a later consumer, which gunbc.design_argument::consumption does admit; this takes the
 // other arm it offers, because the consumer exists TODAY and a declared frontier would have been a
 // promise where execution was available. A frontier is honest when nothing can read the row yet,
 // not when writing the reader is the work being avoided.
@@ -856,7 +856,7 @@ data corridor_cabinet_grain_rows: List<RetailGrainStanding> = [
 ]
 
 // Every row this census reports as selling at cabinet grain or finer actually says so on its own
-// arm. This is NOT a count assertion - section 5 forbids comparing a live population to a literal -
+// arm. This is NOT a count assertion - gunbc.design_argument::fail_closed forbids comparing a live population to a literal -
 // it is a property each named row must hold, and it goes RED the moment one of them is downgraded
 // to Unread or to a cage minimum without leaving this list. That downgrade is the realistic edit:
 // summit's DENSITY was withdrawn on this branch when its 12 kW figure turned out to belong to a
@@ -914,7 +914,7 @@ test fn w_a_read_page_that_publishes_no_density_establishes_nothing() -> Bool {
 }
 
 // THE PENNSYLVANIA LANE'S ROWS, EXECUTED RATHER THAN MERELY DECLARED. Review 62794 found the
-// Philadelphia and Lehigh Valley rows dangling under DESIGN section 3c: twelve density claims and
+// Philadelphia and Lehigh Valley rows dangling under gunbc.design_argument::consumption: twelve density claims and
 // their grain standings that no fold read. These are that consumer, written as the region's own
 // findings so that changing a row moves a test rather than only a citation string.
 //
@@ -1112,7 +1112,7 @@ test fn w_occupancy_verification_and_utility_are_three_facts() -> Bool {
 // 30 kW cap for a question that named no cooling at all.
 //
 // The request type is now `CoolingMedium`, which has two constructors, and the invalid request cannot
-// be written - not here, not in a fixture, not anywhere a caller could reach. DESIGN section 4b is
+// be written - not here, not in a fixture, not anywhere a caller could reach. gunbc.design_argument::guarantee_ladder is
 // explicit that a check whose RED is not authorable is not a weak wall but a decoration: permanently
 // green by construction, carrying no information, and worse than absent because it would be cited as
 // coverage. The class moved from mechanically preventable to structurally impossible, and the

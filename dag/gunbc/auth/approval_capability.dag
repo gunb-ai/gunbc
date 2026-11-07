@@ -160,7 +160,7 @@ fn approval_capability_signing_input(c: ApprovalCapabilityClaims) -> NonEmptyStr
 // ── Issuance ─────────────────────────────────────────────────────────────────────────────────
 // The broker, holding the key, mints the capability over THE SAME signing input verification
 // recomputes: approval_capability_signing_input is called here and nowhere is a second rendering of
-// the claims built. That is the whole of §3's obligation on this path -- if issuance serialized for
+// the claims built. That is the whole of gunbc.design_argument::single_authority's obligation on this path -- if issuance serialized for
 // itself, the first field-order edit on one side would make every issued link unverifiable, or
 // worse, verifiable under a reading the operator did not see.
 //
@@ -249,7 +249,7 @@ fn capability_tag_hex(capability: ApprovalCapability) -> NonEmptyStr? {
 // So the contract is stated and enforced rather than assumed: the ONLY comparable form is the
 // fixed-width UTC instant `YYYY-MM-DDTHH:MM:SSZ`, exactly 20 characters, and within that form
 // lexicographic order IS chronological order -- which is why the canonical form is worth requiring
-// rather than a parser worth writing. Anything else refuses (§5: the failure arm refuses, never
+// rather than a parser worth writing. Anything else refuses (gunbc.design_argument::fail_closed: the failure arm refuses, never
 // widens). Refusing is not a limitation on the operator; the broker mints both stamps itself.
 data utc_instant_width: Int = 20
 

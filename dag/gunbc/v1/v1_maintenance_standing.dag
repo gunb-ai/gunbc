@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr, CommitSha, Timestamp }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 // Why this carrier exists rather than a sentence in DESIGN.md: a status with a
-// closed allow/refuse vocabulary is exactly the machine-consumed fact DESIGN 4c
-// says may not live as prose. The freeze it qualifies is stated in DESIGN 3's
+// closed allow/refuse vocabulary is exactly the machine-consumed fact gunbc.design_argument::source_annotations
+// says may not live as prose. The freeze it qualifies is stated in gunbc.design_argument::single_authority's
 // frozen-X carve-out, which this module is cited from rather than duplicated into.
 
 type SeedLifecycleStanding =
@@ -55,7 +55,7 @@ type MaintenanceAdmissionInstance =
   | DefectRepairDiagnosticsMayMove
 
 // The five refused classes, and they DOMINATE the admitted ones above. These are
-// the growth surfaces DESIGN 3 names: a freeze that still accepts rows is not a
+// the growth surfaces gunbc.design_argument::single_authority names: a freeze that still accepts rows is not a
 // freeze, and MaintenanceActive does not reopen any of them.
 type MaintenanceRefusal =
     NewLanguageBehavior
@@ -76,7 +76,7 @@ type MaintenanceRefusal =
 // asked for and not given -- the self-authored boundary change this standing warns against three
 // declarations above. It is equally not a refusal record: no refusal was issued either.
 //
-// WHAT CONSUMES IT (DESIGN section 3c, answered rather than left dangling): the same route that
+// WHAT CONSUMES IT (gunbc.design_argument::consumption, answered rather than left dangling): the same route that
 // consumes v1_seed_standing itself. DESIGN states the rung for this authority honestly -- "the
 // vocabulary is consumed by review diligence, not by any gate" -- so a row here reaches its
 // consumer when a reviewer classifies a proposed v1 change against this standing. That is the
@@ -113,7 +113,7 @@ type UnadjudicatedDisposition =
 // ruling recorded at gunbc.githooks.githooks_pre_push_emit pre_push_fmt_only_note. With that surface closed,
 // nothing branches on the distinction -- no required phase reads it, no caller consumes it -- so
 // what remains is a typed partition with no consumer, which is the dangling declaration DESIGN
-// section 3c refuses. No v2 self-host frontier moves.
+// gunbc.design_argument::consumption refuses. No v2 self-host frontier moves.
 //
 // DefectRepairDiagnosticsMayMove DOES NOT COVER IT, and this is the leg that was expected to admit.
 // That class turns on one line: the seed doing something INCORRECT is admitted and diagnostics may
@@ -163,18 +163,18 @@ data v1_maintenance_parse_sweep_partition_refusal: RefusedV1Proposal = RefusedV1
 data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: MaintenanceActive }
 
 // OPERATOR RULING 2026-08-18, and the reason it is a reclassification rather than a loophole. The
-// v1 seed was carried as 'frozen' under DESIGN section 3's frozen-X carve-out: no new investment,
+// v1 seed was carried as 'frozen' under gunbc.design_argument::single_authority's frozen-X carve-out: no new investment,
 // no completion work, quarry-in-place. Work then arrived that is economically correct and that the
 // unqualified word forbids — a measured 177.8s of repeated formal canonicalization on every
 // required-floor run, removable by construction. The honest options were to refuse the work or to
 // state the status accurately; describing v1 as frozen while maintaining it is the rung-inflation
-// failure of section 4b applied to a lifecycle label, and it is worse than either option because it
+// failure of gunbc.design_argument::guarantee_ladder applied to a lifecycle label, and it is worse than either option because it
 // makes the maintenance invisible. THE ECONOMIC BASIS, which is what distinguishes this from
 // ordinary reluctance to delete: 'let it die with v1' is only an argument when some bounded event
 // kills the cost. gunbc#8352 closed unmerged and integration/v1-cut is quarry, so no such event is
 // scheduled and the cost is unbounded in time. Against an eight-hour implementation the payback is
 // 28,800 / 177.8, roughly 162 required-floor runs. THE STANDING DANGER, named so it can be checked:
-// MaintenanceActive is a candidate absorbing arm in exactly the section 5 sense — if every proposed
+// MaintenanceActive is a candidate absorbing arm in exactly the gunbc.design_argument::fail_closed sense — if every proposed
 // v1 change classifies as admissible, the vocabulary has stopped discriminating and the freeze has
 // been repealed by drift rather than by ruling. The refused list is therefore load-bearing, not
 // decorative, and a proposal that fits no admitted class is refused rather than accommodated by
@@ -242,7 +242,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // earlier draft of this carrier declared a V1ChangeVerdict coproduct pairing the admitted and
 // refused classes. Nothing produces it: no lens reads this module, no gate joins it to a diff, and
 // the rung note below says plainly that classification is authored by a human reviewer rather than
-// derived. A verdict type with no producer is uninhabited generality (DESIGN section 6, model
+// derived. A verdict type with no producer is uninhabited generality (gunbc.design_argument::how_to_work, model
 // just-in-time) and, worse, it would make this carrier LOOK like a decision procedure in a PR whose
 // entire subject is being honest about what is and is not enforced. The two vocabularies are the
 // whole content: they give a reviewer a closed list to classify against and a name to refuse with.
@@ -253,11 +253,11 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // its size suggests. A fourth admitted class, ChangeCarryingDeletionTrigger, stood beside the three
 // above and has been REMOVED — not relocated to another axis, removed. A change that carries its
 // own deletion trigger is not thereby semantically admissible, and treating the trigger as an
-// admission reason is exactly the self-authorized-dissolution failure DESIGN section 5 names: a
+// admission reason is exactly the self-authorized-dissolution failure gunbc.design_argument::fail_closed names: a
 // dissolution condition describes how admitted debt ends, it does not authorize creating the debt.
 // Left standing it would have been the widest arm in the list, since almost any v1 change can be
 // narrated as carrying a trigger, and it would have re-opened the freeze through the one door
-// section 5 already closed. A deletion trigger remains a real fact about a change; it is a
+// gunbc.design_argument::fail_closed already closed. A deletion trigger remains a real fact about a change; it is a
 // lifecycle axis carried by std.disposition, and it is not a reason.
 //
 // SECOND, the two vocabularies are ORDERED rather than peer, because without an order a proposal
@@ -267,7 +267,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // there is no verdict type: nothing here produces a classification, so the dominance is a rule a
 // reviewer applies, at the rung the note below declares.
 
-// RUNG HONESTY, per DESIGN section 4b, stated because a typed vocabulary is easy to mistake for a
+// RUNG HONESTY, per gunbc.design_argument::guarantee_ladder, stated because a typed vocabulary is easy to mistake for a
 // wall, and stated again here because the 2026-08-20 purpose ruling made the admission test WIDER
 // and CLEANER and a wider, cleaner rule is precisely the shape that gets mistaken for stronger
 // enforcement. It is not: the rung is unchanged by that ruling. This carrier sits at MITIGATABLE:
@@ -279,7 +279,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // change-classifier and deliberately so: the refused classes are not all decidable, but two of them
 // are nearly so against the seed's own surface — PublicSurfaceGrowth is a diff over the emitted
 // seed's exported declarations, and NewEscapeHatchOrAdmissionRow is a diff over the host-builtin
-// registry and admission rosters DESIGN section 3 already enumerates as growth surfaces. Those two
+// registry and admission rosters gunbc.design_argument::single_authority already enumerates as growth surfaces. Those two
 // climb to mechanically preventable as a diff-grain check against the prior seed emission;
 // NewLanguageBehavior and SeedFeatureCompletion are not decidable from a diff and stay review
 // obligations. Nothing here claims the undecidable half will climb.
@@ -356,7 +356,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // where the upstream cascade DID produce a target and the downstream still resolves both identities
 // -- and even inside that band the carried fact is the wrong fact. Deleting the downstream
 // derivation would not remove a recomputation, it would remove a check, which is the
-// erased-correctness-distinction failure DESIGN section 3's replacement rule names: the minimum
+// erased-correctness-distinction failure gunbc.design_argument::single_authority's replacement rule names: the minimum
 // replacement must preserve every required refusal.
 //
 // CLASSIFICATION, so this does not read as an admission by omission. Carrying the target WITHOUT
@@ -384,7 +384,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // what reaches a real process: Value::Null becomes the four-character word the four-character word
 // null, Map becomes a brace-wrapped key-value rendering, Set becomes a brace-wrapped member
 // rendering, Record becomes the type name followed by a brace-wrapped field rendering. That is
-// fabricated plausible output in argv position (DESIGN §5) rather than a crash, and the
+// fabricated plausible output in argv position (gunbc.design_argument::fail_closed) rather than a crash, and the
 // four-character word null is the worst of the four because some tools accept it as a value.
 //
 // WHY THIS IS NOT A BLANKET FINDING, stated before the accusation rather than after: for Int, Float
@@ -517,7 +517,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // THE PURPOSE TEST IS SATISFIED, and not narrowly. The interpreter is the execution engine the v2
 // self-host program runs ON, so its per-call string cost is that program's cost, not v1's. The
 // defect is a cost SHAPE: a left-to-right walk over an ASCII string was O(n^2) because each index
-// re-tested a prefix, and DESIGN section 6's bare-minimum-cost rule states that a proven cost-shape
+// re-tested a prefix, and gunbc.design_argument::how_to_work's bare-minimum-cost rule states that a proven cost-shape
 // defect is always fixed regardless of realized n. The recorded instance is
 // BehaviorPreservingRedundancyRemoval: the per-call test is duplicated work against a fact the
 // value can carry once, and behavior preservation is proven rather than asserted -- four
@@ -570,7 +570,7 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 //
 // THE PURPOSE TEST IS SATISFIED FOR THE SAME REASON AS THE ASCII FLAG: the interpreter is the engine
 // the v2 self-host program runs on, and a pure recursion over source text is that program's
-// ordinary shape. It is a cost-shape defect, fixed under DESIGN section 6's bare-minimum-cost rule
+// ordinary shape. It is a cost-shape defect, fixed under gunbc.design_argument::how_to_work's bare-minimum-cost rule
 // regardless of n. BehaviorPreservingRedundancyRemoval: the key relation and every key VALUE are
 // unchanged -- the carried hash is produced by the same function the interpreter computed before --
 // and the carrier's tests pin carried against free at ASCII and non-ASCII text.
@@ -602,13 +602,13 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // Rc, missed the identity memo, and refolded the whole accumulator: one relation realized at
 // per-call O(|xs|). The question the row above leaves open -- should the memo key calls that can
 // never hit -- is answered NO CRITERION IS NEEDED: "can never recur" is undecidable, any proxy is a
-// heuristic that fails silently in the cost direction (DESIGN section 5), and with the key at
+// heuristic that fails silently in the cost direction (gunbc.design_argument::fail_closed), and with the key at
 // O(item) an unrecurrable call costs a bounded constant. Per-call RETENTION of stored arguments is
 // the residual admission question and stays open; it needs a recurrence census, not a threshold.
 //
 // THE PURPOSE TEST is satisfied on the row above's argument: the interpreter is the engine the v2
 // self-host program runs on, and a recursion threading a list accumulator is its ordinary shape; a
-// cost-shape defect fixed under DESIGN section 6's bare-minimum-cost rule regardless of n.
+// cost-shape defect fixed under gunbc.design_argument::how_to_work's bare-minimum-cost rule regardless of n.
 // BehaviorPreservingRedundancyRemoval: every key VALUE is unchanged -- the recorded hash is the
 // value the full fold computes -- and memo hits
 // still verify arguments by equality, so a key can cost a lookup and never an answer.
@@ -666,7 +666,7 @@ data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UN
 // somebody could teach the emitter.
 //
 // THE PRODUCERS FOR EVERY FIGURE THIS DISPOSITION RESTS ON, NAMED RATHER THAN TRANSCRIBED, per
-// DESIGN section 6 -- a number copied into prose rots the moment anyone doubts it, and none of the
+// gunbc.design_argument::how_to_work -- a number copied into prose rots the moment anyone doubts it, and none of the
 // figures below is asserted on this row's authority.
 //   THE SURFACE CENSUS is a predicate, not a reading: over the generated mirrors
 //   src/v1/stage0/src/v1_compiler_*.rs -- the files carrying the generated-by-v1 banner -- count
@@ -704,7 +704,7 @@ data v1_maintenance_inhabitance_relation_merged_disposition: UnadjudicatedDispos
 //
 // NO OPERATOR RULING IS CITED, and that is stated plainly rather than dressed up. The two
 // admissions above each relay a verbatim operator or parent sentence; this one has none. What it
-// has instead is DOCUMENTARY: DESIGN section 4b names "fields exist" in the ordinary compiler floor
+// has instead is DOCUMENTARY: gunbc.design_argument::guarantee_ladder names "fields exist" in the ordinary compiler floor
 // v1 must hold, and calls a failure there a below-baseline safety regression never compensated by
 // higher-order capability. A reader who wants an operator sentence here will not find one, and
 // should weigh the row accordingly.
@@ -723,7 +723,7 @@ data v1_maintenance_inhabitance_relation_merged_disposition: UnadjudicatedDispos
 // THE COUNTER-ARGUMENT, preserved because whoever overturns this should not reconstruct it: any
 // refusal-widening shrinks the accepted language, so "no behavior is added" is an authored reading
 // rather than a derived one, and a sufficiently strict reader of NewLanguageBehavior refuses every
-// floor repair -- which would make DESIGN 4b's floor-first mandate unimplementable in the seed.
+// floor repair -- which would make gunbc.design_argument::guarantee_ladder's floor-first mandate unimplementable in the seed.
 // Nothing mechanically holds the distinction.
 //
 // THE OTHER FOUR. NewCompatibilityObligation: no -- nothing is kept working for an old caller; the
@@ -747,13 +747,13 @@ data v1_maintenance_inhabitance_relation_merged_disposition: UnadjudicatedDispos
 // here. The five refused classes are untouched and still dominate every admission, including this
 // one.
 
-data v1_maintenance_excess_field_floor_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST for the record-literal excess-field floor repair (lane adhoc-0f99c6bc-193, PR gunbc#9846), recorded in the same PR as the change it admits. INSTANCE: DefectRepairDiagnosticsMayMove. NO OPERATOR RULING IS CITED -- unlike the two admissions above, which relay verbatim sentences, this one rests on DESIGN section 4b naming 'fields exist' in the ordinary compiler floor and calling a failure there a below-baseline safety regression. THE DEFECT, exhibited today and measured rather than read: a record literal naming a payload-carrying coproduct arm received NO excess-field judgment at all, so `Circle { radius: 1, nowhere: 2 }` -- a field declared nowhere in the program -- compiled with zero FieldNotFound, while the byte-identical mistake on a product type refused. The asymmetry that hid it, on ONE literal: the same arm literal omitting a required field reported MissingField == 1 while the invented field reported FieldNotFound == 0, so the construction refused what was ABSENT and accepted what was INVENTED. MECHANISM: variant_arm_type_projection projects an arm out of its owner only when the arm carries no payload, so lookup_type_by_name handed infer_record_lit_structural the owner coproduct, record_lit_construction_field_names required Conj and answered none, and the unknown-field arm's Absent => [] was silence; presence checking never had the hole because it reads the arm through variant_owner_node. THE EXHIBITED COST, because a defect with no demonstrated victim is a preference: four corpus literals had silently discarded an authored field -- two Disposition declarations naming SingleAuthority, which is a NULLARY arm of ConstructionMechanism and not a Disposition arm at all, one Terminal literal carrying an `authority` field the type does not declare, and one BoolWitnessClaim carrying a `label`. Each was analysed and then dropped, which is why nothing downstream ever looked wrong. CLASSIFICATION AGAINST THE FIVE REFUSED CLASSES is carried in the annotation above this row, including the NewLanguageBehavior question and its counter-argument, and is not restated here. SCOPE LIMIT: this row admits THIS change and does not settle NewLanguageBehavior's boundary for refusal-widening generally; a later floor repair routes for its own classification."
+data v1_maintenance_excess_field_floor_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST for the record-literal excess-field floor repair (lane adhoc-0f99c6bc-193, PR gunbc#9846), recorded in the same PR as the change it admits. INSTANCE: DefectRepairDiagnosticsMayMove. NO OPERATOR RULING IS CITED -- unlike the two admissions above, which relay verbatim sentences, this one rests on gunbc.design_argument::guarantee_ladder naming 'fields exist' in the ordinary compiler floor and calling a failure there a below-baseline safety regression. THE DEFECT, exhibited today and measured rather than read: a record literal naming a payload-carrying coproduct arm received NO excess-field judgment at all, so `Circle { radius: 1, nowhere: 2 }` -- a field declared nowhere in the program -- compiled with zero FieldNotFound, while the byte-identical mistake on a product type refused. The asymmetry that hid it, on ONE literal: the same arm literal omitting a required field reported MissingField == 1 while the invented field reported FieldNotFound == 0, so the construction refused what was ABSENT and accepted what was INVENTED. MECHANISM: variant_arm_type_projection projects an arm out of its owner only when the arm carries no payload, so lookup_type_by_name handed infer_record_lit_structural the owner coproduct, record_lit_construction_field_names required Conj and answered none, and the unknown-field arm's Absent => [] was silence; presence checking never had the hole because it reads the arm through variant_owner_node. THE EXHIBITED COST, because a defect with no demonstrated victim is a preference: four corpus literals had silently discarded an authored field -- two Disposition declarations naming SingleAuthority, which is a NULLARY arm of ConstructionMechanism and not a Disposition arm at all, one Terminal literal carrying an `authority` field the type does not declare, and one BoolWitnessClaim carrying a `label`. Each was analysed and then dropped, which is why nothing downstream ever looked wrong. CLASSIFICATION AGAINST THE FIVE REFUSED CLASSES is carried in the annotation above this row, including the NewLanguageBehavior question and its counter-argument, and is not restated here. SCOPE LIMIT: this row admits THIS change and does not settle NewLanguageBehavior's boundary for refusal-widening generally; a later floor repair routes for its own classification."
 
 // The 2026-09-02 authorized exception. Recorded as ONE declaration, not a category: the first form of
 // this ruling added a fifth MaintenanceAdmissionInstance variant and was reversed by its own author,
 // because a category exemption arriving as a coproduct row is still a category exemption.
 
-data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT AUTHORIZED EXCEPTION UNDER THE 2026-08-20 PURPOSE TEST -- deliberately NOT a new admission category. THE AUTHORIZER: bright-ram-778 (XL-N manager), 2026-09-02, relayed to the authoring session; the relay is the record and this row is the citation. THE EXACT SUBJECT, named rather than described so this row cannot be stretched: the single declaration ct_function_value_adapter_bound_alignment_control_test in v1.compiler.compiler_tests_rust, a regression control asserting that the function-value adapter is emitted exactly where the impl Fn bound is emitted and NOT at a bare type-variable parameter.\n\nWHY NO NEW ADMISSION VARIANT, and this reverses the authorizer's own first instruction. The first form of this ruling added an EvidenceEnrollment variant to MaintenanceAdmissionInstance with prose saying every section 4b(4) climb in v1 has this shape. THAT IS A CATEGORY EXEMPTION ARRIVING AS A COPRODUCT ROW rather than as a sentence -- the very move the same ruling had just declined, because a category never comes up for review again while one exception does. Checked rather than assumed: the four existing instances were all introduced in ONE commit when this carrier was authored (f1f9dd8a07, gunbc#9671), so there is no practice of growing that list per admission, and a fifth would be a new row on a growth surface this carrier names three lines below it -- putting NewEscapeHatchOrAdmissionRow in play on top of the PublicSurfaceGrowth question. One declaration is authorized. No vocabulary is widened.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM. The adapter/bound alignment is an emission property v2 must preserve, and nothing else in the tree would notice a fork in it -- the adapter's predicate and the bound's predicate are one expression on one node today, and this control is what fails if they are ever separated. Section 4b(4) requires that a class's discriminating evidence REMAIN ENROLLED after a climb, so enrolling it is an obligation the design document places on us rather than a discretionary addition.\n\nTHE FIVE REFUSED CLASSES. Four are untouched: no semantic change, no compatibility obligation, no escape hatch or admission row, and the seed is no more capable after it. PUBLICSURFACEGROWTH FIRES LITERALLY AND IS AUTHORIZED ANYWAY, stated plainly rather than argued away -- AND THE AUTHORING CARRIER READS PERMISSIVE HERE, WHICH IS THE TRAP: compiler_tests_rust.dag spells this and all 45 of its declarations as bare `fn`, with zero `pub fn` anywhere, so reading the .dag would say the class does not fire. It does. PublicSurfaceGrowth is a diff over THE EMITTED SEED'S exported declarations, and stage0 emits `pub fn ct_function_value_adapter_bound_alignment_control_test` -- THE EMITTER ADDS THE VISIBILITY. The exception is authorized because the class exists to stop the seed ACCUMULATING CAPABILITY, and a test emitter accumulates none: nothing is expressible after this change that was not expressible before, and the declaration's entire content is evidence about behavior that already exists. This cites the RcStr row's statement of WHAT THE CLASS IS FOR and explicitly NOT its outcome -- it is not 'RcStr was admitted, so this is'.\n\nTHE REVIEW THAT FORCED THIS ROW, and the separation that matters. Reviews 58359 and 58380 refused this change for lacking a hand-Rust receipt -- a deleted scaffold path, a census shrink, or a deferral naming a lane and a concrete ROADMAP row -- citing DESIGN.md as the authority. DESIGN.md contains no such rule; verified against origin/main by the authoring session and independently by the authorizer. THE RULE IS REAL BUT ITS PROVENANCE IS FALSE: it lives in the REVIEW PROMPT owned by gunb-ai/ctrl (scripts/chatgpt-reviewer/prompts/gunbc.md), which states it verbatim and ATTRIBUTES IT TO gunbc's DESIGN.md, and whose stricter form is still scoped to 'v3 hand-Rust' although v3 was removed and migrated into v1. So the class is AUTHORITY SUBSTITUTION IN A REVIEW PROMPT, not provider invention, and its repair belongs to ctrl. Correspondingly the two refusals are NOT two independent sightings: they are two executions of ONE shared prompt, one producer, corroborating nothing about each other. AND NONE OF THAT MAKES THE CHANGE ADMISSIBLE -- the review's authority citation is false and the v1 admission obligation is independently real, which is why this row exists at all.\n\nWHY THE RECEIPT COULD NOT LAND IN THE SCAFFOLD INDEX. gunbc.language_source_scaffold_index carries LanguageSourceScaffoldRow with exactly carrier_module, blob_decl and disposition, and Disposition is a Terminal carrying a reason, or a Scaffold carrying a dissolves_to and a bind. No field a lane or a ROADMAP row could occupy exists, and none of its rows names either; authoring them in as prose would be the section 4c violation of putting commentary into a typed carrier.\n\nTHE SCOPE LIMIT. THIS AUTHORIZES THIS DECLARATION ONLY. It does NOT resolve whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- that boundary is recorded as unresolved above and stays unresolved. It establishes NO category for section 4b(4) evidence in v1: a later control needs its own authorization. Citing this row for either would be the authority-substitution failure DESIGN names, which this row also documents one level out.\n\nTHE COUNTER-ARGUMENT, preserved so whoever overturns this need not reconstruct it: a new exported fn in the emitted seed is exactly what the class names; the capability-versus-evidence distinction is authored rather than derived; and nothing mechanically holds it. WHO CAN OVERTURN IT: the classification is authored, at the mitigatable rung this carrier already declares, so it is a reviewer's or the operator's to reject. It is written to be easy to overturn."
+data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT AUTHORIZED EXCEPTION UNDER THE 2026-08-20 PURPOSE TEST -- deliberately NOT a new admission category. THE AUTHORIZER: bright-ram-778 (XL-N manager), 2026-09-02, relayed to the authoring session; the relay is the record and this row is the citation. THE EXACT SUBJECT, named rather than described so this row cannot be stretched: the single declaration ct_function_value_adapter_bound_alignment_control_test in v1.compiler.compiler_tests_rust, a regression control asserting that the function-value adapter is emitted exactly where the impl Fn bound is emitted and NOT at a bare type-variable parameter.\n\nWHY NO NEW ADMISSION VARIANT, and this reverses the authorizer's own first instruction. The first form of this ruling added an EvidenceEnrollment variant to MaintenanceAdmissionInstance with prose saying every gunbc.design_argument::guarantee_ladder (dissolution on climb) climb in v1 has this shape. THAT IS A CATEGORY EXEMPTION ARRIVING AS A COPRODUCT ROW rather than as a sentence -- the very move the same ruling had just declined, because a category never comes up for review again while one exception does. Checked rather than assumed: the four existing instances were all introduced in ONE commit when this carrier was authored (f1f9dd8a07, gunbc#9671), so there is no practice of growing that list per admission, and a fifth would be a new row on a growth surface this carrier names three lines below it -- putting NewEscapeHatchOrAdmissionRow in play on top of the PublicSurfaceGrowth question. One declaration is authorized. No vocabulary is widened.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM. The adapter/bound alignment is an emission property v2 must preserve, and nothing else in the tree would notice a fork in it -- the adapter's predicate and the bound's predicate are one expression on one node today, and this control is what fails if they are ever separated. gunbc.design_argument::guarantee_ladder (dissolution on climb) requires that a class's discriminating evidence REMAIN ENROLLED after a climb, so enrolling it is an obligation the design document places on us rather than a discretionary addition.\n\nTHE FIVE REFUSED CLASSES. Four are untouched: no semantic change, no compatibility obligation, no escape hatch or admission row, and the seed is no more capable after it. PUBLICSURFACEGROWTH FIRES LITERALLY AND IS AUTHORIZED ANYWAY, stated plainly rather than argued away -- AND THE AUTHORING CARRIER READS PERMISSIVE HERE, WHICH IS THE TRAP: compiler_tests_rust.dag spells this and all 45 of its declarations as bare `fn`, with zero `pub fn` anywhere, so reading the .dag would say the class does not fire. It does. PublicSurfaceGrowth is a diff over THE EMITTED SEED'S exported declarations, and stage0 emits `pub fn ct_function_value_adapter_bound_alignment_control_test` -- THE EMITTER ADDS THE VISIBILITY. The exception is authorized because the class exists to stop the seed ACCUMULATING CAPABILITY, and a test emitter accumulates none: nothing is expressible after this change that was not expressible before, and the declaration's entire content is evidence about behavior that already exists. This cites the RcStr row's statement of WHAT THE CLASS IS FOR and explicitly NOT its outcome -- it is not 'RcStr was admitted, so this is'.\n\nTHE REVIEW THAT FORCED THIS ROW, and the separation that matters. Reviews 58359 and 58380 refused this change for lacking a hand-Rust receipt -- a deleted scaffold path, a census shrink, or a deferral naming a lane and a concrete ROADMAP row -- citing DESIGN.md as the authority. DESIGN.md contains no such rule; verified against origin/main by the authoring session and independently by the authorizer. THE RULE IS REAL BUT ITS PROVENANCE IS FALSE: it lives in the REVIEW PROMPT owned by gunb-ai/ctrl (scripts/chatgpt-reviewer/prompts/gunbc.md), which states it verbatim and ATTRIBUTES IT TO gunbc's DESIGN.md, and whose stricter form is still scoped to 'v3 hand-Rust' although v3 was removed and migrated into v1. So the class is AUTHORITY SUBSTITUTION IN A REVIEW PROMPT, not provider invention, and its repair belongs to ctrl. Correspondingly the two refusals are NOT two independent sightings: they are two executions of ONE shared prompt, one producer, corroborating nothing about each other. AND NONE OF THAT MAKES THE CHANGE ADMISSIBLE -- the review's authority citation is false and the v1 admission obligation is independently real, which is why this row exists at all.\n\nWHY THE RECEIPT COULD NOT LAND IN THE SCAFFOLD INDEX. gunbc.language_source_scaffold_index carries LanguageSourceScaffoldRow with exactly carrier_module, blob_decl and disposition, and Disposition is a Terminal carrying a reason, or a Scaffold carrying a dissolves_to and a bind. No field a lane or a ROADMAP row could occupy exists, and none of its rows names either; authoring them in as prose would be the gunbc.design_argument::source_annotations violation of putting commentary into a typed carrier.\n\nTHE SCOPE LIMIT. THIS AUTHORIZES THIS DECLARATION ONLY. It does NOT resolve whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- that boundary is recorded as unresolved above and stays unresolved. It establishes NO category for gunbc.design_argument::guarantee_ladder (dissolution on climb) evidence in v1: a later control needs its own authorization. Citing this row for either would be the authority-substitution failure DESIGN names, which this row also documents one level out.\n\nTHE COUNTER-ARGUMENT, preserved so whoever overturns this need not reconstruct it: a new exported fn in the emitted seed is exactly what the class names; the capability-versus-evidence distinction is authored rather than derived; and nothing mechanically holds it. WHO CAN OVERTURN IT: the classification is authored, at the mitigatable rung this carrier already declares, so it is a reviewer's or the operator's to reject. It is written to be easy to overturn."
 
 // A refusal-class boundary adjudicated by fierce-lark-661, relayed through eager-raven-113
 // on 2026-09-13. This changes how NewEscapeHatchOrAdmissionRow is applied, without adding
@@ -766,7 +766,7 @@ data v1_maintenance_adapter_alignment_control_exception_note: String = "AN EXACT
 // is needed in either vocabulary.
 //
 // The consumer of these vocabularies is review diligence under v1_seed_standing, at its
-// declared mitigatable rung (DESIGN 3c). No executing consumer reads the post-merge obligation;
+// declared mitigatable rung (gunbc.design_argument::consumption). No executing consumer reads the post-merge obligation;
 // this row claims no gate. The observation-producer lane is the trigger for a further climb:
 // it must supply fresh forge observations AND an executing consumer that applies chronology,
 // merge and actual row-deletion evidence. A declaration naming a follow-up proves none of those.

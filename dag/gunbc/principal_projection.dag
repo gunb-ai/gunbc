@@ -44,7 +44,7 @@ import product.data_class { Classified, classify_personal_identity }
 // old module comment recorded as OPEN, review 65270) is replaced by the verdict-sealed mint
 // below. The posix projection arm had no production consumer; the directive's authority roster
 // names the google-oidc human and the fabric workflow, and a third arm would be a second name
-// for a fact no consumer demands (DESIGN 3c).
+// for a fact no consumer demands (gunbc.design_argument::consumption).
 
 type PrincipalRef {
   authority: NonEmptyStr
@@ -232,7 +232,7 @@ fn observe_verified_oidc_profile(verdict: OidcIdTokenVerdict) -> VerifiedOidcPro
 // personal-identity classification (product.data_class classify_personal_identity, whose
 // admit_callers roster names THIS declaration) now happens only behind the same wall as the
 // principal mint, closing the boundary the predecessor module recorded as open (review 65270).
-// Rung honesty (DESIGN 4b): on the interpretation path a witness may still construct the
+// Rung honesty (gunbc.design_argument::guarantee_ladder): on the interpretation path a witness may still construct the
 // realization-supplied signature input, so this wall is a typed decision, rung 1-2, with the
 // construction wall arriving as the production JWKS realization (frontier:
 // extdeps.auth.oidc.oidc_jwks_verification_frontier) -- no production login path exists until

@@ -539,7 +539,7 @@ fn floor_standing_attempt_verdict(
 // ever ASSIGNED. No arm was missing, nothing failed to compile, and two causes with opposite
 // remedies were collapsed -- a job that ran and was stopped, and a job that never started.
 //
-// `MechanismEstablished` IS NOT NOW A DECORATION, and the distinction is the one DESIGN 4b
+// `MechanismEstablished` IS NOT NOW A DECORATION, and the distinction is the one gunbc.design_argument::guarantee_ladder
 // draws: its red is authorable from a FIXTURE, which is where
 // `w_RED_the_established_mechanism_vocabulary_still_renders` exercises it. It is an unoccupied
 // guard, not an unreachable one, and what would occupy it is the trigger below.
@@ -653,7 +653,7 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
 }
 
 // WHAT THE HEAD AXIS IS WAITING ON, NAMED SO THE STALL IS TRACKED RATHER THAN SILENT (DESIGN
-// 4b(2)).
+// gunbc.design_argument::guarantee_ladder (no untracked stall)).
 //
 // `FloorHeadSuperseded` is unreachable from production input today, and that is a property of the
 // ACQUISITION rather than of this composition: nothing in the required run reads the pull
@@ -698,7 +698,7 @@ fn floor_rendered_verdict_name(verdict: FloorRenderedVerdict) -> String {
 // the day the acquisition arrives is the day someone is forced back to this paragraph.
 data floor_attempt_standing_acquisition_trigger: String = "Head-standing acquisition is not enrolled in the required run. FloorHeadSuperseded is reachable from a fixture and not from production. Retire this row when an operator-agreed authenticated read of the pull request current head, with pull-requests read on the aggregator job, lands in gunbc.required_lanes_gate."
 
-// THE SECOND ACQUISITION, AND IT IS A DIFFERENT ONE FROM THE HEAD (DESIGN 4b(2)).
+// THE SECOND ACQUISITION, AND IT IS A DIFFERENT ONE FROM THE HEAD (gunbc.design_argument::guarantee_ladder (no untracked stall)).
 //
 // BOTH BLOCKING ARMS ARE WAITING ON ONE THING, and it is the same thing. `AttemptStandsRed` is
 // the uncertain middle: a lane concluded failure, and whether the SUBJECT was evaluated is not

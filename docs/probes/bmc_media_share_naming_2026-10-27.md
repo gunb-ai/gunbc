@@ -88,7 +88,7 @@ network/DNS read. And this container holds no BMC credentials (no BMC/mtcollins/
 environment variables, no credential artifact under artifacts/bmc/, and the credential store is itself
 refused-as-of-today — see `credential_acquisition_slots_path`, gunbc/dispatch_credential_acquisition.dag).
 So the DNS server list could not be
-read, and per DESIGN §4d it is not assumed to be 192.168.1.1. **If it is empty, an FQDN in the share
+read, and per gunbc.design_argument::epistemic_humility it is not assumed to be 192.168.1.1. **If it is empty, an FQDN in the share
 field cannot resolve and attach fails again** — a name the controller cannot resolve is the
 controller's dependency, not ours.
 
@@ -115,7 +115,7 @@ name-vs-address boundary (`ResolvableName` refuses an IP literal), the two typed
 the cited observation rows (`ResolutionObservation`, `TailnetMembership`), and the pre-attach share
 gate `media_share_address_gate` that refuses an unresolvable name — the check whose absence is why
 this was discovered at attach instead of at authoring. Why each space exists is recorded as comments
-on its arms, not as a field: review 87164 (DESIGN §4c) ruled out the earlier `why: String`.
+on its arms, not as a field: review 87164 (gunbc.design_argument::source_annotations) ruled out the earlier `why: String`.
 
 Deliberately **not** done, per manager ruling msg_10f4c58a:
 * The share row is **not** changed to the FQDN, and the gate is **not** wired into
@@ -131,7 +131,7 @@ Deliberately **not** done, per manager ruling msg_10f4c58a:
 Every IPv4 literal in a fleet-facing row, sorted by what it may legitimately be. The operator ruling
 removes IPs from *identity*, not from *protocol*, and the distinction is what makes the list decidable:
 a literal that names a host is debt, a literal that is a wire value (a bind address, a CIDR, a prefix,
-a loopback) is not. Each row states the name space its consumer resolves in, per DESIGN §3 — one host
+a loopback) is not. Each row states the name space its consumer resolves in, per gunbc.design_argument::single_authority — one host
 identity, several typed resolutions, no nicknames.
 
 ### Legitimate: not a host identity
@@ -151,7 +151,7 @@ TAILNET space; a BMC-side leg resolves the LAN space, because the BMC is not a t
 
 | Row | Value today | Consumer's leg | Should be |
 |---|---|---|---|
-| `srv2_host_lan_endpoint.address`, `srv2_bmc_endpoint.address`, `srv2_tailscale_endpoint.address` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.201`, `192.168.1.195`, `100.73.169.40` | one host, three typed resolutions | The pattern DESIGN §3 wants is already here: ONE `subject` (an `EndpointHost` over a `HostIdentity`) and three typed resolutions over three paths, with no nickname. Same shape is wanted for the LAN address — a LAN resolution row, not an address in a field called address. Note `srv2_tailscale_endpoint.address` carries a CGNAT address while its label says tailscale: the label is a nickname, which §3 rules out. |
+| `srv2_host_lan_endpoint.address`, `srv2_bmc_endpoint.address`, `srv2_tailscale_endpoint.address` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.201`, `192.168.1.195`, `100.73.169.40` | one host, three typed resolutions | The pattern gunbc.design_argument::single_authority wants is already here: ONE `subject` (an `EndpointHost` over a `HostIdentity`) and three typed resolutions over three paths, with no nickname. Same shape is wanted for the LAN address — a LAN resolution row, not an address in a field called address. Note `srv2_tailscale_endpoint.address` carries a CGNAT address while its label says tailscale: the label is a nickname, which §3 rules out. |
 | `srv3_baseboard.bmc`, and the four sibling baseboards (gunbc/fleet/fleet_intent.dag) | `BmcEndpoint.host`: `192.168.1.183`, `.184`, `.192`, `.195`, `.247` | a BMC reachable from the LAN | A LAN FQDN, paired with a DNS server on each BMC. This is the fleet-wide version of the mtcollins1 defect: the BMC is already told to reach hosts by number. `BmcEndpoint` (gunbc/fleet/fleet_intent.dag) carries `host: NonEmptyStr` — a string, with no name-vs-address boundary. |
 | `srv2_lan_reach_host` (gunbc/fleet/fleet_reach.dag) | via `srv2_lan_ipv4` = `192.168.1.201` | SSH jump through srv2 to srv3 | A LAN name: SSH re-resolves, so the row survives a DHCP move. `Reach` today can name only an address, which is why "the jump works" and "the jump will work tomorrow" are different facts here. Fleet ops should prefer the tailnet path, which `srv3_reach_fabric_intended` models as a tunnel (no address at all). |
 | `supermicro_h11ssl_unit_readings[].bmc_address` (gunbc/machine_intake/supermicro_h11ssl_unit_observation.dag), `supermicro_h11ssl_first_contact_receipt.bmc_address` (gunbc/machine_intake/supermicro_h11ssl_first_contact.dag) | `192.168.1.254`, `192.168.1.252` | Redfish read from the LAN | A LAN FQDN, with the BMC's DNS server cited. Same consumer leg as mtcollins1's media share. The 254.254.254.0 entry in fleet_intent_network's docker-bridge rows is a MASK, not a host, and stays a number. |

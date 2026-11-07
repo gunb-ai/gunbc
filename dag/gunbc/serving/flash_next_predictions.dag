@@ -169,7 +169,7 @@ type MeasuredReading {
 data flash_next_measured_readings: List<MeasuredReading> = []
 
 data flash_next_measured_readings_frontier: DissolutionCondition = unbound_dissolution(
-  description: "DESIGN section 3c declared frontier: flash_next_measured_readings is the join target for the H200 NVL and B200 calibration and measurement rows the operator supplies after renting the cards. Trigger: the first committed H200 or B200 receipt (vLLM startup log KV line for P1, /metrics for P3 to P6) is appended as MeasuredReading rows with a standing; prediction_verdict then scores them with no edit to flash_next_registered_predictions. Until then every verdict is PredictionNotMeasured." as NonEmptyStr
+  description: "gunbc.design_argument::consumption declared frontier: flash_next_measured_readings is the join target for the H200 NVL and B200 calibration and measurement rows the operator supplies after renting the cards. Trigger: the first committed H200 or B200 receipt (vLLM startup log KV line for P1, /metrics for P3 to P6) is appended as MeasuredReading rows with a standing; prediction_verdict then scores them with no edit to flash_next_registered_predictions. Until then every verdict is PredictionNotMeasured." as NonEmptyStr
 )
 
 type PredictionVerdict

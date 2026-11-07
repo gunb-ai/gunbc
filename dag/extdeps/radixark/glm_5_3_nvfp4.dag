@@ -20,7 +20,7 @@ import extdeps.zhipu.glm_5_3 {
 // THIS IS RadixArk's ARTIFACT, NOT Z.ai's, SO IT IS ITS OWN MODULE. RadixArk/GLM-5.3-NVFP4 is a
 // third-party quantized redistribution: a different publisher, a different Hub repository with its
 // own revision history, its own quantization producer (modelopt) and its own manifest. DESIGN
-// section 3's external-decomposition rule gives every independently governed upstream its own
+// gunbc.design_argument::single_authority's external-decomposition rule gives every independently governed upstream its own
 // module authority, and "independently governed" is decided by who can change the artifact --
 // RadixArk can re-quantize and push a new revision tomorrow, and Z.ai cannot stop them. Filing it
 // under extdeps.zhipu would let a Z.ai-owned module carry facts Z.ai never published and cannot
@@ -245,7 +245,7 @@ fn nvfp4_routed_experts_total_bytes(s: GlmMoeDsaShape) -> ByteSize? {
 // producer here fetches the headers, so a moved artifact would not redden them, and the witness that
 // compares the routed total with the shape-derived figure is a consistency check between one
 // authored number and one derivation -- it verifies neither, and the transcription is not an
-// oracle. That is the §4d transcribed standing, carried as such with the read obligation named --
+// oracle. That is the gunbc.design_argument::epistemic_humility transcribed standing, carried as such with the read obligation named --
 // an executing, content-addressed header-census producer over the pinned revision -- rather than a
 // `measured` label the corpus cannot back. The REPRESENTATIVE expert's twelve entries above are the
 // part that IS carried at the format's grain.

@@ -28,7 +28,7 @@ fn falsity(only_arg: Int) -> Bool {
 //
 // THESE ROWS WERE NOT ENROLLED BY ANYTHING BEFORE, and that is worth recording rather than quietly
 // fixing. They were declared plain `fn`, so the claim route never ran them and the native pattern
-// selected nothing either: a `*_test.dag` that enrols nothing is the decoration DESIGN section 4b
+// selected nothing either: a `*_test.dag` that enrols nothing is the decoration gunbc.design_argument::guarantee_ladder
 // names, and the floor's own discovery gate is what refused it. It surfaced only once the type errors
 // ahead of it were repaired -- a refusal earlier in the phase had been masking it. The seven's own file
 // (v2.test.claim.parse.expression_bodied_fn_decl_parse) declares `test fn` at a `*_test.dag` path, which is

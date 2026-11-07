@@ -116,7 +116,7 @@ fn fixture_members() -> List<Node> {
   ]
 }
 
-// THE KEY IS SUPPLIED, NOT RE-DERIVED, for claims whose subject is downstream of it (DESIGN section 3,
+// THE KEY IS SUPPLIED, NOT RE-DERIVED, for claims whose subject is downstream of it (gunbc.design_argument::single_authority,
 // a witness discriminates at one interface): a preimage naming this checkout's source closure is
 // written where the key runner would write it, and the key is its digest, so the pack, restore,
 // consumer and lookup runners see exactly the inputs the key runner hands them. The key runner's own

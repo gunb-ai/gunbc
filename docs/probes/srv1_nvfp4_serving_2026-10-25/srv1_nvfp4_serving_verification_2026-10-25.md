@@ -3,7 +3,7 @@
 **Found:** 2026-10-25 (UTC), read-only probe + benchmark against the **running**
 server. No change was made to srv1's serving at any point. Operator request
 2026-10-24; dashboard node `adhoc-15068614-20b`; session `sharp-ram-303`.
-**Class:** receipt (observing-layer observation, DESIGN §3 "observations are
+**Class:** receipt (observing-layer observation, gunbc.design_argument::single_authority "observations are
 receipts in the observing layer"). Raw measurement JSON alongside this file in
 this directory (`raw_*.json` / `raw_*.jsonl`).
 

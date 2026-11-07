@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
 
 // THE INDEX IS DERIVED, NEVER AUTHORED. An earlier cut carried a hand-written list of (identity,
 // slug) rows beside the authority, which created two things that had to be kept in step and could
-// disagree — the DESIGN 3 fork, with a witness standing in for a construction (DESIGN 5). Identity
+// disagree — the gunbc.design_argument::single_authority fork, with a witness standing in for a construction (gunbc.design_argument::fail_closed). Identity
 // is now a required field on RoadmapNode, so a node without one is unwritable, and everything below
 // is a projection of declared_roadmap_nodes(). There is exactly one place a node's identity can be
 // stated, and the index cannot drift from it because it has no independent existence.
@@ -125,7 +125,7 @@ fn record_is_active(r: RoadmapIdentityRecord) -> Bool {
   }
 }
 
-// Resolution is EXACTLY-ONE, not first-pick. A filter-map-first lookup answers a duplicate registry with a plausible first row, which is the fabricated-plausible-output arm DESIGN 5 forbids — and it fails at exactly the moment the registry is corrupt, when a confident wrong answer is worst. The three outcomes are distinct because their remedies are: a MISSING identity is an unknown reference; a DUPLICATE is a corrupt registry; found is found. Callers match the sum rather than unwrapping an Optional that cannot tell those apart.
+// Resolution is EXACTLY-ONE, not first-pick. A filter-map-first lookup answers a duplicate registry with a plausible first row, which is the fabricated-plausible-output arm gunbc.design_argument::fail_closed forbids — and it fails at exactly the moment the registry is corrupt, when a confident wrong answer is worst. The three outcomes are distinct because their remedies are: a MISSING identity is an unknown reference; a DUPLICATE is a corrupt registry; found is found. Callers match the sum rather than unwrapping an Optional that cannot tell those apart.
 type RoadmapIdentityResolution
   = IdentityResolved { identity: RoadmapNodeIdentity }
   | IdentityUnknown { slug: String }

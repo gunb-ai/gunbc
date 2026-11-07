@@ -56,7 +56,7 @@ fn plate_path(output:String,printer:PrinterSpec,plate:PlateSpec) -> String {
 // PREPARATION IS RECOMPUTED, NOT CACHED. A prepared plate is identified by the sha256 of its bytes,
 // read back from the sliced archive; its path is a locator re-hashed by every consumer. No store or
 // preparation key sits beside std.materialization_provider: by the materialization ladder (DESIGN
-// section 2) a cache answers a reuse obligation, and prints are rare, take minutes to prepare and
+// gunbc.design_argument::demand_before_materialization) a cache answers a reuse obligation, and prints are rare, take minutes to prepare and
 // share no preparation across requests, so there is none. A recurring, measured reuse is the trigger
 // to key preparation as a std.materialization_provider ArtifactRequest and serve it from the local
 // materialization store, not to grow a second one here.

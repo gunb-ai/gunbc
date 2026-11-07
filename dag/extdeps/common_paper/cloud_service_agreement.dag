@@ -21,7 +21,7 @@ import extdeps.uri { Uri, Https }
 // editing the Standard Terms themselves. Every capitalized word that is not a Cover Page Variable
 // is defined in the Standard Terms, sections 1 (Service) through 13 (Definitions).
 //
-// WHAT THIS MODULE MODELS, AND WHAT IT DELIBERATELY DOES NOT (DESIGN section 3: interface,
+// WHAT THIS MODULE MODELS, AND WHAT IT DELIBERATELY DOES NOT (gunbc.design_argument::single_authority: interface,
 // realization and policy are three facts). The subject here is the STANDARD TERMS at one posted
 // version: the fixed, publicly hosted, independently versioned document. That is the only part of
 // the agreement that is an upstream fact. The Cover Page is where every commercial position lives -

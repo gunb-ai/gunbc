@@ -33,14 +33,14 @@ import extdeps.external_authority { ExternalModelScope }
 // the self-host frontier plan (since deleted) was a markdown prose table that said in its own
 // text that its typed carrier did not yet exist.
 
-// AN UNGROUNDED TARGET IS UNWRITABLE, not admitted-then-flagged (DESIGN section 5 construction over
+// AN UNGROUNDED TARGET IS UNWRITABLE, not admitted-then-flagged (gunbc.design_argument::fail_closed construction over
 // validation; direction from loyal-ant-382 and the grounding correction from the operator,
 // 2026-08-04). A registration carries TargetGrounding as a required field and derives its subject
 // from it, so a target with no authority behind it cannot be constructed and there is no Absent arm
 // to fall into. For an external target the grounding IS the ExternalModelScope, whose citations are
 // nonempty by construction (external_model_scope_citations_shape_note), so an uncited external
 // target is unwritable for the same structural reason. Nothing is copied: the scope is held, never
-// restated (DESIGN section 3). The residual honesty boundary is unchanged and named: that a
+// restated (gunbc.design_argument::single_authority). The residual honesty boundary is unchanged and named: that a
 // referenced declaration RESOLVES on disk is the existing roster machinery's job
 // (gunbc.extdeps_scope_frontier), not a second check minted here — and because this module performs
 // no declaration resolution at all, its outcomes are named for registry membership rather than for
@@ -72,7 +72,7 @@ type LanguageTargetSurfaceAuthority
 // v2.lens.realization_vocabulary_containment confines target vocabulary at MODULE grain —
 // target_ast_vocab_modules and target_ast_vocab_module_prefixes are module-path lists — so a
 // vocabulary surface has no declaration to name, and forcing one would mean inventing a decl_name
-// that denotes nothing (a nickname for a module, DESIGN section 3). std.languages rows and
+// that denotes nothing (a nickname for a module, gunbc.design_argument::single_authority). std.languages rows and
 // emit-host smoke fns are genuinely declarations. Both grains are therefore first-class, and a
 // locus carries which it is rather than one being encoded as a degenerate case of the other.
 
@@ -195,7 +195,7 @@ type LanguageTargetJoinViolation
 // non-resolving outcome is a TYPED, LOCATED result rather than an inability to report the site: a
 // Bash sink whose subject is unregistered still reports as a Bash sink observation carrying
 // TargetSurfaceUnregistered, which is what keeps a missing registry entry a registry refusal
-// instead of a census blind spot (DESIGN section 5 — a failure arm must refuse, never widen, and
+// instead of a census blind spot (gunbc.design_argument::fail_closed — a failure arm must refuse, never widen, and
 // never narrow to nothing). THE OUTCOMES ARE NAMED FOR REGISTRY MEMBERSHIP, NOT FOR DECLARATION
 // RESOLUTION (corrected 2026-08-04, review relayed through the operator): the last arm was called
 // TargetSubjectUnresolvable while the code performs NO declaration resolution whatsoever — it tests

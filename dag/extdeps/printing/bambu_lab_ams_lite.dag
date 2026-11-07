@@ -46,7 +46,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // THE AMS LITE IS ITS OWN SUBJECT, NOT A PROPERTY OF THE A1 MINI.
 //
 // It is a separately documented, separately shipped accessory with its own manual, so DESIGN
-// section 3 "External upstream decomposition" puts it in its own module rather than as rows inside
+// gunbc.design_argument::external_upstreams "External upstream decomposition" puts it in its own module rather than as rows inside
 // bambu_lab_a1_mini. The load-bearing consequence is visible in the rows below: the A1 mini's own
 // vendor table grades Tpu and Pva SuitabilityIdeal, and this manual excludes both. Those are not in
 // conflict and neither is wrong -- the machine prints them from the external spool holder, and the

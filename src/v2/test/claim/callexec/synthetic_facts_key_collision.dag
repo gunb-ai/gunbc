@@ -37,7 +37,7 @@ import v2.std.runtime { runtime_value_conj_node }
 // fail-closed lookup miss into a grounding judgment no producer intended. The opposite direction is
 // not hypothetical here, and that is what the second claim establishes: a DERIVED entry exists under
 // the same key, so a subject whose grounding was never established can receive one that was. That is
-// a fabricated plausible output rather than a refusal (DESIGN section 5), and nothing in the current
+// a fabricated plausible output rather than a refusal (gunbc.design_argument::fail_closed), and nothing in the current
 // relation makes it unreachable -- which of the two a given consumer gets is decided by entry order.
 //
 // WHAT THIS FILE DELIBERATELY DOES NOT CLAIM. It does not assert where the node a consumer queried
@@ -54,10 +54,10 @@ import v2.std.runtime { runtime_value_conj_node }
 // result is recorded in this change's commit message rather than asserted here, because asserting it
 // would require keeping the instrumentation in the evaluator.
 // WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
-// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
+// gunbc.design_argument::single_authority's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
 // values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
 // That was interrogated row by row against the rule rather than defended by habit, and the reason it
-// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
+// stands is the one gunbc.design_argument::guarantee_ladder states for the top rung -- ASK WHETHER THE CHECK'S RED IS
 // AUTHORABLE BEFORE WRITING THE CHECK.
 //
 // THE SUBJECT OF THESE ROWS IS THE ENTRY POPULATION INFER ACTUALLY EMITS, not what one downstream
@@ -153,7 +153,7 @@ test fn sfk_infer_produces_entries_holds() -> Bool {
 // gunbc#12582's facts-key work eliminated it. MEASURED: exactly ONE entry stands under the key, for both
 // fixtures.
 //
-// DESIGN section 4b(4) IS WHY THEY ARE FLIPPED RATHER THAN DELETED. A climb deletes the lower-rung
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) IS WHY THEY ARE FLIPPED RATHER THAN DELETED. A climb deletes the lower-rung
 // production handling and KEEPS the evidence: the discriminating red becomes the permanent control that the
 // higher rung stays real. So each row keeps its fixture and its counting method and asserts the separation
 // instead of the collision. They go red the moment two entries share a key again, which is the transition

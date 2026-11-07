@@ -29,7 +29,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 // direction that is hardest to notice: the declaration says what we meant and the unit says what
 // runs, so an observation checked against the declaration passes while the host does something
 // else. Rendering the unit FROM the instance means a disagreement has nowhere to live (DESIGN
-// section 5, construction over validation) — the same move placement made when observed_cgroup went
+// gunbc.design_argument::fail_closed, construction over validation) — the same move placement made when observed_cgroup went
 // inside EndpointOwnerContext.
 //
 // WHAT THE RENDER IS GROUNDED ON. Not invention: a live sudo capture of srv1's running CI server on
@@ -52,7 +52,7 @@ data build_cache_unit_scope_disposition: ConstructionMechanism = SingleAuthority
 // TRIGGER THAT FIRED. Until this change every line below was a string literal spelled here --
 // "[Unit]", "[Service]", "Environment=SCCACHE_DIR=...", "WantedBy=multi-user.target" -- which made
 // gunbc a SECOND AUTHORITY for systemd's unit-file syntax beside extdeps.systemd.unit_file, the
-// exact section 3 nicknaming that module's own header says it exists to prevent. Three facts were
+// exact gunbc.design_argument::interface_realization_policy nicknaming that module's own header says it exists to prevent. Three facts were
 // fused into each opaque line: a section, a directive name, and a value, none of them projectable,
 // diffable, or structurally refusable.
 //

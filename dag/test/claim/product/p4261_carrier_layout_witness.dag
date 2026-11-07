@@ -613,7 +613,7 @@ test fn the_fsv_row_names_the_maker_the_sheet_prints() -> Bool {
 // END-TO-END, NOT READ-BACK. the_fsv_row_reports_the_sheets_rrrm_as_a_rectifier only asks
 // voltage_withstand to read the row back. A defect that drops or filters RectifierSpec between an
 // installed FSV row and input_bound -- an arm filtered out of observed_ratings, a withstand kind
-// excluded from the bound -- leaves that green and this red, which is the point (§4b).
+// excluded from the bound -- leaves that green and this red, which is the point (gunbc.design_argument::guarantee_ladder).
 // Measured, with commands, before writing this: NONE of the four FSV positions is across the input on
 // the observed board. grep -c '"D2_P1"' dag/product/p4261/e1_b.dag -> 2 (its InstalledComponent and its
 // DesignatorReading; likewise D8_P1, D2_P5, D8_P5), and no continuity reading names them. So the rating

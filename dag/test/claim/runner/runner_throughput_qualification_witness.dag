@@ -88,7 +88,7 @@ import std.integer { int_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE INPUTS ARE SUPPLIED AT THE INTERFACE (DESIGN section 3, a witness discriminates at one
+// THE INPUTS ARE SUPPLIED AT THE INTERFACE (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The selection is a fixture the fleet would have made; the observed runs are minted
 // through `observed_run` -- the one door the sealed record has -- from readings in the shape the
 // route's collect stage will produce. No run executes here. The pairing obligation is the producer
@@ -358,7 +358,7 @@ fn first_join_axis(refusals: List<ThroughputRefusal>) -> String {
   )
 }
 
-// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT (DESIGN section 5; review 68995): the assessed facts
+// COVERAGE IS AN IDENTITY JOIN, NOT A COUNT (gunbc.design_argument::fail_closed; review 68995): the assessed facts
 // must be exactly the named arms, each once.
 fn fact_is(a: AssessedFact, b: AssessedFact) -> Bool {
   match a {

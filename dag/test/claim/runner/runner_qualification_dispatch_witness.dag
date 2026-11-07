@@ -99,7 +99,7 @@ data floor_job_id: NonEmptyStr = "qualification-floor"
 data registered_runner: NonEmptyStr = "gunbc-qualification-fixture-q-1.service"
 data registered_runner_id: Int = 4242
 
-// DESIGN section 3, A WITNESS DISCRIMINATES AT ONE INTERFACE. Every claim but one supplies its
+// gunbc.design_argument::witness_one_interface, A WITNESS DISCRIMINATES AT ONE INTERFACE. Every claim but one supplies its
 // inputs as values at the interface it judges: the pure scope checks (qualification_slot_refusal,
 // qualification_floor_admission), the dispatch standing, the hold comparison, and the run decision
 // over a supplied QualificationRunExpectation. The pairing obligation is discharged by ONE claim that

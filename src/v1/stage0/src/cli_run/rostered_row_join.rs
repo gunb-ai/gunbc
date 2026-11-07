@@ -72,7 +72,7 @@
 //! finding on any tree.
 //!
 //! A LATER READER MUST NOT CITE THIS GREEN AS COVERAGE OF THE PUSH. That would be rung inflation
-//! (§4b(1)), which is worse than sitting low, because an inflated class never ranks for climbing.
+//! (gunbc.design_argument::guarantee_ladder (rung honesty)), which is worse than sitting low, because an inflated class never ranks for climbing.
 //!
 //! `type_name` IS A SPELLING. `DataDeclTypeFact` carries the authored head name of the declared
 //! type annotation, so membership here is a string comparison over discovery evidence, not typed
@@ -252,7 +252,7 @@ fn content_digest(bytes: &[u8]) -> String {
 ///
 /// AMBIGUITY REFUSES RATHER THAN WIDENING. If a spelling resolves to more than one module, the
 /// join reports it and admits NEITHER identity: taking the union would be the absorbing fallback
-/// (§5) — "cannot tell which declaration this names, so accept both" — in the one position where
+/// (gunbc.design_argument::fail_closed) — "cannot tell which declaration this names, so accept both" — in the one position where
 /// the answer decides whether a row is rostered.
 fn rostered_identities(
     index: &DeclarationIndex,
@@ -763,7 +763,7 @@ pub fn run_rostered_row_join(index: &DeclarationIndex) -> Result<JoinReport, Str
         });
 
         // THE CONTROL MUST FIRE. A fixture-homed enrolled type exists to produce a refusal on
-        // every run; producing none is the green-by-construction state (§4b), and it is reported
+        // every run; producing none is the green-by-construction state (gunbc.design_argument::guarantee_ladder), and it is reported
         // as a failure of the JOIN, not of the fixture.
         if fixture_home {
             // A control fires by producing the refusal it was authored to produce, and nothing

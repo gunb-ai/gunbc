@@ -18,7 +18,7 @@ import std.types { NonEmptyStr }
 // directions -- measured, not argued. Every row here is OUTSIDE the name class, and at the
 // time the claim was written nineteen real in-class survivors existed that this census had
 // never seen. A hand-authored roster cannot ground its own completeness; it answers only
-// "what someone wrote down", which DESIGN section 5 rejects as an oracle.
+// "what someone wrote down", which gunbc.design_argument::fail_closed rejects as an oracle.
 //
 // The completeness authority is `gunbc.lifecycle_survivor_scan`, which DERIVES the in-class
 // population from the corpus and gates it at zero. Those nineteen were migrated rather than
@@ -144,7 +144,7 @@ fn residue_row_key(row: LifecycleResidueRow) -> String {
 // occupy, so it cannot be recorded as classified -- it has to be migrated. A
 // predicate asserting "no row is active" would be vacuously true over a
 // coproduct that cannot express one, which is the change-detector shape DESIGN
-// section 5 rejects, so no such predicate is written.
+// gunbc.design_argument::fail_closed rejects, so no such predicate is written.
 //
 // What IS checkable here is an identity join: the classification is keyed by
 // declaration identity, and two rows claiming the same declaration means one of

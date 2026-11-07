@@ -33,7 +33,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // and passes every not-yet-expired check forever, which is a plausible wrong answer rather than an
 // error.
 //
-// IT IS NOT AN INTEGER, and the first cut said it was. Section 2 defines the value as POSIX Seconds
+// IT IS NOT AN INTEGER, and the first cut said it was. gunbc.design_argument::minimize_redundancy defines the value as POSIX Seconds
 // Since the Epoch 'other than that non-integer values can be represented' — the clause exists
 // precisely to admit a fractional component. An Int carrier silently rounds a conforming exp, and
 // rounding an expiry DOWN shortens a credential's life while rounding it UP extends it past the
@@ -245,7 +245,7 @@ fn jwt_audience_values(audience: JwtAudience) -> List<JwtStringOrUri> {
 //
 // EVERY ONE OF THEM IS OPTIONAL, and the first cut of this record got that exactly backwards. Section 4.1 says it in the registry's own preamble — none of the registered claims are intended to be mandatory to use or implement — and then repeats 'Use of this claim is OPTIONAL' under each individual claim. The earlier record made all six required, which encoded ONE OBSERVED TOKEN as the definition of the standard: the codex id_token happens to carry all of them, so a shape derived from it refuses every conforming JWT that omits a claim the RFC never demanded. A signed token with no jti is not malformed, and a model that cannot represent one is not describing RFC 7519.
 //
-// WHERE REQUIREMENT ACTUALLY LIVES IS THE PROFILE. OIDC Core section 2 requires iss, sub, aud, exp and iat in an ID Token — that is a real obligation, and it belongs to OIDC rather than to the JWT layer. Pushing it down here would make the base type unable to describe the many conforming JWTs that are not ID Tokens. So this record stays fully optional and extdeps.auth.oidc declares its own required core, which is the single-authority reading: the RFC owns the vocabulary, the profile owns the obligation.
+// WHERE REQUIREMENT ACTUALLY LIVES IS THE PROFILE. OIDC Core gunbc.design_argument::minimize_redundancy requires iss, sub, aud, exp and iat in an ID Token — that is a real obligation, and it belongs to OIDC rather than to the JWT layer. Pushing it down here would make the base type unable to describe the many conforming JWTs that are not ID Tokens. So this record stays fully optional and extdeps.auth.oidc declares its own required core, which is the single-authority reading: the RFC owns the vocabulary, the profile owns the obligation.
 type JwtRegisteredClaims {
   issuer: JwtStringOrUri?
   subject: JwtStringOrUri?

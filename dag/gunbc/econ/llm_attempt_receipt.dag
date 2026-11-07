@@ -21,7 +21,7 @@ import std.types { Bool, List, NonEmptyStr, brand }
 // PerStoredUnitMonth is a genuinely new point in the type space unwritable in std without vendor
 // vocabulary; Measure of Count at One over Nat takes only arguments std.measure already owns, and
 // that module already names the shape three times (HardwareThreadCount, CharacterCount,
-// AmortizationMonths). A local fourth name was the DESIGN section 3 fork, not a downstream
+// AmortizationMonths). A local fourth name was the gunbc.design_argument::single_authority fork, not a downstream
 // instantiation, and the regen cost cited to justify it was the cost of doing the right thing. The
 // carrier now lives beside its siblings under std.measure token_count_note.
 
@@ -71,7 +71,7 @@ type LlmTokenUsage {
 
 // Usage is a three-state observation, never a zero default. An attempt whose provider reported no
 // usage is NOT one that consumed nothing: conflating them is the absorbing-fallback shape DESIGN
-// section 5 forbids, one level down -- bottom-as-answer for bottom-as-ignorance. So
+// gunbc.design_argument::fail_closed forbids, one level down -- bottom-as-answer for bottom-as-ignorance. So
 // LlmUsageUnobserved carries a located reason and every economic derivation over it refuses, while
 // the attempt and its disposition stay fully readable: execution is not refused because accounting
 // is missing.
@@ -284,7 +284,7 @@ type EscalationFractionResult
 // observed arm as DispatchUsageObserved of a List of NonEmptyStr, and its only construction site
 // is dispatch_usage_unobserved, so no real attempt has ever been recorded and nothing exists to
 // re-home; calling that seam typed would be the specification-without-execution trap DESIGN
-// section 5 names. NEXT TRIGGER: provider usage capture on the dispatch path replaces the untyped
+// gunbc.design_argument::fail_closed names. NEXT TRIGGER: provider usage capture on the dispatch path replaces the untyped
 // arm with LlmUsageObservation and persists one receipt per real attempt; the cited token-rate rows
 // and cost-per-accepted-task derivation follow in their own slice, where
 // extdeps.pricing.billing_units gains per-token markers beside its storage markers. This module

@@ -23,7 +23,7 @@ import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_fw_ver
 // admits cycles that never reached a banner.
 //
 // A "CP:" LINE WHOSE WORD IS NOT EIGHT HEX DIGITS IS KEPT AS MALFORMED, never dropped (DESIGN
-// section 5): a firmware that changes the word's width shows up in the receipt, not as a shorter
+// gunbc.design_argument::fail_closed): a firmware that changes the word's width shows up in the receipt, not as a shorter
 // sequence.
 
 // Eight hex digits, as every capture this corpus holds prints them; checkpoint_token_of indexes them.

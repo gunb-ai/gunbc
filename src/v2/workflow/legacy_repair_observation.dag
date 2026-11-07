@@ -70,7 +70,7 @@ import std.observation_completeness {
 // nothing expected missing, nothing observed foreign, nothing expected answered twice -- is one law
 // for any key, and it now lives once in std.observation_completeness with both envelopes supplying
 // their own key and equality. Two envelopes with two denominators and ONE join is the DESIGN
-// section 2 shape; two envelopes each with its own copy of the fold would have been the section 3
+// gunbc.design_argument::minimize_redundancy shape; two envelopes each with its own copy of the fold would have been the gunbc.design_argument::single_authority
 // failure.
 
 // WHAT REVIEW 56949 FOUND, KEPT HERE BECAUSE THE MISS WAS STRUCTURAL RATHER THAN CARELESS.
@@ -177,7 +177,7 @@ type LegacyRepairObservationRow<O> {
 // THE ROSTER IS ORDERED AND ITS ADDRESS IS ORDER-SENSITIVE, DELIBERATELY. The join below is a set
 // law and does not care about order; the address does, so two producers stating the same sites in
 // different sequence get a roster-mismatch refusal rather than an admission. That is the fail-closed
-// direction (DESIGN section 5: a failure arm refuses, it does not widen) -- an order-insensitive
+// direction (gunbc.design_argument::fail_closed: a failure arm refuses, it does not widen) -- an order-insensitive
 // address would need a total order over names this module does not own, and inventing one to make a
 // refusal go away is how a wall becomes a decoration.
 type RepairSiteRoster {
@@ -193,7 +193,7 @@ fn expected_repair_sites(roster: RepairSiteRoster) -> List<RepairSite> {
 // The binding envelope has to leave the matching half open: it cannot check that the transport it
 // was handed is its subject's, because std.occurrence_identity declares no digest over
 // ValidatedOccurrenceTransport and minting one outside that type's own module would be the DESIGN
-// section 3 violation. RepairSiteRoster is declared HERE, so no such boundary is crossed and the
+// gunbc.design_argument::single_authority violation. RepairSiteRoster is declared HERE, so no such boundary is crossed and the
 // half closes: the subject carries the roster's address, prove_repair_roster recomputes it, and a
 // roster that is not this subject's has no spelling at the join boundary.
 //
@@ -276,10 +276,10 @@ fn legacy_repair_completeness<O>(
 // a silent rename. The first cut called this `SubjectRoster`, which is exactly the spelling
 // `v2.lens.enforcement.vocab` already declares for an unrelated concept. Whole-corpus resolution then
 // handed THIS type to the enforcement lens's own consumers, and their `entries` field stopped
-// existing -- the §3 nicknaming failure committed in the direction authors do not watch for, since
+// existing -- the gunbc.design_argument::single_authority nicknaming failure committed in the direction authors do not watch for, since
 // the duplicate was minted here and the breakage surfaced over there. A name is not free just because
 // it reads naturally at its declaration. A caller therefore cannot reach completeness over an unproven roster -- there is no
-// spelling for it, rather than a rule about which check runs first. That is the DESIGN section 5
+// spelling for it, rather than a rule about which check runs first. That is the gunbc.design_argument::fail_closed
 // move: the bad state is unwritable, not detected.
 //
 // THE MINT NAMES BOTH ADDRESSES ON REFUSAL. "These do not match" sends a reader looking; the two
@@ -301,7 +301,7 @@ type ProvenRepairRoster sole_constructor {
 // VALIDATION -- it catches the bad denominator when the join is finally asked. Refusing at the
 // proof means a `ProvenRepairRoster` cannot HOLD a duplicate at all, so every downstream law
 // taking one has the uniqueness as a property of its parameter rather than as a check somebody
-// remembered to run. DESIGN section 5: construction over validation, at the boundary where the
+// remembered to run. gunbc.design_argument::fail_closed: construction over validation, at the boundary where the
 // carrier is minted.
 //
 // THAT DOES NOT MAKE THE JOIN'S ARM DEAD, and the distinction is the reachability-versus-occupancy

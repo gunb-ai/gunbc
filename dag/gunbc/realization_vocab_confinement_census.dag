@@ -333,7 +333,7 @@ fn confinement_capability_receipt(
 // THE TWO WAYS TO HAVE NO CEILING ARE DIFFERENT FACTS AND THIS MODULE KEEPS THEM APART. Upstream
 // now refuses a run mismatch by name rather than by answering none, and collapsing that back into
 // one Optional here would absorb the located cause one line after it was produced — the producer
-// would be countable and the consumer would not, which is the shape DESIGN section 5 forbids and
+// would be countable and the consumer would not, which is the shape gunbc.design_argument::fail_closed forbids and
 // the reason the upstream frontier dissolved. ReceiptUnavailable means the capability receipt never
 // existed, so the classifier was never joined to its contract and there was nothing to present.
 // CeilingRefused means a receipt DID exist and named a different classification run than the

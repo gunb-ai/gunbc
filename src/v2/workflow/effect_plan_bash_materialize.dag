@@ -26,7 +26,7 @@ import extdeps.sudo.elevation { sudo_elevate_argv }
 // executable_position on BashBoundOperationInvocation chooses how argv[0] RENDERS in this
 // foreign-executor transport — DeclarationLiteral emits the declaration literal; HostEnvVar emits
 // bash_build_word_var for pin-rustup prelude paths such as CARGO_BIN — without fusing transport
-// policy into the generic invocation substrate (DESIGN §3). FailFast is the Bash grammar's &&
+// policy into the generic invocation substrate (gunbc.design_argument::single_authority). FailFast is the Bash grammar's &&
 // relation. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate
 // step. If, Let and Call lower through the same grammar rows (test bracket, assign, command,
 // if/if-else) for gunbc-private#60, whose shell steps are carried as strings until this transport
@@ -98,11 +98,11 @@ fn bash_bind_operation_invocation_host_env_executable(
   } }
 }
 
-data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (§3): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
+data effect_plan_bash_refusal_label_note: String = "The refusal LABEL lives with the refusal TYPE, exactly as operation_argv_cause_label lives with ArgvRefusalCause (gunbc.design_argument::single_authority): a consumer that needs to render a refusal reads this, rather than minting a second vocabulary for the same coproduct. It renders the located triple a consumer needs to act — which step index, which operation (when one is known), and which cause — and it is TOTAL, so a new arm cannot be rendered as a blank."
 
 // UnsupportedIf / UnsupportedLet / UnsupportedCall were arms here until the If / Let / Call climb
 // (gunbc-private#60 trigger); the climb deleted them as obsoleted production machinery (DESIGN
-// 4b(4)) and their former expecting-red assertions stay enrolled in
+// gunbc.design_argument::guarantee_ladder (dissolution on climb)) and their former expecting-red assertions stay enrolled in
 // effect_plan_bash_materialize_test as the permanent regression control that each arm materializes.
 type EffectPlanBashUnsupportedStep
   = UnsupportedFor
@@ -125,7 +125,7 @@ type EffectPlanBashUnsupportedPredicate
 // Predicate operands are Strings, and the Pipeline string tier (05_emit_orchestration) reads them as
 // raw shell spellings -- authors there write lhs: "\"$X\"". This transport reads an operand as a
 // VALUE and single-quotes it, so the same spelling would compare the four literal characters
-// instead of expanding X: a silent meaning fork (DESIGN 3). Operands carrying any of the POSIX
+// instead of expanding X: a silent meaning fork (gunbc.design_argument::single_authority). Operands carrying any of the POSIX
 // quoting or expansion characters therefore refuse with PredicateOperandCarriesShellSpelling
 // rather than being quoted. That is over-prohibition of a quotable literal, bounded to these five
 // characters and loud; it dissolves when Predicate carries Expr operands (ExprLit | ExprVarRef |
@@ -443,7 +443,7 @@ fn effect_plan_bash_encode_observed_sha256_env_write(
 // the grammar's "$name" var word (its name is checked the same way), ExprCmdSubst is $( command )
 // over lit words. NUL is the one byte no quoting can carry and refuses as it does for argv.
 // posix_name_ok is the POSIX name rule's one home (extdeps.posix.shell_command_language), read
-// here rather than respelled (DESIGN 3).
+// here rather than respelled (gunbc.design_argument::single_authority).
 
 fn effect_plan_bash_shell_name_checked(
   name: String,

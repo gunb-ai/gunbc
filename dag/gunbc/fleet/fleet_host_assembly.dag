@@ -35,7 +35,7 @@ import gunbc.fleet.fleet_asset_identity {
 // declare altrad8ud_catalog_ref and cooler_catalog_ref naming the exact declarations
 // that gunbc.fleet.fleet_acquisition_census already names as altrad8ud_catalog_ref and
 // cooler_catalog_ref - two names for one concept, authored in the same change, which is the
-// nicknaming DESIGN section 3 calls the recurring violation. The failure is silent and delayed:
+// nicknaming gunbc.design_argument::single_authority calls the recurring violation. The failure is silent and delayed:
 // rename the upstream catalog declaration and whichever copy the author happened to grep for gets
 // fixed while the other keeps citing a declaration that no longer exists. This module already
 // imported from the census, so consuming the rows cost one line each. (review 65094)
@@ -254,7 +254,7 @@ data srv_assembly_containments: List<PhysicalContainment> = concat([
 // ADMISSION IS A QUESTION FOR THE CENSUS, NOT A LIST TYPED HERE. This predicate used to answer it
 // by comparing against three hand-named lot identities, which is a second source for a fact
 // gunbc.fleet.fleet_acquisition_census already owns in fleet_ledger_identities - the nicknaming DESIGN
-// section 3 calls the recurring violation, and section 5's tell that a check is re-stating a
+// gunbc.design_argument::single_authority calls the recurring violation, and gunbc.design_argument::fail_closed's tell that a check is re-stating a
 // constraint the model already carries. The failure was silent and delayed in the worst direction:
 // drop or rename a lot in the census and this kept answering TRUE under a name claiming census
 // admission, with its witness green throughout. The same ratchet this file applies one screen
@@ -348,7 +348,7 @@ fn containment_has_component(containments: List<PhysicalContainment>, host: Host
 // exempt because no containment edge is modeled for it at all", and gunbc.fleet.fleet_physical_inventory
 // installed_cooler_containments models exactly those edges - HostContainsComponent for the srv3
 // and srv4 coolers - which the comment above srv_assembly_containments already pointed at. A
-// divergence admitted under DESIGN section 3b stays admitted only while its stated reason holds;
+// divergence admitted under gunbc.design_argument::conformance stays admitted only while its stated reason holds;
 // this one outlived its condition, and an exemption whose justification has quietly expired reads
 // as considered while checking nothing. The consequence was not theoretical: is_cooler_asset was
 // the FIRST disjunct of the row fold, so it short-circuited, and a cooler recorded against the

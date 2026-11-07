@@ -586,7 +586,7 @@ fn regen_stage_plan_surface_paths(outcome: RegenStagePlanOutcome) -> List<String
 }
 
 // THE ONE RENDERER OF A CONVERGENCE REFUSAL'S PAYLOAD. A refusal is typed AND located (DESIGN
-// section 5): every host that prints a refusal prints this, so the variant name never travels
+// gunbc.design_argument::fail_closed): every host that prints a refusal prints this, so the variant name never travels
 // without the surface, path, reason or digests it carries. Exhaustive with no `_` arm, so a new
 // variant fails to compile until its author writes what it prints.
 fn regen_surface_identity_text(row: RegenSurfaceIdentity) -> String {
@@ -784,7 +784,7 @@ fn regen_candidate_generation_admission_label(admission: RegenCandidateGeneratio
 // a coproduct that is free to grow is a silent-degradation surface: a new variant renders a fixed
 // string with no location and nothing refuses. Narrowing the type deletes the arm rather than
 // improving its default, so a fourth stage-execution refusal fails to compile in both renderers
-// until an author writes its name and its detail. §4b(4): unwritable rather than validated.
+// until an author writes its name and its detail. gunbc.design_argument::guarantee_ladder (dissolution on climb): unwritable rather than validated.
 type RegenStageExecutionRefusal
   = StagePlannedExecutedMismatch { planned: List<RegenSurfaceIdentity>, executed: List<RegenSurfaceIdentity> }
   | InstalledDigestMismatch { surfaces: List<RegenSurfaceIdentity>, expected: String, observed: String }
@@ -831,7 +831,7 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
 // populations that caused the refusal -- the whole content of a population verdict -- never
 // reached the caller. That is the `diagnostic_name_mechanism_silent` shape: a typed refusal whose
 // type is announced and whose located detail is discarded, leaving a reader unable to tell WHICH
-// surfaces disagreed or even which arm answered. §5 asks for a typed, LOCATED diagnostic; this
+// surfaces disagreed or even which arm answered. gunbc.design_argument::fail_closed asks for a typed, LOCATED diagnostic; this
 // renders the located half.
 fn regen_surface_identity_path_list(rows: List<RegenSurfaceIdentity>) -> String {
   fold(rows, init: "", f: fn(acc, row) {

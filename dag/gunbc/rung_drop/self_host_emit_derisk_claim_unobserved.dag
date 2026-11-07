@@ -7,7 +7,7 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for the self-host emit-derisk claims that are enrolled, red, and
-// planned by no lane (DESIGN 4b(3) rung honesty; DESIGN 5 specification-without-execution).
+// planned by no lane (gunbc.design_argument::guarantee_ladder (no silent regression) rung honesty; gunbc.design_argument::fail_closed specification-without-execution).
 // ============================================================================================
 //
 // WHAT IS DROPPED. `v2.test.claim.long.self_host_module_emit_derisk`

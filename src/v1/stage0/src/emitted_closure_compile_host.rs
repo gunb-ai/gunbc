@@ -15,7 +15,7 @@
 //! a declared entry, compiled whole.
 //!
 //! THE DISCRIMINATION IS EXECUTED, NOT ASSERTED. A cargo phase that cannot go red is worse than
-//! absent (DESIGN 4b): it gets cited as coverage. So every run establishes its own red BY
+//! absent (gunbc.design_argument::guarantee_ladder): it gets cited as coverage. So every run establishes its own red BY
 //! MUTATION: baseline green, then ONE injected fault in ONE emitted file which must fail ALONE,
 //! then a byte-exact restore which must return green. A mutated tree that still compiles FAILS
 //! THE PHASE — the cargo verdict is insensitive to its bytes and the green above carries no
@@ -41,7 +41,7 @@
 //!
 //! WHAT THIS PHASE IS NOT. No baseline, no diagnostic count, no ratchet. Cargo's exit status is
 //! the whole verdict. Pinning a diagnostic population measured on the current tree would be the
-//! tree-copied oracle DESIGN 5 rejects; an identity-grain debt contract over the emitted
+//! tree-copied oracle gunbc.design_argument::fail_closed rejects; an identity-grain debt contract over the emitted
 //! population is a separate construction with a separate argument.
 //!
 //! A WARNING IS AN ERROR HERE, AND THE INVOCATION SAYS SO ITSELF. `run_cargo` sets RUSTFLAGS to
@@ -170,7 +170,7 @@ pub enum CargoVerdict {
         warning_count: usize,
         /// The `warning` header lines themselves, in stderr order, so a non-zero `warning_count`
         /// can be NAMED where it refuses. A bare count was all the self-host and v2-native-cli
-        /// instruments had, and a count that made the step exit 1 printed no cause (DESIGN §5).
+        /// instruments had, and a count that made the step exit 1 printed no cause (gunbc.design_argument::fail_closed).
         warning_headers: Vec<String>,
         /// Cargo's own `spurious network error` retry warnings during the dependency fetch,
         /// counted HERE and excluded from `warning_count`/`warning_headers`: they are not
@@ -377,7 +377,7 @@ pub fn cargo_verdict_stderr_tail(verdict: &CargoVerdict) -> &str {
 /// SO THE CARRIER HOLDS ONE THING AND HAS NO SPELLING FOR THE OTHER. `mutation_subject` is the
 /// only constructor and derives the module from the ENTRY, so `a shared member carried the fault`
 /// is unwritable, not merely unselected — construction over validation, no fallback arm
-/// (DESIGN 5). Absence is a typed refusal naming the entry (`MutationSubjectRefusal`).
+/// (gunbc.design_argument::fail_closed). Absence is a typed refusal naming the entry (`MutationSubjectRefusal`).
 ///
 /// THE PRIVACY BOUNDARY IS NAMED, BECAUSE RUST'S IS MODULE-SCOPED AND NOT FUNCTION-SCOPED. A
 /// private field beside its constructor walls OTHER modules and is convention within this one —
@@ -464,7 +464,7 @@ pub fn mutation_subject_name(_subject: &MutationSubject) -> &'static str {
 /// MEASURED AS REACHABLE-BUT-EMPTY, WHICH IS A HEALTHY QUIET GUARD AND NOT A DECORATION: all 8
 /// rostered entries emit their own module as its own `.rs`, so no arm fires today. The mechanism
 /// exists — a dropped or renamed root is what this phase is for — and a fixture authors every arm
-/// directly, so its RED is authorable (DESIGN 4b).
+/// directly, so its RED is authorable (gunbc.design_argument::guarantee_ladder).
 #[derive(Debug, Clone)]
 pub enum MutationSubjectRefusal {
     EntryModuleNotDeclared {
@@ -806,7 +806,7 @@ fn probe_crate_dir(probe_root: &PrivateProbeRoot, entry: &str) -> PathBuf {
 ///
 /// `pub(crate)` for the required-v2-native lane's harness (cli_run::native_lane_runner), which
 /// prepares the emitted-native compiler through this same writer rather than growing a second
-/// one beside it (DESIGN §2).
+/// one beside it (gunbc.design_argument::minimize_redundancy).
 pub(crate) fn write_probe_crate(
     run: &CompileRun,
     probe_root: &PrivateProbeRoot,
@@ -828,7 +828,7 @@ pub(crate) fn write_probe_crate(
 
 /// The writer both routes share: an emission in, a written workspace out.
 ///
-/// ONE WRITER, TWO CALLERS, AND THE SHARING IS THE POINT (DESIGN §2). The required phase reaches
+/// ONE WRITER, TWO CALLERS, AND THE SHARING IS THE POINT (gunbc.design_argument::minimize_redundancy). The required phase reaches
 /// it through a `CompileRun`'s rust emission; the fixture route reaches it with what a virtual
 /// source's `compile_sources` produced. The workspace directory is per entry and the binary is
 /// named `probe_package_name(entry)`, so entries sharing one target directory never share a binary
@@ -1915,7 +1915,7 @@ pub fn run_emit_compile_entry(
 /// refuses. `gunbc.rung_drop` `text_boundary_identity_wall` already CLAIMS that rung ("on the
 /// emitted-Rust self-host path the class is mechanically preventable — ... renders as a Rust type
 /// mismatch and the mandatory emitted-crate cargo check refuses it") for a fixture the required
-/// phase's roster cannot reach. DESIGN §4b(1) says a rung is established by evidence executing on
+/// phase's roster cannot reach. gunbc.design_argument::guarantee_ladder (rung honesty) says a rung is established by evidence executing on
 /// the acceptance path; this is the route that lets such a claim execute over its own fixture
 /// instead of being asserted about one.
 ///
@@ -2125,7 +2125,7 @@ pub(crate) fn fixture_closure_rustc_verdict(
 /// THE FIXTURE ROUTE'S OWN DISCRIMINATING PAIR, EXECUTED RATHER THAN DESCRIBED.
 ///
 /// A route that reaches rustc proves nothing on its own: a green says only that SOME crate
-/// compiled, and DESIGN §4b calls a check that cannot go red worse than absent because it is
+/// compiled, and gunbc.design_argument::guarantee_ladder calls a check that cannot go red worse than absent because it is
 /// cited as coverage. So the route ships with the two arms that make its answer information —
 /// run together, in one report, because either alone is satisfiable by an instrument that ignores
 /// its input.
@@ -2157,7 +2157,7 @@ pub(crate) struct FixtureDiscrimination {
 }
 
 /// THE TWO ARMS ARE FIXTURE FILES, NOT STRING CONSTANTS IN THIS FILE, and the difference is
-/// §3 rather than taste. The same arms are files any caller can hand this route by path; carrying
+/// gunbc.design_argument::single_authority rather than taste. The same arms are files any caller can hand this route by path; carrying
 /// a second copy of their source here would be one fixture with two authorities
 /// that drift the first time either is edited, and the arm this pair adjudicates would stop being
 /// the arm anyone else runs.
@@ -2253,7 +2253,7 @@ const FIXTURE_ADAPTER_GREEN_PATH: &str =
 ///
 /// SO WHEN THE ADAPTER'S COVERAGE CLIMBS -- either the emitter adapts a let-bound arrow value too,
 /// or the front end refuses the construction -- THIS ARM FLIPS AND MUST BE KEPT, per DESIGN
-/// §4b(4): the probe becomes a permanent regression control on the direction it established, and
+/// gunbc.design_argument::guarantee_ladder (dissolution on climb): the probe becomes a permanent regression control on the direction it established, and
 /// what changes is this pair's expectation, not the fixture's existence.
 #[cfg(test)]
 const FIXTURE_ADAPTER_RED_PATH: &str =
@@ -2389,7 +2389,7 @@ pub(crate) fn run_local_true_false_coproduct_discrimination(
 /// `gunbc.recurring_failure_mode` `accepted_source_emits_uncompilable_target` at its own filed
 /// first instance: gunbc accepts the source with zero blocking diagnostics and emits a crate rustc
 /// refuses. That row records that its specimen's fixture was never committed to this repository;
-/// this arm commits it as a runnable file. Per DESIGN §4b(4), when that class climbs the arm flips
+/// this arm commits it as a runnable file. Per gunbc.design_argument::guarantee_ladder (dissolution on climb), when that class climbs the arm flips
 /// to `SourceRefused` and is KEPT as the regression control on the direction it established.
 #[cfg(test)]
 const FIXTURE_PHANTOM_MARKER_GREEN_PATH: &str =
@@ -2588,7 +2588,7 @@ pub(crate) fn run_append_concat_form_discrimination(
 /// shell operation's value in `Ok(..)` only when the declared output carried MORE THAN ONE field,
 /// while the same declaration signs the method `Result<.., Box<dyn Error>>`, so a single-field
 /// output was refused by rustc `E0308`. The convention is now unconditional and arity decides only
-/// the value's shape. Per DESIGN §4b(4) the one-field arm FLIPPED to compiling and is KEPT: both
+/// the value's shape. Per gunbc.design_argument::guarantee_ladder (dissolution on climb) the one-field arm FLIPPED to compiling and is KEPT: both
 /// arms must now compile, and a refused one-field arm means the arity fork returned.
 ///
 /// THE TWO ARMS DIFFER IN ONE AUTHORED THING — how many fields the output block declares — so the
@@ -2756,7 +2756,7 @@ pub fn emit_compile_modules_reached(outcomes: &[EmitCompileOutcome]) -> usize {
 
 /// THE SELECTION, WITH ITS REMAINDER CARRIED AT IDENTITY GRAIN.
 ///
-/// WHY THIS REPLACES THE COVERAGE FRACTION RATHER THAN JOINING IT. §4b(3) asks a rung drop for a
+/// WHY THIS REPLACES THE COVERAGE FRACTION RATHER THAN JOINING IT. gunbc.design_argument::guarantee_ladder (no silent regression) asks a rung drop for a
 /// BOUNDED POPULATION, and a percentage is not one: it says how much is missing, never WHICH, so
 /// nothing downstream can join it, refuse on it, or watch it shrink. The identities are the
 /// population; a percentage may stand as context, never as the gap's identity or dissolution
@@ -2874,7 +2874,7 @@ pub fn emit_compile_report(
     // second time, so when the root moved to `RUNNER_TEMP` one spelling was repaired and the
     // other not: crate dirs went under the per-job temp while the retention file went to the
     // host-shared `/tmp` and hit the same `EACCES` the reroot escaped. Two homes for one fact is
-    // the §3 violation; the tell was two different paths in adjacent log lines. The
+    // the gunbc.design_argument::single_authority violation; the tell was two different paths in adjacent log lines. The
     // caller-selected `probe_root` is the authority; nothing below the mode boundary chooses
     // another root.
     let retained_dir = probe_root.to_string_lossy().to_string();
@@ -2995,7 +2995,7 @@ pub(crate) fn probe_toolchain_identity_for_key() -> Result<String, String> {
 }
 
 /// THESE ARE LOCAL-ONLY EVIDENCE AND ARE LABELLED AS SUCH. The Rust suite was removed from CI on
-/// 2026-07-11 (DESIGN, Building & checks), so nothing here runs on the merge path or may be cited
+/// 2026-07-11 (gunbc.design_document::ci_contract_blocks), so nothing here runs on the merge path or may be cited
 /// as coverage. THE EXECUTED EVIDENCE FOR THIS PHASE IS THE PHASE ITSELF:
 /// `establish_discriminating_red` runs on every required run, and a mutation that fails to go red
 /// stops the line. These add what the in-run arm cannot check on itself: a non-`Discriminated`

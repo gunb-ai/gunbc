@@ -25,7 +25,7 @@ import v2.std.node { Edge, Node, Symbol, content_hash }
 import v2.std.node_query { NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup }
 
 // The capture half of the `test` marker channel (v2.std.declaration_marker, shaped like the DESIGN
-// section 4c annotation channel): a pure reader over the
+// gunbc.design_argument::source_annotations annotation channel): a pure reader over the
 // parse tree, run beside lowering and never inside it. Lowering is unchanged -- a `test fn` still
 // lowers to the same named member a plain `fn` does -- so every semantic consumer is byte-identical
 // by construction, and the marker survives here instead of being dropped.

@@ -18,7 +18,7 @@ data a_unit_memory_peak_is_read_from_a_cgroup_the_work_escapes: RecurringFailure
 
     "DISTINGUISHING FACT: the unit's reported peak is orders of magnitude below the wall-clock cost of the work. The suspected cause (not yet verified) is a user_work_scope wrapper or delegated child that moves the process out of the gunbc-compute-<id>.service cgroup.",
 
-    "RUNG FOUND AT: silently wrong (below the ladder, DESIGN 4b), because the sample is accepted as an observation. The mitigation in place is that work_class_grant_rows is empty, so every class reserves the ceiling; no grant is sized from the claims class until the peak is read from the cgroup the work occupies.",
+    "RUNG FOUND AT: silently wrong (below the ladder, gunbc.design_argument::guarantee_ladder), because the sample is accepted as an observation. The mitigation in place is that work_class_grant_rows is empty, so every class reserves the ceiling; no grant is sized from the claims class until the peak is read from the cgroup the work occupies.",
 
     "CEILING: structurally guaranteed for the decidable half: a sample whose unit cgroup does not contain the workload's processes is refused at the sample, a typed PeakSampleNotTaken.",
 

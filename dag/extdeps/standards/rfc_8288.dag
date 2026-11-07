@@ -19,7 +19,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // RFC 8288 WEB LINKING, MODELLED HERE BECAUSE IT IS THE AUTHORITY FOR A CURSOR SHAPE.
 //
 // A listing that continues by a Link header does not hand the client a token to put in a query --
-// it hands it a whole request it authored, under a registered relation type. Section 3 defines the
+// it hands it a whole request it authored, under a registered relation type. gunbc.design_argument::single_authority defines the
 // field value as a comma-separated list of link-values, each a URI-Reference in angle brackets
 // followed by semicolon-separated parameters, of which `rel` names the relation. Section 3.3 makes
 // the relation type case-insensitive.
@@ -27,7 +27,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // IT IS ITS OWN MODULE RATHER THAN A GITHUB DETAIL. GitHub, the GitLab API, and every other service
 // that paginates by Link header are consumers of one standard, and modelling it inside one of them
 // would make the next consumer either import a vendor module for a standard or fork it (DESIGN
-// section 3, external upstream decomposition: a shared standard is its own authority beside the
+// gunbc.design_argument::external_upstreams, external upstream decomposition: a shared standard is its own authority beside the
 // products that implement it).
 
 type LinkRelation
@@ -51,7 +51,7 @@ fn link_relation_key(r: LinkRelation) -> NonEmptyStr {
 // The IANA link relation registry is open and the four arms above are the four this repository has
 // a consumer for. An unregistered or simply unmodelled relation is a real link that this model can
 // carry and cannot interpret -- so it is kept, named, and never matched as `next`. Answering
-// RelNext for an unrecognised relation would be the absorbing fallback DESIGN section 5 forbids,
+// RelNext for an unrecognised relation would be the absorbing fallback gunbc.design_argument::fail_closed forbids,
 // aimed at the one relation that drives a fold.
 fn link_relation_from_key(raw: String) -> LinkRelation {
   if raw == "next" {

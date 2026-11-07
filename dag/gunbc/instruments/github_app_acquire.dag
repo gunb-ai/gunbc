@@ -190,7 +190,7 @@ fn intervention_text(intervention: HumanIntervention) -> String {
 // THE ACQUISITION RECORD IS OBSERVED HERE, WHICH IS WHY NO HUMAN TRANSCRIBES IT. The handoff the
 // actuation wrote is read back and parsed; a declared adoption row is the other source, for an App
 // created before this converge existed. Two answers naming different Apps is a Conflict rather than
-// a precedence rule (DESIGN 3), and an unparseable handoff refuses rather than reading as "never
+// a precedence rule (gunbc.design_argument::single_authority), and an unparseable handoff refuses rather than reading as "never
 // acquired" -- which would authorize a registration duplicating the App the file is about.
 fn observed_acquisition_reading() -> AcquisitionRecordReading uses fs: std.resources.Filesystem {
   match custody_handoff_addressing(name: census_app_identity.name) {
@@ -375,7 +375,7 @@ type IssuedCredentialCustody
 // error != "" -- so a failed write that reported an EMPTY error string was read as a successful
 // handoff, returning CredentialsHandedOff and printing "the credentials are on disk" while the pem
 // no endpoint reissues was gone. That is a heuristic standing where an observation existed, at the
-// one call in this flow whose failure destroys the subject (review 67588, DESIGN 5: prefer the single
+// one call in this flow whose failure destroys the subject (review 67588, gunbc.design_argument::fail_closed: prefer the single
 // authority the realization derives from over a check that flags the bad state afterwards). The
 // filesystem module refuses the same move one screen earlier in its own annotation.
 type SecretFileWrite
@@ -724,7 +724,7 @@ fn installation_token_plan_line(installation: GitHubAppInstallation) -> String {
 // handed one, and refuses through the ordinary 401 classification when the environment has none.
 //
 // IT IS DECLARED AS A ROUTE RATHER THAN LEFT FOR LATER because an operation with no call site is the
-// dangling modeling DESIGN 3c refuses. What it cannot yet do is EXECUTE GREEN - the census App does
+// dangling modeling gunbc.design_argument::consumption refuses. What it cannot yet do is EXECUTE GREEN - the census App does
 // not exist, so it has no installations and there is no key to sign with - and that gap is the
 // frontier row below rather than a claim in this note.
 //
@@ -754,7 +754,7 @@ fn census_app_installations_receipt() -> ProcessExit {
 // and -- worse -- made this entry point's own frontier row unsatisfiable: the row says it dissolves
 // when this function returns ExitSuccess against a live GET, and no ExitSuccess arm existed, so the
 // trigger could only be discharged by editing the function rather than by acquiring the App (DESIGN
-// 4b(3): a drop is retired by its trigger and by nothing else). Caught by review 67504.
+// gunbc.design_argument::guarantee_ladder (no silent regression): a drop is retired by its trigger and by nothing else). Caught by review 67504.
 //
 // THE REPORT PATH IS DERIVED FROM THE SAME DECLARED DIRECTORY the handoff files use. An installation
 // listing is not a credential, but it names every account this App can read and the exact token
@@ -884,7 +884,7 @@ fn next_acquisition_step(record: GitHubAppAcquisitionRecord, missing: Acquisitio
 // THE EXECUTING RECEIPT FOR THE CUSTODY WRITE, and it exists because every other claim about
 // persist_issued_credentials would otherwise be a claim about values this repository authored. The
 // acquire path's write runs exactly once in the life of the App and cannot be rehearsed against
-// GitHub, so the pairing obligation (DESIGN 3, a supplied input is a hypothesis about a boundary;
+// GitHub, so the pairing obligation (gunbc.design_argument::witness_one_interface, a supplied input is a hypothesis about a boundary;
 // the inhabitance claim is what makes it a reading) is discharged here instead: a probe issuance
 // goes through THE SAME function the acquire path calls, the bytes are read back from disk, and the
 // files are removed. Deleting the Filesystem.WriteOwnerOnly call makes this fail.
@@ -966,7 +966,7 @@ fn custody_write_receipt() -> ProcessExit uses fs: std.resources.Filesystem {
 // before the POST -- and the comment was not moved with it. So a stale annotation stood as a second,
 // false authority for the sequencing, and it justified exactly the loss the preflight exists to
 // prevent: a stale handoff file meant creating the App and then refusing its key (review 67573,
-// DESIGN 4c -- an annotation may not assert what the construction does not do).
+// gunbc.design_argument::source_annotations -- an annotation may not assert what the construction does not do).
 fn persist_then_read_back(
   custody_name: NonEmptyStr,
   issuance: GitHubAppCredentialIssuance,

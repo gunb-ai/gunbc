@@ -8,7 +8,7 @@ import std.optional { Absent, Present }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// RFC 7468, Textual Encodings of PKIX, PKCS, and CMS Structures: §2 (the general encapsulation:
+// RFC 7468, Textual Encodings of PKIX, PKCS, and CMS Structures: gunbc.design_argument::minimize_redundancy (the general encapsulation:
 // a "-----BEGIN <label>-----" line, base64 body lines, "-----END <label>-----"), §5.1 (the
 // CERTIFICATE label). One block per text, enforced by pem_decode below.
 data rfc_7468_external_authority_anchor: ExternalAuthority = ExternalAuthority {

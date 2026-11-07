@@ -3,17 +3,17 @@ module gunbc.cli_run_hand_rust_area_ledger
 import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
 import std.types { Int, List, NonEmptyStr, String }
 
-data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust. Supersedes cli_run_hollowing_plan section 0 stale prose. Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan sections 2.1 to 2.16. NOT a per-function ledger. NOT a deletion plan -- instrument only. This note does NOT pin numeric literals, per DESIGN section 3's stale-citation class."
+data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust. Supersedes cli_run_hollowing_plan section 0 stale prose. Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan sections 2.1 to 2.16. NOT a per-function ledger. NOT a deletion plan -- instrument only. This note does NOT pin numeric literals, per gunbc.design_argument::single_authority's stale-citation class."
 
 // THE LEDGER HAS NO EXECUTABLE MEASUREMENT ROUTE, AND THIS ROW SAYS SO INSTEAD OF PRETENDING
 // OTHERWISE. Until 2026-08-24 the module note above named scripts/rust_item_census.py as the
 // instrument that re-derived this ledger's live scale at execution -- item identity primary, LOC
 // secondary. THAT FILE IS DELETED. It went with the measurement bankruptcy (gunbc#9132), which
 // removed docs/probes/ whole and left no .sh or .py anywhere in the repository outside .githooks,
-// under the ruling that an ad-hoc script is DESIGN section 6 unmodeled realization: if a
+// under the ruling that an ad-hoc script is gunbc.design_argument::how_to_work unmodeled realization: if a
 // measurement is worth re-deriving it is worth a .dag entry point, and if it is not worth an entry
 // point it is not an instrument. So the ledger has been citing a dead instrument since that cut,
-// which is the rot mode DESIGN section 3 predicts of a citation nothing checks. WHAT IS MISSING,
+// which is the rot mode gunbc.design_argument::single_authority predicts of a citation nothing checks. WHAT IS MISSING,
 // precisely, because 'no instrument' is too coarse to act on. Two different measurements have no
 // route, and they fail for different reasons. (1) LIVE SCALE -- how much hand Rust cli_run.rs still
 // carries, at item grain. Nothing in the tree re-derives it. (2) ANCHOR LIVENESS -- whether a
@@ -39,7 +39,7 @@ data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cl
 // run_witness_batch resolve nowhere in src/v1/stage0/src at all; merge_envs survives only inside a
 // prose string in a generated file, its subject having been DELETED by operator ruling on
 // 2026-07-06 (v1.compiler.infer_env visible_bindings_invariant records that deletion, and DESIGN
-// section 6 carries the receipt for why the example that cited it was kept without it);
+// gunbc.design_argument::how_to_work carries the receipt for why the example that cited it was kept without it);
 // regen_stage0 survives only in generated file headers, its binary having been deleted at the root
 // by the regen cut. Their rows SURVIVE -- 2.4, 2.5, 2.10 and 2.12 each keep their other anchors and
 // their dispositions -- because retiring a symbol is not retiring an area.
@@ -68,7 +68,7 @@ data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cl
 // are both absent from the tree) rather than replacing it, and for the other six nothing in the
 // repository establishes that the named v2 authority carries the area -- the module existing is
 // necessary and nowhere near sufficient. A row asserting a readiness with no referent is rung
-// inflation in DESIGN section 4b's sense, and its cost is exactly the one that clause names: an
+// inflation in gunbc.design_argument::guarantee_ladder's sense, and its cost is exactly the one that clause names: an
 // inflated row never ranks for climbing, because it already reports the state it is supposed to
 // reach.
 //

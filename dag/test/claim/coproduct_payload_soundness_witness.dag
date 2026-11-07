@@ -29,7 +29,7 @@ module test.claim.coproduct_payload_soundness_witness
 //                                                                        { value: "CppInner { value: 7 }" }
 //
 // So the mechanism is not Node-specific and not occurrence-specific. It is a floor-class soundness
-// hole -- values inhabit declared types -- and DESIGN section 4b puts a floor failure below the
+// hole -- values inhabit declared types -- and gunbc.design_argument::guarantee_ladder puts a floor failure below the
 // ladder rather than on a rung of it: this is not a class sitting at `mitigatable`, it is the
 // baseline guarantee not holding.
 //
@@ -49,7 +49,7 @@ module test.claim.coproduct_payload_soundness_witness
 // at the record-literal field seam. Both this file's expecting-red rows -- the
 // gunbc.explicit_witness_admission admission and the v2.workflow.floor_expected_red roster entry --
 // deleted in that same change, and this witness stays enrolled as the permanent regression control
-// DESIGN section 4b(4) requires: deleting the evidence on the climb would recreate
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) requires: deleting the evidence on the climb would recreate
 // specification-without-execution one rung up.
 //
 // WHAT THIS PAIR DOES NOT MEASURE, stated rather than implied covered. The wall closes the
@@ -69,7 +69,7 @@ module test.claim.coproduct_payload_soundness_witness
 // -- payload inside its arm -- still compiles, so what the red measures is the distinction and not
 // the mechanism's blanket refusal.
 //
-// dissolve-on: none. Per DESIGN section 4b(4), a climb deletes the redundant lower-rung production
+// dissolve-on: none. Per gunbc.design_argument::guarantee_ladder (dissolution on climb), a climb deletes the redundant lower-rung production
 // machinery but never the evidence: when the wall lands, this probe's admission row deletes and the
 // witness stays enrolled as a permanent regression control. Deleting it on the climb would recreate
 // specification-without-execution one rung up.
@@ -206,7 +206,7 @@ test fn cpp_alias_mediated_payload_must_also_refuse() -> Bool {
 // not resolve. The fixture's authors record that their first version had only the positive case and
 // would have been vacuous; both arms are carried forward rather than dropped as redundant.
 //
-// dissolve-on: none. DESIGN section 4b(4) -- the climb deletes the lower-rung production machinery,
+// dissolve-on: none. gunbc.design_argument::guarantee_ladder (dissolution on climb) -- the climb deletes the lower-rung production machinery,
 // never the evidence that the higher rung is real.
 
 fn dcp_wrong_coproduct_fixture_source() -> String {
@@ -336,7 +336,7 @@ test fn dcp_unresolved_name_in_coproduct_field_still_refuses() -> Bool {
 // repair. What this file owes is the disclosure, which is above; what it must not do is fix its own
 // ten and leave a reader counting one green file as evidence about the other eighty-one.
 //
-// dissolve-on: none. DESIGN section 4b(4) -- the evidence stays enrolled when the wall lands.
+// dissolve-on: none. gunbc.design_argument::guarantee_ladder (dissolution on climb) -- the evidence stays enrolled when the wall lands.
 
 fn bcp_foreign_into_bool_fixture_source() -> String {
   "module bcp.probe\n\nimport std.types { Int, Bool }\n\ntype BcpBeta\n  = BcpB1 { c: Int }\n  | BcpB2 { d: Int }\n\ntype BcpHolder {\n  flag: Bool\n}\n\nfn bcp_beta() -> BcpBeta {\n  BcpB1 { c: 7 }\n}\n\nfn bcp_foreign_where_bool_required() -> BcpHolder {\n  BcpHolder { flag: bcp_beta() }\n}\n"

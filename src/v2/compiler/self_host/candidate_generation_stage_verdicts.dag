@@ -21,7 +21,7 @@ import v2.std.node { Node, Symbol }
 // probe: `infer(dag_add_emitted_root)` answered `infer_accepted` while
 // `generate_translate_self_emit_candidate` over the same root and `dag_add_target_model` refused
 // headed by `infer_grounding_not_derived`. This module is the standing entry, parameterized over
-// the one root and target so the seam is measured, never transcribed (DESIGN section 6).
+// the one root and target so the seam is measured, never transcribed (gunbc.design_argument::how_to_work).
 //
 // THE VERDICT VOCABULARY IS THE RECEIPT'S. `infer_verdict` is `infer_accepted` or
 // `infer_rejected`. `composition_verdict` is `candidate_accepted` when the infer-then-translate
@@ -44,7 +44,7 @@ import v2.std.node { Node, Symbol }
 // RETIRED 2026-09-07 when the declared-inhabitant membership derivation widened to the closed
 // ingest set (v2.compiler.infer infer_node_declared_in_language_inhabitants), grounding the python
 // and typescript parse-product populations and greening the stall's four round-trip members — its
-// next-rung trigger fired, so the row reached its ceiling and deleted per DESIGN 4b(4). This
+// next-rung trigger fired, so the row reached its ceiling and deleted per gunbc.design_argument::guarantee_ladder (dissolution on climb). This
 // instrument did not retire with it: it is the standing measurement of a production seam, and its
 // verdicts flipping to `candidate_accepted` with empty carried lists was the signal the add-slice
 // half of the trigger had fired. It retires only if the

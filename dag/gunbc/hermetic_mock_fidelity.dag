@@ -4,7 +4,7 @@ import std.types { String, List, Bool, Int }
 import gunbc.guarantee_rung { GuaranteeRung, Mitigatable, StructurallyGuaranteed }
 import std.algebra { fold_list }
 
-// A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES, AND SINCE REPAIRED: an
+// A DISCOVERED ERROR CLASS, FILED AS gunbc.design_argument::guarantee_ladder REQUIRES, AND SINCE REPAIRED: an
 // operation whose hermetic mock_response answered with ONE unconditional value, so every
 // hermetic caller received a success the operation never performed. The paragraphs below are
 // written in the PAST TENSE where they describe the defect, because the arms are deleted as of
@@ -20,7 +20,7 @@ import std.algebra { fold_list }
 // THE HARM. Not a witness that fails -- a witness that PASSES against a fabricated exit status.
 // Every hermetically-executed claim downstream of a shell effect was asserting about the mock,
 // and a claim whose subject is "this fails closed" cannot be satisfied at all. That is DESIGN
-// section 5's central prohibition (no fabricated plausible output), and the floor's own CI
+// gunbc.design_argument::fail_closed's central prohibition (no fabricated plausible output), and the floor's own CI
 // clause already names this exact case: mocking the refusal "would pass it against a fabricated
 // exit status, the exact fabricated-plausible-output failure the witness exists to catch".
 //
@@ -123,7 +123,7 @@ import std.algebra { fold_list }
 // file says the opposite, and that reading is what this paragraph exists to refuse. Three rows,
 // all `NoMockArm`, mean `mock_arm_is_fabricating` never selects its `true` arm on the live
 // roster and `hermetic_mock_fabricating_count` is zero by construction -- a number that cannot
-// move, which DESIGN section 4b names as worse than absent because it gets cited as coverage.
+// move, which gunbc.design_argument::guarantee_ladder names as worse than absent because it gets cited as coverage.
 // What the three rows actually record is ONE SERVICE, repaired. The unconditionality itself is
 // corpus-wide and survives.
 //
@@ -133,7 +133,7 @@ import std.algebra { fold_list }
 // inputs. Unconditionality is not a property the arms happen to share, it is the only property
 // they are permitted to have. Writing one row per arm would mint one dissolution obligation per
 // arm for a defect that has one cause and one trigger -- net concepts growing by re-invention
-// (DESIGN section 2), and every one of those obligations unretirable until the seed changes.
+// (gunbc.design_argument::minimize_redundancy), and every one of those obligations unretirable until the seed changes.
 // The population is DERIVABLE from the operation declarations, so it is named by its derivation
 // and not transcribed: the subject is every `mock_response` property under `extdeps/`, and the
 // discrimination question is whether its arm names an input the operation declares. Counts in
@@ -167,7 +167,7 @@ import std.algebra { fold_list }
 //
 // WHY THIS ROW IS AN OBSERVATION AND NOT AN AUTHORITY. The discrimination fact below is
 // DERIVABLE from the operation's own declaration -- count the mock arms, ask whether any names
-// an input field -- so a hand-authored copy of it is a second representation (DESIGN section 2)
+// an input field -- so a hand-authored copy of it is a second representation (gunbc.design_argument::minimize_redundancy)
 // and will go stale the moment someone edits `extdeps/shell/exec.dag`. It is authored here
 // because nothing reads operation declarations for this question today.
 //
@@ -219,7 +219,7 @@ type HermeticMockRow {
 }
 
 // THE TRIGGER IS A PROPERTY OF THE FACT, NOT OF THE ROW, and moving it here is what makes an
-// untracked row UNWRITABLE rather than merely checked (DESIGN section 5: construction over
+// untracked row UNWRITABLE rather than merely checked (gunbc.design_argument::fail_closed: construction over
 // validation). A per-row `next_trigger: String` was authorable as `""`, so it needed a predicate
 // to catch that; derived per fact by a total function, a fabricating row cannot lack a trigger,
 // and the check that guarded the old field was deleted with it rather than left standing green
@@ -229,7 +229,7 @@ type HermeticMockRow {
 // THE TRIGGER MUST NAME THE CAPABILITY, NOT THE STATE OF THE WORLD IT WOULD PRODUCE. An earlier
 // revision of the two arms below read "a mock_response whose value varies with the operation's
 // declared input". That is a description of the fixed corpus, not of a capability, and DESIGN
-// section 4b(3) is explicit that a row is retired BY ITS TRIGGER AND BY NOTHING ELSE -- so a
+// gunbc.design_argument::guarantee_ladder (no silent regression) is explicit that a row is retired BY ITS TRIGGER AND BY NOTHING ELSE -- so a
 // trigger naming less than the capability it restores is satisfied while the capability stays
 // dead. Here it was worse than under-named: it named something NO AUTHOR COULD BUILD.
 // `eval_mock_response` evaluates the arm in an EMPTY environment, so an arm cannot refer to the

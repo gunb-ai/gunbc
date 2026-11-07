@@ -4,7 +4,7 @@ module gunbc.runner.runner_host_grants
 // gunbc.executor_privileged_operation on purpose, and the reason is structural rather than tidy:
 // the operation authority is consumed by gunbc.runner.runner_slot_provision (which projects its scripts
 // from the same argv), so an operation module that also read the slot ROSTER would close an import
-// cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
+// cycle -- and acyclicity is the one structural law the import graph has (gunbc.design_argument::single_authority). Operations
 // know nothing about hosts; this module joins the two.
 
 import gunbc.fleet.fleet_converge_state_path { fleet_converge_state_root }
@@ -91,7 +91,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 // gunbc.fleet.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
 // twice more as the leading segment of fleet_converge_generation_store_path and
 // fleet_converge_generation_lock_path. The grant below has to name the same directory, which would
-// have made a fourth. §3 RESIDUAL, with a trigger rather than only prose: this row is the authority,
+// have made a fourth. gunbc.design_argument::single_authority RESIDUAL, with a trigger rather than only prose: this row is the authority,
 // and it dissolves when fleet_converge_plan derives all three of its spellings from it instead of
 // re-typing the path. Until then the drift is real -- moving the state directory today requires
 // finding three unrelated string sites, and missing one produces a lease that guards a directory
@@ -381,7 +381,7 @@ fn runner_host_wide_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioning
 // the printer-state directories. Spec-scoped rather than deploy-scoped so that BOTH channels reach it
 // through the same call: the sudoers gate has a RunnerHostDeploy (it derives the spec with
 // runner_host_spec_of) and the census resolves a RunnerHostSpec (it has no deploy row), and a population
-// that only one of them could name is the §3 fork the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94) found -- the gate read
+// that only one of them could name is the gunbc.design_argument::single_authority fork the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94) found -- the gate read
 // this combined population while the census read the host-wide one alone, so a refused printer-state
 // directory withheld the sudoers artifact but earned no blocking row and never stopped the apply.
 // Renderers consult it once; none of them re-derives rows from targets.
@@ -403,7 +403,7 @@ fn runner_host_declared_directory_targets(spec: RunnerHostSpec) -> List<OwnedDir
 // apply the parent ruling. The ruling is applied ONCE here, host-wide, over runner_host_declared_directory_targets
 // -- the union of every target the host renders. Running it in the fold too (its earlier shape) refused a
 // within-plan offender twice -- once from the fold arm, once from this union term -- which breaks the
-// countability DESIGN 5 demands. Host-wide is the natural single site because a host's sudoers is the UNION of
+// countability gunbc.design_argument::fail_closed demands. Host-wide is the natural single site because a host's sudoers is the UNION of
 // several plans' rows: a group-writable parent declared by one plan with a privileged install beneath it
 // declared by another is the same escalation, and only the union sees across plans. For the corrected model it
 // adds NOTHING (every privileged-install parent is root-owned) -- a shape check that makes the ruling host-
@@ -690,7 +690,7 @@ fn runner_host_plan_refusal_text(r: OwnedDirectoryPlanRefusal) -> String {
 // THE OLD DEPLOY-SCOPED TWIN IS DELETED. It computed host-wide refusals + printer refusals from a
 // RunnerHostDeploy while the census computed host-wide refusals alone from a RunnerHostSpec: two
 // populations for one fact, so the census could miss a refused printer-state directory that the sudoers
-// gate had already stopped on (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); DESIGN §3, "each fact lives in exactly one
+// gate had already stopped on (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); gunbc.design_argument::single_authority, "each fact lives in exactly one
 // place"). There is now ONE population, above, keyed by the spec both channels already have.
 
 fn runner_host_deploy_slot_sudoers_block(deploy: RunnerHostDeploy) -> String {

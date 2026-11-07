@@ -10,7 +10,7 @@ import v2.workflow.required_floor { required_gate_admits }
 // THE ROW SHAPE, HELD APART FROM ANY ONE ROSTER'S SUBJECT. Every declaration below was authored in
 // gunbc.v2_compile_obligation_census and is MOVED here, not copied: that census imports these names
 // back and declares none of them, so this extraction removes an authority rather than adding one.
-// The move is what DESIGN section 3 asks for the moment a second roster needs the same shape -- a
+// The move is what gunbc.design_argument::single_authority asks for the moment a second roster needs the same shape -- a
 // copy would have been the fork, and a shape extracted while its first inhabitant kept its own copy
 // would have been a third declaration and strictly worse than doing nothing.
 //
@@ -71,7 +71,7 @@ type PathExecution
   | NoWitnessNamesIt { note: NonEmptyStr }
 
 // AN OBLIGATION WITH NO HOME IS A MODELING OBLIGATION, NOT A CENSUS ROW WITH A BLANK FIELD. DESIGN
-// section 3b draws that line for conformance domains and it applies here: a domain whose home
+// gunbc.design_argument::conformance draws that line for conformance domains and it applies here: a domain whose home
 // authority does not exist is not something to check, it is something to model, and a DeclarationRef
 // to a declaration nobody has authored would be a citation defect wearing the shape of coverage.
 // NoHomeExists carries the NEAREST authority — the declaration a reader would reach for — with the
@@ -161,7 +161,7 @@ fn witness_subject_is_inside_gate_closure(w: WitnessSubject) -> Bool {
 // WHAT IS NOT ASKED is whether the entry file still exists at that path. A moved or deleted entry is
 // covered by neither roster, so "not frozen and not excluded" would answer EXECUTING for a witness
 // that cannot run — a widen toward coverage at exactly the moment the derivation stops being able to
-// decide, which DESIGN section 5 forbids as a failure arm that widens instead of refusing.
+// decide, which gunbc.design_argument::fail_closed forbids as a failure arm that widens instead of refusing.
 //
 // SO THE ARM IS LOUD, BOUNDED, AND CARRIES ITS TRIGGER, which is the one carve-out section 5 allows.
 // LOUD: the standing is ExecutedPendingEntryVerification, a distinct arm naming the unverified

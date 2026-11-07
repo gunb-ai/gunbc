@@ -12,14 +12,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // forbidden state has no constructor in accepted source -- so there is nothing in the corpus for a
 // witness to point at, and an assertion written against the corpus would be permanently green by
 // construction, carrying no information and worse than absent because it would be cited as
-// coverage. DESIGN section 4b names that trap and also names its resolution: a state unrepresentable
+// coverage. gunbc.design_argument::guarantee_ladder names that trap and also names its resolution: a state unrepresentable
 // in the ACCEPTED corpus may still be perfectly representable as SOURCE HANDED TO THE COMPILER BY
 // A FIXTURE, and a compiler is precisely a thing whose regression probes are invalid programs.
 // The refusal is authorable there, so the evidence is enrollable there.
 //
 // WITHOUT THIS FILE THE MODULE WOULD BE SPECIFICATION WITHOUT EXECUTION. A typecheck is not a
-// consumer (DESIGN section 5), and an authority module whose only reader is a comment is the
-// experimental-residue tell DESIGN section 6 presumes to be a scaffold. That is precisely what
+// consumer (gunbc.design_argument::fail_closed), and an authority module whose only reader is a comment is the
+// experimental-residue tell gunbc.design_argument::how_to_work presumes to be a scaffold. That is precisely what
 // left draft gunbc#9029 -- from which this model is revived -- sitting unlanded: the model was
 // authored, nothing executed it, and it aged out. The two arms below are what make the revival a
 // landed wall rather than a second copy of that draft.
@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THIS ARM WAS INVERTED UNTIL gunbc#10226 LANDED, AND ITS FLIP IS THE RECEIPT. It used to assert
 // that the forbidden program was ADMITTED -- a discriminating red with its sign reversed, written
-// that way because DESIGN section 4b(1) makes a class's rung the MINIMUM across its in-scope
+// that way because gunbc.design_argument::guarantee_ladder (rung honesty) makes a class's rung the MINIMUM across its in-scope
 // paths, and asserting a refusal that did not exist would have been rung inflation in the change
 // whose whole subject is rung inflation. The `.dag` path genuinely did not judge this position:
 // `v1.compiler.infer` `DeclaredTypePosition` declared twelve positions and stated as a COUNT that
@@ -47,7 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // gunbc#10226 WIRED THAT PRODUCER AND NAMED THIS EXACT SPECIMEN AS THE CASE IT CLOSES. The arm
 // went red on the integrated head, which is what it was built to do, and it is TIGHTENED here
-// rather than deleted -- section 4b(4): a probe that greens when its wall lands becomes the
+// rather than deleted -- gunbc.design_argument::guarantee_ladder (dissolution on climb): a probe that greens when its wall lands becomes the
 // permanent regression control that the wall stays real. Observed on integration, before this
 // edit: `probe_censored_arm_only` FAILED while BOTH calibration arms and the exact-population
 // control stayed green, so the refusal is this wall firing and not the probe breaking.

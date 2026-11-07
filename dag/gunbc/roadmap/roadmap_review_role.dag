@@ -469,7 +469,7 @@ fn review_brief(
   ], "")
 }
 
-// THE CONFORMANCE ANSWER, MAPPED TO THE VERDICT WORDS (DESIGN section 3b). Three answers, two verdict
+// THE CONFORMANCE ANSWER, MAPPED TO THE VERDICT WORDS (gunbc.design_argument::conformance). Three answers, two verdict
 // words: a divergence whose reason the change states is ADMITTED and carries the reason as the
 // summary, so only the unstated divergence requests changes. This mapping is the one place the
 // three-valued question meets the two-word verdict; the reviewer's instruction below is rendered

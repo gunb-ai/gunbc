@@ -19,12 +19,12 @@ import v2.std.text { String }
 // every observation must match the requested family (a mixed-family receipt is
 // ParityEvidenceRefused, never counted), and cadence order is explicit — each observation carries
 // cadence_sequence, strictly increasing; an order violation is ParityEvidenceRefused (refusal is
-// itself absorbing — DESIGN section 5, a failure arm refuses, never widens). QUALIFICATION
+// itself absorbing — gunbc.design_argument::fail_closed, a failure arm refuses, never widens). QUALIFICATION
 // PRECEDES INTERPRETATION, and refusal DOMINATES the revert latch (review 44228, 2026-07-29):
 // qualify_then_apply checks cadence and family for EVERY observation before any verdict arm
 // interprets it, so an unqualified observation refuses whatever the verdict was — including while
 // a revert is latched. The first cut's alternative, silently ignoring an unqualified observation
-// while latched, was the swallow DESIGN section 5 forbids and fail-open in sequence: red, then an
+// while latched, was the swallow gunbc.design_argument::fail_closed forbids and fail-open in sequence: red, then an
 // unqualified observation, then an ack, then a green read as ParityHolding, so admission was
 // restored across evidence the monitor never qualified. Refusal dominates because the two
 // absorbing laws are not peers — a corrupt evidence stream means the monitor cannot judge the
@@ -41,7 +41,7 @@ import v2.std.text { String }
 // direction is the trap this monitor exists to close and must not be re-added: the deleted
 // parity_revert_required mapped ParityEvidenceRefused to false, so unusable or out-of-order
 // evidence read as 'no revert required' and a routed family stayed routed on evidence the monitor
-// had refused — DESIGN section 5's answer-versus-ignorance conflation, fail-open at the public
+// had refused — gunbc.design_argument::fail_closed's answer-versus-ignorance conflation, fail-open at the public
 // API. A consumer needing to distinguish 'a divergence latched' from 'the evidence was refused'
 // matches the verdict; it never asks a Bool. PRODUCTION CONSUMER (reviews 44206 and 44216,
 // 2026-07-29): parity_routing_admitted is consumed by native_routing_frontier.routing_row_is_native,

@@ -46,7 +46,7 @@ fn decl_facts(pool_roots: List<String>) -> List<DeclFact> {
 // asks any of them, so it reads once and joins N times. A one-key read asked once per element
 // re-walked the whole pool per element wherever no census provider was registered -- measured on
 // BuildBuddy 2026-10-25, one lookup 91s and six 506s inside one `gunbc run` -- which is DESIGN
-// section 2's authored duplication, repaired at the demands' least common ancestor rather than by
+// gunbc.design_argument::demand_before_materialization's authored duplication, repaired at the demands' least common ancestor rather than by
 // caching the later asks. The bare-spelling question (which modules declare this name as a type)
 // was a second seam over the same pool, `type_declarer_qualified_names`, and it is this read's
 // `type_names` arm: a bare name has no module, so no qualified key can express it, but it is one

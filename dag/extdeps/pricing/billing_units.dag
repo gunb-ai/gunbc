@@ -43,6 +43,6 @@ type MoneyPerTransferredUnit = MoneyRate<PerTransferredUnit>
 
 // No per-unit micros accessors are declared here: std.measure money_rate_micros<P> already reads
 // any MoneyRate<P>, so a money_per_stored_unit_month_micros wrapper would be a hollow alias -- a
-// second name for one fact (DESIGN section 3). Consumers call money_rate_micros directly.
+// second name for one fact (gunbc.design_argument::single_authority). Consumers call money_rate_micros directly.
 
 type MoneyPerMillionRequests = MoneyRate<PerMillionRequests>

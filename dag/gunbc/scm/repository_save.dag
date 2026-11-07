@@ -18,7 +18,7 @@ module gunbc.scm.repository_save
 // SO THE ORDER IS LOAD-BEARING, NOT INCIDENTAL: encode-checked, THEN write. No arm in this type
 // reports a write for a repository that failed adjudication, because no such call is made -- the
 // refusal returns before `Filesystem.Write` is reached. That is the construction form of the rule
-// (DESIGN section 5), not a check that the write was skipped.
+// (gunbc.design_argument::fail_closed), not a check that the write was skipped.
 //
 // THE THREE ARMS HAVE TWO DIFFERENT OWNERS, the same discipline the load side carries:
 //
@@ -38,7 +38,7 @@ module gunbc.scm.repository_save
 //
 // NOT `WriteOwnerOnly`. A repository document is not a secret, and narrowing its mode here would be
 // a deployment policy fact smuggled into the persistence operation -- the layer inversion DESIGN
-// section 3 names. A caller with a confidentiality requirement states it; this module does not
+// gunbc.design_argument::single_authority names. A caller with a confidentiality requirement states it; this module does not
 // decide it on their behalf.
 
 import std.types { String, Int }
@@ -80,7 +80,7 @@ import std.algebra { map_lookup }
 // would turn a nonsense report into a plausible byte count, the fabricated-plausible-output
 // failure in one line. So the negative is refused as its own arm carrying what the host said, and
 // `nat_magnitude` is applied only on the non-negative domain where it is the identity. A boundary
-// obligation (DESIGN section 4b): external reality observed, typed, and admitted or refused -- not
+// obligation (gunbc.design_argument::guarantee_ladder): external reality observed, typed, and admitted or refused -- not
 // a class on the ladder, so no next-rung trigger.
 //
 // `RepositorySaved.generation` is the hash of the index bytes that write just committed -- the
@@ -204,12 +204,12 @@ type RepositoryGuardedSave
 //
 // No re-observation closes that. The fix is that the existence test and the creation become ONE act,
 // which is what Filesystem.WriteCreateNew provides -- so this function refuses a path that exists
-// rather than checking whether it exists. Construction over validation (DESIGN section 5) at a
+// rather than checking whether it exists. Construction over validation (gunbc.design_argument::fail_closed) at a
 // boundary where validation structurally cannot win.
 //
 // The refusal reuses RepositoryFileUnwritable rather than minting a create-specific arm: the caller's
 // remedy is the same -- the bytes are not yours to write and the host says why -- and the error text
-// is the host's own. A second arm would be a second spelling of one outcome (section 3), and one that
+// is the host's own. A second arm would be a second spelling of one outcome (gunbc.design_argument::single_authority), and one that
 // classified the cause from the error TEXT would be a heuristic standing in for an observation.
 // THE CREATE THAT AN ESTABLISHED ABSENCE AUTHORIZES, AND THE ONLY ONE IT CAN.
 //

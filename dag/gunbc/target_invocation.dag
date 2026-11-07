@@ -113,7 +113,7 @@ fn test_operand_set_form_refusal_rendered(operand: String) -> String {
 // A CLAIM-ROOT SOURCE THE ROUTE CANNOT READ IS NO OBSERVATION, AND ITS CAUSE IS NOT A TYPO'S.
 //
 // `gunbc test //test/claim/x:c` selects a claim by the module name a file declares, and paths follow
-// names (DESIGN section 3). A file whose declaration cannot be read therefore cannot be selected, and
+// names (gunbc.design_argument::single_authority). A file whose declaration cannot be read therefore cannot be selected, and
 // reporting that as "the pattern selected no discovered claim" makes a broken admitted file read like
 // a misspelled label. All six causes terminate `InvocationSubjectUnreached` (exit 2, never 1: no claim
 // ran), each LOCATED at the file and each distinct from an unknown label.
@@ -134,7 +134,7 @@ fn claim_source_refusal_rendered(path: String, cause: ClaimSourceRefusalCause) -
       ClaimSourceUnreadable { reason: r } => concat(": unreadable: ", r)
       ClaimSourceDirectoryNamedDag => ": a directory named like a .dag source; a source path is a file"
       ClaimSourceRootUnreadable { reason: r } => concat(": unreadable source root: ", r)
-      ClaimSourceModuleCollision { other: o } => concat(concat(": declares a module also declared by ", o), "; one module, one authority (DESIGN section 3), so de-fork or rename one side")
+      ClaimSourceModuleCollision { other: o } => concat(concat(": declares a module also declared by ", o), "; one module, one authority (gunbc.design_argument::single_authority), so de-fork or rename one side")
     }
   )
 }
@@ -222,7 +222,7 @@ fn test_operand_refusal_rendered(operand: String, cause: TargetPatternRefusal) -
 //
 // WHAT IS NOT HERE, DELIBERATELY: any arm naming a producer, an instrument, or a host function.
 // The route ends at the BINDING; which realization runs it is the peripheral dispatch DESIGN
-// section 3 keeps out of the interface, and a coordinator carrying one arm per instrument here
+// gunbc.design_argument::single_authority keeps out of the interface, and a coordinator carrying one arm per instrument here
 // would be the N-times fork this seam is built to make unnecessary. Adding a fifth instrument is
 // a row in the population this module folds over, not an edit to this module.
 
@@ -315,7 +315,7 @@ type InvocationTermination
 //
 // Three statuses rather than two, because a caller that cannot separate "the instrument ran and
 // found a defect" from "the instrument never ran" is handed the same absorbing answer DESIGN
-// section 5 forbids: 1 is an OBSERVATION that did not hold, 2 is the absence of an observation.
+// gunbc.design_argument::fail_closed forbids: 1 is an OBSERVATION that did not hold, 2 is the absence of an observation.
 // A fifth termination arm must fail to compile here rather than inherit whichever status a `_`
 // happened to name.
 fn invocation_exit_status(t: InvocationTermination) -> Int {
@@ -351,7 +351,7 @@ fn claim_route_verdict_of_exit(code: Int) -> ClaimRouteVerdict? {
 // THE INNER `LabelRefusal` IS CARRIED BUT NOT DECOMPOSED HERE, AND THE OMISSION IS DELIBERATE.
 // That vocabulary belongs to the label authority and has no renderer there today; writing one in
 // this module would be a second site deciding what `DotSegment` or `TargetPattern` says to a
-// human -- the §3 fork, arriving through a rendering rather than through a type. The typed cause
+// human -- the gunbc.design_argument::single_authority fork, arriving through a rendering rather than through a type. The typed cause
 // stays intact on the refusal for any consumer that wants to descend, and this text names the
 // CLASS of repair, which is what distinguishes the two arms. A renderer landing in
 // `extdeps.bazel.label` is what this arm should call.

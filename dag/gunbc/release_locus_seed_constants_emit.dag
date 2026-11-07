@@ -23,12 +23,12 @@ import std.types { String }
 // removes the second author instead: the seed references the generated const, so a spelling that
 // moves on the .dag side moves in the seed at the next regen, and one that is hand-edited in the
 // generated file is refused by the generated-artifact drift wall. Construction over validation
-// (DESIGN section 5) -- and the same reasoning gunbc.evaluation_budget_consequence_emit records for
+// (gunbc.design_argument::fail_closed) -- and the same reasoning gunbc.evaluation_budget_consequence_emit records for
 // refusing a runtime read of the .dag applies unchanged here.
 //
 // WHY A DEDICATED ARTIFACT. Its subject is the release-locus spawn contract. Appending these two
 // consts to an existing generated module whose subject is something else would be the DESIGN
-// section 3 fork wearing a generated file's clothes, which that module's own note names.
+// gunbc.design_argument::single_authority fork wearing a generated file's clothes, which that module's own note names.
 //
 // THE LITERALS BELOW ARE NOT AUTHORED HERE. This emitter evaluates the two rows and escapes the
 // results; neither "GUNBC_WORKSPACE_ROOT" nor ".gunbc-tree-receipt" appears anywhere in this

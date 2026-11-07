@@ -15,10 +15,10 @@ import std.native_realization_proof { NativeRealizationProof, native_realization
 // would realize that frontier as the evaluator. That frontier is therefore not an annotation beside
 // the routes: every verifier-dependent route in gunbc.auth.approval_device_routes asks
 // device_crypto_gate FIRST and refuses 503 with the typed cause before any decode, store read
-// or verifier call when the native handler is not bound (DESIGN section 5: a frontier that is only
+// or verifier call when the native handler is not bound (gunbc.design_argument::fail_closed: a frontier that is only
 // an annotation is not a wall).
 //
-// Selecting the realization is itself realization (DESIGN section 3), so this module sits beside
+// Selecting the realization is itself realization (gunbc.design_argument::single_authority), so this module sits beside
 // the routes, never inside the verifier interface.
 //
 // THE RECEIPT COVERS A NAMED POPULATION, NOT "THE VERIFIER RUNS NATIVELY". A bound handler is

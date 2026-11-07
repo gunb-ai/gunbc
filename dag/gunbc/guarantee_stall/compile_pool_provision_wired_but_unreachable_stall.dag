@@ -20,10 +20,10 @@ import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 //
 // WHY THE BLOCKER IS AWAITS-ONE-GROUNDING AND NOT UNBUILT. The operator ruled 2026-10-04 that this
 // lane is OLD and will be reorganized under fabric compute: compile pool is a capacity class under
-// the DESIGN 3b fabric/compute row (gunbc.fabric.fabric_executor_class CapacityClassAdmission,
+// the gunbc.design_argument::conformance fabric/compute row (gunbc.fabric.fabric_executor_class CapacityClassAdmission,
 // gunbc.compute.work_provider_local ComputeLayout, gunbc.fabric.fabric_control_plane CellReservation),
 // whose real consumer is gunbc.ci.ci_runner_placement -- whose CompilePoolInRunnerSlots arm refuses to
-// emit a quota today. The lane is a frozen X pending that reorganization: DESIGN 3's
+// emit a quota today. The lane is a frozen X pending that reorganization: gunbc.design_argument::single_authority's
 // replacement-migration rule forbids new investment in it, which is why the DP-M2 lane proposed --
 // and the operator declined -- a parameterized install site and a wet integration receipt for it.
 // What the lane waits on is one grounding, named below; a lane whose ceiling is reachable only

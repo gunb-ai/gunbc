@@ -10,7 +10,7 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_obje
 // THE LAN CONTROL PROTOCOL OF BAMBU LAB PRINTERS IN LAN-ONLY MODE, modeled because the delivery leg
 // already speaks FTPS and the leg that STARTS a job speaks MQTT -- and that second leg was
 // previously actuated by a hand-written client outside the substrate, which is the out-of-band
-// actuation DESIGN section 6 names.
+// actuation gunbc.design_argument::how_to_work names.
 //
 // THIS IS NOT A PUBLISHED SPECIFICATION AND THE CITATION SAYS SO. Bambu documents LAN mode as a
 // feature; the request topic and command payloads are established by the community-maintained
@@ -149,7 +149,7 @@ data bambu_start_command_qos: MqttQos = AtLeastOnce
 // with a local bool_json re-implementing boolean rendering beside it. That was a SECOND AUTHORITY for
 // how JSON is produced, in a repository that already owns the medium: extdeps.languages.json.emit
 // declares JsonValue, json_object, json_string and json_bool, and serialize_json carries a real
-// escape_json_string. DESIGN section 3 names this exactly -- a second name for one concept -- and
+// escape_json_string. gunbc.design_argument::single_authority names this exactly -- a second name for one concept -- and
 // section 2's test is that net concepts must not grow by re-invention. bool_json was the tell: a
 // four-line function whose whole content already existed one import away.
 //

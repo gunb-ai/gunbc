@@ -14,12 +14,12 @@ import std.algebra { length }
 // side path and publishing only after the identity checks out. It was also written once before that,
 // for Ollama model blobs, and DELETED with the Ollama tree. Model weights now need it a third time.
 // Three subjects, one fold: the vocabulary was per-subject (`Mirror`, `InstallMedia`) but not one
-// step of the algorithm was, which is DESIGN section 2's horizontal move stated as a defect -- one
+// step of the algorithm was, which is gunbc.design_argument::minimize_redundancy's horizontal move stated as a defect -- one
 // concept, spelled once per breadth.
 //
 // THIS MODULE ENUMERATES NO SUBJECT AND SELECTS NO TRANSPORT. A caller supplies a subject and its
 // ordered sources; the dispatch that picks a realization is itself realization and sits at the
-// periphery (DESIGN section 3), which is why there is no `Ubuntu` or `HuggingFace` arm anywhere
+// periphery (gunbc.design_argument::single_authority), which is why there is no `Ubuntu` or `HuggingFace` arm anywhere
 // below and adding a fourth subject adds a binding at that subject rather than a row here.
 
 // ── WHAT IDENTIFIES THE ARTIFACT ───────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ fn acquisition_key_is_locally_verifiable(key: AcquisitionKey) -> Bool {
 // ── WHERE IT MAY COME FROM ─────────────────────────────────────────────────────────────────────
 //
 // A SOURCE IS A TRANSPORT BOUND TO THIS SUBJECT, one of N, and never a fact about the artifact
-// (DESIGN section 3). The identity is carried beside the locator so a receipt names WHICH source
+// (gunbc.design_argument::single_authority). The identity is carried beside the locator so a receipt names WHICH source
 // answered -- "the second mirror" and "the CDN" are different facts about a run, and a bare URL
 // makes a reader reconstruct which was which.
 // A LOCATOR HAS TWO KINDS AND ONE FIELD WAS CARRYING BOTH. This was a bare NonEmptyStr, and the two
@@ -79,7 +79,7 @@ fn acquisition_key_is_locally_verifiable(key: AcquisitionKey) -> Bool {
 // SO THE KIND IS MODELLED RATHER THAN THE STRING REPARSED. A URL is genuinely one string and stays
 // one; an argv is genuinely a list and stays a list, all the way to exec. The combinator still never
 // interprets either -- it carries the locator to the handler that understands it, which is what keeps
-// this module transport-agnostic (DESIGN section 3) -- but the handler now MATCHES on what it was
+// this module transport-agnostic (gunbc.design_argument::single_authority) -- but the handler now MATCHES on what it was
 // given instead of assuming, so a source built for one transport and handed to the other refuses at
 // the match rather than being re-parsed into nonsense.
 type SourceLocator
@@ -130,7 +130,7 @@ type AcquisitionObservation
 // ── HOW IT CAN FAIL ────────────────────────────────────────────────────────────────────────────
 //
 // EVERY ARM IS TYPED, LOCATED AND COUNTED, so a deficit's frequency is observable rather than
-// absorbed (DESIGN section 5). `attempted` is carried on the two exhaustion arms because "no source
+// absorbed (gunbc.design_argument::fail_closed). `attempted` is carried on the two exhaustion arms because "no source
 // answered" and "one source answered wrongly" are different operational states that a bare message
 // would flatten.
 type AcquisitionRefusal
@@ -222,7 +222,7 @@ fn acquisition_fold_step(acc: AcquisitionFoldState, origin: AcquisitionSource, a
 // original reported a subject with zero declared sources as "all mirrors unreachable" -- nothing was
 // attempted, and the answer named a failure of the network. That is the empty-observation narrow:
 // bottom-as-answer standing in for bottom-as-ignorance, and it is worse than the widen DESIGN
-// section 5 forbids because it reads as a diagnosis. `NoSourceDeclared` is checked before the fold
+// gunbc.design_argument::fail_closed forbids because it reads as a diagnosis. `NoSourceDeclared` is checked before the fold
 // is entered, so the arm below can only be reached by sources that genuinely ran.
 fn acquisition_exhausted(subject: AcquisitionSubject, state: AcquisitionFoldState) -> AcquisitionOutcome {
   if state.saw_failed_key {

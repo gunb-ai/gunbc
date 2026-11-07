@@ -150,7 +150,7 @@ test fn a_vllm_recipe_derives_from_the_modeled_launch_and_never_falls_back() -> 
 // different checkpoint, a different host — must not be handed srv1's deployment: its wrapper models one
 // host, one key file, one TLS pair and one LMCache sizing, so borrowing it would produce a provision
 // contradicting that recipe's own weights, with no refusal. This is the fabricated-plausible-output
-// path DESIGN §5 rules out; it refuses with a typed cause instead.
+// path gunbc.design_argument::fail_closed rules out; it refuses with a typed cause instead.
 test fn a_second_vllm_recipe_does_not_borrow_srv1_s_launch() -> Bool {
   let flash = serving_recipe_flash_next_lab_vllm
   let other_host = ServingRecipe {
@@ -195,7 +195,7 @@ test fn a_vllm_recipe_on_an_unread_or_observed_start_refuses_with_its_cause() ->
     })
 }
 
-// THE ARMS #15222 OWED THE NINFER LEG (2026-10-27 main break, DESIGN §6b: enumerate the siblings of
+// THE ARMS #15222 OWED THE NINFER LEG (2026-10-27 main break, gunbc.design_argument::root_generalization: enumerate the siblings of
 // the match you extend). Adding ServingStartSource::StartSourceHubPinned and
 // ServingWeightsSource::WeightsPinnedAtHub left serving_provision_from_ninfer matching neither, which
 // made the whole closure non-exhaustive at resolve. These rows drive both new arms so the refusals are

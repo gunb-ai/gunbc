@@ -51,7 +51,7 @@ fn host_text_type_node() -> Node {
 // THE KERNEL HOST-TEXT FREE-MONOID OPERATION: concatenation of two host texts. Distinct from
 // v2.std.text / std.algebra list_append over FreeMonoid<Char>. This is the witness of
 // dag_host_text_free_monoid_inhabitance; the only lawful crossing to the structural carrier remains
-// UnicodeScalarSequenceUnfold (DESIGN section 4).
+// UnicodeScalarSequenceUnfold (gunbc.design_argument::closed_grounded_substrate).
 fn host_text_concatenation(left: String, right: String) -> String {
   concat(left, right)
 }
@@ -142,7 +142,7 @@ type NodeKind
 // declaration) carries the source spelling; a structural label is minted by the substrate or by a
 // language's grammar and is compared by ARM, never by text, so no authored spelling can inhabit it.
 // Grammar productions are keyed by their language (the language model's identity) because
-// v2.std.node may not enumerate any grammar's productions (DESIGN section 3); the substrate's own
+// v2.std.node may not enumerate any grammar's productions (gunbc.design_argument::single_authority); the substrate's own
 // edge-discipline markers are closed here. Plan: docs/plans/edge-label-coproduct/README.md.
 type EdgeLabel
   = Authored { name: Symbol }
@@ -413,7 +413,7 @@ fn node_rebuild(n: Node, children: List<Edge>) -> Node {
 // THE SOURCE'S IDENTITY IS TAKEN WHOLE, including OccurrenceSynthetic. Lowering a node that had no
 // authored origin produces nodes that still have none, and closing such an image changes nothing --
 // carrying "nothing" forward is the honest answer, and borrowing a NEIGHBOUR's occurrence to fill
-// the gap would be the plausible guess DESIGN section 5 forbids.
+// the gap would be the plausible guess gunbc.design_argument::fail_closed forbids.
 fn node_lowered_from(kind: NodeKind, children: List<Edge>, source: Node) -> Node {
   node_with_occurrence_id(
     kind: kind,
@@ -677,11 +677,11 @@ fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
 //
 // WHY THE TABLE SITS IN THE SEED AND NOT BESIDE ITS CARRIERS. The only consumer that reads it is the
 // seed checker, which computes the equality plan (v1.compiler.infer equality_route_for,
-// equality_root_refused_leaf_names, read by equality_operand_walk); DESIGN section 3 will not admit a
-// second copy here next to a table with one reader, and DESIGN section 3c will not admit a declaration
+// equality_root_refused_leaf_names, read by equality_operand_walk); gunbc.design_argument::single_authority will not admit a
+// second copy here next to a table with one reader, and gunbc.design_argument::consumption will not admit a declaration
 // with no consumer at all. So the table sits with its consumer: no module of the seed imports v2 today,
 // and a crossing would be admitted only by v2.std.cross_tree.import_model cross_tree_import_admitted, which
-// needs a row for both namespaces in gunbc.source_layout (DESIGN section 3's only structural law is
+// needs a row for both namespaces in gunbc.source_layout (gunbc.design_argument::single_authority's only structural law is
 // acyclicity -- it is not a ban on the direction, and nothing here claims one). TRIGGER: the v2 checker computes the
 // equality plan; at that point this region gains the data declaration beside the carriers it routes and
 // v1.compiler.infer deletes its, in one change -- the table never exists in both trees. The gap that
@@ -1191,7 +1191,7 @@ fn arrow_named_edge_is_contract(e: Edge) -> Bool {
 // reader that walks an Arrow consumes (v2.compiler.infer's gather fold and product evidence,
 // v2.compiler.translate's grounding gate, v2.std.type_binder node_inferred_subtree_nodes) and every
 // count of an Arrow's binders reads (arrow_named_edge_is_non_binder here and v2.std.type_binder
-// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. DESIGN section 3:
+// arrow_named_labels_conform), so no reader keeps its own list of metadata labels. gunbc.design_argument::single_authority:
 // each fact lives in exactly one place.
 fn arrow_named_edge_is_metadata(e: Edge) -> Bool {
   arrow_named_edge_is_contract(e: e) || edge_is_core(e: e, marker: AdmitCallersEdge)
@@ -2195,7 +2195,7 @@ fn node_edge_discipline(n: Node) -> EdgeDiscipline {
 // the ordering is stated once, generically, and BOTH consumers instantiate it: `Edge` for
 // canonicalize_node_for_content_hash, and `LabeledChildHash` for content_hash_of_children, whose
 // caller obligation this dissolves. An Edge-shaped ordering with a second hash-shaped copy beside it
-// would be two authorities for one identity rule (DESIGN section 3) -- agreeing exactly until one is
+// would be two authorities for one identity rule (gunbc.design_argument::single_authority) -- agreeing exactly until one is
 // edited, and disagreeing as objects unreachable by the identity they were stored under.
 // The key within one sort class (labeled_sort_classes); also the segment a labeled edge contributes
 // to a path.
@@ -3227,7 +3227,7 @@ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
 // need the same question answered -- given a kind and this node's labeled child hashes, what is the
 // node's hash -- so it is answered in exactly one place here rather than reimplemented by each
 // caller. A caller-local combine would be a second identity authority beside this one (DESIGN
-// section 3), agreeing with it right up until an edit to one of them, and the disagreement would
+// gunbc.design_argument::single_authority), agreeing with it right up until an edit to one of them, and the disagreement would
 // surface as objects that cannot be found by the identity they were stored under.
 type LabeledChildHash {
   label: EdgeLabel
@@ -3253,7 +3253,7 @@ fn content_hash_step(acc: Hash, label: EdgeLabel, child: Hash) -> Hash {
 // untrusted document -- a decoded SCM image, say -- cannot discharge an obligation about an order
 // it did not choose, so a permuted document could mint an ObjectId under a non-canonical fold and
 // then fail to match the canonical content_hash of the very node it reconstructed. Ordering here
-// makes that state unwritable instead of detectable (DESIGN section 5), and costs nothing for the
+// makes that state unwritable instead of detectable (gunbc.design_argument::fail_closed), and costs nothing for the
 // callers who were already passing canonical order, because canonicalizing a canonical list is
 // identity.
 //

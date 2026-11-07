@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 import std.algebra { collection_concat_shape, collection_count_shape }
 
-// THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
+// THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (gunbc.design_argument::closed_grounded_substrate: one
 // decision procedure, emission and ingestion are the same homomorphism check read in two directions).
 //
 // A kernel literal (`0`, `"x"`, `true`, `^s`) is a value of the KERNEL type the parser mints for it.
@@ -25,7 +25,7 @@ import std.algebra { collection_concat_shape, collection_count_shape }
 // A destination with NO row and no native realization is not refused HERE: whether a kernel
 // numeral inhabits such a declaration is the inhabitance judgment's question and it already owns
 // that refusal (v1.compiler.infer declared_type_inhabitance). Answering it twice would be the two-
-// authority state DESIGN section 3 forbids; this judgment introduces values, it does not police them.
+// authority state gunbc.design_argument::single_authority forbids; this judgment introduces values, it does not police them.
 //
 // GENERIC BY CONSTRUCTION. The judgment is keyed on (source kind, exact destination DeclarationRef)
 // and the image is produced by a closed roster of UNFOLDINGS, one arm per structural shape a kernel
@@ -35,7 +35,7 @@ import std.algebra { collection_concat_shape, collection_count_shape }
 // in inference or emission. The Peano arm is the first inhabitant; the FreeMonoid-of-scalars arm
 // is the structural-text lane's (XL-0T) to add beside it.
 //
-// WHY A NEGATIVE-VALUE REFUSAL IS ABSENT ON PURPOSE (DESIGN section 4b: ask whether the RED is
+// WHY A NEGATIVE-VALUE REFUSAL IS ABSENT ON PURPOSE (gunbc.design_argument::guarantee_ladder: ask whether the RED is
 // authorable before writing the check). A kernel integer literal is never negative -- `-3` parses
 // as a unary negation applied to the literal `3`, and the negation is an ordinary expression that
 // reaches inference through its own arm, not through this judgment. A ValueOutsideHomomorphismDomain
@@ -89,7 +89,7 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 //                  one scalar Int literal per element, NOT as a cons^n(empty) constructor nesting:
 //                  the map is canonical (no constructor names to carry, hence no fields on this arm),
 //                  a per-element nesting is O(n^2) under a sequence-backed carrier where the flat
-//                  introduction is O(n) (DESIGN section 6, bare minimum cost), and a nesting n deep
+//                  introduction is O(n) (gunbc.design_argument::how_to_work, bare minimum cost), and a nesting n deep
 //                  exceeds the emitter's bounded recursion fuel on ordinary prose-length literals.
 //                  SCALARS, NEVER BYTES: the element values are code points read at the character
 //                  grain, so a non-ASCII literal's length and elements observe scalar count and
@@ -309,7 +309,7 @@ type SignedArmAgreement
 // other (antisymmetry). It is NOT re-decided by a hand-written arm match here: this is
 // the same question `kernel_grounding_crossing` below answers through that order, and a
 // second arm beside it would be a second path that can disagree the day a machine-width
-// arm joins IntegerExtent (DESIGN section 6b, root generalization).
+// arm joins IntegerExtent (gunbc.design_argument::root_generalization, root generalization).
 fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRef) -> Bool {
   rows |> any(r =>
     declaration_ref_eq(a: r.carrier, b: d)
@@ -407,7 +407,7 @@ fn integer_extent_within(inner: IntegerExtent, outer: IntegerExtent) -> Bool {
 // A CROSSING BETWEEN GROUNDED CARRIERS IS DERIVED, NEVER LISTED (tidy-raven-397's ruling, 2026-10-24; the
 // signature agreed with wise-wolf-174). Both carriers realize as the kernel integer through their rows, so the
 // one route between them is the pair of groundings, and it is an implicit, total, exact widening exactly when
-// the source's extent lies inside the target's (DESIGN section 4, coercion is the implicit-safe subset). Each
+// the source's extent lies inside the target's (gunbc.design_argument::closed_grounded_substrate, coercion is the implicit-safe subset). Each
 // carrier must be grounded by exactly one row, or the route is not unique. Keys are declaration identity: a
 // user type spelled Nat or Int has no row and no crossing. A crossing that is not an inclusion refuses here;
 // the partial direction is a declared, named checked constructor, which joins this rule as an arm with its

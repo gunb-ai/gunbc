@@ -18,7 +18,7 @@ import extdeps.access.posix { FileMode, file_mode_octal }
 // `extdeps.systemd.systemctl` models the manager INVOCATIONS. Neither models the on-disk file, so a
 // consumer that needs to WRITE a unit had no authority to render one and would have had to spell
 // systemd's INI syntax itself -- a second systemd authority living inside a product module, which is
-// exactly the §3 nicknaming this module exists to prevent.
+// exactly the gunbc.design_argument::single_authority nicknaming this module exists to prevent.
 //
 // The subject is the unit file format as specified by systemd.unit(5) and systemd.service(5). Those
 // are two citations of ONE subject, which is what `further_citations` is for.
@@ -44,7 +44,7 @@ data systemd_service_directive_authority: ExternalAuthority = ExternalAuthority 
 // WorkingDirectory=, Environment=, EnvironmentFile=) that systemd.exec defines for service units.
 // Those rows became this repository's PRODUCTION authority for live-deploy unit emission, so
 // leaving their subjects uncited would declare a scope narrower than the grammar being claimed --
-// the extdeps citation duty (DESIGN section 3, ExtdepsExternalAuthorityGate), not documentation.
+// the extdeps citation duty (gunbc.design_argument::single_authority, ExtdepsExternalAuthorityGate), not documentation.
 data systemd_timer_directive_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -65,7 +65,7 @@ data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
 // every unit type that can be stopped, which is why it is specified apart from the service
 // directives that decide what STARTING one does. A module that renders KillMode= while citing only
 // systemd.service claims a grammar wider than its declared scope, which is the extdeps citation
-// duty (DESIGN section 3).
+// duty (gunbc.design_argument::single_authority).
 data systemd_kill_directive_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -78,7 +78,7 @@ data systemd_kill_directive_authority: ExternalAuthority = ExternalAuthority {
 // the execution environment -- but the cgroup RESOURCE CONTROL vocabulary is its own upstream
 // specification, and it is the one that defines both the slice a service joins and the memory limits
 // a [Slice] unit carries. Adding those directives without adding this citation would claim a grammar
-// wider than the declared scope, which is the extdeps citation duty (DESIGN section 3), not
+// wider than the declared scope, which is the extdeps citation duty (gunbc.design_argument::single_authority), not
 // bookkeeping.
 data systemd_resource_control_directive_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -110,13 +110,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // systemd rejects `ExecStart=` in `[Unit]` and `WantedBy=` in `[Service]`, and a renderer carrying one
 // flat directive name would make both writable -- caught, at best, by a remote systemd refusing to
 // load the file long after it was delivered. Three disjoint types put that class at the top of the
-// §4b ladder instead: the invalid file has no constructor, so no validation of section placement is
+// gunbc.design_argument::guarantee_ladder ladder instead: the invalid file has no constructor, so no validation of section placement is
 // needed anywhere downstream.
 //
 // These are deliberately NOT the full directive vocabulary. systemd specifies hundreds; enumerating
 // them speculatively would be a large closed set that is still incomplete, which is worse than a
 // small one, because incompleteness in a closed enum reads as "this directive is not permitted"
-// rather than "this directive is not modeled yet". Each is a §2-horizontal row: a consumer needing
+// rather than "this directive is not modeled yet". Each is a gunbc.design_argument::minimize_redundancy-horizontal row: a consumer needing
 // `RestartPreventExitStatus=` adds one variant and one wire row, and nothing else changes.
 
 type SystemdUnitDirective
@@ -517,7 +517,7 @@ fn systemd_io_scheduling_class_wire(scheduling_class: SystemdIoSchedulingClass) 
 // back into a flag. Required means a missing file FAILS THE UNIT; optional means systemd starts it
 // anyway with the assignments unset.
 //
-// THE OPTIONAL FORM IS NOT THE POLICY ESCAPE HATCH DESIGN SECTION 5 FORBIDS, and the distinction is
+// THE OPTIONAL FORM IS NOT THE POLICY ESCAPE HATCH DESIGN gunbc.design_argument::fail_closed FORBIDS, and the distinction is
 // what the file CARRIES rather than which directive spells it. `gunbc.host.host_disk_reclaim_units`
 // (reclaim_omitted_environment_file_note) drops `EnvironmentFile=-` precisely because that file
 // would carry THRESHOLDS -- host-local values overriding gates this repository owns, one edit from
@@ -596,7 +596,7 @@ type SystemdInstallDirective
 // constructors in existence are the mints below, and `sole_constructor` refuses a record literal
 // from any other module. `MemoryCurrent=` has no spelling because nothing produces it.
 //
-// SCOPE OF THAT GUARANTEE, DECLARED RATHER THAN INHERITED (DESIGN section 4b). `sole_constructor`
+// SCOPE OF THAT GUARANTEE, DECLARED RATHER THAN INHERITED (gunbc.design_argument::guarantee_ladder). `sole_constructor`
 // confines cross-module construction on the source-to-`.dag` acceptance path, and DESIGN records by
 // execution that an emitted Rust mirror of such a type is silently forgeable
 // (`extdeps.uri.percent_encoding` `UriValidatedScalar`). This record is constructed and rendered entirely inside the
@@ -905,10 +905,10 @@ fn systemd_install_directive_line(directive: SystemdInstallDirective) -> String 
 // destination for the three hand-rendering consumers, and rendering a timer through it would have
 // produced a file the host rejects.
 //
-// A coproduct over the unit TYPE puts that class at the top of the §4b ladder: `[Service]` in a
+// A coproduct over the unit TYPE puts that class at the top of the gunbc.design_argument::guarantee_ladder ladder: `[Service]` in a
 // timer has no constructor. Section order and section membership both stop being things a renderer
 // has to get right, because neither is expressible any other way. A new unit type (`.slice`,
-// `.socket`, `.path`) is one more variant and one more arm -- the same §2-horizontal row the
+// `.socket`, `.path`) is one more variant and one more arm -- the same gunbc.design_argument::minimize_redundancy-horizontal row the
 // directive vocabulary above is built from.
 
 // WHETHER A UNIT IS INSTALLABLE IS A FACT ABOUT THE UNIT, NOT AN EMPTY LIST.
@@ -950,7 +950,7 @@ type SystemdUnitFile
 // A template unit (`foo@.service`) is written once and instantiated per name, and `%i` is what
 // stands for the instance inside it. That is systemd.unit(5) grammar, not a convention a consumer
 // invents, so a product module writing `"%i"` into an `ExecStart=` or a `WorkingDirectory=` would be
-// spelling systemd syntax outside the module that owns it -- the same §3 fork this file exists to
+// spelling systemd syntax outside the module that owns it -- the same gunbc.design_argument::single_authority fork this file exists to
 // close for directive names.
 data systemd_instance_name_specifier: String = "%i"
 

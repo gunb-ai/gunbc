@@ -71,7 +71,7 @@ import std.algebra { length }
 //
 // On 2026-10-02 mtcollins1 was updated by hand from srv1, following Foxconn's SOPs step by step. This
 // module is that session as a convergence: handed a baseline chosen by gunbc.fleet.mtcollins_firmware_baseline
-// (§3d: selection precedes convergence), it reads what is installed, decides Noop / Apply(step) /
+// (gunbc.design_argument::selection_precedes_convergence: selection precedes convergence), it reads what is installed, decides Noop / Apply(step) /
 // Refuse per target through gunbc.ensure ensure_decide, and grounds each applied step on an
 // INDEPENDENT readback through ensure_reconcile. It invents no decision vocabulary of its own: the step
 // decision is std.upsert_decision's, the grounding is std.realization_reconcile's.
@@ -94,7 +94,7 @@ import std.algebra { length }
 //
 // EVERY FAILURE ARM REFUSES, AND NOTHING RETRIES. A digest that does not match, an hpm upgrade the BMC
 // reported failed, a readback that disagrees, a BMC that stops answering: each is a typed
-// FirmwareConvergenceRefusal and the line stops (DESIGN §5). A retry would absorb exactly the signal an
+// FirmwareConvergenceRefusal and the line stops (gunbc.design_argument::fail_closed). A retry would absorb exactly the signal an
 // operator needs on a machine whose next failure may be a brick.
 
 // ── What is observed ───────────────────────────────────────────────────────────────────────────
@@ -123,9 +123,9 @@ type BmcAnswer
 //   - the window in which only the factory credential works is a typed state: the fold returns
 //     FirmwareCredentialReprovisionDue there and refuses any later step recorded inside it.
 //   - reaching the BMC in that window needs the factory credential, which is a privileged use and is
-//     classified by gunbc.auth.authorization_pattern_selection like any other (DESIGN §3b grants row).
+//     classified by gunbc.auth.authorization_pattern_selection like any other (gunbc.design_argument::conformance grants row).
 //
-// WHAT THE STANDING DOES NOT COVER, typed as a bet (§4d): MegaRAC keeps one user table for IPMI, Redfish
+// WHAT THE STANDING DOES NOT COVER, typed as a bet (gunbc.design_argument::epistemic_humility): MegaRAC keeps one user table for IPMI, Redfish
 // and the web UI, so the reset presumably also ends the web-UI and KVM sessions the boot workflow
 // opens. BmcSecured is established from IPMI LAN probes only; a web-session probe is not part of it.
 // THE RE-ESTABLISHMENT COVERS EVERY CHANNEL AND EVERY ROLE (mtcollins1, 2026-10-02, second pass). After
@@ -281,7 +281,7 @@ fn readback_route_of(t: FirmwareTarget) -> VersionReadbackRoute {
   }
 }
 
-// THE SCP DECODE IS A TYPED BET, NOT A PUBLIC FACT (§4d). No public SMpro source defines register 0x01
+// THE SCP DECODE IS A TYPED BET, NOT A PUBLIC FACT (gunbc.design_argument::epistemic_humility). No public SMpro source defines register 0x01
 // or its layout. Two self-observed points fit "minor in the high byte, major in the low byte" -- 0x0801
 // read while the installed SCP was 1.08 and 0x0a02 after 2.10 -- so the decode is carried with that
 // standing, and a readback through it is never an unqualified observation: the converged verdict names

@@ -319,7 +319,7 @@ test fn constructed_unobserved_host_reaches_neither_confirmed_nor_refused() -> B
 //
 // A ZERO-LENGTH ASSERTION IS WEAK ON ITS OWN and is deliberately not carrying this claim alone.
 // It cannot distinguish "the fleet agrees" from "the report is broken and returns nothing", which
-// is exactly the empty-observation narrow DESIGN 5 names. What discriminates it is the pair of
+// is exactly the empty-observation narrow gunbc.design_argument::fail_closed names. What discriminates it is the pair of
 // live refusal tests above -- srv3 against a deliberately wrong expectation still produces one
 // located row -- so the fold is proven able to emit a discrepancy on the same data path that here
 // emits none. Read the two together or neither means anything.
@@ -422,7 +422,7 @@ test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool {
 // catalog was UNREAD and carried a standing read obligation, and it went green by the obligation
 // being discharged - the sticks arrived, the label was read, and extdeps.memory.samsung
 // m393a8g40d40_crb0q_catalog was authored against the manufacturer's part number. Per DESIGN
-// section 4b(4) the claim is INVERTED IN PLACE rather than deleted: it now guards the other
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) the claim is INVERTED IN PLACE rather than deleted: it now guards the other
 // direction, so a regression that dropped the citation back to an unread family string goes red
 // here instead of passing unnoticed. The cost and receipt halves did not move - a lot that reported
 // a recorded cost would still be claiming facts nobody has.

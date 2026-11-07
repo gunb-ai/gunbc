@@ -909,7 +909,7 @@ test fn a_production_slot_keeping_its_own_dispatch_state_is_refused() -> Bool {
 // THIS PAIR USED TO CONSTRUCT THE INVALID STATE AND ASSERT THE LAW CAUGHT IT. It no longer can, and
 // that is the climb rather than a gap: an instance-owned scope carries only CHILD NAMES, so its
 // roots are derived beneath its own instance_root and there is no way to author a lab pointing at
-// the host-shared roots. The DESIGN §4b rule is that a climb deletes the lower-rung production
+// the host-shared roots. The gunbc.design_argument::guarantee_ladder rule is that a climb deletes the lower-rung production
 // machinery but keeps the evidence enrolled, so these assert the DERIVATION that makes the old red
 // unwritable instead of pretending to still construct it — a witness whose invalid input became
 // unrepresentable must change what it asserts, not keep a name that no longer describes it.\n\nWHAT
@@ -990,7 +990,7 @@ test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
 //
 // THE POPULATION FOLD DOES NOT RETIRE THIS PAIR. dashboard_declared_instances_owned_paths_
 // are_pairwise_consistent is the quantification; this named live/lab call is the discriminating
-// control that the binary-overlap class stays closed (DESIGN 4b(4): climb deletes production
+// control that the binary-overlap class stays closed (gunbc.design_argument::guarantee_ladder (dissolution on climb): climb deletes production
 // machinery, never the evidence).
 test fn the_binary_hazard_stays_closed_across_instances_on_one_host() -> Bool {
   let live = srv1_live_dashboard_instance()

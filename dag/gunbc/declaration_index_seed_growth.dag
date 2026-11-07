@@ -355,7 +355,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
       field: WholeDeclaration
     }
   ],
-  reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap: the subject is INGESTION -- the moment a .dag file is read off the filesystem and parsed -- and the only ingestion that executes today is host Rust. A .dag witness cannot reach it: run_required_floor's hermetic envelope refuses host effects during preparation, so a witness whose subject is a filesystem walk is counted executed while its assertion never runs. Asserting the index's behaviour from a mocked file tree would assert the mock, which is the specification-without-execution trap, so the construction and its discriminating evidence both have to live where the walk does.\n\nTHE CONSEQUENCE OF REFUSING IT, stated second because it is not the admitting argument: there is no second executing ingestion to re-home this to, so a refusal would leave both of DESIGN's next-rung triggers -- section 6's module-authorship trigger and section 3's cited-symbol restoration trigger -- undischargeable until v2 is the compiler.\n\nWHAT THE GROWTH BUYS, at identity grain rather than as a category: three walls on one construction, replacing one deleted corpus-walk census and two obligations that had no mechanism at all. It also NETS DOWN inside claim_executor, which loses the --required-cited-symbol mode and its three helper functions.",
+  reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap: the subject is INGESTION -- the moment a .dag file is read off the filesystem and parsed -- and the only ingestion that executes today is host Rust. A .dag witness cannot reach it: run_required_floor's hermetic envelope refuses host effects during preparation, so a witness whose subject is a filesystem walk is counted executed while its assertion never runs. Asserting the index's behaviour from a mocked file tree would assert the mock, which is the specification-without-execution trap, so the construction and its discriminating evidence both have to live where the walk does.\n\nTHE CONSEQUENCE OF REFUSING IT, stated second because it is not the admitting argument: there is no second executing ingestion to re-home this to, so a refusal would leave both of DESIGN's next-rung triggers -- gunbc.design_argument::how_to_work's module-authorship trigger and gunbc.design_argument::single_authority's cited-symbol restoration trigger -- undischargeable until v2 is the compiler.\n\nWHAT THE GROWTH BUYS, at identity grain rather than as a category: three walls on one construction, replacing one deleted corpus-walk census and two obligations that had no mechanism at all. It also NETS DOWN inside claim_executor, which loses the --required-cited-symbol mode and its three helper functions.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete all 68 when INGESTION is itself modeled -- when the .dag source walk and the per-module record it derives are expressed as a .dag operation over a typed filesystem transport, the index becomes an ordinary substrate fold and these declarations move to the substrate. A PARTIAL migration IS admissible and is the expected shape: the moment the RECORD DERIVATION is modeled (record_from_module is a pure function of one parse tree and needs no host effect at all), the record builder and every finding function follow it, while the directory walk and the parse-clean plumbing stay behind for as long as the WALK is host-only; delete those on the second step. What does NOT dissolve them is the checks moving to another host entry point, and what does NOT dissolve them is a hermetic witness asserting a fabricated module tree -- that would retire the evidence while retiring nothing it guards.",
   current_boundary: "src/v1/stage0/src/declaration_index.rs; src/v1/stage0/src/cli_run.rs run_dag_parse_sweep; src/v1/stage0/tests/declaration_index_integrity.rs; src/v1/stage0/src/bin/claim_executor.rs; src/v1/stage0/src/bin/v1_src_dag_parse.rs; dag/gunbc/declaration_index_seed_growth.dag"
@@ -397,17 +397,17 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // module that declares it and one that does not -- and requires the counter to answer 1 rather than
 // 2. Reversing the two conjuncts leaves every other arm green and reds that one. The COUNT over the
 // live corpus is not transcribed here: it is emitted as import_members_kernel_named on every
-// required run, and a number copied into prose is the positional citation DESIGN section 3 forbids.
+// required run, and a number copied into prose is the positional citation gunbc.design_argument::single_authority forbids.
 //
-// WHAT THIS CHANGE DOES ABOUT IT, which is the only thing DESIGN section 5 permits an arm that
+// WHAT THIS CHANGE DOES ABOUT IT, which is the only thing gunbc.design_argument::fail_closed permits an arm that
 // widens to do: make the frequency OBSERVABLE. A bare continue would have zeroed the deficit
-// exactly as the corpus does, so the class could never rank for repair -- section 6 prices by
+// exactly as the corpus does, so the class could never rank for repair -- gunbc.design_argument::how_to_work prices by
 // displaced cost and a masked cost displaces nothing. It is now counted as
 // import_members_kernel_named on DeclarationIndexPopulation and printed beside every other
 // denominator in both the required-ci and the standalone sweep lines, so a green names it. It is
 // NOT reported as a finding and does not stop the line.
 //
-// THE EVIDENCE IS AT THE FIXTURE BOUNDARY, where DESIGN section 4b requires it and where the corpus
+// THE EVIDENCE IS AT THE FIXTURE BOUNDARY, where gunbc.design_argument::guarantee_ladder requires it and where the corpus
 // cannot reach: kernel_named_import_member_is_admitted_but_counted plants the claim and requires
 // BOTH no finding AND a count of exactly one, and a_declared_member_does_not_count_as_kernel_named
 // requires a real member to leave the counter at zero. The first assertion alone would be satisfied
@@ -443,11 +443,11 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // is not a defect finding filed against v2.lens.mandatory_tag, whose fold is correct and whose own
 // witness exercises it. It is the reason the authorship obligation is answered here instead: an arm
 // enrolled in a door that the required run never opens would be green by construction, which DESIGN
-// section 4b calls worse than absent because it gets cited as coverage. When the v2 compile door is
+// gunbc.design_argument::guarantee_ladder calls worse than absent because it gets cited as coverage. When the v2 compile door is
 // the executing ingestion, this arm is the one that should dissolve into a MandatoryTagRegion, and
 // that is its next rung.
 
-// THE FOUR CONDITIONS DESIGN SECTION 5 PUTS ON A MONOTONE DEBT CONTRACT, ANSWERED ONE BY ONE,
+// THE FOUR CONDITIONS DESIGN gunbc.design_argument::fail_closed PUTS ON A MONOTONE DEBT CONTRACT, ANSWERED ONE BY ONE,
 // because without all four a one-sided ratchet over hand-authored rows is only a quieter snapshot
 // -- it counts the subjects someone remembered to author.
 //
@@ -470,7 +470,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // the rows are a set of identities and the check is membership.
 //
 // 3. ROADMAP-JUSTIFIED DIRECTION. The direction is toward zero authored citations that name
-// nothing, which is the executing half of DESIGN section 3's cite-the-symbol-not-the-position rule;
+// nothing, which is the executing half of gunbc.design_argument::single_authority's cite-the-symbol-not-the-position rule;
 // the lane that owns it is the one this carrier already names, v1-hand-queue-drain. The roster's
 // terminal state is empty, at which point PRE_EXISTING_CITATION_DEBT and citation_debt_findings
 // both delete.
@@ -514,7 +514,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // omission: decl_facts is a REAL SYMBOL that RESOLVES. The sentence claiming nothing consults it
 // would pass a cited-symbol census cleanly, because every name in it is true and only the
 // QUANTIFIER is false. A resolver answers does this name exist; nothing in this construction
-// answers is this count right. Section 4c states the general form -- prose is unfalsifiable by
+// answers is this count right. gunbc.design_argument::source_annotations states the general form -- prose is unfalsifiable by
 // construction, which is exactly why an invariant, receipt, count or dissolution condition belongs
 // in a typed carrier and not in a sentence.
 //
@@ -578,7 +578,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // citations authored inside fixture carriers, 128 RESOLVE. They are ordinary citations of real
 // authorities that happen to live in a test module. The module-grained skip was shielding 128 real
 // citations in order to protect 33 sites. Reporting the excluded population as in_fixtures did not
-// restore integrity -- a counted hole is still a hole, and DESIGN section 5 says so about exactly
+// restore integrity -- a counted hole is still a hole, and gunbc.design_argument::fail_closed says so about exactly
 // this move.
 //
 // THE HOLE WAS OCCUPIED, WHICH IS WHAT SEPARATES A DEFECT FROM A DISCLOSED BOUNDARY. Two of the
@@ -592,7 +592,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // WHAT THE ROSTER IS. FIXTURE_CARRIER_CITATION_EXEMPTIONS, 41 identities at the (citing module,
 // citing declaration, module, declaration, field) grain -- the citing module and declaration both
 // added by gunbc#9328, and the count moved with the grain rather than with the corpus. It is NOT a
-// debt contract and does not claim to be: condition 3 of section 5's four requires a terminal state
+// debt contract and does not claim to be: condition 3 of gunbc.design_argument::fail_closed's four requires a terminal state
 // of empty, and this roster's is not -- a planted control such as NoSuchDecl_G1_RED is permanent by
 // design and will never be repaired. What it shares with the debt contract is the property that
 // makes either safe rather than a suppression list: it is MONOTONE and it REFUSES WHEN SPENT,
@@ -602,7 +602,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 //
 // WHAT IS NOT CLASSIFIED, stated rather than hidden: the rows are not sorted into
 // deliberate-control versus genuine-staleness. The two specimens above are named because they are
-// decidable by inspection; deciding what the other authors MEANT is the judgement section 5 warns
+// decidable by inspection; deciding what the other authors MEANT is the judgement gunbc.design_argument::fail_closed warns
 // turns a stale citation into a confidently wrong one, and it is the same scope decision the 42
 // debt rows already carry. NEXT RUNG: a witness declares its planted controls as typed rows, at
 // which point the deliberate half becomes DERIVABLE and only the genuine half survives here as
@@ -677,7 +677,7 @@ data declaration_index_seed_growth_justification: SeedGrowthJustification = Seed
 // residue whose closing identity is already available is not a residue. It was available:
 // record_from_module already iterates top-level items, so the enclosing declaration name costs one
 // string at extraction, and it is a NAME reachable from the containment tree rather than the offset
-// DESIGN section 3 forbids. Closed, with
+// gunbc.design_argument::single_authority forbids. Closed, with
 // a_second_citation_of_an_enrolled_target_in_another_declaration_still_refuses as the
 // discriminating red -- it reports zero findings under the module grain.
 //

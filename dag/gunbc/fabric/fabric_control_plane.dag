@@ -161,7 +161,7 @@ fn fabric_reservation_payload(
 // rather than a demand pair: the permit can disagree about the offer, the route, the work or the
 // demand, and an arm that reported two demand identities for a WORK mismatch would print two
 // values that are equal beside a refusal - a fabricated plausible output in the sense DESIGN
-// section 5 forbids, and one that would send a reader looking at the wrong field. The roster this broker
+// gunbc.design_argument::fail_closed forbids, and one that would send a reader looking at the wrong field. The roster this broker
 // ranks was bound at some earlier moment, for whatever demand and work the binder was serving
 // then, and nothing in the selection fold re-reads that. So the candidate that WON is checked
 // against the demand actually being served, and a mismatch refuses rather than reserving money and
@@ -369,7 +369,7 @@ fn fabric_cell_roster_candidates(roster: List<FabricCellCandidate>) -> List<Cand
 // re-ran the admission judgement independently, so an edit to either could make
 // a candidate appear in neither half or in both, and nothing would detect it.
 // A partition is ONE decision with two outputs, so the halves cannot disagree
-// (§2 -- the second traversal was a second representation of one judgement).
+// (gunbc.design_argument::minimize_redundancy -- the second traversal was a second representation of one judgement).
 //
 // The Bool predicate that selected the admitted half is deleted with it. It
 // collapsed a refused capacity class and an unclassified executor into a single
@@ -422,7 +422,7 @@ fn partition_cell_roster(
 // what is being held, and nothing would ever detect it: two references that are
 // both individually well-formed are indistinguishable from one reservation
 // unless they are DERIVED from a common identity rather than agreed by
-// convention (§3 -- a second name for one concept).
+// convention (gunbc.design_argument::single_authority -- a second name for one concept).
 fn fabric_money_reservation_ref(
   demand: FabricIdentity<NonEmptyStr, DemandKey>,
   offer: FabricIdentity<NonEmptyStr, OfferKey>,
@@ -446,7 +446,7 @@ fn fabric_money_reservation_ref(
 // account value in the caller's hands to persist. The partial commit -- an
 // encumbrance without its cell, or a cell without its encumbrance -- has no
 // constructor on any arm of CellReservation, so it is unwritable rather than
-// checked (§4b, structurally impossible rather than validated).
+// checked (gunbc.design_argument::guarantee_ladder, structurally impossible rather than validated).
 //
 // THIS WAS NEARLY DOCUMENTED AS AN ORDERING GUARANTEE AND IT IS NOT ONE. A
 // witness asserting "the budget refuses before the store is touched" was
@@ -462,7 +462,7 @@ fn fabric_money_reservation_ref(
 // deliberately makes a request state its own currency so a mismatch is
 // representable and therefore detectable; passing the account's own currency
 // back to it would satisfy the check by construction and turn a real wall into
-// a decoration that can never fire (§4b -- ask whether the RED is authorable).
+// a decoration that can never fire (gunbc.design_argument::guarantee_ladder -- ask whether the RED is authorable).
 // The supplier quotes in its currency and the account holds one, so the two can
 // genuinely disagree, and a mutation substituting the account's currency was
 // executed and turned the witness below red -- so the wall is load-bearing
@@ -611,7 +611,7 @@ fn reserve_priced_cell(
 // They are now std.durable_exclusive_hold (the states and transitions) and
 // gunbc.durable_exclusive_hold_file_store (the one codec and the CAS
 // realization), because a second consumer needed the same protocol over a slot
-// that is not a cell, and a copy would have been a second authority (DESIGN 3).
+// that is not a cell, and a copy would have been a second authority (gunbc.design_argument::single_authority).
 // Nothing of the old vocabulary survives here as a compatibility surface; the
 // bytes on disk are unchanged and decode under the shared codec.
 
@@ -790,7 +790,7 @@ fn free_cell_slot(store: FabricAllocationStore, plan: FileHoldReleasePlan, accou
 // A hold ends abandoned or it ends consumed. Both leave the SAME state -- the
 // cell free and the encumbrance closed -- so a second outcome vocabulary for
 // settlement would be five refusal arms renamed, which is the fork DESIGN
-// section 3 forbids and which drifts the moment one of them gains a cause the
+// gunbc.design_argument::single_authority forbids and which drifts the moment one of them gains a cause the
 // other lacks. What differs is the money transition and the evidence that
 // authorizes it, and that difference lives in the two entry points below rather
 // than in the answer they return.
@@ -1023,7 +1023,7 @@ fn broker_select_resource_budget(
 // THE LEAF RENDERINGS OF WHAT THE BROKER RETURNS LIVE WITH THE BROKER. They were first written inside
 // the FCI-1 live probe, when that instrument was the only caller of the route; the shakedown broker
 // (gunbc.runner.runner_microvm_slot_reserve) is the first production caller and must render the same
-// outcomes, and a production module importing an instrument is the layer inversion DESIGN 3 refuses.
+// outcomes, and a production module importing an instrument is the layer inversion gunbc.design_argument::single_authority refuses.
 // So they moved here, and the probe reads them from here.
 fn permit_standing_wire(standing: PermitStanding<NonEmptyStr>) -> String {
   match standing {

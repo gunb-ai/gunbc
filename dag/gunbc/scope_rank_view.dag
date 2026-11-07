@@ -13,11 +13,11 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // is the answer to one question -- of the modules declaring this key, which one does THIS scope rank
 // first -- and that answer is a function of two things the process already holds: the corpus-wide
 // declarer population, and the scope's own ordering of modules. Storing it once per scope is DESIGN
-// section 2 redundancy and DESIGN section 3's second authority, because from that point a reader
+// gunbc.design_argument::minimize_redundancy redundancy and gunbc.design_argument::single_authority's second authority, because from that point a reader
 // consults the map rather than the order.
 //
 // WHAT THIS CARRIER IS NOT. It measures nothing. Every number about this subject comes from the
-// required floor's own lines, named here and never transcribed, per DESIGN section 6. No reader is
+// required floor's own lines, named here and never transcribed, per gunbc.design_argument::how_to_work. No reader is
 // migrated by this module and no map is deleted by it; the sequencing is deliberate, because a view
 // landed ahead of the polarity roster below would cut over six slots under one slot's rule.
 
@@ -170,7 +170,7 @@ data scope_rank_view_readers: List<ScopeMapReader> = [
     reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "lookup_fn_node"),
     reads: "fn_nodes, qualified key only",
     demand: PointLookup { key_source: "a fully qualified name assembled by the caller" },
-    after_cutover: "the admission-gated read of section 4 -- the one reader where the corpus index could answer for an unadmitted module",
+    after_cutover: "the admission-gated read of gunbc.design_argument::closed_grounded_substrate -- the one reader where the corpus index could answer for an unadmitted module",
   },
   {
     reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "bare_name_is_ambiguous"),
@@ -287,7 +287,7 @@ data scope_rank_view_readers: List<ScopeMapReader> = [
 // key. A corpus-wide index deletes that construction. The migration's obligation is therefore not to
 // add a filter but to re-establish the guarantee structurally: no arm of resolution may yield a
 // declaration without having consulted the rank map, so an unadmitted answer has no constructor.
-// DESIGN section 3 states the general form -- the minimum replacement is not the smallest thing that
+// gunbc.design_argument::single_authority states the general form -- the minimum replacement is not the smallest thing that
 // executes the happy path, it must preserve every required refusal.
 type ClosureAdmission
   = AdmittedByMaterialization { why_it_holds_today: String }
@@ -320,7 +320,7 @@ data scope_rank_view_admission: AdmissionStanding = {
 // The brief carries two figures for the distinct-scope count and asks which is right. Both are
 // readings of ONE instrument at two revisions, so neither is a rival measurement and the delta is
 // not decidable from the figures. The reconciliation is the instrument, re-derived on the current
-// tree by the before half of the acceptance pair -- which is DESIGN section 6 applied to the
+// tree by the before half of the acceptance pair -- which is gunbc.design_argument::how_to_work applied to the
 // reconciliation itself rather than only to the design's own claims.
 type ScopeCountReading
   = ReadFromInstrument { instrument_line: String, produced_by: DeclarationRef, revision: String }
@@ -349,7 +349,7 @@ data scope_rank_view_scope_counts: List<ScopeCountRow> = [
   },
 ]
 
-// THE ACCEPTANCE ORACLE IS A PAIRED RUN, NEVER A LITERAL. DESIGN section 5: a measurement copied
+// THE ACCEPTANCE ORACLE IS A PAIRED RUN, NEVER A LITERAL. gunbc.design_argument::fail_closed: a measurement copied
 // from the same tree is not an oracle. The figures relayed into this lane for the ambiguity line
 // were taken on a pre-9809 corpus, so they are carried as what they are -- a prior reading awaiting
 // re-baseline -- and no check is keyed on them.
@@ -555,4 +555,4 @@ fn scope_rank_relayed_acceptance_rows() -> List<AcceptanceRow> {
   scope_rank_view_acceptance |> filter(a => scope_rank_acceptance_is_paired(a: a) == false)
 }
 
-data scope_rank_view_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the per-scope materialized maps named in scope_rank_view_slots no longer exist -- every slot's fold is deleted and every reader in scope_rank_view_readers resolves through the rank view -- and the paired required-floor runs in scope_rank_view_acceptance have been taken with the stated identities holding. Not satisfied by landing the view beside the maps: a surviving fold is the DESIGN section 3 attractor this carrier exists to close, and a reader that understands both representations is the parallel-authority state the cutover forbids.")
+data scope_rank_view_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the per-scope materialized maps named in scope_rank_view_slots no longer exist -- every slot's fold is deleted and every reader in scope_rank_view_readers resolves through the rank view -- and the paired required-floor runs in scope_rank_view_acceptance have been taken with the stated identities holding. Not satisfied by landing the view beside the maps: a surviving fold is the gunbc.design_argument::replacement_migration attractor this carrier exists to close, and a reader that understands both representations is the parallel-authority state the cutover forbids.")

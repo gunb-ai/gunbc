@@ -282,7 +282,7 @@ test fn a_start_outside_the_history_is_the_callers_fact_not_a_broken_chain() -> 
 // wrong answer.
 //
 // Row references make the two occurrences distinct, so the walk traces all three. This witness stays
-// enrolled after it greens (DESIGN section 4b(4)): it is the control that keeps the grain from
+// enrolled after it greens (gunbc.design_argument::guarantee_ladder (dissolution on climb)): it is the control that keeps the grain from
 // drifting back, and deleting it on the grounds that it now passes would recreate exactly the
 // specification-without-execution the recut removed.
 fn ancestry_witness_revert() -> RepositoryHistory {
@@ -343,7 +343,7 @@ test fn the_reverted_to_record_is_an_ancestor_and_not_the_revert_itself() -> Boo
 // It asserts the START IDENTITY rather than merely that the answer is not a cycle, because an
 // implementation answering StartNotInHistory for every input would satisfy the weaker claim. The
 // traced and cyclic witnesses above are the positive controls that stop that reading. Per DESIGN
-// section 4b(4) this stays enrolled after it greens: it is the executing evidence that the state
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) this stays enrolled after it greens: it is the executing evidence that the state
 // remains unwritable, and deleting it on the grounds that it now passes would recreate
 // specification-without-execution one rung up.
 test fn an_empty_history_is_not_a_cycle() -> Bool {

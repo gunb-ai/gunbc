@@ -41,7 +41,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //   CumulativeCounter   -- monotone since cgroup creation. A single end snapshot is not an interval
 //                          measurement; only a start/end pair yields a delta.
 //
-// Grounding the kinds here rather than in the consumer is DESIGN 3: the upstream spec draws this
+// Grounding the kinds here rather than in the consumer is gunbc.design_argument::single_authority: the upstream spec draws this
 // line, so re-coining it downstream would nickname a fact the kernel owns.
 type CgroupMemoryMetricKind
   = Instantaneous

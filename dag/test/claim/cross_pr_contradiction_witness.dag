@@ -426,7 +426,7 @@ test fn extraction_and_lookup_agree_on_the_same_line() -> Bool {
        }
 }
 
-// AN IDENTITY CITED IN AN ANNOTATION IS A REFERENCE, NOT AN ENROLMENT, and DESIGN 4c is the reason
+// AN IDENTITY CITED IN AN ANNOTATION IS A REFERENCE, NOT AN ENROLMENT, and gunbc.design_argument::source_annotations is the reason
 // rather than a convenience: a `//` block is prose no semantic pass sees, so a reader that counted
 // it would report a pull request as net-adding a key it only WROTE ABOUT. The merge-target
 // direction is worse, because it never expires: one annotation anywhere in the corpus would make
@@ -492,7 +492,7 @@ test fn the_fixtures_use_synthetic_identities_only() -> Bool {
 
 // PROSE IS NOT AN ENROLMENT, AND THE RULE THAT SEPARATES THEM IS WHOLE-LITERAL EQUALITY.
 //
-// `//` is not this corpus's only prose carrier. DESIGN 4c records why: while `//` was a parse
+// `//` is not this corpus's only prose carrier. gunbc.design_argument::source_annotations records why: while `//` was a parse
 // error the corpus hoisted commentary into `data <name>: String` rows, and 126 of the survivors
 // quote a `test.claim.*` identity inside a sentence. Excluding the CARRIER would be the wrong fix
 // and strictly worse than the pollution -- roster enrolments ARE string data, so blinding the

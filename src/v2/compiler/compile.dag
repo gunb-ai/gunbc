@@ -138,7 +138,7 @@ type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 // at, and every witness is stamped with both -- so registration and observation form one closed,
 // machine-checkable join (required_lens_coverage) rather than two lists of equal length.
 //
-// WHAT THAT JOIN DOES NOT ESTABLISH, AND ITS RUNG (review 64177, DESIGN section 4b(2)). The join
+// WHAT THAT JOIN DOES NOT ESTABLISH, AND ITS RUNG (review 64177, gunbc.design_argument::guarantee_ladder (no untracked stall)). The join
 // closes over the identity FIELD. Nothing binds that field to the `gate` beside it: both are
 // authored on the same row by hand, so swapping two rows' gates, or repointing a `gate` at a
 // different wrapper while leaving `identity` alone, leaves the join closed and the roster digest
@@ -152,7 +152,7 @@ type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 // missing test. A control would have to recover a declaration identity FROM a function value and
 // compare it to the authored one; a `CompileLensGate` is an opaque function value in this
 // substrate, and nothing about the declaration it came from survives into it. A control comparing
-// the authored identity to itself would be the decoration DESIGN section 4b warns about at the top
+// the authored identity to itself would be the decoration gunbc.design_argument::guarantee_ladder warns about at the top
 // rung -- permanently green, and worse than absent because it would be cited as coverage of exactly
 // the gap it does not close.
 //
@@ -165,8 +165,8 @@ type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 // ONE ROSTER, PARTITIONED BY GRAIN. The two grains stay semantically load-bearing (see
 // required_lens_grain_note) but they are no longer two registration surfaces: grain is a field and
 // required_lenses_at_grain derives each execution's roster from the single roster. A second list
-// would be the fork this registration exists to close (DESIGN section 3).
-// DIVERGENCE, STATED (DESIGN section 3b): the brief named a new type RequiredCompileLens beside
+// would be the fork this registration exists to close (gunbc.design_argument::single_authority).
+// DIVERGENCE, STATED (gunbc.design_argument::conformance): the brief named a new type RequiredCompileLens beside
 // CompileLens. Requiredness is membership in required_compile_lens_roster, not a property of the
 // carrier -- a caller-supplied lens has the same three facts and must stamp its witnesses the same
 // way for the join to be closed at all -- so one carrier gains the two fields instead.
@@ -215,7 +215,7 @@ type LensGateWitness {
   witness: Witness<Node>
 }
 
-// THE COVERAGE RECEIPT IS A DECLARED FRONTIER, AND THIS IS ITS TRIGGER (DESIGN section 3c).
+// THE COVERAGE RECEIPT IS A DECLARED FRONTIER, AND THIS IS ITS TRIGGER (gunbc.design_argument::consumption).
 // The JOIN is consumed by execution in this change -- validate_then_compile refuses a compile whose
 // coverage is not closed, which is the gate. The receipt CARRIED here is a different declaration
 // with a different consumer, and today nothing outside this module reads it. Naming the census as a
@@ -226,14 +226,14 @@ type LensGateWitness {
 //   SelfHostCandidate, where promotion refuses BY NAME on a lens that did not run.
 //   ROUTE: the candidate compile path runs through validate_then_compile, so the receipt this field
 //   carries is what admission reads rather than re-deriving; re-deriving it there would be a second
-//   authority on which lenses ran (DESIGN section 3).
+//   authority on which lenses ran (gunbc.design_argument::single_authority).
 //   TRIGGER: the promotion path routing its candidate through this door and refusing on a named
 //   uncovered lens -- sufficient that a candidate cannot be promoted without its coverage having
 //   been observed on the same compile that produced it.
 //
 // If that capability does not land, this field is redundant work and the honest move is to DELETE
 // it rather than to keep it: the refusal above is already the gate, and a receipt nobody reads is
-// section 2's redundant work however well shaped it is.
+// gunbc.design_argument::minimize_redundancy's redundant work however well shaped it is.
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
@@ -312,7 +312,7 @@ data undecidable_verdict_collapse_lens: CompileLens = CompileLens {
   gate: undecidable_verdict_collapse_root_gate
 }
 
-data required_lens_grain_note: String = "Two registered grains, one roster, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). A CompileLensSubtree registration runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling, lifecycle_carrier -- each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). A CompileLensRoot registration runs ONCE at the tree root -- the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (DESIGN 7 self-application). The grain is a FIELD on the registration and required_lenses_at_grain derives each execution's list from the one roster, so this cost argument is carried by the row rather than by which of two lists a lens was written into. Witness accumulation on the subtree fold CONCATENATES the child's accumulated list into the accumulator at every step and reverses once at the end, which copies one operand per step and is the accumulator-copy shape this very door's own lens exists to refuse (DESIGN 7 self-application, measured and named rather than asserted away). It is stated here because this string is a COMPARED VALUE and a false cost claim in it would be green by equality on both sides. The repair is not an argument order: list_append costs its LEFT operand and the carrier's rc_list_concat copies its RIGHT one, and neither the accumulator nor a child's subtree accumulation is reliably the shorter, so a fold over a tree stays superlinear whichever way it is written. The defect, its capability trigger and the experiment already falsified against it are carried by gunbc.recurring_failure_mode enforcement_exhibits_the_shape_it_refuses. Required registrations at both grains fire on every validate_then_compile call regardless of caller-supplied lenses, and a caller-supplied lens now runs at ITS OWN declared grain rather than at root whatever it declared."
+data required_lens_grain_note: String = "Two registered grains, one roster, one door (validate_then_compile is the single gate authority; per sharp-bee-290 contract 2026-07-13 no second gate surface exists). A CompileLensSubtree registration runs PER SUBTREE NODE (node-local predicates: fact_density, unit_modeling, lifecycle_carrier -- each gate reads only the node's direct children; a nested subtree walk inside the gate would stack with run_required_lens_gates_on_subtree's fold_node and be O(n^2)). A CompileLensRoot registration runs ONCE at the tree root -- the grain for rooted whole-tree walks (accumulator-copy carrier threading), where per-node invocation would be O(n^2): the enforcement of the complexity lens must not itself violate the complexity lens (gunbc.design_argument::self_hosting self-application). The grain is a FIELD on the registration and required_lenses_at_grain derives each execution's list from the one roster, so this cost argument is carried by the row rather than by which of two lists a lens was written into. Witness accumulation on the subtree fold CONCATENATES the child's accumulated list into the accumulator at every step and reverses once at the end, which copies one operand per step and is the accumulator-copy shape this very door's own lens exists to refuse (gunbc.design_argument::self_hosting self-application, measured and named rather than asserted away). It is stated here because this string is a COMPARED VALUE and a false cost claim in it would be green by equality on both sides. The repair is not an argument order: list_append costs its LEFT operand and the carrier's rc_list_concat copies its RIGHT one, and neither the accumulator nor a child's subtree accumulation is reliably the shorter, so a fold over a tree stays superlinear whichever way it is written. The defect, its capability trigger and the experiment already falsified against it are carried by gunbc.recurring_failure_mode enforcement_exhibits_the_shape_it_refuses. Required registrations at both grains fire on every validate_then_compile call regardless of caller-supplied lenses, and a caller-supplied lens now runs at ITS OWN declared grain rather than at root whatever it declared."
 
 // THE SINGLE REGISTRATION ROSTER. Every lens the compile door is obliged to run is a row here, at
 // the grain it is legitimate at; the two execution sites derive their lists from this one roster
@@ -393,7 +393,7 @@ fn required_lens_roster_digest() -> String {
 }
 
 // THE BIDIRECTIONAL JOIN. Registration and observation are two sides of one fact, and every way
-// they can disagree is an arm -- none of them a skip, none of them a widen (DESIGN section 5). A
+// they can disagree is an arm -- none of them a skip, none of them a widen (gunbc.design_argument::fail_closed). A
 // registration nobody observed is the silent hole this whole change exists to close; an observation
 // naming no registration is a lens running through the door off the roster; a grain disagreement
 // means the gate ran somewhere its own cost argument does not hold; a root lens observed twice means
@@ -440,7 +440,7 @@ type RequiredLensTally {
 
 // Joins are keyed through map_lookup on the display key, never through map_keys: a key-order read
 // is exactly what the determinism lens registered here refuses, and the join must be linear in the
-// observation count rather than quadratic over the roster (DESIGN section 6, bare minimum cost).
+// observation count rather than quadratic over the roster (gunbc.design_argument::how_to_work, bare minimum cost).
 fn required_lens_tally_observations(witnesses: List<LensGateWitness>) -> Map<String, RequiredLensTally> {
   fold_list(
     xs: witnesses,
@@ -856,7 +856,7 @@ fn validated_from_compile_output(
 // The arms are not decoration, because they are discriminated where their REDs are authorable: a
 // fixture may hand the join an observation set this door cannot produce, and
 // `v2.test.lens_application.required_lens_coverage_join` does exactly that for every arm. DESIGN
-// section 4b is explicit that a state unrepresentable in the accepted corpus may still be
+// gunbc.design_argument::guarantee_ladder is explicit that a state unrepresentable in the accepted corpus may still be
 // representable as source handed to the compiler by a fixture, and that declining the evidence
 // there would be specification-without-execution. The honest statement is therefore about grain:
 // fixture-grain the join discriminates six ways; door-grain it catches a duplicated or empty roster.
@@ -868,8 +868,8 @@ fn validated_from_compile_output(
 // TRIGGER for the door-grain claim to become the one this annotation used to make: an INDEPENDENT
 // observation channel -- a receipt carried out of the runner that executed the gates, rather than a
 // list re-derived from the roster it is compared against. Until an observation can disagree with a
-// registration at this door, no wording here may claim it would be caught (DESIGN sections 4b(1),
-// 4b(2), 5).
+// registration at this door, no wording here may claim it would be caught (gunbc.design_argument::guarantee_ladder (rung honesty),
+// gunbc.design_argument::guarantee_ladder (no untracked stall), 5).
 fn validate_then_compile(
   source: ResolvedTree,
   lenses: List<CompileLens>,
@@ -1015,7 +1015,7 @@ fn compile_ingest_with_admission(
 // compile_ingest_with_admission is the transaction a compiler driver wants -- source text and a
 // target in, emitted text out -- but it takes four arguments whose values are facts about HOW a
 // driver is admitting a single standalone source, not facts a command line supplies. Modelling
-// that binding here keeps the emitted `main` a thin argv shim: DESIGN section 6 lists a
+// that binding here keeps the emitted `main` a thin argv shim: gunbc.design_argument::how_to_work lists a
 // hand-authored projection the model should generate as a scaffold tell, and every line of driver
 // logic authored as Rust string literals in the emitter is seed that has to shrink later.
 //

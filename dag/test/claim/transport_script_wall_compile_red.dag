@@ -2,7 +2,7 @@ module test.claim.transport_script_wall_compile_red
 
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-// §5.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake
+// gunbc.design_argument::fail_closed.E wall REDs (operator acceptance 2026-07-24): the two documented transport-script fake
 // patterns, reconstructed AS WRITTEN, must FAIL TO COMPILE — not merely fail review. Each fake is
 // compiled as an inline virtual source through compile_dag_rust_emit_check, which returns false on
 // any hard diagnostic; the tests assert refusal (!compile). The construction wall —

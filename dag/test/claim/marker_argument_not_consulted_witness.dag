@@ -53,7 +53,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // what the compiler does today, so the claim stays falsifiable. If structural marker enforcement
 // ever lands, this arm goes RED -- and that red is correct and wants a human: it means the
 // guarantee changed, and every annotation reasoning from nominality needs re-reading. Per DESIGN
-// section 4b(4) the refusing arms do not retire when anything climbs; they become the regression
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) the refusing arms do not retire when anything climbs; they become the regression
 // controls that keep the higher rung real.
 //
 // WHY THE FIXTURES DECLARE THEIR OWN GENERIC RATHER THAN IMPORTING std.measure. The claim is about
@@ -97,11 +97,11 @@ data marker_arms: List<MarkerArm> = [
 
 // A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO: folding an unrunnable probe to 0
 // would make a broken harness read as an accepted source, which is the top-as-answer conflation
-// DESIGN section 5 forbids. Every expectation below is non-negative, so an unrunnable probe reds.
+// gunbc.design_argument::fail_closed forbids. Every expectation below is non-negative, so an unrunnable probe reds.
 
 // ONE COMPILE PER ARM, READ TWICE. The targeted-class count and the blocking total are two reads
 // of ONE census over the same source, so the census is demanded once and both readings are carried
-// out of the same match (DESIGN section 2: carry at the least common ancestor, never re-demand the
+// out of the same match (gunbc.design_argument::demand_before_materialization: carry at the least common ancestor, never re-demand the
 // same fact from the same producer). Review 66391 found the earlier form compiling every arm twice
 // and the baseline once per accepting arm.
 type ArmMeasure {
@@ -142,12 +142,12 @@ fn measure_arm(a: MarkerArm) -> ArmMeasure {
 // PROPERTY EMITS, which expect_class states exactly. An empty-string sentinel there would be a field
 // no reader consults, and the fold would have to route around it; then editing expect_class on that
 // arm would change nothing while the realization went on ignoring it, which is the validation-standing
-// -where-construction-was-available tell in DESIGN section 5. One fold, read on both branches.
+// -where-construction-was-available tell in gunbc.design_argument::fail_closed. One fold, read on both branches.
 // THE ACCEPTING ARMS NEED A MATCHED BASELINE, NOT JUST A ZERO. Asserting "zero TypeMismatch rows"
 // passes whenever the fixture is refused EARLIER BY ANOTHER DIAGNOSTIC CLASS, because then argument
 // compatibility is never reached and no TypeMismatch is ever emitted. The arm would stay green while
 // the inline acceptance this witness claims had stopped holding -- a green produced by the thing not
-// happening, which is the exact shape DESIGN section 5 calls specification-without-execution.
+// happening, which is the exact shape gunbc.design_argument::fail_closed calls specification-without-execution.
 //
 // inline_identical IS THE BASELINE AND IS NOT REDUNDANT WITH inline_distinct. The two fixtures are
 // byte-identical except that the baseline's two markers MATCH, so it is genuinely well typed. They
@@ -189,7 +189,7 @@ test fn m_every_arm_behaves_as_declared() -> Bool {
 // is vacuously TRUE over an empty list, so a rename, a typo or a deleted arm would make the headline
 // property below permanently green while asserting nothing -- acceptance as the FAILURE MODE of the
 // lookup, which is the same shape as the expect_class sentinel this witness removed two commits ago
-// and is satisfiable by editing the declaration while the realization lies (DESIGN section 5). The
+// and is satisfiable by editing the declaration while the realization lies (gunbc.design_argument::fail_closed). The
 // count conjunct makes the empty selection RED instead, so a rename reddens here rather than
 // quietly retiring the property. Requiring exactly one also catches a duplicated arm name, where
 // `all` would silently range over two fixtures and report on neither in particular.

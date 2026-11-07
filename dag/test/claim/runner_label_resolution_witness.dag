@@ -190,7 +190,7 @@ test fn witness_hosted_label_architecture_does_not_vary_with_repository_visibili
 // THE ORACLE IS THE ARM AND THE PROPERTY THAT DEFINES IT, NOT THE SIZE OF THE ROSTER. An earlier
 // revision asserted count(snapshots_consulted) == 7, which is a measurement of how many catalogs
 // happen to be enrolled today compared against a numeral copied from the same tree - DESIGN
-// section 5's change detector, green by construction until someone adds a provider and then
+// gunbc.design_argument::fail_closed's change detector, green by construction until someone adds a provider and then
 // "fixed" by editing the numeral. What actually distinguishes this arm from its neighbour is a
 // property of the SNAPSHOTS: the arm claims every consulted snapshot post-dates the observation,
 // and that claim is checkable against the same comparator the resolver used. If the split ever

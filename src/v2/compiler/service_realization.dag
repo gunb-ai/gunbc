@@ -75,7 +75,7 @@ import v2.std.node {
 // docs/plans/service-interface-and-uses-carriers.md, "Realization: a sibling node"). A service lowers
 // to its interface, a named product of operation Arrows. Its realization members -- transport,
 // config, exit, response, mock_response and each output's `from "key"` -- are a different fact (DESIGN
-// section 3: interface, realization and policy are three facts), so they lower into a sibling that
+// gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts), so they lower into a sibling that
 // MIRRORS the operation path under an unspellable root (ruling 2026-10-02, MIRROR):
 //
 //   <realization> -> <namespace body> { shell -> <namespace body> { Find -> LEAF } }
@@ -93,7 +93,7 @@ import v2.std.node {
 // binding fields, output channels and exit patterns; extdeps.ietf.http_semantics HttpStatusClass for a
 // response class), read here and never restated.
 //
-// STANDING (DESIGN section 3c): a declared frontier. Its consumers by execution in 3a are this wall and
+// STANDING (gunbc.design_argument::consumption): a declared frontier. Its consumers by execution in 3a are this wall and
 // v2.test.claim.service_realization_conformance; its production consumer is 3b's lowering
 // (v2.compiler.body_lowering_fold body_lower_service_decl), which emits the sibling and runs this wall on
 // it. TRIGGER: 3b lands. If 3b is abandoned the sibling's labels and this wall are deleted.
@@ -188,7 +188,7 @@ fn realization_connective_shape(c: Connective) -> RealizationNodeShape {
 
 // A STATUS PATTERN IS DECODED INTO ITS TRANSPORT'S OWN TYPE, and admitted only when it decodes: shell
 // into extdeps.transports.shell ShellExitPattern, rest into extdeps.transports.rest RestResponseStatus. The
-// decoded value is the single reading of the pattern (DESIGN section 5: derive, do not re-check). An exact
+// decoded value is the single reading of the pattern (gunbc.design_argument::fail_closed: derive, do not re-check). An exact
 // code is a Conj carrying one int literal, read by the dag language's own int reader. On shell it is an
 // exit status on its own integer route (extdeps.process.posix_exit), never an HTTP type; on rest it is
 // admitted only through std.types http_status_of, so 99 and 600 do not decode. A class (`5xx`) is a
@@ -586,7 +586,7 @@ fn transport_string_field_refusal(op: Node, value: Node) -> Optional<Realization
 // decomposes the same spelling through extdeps.uri_path parse_path_template). Do not rewrite the
 // corpus into a list of concat parts: that would be a second surface for one form. A string literal
 // is that template; a list or a #13405 concat stays Template<OperationInputName> as before. An
-// unknown hole or an unclosed brace refuses located (DESIGN 5), including `{name}` after `?`
+// unknown hole or an unclosed brace refuses located (gunbc.design_argument::fail_closed), including `{name}` after `?`
 // (extdeps.uri_path parse_query_template). This wall only binds those tokens to declared inputs.
 // A name that appears twice is still one input (RFC 6570 §3.2.1: the same variable may expand more
 // than once); both holes bind that identity. REST `body` is RestOtherContract (a record of fields),

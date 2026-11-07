@@ -32,7 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // carrier shaped exactly like the PartialFunction row before its repair -- alias rows declared,
 // method surface absent -- and the same predicate returns false on it. Without that control the
 // invariant would be permanently green over a roster that happens to satisfy it, which DESIGN.md
-// section 4b calls a decoration rather than a wall.
+// gunbc.design_argument::guarantee_ladder calls a decoration rather than a wall.
 
 // The ASCII-least spelling is taken through `sorted_map_keys` rather than through a hand-written
 // comparison, because `sorted_map_keys` is the same primitive `container_alias_canonical_spelling`

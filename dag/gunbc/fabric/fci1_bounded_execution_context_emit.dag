@@ -21,7 +21,7 @@ type Fci1BoundedExecutionContextEmission
 
 // THIS FUNCTION IS THE MEDIUM-AS-STRING CARRIER OF THE PAIR, AND IT RETIRES ON THE SAME TRIGGER AS
 // THE TWO SHELL FILES IT FEEDS. The bash is built by `join([...])` here rather than by orchestration
-// emit, which is the tell DESIGN section 6 names, admitted as an interim only because the trigger
+// emit, which is the tell gunbc.design_argument::how_to_work names, admitted as an interim only because the trigger
 // below names the capability that actually replaces it.
 //
 // dissolve-on: the bash target grammar gains the constructs the two shell files need ([[ ]] with
@@ -35,7 +35,7 @@ type Fci1BoundedExecutionContextEmission
 //
 // THE MARK IS HERE AND NOT ONLY ON THOSE TWO FILES BECAUSE THE TRIGGER WOULD OTHERWISE RETIRE THEM
 // AND LEAVE THIS ONE STANDING. A reader of this module has no way to reach a marker written in the
-// shell it emits, so the coverage would be real and invisible; DESIGN section 6 puts the mark on the
+// shell it emits, so the coverage would be real and invisible; gunbc.design_argument::how_to_work puts the mark on the
 // carrier rather than in a parallel ledger for exactly that reason.
 
 // Bootstrap-safe projection of the typed context coordinates needed before the first gunbc call.

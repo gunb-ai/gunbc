@@ -25,13 +25,13 @@ import std.decl_ref { DeclarationRef }
 //                              variant SAID nominal while the source checker and the chosen
 //                              representation both erase, and the coherence law never looked.
 // Choosing a representation without both answers is choosing semantics by accident (DESIGN
-// section 2: the concept first, the representation derived).
+// gunbc.design_argument::minimize_redundancy: the concept first, the representation derived).
 type SymbolValueSemantics
   = LexemeBacked
   | InternedIdentity
 
 // NominalityNotEnforced carries its cause and the CAPABILITY that restores enforcement (DESIGN
-// section 4b(3): the trigger names a capability, never an artifact contributing to one).
+// gunbc.design_argument::guarantee_ladder (no silent regression): the trigger names a capability, never an artifact contributing to one).
 type SymbolNominalityStanding
   = NominalityEnforced
   | NominalityNotEnforced { cause: NonEmptyStr, next_rung_trigger: NonEmptyStr }
@@ -79,7 +79,7 @@ type SymbolConsumerClass
   | SymbolAtHostBoundary
   | UnresolvedOrAmbiguousUse
 
-// A census row names the SYMBOL that is the evidence (DESIGN section 3 standing rule), never a
+// A census row names the SYMBOL that is the evidence (gunbc.design_argument::single_authority standing rule), never a
 // position, and states what was read there.
 type SymbolConsumerRow {
   consumer_class: SymbolConsumerClass

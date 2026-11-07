@@ -796,7 +796,7 @@ test fn witness_live_sessions_panel_rows() -> Bool {
 //
 // The assertions are deliberately NOT weakened to "refuses for any reason". That would have made the
 // witness pass while losing the only thing it discriminates: that the STANDING-INELIGIBLE cause is
-// what propagates. A check weakened until it greens is the escape hatch DESIGN section 5 forbids.
+// what propagates. A check weakened until it greens is the escape hatch gunbc.design_argument::fail_closed forbids.
 test fn witness_projection_standing_refusal_specimen_holds() -> Bool {
   let entry = fixture_projection_standing_refusal_tmux_entry()
   let node = sized_derivable(id: "panel-a", prs: [12], title: "Panel")
@@ -1321,7 +1321,7 @@ test fn witness_continuation_origin_branches_the_worktree_from_the_prior_attempt
   }
 }
 
-// THE SUPPLIED UNROOTED SPECIMEN (§3: a witness discriminates at one interface). The claims below
+// THE SUPPLIED UNROOTED SPECIMEN (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). The claims below
 // judge the refusal an unrooted chain produces, so the unrooted node is built HERE -- a row with no
 // parent -- rather than borrowed from the live roadmap authority, whose parents change for
 // unrelated reasons (#13052 gave the former live specimen one and turned both claims red).

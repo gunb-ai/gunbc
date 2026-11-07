@@ -93,7 +93,7 @@ fn stage_prerequisites(s: NamespaceCutStage) -> List<NamespaceCutStage> {
 //
 // The roster is DATA and not a per-stage total function, because exactly one stage has this join
 // and a total function over the chain would have returned the empty list for nine stages -- a
-// fold permanently green on nine of ten inputs, which DESIGN section 4b calls a decoration rather
+// fold permanently green on nine of ten inputs, which gunbc.design_argument::guarantee_ladder calls a decoration rather
 // than a weak wall. The stage it belongs to is named in its own name.
 data act0_release_milestones: List<ProgramMilestone> = [
   SelfHostRatchetGateEnrolled,
@@ -151,7 +151,7 @@ fn stage_delivery_evidence_label(k: StageDeliveryEvidenceKind) -> String {
   }
 }
 
-// A delivery receipt names the producer a reader re-runs -- DESIGN section 6, name the instrument
+// A delivery receipt names the producer a reader re-runs -- gunbc.design_argument::how_to_work, name the instrument
 // rather than transcribing its output -- and the discriminating run that showed it can report the
 // wrong answer. It carries NO base: see above.
 type StageDeliveryReceipt {
@@ -168,7 +168,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // Empty: neither instrument is delivered. XL-4's reference-graph instrument exists, but on the
 // production ingest route it emits no reference-derived edge for any fixture, so it has no accepted
 // positive control there (review 64925 on gunbc#11202). A receipt discriminated only over hand-built
-// roots would inflate the rung (DESIGN 4b(1)). The row lands when gunbc.instruments.reference_derived_graph main
+// roots would inflate the rung (gunbc.design_argument::guarantee_ladder (rung honesty)). The row lands when gunbc.instruments.reference_derived_graph main
 // exits success on the production route, which requires its positive control.
 // XL-0 OWES NO DELIVERY RECEIPT AND HAS NO DELIVERY KIND ON THIS CHANNEL, AND THAT WAS TESTED A
 // THIRD TIME ON gunbc#11582: one head restored DenominatorRosterInstrumentDelivered with a receipt
@@ -185,7 +185,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // once. WHAT WAS TRUE: it had been discriminated against HAND-BUILT Node trees, and on the tree the
 // production route actually yields it produced an EMPTY denominator -- zero mentions for a module
 // that plainly contains them. A green witness over a universe the corpus never produces is DESIGN
-// section 5's specification-without-execution wearing the costume of real execution, and a stage
+// gunbc.design_argument::fail_closed's specification-without-execution wearing the costume of real execution, and a stage
 // reading CLEAR off it would have reported a denominator that does not exist.
 //
 // ESTABLISHED BY EXECUTION, not by review: a substrate-only fixture drives the real ingest
@@ -226,7 +226,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //      "is absent" row was measured over the LAST root alone. That one manufactured a reported miss
 //      in PARAMETER type position that does not exist -- the row above is the corrected measurement.
 //   3. ATTRIBUTED AND REPAIRED (smart-lynx-554, 2026-09-18): the qualified cross-module miss. It
-//      was never a collector defect. The earliest unjustified boundary (DESIGN section 6b) was v2
+//      was never a collector defect. The earliest unjustified boundary (gunbc.design_argument::earliest_unjustified_boundary) was v2
 //      body lowering, which read the first dot of a postfix chain as a BINARY OPERATOR and dropped
 //      every later segment (`v2.test.p.value` reached the tree as Transform(dot, v2, test)), and
 //      lowered a qualified type in parameter position to its first atom. Nothing in the v2 front
@@ -249,7 +249,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 //      flattening was EMPTY. So a module with any fn DROPPED its type and data declarations
 //      silently, and a module with none kept them as raw shells that resolve walked as bare
 //      mentions. Two silent arms chosen by an unrelated declaration's presence is the absorbing
-//      fallback of DESIGN section 5. The repair, landed as gunbc#11574, is the declaration-grafting
+//      fallback of gunbc.design_argument::fail_closed. The repair, landed as gunbc#11574, is the declaration-grafting
 //      capability: every top-level unit is partitioned once (Named / residual / dissolved), so
 //      type and data declarations are Named containment edges beside fns; the RECORD spelling
 //      (field_decl_block) stays a residual shell under
@@ -262,7 +262,7 @@ data required_stage_delivery_evidence_kinds: List<StageDeliveryEvidenceKind> = [
 // of this note said it was. Body lowering (XL-2, gunbc#11207) restores the call classes and NOTHING
 // ELSE; the qualified cross-module class was independent of calls and has now landed on its own.
 // A trigger naming less than the capability it restores gets retired while the capability stays
-// dead, which DESIGN section 4b(3) names exactly. XL-0 derives when the roster's DECLARING
+// dead, which gunbc.design_argument::guarantee_ladder (no silent regression) names exactly. XL-0 derives when the roster's DECLARING
 // identities are the resolver's bindings rather than spellings (ResolverBoundDeclaringIdentity in
 // the status carrier); the producer answers on the production route today, and the base-pinned run
 // of it is ACT-0's DenominatorRosterDigest, a separate later fact.
@@ -382,7 +382,7 @@ data held_activation_receipts: List<ActivationReceipt> = []
 
 // The gate's outstanding receipt population, at receipt-kind identity grain: every required kind
 // not held. Parameterized on the held roster so a witness can author both the complete and the
-// incomplete population (the fixture boundary is the boundary that decides, DESIGN 4b).
+// incomplete population (the fixture boundary is the boundary that decides, gunbc.design_argument::guarantee_ladder).
 fn activation_receipts_outstanding(held: List<ActivationReceipt>) -> List<String> {
   required_activation_receipt_kinds
     |> filter(k => !any(held, r => activation_receipt_kind_label(k: r.kind) == activation_receipt_kind_label(k: k)))

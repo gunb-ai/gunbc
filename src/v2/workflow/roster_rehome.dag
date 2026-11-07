@@ -1075,7 +1075,7 @@ fn rehome_control_refuses(name: String, prepared: PreparedGrammar, lex: Prepared
   }
 }
 
-// RED (DESIGN section 5, typed AND located): a file the front end refuses yields a REFUSE cause with its reason, file and byte
+// RED (gunbc.design_argument::fail_closed, typed AND located): a file the front end refuses yields a REFUSE cause with its reason, file and byte
 // span from the stage's fatal diagnostic (v2.workflow.roster_import_sweep roster_stage_diagnostic, the ONE rule the sweep's
 // stage arms use too), not the bare stage name. On main this text refused as plain "parse-refused" with no position.
 fn rehome_control_stage_located(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {

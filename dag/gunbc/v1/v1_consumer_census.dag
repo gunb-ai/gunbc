@@ -42,7 +42,7 @@ import gunbc.rust_item_host_observation {
 // the exact relation. This census IS that remeasurement (XL-N Manager ruling, 2026-08-29: XL-5 is
 // the sole producer of the exact census and discharges the registered obligation). An earlier
 // revision of this file minted a four-arm V1ConsumerDisposition beside ConsumerDisposition; that
-// was a nickname for a concept with an authority, the DESIGN section 3 fork, and it is gone. The
+// was a nickname for a concept with an authority, the gunbc.design_argument::single_authority fork, and it is gone. The
 // four names the XL-5 brief uses map onto the authority's arms without loss: replaced-by-native-v2
 // is ReplacedByY; retired-with-deleted-subject is Retire; still-required-and-blocking is
 // RetainSameContract or RetainChangedContract with CoverageOpen -- which admit_replacement_cut_plan
@@ -129,7 +129,7 @@ fn consumer_medium_key(m: ConsumerMedium) -> String {
 
 // EVERY ROW NAMES THE INSTRUMENT THAT FOUND IT, AND THE COMMAND THAT RE-DERIVES IT. XL-5's standing
 // rule is that a number without a producer, a source revision and a command is not a number, and
-// DESIGN section 6 states the general form: name the instrument, never transcribe its output.
+// gunbc.design_argument::how_to_work states the general form: name the instrument, never transcribe its output.
 // Making the producer a REQUIRED FIELD turns that from a review habit into a construction -- a row
 // with no producer has no constructor, so an author cannot file a consumer they merely remember.
 // The command is carried verbatim so a reader re-derives rather than trusts; the revision is
@@ -142,7 +142,7 @@ fn consumer_medium_key(m: ConsumerMedium) -> String {
 // standing where a TREE id is declared (a commit is never its own tree; the pre-existing rows above
 // keep the two distinct, 0bdb8dc3's tree really is 168f313c), and for the unmerged-head producer a
 // prose phrase standing where a hex digest is declared. Both type-checked and both were fabricated
-// plausible output, which DESIGN section 5 forbids outright. The repair is the modelling the pin
+// plausible output, which gunbc.design_argument::fail_closed forbids outright. The repair is the modelling the pin
 // was missing rather than better strings: a producer that read a tree carries its identity, and a
 // producer that did not carries the basis for why -- an unmerged head, a live corpus walk whose
 // subject is whatever tree the lane runs on. The unobserved arm is not a weaker pin; it is the only
@@ -411,7 +411,7 @@ data witness_census_gate: String = "gunbc.v1.v1_witness_census v1_claim_conserva
 // What a `"claim_executor"` atom NAMES is a fact about this census's subjects, and the identity
 // spellings it resolves to are the DeclarationRef declarations directly above; a table living in
 // the instrument would have been a second copy of those references, which is the fork DESIGN
-// section 3 names. The instrument imports it. It also keeps the light half of the producer out of
+// gunbc.design_argument::single_authority names. The instrument imports it. It also keeps the light half of the producer out of
 // the heavy closure: the paired witness can ask what a lexeme means without pulling the declaration
 // index into a required-floor entry's dependency closure.
 
@@ -518,7 +518,7 @@ fn tsv_row(path_decl: String) -> V1ConsumerRow {
 // THE RETAINED-OPEN ROWS ARE THE TRANSACTION. Everything else is discharged by deleting a subject
 // or by a successor that already exists; the rows carrying CoverageOpen are the entire content of
 // 'XL-5 cannot run yet', and each justification names the CAPABILITY that closes it -- never an
-// artifact that would contribute to one, which DESIGN section 4b(3) rules is satisfied while the
+// artifact that would contribute to one, which gunbc.design_argument::guarantee_ladder (no silent regression) rules is satisfied while the
 // capability stays dead. That is the honest shape of a bankruptcy: the estate is mostly worthless,
 // and the whole question is the creditors who are still owed.
 //
@@ -653,7 +653,7 @@ data v1_interpreter_authority: DeclarationRef = decl_ref(module_path: "v1_compil
 
 // THE RUST REFERENCE POPULATION IS PRODUCED, NOT LISTED. This used to be four hand-named crate
 // roots (v1_shim_items), a measurement copied from the tree at one revision -- exactly the oracle
-// DESIGN section 5 refuses, because a fifth shim added tomorrow would not enter the census until an
+// gunbc.design_argument::fail_closed refuses, because a fifth shim added tomorrow would not enter the census until an
 // author remembered it. gunbc.rust_item_host_observation observe_rust_references now folds the
 // existing item scan over every hand-Rust file outside the deletion set whose text names one of the
 // tokens below, attributes each token-carrying line to the innermost enclosing item and projects
@@ -706,7 +706,7 @@ fn v1_reference_authority_for(token: String) -> V1ReferenceAuthorityLookup {
 // THE TWO MEDIA ARE PARTITIONS OF ONE READ OF HEAD. The Rust-reference medium folds the hand Rust
 // OUTSIDE the deletion set and the seed-link medium folds the Rust UNDER it; both are the same
 // HEAD, the same tree listing and the same generated population, split by one predicate. Reading
-// HEAD twice would be the authored duplication DESIGN section 2 prices at the visible ancestor --
+// HEAD twice would be the authored duplication gunbc.design_argument::minimize_redundancy prices at the visible ancestor --
 // and worse, two HeadCommit resolutions can straddle a push, so one census would report two trees
 // with nothing refusing. So the read happens once, here, and each medium takes its half.
 fn v1_rust_references_over(sources: HeadRustSources) -> RustReferenceObservation {
@@ -1684,11 +1684,11 @@ fn v1_consumers_for(partition: V1ShimPartition, join: MintedManifestJoin) -> Lis
 // parameter and reads it through the population accessors; the zero-argument forms exist for the
 // operator instrument and read the tree exactly once each. A caller asking several questions of
 // one tree binds v1_consumer_population() once and hands it down -- two calls are two scans of
-// HEAD, which DESIGN section 2 prices as authored duplication at a visible ancestor.
+// HEAD, which gunbc.design_argument::minimize_redundancy prices as authored duplication at a visible ancestor.
 
 // THE POPULATION THIS ROSTER CONSTITUTES TODAY, and it is deliberately not the Complete arm. Seven
 // producers were run and none of them joins the others. Filing this as Complete would be the rung
-// inflation DESIGN section 4b names as worse than sitting low, because the admission gate below
+// inflation gunbc.design_argument::guarantee_ladder names as worse than sitting low, because the admission gate below
 // reads this field and an inflated Complete would let the transaction execute against a population
 // that was never closed.
 fn v1_consumer_population_for(observation: RustReferenceObservation, seed_links: RustReferenceObservation) -> ConsumerPopulation {
@@ -1793,7 +1793,7 @@ fn v1_boundary_census(rows: List<V1ConsumerRow>) -> BoundaryCensus {
 // REFUSAL ONE, in the direction a census is most likely to fail: something is reachable and no row
 // disposes it. The discovered population is supplied by the CALLER rather than read from a field
 // here, because a census that supplies its own denominator is asserting completeness by writing it
-// down -- the change-detector shape DESIGN section 5 names, where automating the literal collapses
+// down -- the change-detector shape gunbc.design_argument::fail_closed names, where automating the literal collapses
 // the assertion to measure() == measure().
 fn v1_row_keys(rows: List<V1ConsumerRow>) -> List<String> {
   rows |> map(r => v1_row_key(r: r))
@@ -1826,7 +1826,7 @@ fn v1_every_row_names_a_live_consumer(discovered: List<String>, rows: List<V1Con
 // REFUSAL THREE, the load-bearing one: A DISPOSITION CANNOT BE MADE TRUE BY EDITING IT. A row may
 // CLAIM a successor authority; the claim holds only if that authority appears in a realized
 // population supplied from outside this module. Without this arm, ReplacedByY is an author's
-// intention typed into a field -- the tell DESIGN section 5 gives for validation standing where
+// intention typed into a field -- the tell gunbc.design_argument::fail_closed gives for validation standing where
 // construction was available.
 fn v1_claimed_successors(rows: List<V1ConsumerRow>) -> List<String> {
   rows |> flat_map(r => consumer_disposition_successors(d: r.boundary.disposition))
@@ -1925,7 +1925,7 @@ fn v1_undecided_row_count(rows: List<V1ConsumerRow>) -> Int {
 // IT IS A PROJECTION OF THE ROSTER, NOT A SECOND ROSTER: it concatenates the three buckets of one
 // partition, so nothing is added and nothing is dropped by construction rather than by three
 // filters agreeing. A worklist that could contain a row the census does not would be the parallel
-// authority DESIGN section 3 forbids.
+// authority gunbc.design_argument::single_authority forbids.
 fn v1_deletion_worklist(rows: List<V1ConsumerRow>) -> List<V1ConsumerRow> {
   let p = v1_worklist_partition(rows: rows)
   list_append(left: p.unjudged, right: list_append(left: p.retained_open, right: p.discharged))
@@ -1939,7 +1939,7 @@ fn v1_worklist_is_a_permutation(rows: List<V1ConsumerRow>) -> Bool {
 // how many unjudged rows stand before the first judged one; when that equals the unjudged total,
 // every unjudged row is in the leading segment, which is the ordering claim. Reading it off the
 // output is what makes the assertion independent of the implementation -- a check that restated the
-// concatenation order would be the second representation section 3 forbids, and would stay green if
+// concatenation order would be the second representation gunbc.design_argument::single_authority forbids, and would stay green if
 // the ordering were reversed and the check reversed with it.
 type WorklistLeadScan {
   still_leading: Bool

@@ -7,7 +7,7 @@ import std.types { String, NonEmptyStr, Bool, List }
 // This is the fabric CORE's half of isolation, and the split is the point: the core states the
 // guarantees a unit of work REQUIRES and an offer PROVIDES, while the mechanism that delivers them
 // -- an OCI container, systemd-nspawn, a microVM, a dedicated host -- is a realization handler.
-// Work and Grant never learn whether the executor used Podman or a VM, exactly as DESIGN section 3
+// Work and Grant never learn whether the executor used Podman or a VM, exactly as gunbc.design_argument::single_authority
 // puts transport outside the interface: a core that named containers could not admit a supplier
 // who satisfies the same guarantees another way, and the guarantee is what the tenant is owed.
 //
@@ -66,7 +66,7 @@ fn isolation_guarantee_label(g: IsolationGuarantee) -> String {
 //
 // A separate OfferIsolationCapability record would be a second spelling of one concept, and the
 // comparison below would then have to translate between them -- the nicknaming violation DESIGN
-// section 3 names, arriving as symmetry.
+// gunbc.design_argument::single_authority names, arriving as symmetry.
 type IsolationProfile {
   guarantees: List<IsolationGuarantee>
 }

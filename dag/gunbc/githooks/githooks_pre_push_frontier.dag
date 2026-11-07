@@ -15,9 +15,9 @@ module gunbc.githooks.githooks_pre_push_frontier
 // spells 'set -e' only —, the while-read loop, case/esac, [[ ]] tests, $(( )) arithmetic, and
 // >&2 fd redirection; with-redir is file-only and while/case are ingest-recognized-unmodeled in
 // gunbc.languages.bash_command_fold). Emitting those forms through concat is exactly the
-// refusal-flattening DESIGN §5 forbids. The hook STAYS shell permanently — a git hook is one of
+// refusal-flattening gunbc.design_argument::fail_closed forbids. The hook STAYS shell permanently — a git hook is one of
 // the foreign executors DESIGN's shell-to-intent routing names (GHA run:, cron, git hooks): no
-// gunbc runtime is present at push time (census §1.A category (a),
+// gunbc runtime is present at push time (census gunbc.design_argument::goal_safe_efficient_predictable.A category (a),
 // docs/plans/shell-to-dag-residual-census-and-arc-completion.md). The cutover changes who
 // assembles the bytes, never the language.
 //

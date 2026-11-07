@@ -5,7 +5,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.guarantee_rung { GuaranteeRung, Mitigatable }
 
 // WHY THIS CARRIER EXISTS AT ALL, since a reader will otherwise look for the
-// ruling in the plan documents where its neighbours live. DESIGN section 4c
+// ruling in the plan documents where its neighbours live. gunbc.design_argument::source_annotations
 // names RULING in the list of facts that belong in a typed carrier, so a
 // landing-order ruling with executable consequences was never supposed to live
 // in prose. It did anyway: the 2026-08-25 reordering was recorded only in an
@@ -98,7 +98,7 @@ fn ruling_superseded_identities(r: LandingOrderRuling) -> List<RulingIdentity> {
 // opposite remedies: an answer, nothing left standing (a cycle, or an empty
 // roster), and more than one ruling nobody superseded. Collapsing the last two
 // into Absent, or taking `first` of the survivors, would answer a question the
-// rows do not decide -- the fabricated plausible output DESIGN section 5
+// rows do not decide -- the fabricated plausible output gunbc.design_argument::fail_closed
 // forbids, in the one place a reader is most likely to trust it.
 type CurrentLandingOrder
   = CurrentPosition { position: CutStepPosition, ruling: RulingIdentity }
@@ -144,7 +144,7 @@ fn landing_order_derivation_witness() -> ProcessExit {
   }
 }
 
-// RUNG HONESTY (DESIGN 4b), declared rather than left to be rediscovered.
+// RUNG HONESTY (gunbc.design_argument::guarantee_ladder), declared rather than left to be rediscovered.
 // This carrier is at MITIGATABLE and nothing here is enforced. No lens reads
 // it, no gate joins it to a document, and a planning document may still state
 // an order contradicting current_landing_order with nothing refusing. What the
@@ -153,7 +153,7 @@ fn landing_order_derivation_witness() -> ProcessExit {
 // failure it was minted to close, not a general enforcement claim.
 // NEXT-RUNG TRIGGER: a lens joining authored landing-order prose to this
 // carrier, which is the same module-authorship-at-ingestion trigger DESIGN
-// section 6 already names for the deleted inert-lens census; the two should
+// gunbc.design_argument::how_to_work already names for the deleted inert-lens census; the two should
 // land together rather than each rebuilding a corpus walk.
 // The rung is the closed GuaranteeRung variant, not a string spelling it. It was
 // `String = "mitigatable"` until 2026-08-26 (review 56044) -- the one field in

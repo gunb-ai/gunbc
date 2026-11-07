@@ -26,7 +26,7 @@ import std.types { List }
 // v2.compiler.source_root_eval; the authority that JUDGES them is the native-route admission,
 // which the emitted native compiler evaluates over its own receipt. The compiler library
 // (v2.compiler.compile) does not import that authority. One vocabulary, two readers, one home
-// (DESIGN section 3): re-declaring the verdict or the member row beside the authority would be
+// (gunbc.design_argument::single_authority): re-declaring the verdict or the member row beside the authority would be
 // the nickname the authority's own header already refuses. NativeRouteMemberRow lives here so
 // dag consumers (gunbc.instrument_targets) that already import this module do not import
 // v2.workflow.*, and so the v2 route fold does not mint a second row type.
@@ -215,7 +215,7 @@ type NativeTestObservation {
 // advisory and the LAST link is the cause that refused. It is non-empty by construction (a head plus
 // a tail), and the head and fatal reasons are DERIVED from it
 // (native_test_file_refusal_head_reason, native_test_file_refusal_fatal_reason), never stored beside
-// it: stored copies were second spellings of chain[0] and chain[last] (DESIGN section 3).
+// it: stored copies were second spellings of chain[0] and chain[last] (gunbc.design_argument::single_authority).
 // Positions are RESOLVED at the absorb, against the refused file's own span index and text, so the
 // row retains no occurrence id: a refused parse's ids are re-minted by the next file, and a retained
 // NodeLocus would resolve to the wrong one.

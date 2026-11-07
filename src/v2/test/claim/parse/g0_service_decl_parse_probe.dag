@@ -45,7 +45,7 @@ fn smallest_service_parsed() -> Outcome<ParseArtifact> {
 // A refusal claim names the PARSE DOOR, so it must establish that the door is the thing that
 // refused. `parse_src` folds a tokenize rejection and a parse rejection into one `Rejected`, so a
 // helper that is merely the negation of `parses` is green whenever ANYTHING fails -- including a
-// fixture that never reached the parser. That is the absorbing arm DESIGN 5 refuses: it widens
+// fixture that never reached the parser. That is the absorbing arm gunbc.design_argument::fail_closed refuses: it widens
 // instead of discriminating, and every one of the five service refusals below would have passed
 // for a reason it is not about. This helper requires tokenize to ACCEPT and parse to REJECT, so the
 // stage is pinned and a fixture that dies in the lexer reds instead of flattering the claim.
@@ -143,8 +143,8 @@ test fn unknown_operation_modifier_still_refuses_holds() -> Bool {
   refuses_at_parse(src: unknown_modifier_red_source)
 }
 
-// RESTORED (gunbc#11955). An earlier revision retired this claim as a 4b(4) climb, arguing that
-// deleting the twelve keyword lex rules left its RED unauthorable. That is the one thing 4b(4)
+// RESTORED (gunbc#11955). An earlier revision retired this claim as a gunbc.design_argument::guarantee_ladder (dissolution on climb) climb, arguing that
+// deleting the twelve keyword lex rules left its RED unauthorable. That is the one thing gunbc.design_argument::guarantee_ladder (dissolution on climb)
 // does not permit: a climb dissolves the lower-rung PRODUCTION machinery and never the evidence.
 // The RED is authorable and this fixture IS the authoring -- 4b decides the question at the
 // fixture boundary, not the corpus boundary, and plain source using the marker words as ordinary
@@ -257,7 +257,7 @@ test fn plain_type_still_parses_holds() -> Bool {
 // operation entry to attach to and refuses located as unread. A config-only service and an empty
 // service admit: their members have carriers (XL-2 3c).
 // This pair was the retention route before the lowering landed; the climb keeps it as the permanent
-// control that normalize discriminates on what a service carries (DESIGN section 4b(4)). The type
+// control that normalize discriminates on what a service carries (gunbc.design_argument::guarantee_ladder (dissolution on climb)). The type
 // control is the positive half: a lowered type declaration is the cheapest lowered item.
 fn refused_as(ne: NonEmptyDiagnostics, reason: Symbol) -> Bool {
   fold_list(
@@ -291,7 +291,7 @@ fn normalize_admits(src: String) -> Bool {
 
 // Each route needs only a service declaration, not a populated one. The populated smallest_service
 // fixture measured 396ms here against the 302ms enrolment margin (floor run 35440687934), paying to
-// parse and normalize an operation this claim never inspects (DESIGN 3, a witness discriminates at
+// parse and normalize an operation this claim never inspects (gunbc.design_argument::single_authority, a witness discriminates at
 // one interface).
 data empty_service_source: String = "module m\nservice S {}\n"
 

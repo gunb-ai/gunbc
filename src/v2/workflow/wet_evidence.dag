@@ -22,7 +22,7 @@ import v2.workflow.floor_terminal_ledger {
 // module they each answered "did the wet evidence hold" with their own types:
 // `v2.workflow.local_repo_wet_terminal` for a co-resident execution the floor runs itself, and
 // `v2.workflow.floor_wet_route` for a receipt transported from a lane that ran elsewhere. One
-// question, two authorities, both imported by one fold -- the meaning fork DESIGN section 3
+// question, two authorities, both imported by one fold -- the meaning fork gunbc.design_argument::single_authority
 // forbids, and the reason its consumer could not state which relation admitted a row.
 //
 // THE TERMINAL VOCABULARY IS NOT MINTED HERE AND MUST NEVER BE. `v2.workflow.floor_terminal_ledger`
@@ -38,7 +38,7 @@ import v2.workflow.floor_terminal_ledger {
 // `completed_over_cost_requirement` apart from `interrupted_before_verdict`;
 // `local_repo_wet_terminal` un-collapsed `LocalRepoWetCompletedOverBudget` out of its nonterminal
 // arm; and `floor_wet_route` separated cost debt from no-verdict the same week, each without
-// reading the others. DESIGN section 6 asks for proven coincidence before unifying vocabulary, and
+// reading the others. gunbc.design_argument::how_to_work asks for proven coincidence before unifying vocabulary, and
 // four arrivals is that proof -- a far better argument than reasoning about elegance.
 
 // WHICH ROUTE PRODUCED A ROW. Not decoration: the two routes have DIFFERENT DRY ANTECEDENTS (see
@@ -67,7 +67,7 @@ type WetRoute
 // after a deliberate decline, and a transported receipt after an observed hermetic route gap --
 // and nothing read the second field, so the distinction was COMMENTARY a realization could
 // contradict. An ordinary data row whose only function is to say something is what DESIGN section
-// 4c forbids, and a check standing where construction was available is what section 5 forbids.
+// 4c forbids, and a check standing where construction was available is what gunbc.design_argument::fail_closed forbids.
 //
 // The repair is structural rather than a validator: the invalid combinations have NO CONSTRUCTOR.
 // The route is DERIVED from the antecedent below, so the two can no longer disagree -- rung 4
@@ -225,7 +225,7 @@ type WetTerminal
 // requirement's derived route. The requirement says which route this batch is being validated
 // UNDER; this field says which route the executor reports it ACTUALLY ran. Deriving it away would
 // make the foreign-route refusal below unreachable by construction, which is the decoration DESIGN
-// section 4b warns about: a check whose RED cannot be authored. So the schedule's route is derived
+// gunbc.design_argument::guarantee_ladder warns about: a check whose RED cannot be authored. So the schedule's route is derived
 // and the observation's route is carried, and the join between them is load-bearing.
 type WetTerminalRow {
   route: WetRoute
@@ -339,7 +339,7 @@ fn wet_terminals_for(name: String, terminals: List<WetTerminalRow>) -> List<WetT
 // scheduled it, bound to this tree by the required relation, naming the entry and function that
 // were actually resolved, with a disposition the expectation admits. A claim never invoked because
 // its declared host premise read back unmet refuses as `WetTerminalHostPremiseUnmet`: the runner,
-// not the subject. Still a refusal -- never a pass, a skip or a widen (DESIGN section 5) -- but its
+// not the subject. Still a refusal -- never a pass, a skip or a widen (gunbc.design_argument::fail_closed) -- but its
 // remedy is the host the lane ran on.
 fn wet_forward_causes(
   scheduled: List<WetScheduledClaim>,
@@ -528,7 +528,7 @@ fn wet_cross_route_overlap_causes(
 
 // ONE BATCH PER REQUIREMENT, NEVER BOTH ROUTES CONCATENATED INTO ONE CALL. The two routes require
 // different binding relations, so a merged call would have to WEAKEN the requirement to admit both
-// -- widening instead of refusing, which is the absorbing-fallback arm DESIGN section 5 forbids.
+// -- widening instead of refusing, which is the absorbing-fallback arm gunbc.design_argument::fail_closed forbids.
 // Callers validate once per requirement and aggregate the typed results afterward.
 //
 // AND A CONSEQUENCE FOR CONSUMERS: `WetEvidenceRefused` must NOT be read wholesale as "the receipt

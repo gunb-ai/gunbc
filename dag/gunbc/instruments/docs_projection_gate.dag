@@ -103,7 +103,7 @@ fn docs_located_artifacts() -> List<GeneratedArtifact> {
 // registry and the two predicates commute, so filtering the docs-located list by the commit policy
 // yields the identical set for one walk instead of two.
 //
-// This is the same DESIGN section 2 repair review 65295 named one level down, found by following
+// This is the same gunbc.design_argument::minimize_redundancy repair review 65295 named one level down, found by following
 // its own reasoning outward: the floor reported this module's regen_writes_more_than_main_agrees
 // over the diagnostic cost line at 39962 eval steps while passing, and a witness that passes today
 // on a fast host is the one that refuses tomorrow on a slow one -- which is how the enrolment
@@ -119,7 +119,7 @@ fn committed_docs_located_artifacts() -> List<GeneratedArtifact> {
 // that was then thrown away, after which main and regen rendered the same document a second time
 // to use it. Two renders per projection per run, the first of them pure loss.
 //
-// DESIGN section 2 names this case: several demands sharing a least common ancestor are authored
+// gunbc.design_argument::demand_before_materialization names this case: several demands sharing a least common ancestor are authored
 // duplication, and the repair is to carry the first value rather than to make the repeat cheap.
 // The ancestor is the fold, so the resolution happens once and the SAME list feeds the coverage
 // check and the write-or-agree. The coverage question survives as a property OF a resolution
@@ -152,7 +152,7 @@ fn artifact_has_docs_producer(a: GeneratedArtifact) -> Bool {
 //
 // Production passes the derived population; a fixture passes one it authored. Before this split
 // the fold read `docs_located_artifacts()` directly, and the consequence was the shape DESIGN
-// section 4b warns about from the other end: the refusing state was unreachable from any fixture,
+// gunbc.design_argument::guarantee_ladder warns about from the other end: the refusing state was unreachable from any fixture,
 // because every docs-located variant in the registry HAS a producer, so no hermetic input could
 // make this arm red. A caller-supplied population fixes that -- pass an artifact with no producer
 // and the refusal fires -- and it costs nothing, because the filter no longer resolves the whole
@@ -182,7 +182,7 @@ fn artifact_has_docs_producer(a: GeneratedArtifact) -> Bool {
 // module produces them -- are total functions OF THE VARIANT, so no live variant can be handed in
 // carrying the forbidden combination, and a fold taking `List<GeneratedArtifact>` would have been
 // permanently green no matter what population a fixture supplied. Carrying the two facts as data
-// is the difference between a wall and a decoration (DESIGN section 4b). The host side projects
+// is the difference between a wall and a decoration (gunbc.design_argument::guarantee_ladder). The host side projects
 // once; the verdict below is pure and witnessable from authored rows.
 type DocsArtifactPlacement {
   path: String
@@ -234,7 +234,7 @@ fn docs_placement_verdict_over(placements: List<DocsArtifactPlacement>) -> Proce
 // THIS IS THE SAME DEFECT THE `RESOLVE ONCE AND CARRY THE BYTES` NOTE ABOVE RECORDS, REINTRODUCED
 // BY THE CHANGE THAT ADDED THIS ARM. It is worth saying plainly rather than quietly fixing: the
 // repair was already written down in this module, in a comment naming the exact shape, and the
-// next edit walked into it anyway. DESIGN section 6 rules that a proven cost-shape defect is
+// next edit walked into it anyway. gunbc.design_argument::how_to_work rules that a proven cost-shape defect is
 // always fixed regardless of the realized n, and this module is the one whose arm the floor's
 // enrolment margin has already refused once on cost.
 fn docs_placement_verdict() -> ProcessExit {

@@ -27,7 +27,7 @@ data one_dissolution_event_recorded_twice_or_not_at_all: RecurringFailureMode = 
 
     "HARM: both wrong arms are silent and neither is countable.",
 
-    "Yield when nothing else is recording and N admissions vanish from main unexplained, which is precisely what the roster history exists to prevent; author when something else is recording and one event acquires two ordinal-bearing records, a DESIGN section 3 meaning fork committed inside the ledger that explains the deletion.",
+    "Yield when nothing else is recording and N admissions vanish from main unexplained, which is precisely what the roster history exists to prevent; author when something else is recording and one event acquires two ordinal-bearing records, a gunbc.design_argument::single_authority meaning fork committed inside the ledger that explains the deletion.",
 
     "THE DECIDING INPUT IS UNREADABLE, WHICH IS THE WHOLE CLASS: choosing between the arms requires knowing whether a competing branch is LIVE AND RECORDING.",
 
@@ -81,7 +81,7 @@ data one_dissolution_event_recorded_twice_or_not_at_all: RecurringFailureMode = 
 
     "AN AT-MOST-ONE WALL IS NOT SUFFICIENT AND AN EARLIER REVISION OF THIS ROW NAMED ONE: refusing a record whose label already carries one says nothing about consumed rows deleted with NO record, which is half of the invalid state above.",
 
-    "That is the section 4b(3) grain mismatch -- a two-armed loss under a one-armed trigger -- committed in the same row that warns against it.",
+    "That is the gunbc.design_argument::guarantee_ladder (no silent regression) grain mismatch -- a two-armed loss under a one-armed trigger -- committed in the same row that warns against it.",
 
     "ITS DISCRIMINATING REDS ARE BOTH ARMS AND ONE OF THEM MUST CROSS THE RACE: consumed rows deleted with ZERO record; one event carrying TWO records; and, because a static two-record fixture does not exercise the actual specimen, TWO CONCURRENT BRANCHES SHARING A BASE WITH NO RECORD, each locally clean and admissible, where the SECOND composition refuses after the first lands.",
 
@@ -91,7 +91,7 @@ data one_dissolution_event_recorded_twice_or_not_at_all: RecurringFailureMode = 
 
     "Here it is a WRITE DECISION with no readable input at all, repaired by making a second record refuse.",
 
-    "Neither repair transfers, which is DESIGN section 4b's keying-on-the-repair test.)",
+    "Neither repair transfers, which is gunbc.design_argument::guarantee_ladder's keying-on-the-repair test.)",
   ],
 
   evidence: [],

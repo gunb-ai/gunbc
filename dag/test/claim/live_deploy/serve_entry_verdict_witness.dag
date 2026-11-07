@@ -172,7 +172,7 @@ test fn witness_round_trip_admitted() -> Bool {
 }
 
 // THE LOSS THE OLD FORK HID: the plan observed TWO diagnostics; the swap must see two, in order,
-// byte for byte -- not one joined text. This is the §2 consolidation's executing proof.
+// byte for byte -- not one joined text. This is the gunbc.design_argument::minimize_redundancy consolidation's executing proof.
 test fn witness_round_trip_blocked_keeps_the_diagnostics_list() -> Bool {
   match serve_entry_verdict_decode(raw: serialize_json(v: serve_entry_verdict_json(record: fixture_blocked()))) {
     ServeEntryVerdictDecoded { record } =>

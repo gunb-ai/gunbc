@@ -7,8 +7,8 @@ import v2.std.text { String }
 // REPRESENTATION. `gunbc.floor_cost_distribution` reads the same three quantities off the artifact
 // as `Millisecond`; typing them as bare scalars here would give one clock quantity two
 // representations with the AUTHORITY side unable to stop a figure from another clock being
-// assigned into it -- the exact fork DESIGN section 3 forbids, and validation-by-naming standing
-// where construction was available (DESIGN section 5). The `exact_` / `_lower_bound_` spellings
+// assigned into it -- the exact fork gunbc.design_argument::single_authority forbids, and validation-by-naming standing
+// where construction was available (gunbc.design_argument::fail_closed). The `exact_` / `_lower_bound_` spellings
 // separate the two READINGS; `Millisecond` is what makes each one a duration at all. Both are
 // needed and neither substitutes for the other.
 //
@@ -23,7 +23,7 @@ import std.algebra { Cons, Empty }
 // with an observation BINDING closure -- whether a measurement attempt may certify the required
 // floor -- and a terminal-ledger wire it never finished. Those answer WHICH ATTEMPT MAY CERTIFY,
 // which is a different question with a different invalid state, so they are deliberately not
-// carried here: widening a class's repair to a second class is the shape DESIGN section 6 prices
+// carried here: widening a class's repair to a second class is the shape gunbc.design_argument::how_to_work prices
 // as redundant work. What is revived is the part that repairs THIS class, and it lands with a
 // consumer rather than as a model waiting for one.
 //
@@ -75,7 +75,7 @@ type RightCensoredCost {
 // `CostObservationUnavailable` is not a third reading: it is the honest arm for a row the
 // instrument was asked about and produced nothing for. It exists so that a missing observation
 // refuses as a deficit rather than being defaulted to a zero that sits silently at the bottom of
-// every band -- the absorbing fallback DESIGN section 5 forbids.
+// every band -- the absorbing fallback gunbc.design_argument::fail_closed forbids.
 type ClaimCostObservation
   = ExactCompletionCostObserved { exact: ExactCompletionCost }
   | RightCensoredCostObserved { censored: RightCensoredCost }

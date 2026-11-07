@@ -83,7 +83,7 @@ fn lifecycle_unknown(u: UnitLifecycle) -> Bool {
 // So the fold's claim sits in the hermetic witness that is discovered every run, and what stays
 // here is the half that genuinely needs the host: the inhabitance claim below.
 //
-// THE INHABITANCE HALF (DESIGN section 3, the pairing obligation). The claim above supplies the
+// THE INHABITANCE HALF (gunbc.design_argument::witness_one_interface, the pairing obligation). The claim above supplies the
 // boundary's inputs, so something must still establish that the REAL producer emits that shape and
 // that the real route runs. On a host WITH a manager this asserts the route reaches a RETURNED
 // reading on which the termination and lifecycle routes agree, which is the half the wet lane can

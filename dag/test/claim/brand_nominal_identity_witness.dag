@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // brand identity was the LITERAL STRING -- v1.compiler.infer where_refinement_predicates_equivalent
 // dispatched Brand to where_predicate_literal_string_args_match -- so two declarations sharing a
 // spelling were ONE type and the cast between them was not merely unenforced, it was not a cast at
-// all. That is DESIGN section 3's meaning fork with the two halves swapped: not one concept wearing
+// all. That is gunbc.design_argument::single_authority's meaning fork with the two halves swapped: not one concept wearing
 // two names, but one name silently merging two concepts.
 //
 // THE COLLISION WAS AUTHORED IN THIS REPOSITORY AND ACCEPTED SILENTLY. gunbc.fleet
@@ -59,7 +59,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 //                 when it is used twice, and that failure is silent in the opposite direction.
 //
 // DUAL and CONSTRUCT were green before the change and must stay green; COLLISION and MISMATCH were
-// green before the change and must now be red. Neither pair retires: per DESIGN section 4b(4) the
+// green before the change and must now be red. Neither pair retires: per gunbc.design_argument::guarantee_ladder (dissolution on climb) the
 // expecting-red arms flip to permanent regression controls rather than dissolving, and the
 // accepting arms are what prove the wall did not swallow legitimate construction.
 
@@ -73,7 +73,7 @@ type BrandArm {
 // THE REFUSING FIXTURES ARE INVALID PROGRAMS HANDED TO THE COMPILER, WHICH IS WHY THE RED IS
 // AUTHORABLE AT ALL. (The accepting arms are VALID programs, and prove the wall does not swallow
 // them; only the refusing three are the invalid-program half of this argument.) DESIGN
-// section 4b's top-rung question asks whether the forbidden state can be
+// gunbc.design_argument::guarantee_ladder's top-rung question asks whether the forbidden state can be
 // expressed anywhere the check could run. It cannot be expressed in the ACCEPTED corpus -- the
 // annotation-erased census finds 236 brand declarations carrying 236 distinct literals, zero
 // duplicates -- but a compiler's regression probes are precisely invalid programs, and here the
@@ -120,7 +120,7 @@ data brand_arms: List<BrandArm> = [
 
 // A NEGATIVE COUNT IS THE COULD-NOT-MEASURE ARM AND NEVER A ZERO. CensusNotRunnable is an
 // infrastructural failure of the probe compile; folding it to 0 would make a broken harness read as
-// an accepted source, which is the top-as-answer conflation DESIGN section 5 forbids. Every
+// an accepted source, which is the top-as-answer conflation gunbc.design_argument::fail_closed forbids. Every
 // assertion below compares against a non-negative expectation, so an unrunnable probe reds.
 
 fn arm_blocking_count(a: BrandArm) -> Int {

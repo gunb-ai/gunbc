@@ -58,7 +58,7 @@ The July §4 snapshot missed later `package_delivery`, `codex_app_server_press` 
 
 ### Obligations across lanes
 
-CLI lane owes a negative falsifier proving a Redfish/REST path reaches no JqInvocation, CliSurface, ProcessArgvExpansion or shell target, and its scoped supersession statement: argv ceases to be terminal authority only inside CLI-backed handlers. This does not replace domain effects, typed extdeps, host routing or native realizations. DESIGN §3 already owns the interface/realization/policy split; no extra authority paragraph is needed. Existing `retained_runtime`/`retained_srvn` populations and host-effect completion require their own closeout; dated census counts do not discharge them.
+CLI lane owes a negative falsifier proving a Redfish/REST path reaches no JqInvocation, CliSurface, ProcessArgvExpansion or shell target, and its scoped supersession statement: argv ceases to be terminal authority only inside CLI-backed handlers. This does not replace domain effects, typed extdeps, host routing or native realizations. gunbc.design_argument::single_authority already owns the interface/realization/policy split; no extra authority paragraph is needed. Existing `retained_runtime`/`retained_srvn` populations and host-effect completion require their own closeout; dated census counts do not discharge them.
 
 ## 1. Residual-shell census (dated observations and retained obligations)
 
@@ -202,7 +202,7 @@ The construction half of the global transport wall has **since closed too**: `Tr
 
 **Why now:** a "migration" wave (#7004, #7006, and the closed srv* cluster) counted **relocations** as progress — it moved `ShellCommand{script: concat(...)}` out of the intent file into a new `*_script.dag` file and realized a typed variant by *calling that concat and stuffing the raw string back into `ShellOnHost{script}`*. Net raw-shell-string construction: unchanged; new §3 coproduct-nickname debt added. This census exists so no site is counted done until the concat is **gone**, not homed elsewhere.
 
-> **Anchoring (addresses review 41399 / DESIGN §6):** rows are keyed on **file + symbol name** (variant, fn), NOT line numbers — a line-numbered prose ledger drifts from the tree within a commit (it did: the first draft was mis-grounded on a divergent worktree that still had the pre-#7006 `ShellCommand{script}` sites; on `origin/main` those are already the nickname variants). Symbol anchors are stable across line moves. Grounded at `origin/main` @ `78f43c38`; an interim tracker that dissolves into the enforcement lens (§4.F), the drift-proof authority.
+> **Anchoring (addresses review 41399 / gunbc.design_argument::how_to_work):** rows are keyed on **file + symbol name** (variant, fn), NOT line numbers — a line-numbered prose ledger drifts from the tree within a commit (it did: the first draft was mis-grounded on a divergent worktree that still had the pre-#7006 `ShellCommand{script}` sites; on `origin/main` those are already the nickname variants). Symbol anchors are stable across line moves. Grounded at `origin/main` @ `78f43c38`; an interim tracker that dissolves into the enforcement lens (§4.F), the drift-proof authority.
 
 ### 4.0 Completeness method (proves this is exhaustive, not sampled)
 
@@ -257,7 +257,7 @@ Residue only (not construction to migrate):
 | site (file · symbol) | what | action |
 | --- | --- | --- |
 | `gunbc.host.host_effect_plan` (no longer present at this revision) · `ShellCommand { script: "" }` | empty placeholder | delete with the type — **still present** (verified 2026-07-26) |
-| `gunbc.host.host_effect` (no longer present at this revision) · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (DESIGN §5, escalated) — terminal; **still present** |
+| `gunbc.host.host_effect` (no longer present at this revision) · `ShellCommand { script: String }` | the **type variant** itself | delete at arc close (gunbc.design_argument::fail_closed, escalated) — terminal; **still present** |
 | `gunbc.fleet.fleet_converge_cli` (no longer present at this revision) · `ShellCommand { script: _ } => fallback` | a **match arm**, not a construction site — consumes the variant, builds no string | *(row added by the 2026-07-26 true-up; previously uncensused)* dissolves with the type variant above. Listed so the arc-close delete has a complete consumer list — a missed match arm is what turns the terminal delete into a non-exhaustive-match break |
 
 *(The first draft mis-grounded on a divergent worktree — `fleet_show`/`host_identity` corrected to 4.A per review 41399 — and then under-scoped P1 to single-line, missing these `readiness.dag` sites per review 41467. Both fixed.)*

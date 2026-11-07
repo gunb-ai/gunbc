@@ -322,7 +322,7 @@ fn harness_observe_route(acc: HarnessRosterFold, route: ServingRoute) -> Harness
 // harness_default_requirement_places_on_operator_endpoint). One authorised GET of the route's models path over
 // the pinned certificate: an unanswered router is HarnessBackendUnreachable, a certificate that is not the pinned
 // one is unreadable with the refusal named, and a rejected key is the status the router answered. None falls
-// back to another route (DESIGN section 5).
+// back to another route (gunbc.design_argument::fail_closed).
 fn harness_observe_operator_reading(route: HarnessOperatorRoute) -> OperatorModelsReading {
   match operator_models_url(route: route) {
     Absent => OperatorFrontUnanswered { url: "the operator endpoint URL could not be composed" }
@@ -417,7 +417,7 @@ fn harness_declines_detail(declined: List<HarnessRouteDecline>, unresolved: List
 // consumer and now acquires a seat like every other turn. A rendering function survived that cut
 // with NO CONSUMER ANYWHERE -- no entry point, no CLI arm, no witness -- and this branch deletes it
 // rather than porting it to the new route shape: a projection nothing reads is authoring, review and
-// maintenance cost against a benefit of zero (DESIGN section 3c), and rewriting one to keep it
+// maintenance cost against a benefit of zero (gunbc.design_argument::consumption), and rewriting one to keep it
 // compiling is that cost paid twice. What is observable is observable through the roster above,
 // which the dispatch and belt preflights do consume.
 
@@ -452,7 +452,7 @@ fn harness_metrics_url(endpoint: ServingRouteEndpoint) -> String {
 // and the uniqueness check above would refuse the whole family. That is a narrower SELECTOR, not a
 // second way to read a line: a copy of this body with one extra predicate would mean the exactly-one
 // law, the value-field position and every future repair to Prometheus line reading were written
-// twice, and a repair would land in one copy and silently not the other (DESIGN section 2).
+// twice, and a repair would land in one copy and silently not the other (gunbc.design_argument::minimize_redundancy).
 type MetricLineSelector
   = SeriesByName
   | SeriesByNameAndLabel { pair: NonEmptyStr }

@@ -33,7 +33,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 // not a store it is allowed to own. The direction people do NOT notice is the one that actually applied here
 // for the whole life of these files: the claims never ran, so a confinement guarantee that reads as tested (a
 // registered wet claim, in the corpus, with a PASS-shaped name) had no execution behind it at all. DESIGN.md
-// section 5 names this exact shape "a claim that cannot fail is a claim that was never executed".
+// gunbc.design_argument::fail_closed names this exact shape "a claim that cannot fail is a claim that was never executed".
 //
 // THE DISTINGUISHING FACTS — WHAT SEPARATES THIS STATE FROM AN ORDINARY RED WET CLAIM, AND WHY NOTHING IN THE
 // PRESENT CORPUS SEPARATES THEM.
@@ -65,7 +65,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 //      root.
 //
 // WHAT WOULD REFUSE IT, AND WHAT WOULD NOT. A test of the derivation, or one more assertion inside the same
-// witness, cannot: both are written by the party that chose the target, which is DESIGN.md section 3's point
+// witness, cannot: both are written by the party that chose the target, which is gunbc.design_argument::single_authority's point
 // that a witness and its subject need separate sources of truth. What refuses is a check that reads the
 // witness's declared install target from OUTSIDE it and asks two questions no participant in the witness
 // answers: is the target host-supplied, and is it a path the production layout hands to a privileged writer.

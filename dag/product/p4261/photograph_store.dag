@@ -15,7 +15,7 @@ import product.p4261.e1_photographs { e1_photographs }
 // stale copy could establish photo coverage by passing a list it liked, fabricated rows included, and the
 // model would have no way to tell that the coverage was asserted rather than held. So the binding
 // board -> frames lives HERE, one row per board, and everything that needs the answer asks this module
-// (DESIGN §3: a fact has one home; the same reason `product.p4261.carrier` owns which layout belongs to
+// (gunbc.design_argument::single_authority: a fact has one home; the same reason `product.p4261.carrier` owns which layout belongs to
 // which board rather than letting callers pair them).
 //
 // The store PARAMETER stays at the evidence level -- product.p4261.evidence's `reading_groundings(store:,
@@ -66,7 +66,7 @@ type PhotographStoreForBoard
   // ground a reading about this one. Such a row is not filtered away on the way to a verdict -- a store that
   // says E1 and holds K1 frames is broken evidence, and the only honest thing a lookup can do with it is
   // refuse and name the foreign rows, so the person who assembled the store sees exactly which rows to fix
-  // (DESIGN §4d: a defect stays visible rather than being smoothed into a passing check).
+  // (gunbc.design_argument::epistemic_humility: a defect stays visible rather than being smoothed into a passing check).
   | StoreRowHoldsForeignFrames { board: PhysicalAssetIdentity, foreign: List<Photograph> }
   | NoStoreForBoard { board: PhysicalAssetIdentity, obligation: NonEmptyStr }
 

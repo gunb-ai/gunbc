@@ -18,7 +18,7 @@ import extdeps.git.inspect
 // So the scoped round REFUSES a tree with an uncommitted .dag path, and refuses a tree whose
 // status it cannot read. It does not widen to the whole population: "regenerate everything"
 // and "the edit observation cannot see this edit" are different states, and widening would be
-// the absorbing fallback DESIGN section 5 forbids. The remedy is in the refusal -- commit the
+// the absorbing fallback gunbc.design_argument::fail_closed forbids. The remedy is in the refusal -- commit the
 // edit, or run the unscoped round, which reads no diff and is therefore correct on any tree.
 //
 // WHY ONLY .dag PATHS. The bound's population is .dag modules (edited_population_from_diff

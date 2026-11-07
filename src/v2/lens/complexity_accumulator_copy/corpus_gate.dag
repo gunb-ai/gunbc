@@ -25,7 +25,7 @@ import v2.std.text { String }
 
 // THE POPULATION IS DISCOVERED, NOT AUTHORED. The roster gate beside this module asks the same
 // question of nine hand-picked paths, so its answer is about those nine and the corpus outside
-// them is not clean but UNASKED -- coverage by illusion in the shape DESIGN section 6 names. This
+// them is not clean but UNASKED -- coverage by illusion in the shape gunbc.design_argument::how_to_work names. This
 // module takes the subject universe from module_declaration_facts_live, the same host producer the
 // module graph resolves the corpus with, so adding a .dag file adds a subject with no edit here.
 //
@@ -55,7 +55,7 @@ type CorpusFileRow {
 }
 
 // THIS FOLD REBUILDS ITS ACCUMULATOR, WHICH IS THE SHAPE THIS VERY LENS CONVICTS, AND THE
-// JUSTIFICATION IS STRUCTURAL RATHER THAN "n IS SMALL HERE" -- DESIGN section 6 rejects that excuse
+// JUSTIFICATION IS STRUCTURAL RATHER THAN "n IS SMALL HERE" -- gunbc.design_argument::how_to_work rejects that excuse
 // because reuse changes n. The bound here is not incidental: RefusalCauseCount is keyed on the
 // Unclassifiable cause, the causes are a CLOSED set fixed by the analyze module's arms, so this
 // list cannot exceed that set however large the corpus grows. The rebuild is over a constant, and
@@ -135,7 +135,7 @@ fn corpus_rows(pool_roots: List<String>) -> List<CorpusFileRow> {
 
 // SUSPECTS AND UNREADABLE SUBJECTS ARE CARRIED AT IDENTITY GRAIN, NOT AS COUNTS. A count says how
 // many and never which, so it cannot be joined against anything and a removal cannot be given a
-// disposition (DESIGN section 5, the monotone debt contract).
+// disposition (gunbc.design_argument::fail_closed, the monotone debt contract).
 
 fn corpus_suspect_paths(rows: List<CorpusFileRow>) -> List<String> {
   list_reverse(xs: fold_list(
@@ -250,7 +250,7 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // a single-process fold over a discovered population can be killed by the host partway through
 // (SIGSEGV out of the interpreter's unbounded native walk), and what survives is a report in the
 // same SHAPE as a complete one, one page shorter. That class sits BELOW the ladder, which DESIGN
-// section 5 forbids outright rather than admitting as a low rung, so it does not wait for its
+// gunbc.design_argument::fail_closed forbids outright rather than admitting as a low rung, so it does not wait for its
 // trigger: this comparison ends a silence, which is the forbidden half.
 //
 // BUT NOT THE CRASH'S SILENCE, AND THE DIFFERENCE IS EXACT. corpus_gate evaluates
@@ -262,7 +262,7 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 // locus -- is named in that row, and when it lands these witnesses stay as the regression control
 // that the higher rung is real rather than retiring with the mitigation.
 //
-// IT IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, per DESIGN section 5: rows are produced from the
+// IT IS AN IDENTITY JOIN, NOT A COUNT EQUALITY, per gunbc.design_argument::fail_closed: rows are produced from the
 // discovered list in order, so the two are walked in lockstep and the first position where they
 // disagree -- or where the rows run out -- ends the covered prefix and everything from there is
 // reported as missing BY NAME. A count comparison would pass a report that analysed one subject
@@ -271,7 +271,7 @@ fn corpus_report(pool_roots: List<String>) -> CorpusReport {
 //
 // THE LOCKSTEP WALK IS ALSO WHY THIS IS NOT QUADRATIC. A membership test per discovered path would
 // be a nested fold over the same collection -- the shape this very lens exists to catch -- and
-// "the corpus is only a few thousand" is the not-time-stable excuse DESIGN section 6 refuses.
+// "the corpus is only a few thousand" is the not-time-stable excuse gunbc.design_argument::how_to_work refuses.
 // Ordered comparison is linear and needs no set.
 
 // WHAT THIS JOIN DOES NOT ESTABLISH, NAMED SEPARATELY BECAUSE IT IS A DIFFERENT SENTENCE FROM

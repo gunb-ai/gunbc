@@ -122,7 +122,7 @@ ValidationRevision  { witness_roster_digest, validator_contract_digest }
   was evaluated against. Comparing artifacts across different requirement revision IDs without
   an explicit `BridgeGeneration` protocol is `RefusedRevisionMismatch`.
 - Neither identity is a stored transcribable field where it can be derived from content; a
-  derived identity makes a forged one unrepresentable, not merely refused (DESIGN §4b —
+  derived identity makes a forged one unrepresentable, not merely refused (gunbc.design_argument::guarantee_ladder —
   construction over validation).
 
 ### 3.2 Requirement delta and declared transition
@@ -380,7 +380,7 @@ StageExecutionReceipt { subject: StageExecutionSubject, verdict: StageExecutionV
 
 `StageFallbackUsed` is a first-class third arm, not a shade of accepted: a stage that completed
 *by falling back* has not established what a completed stage did; collapsing them is the
-state-space conflation DESIGN §5 forbids.
+state-space conflation gunbc.design_argument::fail_closed forbids.
 
 **Law:** `StageStamp` is **only the content identity of a `StageExecutionReceipt`** — never a
 free-standing label, and never the receipt itself.

@@ -41,7 +41,7 @@ data command_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command / run_shell_command_capture -- BOTH ARMS ARE NOW DONE, not just the local one. CORRECTED (this row previously said only the local arm routed straight at shell.Exec.RunArgv and that the SSH arm's nested command-string target was owned by another lane; that target landed in extdeps.exec.command command_over_transport (RFC 4254 fold, cited IEEE 1003.1-2017 section 2.2.2), which makes SshExec produce a plain, directly-executable outer ArgvCommand exactly as LocalExec's identity arm always did). With both arms yielding one plain ArgvCommand, re-deciding transport at this run site was re-answering a question command_over_transport already answered (DESIGN section 3: dispatch belongs at one seam). The per-transport match is deleted; both run_shell_command and run_shell_command_capture ask command_over_transport once, then hand the resulting argv straight to shell.Exec.RunArgv -- no TransportScript, no shell, no shell_command_render/shell_exec_via_bash/retained_runtime hop, for either transport. Measured before rewriting: command_runner remains the ONLY module that turns an ArgvCommand into a local process; the other ArgvCommand consumers reach shell_command_render for TEXT emission (githooks), a different destination. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and this module retires run_shell_command / run_shell_command_capture in its favor -- host_effect_apply exists (gunbc.host.host_effect_realize) but reaches zero ArgvCommand occurrences today, so that binding is still unbuilt.")
+data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command / run_shell_command_capture -- BOTH ARMS ARE NOW DONE, not just the local one. CORRECTED (this row previously said only the local arm routed straight at shell.Exec.RunArgv and that the SSH arm's nested command-string target was owned by another lane; that target landed in extdeps.exec.command command_over_transport (RFC 4254 fold, cited IEEE 1003.1-2017 section 2.2.2), which makes SshExec produce a plain, directly-executable outer ArgvCommand exactly as LocalExec's identity arm always did). With both arms yielding one plain ArgvCommand, re-deciding transport at this run site was re-answering a question command_over_transport already answered (gunbc.design_argument::single_authority: dispatch belongs at one seam). The per-transport match is deleted; both run_shell_command and run_shell_command_capture ask command_over_transport once, then hand the resulting argv straight to shell.Exec.RunArgv -- no TransportScript, no shell, no shell_command_render/shell_exec_via_bash/retained_runtime hop, for either transport. Measured before rewriting: command_runner remains the ONLY module that turns an ArgvCommand into a local process; the other ArgvCommand consumers reach shell_command_render for TEXT emission (githooks), a different destination. DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and this module retires run_shell_command / run_shell_command_capture in its favor -- host_effect_apply exists (gunbc.host.host_effect_realize) but reaches zero ArgvCommand occurrences today, so that binding is still unbuilt.")
 
 // RUNG: mitigatable. ssh overloads exit code 255 for its own transport failures (unreachable
 // host, auth failure, connection reset), which classify_process_observation (extdeps.shell.exec)
@@ -53,8 +53,8 @@ data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolut
 // answer -- so the class does not fall below the floor; it simply cannot yet tell the two causes
 // apart. ACCEPTED, NOT FIXED: disambiguating via ssh's stderr text is rejected, not deferred --
 // stderr is prose from an external process, and matching on it is exactly the heuristic DESIGN
-// section 4/5 rules out where a richer source exists in principle but is unbuilt.
-data ssh_exit_255_conflation_dissolution: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command_capture over SshExec -- transport is KNOWN at command_over_transport's call site, so an SshExec-transported ProcessRefused { exit_code: 255 } is distinguishable IN PRINCIPLE from a LocalExec one, and wants its own typed ProcessOutcome variant (a policy parallel to ExitZeroSucceeds) rather than sharing ProcessRefused with every other nonzero exit. The richer source is in-band remote status -- the remote side reporting its own exit through stdout instead of this caller trusting ssh's own process exit code -- not stderr-sniffing, which stays rejected as a heuristic. NOT BUILT HERE: this row names the trigger, it does not build the variant. DISSOLVES WHEN a real caller of run_shell_command_capture retries on SshExec -- retrying an unreachable host and retrying a command that actually ran and exited 255 are opposite, non-idempotent-risk-bearing decisions, so building the structural arm before a consumer exists to prove the distinction against would be speculative modeling, not grounded modeling (DESIGN section 4: a heuristic is never necessary in a closed system, but neither is a structural arm with nothing to hold it accountable).")
+// gunbc.design_argument::closed_grounded_substrate/5 rules out where a richer source exists in principle but is unbuilt.
+data ssh_exit_255_conflation_dissolution: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command_capture over SshExec -- transport is KNOWN at command_over_transport's call site, so an SshExec-transported ProcessRefused { exit_code: 255 } is distinguishable IN PRINCIPLE from a LocalExec one, and wants its own typed ProcessOutcome variant (a policy parallel to ExitZeroSucceeds) rather than sharing ProcessRefused with every other nonzero exit. The richer source is in-band remote status -- the remote side reporting its own exit through stdout instead of this caller trusting ssh's own process exit code -- not stderr-sniffing, which stays rejected as a heuristic. NOT BUILT HERE: this row names the trigger, it does not build the variant. DISSOLVES WHEN a real caller of run_shell_command_capture retries on SshExec -- retrying an unreachable host and retrying a command that actually ran and exited 255 are opposite, non-idempotent-risk-bearing decisions, so building the structural arm before a consumer exists to prove the distinction against would be speculative modeling, not grounded modeling (gunbc.design_argument::closed_grounded_substrate: a heuristic is never necessary in a closed system, but neither is a structural arm with nothing to hold it accountable).")
 
 // WHAT GUARDS THIS, AND WHAT DOES NOT -- read before assuming the property below is enforced.
 //
@@ -80,7 +80,7 @@ data ssh_exit_255_conflation_dissolution: DissolutionCondition = unbound_dissolu
 // every SshExec constructed in-tree names a determined interpretation
 // (openssh_login_shell_interpretation / openbmc_dropbear_interpretation); the cause stays a match
 // over the full type rather than a partial one so a newly added cause fails to compile here instead
-// of falling through silently (DESIGN 4b: no untracked stall).
+// of falling through silently (gunbc.design_argument::guarantee_ladder: no untracked stall).
 
 fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -> String {
   match cause {
@@ -98,7 +98,7 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // command string carried as the final word of an outer sshpass/ssh argv
 // (extdeps.exec.command command_over_transport_composition_note). Either way the result is one
 // plain ArgvCommand of local-machine words. Re-deciding which transport built it here would be
-// re-answering a question command_over_transport already answered (DESIGN section 3: dispatch
+// re-answering a question command_over_transport already answered (gunbc.design_argument::single_authority: dispatch
 // belongs at one seam, never duplicated at its consumer).
 //
 // So there is exactly one execution path: ask command_over_transport once, decompose the
@@ -110,7 +110,7 @@ fn command_over_transport_refusal_reason(cause: RemoteExecCommandRefusalCause) -
 // SSH-only shell_command_render / shell_exec_via_bash / retained_runtime heredoc hop is gone.
 //
 // THE EMPTY-ARGV REFUSAL IS GONE BECAUSE THE STATE IS GONE, which is a climb and not a relaxation
-// (DESIGN section 4b: structurally impossible beats mechanically preventable). Both run sites used
+// (gunbc.design_argument::guarantee_ladder: structurally impossible beats mechanically preventable). Both run sites used
 // to match list_head on the argv and refuse Absent with "empty argv: a command with no words
 // names no program to execute". extdeps.exec.command ArgvCommand now carries `program: NonEmptyStr`
 // beside `arguments`, so a command with no program has no representation to arrive here in -- the
@@ -182,7 +182,7 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 
 // argv_operands IS DELETED, not moved: it existed to recover the operands by dropping the head of a
 // flat word list, and the carrier now carries them as their own field. A helper that re-derives a
-// fact the type states is the second representation DESIGN section 2 removes.
+// fact the type states is the second representation gunbc.design_argument::minimize_redundancy removes.
 
 // Capture variant (CONVERGE acceptance, host-key enrollment): same admitted transport,
 // but the caller receives the process observation instead of a collapsed ProcessExit —
@@ -254,7 +254,7 @@ fn run_shell_command(command: ArgvCommand, transport: CommandTransport) -> Proce
 // guest's serial console arrives on the VMM's stdout, so a guest that panics and is then killed by
 // its deadline produces its most important output on the stream the classifier throws away -- and a
 // receipt that then reported stderr as "the console" would be a fabricated label on missing
-// evidence, which DESIGN section 5 forbids by name.
+// evidence, which gunbc.design_argument::fail_closed forbids by name.
 //
 // So this returns the triple and lets the caller decide, rather than widening ProcessOutcome for
 // every consumer in the fleet. Two different questions, two functions; the classifier is untouched
@@ -284,7 +284,7 @@ fn run_shell_command_observe(command: ArgvCommand, transport: CommandTransport) 
 // THE SAME RUN, with the spawn a value: a caller that must refuse typed when no process ran (a
 // missing sudo, a missing binary) gets ProcessNotSpawned instead of an aborted evaluation. A
 // transport that refuses to build the command spawned nothing either, so it is the same arm, never
-// an exit code: no process ran, and a sentinel exit status would be a fabricated observation (§5).
+// an exit code: no process ran, and a sentinel exit status would be a fabricated observation (gunbc.design_argument::fail_closed).
 fn run_shell_command_observe_outcome(command: ArgvCommand, transport: CommandTransport) -> ProcessRunOutcome
   uses net: Network
 {

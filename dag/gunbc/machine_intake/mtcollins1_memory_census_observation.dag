@@ -184,7 +184,7 @@ data mtcollins1_edac_uptime_at_capture_seconds: Second = second(count: 20)
 // /dev/urandom, sha256 hashed twice with the passes compared, EDAC tree read immediately before
 // and immediately after. It was a `description: NonEmptyStr` and review 64332 found it unread --
 // every OTHER field of this type is folded by the witness, which is what made the odd one out
-// visible. Prose restating the typed fields beside it is section 4c's misplaced data and section 3's
+// visible. Prose restating the typed fields beside it is gunbc.design_argument::source_annotations's misplaced data and gunbc.design_argument::single_authority's
 // one-fact-two-places at once.
 type MtCollins1MemoryWorkload {
   bytes_exercised: ByteSize
@@ -307,7 +307,7 @@ data mtcollins1_slots: List<MtCollins1SlotObservation> = concat(mtcollins1_socke
 // guide's pair and population tables, by
 // extdeps.ampere.mt_collins_product_brief.memory_population -- so carrying a connector column here
 // was a SECOND COPY of that mapping, hand-written beside the authority that owns it and free to
-// drift from it (DESIGN section 3, one fact one place; section 2, net concepts must not grow by
+// drift from it (gunbc.design_argument::single_authority, one fact one place; gunbc.design_argument::minimize_redundancy, net concepts must not grow by
 // re-invention). Review 63939 found it, along with this module's claim to "consume" that authority
 // while importing nothing from it.
 //
@@ -398,7 +398,7 @@ type MtCollins1ConnectorIdentificationBasis {
 // one rationale in two carriers. Worse, this module ALREADY records deleting a six-hundred-character
 // paragraph in a String for exactly this reason and then re-committed the shape here. The rule it
 // states about itself is the one that applies: a data row no fold reads is a prose TODO wearing a
-// type, section 3c's dangling declaration and section 4c's misplaced prose at once.
+// type, gunbc.design_argument::consumption's dangling declaration and gunbc.design_argument::source_annotations's misplaced prose at once.
 //
 // WHAT IS NOT ESTABLISHED, kept because it is the load-bearing limit and not because it was a field:
 // that the physical board silkscreen reads J11 at that connector. Nobody has inspected the board;
@@ -455,7 +455,7 @@ data mtcollins1_connector_identification_basis: MtCollins1ConnectorIdentificatio
 // the control could not flip: a row that went MISSING or became AMBIGUOUS would arrive as
 // MixingUndetermined and the test would stay green while its subject had disappeared. One spelling
 // would carry both "the specification declines to state" and "this corpus has no row" -- DESIGN
-// section 3's meaning fork, and section 5's widening failure arm.
+// gunbc.design_argument::single_authority's meaning fork, and gunbc.design_argument::fail_closed's widening failure arm.
 type MtCollins1PartnerRequirement {
   empty_connector: Nat
   peer_connector: Nat
@@ -516,7 +516,7 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 // surfaced: a missing SK Hynix catalog row for HMA82GR7CJR8N-VK, and the missing OCP Mt. Jade
 // same-channel rank rule. They were removed on an operator ruling, and the reason generalises.
 // Nothing consumed them. A `data` row that no fold reads is a prose TODO wearing a type -- DESIGN
-// section 3c's dangling declaration and section 4c's misplaced prose at once -- and giving a TODO
+// gunbc.design_argument::consumption's dangling declaration and gunbc.design_argument::source_annotations's misplaced prose at once -- and giving a TODO
 // a struct makes it look discharged while changing nothing. Work that needs doing is a lane, not a
 // row in the receipt of an unrelated observation.
 //
@@ -528,7 +528,7 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 // same-channel rank rule was "carried by no authority in this corpus" and that "chip width is not
 // closed at all" -- true when written, false the moment gunbc#11068 landed, and still sitting here
 // while the section above derived same-channel rank, width and density from that very authority.
-// A receipt that both consumes a rule and denies it exists is a meaning fork (DESIGN section 3),
+// A receipt that both consumes a rule and denies it exists is a meaning fork (gunbc.design_argument::single_authority),
 // and the defect is instructive: the contradiction was introduced by fixing the model in layers
 // and not re-reading the prose around the edit. Review 64092 found it.
 //
@@ -565,8 +565,8 @@ data mtcollins1_host_memory_population: HostMemoryPopulation = HostMemoryPopulat
 // WHAT SURVIVES HERE IS THE MEASUREMENT ALONE, because the transition itself was observed against
 // the live controller and is evidence about this unit. It is carried as SAMPLES rather than a
 // sentence: the reading is a timestamped sequence of two raw controller fields, and a prose
-// rendering of it hides the named parts a consumer would fold (DESIGN section 2 -- a String leaf
-// hiding named parts is anemic modeling; section 4c -- an event belongs in a typed carrier).
+// rendering of it hides the named parts a consumer would fold (gunbc.design_argument::minimize_redundancy -- a String leaf
+// hiding named parts is anemic modeling; gunbc.design_argument::source_annotations -- an event belongs in a typed carrier).
 //
 // THE STATUS AND INDEX ARE CARRIED RAW AND UNDECODED, DELIBERATELY. What any particular value
 // MEANS is an extdeps.bmc.megarac catalog keyed to a firmware identity, and the policy over it is
@@ -618,7 +618,7 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
 // expected rendering and the power action is accepted. Both were true on every failed attempt: the
 // selector really did say "Force Boot from CD/DVD", and the power cycle really was accepted. The
 // arm confirms a PRECONDITION and reports it as an EFFECT, so a handoff that provably never booted
-// anything is indistinguishable, in the model, from one that did. That is DESIGN section 5's
+// anything is indistinguishable, in the model, from one that did. That is gunbc.design_argument::fail_closed's
 // specification-without-execution, and it is why a legacy/EFI mismatch could persist undetected
 // across an entire intake lane.
 //
@@ -638,7 +638,7 @@ data mtcollins1_media_redirection_samples: List<MtCollins1MediaRedirectionSample
 //
 // WHAT IS DELIBERATELY NOT TYPED HERE: the boot SELECTION itself. Device, firmware boot mode and
 // persistence as a decision carrier land in gunbc#11001, and minting a second one beside it would
-// be the fork DESIGN section 3 forbids -- this module would then answer the same question as the
+// be the fork gunbc.design_argument::single_authority forbids -- this module would then answer the same question as the
 // model that adjudicates boot requests. So the selector stays an exact QUOTATION of what ipmitool
 // rendered, which is evidence rather than commentary, and the axes that DISCRIMINATE the failing
 // from the succeeding attempt are carried as the Bools below.
@@ -673,7 +673,7 @@ data mtcollins1_boot_delivery_observation: MtCollins1BootDeliveryObservation = M
 // observation of a reading; the two agreeing is an observation OF A UNIT.
 //
 // THE SERIALS ARE DELIBERATELY NOT REPEATED HERE. They were, and that made this annotation a second
-// copy of a value the declarations already carry -- which DESIGN section 4c forbids, and which is
+// copy of a value the declarations already carry -- which gunbc.design_argument::source_annotations forbids, and which is
 // also why the equality went unchecked for so long: prose restating a value reads like evidence for
 // it. The join is now structural, held by mtcollins1_subject_binding.corroborating_controller_read
 // against mtcollins1_controller_fru_identity, and exercised by a fold rather than described here.
@@ -695,7 +695,7 @@ data mtcollins1_boot_delivery_observation: MtCollins1BootDeliveryObservation = M
 // different digest, different wall-clock window, different outcome — and the producer's literal is
 // named as the thing to remove.
 // THE DEFECT USED TO BE RESTATED IN A String ROW BELOW THIS ANNOTATION, and its only reader
-// asserted the sentence was non-empty -- DESIGN section 3c's own tell, a witness asserting a
+// asserted the sentence was non-empty -- gunbc.design_argument::consumption's own tell, a witness asserting a
 // declaration exists rather than exercising it. The CHECKABLE content of that sentence is the
 // distinguishing facts, and those are typed elsewhere and genuinely folded: the two captures
 // carry different digests and different observed_at timestamps, and
@@ -722,7 +722,7 @@ data mtcollins1_acquisition_standing: MtCollins1AcquisitionStanding = Historical
 
 // ── who consumes the rows this module declares, and by what route ──────────────────────────────
 
-// DESIGN section 3c REQUIRES EVERY ADDED DECLARATION TO NAME ITS CONSUMER AND ITS EXECUTING ROUTE,
+// gunbc.design_argument::consumption REQUIRES EVERY ADDED DECLARATION TO NAME ITS CONSUMER AND ITS EXECUTING ROUTE,
 // or to be classified honestly as a declared frontier with its trigger stated beside it. Review
 // 63839 found that this module fails that test for a set of rows, and it is right: the witness
 // folds the slot and channel rows, the topology, the workload, the subject binding, the samples
@@ -732,10 +732,10 @@ data mtcollins1_acquisition_standing: MtCollins1AcquisitionStanding = Historical
 // A digest's real consumer re-reads the artifact bytes and compares. That is an effect, the witness
 // is pure, and the producer that would perform it is exactly what mtcollins1_acquisition_standing
 // declares absent. So they are a frontier, and the frontier is declared rather than left implicit
-// -- a pure witness asserting "this digest row exists" would be section 3c's own tell, a witness
+// -- a pure witness asserting "this digest row exists" would be gunbc.design_argument::consumption's own tell, a witness
 // that asserts a declaration exists rather than exercising it.
 //
-// THE TRIGGER NAMES A CAPABILITY, NOT AN ARTIFACT, per section 4b(3): not "a verifier lands" but a
+// THE TRIGGER NAMES A CAPABILITY, NOT AN ARTIFACT, per gunbc.design_argument::guarantee_ladder (no silent regression): not "a verifier lands" but a
 // capture producer that re-derives these artifacts and adjudicates observed-versus-declared digest
 // as a typed outcome -- SUFFICIENT FOR every artifact this module declares, not merely the one it
 // is first pointed at. When that producer exists, mtcollins1_acquisition_standing becomes
@@ -811,7 +811,7 @@ data mtcollins1_host_capture_observed_at: EpochMs = 1789090010000
 // below is standing on a command that failed quietly.
 // corroborating_controller_read WAS A PROSE String AND IS GONE. It said "Two transports, two
 // agents, one serial" -- the load-bearing claim of the whole module -- in a field no fold could
-// check, while the peer value lived in a // annotation the compiler cannot read (DESIGN 4c). Review
+// check, while the peer value lived in a // annotation the compiler cannot read (gunbc.design_argument::source_annotations). Review
 // 64267 found both ends were prose and the witness had substituted a literal copied from the
 // declaration under test. The carrier is now the controller's own typed row, so the equality is
 // foldable and the claim is exercised rather than asserted.
@@ -871,7 +871,7 @@ data mtcollins1_subject_binding: MtCollins1SubjectBinding = MtCollins1SubjectBin
 // THE FOUR PROSE FIELDS THIS TYPE CARRIED ARE GONE, same finding as the identification basis
 // (review 64332). No fold read intent, observed_failure, preserved_artifacts or why_not_retried.
 // preserved_artifacts was the worst of them: it buried two artifact PATHS inside an English
-// sentence while this module declares paths as typed rows, which is section 2's anemic-modeling tell
+// sentence while this module declares paths as typed rows, which is gunbc.design_argument::minimize_redundancy's anemic-modeling tell
 // -- a String leaf hiding named parts.
 //
 // WHAT THE ATTEMPT ESTABLISHED, as rationale. Attempt 3 aimed to close the subject-binding gap and

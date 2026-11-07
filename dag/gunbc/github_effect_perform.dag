@@ -62,7 +62,7 @@ import std.integer { int_to_decimal_string }
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
 // layer that PERFORMS one -- it sequences the realizations, holds the credentials between them, and
 // hands back a typed performance. Policy about WHICH effect to perform stays with its caller (DESIGN
-// §3: interface, realization and policy are three facts). Its first effect is the organization JIT
+// gunbc.design_argument::interface_realization_policy: interface, realization and policy are three facts). Its first effect is the organization JIT
 // mint, whose dispatch gunbc.runner.runner_jit_perform already decides; a second effect lands here
 // as a second perform function, not as a second module.
 //
@@ -75,7 +75,7 @@ import std.integer { int_to_decimal_string }
 // or rendered into an argv, and the key never leaves the file openssl reads -- so nothing this
 // function produces is a path from a guest to the App key.
 
-// §3c, STATED SO A GREEN WITNESS IS NOT READ AS A WORKING MINT. perform_organization_jit_mint is
+// gunbc.design_argument::consumption, STATED SO A GREEN WITNESS IS NOT READ AS A WORKING MINT. perform_organization_jit_mint is
 // the realization gunbc.runner.runner_jit_perform's old transport frontier asked for, and it is
 // consumed by NO production route in this change: the caller is the per-attempt lifecycle controller
 // (gunbc.runner.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
@@ -166,7 +166,7 @@ type JitMintAppJwt
   | AppJwtUnsigned { detail: String }
 
 // THE GENERATE STEP'S ANSWER, DECIDED WITHOUT I/O so the decision is witnessable on supplied
-// RestResults (DESIGN §3: a witness discriminates at one interface). A 2xx decodes through the
+// RestResults (gunbc.design_argument::witness_one_interface: a witness discriminates at one interface). A 2xx decodes through the
 // same jit_config_mint_outcome every status goes through, so an empty blob under 201 is still
 // refused there; a non-2xx the remote DECIDED is a JitConfigMintOutcome refusal; an answer that
 // never arrived is commit-ambiguous and is NOT reported as a refusal.

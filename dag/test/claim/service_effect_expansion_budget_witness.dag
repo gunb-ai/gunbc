@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // registry -- indistinguishable from a fixed point. The callers above the cut then emitted without
 // the service parameter their callees required, so the emitted Rust carried an unrealized-host-seam
 // panic where a working call belonged: a truncation published as a finished answer, which is the
-// absorbing-fallback shape DESIGN section 5 forbids. The analysis now returns EffectsComplete or
+// absorbing-fallback shape gunbc.design_argument::fail_closed forbids. The analysis now returns EffectsComplete or
 // EffectsIncomplete, so the registry is reachable only through the complete arm and an exhausted
 // budget surfaces as a typed cause instead.
 //
@@ -69,7 +69,7 @@ fn completed(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // A chain deeper than any chosen number therefore converges rather than truncating or refusing.
 //
 // So the old RED is no longer authorable: there is no depth at which the budget cuts. Per DESIGN
-// section 4b(4) the probe does not retire -- it flips to a permanent regression control, which is
+// gunbc.design_argument::guarantee_ladder (dissolution on climb) the probe does not retire -- it flips to a permanent regression control, which is
 // what these two tests are. Reintroducing a chosen pass count turns the deep one red again.
 //
 // THE CEILING, STATED BECAUSE IT IS NOT OBVIOUS. Neither test establishes that the service reached

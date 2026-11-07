@@ -239,7 +239,7 @@ fn selection_against_sole_observed_file(
 //
 // SO THE UNSETTLED CASE HAS NO PATH TO SelectionStandsForAdjudication AT ALL rather than a guard
 // that re-checks one: the constructor is absent from that arm, so re-admitting it is an edit a
-// reader has to write rather than a condition they can loosen (DESIGN §4b -- construction over
+// reader has to write rather than a condition they can loosen (gunbc.design_argument::guarantee_ladder -- construction over
 // validation, and a failure arm refuses rather than widens).
 fn selection_against_conflicting_lineages(
   selection: LegacyFileSelection,

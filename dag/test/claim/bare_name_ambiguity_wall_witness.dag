@@ -98,7 +98,7 @@ data amb_single_arm_user_source: String = "module amb.user\n\nimport amb.z { Mar
 // of that coproduct's arms, the tier saw two owners where the source has one, and the read the
 // author named perfectly well refused. Nothing in the corpus could have shown that -- the
 // phantom owner needs a coproduct-returning function and a contested arm name in one scope --
-// which is the §4b argument for a fixture harness stated as a receipt rather than as a plan.
+// which is the gunbc.design_argument::guarantee_ladder argument for a fixture harness stated as a receipt rather than as a plan.
 data amb_own_coproduct_user_source: String = "module amb.user\n\ntype Pick\n  = Marker\n  | Other\n\nfn pull() -> Int {\n  only_amb() + only_elsewhere()\n}\n\nfn probe() -> Pick {\n  Marker\n}\n"
 
 // ROW 5 -- TWO VISIBLE COPRODUCTS, AND THE COMPILE REFUSES IT BEFORE THIS WALL CAN.
@@ -148,8 +148,8 @@ fn amb_marker_scope_over(user_source: String) -> ClaimScopeFixtureOutcome {
 
 // WHY THESE THREE ROWS DISCRIMINATE, which is rationale and belongs here -- and NOT a table of
 // what they returned, which does not. An earlier version of this block transcribed the two-binary
-// readings and said in its own words that "nothing re-derives it", which is §6 exactly: "a
-// transcribed number is unreachable from the thing that owns it, so it rots", and §4c's "an
+// readings and said in its own words that "nothing re-derives it", which is gunbc.design_argument::how_to_work exactly: "a
+// transcribed number is unreachable from the thing that owns it, so it rots", and gunbc.design_argument::source_annotations's "an
 // annotation is never evidence that a machine claim holds, because no Accepted program can read
 // one". A rung resting on prose is the thing this wall exists to refuse, one level up.
 //

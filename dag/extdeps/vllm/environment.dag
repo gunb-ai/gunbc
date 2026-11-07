@@ -37,7 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // launch wanting a different timeout is a change to its own spec rather than a value this module hands
 // out. A figure no upstream publishes and no upstream derives is not an upstream fact -- it is a
 // deployment's decision modelled one layer above where it was made, which is the inversion DESIGN
-// section 3 names.
+// gunbc.design_argument::single_authority names.
 //
 // IT WAS NOT MERELY UNTIDY. The one arm that set them had TWO renderers, and they read the figures
 // from two homes -- extdeps.vllm.server's rows and retired gunbc.spark.native_serving_realization (deleted #13779)'s own -- so the layer

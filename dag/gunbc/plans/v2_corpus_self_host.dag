@@ -68,7 +68,7 @@ fn section_8() -> List<MarkdownBlock> {
 
 fn section_9() -> List<MarkdownBlock> {
   [
-    p(text: "**Done bar:** rustc zero is necessary but insufficient. The audit also lacked main.rs generation and executed behavioral receipts. DESIGN §7 requires each emitted module to hold its own .dag contract on a discriminating corpus; the seed is a regression oracle, not specification, byte fixed-point or behavior that v2 must blindly reproduce. A clean build permits planning S6, not executing retirement. The DeclarationRef bindings below preserve checked joins to the measurement, admission, discovery, ratchet, interlock and status authorities."),
+    p(text: "**Done bar:** rustc zero is necessary but insufficient. The audit also lacked main.rs generation and executed behavioral receipts. gunbc.design_argument::self_hosting requires each emitted module to hold its own .dag contract on a discriminating corpus; the seed is a regression oracle, not specification, byte fixed-point or behavior that v2 must blindly reproduce. A clean build permits planning S6, not executing retirement. The DeclarationRef bindings below preserve checked joins to the measurement, admission, discovery, ratchet, interlock and status authorities."),
   ]
 }
 

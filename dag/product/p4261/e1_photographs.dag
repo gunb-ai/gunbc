@@ -18,7 +18,7 @@ module product.p4261.e1_photographs
 // A row's byte count is the manifest's, carried as std.measure's existing `FiniteByteSize` -- the byte
 // size whose count is a `PositiveMeasureCount`, so a store row that claims a file exists cannot state a
 // zero-length frame. Minting a second positive byte carrier beside it would be a failed decomposition
-// (DESIGN §2). The number a reader compares against the file they open is the manifest's own, so
+// (gunbc.design_argument::minimize_redundancy). The number a reader compares against the file they open is the manifest's own, so
 // `predecessor` is one less than it.
 //
 // Rows are named for the atlas photo id the registries use (the inventories' `photos` column), or for what

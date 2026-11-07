@@ -37,7 +37,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 // TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3
-// §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis
+// gunbc.design_argument::goal_safe_efficient_predictable, gunbc.design_argument::minimize_redundancy). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis
 // applicability, implementation, exact vendor release string): the routes and quirks a
 // firmware release is documented or previously observed to expose, PLUS the exact-release
 // capability row that release carries (BmcFirmwareReleaseCapabilityRow, keyed by the raw
@@ -53,7 +53,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // attempt an observation belongs to, whether a lookup ran at all, and the binding of
 // profile+observation into one solve input are WORKFLOW standings and live in
 // gunbc.machine_intake.access. Concrete profile rows live in the board and implementation
-// modules that cite them, and observations are receipts in the workflow layer (DESIGN §3:
+// modules that cite them, and observations are receipts in the workflow layer (gunbc.design_argument::single_authority:
 // observations are never authored inside an upstream module).
 // The surfaces intake asks a BMC about. Each is a thing an endpoint either
 // served or did not when probed; none is a promise. SurfaceBmcShell is the

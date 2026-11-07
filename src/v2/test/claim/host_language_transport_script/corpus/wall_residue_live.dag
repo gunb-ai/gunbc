@@ -1,6 +1,6 @@
 module v2.test.claim.host_language_transport_script.corpus.wall_residue_live
 
-// §5.E wall activation (operator ruling 2026-07-24): the previously-inert
+// gunbc.design_argument::fail_closed.E wall activation (operator ruling 2026-07-24): the previously-inert
 // host_language_transport_script lens is wired as a per-PR live consumer over the shell.Exec.Run
 // anchor sites that route host/foreign shell bodies through the RetainedShellScript record wall +
 // the retained_* counted bridges. Each site must carry ZERO literal-blob transport-script

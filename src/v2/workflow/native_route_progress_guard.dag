@@ -40,7 +40,7 @@ import v2.workflow.v2_native_route {
 // cannot catch it either: exclusions rise here and fall there and the total is unchanged, which
 // is `matching-total-hides-a-mismatched-partition` in its native habitat.
 //
-// SO THE GUARD IS AT IDENTITY GRAIN, AND THAT IS THE WHOLE DESIGN. DESIGN section 5 admits a
+// SO THE GUARD IS AT IDENTITY GRAIN, AND THAT IS THE WHOLE DESIGN. gunbc.design_argument::fail_closed admits a
 // monotone debt contract over a closed subject universe only when "the subject universe is
 // independently discovered and closed, membership is checked at identity grain rather than by
 // count, and every removal carries a typed disposition". All three hold here and none of them
@@ -63,7 +63,7 @@ import v2.workflow.v2_native_route {
 // reads only the second, so the encouraging number can never green the guard.
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
-// CONSUMPTION: THIS IS A DECLARED FRONTIER, AND HERE IS ITS TRIGGER (DESIGN section 3c)
+// CONSUMPTION: THIS IS A DECLARED FRONTIER, AND HERE IS ITS TRIGGER (gunbc.design_argument::consumption)
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //
 // CONSUMED SINCE 2026-09-23, PER ROW. v2.workflow.native_frontier_ratchet calls this module's row, disposition
@@ -78,8 +78,8 @@ import v2.workflow.v2_native_route {
 // frontier that was declared.
 //
 // NOTHING IN PRODUCTION CALLED THIS FOLD WHEN IT LANDED, AND THAT WAS SAID PLAINLY RATHER THAN LEFT
-// FOR A REVIEWER TO FIND. A declaration nothing consumes is section 2's redundant work in its purest
-// form, and section 3c admits exactly one honest alternative to "consumed in this change": a
+// FOR A REVIEWER TO FIND. A declaration nothing consumes is gunbc.design_argument::minimize_redundancy's redundant work in its purest
+// form, and gunbc.design_argument::consumption admits exactly one honest alternative to "consumed in this change": a
 // NAMED consumer landing in a NAMED later change, with the trigger stated beside it. So:
 //
 //   NAMED CONSUMER, FOR THE RENDERING SURFACE AS WELL AS THE FOLD -- stated for both because
@@ -89,7 +89,7 @@ import v2.workflow.v2_native_route {
 //   the operator-facing half of the same consumer: the job prints one line per finding. They are
 //   EXECUTED by this module's witness, which asserts the rendered text carries the receipt and
 //   says so when there is none -- so they are exercised rather than merely declared, which is the
-//   distinction section 5 draws between a consumer and a typecheck.
+//   distinction gunbc.design_argument::fail_closed draws between a consumer and a typecheck.
 //
 //   The Tier 2 native-lane job of gunbc#12043's programme -- the run that
 //   invokes the native route over the derived universe, derives one
@@ -112,7 +112,7 @@ import v2.workflow.v2_native_route {
 //   was required, queued or scheduled.
 //
 // AND THE BASELINE IS NOT AUTHORED HERE ON PURPOSE. A baseline committed before a run that can
-// produce one would be a literal copied from nothing -- the oracle failure DESIGN section 5 names,
+// produce one would be a literal copied from nothing -- the oracle failure gunbc.design_argument::fail_closed names,
 // where automating the literal's update collapses the assertion to `measure() == measure()`. The
 // first baseline is MINTED FROM A RUN, by the consumer above, and this module supplies only the
 // vocabulary it is minted into.
@@ -156,7 +156,7 @@ import v2.workflow.v2_native_route {
 //
 // SO THE STANDING IS: cited to its authors, not restated as this module's measurement
 // (`extdeps.external_authority` `CitedFigureStanding`), and the reading is symmetric in the way
-// DESIGN section 4d requires in BOTH directions -- a third party timing out is not evidence
+// gunbc.design_argument::epistemic_humility requires in BOTH directions -- a third party timing out is not evidence
 // against a result, and two independent builds are not evidence that it always builds. Nothing in
 // this module's construction depends on which reading is right; they are two values of one field,
 // which is the whole reason `reach` sits on the report.
@@ -173,7 +173,7 @@ import v2.workflow.v2_native_route {
 // version of the failure -- but it is the WRONG CAUSE, and wrong in the direction that rots: it
 // says the subjects went away when the truth is that nothing could look at them. A stage nothing
 // could observe must never read the same as a stage that observed nothing wrong. That is
-// absence-conflated-with-success (DESIGN section 5), and it is the specific way a progress
+// absence-conflated-with-success (gunbc.design_argument::fail_closed), and it is the specific way a progress
 // ratchet lies.
 //
 // THE TEST OF WHETHER THIS REPRESENTATION IS RIGHT, and it is the reason the rungs land now
@@ -303,9 +303,9 @@ fn native_run_reached_the_population(r: NativeRunReach) -> Bool {
 // makes older verdicts not-verdicts-in-the-current-meaning AUTOMATICALLY. It does not. A
 // strengthening that leaves the spelling unchanged is the NORMAL case -- gunbc#11829 did not
 // rename anything it strengthened -- and leaves `comparable` true, so the guard compares across
-// two definitions of green and reports regressions at face value. That is DESIGN section 5's own
+// two definitions of green and reports regressions at face value. That is gunbc.design_argument::fail_closed's own
 // tell, verbatim: a check "satisfied by editing the declaration while the realization still
-// lies", and section 4b(1)'s "a type name establishes nothing".
+// lies", and gunbc.design_argument::guarantee_ladder (rung honesty)'s "a type name establishes nothing".
 //
 // The witness demonstrated the dependency rather than the property: its red only fired because a
 // person hand-typed `@ pre-f5bd9b064a` into the string -- the commit hash the comment claimed
@@ -336,7 +336,7 @@ type NativeVerdictAdjudication {
 // cut wrote `(a.closure_identity.digest as String) == (b...)`, which re-mints
 // `content_hash_eq_structural` -- a consumed authority in the very module this one already
 // imports from -- and does it by casting AWAY the `lower_hex_16` refinement, in the one function
-// whose stated job is to be exact. Section 2's test is that net concepts must not grow by
+// whose stated job is to be exact. gunbc.design_argument::minimize_redundancy's test is that net concepts must not grow by
 // re-invention, and a hand-rolled compare that erases its operands' type is re-invention with a
 // downgrade attached.
 fn native_adjudication_same(a: NativeVerdictAdjudication, b: NativeVerdictAdjudication) -> Bool {
@@ -344,7 +344,7 @@ fn native_adjudication_same(a: NativeVerdictAdjudication, b: NativeVerdictAdjudi
 }
 
 // THE RECEIPT IDENTITY REACHES THE OPERATOR RATHER THAN SITTING UNREAD (review 70073: it was
-// written at three sites and read at none, which is section 3c's red however well shaped). It is
+// written at three sites and read at none, which is gunbc.design_argument::consumption's red however well shaped). It is
 // deliberately NOT part of `native_adjudication_same`: two runs under one adjudicator with
 // different receipts are the same MEANING of green and must compare, so folding the receipt into
 // the discriminator would make every run incomparable with every other. What it is for is
@@ -379,7 +379,7 @@ fn native_adjudication_receipt_text(a: NativeVerdictAdjudication) -> String {
 // THE SECOND CONSUMER IS WHY THIS LANDS NOW RATHER THAN WHEN NEEDED. `native_progress_baseline_
 // advance` is this module's own consumer; gunbc#12009's flip check is an independent one reached
 // from the other direction, and it turns their question into a decidable check. A capability with
-// one consumer is a bet (DESIGN section 3c); with two independent ones it is a modelled fact.
+// one consumer is a bet (gunbc.design_argument::consumption); with two independent ones it is a modelled fact.
 type NativeObservationProvenance
   = MainBaselineObservation { head: String }
   | BranchObservation { branch: String, head: String }
@@ -480,13 +480,13 @@ fn native_stage_rank(stage: NativeTestStage) -> Int {
 // for a subject whose bar was "nothing looked at it".
 //
 // SO THE REMEDY IS NOT A THIRD GUARD CLAUSE. Three repairs of one shape is the signal that the
-// shape is wrong, and DESIGN section 5 says what to do about it: "stronger than catching a wrong
+// shape is wrong, and gunbc.design_argument::fail_closed says what to do about it: "stronger than catching a wrong
 // state is making it unwritable". A BAR and a READING are genuinely different things -- a reading
 // may record that nothing was looked at, and a bar cannot, because "nothing was looked at" is not
 // a level anything can be held to. They are now different types, and the invalid state has no
 // constructor.
 //
-// ONE LADDER, NOT TWO, so this is a refinement rather than the section 3 fork it would otherwise
+// ONE LADDER, NOT TWO, so this is a refinement rather than the gunbc.design_argument::single_authority fork it would otherwise
 // be. `native_baseline_rank` is the ladder and it is TOTAL. The observed rank is derived from it
 // through `native_observed_as_baseline`, the one-way projection that is also the MINTING GATE --
 // the same function answers "can this reading be a bar" and "what rank does this reading have",
@@ -634,10 +634,10 @@ type NativeProgressBaselineRow {
 // reach a module that FILE-REFUSES, so their declarations never entered the index at all. The
 // search was inventing answers around front-end defects that were invisible for exactly as long
 // as it existed. gunbc#12009 is the producer that enumerates them; the counts are its to report.
-// That is DESIGN section 5's absorbing fallback, removed.
+// That is gunbc.design_argument::fail_closed's absorbing fallback, removed.
 //
 // WHY THE LADDER ALONE GETS THIS WRONG. `AttainAgreed` outranks every refusal, so agreement going
-// to refusal reads as a fall. But section 4b puts SILENT WRONGNESS BELOW THE LADDER ENTIRELY --
+// to refusal reads as a fall. But gunbc.design_argument::guarantee_ladder puts SILENT WRONGNESS BELOW THE LADDER ENTIRELY --
 // it is not a rung -- and a located, attributed refusal IS a rung. An identity moving from a
 // fabricated acceptance to an attributed refusal has therefore gone UP, and scoring it as a fall
 // would reward restoring the fail-open. Progress has opposite signs on a refusal count in two
@@ -748,7 +748,7 @@ type NativeProgressBaseline {
 //
 // EVERY REFUSAL NAMES THE IDENTITY IT IS ABOUT. A guard that reported "3 regressions" would send
 // a reader to diff two receipts by hand, which is the report doing arithmetic instead of saying
-// what happened (DESIGN section 5: every degradation a typed, LOCATED, countable diagnostic).
+// what happened (gunbc.design_argument::fail_closed: every degradation a typed, LOCATED, countable diagnostic).
 // `SubjectUnreachedEarlierRungFailed` IS NEITHER A REGRESSION NOR A MISSING SUBJECT. The run
 // stopped below the rung at which that subject could have been looked at, so its baseline is
 // neither met nor lost: it is unjudged. It reds -- a merge candidate that established nothing is
@@ -834,7 +834,7 @@ fn native_progress_artifact_findings(build: NativeRouteEmittedBuild) -> List<Nat
 // THE OBSERVED SIDE, AT THE SAME GRAIN AS THE BASELINE. The caller supplies the per-identity
 // attainment it derived from the run's own dispositions, because deriving it here would mean
 // re-asking `native_route_disposition` -- re-executing admission's own fold, which has its own
-// subject and its own discriminating red (DESIGN section 3: a witness discriminates at one
+// subject and its own discriminating red (gunbc.design_argument::single_authority: a witness discriminates at one
 // interface, and a claim that re-runs another module's fold asserts nothing new and pays for all
 // of it again). This module's subject is the ORDER and the JOIN, and nothing else.
 type NativeProgressObservedRow {
@@ -917,7 +917,7 @@ fn native_progress_reading_findings(readings: List<NativeProgressObservedReading
 //
 // The baseline is one row per member of the DERIVED universe, so a linear scan of the
 // observed population once per baseline row is O(n*m) over a population sized by the corpus. DESIGN
-// section 6 fixes a proven cost-shape defect unconditionally -- "'n is small here' is not a
+// gunbc.design_argument::how_to_work fixes a proven cost-shape defect unconditionally -- "'n is small here' is not a
 // time-stable fact (reuse changes n)" -- and this is landing before its first real run, so it is
 // cheapest now and there is no realized n to argue about.
 //
@@ -925,7 +925,7 @@ fn native_progress_reading_findings(readings: List<NativeProgressObservedReading
 // is what the route already keys its subjects on, and it is INJECTIVE over this universe for a
 // reason worth stating rather than assuming: a module qualified name may carry dots but a
 // DECLARATION NAME MAY NOT, so the last dot in the joined form always divides them and no two
-// distinct identities share a key. Minting a second key here would be the fork DESIGN section 3
+// distinct identities share a key. Minting a second key here would be the fork gunbc.design_argument::single_authority
 // forbids, and a key without a complete canonical preimage is the conformance-identity defect
 // beside it.
 
@@ -988,7 +988,7 @@ fn native_accept_to_refuse_index(
 // CAUSE CHANGE at that identity: the guard would return no finding where it owed
 // `CauseTransitionUndispositioned` or `CauseRegressedAtAFixedRank`.
 //
-// A PRE-DECLARED WAIVER OF A RED THIS MODULE EXISTS TO RAISE is DESIGN section 5's escape hatch --
+// A PRE-DECLARED WAIVER OF A RED THIS MODULE EXISTS TO RAISE is gunbc.design_argument::fail_closed's escape hatch --
 // "a toggle whose only effect is 'proceed as if the refusal had not fired'" -- and the section
 // calls a diff that lands one a hard reject. It is also the eighth instance of
 // `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling` in this module, and the
@@ -1469,7 +1469,7 @@ fn native_progress_report(
 //
 // `ProgressUnobserved` is a run that never reached the population: nothing regressed and nothing
 // was preserved, because nothing was looked at. It BLOCKS -- a merge candidate that established
-// nothing is not a pass, which is the whole of DESIGN section 5's refusal to let an empty
+// nothing is not a pass, which is the whole of gunbc.design_argument::fail_closed's refusal to let an empty
 // observation stand in for a clean one -- and it is a DIFFERENT RED from `ProgressLost`, because
 // it sends a reader to the earlier rung rather than into a diff. It also may not advance the
 // ratchet, which `native_progress_baseline_advance` enforces rather than trusting.

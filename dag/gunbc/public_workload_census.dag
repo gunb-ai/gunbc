@@ -56,7 +56,7 @@ import gunbc.runner.runner_label_resolution {
 // test is not a baseline; an unobserved cache is not warm; provider use is not verified spend;
 // a census outcome does not authorize a trial.
 //
-// DECLARED FRONTIER (DESIGN section 3c). This module is the census: rows and selection folds
+// DECLARED FRONTIER (gunbc.design_argument::consumption). This module is the census: rows and selection folds
 // land here. The executing consumer that *replays* a selected job is incumbent-head-to-head,
 // a separate year_end_plan item blocked on runner-canary and fabric-m0. A witness that imports
 // these declarations is not that consumer.
@@ -765,7 +765,7 @@ type ResourceRequirements
   | ResourceRequirementsUnobserved { obligation: NonEmptyStr }
 
 // CandidateSelection is complementary census coverage, not realization selection
-// (DESIGN §3b stated departure from §3d). std.decision / std.pareto choose one
+// (gunbc.design_argument::conformance stated departure from gunbc.design_argument::selection_precedes_convergence). std.decision / std.pareto choose one
 // realization on a funded multi-axis field and bind a SelectionReceipt. This item
 // asks for two or three complementary jobs kept visible with rejected and unresolved
 // rows. SelectedWorkload is an authored coverage pick, not SelectedWithin. rank orders

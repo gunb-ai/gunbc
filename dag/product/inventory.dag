@@ -23,14 +23,14 @@ import std.algebra { collection_concat_shape, collection_count_shape, list_push,
 // is admissible. It answers NOTHING about which lots a particular operator owns — this module is
 // deliberately row-free, and concrete lot rows are a separate downstream fact.
 //
-// Reuse, never fork (DESIGN section 3): ProcurementReceiptIdentity and PhysicalAssetIdentity are
+// Reuse, never fork (gunbc.design_argument::single_authority): ProcurementReceiptIdentity and PhysicalAssetIdentity are
 // imported from product.placement_supply, which already models the physical placement seam this
 // module hands stock to on installation; catalog rows are cited by std.decl_ref DeclarationRef,
 // which is also how std.pareto keys identity, so no eq or display is re-minted here; money is
 // std.measure MoneyOnce; lot identity is std.minted_identity MintedId over this module's own
 // subject marker.
 //
-// Grain (DESIGN section 2, deep): fungible stock lives at LOT grain. A PhysicalAssetIdentity
+// Grain (gunbc.design_argument::minimize_redundancy, deep): fungible stock lives at LOT grain. A PhysicalAssetIdentity
 // appears only where an individual unit genuinely becomes distinguishable — installation, where
 // the unit acquires a placement and a serial. Carrying an asset identity per unit before that
 // would be inventing a distinction the world does not yet make.
@@ -59,7 +59,7 @@ fn inventory_lot_identity_eq(left: InventoryLotIdentity, right: InventoryLotIden
 // It was authored in product.lot_sales_tax, which meant that asking "is this lot identity in this
 // list" - a question with nothing to do with tax - reached its answer through the SALES-TAX module.
 // gunbc.fleet.fleet_host_assembly then imported it from there to decide component-lot admission, so the
-// host-assembly model depended on the tax model for plain identity membership. DESIGN section 3:
+// host-assembly model depended on the tax model for plain identity membership. gunbc.design_argument::single_authority:
 // a fact's home is its LAYER, not its file. This is that layer, because it is where
 // inventory_lot_identity_eq is declared, and a membership helper separated from the equality it
 // closes over is the split that put it in the wrong place to begin with. (review 65235)
@@ -70,11 +70,11 @@ fn inventory_lot_identities_contain(lots: List<InventoryLotIdentity>, lot: Inven
 // A lot identity is ALLOCATOR-MINTED and carries no text. There is deliberately no fn from a
 // display label, a vendor line-item string, a catalog part number, or a file path to an
 // InventoryLotIdentity — the conversion does not exist to be called, so identity-from-label is
-// unwritable rather than discouraged (DESIGN section 4b: construction over validation). Two lots
+// unwritable rather than discouraged (gunbc.design_argument::guarantee_ladder: construction over validation). Two lots
 // bought from the same vendor on the same receipt with byte-identical descriptions are two lots,
 // and relabelling a lot leaves its identity untouched. The reason is the one std.minted_identity
 // states: a label-derived key turns a relabel into a delete-plus-create that only a similarity
-// heuristic can re-pair, and DESIGN section 4 rules a heuristic never necessary in a closed system.
+// heuristic can re-pair, and gunbc.design_argument::closed_grounded_substrate rules a heuristic never necessary in a closed system.
 // Display text belongs in a mutable VALUE field beside the identity; see
 // ProcurementLot.display_label.
 
@@ -87,11 +87,11 @@ fn inventory_lot_identities_contain(lots: List<InventoryLotIdentity>, lot: Inven
 // an unverified shorthand must not inherit. So CatalogRowUnread carries what was actually observed
 // plus what must be done to close it, and lot_catalog_exact_row has NO arm returning a
 // DeclarationRef for it: a consumer that needs the exact row gets Absent and must refuse or
-// observe, which is the DESIGN section 5 shape — a failure arm refuses, it does not widen to a
+// observe, which is the gunbc.design_argument::fail_closed shape — a failure arm refuses, it does not widen to a
 // plausible-looking row. The read obligation is the located next action, so an unread lot is
 // countable rather than silently equivalent to a read one.
 
-data catalog_ref_resolution_is_unchecked_note: String = "HONEST RUNG, stated because this module invites the defect. CatalogRowExact carries a DeclarationRef, which is a module-path plus decl-name pair of strings — nothing in the substrate checks that the named declaration EXISTS. So CatalogRowExact means 'an exact row was cited', not 'an exact row was found', and the distinction matters exactly as much as the CatalogRowUnread split does: a fabricated symbol reads as a read catalog identity and inherits, in a consumer's mind, properties nothing ever supplied. This is the DESIGN section 3 fabricated-symbol class, and the rule there is why it is decidable at all — a symbol is reachable from the namespace authority, so it is grep-verifiable and lens-enforceable in a way a file:line pointer is not. The class sits at MITIGATABLE here: cited, not verified. Its own first specimen was in this change's witness fixtures, which cited extdeps.cpu.ampere altra_q80_30 — a decl that does not exist — until the citation was checked against the tree and replaced with ampere_altra_max_m12830_thermal_limits, which does. DISSOLVE-ON: feature:cited-symbol-resolution lands, at which point an unresolvable DeclarationRef refuses at admission and CatalogRowExact means what its name says."
+data catalog_ref_resolution_is_unchecked_note: String = "HONEST RUNG, stated because this module invites the defect. CatalogRowExact carries a DeclarationRef, which is a module-path plus decl-name pair of strings — nothing in the substrate checks that the named declaration EXISTS. So CatalogRowExact means 'an exact row was cited', not 'an exact row was found', and the distinction matters exactly as much as the CatalogRowUnread split does: a fabricated symbol reads as a read catalog identity and inherits, in a consumer's mind, properties nothing ever supplied. This is the gunbc.design_argument::single_authority fabricated-symbol class, and the rule there is why it is decidable at all — a symbol is reachable from the namespace authority, so it is grep-verifiable and lens-enforceable in a way a file:line pointer is not. The class sits at MITIGATABLE here: cited, not verified. Its own first specimen was in this change's witness fixtures, which cited extdeps.cpu.ampere altra_q80_30 — a decl that does not exist — until the citation was checked against the tree and replaced with ampere_altra_max_m12830_thermal_limits, which does. DISSOLVE-ON: feature:cited-symbol-resolution lands, at which point an unresolvable DeclarationRef refuses at admission and CatalogRowExact means what its name says."
 
 type LotCatalogIdentity
   = CatalogRowExact { row: DeclarationRef }
@@ -140,7 +140,7 @@ type ProcurementReceipt {
 // reasons, and both are structural rather than stylistic. First, division does not close at
 // money-micro grain: 100 units landing at 1,000,003 micros has no exact per-unit quotient, so a
 // stored per-unit average is a fabricated number that no longer sums back to what was paid — DESIGN
-// section 5's fabricated-plausible-output, wearing a currency. Second, assigning cost to individual
+// gunbc.design_argument::fail_closed's fabricated-plausible-output, wearing a currency. Second, assigning cost to individual
 // units is a POLICY (specific identification, average, FIFO, LIFO), and a policy has to be named by
 // whoever applies it; baking one silently into a field would make the model answer a question
 // nobody asked it. So this module carries the fact — what the lot cost to land — and any per-unit
@@ -220,7 +220,7 @@ fn lot_landed_cost_currency(lot: ProcurementLot) -> LandedCostCurrencyReading {
 
 // LandedCostEmpty is a THIRD arm, not a refusal carrying a sentinel. An earlier revision seeded the
 // fold with LandedCostSumRefused { cause: "no_lots" } and told the empty accumulator apart from a
-// genuine currency mismatch by comparing that String — which is the DESIGN section 5 state-space
+// genuine currency mismatch by comparing that String — which is the gunbc.design_argument::fail_closed state-space
 // conflation exactly, one level down: two states with completely different remedies (supply lots
 // versus reconcile currencies) shared one constructor, and any consumer wanting to tell them apart
 // had to parse prose out of a diagnostic field. Summing nothing is not a failure and must not be
@@ -292,7 +292,7 @@ fn sum_landed_cost(lots: List<ProcurementLot>) -> LandedCostSum {
 // sum to quantity_acquired. That is why every event is expressed as a TRANSFER between two
 // positions rather than as an increment of one bucket — an increment can invent stock, a transfer
 // cannot, and the reconciliation wall then holds by construction rather than by a check that runs
-// afterwards (DESIGN section 4b: construction over validation). The nine buckets the balance
+// afterwards (gunbc.design_argument::guarantee_ladder: construction over validation). The nine buckets the balance
 // REPORTS are derived aggregates over this partition; none of them is authored and none of them is
 // stored.
 
@@ -455,7 +455,7 @@ fn stock_distribution_total(distribution: StockDistribution) -> Nat {
 // name any holder at all — including one that never reserved — and still balance, so the ledger
 // would happily hand one claimant's stock to another and report nothing wrong. Holder rows make an
 // unknown-holder release a typed refusal (ReservationHolderUnknown) and an over-release a typed
-// refusal (ReservationOverRelease), which is what the DESIGN section 5 factory model asks for: the
+// refusal (ReservationOverRelease), which is what the gunbc.design_argument::fail_closed factory model asks for: the
 // line stops, and the stop names which holder and how much.
 
 type ReservationRow {
@@ -502,7 +502,7 @@ fn reservation_rows_with_delta(
 // Events that could plausibly draw from more than one position carry an EXPLICIT origin rather than
 // letting the fold pick one. Installing can consume a holder's reservation or free available stock;
 // a failure can be found on the shelf, in quarantine, or in a running machine. Choosing for the
-// author would be a heuristic standing where a fact was owed (DESIGN section 4: in a closed system
+// author would be a heuristic standing where a fact was owed (gunbc.design_argument::closed_grounded_substrate: in a closed system
 // a heuristic is never necessary — the richer source exists, and here the richer source is simply
 // asking the event to say). So InstallOrigin and DepartureOrigin are closed coproducts, and an
 // origin the transition does not admit is a typed refusal, not a silent substitution.
@@ -534,7 +534,7 @@ fn departure_origin_position(origin: DepartureOrigin) -> StockPosition {
 // named assets than units. Its own witnesses proved the defect rather than the behaviour: every
 // fixture was a lone QuantityInstalled with no LotAcquired before it, which this module rejects as
 // EventBeforeAcquisition. That is two live interpretations of whether an event happened, which is
-// the §3 fork, and it let provenance be derived from evidence the authority had already refused.
+// the gunbc.design_argument::single_authority fork, and it let provenance be derived from evidence the authority had already refused.
 //
 // A validation would have been the weaker repair: check the fold, then scan the raw list anyway, and
 // the invalid pairing -- admitted lot, unadmitted events -- stays writable. The seal removes it. An
@@ -808,7 +808,7 @@ type InventoryEvent
 
 // LotAcquired carries NO quantity: the quantity acquired is a field of the ProcurementLot, and
 // restating it on the event would be a second representation of one fact that could disagree with
-// the first (DESIGN sections 2 and 3). The fold reads it from the lot, so there is nothing to
+// the first (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). The fold reads it from the lot, so there is nothing to
 // reconcile.
 
 fn inventory_event_lot(event: InventoryEvent) -> InventoryLotIdentity {
@@ -863,7 +863,7 @@ fn initial_ledger_state() -> LedgerState {
 
 // Every refusal names WHAT was refused, WHERE, and by HOW MUCH: the event's ordinal in the ledger,
 // its constructor label, the position that could not supply the stock, the quantity requested and
-// the quantity actually held. That is the DESIGN section 5 bar — a typed, LOCATED diagnostic,
+// the quantity actually held. That is the gunbc.design_argument::fail_closed bar — a typed, LOCATED diagnostic,
 // countable and prioritizable — as against a Boolean false or a saturating transfer that quietly
 // takes what it can. Saturation in particular is the absorbing fallback this module must not
 // contain: taking min(requested, held) never fails, so an over-request would have a frequency of
@@ -1278,7 +1278,7 @@ type InventoryPopulationBalance
 // imported InventoryLotRepetition from here and then re-derived the scan that produces it. Two
 // sources for one fact, each free to drift: fix an off-by-one in one ordinal and the other keeps
 // answering the old way, silently, because both are green against their own fixtures. DESIGN
-// section 2 - model a concept once, derive every use, and net concepts must not grow by
+// gunbc.design_argument::minimize_redundancy - model a concept once, derive every use, and net concepts must not grow by
 // re-invention. (review 65262)
 //
 // It lives HERE because InventoryLotIdentity and InventoryLotRepetition do, which is the same
@@ -1371,7 +1371,7 @@ fn sum_inventory_balances(ledgers: List<AdmittedInventoryLedger>) -> InventoryPo
 // the subtraction reduces to awaiting_receipt and the whole expression reduces to total == total.
 // It could only ever return true. A sibling, owned + departed == acquired, was the same tautology
 // with fewer terms. Neither tested anything, and both invited a consumer to read a construction
-// wall as a validated property — the DESIGN section 5 inversion exactly, a check standing where
+// wall as a validated property — the gunbc.design_argument::fail_closed inversion exactly, a check standing where
 // construction already holds, except this one could not even fail. The wall is real and it lives in
 // transfer_stock: that function is the only mutation, it moves rather than creates, so the
 // partition total is invariant under it and the reconciliation cannot be violated by any event
@@ -1393,7 +1393,7 @@ type ConsumptionAdmissibility
   | ConsumptionRefused { cause: LedgerRefusalCause, requested: Nat, available: Nat }
 
 // An over-request REFUSES with the requested and available quantities beside each other; it does
-// not return the largest admissible amount. Partial fulfilment would be the DESIGN section 5
+// not return the largest admissible amount. Partial fulfilment would be the gunbc.design_argument::fail_closed
 // absorbing fallback executed on the answer lattice — 'you asked for 40 and I gave you 12' never
 // fails, so the shortfall's frequency is zero by construction and the stockout it represents never
 // surfaces as a fact anyone can count. The caller that genuinely wants a partial draw asks for the

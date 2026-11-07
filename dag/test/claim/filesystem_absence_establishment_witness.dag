@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // format rather than an invention. What these deliberately do NOT establish is that Filesystem.List
 // EMITS those bytes for any given directory: that is a transport claim, it cannot execute inside
 // the hermetic fold, and reporting these as coverage for it would be the rung inflation DESIGN
-// section 4b forbids. What they also do not establish is the CONSTRUCTION wall -- that a record
+// gunbc.design_argument::guarantee_ladder forbids. What they also do not establish is the CONSTRUCTION wall -- that a record
 // literal for FilesystemEstablishedAbsence outside its home module is refused. That claim is about
 // compiler acceptance, its subject is source text rather than a value, and its only enrolled home
 // is the guarantee-probe corpus, which DESIGN records as declined by the floor; it is measured by
