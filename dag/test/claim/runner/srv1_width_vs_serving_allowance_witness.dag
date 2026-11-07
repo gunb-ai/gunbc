@@ -1,8 +1,12 @@
 module test.claim.runner.srv1_width_vs_serving_allowance_witness
 
-// SIZING WITNESS (was the 131-row probe; the transition it found is pinned here): the canonical width fold memory_admitted_width_of over srv1's
-// own HostWidthFacts with the served claim replaced by (deployment slices + k GiB serving container).
-// Each row says whether srv1 still derives >= 3 slots at allowance k; the transition is the answer.
+// WHAT THE TREE DERIVES (executed ledger, 2026-11-07, one remote dispatch): the canonical width fold memory_admitted_width_of over
+// srv1's own HostWidthFacts with the served claim replaced by (deployment slices + k GiB serving container).
+// srv1 width = 2 authored microVM slots (charged first, 108447924224 B) + floor((envelope - that) / 25 GiB fleet slot).
+// Main's envelope (deployment slices only, no container) is 143725064192 B, so 3 = 2 authored + 1 fleet slot with 7.85 GiB to spare:
+// a serving container charge above 7 GiB takes the third slot, and the live 71 GiB allowance takes the whole pool (width 0).
+// An earlier sizing probe reported >= 3 up to 71 GiB; it is NOT reproduced (its commit itself evaluates to 0) and the
+// suspected cause (a stale remote base with smaller deployment slices) is unconfirmed, its log not retained.
 
 import std.types { Bool, Int }
 import std.measure { ByteSize, byte_size, byte_size_count }
@@ -44,24 +48,34 @@ fn width_at(k: Int) -> Int {
 }
 
 
-// ORACLE (executed sweep, 2026-11-07): width stays >= 3 through a 71 GiB serving container and drops
-// below 3 at 72 GiB; at the previously running 130 GiB the charge leaves no room (0 slots).
-test fn width_is_3_at_the_resized_allowance() -> Bool {
-  width_at(k: 71) >= 3
+// MAIN'S DEPLOYMENT SLICES ARE THE BASE: the served claim main derives (no container charge) is exactly the deployment slices.
+test fn the_deployment_slices_are_193_gib() -> Bool {
+  deployment_bytes() == 207232172032
 }
 
-test fn width_is_below_3_one_gib_past_it() -> Bool {
-  width_at(k: 72) < 3
+test fn width_is_3_with_no_serving_charge_two_authored_plus_one_fleet_slot() -> Bool {
+  width_at(k: 0) == 3
+}
+
+test fn width_is_still_3_at_7_gib_the_last_allowance_that_keeps_the_fleet_slot() -> Bool {
+  width_at(k: 7) == 3
+}
+
+test fn width_is_2_at_8_gib_the_fleet_slot_is_gone() -> Bool {
+  width_at(k: 8) < 3
+}
+
+test fn width_is_zero_at_the_71_gib_allowance() -> Bool {
+  width_at(k: 71) == 0
 }
 
 test fn width_is_zero_at_the_running_130_gib_allowance() -> Bool {
   width_at(k: 130) == 0
 }
 
-// THE REAL PATH: the authored allowance is the one the fold charges. Width computed from the actual
-// served claim (deployment + srv1_serving_allowance) equals the width at the 71 GiB sweep point; removing
-// the charge from the served claim or resizing the allowance moves this.
-test fn the_authored_allowance_is_the_71_gib_sweep_point() -> Bool {
+// THE REAL PATH: the width computed from the actual served claim (deployment + srv1_serving_allowance) is the width at the
+// authored 71 GiB. Removing the charge from the served claim moves it to 3; resizing the allowance moves it.
+test fn the_authored_allowance_is_71_gib_and_the_real_path_width_is_zero() -> Bool {
   byte_size_count(b: srv1_serving_allowance.memory) == 71 * 1073741824
-    && memory_admitted_width_of(f: host_width_facts(host: operator_host_srv1)) >= 3
+    && memory_admitted_width_of(f: host_width_facts(host: operator_host_srv1)) == 0
 }

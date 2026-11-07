@@ -35,12 +35,13 @@ type ServingContainerAllowance {
   cgroup_parent: NonEmptyStr
 }
 
-// OPERATOR DECISION 2026-11-07 (option B on top of A): the allowance is the LARGEST one at which srv1's
-// canonical runner-width derivation (gunbc.runner.runner_slot_allocation memory_admitted_width_of over
-// srv1's own HostWidthFacts, with this container charged by gunbc.live_deploy.served_slice_charge)
-// still yields 3 slots. The sweep over 0..130 GiB (test.claim.runner.srv1_width_vs_serving_allowance_witness)
-// reads width 3 up to 71 GiB and below 3 from 72 GiB; at the running 130 GiB it reads 0. swap total equals
-// memory (no swap); shm keeps the running allowance's 10 GiB of slack over the cache tier it holds.
+// OPERATOR DECISION 2026-11-07 (option B on top of A): the allowance was sized to 71 GiB (running 130 GiB before) on a sizing
+// probe that read srv1 width 3 up to 71 GiB. THAT READING IS NOT REPRODUCED: the executed ledger of 2026-11-07
+// (test.claim.runner.srv1_width_vs_serving_allowance_witness) derives width 0 at 71 GiB. srv1 width is 2 authored microVM
+// slots (charged first, 108447924224 B) + floor((envelope - that) / 25 GiB), main's envelope with no container charge is
+// 143725064192 B, so width 3 survives only a container charge of at most 7 GiB. The 71 GiB value is the RUNNING reading
+// (launched 2026-11-07T19:43:49Z, receipt pending), kept because the memory floor (anon+shmem ~67.8 GB) fits it; it does
+// NOT restore CI width. swap total equals memory (no swap); shm keeps 10 GiB of slack over the cache tier it holds.
 data srv1_serving_allowance: ServingContainerAllowance = ServingContainerAllowance {
   memory: gibibyte_to_byte_size(g: gibibyte(count: 71)),
   memory_swap_total: gibibyte_to_byte_size(g: gibibyte(count: 71)),
