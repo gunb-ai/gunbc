@@ -1153,23 +1153,6 @@ pub fn resolve_node_bounded(
         } else {
             if has_structure.clone() {
                 {
-                    let env = if (n.transport.clone() == std::option::Option::None) {
-                        crate::v1_compiler_infer_env::env_with_type_variable_bindings(
-                            env.clone(),
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for p in n.params.clone().iter().cloned() {
-                                    __result.push(crate::v1_std_core::generic_param_name_at(
-                                        p.clone(),
-                                        env.source_indices.clone(),
-                                    ));
-                                }
-                                __result
-                            }),
-                        )
-                    } else {
-                        env.clone()
-                    };
                     let is_product = (n.connective.clone() == Connective::Conj);
                     if is_product.clone() {
                         if (n.type_annotation.clone() != std::option::Option::None) {
