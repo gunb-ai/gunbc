@@ -1,6 +1,9 @@
 module gunbc.stage0.stage0_emitted_edge_admission
 
 import std.types { Bool, Int, List, String }
+import std.content_hash { ContentHash }
+import v1.compiler.artifact { RenderTarget, RustModuleRenderSelection }
+import v2.compiler.self_host.stage0_executable_assembly { Stage0ExecutableModuleOwner }
 import gunbc.rust_emitted_edge {
   EmittedEdge,
   EmittedEdgeProvenance,
@@ -29,7 +32,7 @@ import gunbc.stage0.stage0_partition_package_graph {
 //
 // THE POPULATION IS THE STAGE0 SEED, and it is stated rather than assumed. A module is owned by the
 // module-bearing partition row that lists it, else by the host shell package when the host shell's
-// module roster (the caller supplies it, read from the shell's lib.rs) lists it. A module in
+// module roster (the caller supplies it, read from the SAME CANDIDATE shell's lib.rs) lists it. A module in
 // neither is NOT COVERED: this admission has no crate for it, so it answers with that typed arm,
 // never with a pass. Emitting a closure that is not the seed therefore reaches the not-covered arm
 // by name.
@@ -44,6 +47,128 @@ type Stage0EmittedTreePackages {
   host_shell_package_name: String
   host_shell_dependencies: List<String>
 }
+
+// CANDIDATE ASSEMBLY CONTRACT -- MODEL REVIEW, NOT YET A HOST CUTOVER.
+// Named later consumer: required_regen_host::compile_stage0_admitted. Its source adapter must
+// read root/modules from the v1.compiler.compile::PipelineResult.files it is judging, and package facts from
+// the SAME immutable source observation supplied to compilation. The prior live caller reads
+// committed lib.rs before emission; that route remains unchanged until this contract is admitted
+// and its producer/consumer change together. No runtime safety improvement is claimed here.
+// The existing supplied-values edge function below remains the single owner/reach law; it is
+// not a constructor of candidate provenance. This seal has no producer until the adapter lands.
+//
+// One source digest binds the full source observation (paths AND contents, including generated
+// package/assembly projections); one candidate digest binds the whole result.files/edges pair.
+// Both digests are computed over the actual canonical inputs, never caller labels. Unchanged
+// inputs include declared retained sources AND generated files deliberately omitted by the
+// render selection. Their ownership/unchanged standing comes from the candidate plan before
+// reading, not from absence in result.files; observe once and check again at realization.
+// They are not a fallback for a missing generated candidate file. Selection may omit rendering
+// an unchanged mirror, but cannot shrink the candidate root's full declaration population.
+// Minted BEFORE reading candidate/unchanged file bytes. Ownership comes from the existing
+// stage0 assembly census over the selected source observation; generated unchanged standing
+// additionally requires RenderSelectedMirrors exclusion under the admitted affected-set plan.
+// Neither membership nor standing may be inferred from absence in result.files. A selected
+// generated file missing from result.files refuses even if its old bytes exist on disk.
+// CONTENT-PRODUCER FRONTIER (both branches are currently unavailable):
+// Retained ownership is produced by stage0_executable_assembly's census/retention rows;
+// emitted_closure_compile_host::closure_modules reads declarations, but does not return a
+// sealed retained-byte observation. cli_run::regen_input_sources observes DAG sources, not
+// these retained Rust files; authority_digest_from_sources cannot stand in for their content.
+// The later ownership-aware traversal adapter must observe each already-owned retained path
+// once, bind its actual bytes to this source observation, and derive expected_content there.
+// Until that bounded producer exists, CandidateUnchangedEvidenceUnavailable refuses the path.
+//
+// For deliberately omitted generated files, required_regen_host::scope_selection and its
+// RenderSelectedMirrors construction establish selection, NOT provenance of omitted bytes.
+// PipelineResult.files supplies emitted bytes only. No inspected existing producer joins
+// omitted-file origin/content with affected-plan exclusion into an unchanged-input seal.
+// That join is a bounded missing producer at the same adapter: require the admitted exclusion
+// and observed generated-file provenance/content from existing generation authority, or refuse.
+// Reading whichever disk file exists and hashing it is not proof of unchanged standing.
+// A caller-supplied expected_content cannot close either frontier. Do not weaken the seal to
+// make scoped emission run before its evidence producer exists.
+type Stage0UnchangedAssemblyInput {
+  path: String
+  owner: Stage0ExecutableModuleOwner
+  expected_content: ContentHash
+}
+
+type Stage0CandidateReadPlan sole_constructor {
+  source_authority: ContentHash
+  target: RenderTarget
+  render_selection: RustModuleRenderSelection
+  unchanged_inputs: List<Stage0UnchangedAssemblyInput>
+}
+
+// FIXED DECLARED-SET POLICY, not active-cfg membership: the existing closure_modules calls
+// declared_mod_decls(content, true). That includes cfg(test) and does not evaluate target/feature
+// predicates; closure_modules_tests::a_cfg_test_mod_is_not_a_seed_module explicitly contrasts
+// true (edge coverage) with binary_modules' false (seed membership). Preserve this policy for
+// supported syntax. The traversal adapter must first classify attached attributes using an
+// explicit supported-form policy: ordinary literal path, cfg under declared-set semantics,
+// and known non-membership-changing lint/format/doc forms with validated shape. Unknown forms,
+// malformed/duplicate path attributes, or transformations such as cfg_attr refuse by default;
+// a cfg_attr-only denylist is insufficient. Extend the existing declaration reader, not a second
+// roster. Pair each admitted form (including multiline lint and cfg(test)) with its refusal
+// control; unsupported attributes must never become a path-less ordinary mod declaration.
+// cfg_attr or other syntax whose module/path relation is not established is
+// CandidateDeclarationUnsupported, never silently evaluated or ignored. This contract makes no
+// active-target availability claim; Cargo compilation remains a separate obligation.
+// RenderTarget must be Rust; its typed value and the exact existing render-selection carrier
+// are bound in the read plan and included in candidate identity, not hidden behind a hash label.
+type Stage0CandidateAssembly sole_constructor {
+  read_plan: Stage0CandidateReadPlan
+  candidate: ContentHash
+  candidate_root_path: String
+  host_shell_modules: List<String>
+  packages: Stage0EmittedTreePackages
+  emitted_edges: List<EmittedEdge>
+}
+
+// Failures to establish the assembly are distinct from a valid assembly whose edges are not
+// covered or cross an inadmissible package boundary. There is no refusal arm that falls through
+// to committed-root membership, the compiled partition, or a union of emitted edge endpoints.
+type Stage0CandidateAssemblyRefusal
+  = CandidateRenderTargetUnsupported { target: RenderTarget }
+  | CandidateRootMissing { path: String }
+  | CandidatePathDuplicated { path: String }
+  | CandidateDeclarationUnreadable { path: String, detail: String }
+  | CandidateDeclarationUnsupported { path: String, detail: String }
+  | CandidateInputOwnershipUnresolved { path: String }
+  | CandidateUnchangedInputChanged { path: String }
+  | CandidateUnchangedEvidenceUnavailable { path: String, detail: String }
+  | CandidateSourceAuthorityDisagrees { expected: ContentHash, observed: ContentHash }
+  | CandidateEmissionIdentityDisagrees { expected: ContentHash, observed: ContentHash }
+  | CandidateModuleOwnershipDisagrees { module_basename: String }
+  | CandidatePackageGraphDisagrees { package_name: String }
+
+type Stage0CandidateAssemblyAdmission
+  = CandidateAssemblyAdmitted { assembly: Stage0CandidateAssembly }
+  | CandidateAssemblyRefused { cause: Stage0CandidateAssemblyRefusal }
+
+// After admission, the host must pass exactly this assembly's edges, shell modules and packages
+// to stage0_emitted_edge_admission. No independent shell list may be added to that call.
+// Adapter choice (no new compiler output interface): use result.files' unique candidate root,
+// factor emitted_closure_compile_host::closure_modules over a supplied read resolver, preserve
+// its nested mod/#[path] resolution and cfg inclusion policy. Each read has declared ownership:
+// emitted candidate bytes, a predeclared unchanged candidate input, or typed refusal.
+// A generated file missing from result.files is NOT an invitation to consult the committed root.
+// Unsupported syntax must remain a refusal rather than be read as an empty declaration list.
+// Partition-subtraction/retained-module meaning stays with stage0_executable_assembly and the
+// existing emit_lib_rs_from_paths projection. The adapter compares their emitted package graph
+// and candidate declaration result; disagreement refuses, it does not mint a second roster.
+//
+// Required production-path discriminator before host cutover: emit a new unpartitioned fixture
+// absent from committed lib.rs, then derive membership from that exact candidate and admit its
+// legal edge. Remove the candidate declaration while retaining the edge: NotCovered. A stale
+// committed declaration cannot rescue it; lower-package -> host still refuses crossing. Missing
+// root, stale package source, nested retained-path, cfg policy and scoped-render complete-root
+// controls pair each refusal with its valid case. A supplied-model fixture alone is insufficient.
+// This is independent of transient base-package bootstrap population: it governs the candidate
+// after emission. End-to-end evidence must name the actually executing base-built seed; a host
+// fix only in HEAD is not proof that the re-executed seed ran this adapter. No alternate seed or
+// generated-byte hand-seed is admitted by this contract.
 
 type Stage0EmittedModuleOwner
   = Stage0EmittedModuleOwned { package_name: String }
