@@ -13,6 +13,9 @@ import extdeps.posix.identity { PosixOwnerNames }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.rust.cargo { cargo_default_release_dir }
 import extdeps.git { git_rev_parse_head_command }
+import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell }
 import gunbc.host.host_effect_realize {
@@ -605,9 +608,50 @@ fn witness_sudo_elevation_available() -> Bool {
 // own off-the-live-host arm would refuse it. So the row keeps production's SHAPE — the same
 // `helper_locus_dir` fold, and the step stem read from production's own accessor rather than
 // restated — and only the base becomes the claim's instance root.
+// THE BATCH ROOT EVERY LEG'S LOCUS IS PLACED UNDER, and it is the SAME for every leg. WHY IT IS NOT
+// UNDER THE CLAIM ROOT. It used to be `join([instance.instance_root, "/helper-loci"])`, which is
+// off-the-live-host and correctly isolated -- and it made every launching leg pay for the whole install
+// fold again, because a locus keyed by (claim root, revision) is a NEW locus for every claim: srv2's S1
+// at 833ebe0c (stern) measured one fold per leg, zero reuses, and 27.5M eval steps / 634-865 s wall for
+// the legs that run it. The locus is read-only content named by the revision it carries, so the sharing
+// is the natural key: one tree per revision per batch, installed once, read by every leg. It is still
+// under the fixture's scratch prefix and the fixture's off-the-live-host arm still refuses it.
+//
+// WHAT MAKES TRUSTING IT HONEST. A path in a scratch directory can be created by anyone, so the cheap
+// arm does not read a tree's EXISTENCE as a verdict: the fold writes the digest of its own receipt
+// beside it, LAST (`witness_seal_locus_receipt`), and `wet_locus_reads_as_installed` re-digests the
+// bytes it is about to trust. A shape check -- a line count, or "lines that look like receipts" --
+// would have been satisfied by a stub, by a truncated tree, and by a receipt with one path altered;
+// `an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed` puts all three in front of it
+// and flips the verdict back by resealing, so a reader stuck true cannot pass either. What the seal
+// does NOT claim is that each digest matches the file beneath it: the fold's own digest agreement does
+// that on the leg that runs it, and every launching leg pays anyway for the claim about CONTENT -- the
+// served probe, which asks the installed image to answer its own route.
+//
+// THE ENVIRONMENT VARIABLE THAT NAMES THE RUN. The S1 script mktemps ONE directory per run and exports
+// it to both batches, so legs share a locus within a run while two runs on one host never share -- or
+// clear -- each other's tree. A FIXED path here would do exactly that, which is why the base comes
+// from the host and is then held to the fixture's OWN refusal: an inadmissible name is not honoured,
+// and the instance keeps its own tree instead. `witness_batch_locus_base` is read twice per claim and
+// nowhere else.
+data witness_batch_locus_env_var: String = "WITNESS_LOCUS_BASE"
+
+fn witness_batch_locus_base(instance: HostDashboardInstance) -> String {
+  match shell.Env.Get(name: witness_batch_locus_env_var as NonEmptyStr).value {
+    Present { value: named } =>
+      if named == "" || witness_supplied_root_is_refused(candidate: named) {
+        instance.instance_root as String
+      } else {
+        named
+      }
+
+    Absent => instance.instance_root as String
+  }
+}
+
 fn witness_claim_helper_locus(instance: HostDashboardInstance) -> HelperLocus {
   HelperLocus {
-    base: join([instance.instance_root as String, "/helper-loci"], ""),
+    base: witness_batch_locus_base(instance: instance),
     owner: approval_broker_helper_root_principal,
     step_stem: attempt_system_unit_launcher_locus(instance: instance).step_stem,
   }
@@ -726,6 +770,35 @@ fn witness_locus_dir_text(instance: HostDashboardInstance, revision_text: String
 // The `dag` DIRECTORY the reader requires (cli_run.rs:611), inside the locus.
 fn witness_locus_dag_dir(instance: HostDashboardInstance, revision_text: String) -> String {
   join([witness_locus_dir_text(instance: instance, revision_text: revision_text), "/", "dag"], "")
+}
+
+// THE SEAL THE FOLD WRITES LAST: the digest of the receipt's own bytes, in a file beside it. Written
+// after the receipt -- which production itself writes last -- so a receipt truncated after the fold
+// finished, or edited afterwards, no longer matches what sits beside it.
+data witness_locus_receipt_seal_suffix: String = ".sha256"
+
+fn witness_locus_receipt_seal_path(instance: HostDashboardInstance, revision_text: String) -> String {
+  join([witness_locus_receipt_path(instance: instance, revision_text: revision_text), witness_locus_receipt_seal_suffix], "")
+}
+
+// THE DIGEST OF ONE FILE, through the fleet's own sha256sum route; "" when it cannot be taken.
+fn witness_file_sha256_hex(path: String) -> String {
+  match sha256sum_line_digest(line: wet_out(command: sha256sum_file_command(path: path))) {
+    Absent => ""
+
+    Present { value: digest } => digest.hex as String
+  }
+}
+
+// SEAL IT. A fold that cannot seal its receipt has not delivered a locus the batch may reuse.
+fn witness_seal_locus_receipt(instance: HostDashboardInstance, revision_text: String) -> Bool {
+  let hex = witness_file_sha256_hex(path: witness_locus_receipt_path(instance: instance, revision_text: revision_text))
+
+  if hex == "" {
+    false
+  } else {
+    Filesystem.Write(path: witness_locus_receipt_seal_path(instance: instance, revision_text: revision_text), content: join([hex, "\n"], "")).success
+  }
 }
 
 // The receipt FILE the reader requires, named by production's constant and no other spelling.
