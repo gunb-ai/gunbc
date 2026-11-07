@@ -8285,9 +8285,9 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
         Present { value: receiver_arg } =>
           match arg_value(n: receiver_arg).inferred {
             Present { value: Resolved { node: receiver_type } } =>
-              if conformance_ground_type(n: receiver_type, source_indices: scope.type_env.source_indices) {
-                resolve_builtin_call_type(name: func_name)
-              } else { receiver_type }
+              if node_is_collection(n: receiver_type, source_indices: scope.type_env.source_indices) {
+                receiver_type
+              } else { resolve_builtin_call_type(name: func_name) }
             _ => error_type
           }
         Absent => resolve_builtin_call_type(name: func_name)

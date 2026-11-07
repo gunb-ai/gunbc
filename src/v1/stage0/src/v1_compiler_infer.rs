@@ -12871,15 +12871,15 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                         node: receiver_type,
                         ..
                     }) => {
-                        if conformance_ground_type(
+                        if crate::v1_compiler_infer_types::node_is_collection(
                             receiver_type.clone(),
                             scope.type_env.source_indices.clone(),
                         ) {
+                            receiver_type.clone()
+                        } else {
                             crate::v1_compiler_infer_method::resolve_builtin_call_type(
                                 func_name.clone(),
                             )
-                        } else {
-                            receiver_type.clone()
                         }
                     }
                     _ => crate::v1_std_core::error_type(),
