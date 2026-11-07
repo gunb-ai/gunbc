@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.algebra { string_contains }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size }
+import std.measure { Gibibyte, ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size }
 
 // THE ONE MEMORY ALLOWANCE OF A SERVING CONTAINER, resolved once. Three things used to author it
 // separately for srv1's lil-flash-next: the launch wrapper's `--memory=130g --memory-swap=130g --shm-size 110g`,
