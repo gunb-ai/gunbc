@@ -13,7 +13,7 @@ import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected , diagnostics_fatal_reason}
 import v2.std.logic { Bool }
 import v2.std.node { Node, NodeFold, Symbol, fold_node }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
@@ -111,18 +111,18 @@ type LmeeResult
 
 fn lmee_result(o: Outcome<ResolvedTree>, name: Symbol) -> LmeeResult {
   match o {
-    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: d.head.reason }
+    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_assemble, reason: diagnostics_fatal_reason(d: d) }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
-        Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: d.head.reason }
+        Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_infer, reason: diagnostics_fatal_reason(d: d) }
         Accepted { value: obligated, diagnostics: _ } =>
           match discharge_refinement_obligations(t: obligated) {
-            Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: d.head.reason }
+            Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_discharge, reason: diagnostics_fatal_reason(d: d) }
             Accepted { value: inferred, diagnostics: _ } =>
               match lmee_calls_to(root: inferred.root, name: name) {
                 Cons { head: call, tail: Empty } =>
                   match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
-                    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: d.head.reason }
+                    Rejected { diagnostics: d } => LmeeRefusedAt { stage: ^lmee_eval, reason: diagnostics_fatal_reason(d: d) }
                     Accepted { value: v, diagnostics: _ } =>
                       match lmee_int_of(v: v) {
                         Present { value: i } => LmeeValue { value: i }

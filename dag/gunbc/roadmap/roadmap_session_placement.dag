@@ -27,7 +27,7 @@ import gunbc.compute.host_capacity {
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
   ComputeCapacityStoreStanding, ComputeCapacityStoreReady, ComputeCapacityStoreUnready,
-  compute_memory_ceiling,
+  host_capacity_session_seat_ceiling,
 }
 import gunbc.compute.work_class_grant {
   WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
@@ -313,7 +313,7 @@ fn session_placement_acquire(instance: HostDashboardInstance, stores: SessionPla
   {
     let pool = session_placement_pool(instance: instance)
     {
-      let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
+      let class_grant = work_class_grant(class: WorkClassAgentSession, rows: work_class_grant_rows, ceiling: host_capacity_session_seat_ceiling(instance: instance))
       match now_epoch_seconds() {
         Absent => SessionPlacementRefused { detail: "the host clock could not be read as epoch seconds, and the session's slot carries a launch deadline" }
         Present { value: now } => {
