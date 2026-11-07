@@ -369,7 +369,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
       runner: selected_ci_runner_target(),
-      timeout: minute(90),
+      timeout: minute(120),
       source_roots: witness_layer_roots,
       schedule: Absent,
       memory_budget: Absent,
