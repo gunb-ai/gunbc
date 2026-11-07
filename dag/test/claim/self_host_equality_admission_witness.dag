@@ -914,13 +914,20 @@ data identity_same_module_container_eq_green_source: String = "module eq_probe_i
 // (src/v1/stage0/src/cli_run/emit_host.rs), which reads the LIVE TREE via default_source_roots and
 // close_fixture_imported_corpus with live_tree_disposition = ReadsLiveTree - the census is therefore
 // DEPENDENT ON THE PINNED CHECKOUT, and the compile it observes carries the imported-corpus closure
-// whose size and cost are UNMEASURED for these fixtures. Because the route reads the checkout corpus,
-// denylisting a supplied std.algebra source is NOT IMPLEMENTABLE through this existing primitive -
-// the primitive takes only the probed source. The denylist therefore remains a DESIGN on the typed
-// row requiring a SEPARATELY SCOPED instrument (a census variant that can withhold a corpus
-// declaration before census construction); no instrument implementation is made here. A pool-local
-// helper declaration cannot serve as the positive control either, because the gate looks up
-// std.algebra.map_values_eq by that exact qualified name.
+// whose size and cost are UNMEASURED for these fixtures. FEASIBILITY, as recorded on the typed row: (A) CURRENT-PRIMITIVE
+// POSSIBLE - an absent-realization control: a probe source with NO import chain reaching
+// std.algebra omits it from the closure entirely, so the helpers are census-absent before census
+// construction, paired with the same source plus the realization edge import std.types
+// (dag/std/types.dag:6 names std.algebra); List/Map are kernel container forms, so the
+// absent-realization fixture still compiles. (B) STILL INSTRUMENT-SCOPED - selectively deleting
+// ONE ACTUAL helper declaration (std.algebra.map_values_eq) while everything else is realized:
+// the primitive takes only the probed source and reads the live tree, so that denylist needs a
+// SEPARATELY SCOPED instrument variant; no instrument implementation is made here. A pool-local
+// helper declaration cannot serve as a positive control either, because the gate looks up
+// std.algebra.map_values_eq by that exact qualified name. The runtime row of that refusal is
+// class EqualityMemberUnjudgeable at the authored compared subject (v1.compiler.infer, the
+// equality_derived_target consumer arm) - the internal constructor name EqualityRootRefused is
+// NOT a census class; expectations are spelled out on the typed row.
 // PAIRED GREEN (positive pairing for the red cell above): structurally identical Host minus the
 // function-bearing sibling - admits through the identity-bound container path, so any refusal the
 // red observes is attributable to the Broken member descent, not to the fixture harness.
@@ -966,11 +973,18 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
 // counts: Map<String, Int>; HELPER-DECLARATING module std.algebra (zip_eq, map_values_eq), reached
 // by the holder's only import statement (import std.types { String, List, Map } plus no
 // std.algebra/std.optional import at all - admission must not depend on those imports existing).
-// What it would pin: admission of the holder despite the helpers being foreign - the qualified
-// name resolving through the declared_module_owner arm with the func_env / func_sig_from_global_bare
-// fallbacks (04_lookup.dag:742) untouched. UNTESTED ARMS this design separates: (i) holder IMPORTS
-// the helper's module by name, (ii) holder IS the helper's module (local resolution among the
-// module's own fns), (iii) holder imports neither (the Bag cell above, realization-key path).
+// What it would pin: admission of the holder despite the helpers being foreign. RESOLVER-ARM
+// TALK IS RETIRED (precheck, 2026-11-07): the equality-synthesis route is STRUCTURALLY
+// IMPORT-INDEPENDENT - equality_synthesis_scope (v1.compiler.infer) types synthesized bodies
+// with func_env local EMPTY and parents EMPTY, the only import-conditional branch
+// (listed_import_required_bare_call_blocked -> bare_free_call_requires_listed_import) is a
+// hard-coded name list that never fires for the helper names, and owner candidates are therefore
+// always empty, so the corpus-wide census fallback (func_sig_from_global_bare in
+// v1.compiler.lookup) is taken BY CONSTRUCTION in every cell. Cells cannot discriminate resolver
+// arms; what this design separates instead: SUBJECT identity (which routed member class ->
+// which helper), HOLDER-vs-COMPARISON identity (door classification and the block-reason subject
+// key), CENSUS PRESENCE of the exact qualified helper name, and candidate COUNT (1 resolves,
+// 0 refuses via the gate, many give CallableAmbiguous).
 // The prior cross-module cell (v2.std.node Edge) was deleted, not replaced: its subject carried
 // target: Node, and Node is equality-inadmissible corpus-wide (src/v2/std/node.dag:613; seed fold
 // at :679-680 via equality_route_for / equality_root_refused_leaf_names), so the cell could only
