@@ -5,7 +5,7 @@ import std.optional { Present, Absent }
 import std.nat { Nat, Succ, Zero, nat_add, nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.measure {
   ByteSize, byte_size, byte_size_count, Memory, One, MeasureFit, Fits, Below,
-  measure_sub, MeasureDifference, MeasureSubtrahendExceedsMinuend,
+  measure_sub, measure_fits, MeasureDifference, MeasureSubtrahendExceedsMinuend,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
