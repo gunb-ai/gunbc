@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.srv1_serving_wrapper_removal_wait_does_not_outlast_the_old_containers_stop
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data srv1_serving_wrapper_removal_wait_does_not_outlast_the_old_containers_stop: RecurringFailureMode = RecurringFailureMode {
+  identity: "srv1_serving_wrapper_removal_wait_does_not_outlast_the_old_containers_stop" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the retained srv1 serving wrapper (gunbc.serving.srv1_serving_launch srv1_serving_wrapper) waits for the previous lil-flash-next container to be GONE (not merely for a bounded count of polls) before docker run, so a relaunch under srv1-lil-serve.service cannot exit 125 on a name conflict; lands with the next declared wrapper revision, which is a declared relaunch obligation against gunbc.host.srv1_serving_startup_receipt's pinned sha" } },
+
+  receipts: [
+    "INVALID STATE: the wrapper's removal wait (60 polls x 2 s while 'docker container inspect lil-flash-next' succeeds) ends before the old container's stop completes, so docker run meets the still-present name.",
+
+    "OBSERVED (srv1, 2026-11-07, the operator-approved resize relaunch): 'systemctl restart srv1-lil-serve.service' at 19:41:00Z stopped the old container for ~2m20s and the unit then failed at 19:43:21Z with exit 125, 'Conflict. The container name /lil-flash-next is already in use by container 7e79c910...'. The old container showed 'exited'; the service was left failed and the engine DOWN until 'docker rm -f lil-flash-next', 'systemctl reset-failed' and 'systemctl start' (19:43:49Z), after which the engine answered by 19:52:33Z.",
+
+    "HARM: every relaunch through the unit, including the boot-unit path (gunbc#16047, gunbc#16048), can leave the serving engine down and the unit failed until a human removes the container. Not repaired here: the wrapper body is pinned to the host copy by gunbc.host.srv1_serving_startup_receipt, so any edit is a declared relaunch obligation of its own.",
+
+    "RUNG FOUND AT: mitigatable only -- the failure is loud (exit 125, unit failed) and recoverable by hand.",
+
+    "CEILING: mechanically preventable. The wait is a property of a shell body; a witness over the retained body that the wait is on container absence with a bound past docker stop's grace would block it, but the invalid ordering stays writable in shell.",
+  ],
+
+  evidence: [],
+}
