@@ -17,7 +17,6 @@ import product.electrical.photograph {
 }
 import product.p4261.e1_photographs { e1_photographs }
 import product.p4261.photograph_store { p4261_e1_photograph_store }
-import product.electrical.identification { GlyphSpan }
 import product.electrical.reading_receipt {
   Agrees,
   CorrectionDirection,
@@ -48,12 +47,15 @@ import product.p4261.e1_receipt_join {
   Related,
   SpanJoin,
   Unjoinable,
+  GlyphGroup,
   JoinedSpan,
   join_components,
-  join_span
+  join_group,
+  relate_receipt
 }
+import product.electrical.identification { Annotation, GlyphSpan, Glyphs, ReadingCircumstance, Transcribed }
 import product.p4261.e1_b { p4261_e1_layout }
-import product.p4261.e1_receipt_markings { ReceiptMarking, e1_receipt_frame_digests, e1_receipt_markings }
+import product.p4261.e1_receipt_markings { ReceiptClassified, ReceiptMarking, ReceiptUnclassified, e1_receipt_frame_digests, e1_receipt_markings }
 
 fn is_agrees(r: ReadingReceiptRelation) -> Bool {
   match r {
@@ -240,8 +242,8 @@ test fn rel_7_a_stored_reread_mints_only_through_the_store() -> Bool {
 
 // ─── THE JOIN, on a real receipt row ─────────────────────────────────────────────────────────────
 
-fn span_at(content: Sha256Digest, region: PixelRegion) -> GlyphSpan {
-  GlyphSpan { preceded_by: "", span: "ABC", sighting: Present { value: InStore { content: content, region: Present { value: region } } } }
+fn span_at(content: Sha256Digest, region: PixelRegion) -> GlyphGroup {
+  GlyphGroup { text: "ABC", sighting: Present { value: InStore { content: content, region: Present { value: region } } } }
 }
 
 fn first_row() -> ReceiptMarking? {
@@ -300,13 +302,13 @@ test fn join_1_every_gap_is_typed_and_the_exact_box_relates() -> Bool {
   match first_row() {
     Absent => false
     Present { value: row } => {
-      let hit = join_span(g: span_at(content: row.frame, region: row.region), rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: [])
+      let hit = join_group(g: span_at(content: row.frame, region: row.region), rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: [])
       let moved = PixelRegion { left: row.region.left + 1, top: row.region.top, width: row.region.width, height: row.region.height }
-      let off = only_gap(js: join_span(g: span_at(content: row.frame, region: moved), rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
+      let off = only_gap(js: join_group(g: span_at(content: row.frame, region: moved), rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
       let stranger = Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex }
-      let unknown = only_gap(js: join_span(g: span_at(content: stranger, region: row.region), rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
-      let unmarked = only_gap(js: join_span(g: span_at(content: stranger, region: row.region), rows: [], frames: [stranger], rulings: []))
-      let unboxed = only_gap(js: join_span(g: GlyphSpan { preceded_by: "", span: "ABC", sighting: Absent }, rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
+      let unknown = only_gap(js: join_group(g: span_at(content: stranger, region: row.region), rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
+      let unmarked = only_gap(js: join_group(g: span_at(content: stranger, region: row.region), rows: [], frames: [stranger], rulings: []))
+      let unboxed = only_gap(js: join_group(g: GlyphGroup { text: "ABC", sighting: Absent }, rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
       is_related(js: hit) && is_gap_box(j: off) && is_gap_frame(j: unknown) && is_gap_unmarked(j: unmarked) && is_gap_unboxed(j: unboxed)
     }
   }
@@ -344,6 +346,12 @@ fn arm_is_cov_model(j: SpanJoin) -> Bool {
 fn arm_is_cov_receipt(j: SpanJoin) -> Bool {
   match j { Related { receipt: _, relation: r } => is_coverage_receipt(r: r), _ => false }
 }
+fn arm_is_cannot_align(j: SpanJoin) -> Bool {
+  match j {
+    Related { receipt: _, relation: UnresolvedConflict { model: _, receipt: _, why: w } } => string_contains(s: w as String, pattern: "cannot align: ")
+    _ => false
+  }
+}
 fn gap_is_unboxed(j: SpanJoin) -> Bool {
   match j { Unjoinable { gap: NoBoxedSighting } => true, _ => false }
 }
@@ -354,33 +362,159 @@ fn gap_is_other(j: SpanJoin) -> Bool {
   match j { Unjoinable { gap: NoFrameReceipt } => true, Unjoinable { gap: PhotoHasNoMarkedItem } => true, _ => false }
 }
 
-// The per-arm counts of the REAL fold, against the independent Python measure
+// The unit is a box-group of glyph spans; the conflict count is conflict (1) plus cannot-align (12) in the
+// measure. The per-arm counts of the REAL fold, against the independent Python measure
 // (gunbc-private scripts/p4261_receipt_relation_measure.py, a separate implementation of the join and the
 // comparison over the e1_b.dag text and the receipts). The literals are that script's output at the tree this
 // file was committed with; a difference is a disagreement between two implementations, not a drifted number.
 test fn join_2a_agrees_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_agrees) == 53
+  count_where(xs: real_joins(), predicate: arm_is_agrees) == 69
 }
 test fn join_2b_unread_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_unread) == 28
+  count_where(xs: real_joins(), predicate: arm_is_unread) == 29
 }
 test fn join_2c_conflict_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_conflict) == 28
+  count_where(xs: real_joins(), predicate: arm_is_conflict) == 13
 }
 test fn join_2d_cov_model_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_cov_model) == 2
+  count_where(xs: real_joins(), predicate: arm_is_cov_model) == 4
 }
 test fn join_2e_cov_receipt_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: arm_is_cov_receipt) == 19
+  count_where(xs: real_joins(), predicate: arm_is_cov_receipt) == 5
 }
-// 57 = 56 literal unboxed spans + the shared e1_k38_candidate span counted once more: ONE data value installed on
+// 54, counted per use: the shared e1_k38_candidate span is counted once per installed reading, ONE data value installed on
 // both Q300 and Q301 is two installed readings (the independent measure counts the second use explicitly).
 test fn join_2f_gap_unboxed_count_agrees_with_the_independent_measure() -> Bool {
-  count_where(xs: real_joins(), predicate: gap_is_unboxed) == 57
+  count_where(xs: real_joins(), predicate: gap_is_unboxed) == 54
 }
 test fn join_2g_gap_box_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: gap_is_box) == 5
 }
 test fn join_2h_gap_other_count_agrees_with_the_independent_measure() -> Bool {
   count_where(xs: real_joins(), predicate: gap_is_other) == 0
+}
+
+// ─── GLYPH CONTENT TO GLYPH CONTENT (the receipt text is projected into the marking contract) ────
+
+fn joins_of(designator: NonEmptyStr) -> List<SpanJoin> {
+  let mine = p4261_e1_layout.components.filter(c => c.component.local_identity == designator)
+  flat_joins(js: join_components(cs: mine, rows: e1_receipt_markings, frames: e1_receipt_frame_digests, rulings: []))
+}
+
+fn some_agree_none_conflict(designator: NonEmptyStr) -> Bool {
+  let js = joins_of(designator: designator)
+  count_where(xs: js, predicate: arm_is_agrees) >= 1 && count_where(xs: js, predicate: arm_is_conflict) == 0
+}
+
+// A logo annotation in the receipt is not glyph content: U49 and U51 (the model has no logo in the glyph text)
+// agree with the receipt that states <TI logo>.
+test fn join_3_a_logo_annotation_in_the_receipt_does_not_make_a_conflict() -> Bool {
+  some_agree_none_conflict(designator: "U49") && some_agree_none_conflict(designator: "U51")
+}
+
+// U451's model holds two glyph spans at one box ("ZL40294 / Z Z" and "22118RS", with e4 an annotation between);
+// the receipt states the whole text with (e4) inside it. The spans are grouped by box and compared in order.
+test fn join_4_two_model_spans_at_one_box_align_with_the_receipt_glyphs() -> Bool {
+  some_agree_none_conflict(designator: "U451")
+}
+
+fn u49_row() -> ReceiptMarking? {
+  first_where(xs: e1_receipt_markings, keep: r => r.marking_text == "LV165A / <TI logo> 2BK G4 / AECQ")
+}
+
+fn with_glyphs(r: ReceiptMarking, second: NonEmptyStr) -> ReceiptMarking {
+  ReceiptMarking {
+    frame: r.frame,
+    region: r.region,
+    box_source: r.box_source,
+    marking_text: r.marking_text,
+    content: ReceiptClassified { content: Transcribed {
+      leading: [],
+      first: GlyphSpan { preceded_by: "", span: "LV165A", sighting: Absent },
+      rest: [
+        Annotation { annotation: ReadingCircumstance { preceded_by: " / ", span: "<TI logo>", noted: "control", sighting: Absent } },
+        Glyphs { glyphs: GlyphSpan { preceded_by: " ", span: second, sighting: Absent } }
+      ],
+      followed_by: ""
+    } },
+    marking_legibility: r.marking_legibility,
+    designator: r.designator,
+    photo_id: r.photo_id
+  }
+}
+
+fn related_is(j: SpanJoin, want_agrees: Bool) -> Bool {
+  if want_agrees { arm_is_agrees(j: j) } else { arm_is_conflict(j: j) }
+}
+
+// The RED: the same supplied receipt with ONE glyph changed (G4 -> G5) conflicts; unchanged it agrees. A receipt
+// text the annotation syntax cannot classify refuses to align and names the token, never an Agrees.
+test fn join_5_a_changed_glyph_conflicts_and_an_unclassifiable_token_cannot_align() -> Bool {
+  match u49_row() {
+    Absent => false
+    Present { value: r } => {
+      let model = "LV165A / 2BK G4 / AECQ" as NonEmptyStr
+      let same = relate_receipt(model: model, r: with_glyphs(r: r, second: "2BK G4 / AECQ"), rulings: [])
+      let changed = relate_receipt(model: model, r: with_glyphs(r: r, second: "2BK G5 / AECQ"), rulings: [])
+      let unclassified = relate_receipt(model: model, r: ReceiptMarking {
+        frame: r.frame, region: r.region, box_source: r.box_source, marking_text: "LV165A / (2BK",
+        content: ReceiptUnclassified { token: "(2BK", why: "control" },
+        marking_legibility: r.marking_legibility, designator: r.designator, photo_id: r.photo_id
+      }, rulings: [])
+      related_is(j: same, want_agrees: true) && related_is(j: changed, want_agrees: false) && related_is(j: unclassified, want_agrees: false)
+    }
+  }
+}
+
+// Prose that cannot be told from glyphs never gives a definite glyph disagreement: U48 and U86 have a receipt
+// "LV165A / TI logo 2BK G4 / AECQ" with the logo NOT bracketed, so it is unclassified and every conflict-arm
+// join of theirs is a "cannot align", at least one existing.
+fn only_cannot_align(designator: NonEmptyStr) -> Bool {
+  let js = joins_of(designator: designator)
+  count_where(xs: js, predicate: arm_is_cannot_align) >= 1 && count_where(xs: js, predicate: arm_is_conflict) == count_where(xs: js, predicate: arm_is_cannot_align)
+}
+
+test fn join_6_an_unbracketed_prose_run_cannot_align_and_never_conflicts() -> Bool {
+  only_cannot_align(designator: "U48") && only_cannot_align(designator: "U86")
+}
+
+// LAYOUT UNSTATED. A receipt that records no line separator at all does not state its layout, so a model reading that breaks
+// lines cannot disagree with it about layout: equal glyphs once separators are ignored is a "cannot align". A glyph change
+// with no separators stays a conflict, and a receipt that DOES record separators and puts them elsewhere stays one.
+fn plain_receipt(r: ReceiptMarking, text: NonEmptyStr) -> ReceiptMarking {
+  ReceiptMarking {
+    frame: r.frame,
+    region: r.region,
+    box_source: r.box_source,
+    marking_text: text,
+    content: ReceiptClassified { content: Transcribed { leading: [], first: GlyphSpan { preceded_by: "", span: text, sighting: Absent }, rest: [], followed_by: "" } },
+    marking_legibility: r.marking_legibility,
+    designator: r.designator,
+    photo_id: r.photo_id
+  }
+}
+
+
+test fn join_7_equal_glyphs_with_no_receipt_separator_cannot_align_and_a_glyph_change_conflicts() -> Bool {
+  match u49_row() {
+    Absent => false
+    Present { value: r } => {
+      let model = "P617A / 01 14 / 226" as NonEmptyStr
+      let unstated = relate_receipt(model: model, r: plain_receipt(r: r, text: "P617A 01 14 226"), rulings: [])
+      let mutated = relate_receipt(model: model, r: plain_receipt(r: r, text: "P617B 01 14 226"), rulings: [])
+      let moved = relate_receipt(model: model, r: plain_receipt(r: r, text: "P617A 01 / 14 226"), rulings: [])
+      arm_is_cannot_align(j: unstated) && related_is(j: mutated, want_agrees: false) && !arm_is_cannot_align(j: mutated)
+        && related_is(j: moved, want_agrees: false) && !arm_is_cannot_align(j: moved)
+    }
+  }
+}
+
+fn has_definite_conflict(designator: NonEmptyStr) -> Bool {
+  let js = joins_of(designator: designator)
+  count_where(xs: js, predicate: arm_is_conflict) > count_where(xs: js, predicate: arm_is_cannot_align)
+}
+
+test fn join_8_u10_u19_u95_cannot_align_and_u520_stays_a_conflict() -> Bool {
+  only_cannot_align(designator: "U10") && only_cannot_align(designator: "U19") && only_cannot_align(designator: "U95")
+    && has_definite_conflict(designator: "U520")
 }

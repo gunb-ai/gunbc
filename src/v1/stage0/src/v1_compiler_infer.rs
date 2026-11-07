@@ -130,7 +130,7 @@ use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
 use crate::std_literal_elaboration::KernelGroundingView::{
-    PeanoGroundingView, SignedGroundingView,
+    PeanoGroundingView, SignedGroundingView, WidthGroundingView,
 };
 use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
     KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
@@ -12851,6 +12851,38 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
                     _ => crate::v1_compiler_infer_method::resolve_builtin_call_type(
                         func_name.clone(),
                     ),
+                },
+                std::option::Option::None => {
+                    crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone())
+                }
+            },
+            kernel_diags: Rc::new(vec![]),
+        })
+    } else if (func_name.clone() == "concat".to_string()) {
+        Rc::new(Tier2bBt {
+            bt: match typed_args.clone().first().cloned() {
+                Some(receiver_arg) => match crate::v1_std_core::arg_value(receiver_arg.clone())
+                    .inferred
+                    .clone()
+                    .as_deref()
+                    .cloned()
+                {
+                    Some(InferredNode::Resolved {
+                        node: receiver_type,
+                        ..
+                    }) => {
+                        if crate::v1_compiler_infer_types::node_is_collection(
+                            receiver_type.clone(),
+                            scope.type_env.source_indices.clone(),
+                        ) {
+                            receiver_type.clone()
+                        } else {
+                            crate::v1_compiler_infer_method::resolve_builtin_call_type(
+                                func_name.clone(),
+                            )
+                        }
+                    }
+                    _ => crate::v1_std_core::error_type(),
                 },
                 std::option::Option::None => {
                     crate::v1_compiler_infer_method::resolve_builtin_call_type(func_name.clone())
@@ -35389,6 +35421,9 @@ pub fn grounded_carrier_state(
     env: Rc<TypeEnv>,
 ) -> Rc<GroundedCarrierState> {
     match (*row.view.clone()).clone() {
+        KernelGroundingView::WidthGroundingView { signedness: _, .. } => {
+            Rc::new(GroundedCarrierState::GroundedCarrierDeclaresNoConstructors)
+        }
         KernelGroundingView::PeanoGroundingView => {
             peano_grounded_carrier_state(row.clone(), decl.clone(), env.clone())
         }

@@ -10,6 +10,7 @@ import std.algebra { Cons, Empty, list_append, list_snoc_item, fold_list, is_emp
 import v2.std.text { Char, CharAbsent, CharFound, SourceFold, String, fold_source, string_head, string_is_empty }
 import std.unicode.types { unicode_scalar_utf8_octet_count }
 import std.unicode.char_class { unicode_char_code_point }
+import std.host_text { string_length }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken, AnnotationLineState, advance_line_prefix_indent_only, placement_from_line_prefix, annotation_line_state_initial, advance_annotation_line_state, BlankLine, AnnotationOnlyLine }
 import v2.std.compilers.lexing {
   AnnotationRule,
@@ -1458,7 +1459,7 @@ fn lex_window(text: String, limit: LexWalkLimit) -> LexWindow {
   match limit {
     LexWalkWhole => LexWindow { text: text, truncated: false }
     LexWalkUntil { scalars: n } =>
-      if string_length(s: substring(s: text, start: 0, end: n + 1)) > n {
+      if (string_length(text: substring(s: text, start: 0, end: n + 1)) as Int) > n {
         LexWindow { text: substring(s: text, start: 0, end: if n < 0 { 0 } else { n }), truncated: true }
       } else {
         LexWindow { text: text, truncated: false }
