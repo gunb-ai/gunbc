@@ -7216,11 +7216,35 @@ fn self_status_memory_fields() -> String {
 /// `phase` labels; a child spawned without a cgroup move shares its parent's cgroup, so the two
 /// share a `cgroup=` value and the `pid=` field says which process read it. Nothing reads the line
 /// back, no cap moves, nothing refuses.
+///
+/// IT NAMES THE BINARY THAT PRINTED IT, because a round that cannot say which executable ran it is
+/// not evidence. A srv1 pair of rounds was run at two heads and refused identically to the unpatched
+/// reproduction, with none of the phases that had just been added to the source firing -- including a
+/// diag line sitting four lines above one that did fire, in the same straight-line function. That is
+/// only possible if the image that ran was not the tree that was checked out, and nothing in the log
+/// could say so: the `pid` and `cgroup` fields identify the process, never the file it was launched
+/// from. So every diag line now carries the resolved `exe=` path and that file's modification time.
+fn self_exe_field() -> String {
+    let path = std::env::current_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "unresolved".to_string());
+    let mtime = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    format!("exe={path} exe_mtime={mtime}")
+}
+
 fn report_cgroup_memory_diagnostic(phase: &str) {
     let process = self_status_memory_fields();
+    let exe = self_exe_field();
     let line = match crate::memory_governor::leaf_cgroup_dir() {
         Some(dir) => format!(
-            "{} {process}",
+            "{} {process} {exe}",
             cgroup_memory_diagnostic_line(
                 &dir,
                 Path::new("/sys/fs/cgroup"),
@@ -7229,7 +7253,7 @@ fn report_cgroup_memory_diagnostic(phase: &str) {
             )
         ),
         None => format!(
-            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent {process}",
+            "required-regen: cgroup-diag phase={phase} pid={} cgroup=absent {process} {exe}",
             std::process::id()
         ),
     };
