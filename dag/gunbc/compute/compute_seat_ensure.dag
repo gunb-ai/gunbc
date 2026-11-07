@@ -473,14 +473,14 @@ type SeatUndecodableExitEntry {
   reason: String
 }
 
-fn seat_exit_entries_undecodable(listings: List<AttemptExitStageListing>) -> List<SeatUndecodableExitEntry> {
+fn seat_exit_entries_undecodable(listings: List<SpoolListing>) -> List<SeatUndecodableExitEntry> {
   listings |> flat_map(l => match l {
-    AttemptExitStageNames { names } =>
+    SpoolListed { names } =>
       names |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
         AttemptExitEntryDecoded { record: _ } => [] as List<SeatUndecodableExitEntry>
         AttemptExitEntryMalformed { entry_name, reason } => [SeatUndecodableExitEntry { entry_name: entry_name, reason: reason }]
       })
-    AttemptExitStageUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
+    SpoolListingUnreadable { reason: _ } => [] as List<SeatUndecodableExitEntry>
   })
 }
 
