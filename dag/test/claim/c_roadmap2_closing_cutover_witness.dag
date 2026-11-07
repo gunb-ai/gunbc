@@ -1,0 +1,344 @@
+module test.claim.c_roadmap2_closing_cutover_witness
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.algebra { string_contains }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_dashboard_lab_id,
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating,
+  srv1_dashboard_lab_id, srv2_dashboard_lab_id, srv1_lab_dashboard_instance, srv2_lab_dashboard_instance,
+  macbook_local_dashboard_instance, dashboard_instance_dispatch_attempt_state_root,
+  dashboard_instance_metering_closing_writer_fence, dashboard_instance_provision_plan_rows,
+  DashboardAssertMeteringClosingWriterExcluded,
+}
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_metering_closing_marker_census }
+import extdeps.systemd.systemctl { systemctl_user_closing_active_args, systemctl_user_closing_enabled_args, systemctl_user_closing_show_args, systemctl_user_show_properties_argv, systemctl_is_active_verb, systemctl_is_enabled_verb, systemd_unit_property_wire }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict }
+import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name, belt_attempt_obligation_unit_name }
+import gunbc.roadmap.roadmap_metering_closing_cutover {
+  MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
+  MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
+  metering_closing_legacy_marker_name, metering_closing_activation_step,
+  metering_closing_unit_exclusion, metering_closing_cutover_disposition,
+}
+import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show, SystemdUnitProperty, MainPID, ControlGroup }
+
+// THE CLOSING-MARKER CUTOVER BOUNDARY, EXECUTED (blocker 1 of stern-ram-763's review of #15574, and review 89888's
+// two findings on it). The roster closing marker changed shape -- a plain metering-roster-closing entry became the
+// hold slot <key>.<generation> -- and a hold fences only the writers that TAKE it, so the pre-PR build's writer has
+// to be excluded across the deploy, the way #15413's identity-store move excludes its legacy dispatcher.
+//
+// Review 89888 (1): the fence is not hand-typed. The rows are built from belt_instance_obligation_unit_name, and
+// what is checked here is BEHAVIOUR: the fence names exactly the unit the obligation enqueue launches --
+// `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes that same call as the unit it
+// starts. No literal-vs-function pin.
+// Review 89888 (2): the disposition has a consumer -- the instance's own apply plan, the route that already
+// consumes #15413's fence model. The last claims run THAT route: the gate refuses a writer that is not excluded,
+// proceeds when it is excluded and no plain marker remains, and refuses while a plain marker is still on the host.
+
+fn fx_fence(i: HostDashboardInstance) -> LegacyWriterFence {
+  dashboard_instance_metering_closing_writer_fence(instance: i)
+}
+
+fn fx_unit(i: HostDashboardInstance) -> NonEmptyStr {
+  belt_instance_obligation_unit_name(instance_id: i.instance_id as String, kind: MeteringObligation)
+}
+
+// The observation as the apply route's own producer builds it, with blocker 2(c)'s four fields -- and with
+// review 90637's typed systemd answers. The words systemd prints are parsed here by the UPSTREAM parsers
+// (extdeps.systemd), so this witness exercises the same parse the real producer runs instead of assuming it.
+// Only the active/enabled words vary between the claims below, so the main pid and the cgroup answer are
+// pinned to the QUIESCENT baseline: MainPID "0" (systemd's own answer for no main process), an established
+// read of cgroup.events saying nothing is populated, and no process in the unit's cgroup. A claim that
+// wanted the process axis would vary them, and none of these do.
+fn fx_observed(unit: NonEmptyStr, active: String, enabled: String) -> List<MeteringClosingWriterObservation> {
+  [MeteringClosingWriterObservation {
+    unit: unit,
+    active_state: parse_systemd_unit_active_state(raw: active),
+    unit_file_state: parse_systemd_unit_file_state(raw: enabled),
+    main_pid: parse_systemd_main_pid_show(raw: "0"),
+    // The scripted answer, as the sum: both kernel files answered, nothing populated, no pids.
+    cgroup: CgroupRead { events: CgroupEventsDecoded { populated: false }, procs: [] as List<Int> },
+  }]
+}
+
+// A fixture instance under /tmp whose instance_id is the srv1 lab id, so the REAL
+// `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences` row covers it: the gate's quiescence
+// axis reads the fence, and an id with no row makes the fold answer ActivationRequired, which would let a census
+// claim pass by never reaching the census arm. The root is still a fresh mktemp under /tmp -- nothing here
+// touches the live srv1 lab root.
+fn fx_lab_instance(tag: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-cutover-", tag], "") as NonEmptyStr),
+    instance_id: srv1_dashboard_lab_id,
+    layout: srv1_host_layout(),
+    root: shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_c_roadmap2_cutover_", tag, ".XXXXXX"], "")).path as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18121,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: "srv1" as NonEmptyStr,
+  )
+}
+
+// A fixture instance under /tmp, in the shape the apply route's own wet witnesses build one.
+// 1. THE FENCE NAMES THE UNIT THE OBLIGATION ENQUEUE LAUNCHES -- for both instances that declare one. The unit
+// is spelled by the same call `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
+// as the unit to start, and the fence holds that
+// one unit and no other. Change the kind key, the derivation, or the rows and this claim is the one that goes red.
+test fn the_fence_names_the_unit_the_obligation_enqueue_launches() -> Bool {
+  [srv1_lab_dashboard_instance(), srv2_lab_dashboard_instance()].all(fn(i) {
+    match fx_fence(i: i) {
+      LegacyWriterUnits { systemctl: _, units: units } =>
+        length(xs: units) == 1 && any(units, u => (u as String) == (fx_unit(i: i) as String))
+      LegacyWriterUndeclared => false
+      LegacyWriterFenceConflict { instance_id: _, rows: _ } => false
+    }
+  })
+}
+
+// 2. WHICH INSTANCES CARRY A FENCE, pinned as a census: the two lab instances that run the metering obligation
+// under systemd declare one; macbook_local has no systemd, so no unit can write the marker and it declares none
+// -- and the plan adds no gate op for it. A row added for a host with no such unit, or a lab instance dropped,
+// turns this red.
+test fn only_the_instances_with_a_systemd_writer_declare_a_closing_fence() -> Bool {
+  let srv1 = match fx_fence(i: srv1_lab_dashboard_instance()) { LegacyWriterUnits { systemctl: _, units: _ } => true, LegacyWriterUndeclared => false, LegacyWriterFenceConflict { instance_id: _, rows: _ } => false }
+  let srv2 = match fx_fence(i: srv2_lab_dashboard_instance()) { LegacyWriterUnits { systemctl: _, units: _ } => true, LegacyWriterUndeclared => false, LegacyWriterFenceConflict { instance_id: _, rows: _ } => false }
+  let laptop = match fx_fence(i: macbook_local_dashboard_instance()) { LegacyWriterUndeclared => true, LegacyWriterUnits { systemctl: _, units: _ } => false, LegacyWriterFenceConflict { instance_id: _, rows: _ } => false }
+  srv1 && srv2 && laptop
+}
+
+// 3. AN UNOBSERVED UNIT IS NOT EXCLUDED. The observation list names a different unit, so nothing is known about
+// the fenced one, and the disposition names it as needing the activation step: silence about a writer is not
+// evidence that it is gone.
+test fn an_unobserved_writer_unit_is_not_excluded() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  let unrelated = fx_observed(unit: "gunbc-some-other-instance-metering.service" as NonEmptyStr, active: "inactive", enabled: "masked")
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: unrelated, census: CensusCounted { count: 0 }) {
+    MeteringClosingActivationRequired { units: units, step: _ } =>
+      length(xs: units) == 1 && any(units, u => (u as String) == (fx_unit(i: i) as String))
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingCutoverRefused { cause: _ } => false
+  }
+}
+
+// 4. STOPPED IS NOT EXCLUDED. Inactive-but-enabled can be started again -- by its own trigger, by a timer, or by
+// the belt enqueueing the obligation -- so it is not excluded, and the reason names the unit. This is #15413's
+// rule, called rather than re-spelled.
+test fn a_stopped_unit_that_is_not_masked_is_not_excluded_naming_the_unit() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  let u = fx_unit(i: i)
+  match metering_closing_unit_exclusion(unit: u, observed: fx_observed(unit: u, active: "inactive", enabled: "enabled")) {
+    LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "not masked") && string_contains(s: r, pattern: u as String)
+    LegacyWriterExcluded => false
+  }
+}
+
+// 5. THE DISPOSITION FOR A HOST WHERE THE OLD WRITER CAN STILL RUN: ActivationRequired, naming the fenced unit,
+// with the step that excludes it.
+test fn a_writer_that_is_not_excluded_gives_an_activation_step_naming_it() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  let u = fx_unit(i: i)
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: u, active: "inactive", enabled: "enabled"), census: CensusCounted { count: 0 }) {
+    MeteringClosingActivationRequired { units: units, step: step } =>
+      length(xs: units) == 1
+        && any(units, x => (x as String) == (u as String))
+        && string_contains(s: step, pattern: "mask")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingCutoverRefused { cause: _ } => false
+  }
+}
+
+// 6. NOOP, AND ONLY THEN: the fenced unit observed stopped AND masked (a failed-but-masked unit counts: it is not
+// running and cannot be started), and no plain marker on the host. The reason names the instance and the name
+// that was censused.
+test fn an_excluded_writer_and_no_legacy_marker_is_a_noop() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "failed", enabled: "masked"), census: CensusCounted { count: 0 }) {
+    MeteringClosingNoop { reason: r } =>
+      string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+    MeteringClosingCutoverRefused { cause: _ } => false
+  }
+}
+
+// 7. EXCLUDED IS NOT ENOUGH IF THE OLD BYTES ARE STILL THERE. The cutover refuses: those entries are the mint's
+// refusal case, and deciding what happens to them is an operator call, not something the cutover may do silently.
+test fn plain_closing_markers_still_on_the_host_refuse_even_with_the_writer_excluded() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusCounted { count: 3 }) {
+    MeteringClosingCutoverRefused { cause: c } => string_contains(s: c, pattern: "3") && string_contains(s: c, pattern: "metering-roster-closing")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// 8. AN INSTANCE WITH NO DECLARED FENCE REFUSES WHEN ASKED. The disposition does not conclude "no legacy writer"
+// from the absence of a row: it refuses, naming the instance and the marker name at stake. (The PLAN adds no gate
+// op for such an instance -- claim 2 pins which instances those are -- but anything that asks gets a refusal.)
+test fn an_undeclared_fence_refuses_when_it_is_asked() -> Bool {
+  match metering_closing_cutover_disposition(fence: LegacyWriterUndeclared, instance_id: "c-roadmap2-unfenced-instance" as NonEmptyStr, observed: fx_observed(unit: "gunbc-unrelated.service" as NonEmptyStr, active: "inactive", enabled: "masked"), census: CensusCounted { count: 0 }) {
+    MeteringClosingCutoverRefused { cause: c } =>
+      string_contains(s: c, pattern: "c-roadmap2-unfenced-instance") && string_contains(s: c, pattern: "metering-roster-closing")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// 9. THE LEGACY NAME IS THE SLOTS MODULE'S OWN BASENAME ROW -- the row the hold library now addresses with a
+// generation suffix. That is why the mint refuses a plain entry of this name instead of reading both layouts,
+// and why the census and the refusal cannot drift to different names.
+test fn the_legacy_marker_name_is_the_slots_basename_row_spelled_as_the_pre_seal_bytes() -> Bool {
+  (metering_closing_legacy_marker_name as String) == "metering-roster-closing"
+}
+
+// 10. THE ACTIVATION STEP NAMES THE TRANSIENT PER-ATTEMPT UNITS, and the family stem it names is the stem the
+// enqueue derivation spells for a real attempt -- so the step is about units that actually exist, and a change to
+// that naming moves the step and the pin together.
+test fn the_activation_step_names_the_transient_enqueue_unit_family() -> Bool {
+  // The family stem is pinned HERE, against the belt's own naming (gunbc.roadmap.roadmap_belt_obligation
+  // belt_attempt_obligation_unit_name), rather than being re-declared in production where it would be a second
+  // spelling of a fact the belt owns: the unit name is derived, per attempt, so no such unit can be masked by
+  // name and the gate never needs the stem to act.
+  let family_stem = "gunbc-obligation-attempt-"
+  let attempt_unit = belt_attempt_obligation_unit_name(node_id: "c-roadmap2-node", attempt_key: "0123456789abcdef") as String
+  starts_with(s: attempt_unit, prefix: family_stem)
+    && string_contains(s: metering_closing_activation_step as String, pattern: family_stem)
+}
+
+// 11. THE PLAN CARRIES THE GATE FOR THE INSTANCES THAT DECLARE A FENCE, and not for the one that has no systemd.
+// Read through the plan rows, the way the apply route reads them: the kind is the row's, not a name guessed here.
+fn fx_plan_carries_the_gate(i: HostDashboardInstance) -> Bool {
+  any(dashboard_instance_provision_plan_rows(instance: i), r => (r.kind as String) == "assert-metering-closing-writer-excluded")
+}
+
+test fn the_plan_carries_the_closing_gate_for_the_instances_that_declare_a_fence() -> Bool {
+  fx_plan_carries_the_gate(i: srv1_lab_dashboard_instance())
+    && fx_plan_carries_the_gate(i: srv2_lab_dashboard_instance())
+    && !fx_plan_carries_the_gate(i: macbook_local_dashboard_instance())
+}
+
+// 12-16. THE LIVE CENSUS PRODUCER, OVER LIVE BYTES, WITH NO FAKES AT ALL (review 90693's ruling: construction,
+// not scaffold -- #15574 adds no shell and leaves main's attempt_state_move_apply_wet_witness copy alone). These
+// execute `gunbc.roadmap.roadmap_dashboard_instance_apply.dashboard_metering_closing_marker_census` against real
+// `ls -1R` output under a fresh mktemp root, and hand the SAME value to the real fold
+// (`gunbc.roadmap.roadmap_metering_closing_cutover.metering_closing_cutover_disposition`), so the producer's three
+// arms -- counted, established-absence, refused -- and the gate's reading of each are all executed. The
+// op-boundary observation (the gate OBSERVING the writer) is no longer claimed in a hermetic witness: per the
+// pairing obligation it is executed once, against real systemd, in the srv2 host observation recorded in the body.
+
+// 12. A CLEAN ROOT IS COUNTED ZERO, and the gate closes on the count.
+test fn the_live_census_counts_zero_over_a_clean_attempt_state_root_and_the_gate_closes_on_it() -> Bool {
+  let i = fx_lab_instance(tag: "census-clean")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let made = shell.Mkdir.Parents(path: root).success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: root)
+  let counted = match census { CensusCounted { count: n } => n == 0, _ => false }
+  let gate = match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: census) {
+    MeteringClosingNoop { reason: r } => string_contains(s: r, pattern: "metering-roster-closing")
+    _ => false
+  }
+  made && counted && gate
+}
+
+// 13. A PLANTED PLAIN MARKER IS COUNTED AND REFUSES THE GATE BY COUNT -- the census is not decorative: the byte
+// the test writes is a real file on a real disk, read by a real ls, and the refusal names the count.
+test fn the_live_census_counts_a_planted_plain_marker_and_the_gate_refuses_by_count() -> Bool {
+  let i = fx_lab_instance(tag: "census-marker")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let metering_dir = join([root as String, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let planted = shell.Mkdir.Parents(path: metering_dir as FilePath).success
+    && Filesystem.Write(path: join([metering_dir, "/", metering_closing_legacy_marker_name as String], "") as FilePath, content: "closed by the pre-C-roadmap-2 build\n").success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: root)
+  let counted = match census { CensusCounted { count: n } => n == 1, _ => false }
+  let gate = match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: census) {
+    MeteringClosingCutoverRefused { cause: c } => string_contains(s: c, pattern: "1 plain metering-roster-closing entries")
+    _ => false
+  }
+  planted && counted && gate
+}
+
+// 14. THE STRIPPED TWIN OF 13: the same file planted under a name that is NOT the declared row counts ZERO.
+// This pins the census to `roadmap_metering_roster.metering_closing_marker_name`'s basename: rename the row and
+// 13 goes red while this one stays green, which is what stops the count being "any file under metering".
+test fn the_live_census_counts_zero_for_a_marker_planted_under_the_wrong_name() -> Bool {
+  let i = fx_lab_instance(tag: "census-wrongname")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let metering_dir = join([root as String, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let planted = shell.Mkdir.Parents(path: metering_dir as FilePath).success
+    && Filesystem.Write(path: join([metering_dir, "/metering-roster-closingx"], "") as FilePath, content: "not the declared name\n").success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: root)
+  planted && match census { CensusCounted { count: n } => n == 0, _ => false }
+}
+
+// 15. A WALK THAT CANNOT BE PERFORMED REFUSES -- it does not count as zero. `ls -1R` under a component that is a
+// plain file fails with ENOTDIR, which is NOT the ENOENT answer, so the producer must carry a refusal. This is
+// the arm the pre-PR code collapsed onto "0 markers", and it is exercised here against a real failing ls.
+test fn the_live_census_refuses_when_the_walk_cannot_be_performed() -> Bool {
+  let i = fx_lab_instance(tag: "census-enotdir")
+  let blocker = join([i.instance_root as String, "/not-a-directory"], "")
+  let planted = Filesystem.Write(path: blocker as FilePath, content: "x").success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: join([blocker, "/sub"], "") as FilePath)
+  planted && match census {
+    CensusRefused { cause: c } => string_contains(s: c, pattern: "refused") && string_contains(s: c, pattern: "Not a directory")
+    _ => false
+  }
+}
+
+// 16. AND A POSITIVELY ABSENT ROOT IS ESTABLISHED ABSENCE, not a refusal: ENOENT is an answer. Paired with 15 so
+// the two arms cannot collapse into one another again.
+test fn the_live_census_reports_established_absence_when_the_root_is_positively_gone() -> Bool {
+  let i = fx_lab_instance(tag: "census-enoent")
+  let census = dashboard_metering_closing_marker_census(instance: i, root: join([i.instance_root as String, "/never-created"], "") as FilePath)
+  match census { CensusAbsentEstablished => true, _ => false }
+}
+
+// 17. INHABITANCE OF THE EXEC CONTRACT, NO PROCESS: the observation asks systemctl EXACTLY what the upstream
+// builders compose -- compared by equality (joined element-for-element, order included), not "contains". The
+// `--user` scope is load-bearing (a system-scope question about a transient unit answers `not loaded`, which the
+// gate would otherwise read as a stopped, masked, cgroup-less writer), the verbs come from the module's own verb
+// rows, and `show` must be exactly `systemctl_user_show_properties_argv` over MainPID+ControlGroup: drop
+// ControlGroup from the producer and this goes red while every word-parse stays green.
+test fn the_observation_asks_systemctl_exactly_what_the_upstream_builders_compose() -> Bool {
+  // The unit the fence row actually holds -- the same derivation fx_unit uses, which is the name
+  // the real producer is handed by the fence, so the equality below is about the producer's request.
+  let u = fx_unit(i: fx_lab_instance(tag: "argv-inhabitance"))
+  let active_ok = join(systemctl_user_closing_active_args(unit: u), "\n") == join(["--user", systemctl_is_active_verb as String, u as String], "\n")
+  let enabled_ok = join(systemctl_user_closing_enabled_args(unit: u), "\n") == join(["--user", systemctl_is_enabled_verb as String, u as String], "\n")
+  let show_ok = join(systemctl_user_closing_show_args(unit: u), "\n") == join(systemctl_user_show_properties_argv(unit: u, properties: [MainPID, ControlGroup]), "\n")
+  active_ok && enabled_ok && show_ok
+}
+
+// 18. A CENSUS THAT COULD NOT BE ESTABLISHED REFUSES, IT DOES NOT COUNT AS ZERO (blocker 1 of stern-ram-763's
+// side-chat review of #15574). Before the fix a failed `ls -1R` and a failed presence check both landed on the
+// same arm as "0 markers", so the gate opened on the very failure that means "we do not know". The census is a
+// sum with a refusal case now, and the refusal is what this claim drives: writer fully excluded, census refused
+// -- the disposition must refuse, and name what it could not establish.
+test fn a_census_that_could_not_be_established_refuses_the_gate() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusRefused { cause: "the recursive listing of the attempt-state tree refused: permission denied" }) {
+    MeteringClosingCutoverRefused { cause: c } =>
+      string_contains(s: c, pattern: "census could not be established") && string_contains(s: c, pattern: "permission denied")
+    MeteringClosingNoop { reason: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}
+
+// 19. AND AN ESTABLISHED ABSENCE IS NOT THE SAME THING AS A REFUSAL. The census walked the tree and found no
+// plain closing marker: that is the answer, not a failure to answer, and the gate must close on it. Paired with
+// claim 15 so the two cannot be collapsed into one arm again -- if AbsentEstablished were folded into the refusal
+// this claim goes red, and if the refusal were folded into the count claim 15 goes red.
+test fn an_established_absence_closes_the_gate_a_refusal_cannot() -> Bool {
+  let i = srv1_lab_dashboard_instance()
+  match metering_closing_cutover_disposition(fence: fx_fence(i: i), instance_id: i.instance_id, observed: fx_observed(unit: fx_unit(i: i), active: "inactive", enabled: "masked"), census: CensusAbsentEstablished) {
+    MeteringClosingNoop { reason: r } =>
+      string_contains(s: r, pattern: srv1_dashboard_lab_id as String) && string_contains(s: r, pattern: "metering-roster-closing")
+    MeteringClosingCutoverRefused { cause: _ } => false
+    MeteringClosingActivationRequired { units: _, step: _ } => false
+  }
+}

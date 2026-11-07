@@ -1,8 +1,15 @@
 module gunbc.roadmap.roadmap_dashboard_instance_apply
 
-import std.algebra { trim, is_empty }
+import std.algebra { trim, is_empty, string_contains }
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, GitRef, CommitSha, Int }
+// The writer observation reads two cgroup files; their decoders belong to the module that owns cgroup v2.
+import extdeps.linux.cgroup_v2 {
+  CgroupEventsDecoded, decode_cgroup_events_populated, decode_cgroup_procs,
+  // THE CGROUP PATH SPELLINGS moved here from gunbc.roadmap.roadmap_metering_closing_cutover (review 91654
+  // follow-up): the observation builder below is their only consumer, and a helper lives with its consumer.
+  cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path, cgroup_v2_procs_interface_file,
+}
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.gunbc
@@ -92,6 +99,26 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.languages.json.parse { json_text_parseable }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, move_plan, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, legacy_writer_exclusion_all, LegacyWriterExcluded, LegacyWriterNotExcluded, legacy_writer_exclusion, MoveNoop, MoveApply, MoveRefused, HoldPayload, CarryBytes, move_expected_content, move_readback_refusal }
 import gunbc.roadmap.roadmap_dashboard_target_write { dashboard_target_write_create_new, CreateNewWritten, CreateNewRefused, CreateNewNotDispatched, CreateNewStagingResidue }
+import gunbc.roadmap.roadmap_metering_closing_cutover {
+  MeteringClosingWriterObservation, MeteringClosingNoop, MeteringClosingActivationRequired, MeteringClosingCutoverRefused,
+  MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
+  MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent, metering_closing_writer_process_quiescence,
+  MeteringClosingCgroup, CgroupGone, CgroupRead, CgroupUnread,
+  dashboard_metering_closing_marker_census_decision, dashboard_metering_closing_cgroup_answer,
+  metering_closing_cutover_disposition, metering_closing_legacy_marker_name,
+  MeteringClosingFinalGate, MeteringClosingFinalGatePassed, MeteringClosingFinalGateRefused, metering_closing_final_gate_for,
+}
+// THE OBSERVATION'S VOCABULARIES COME FROM THEIR OWNERS. The producer below asks systemd three questions and
+// the kernel two; each answer is parsed here, at the point it enters the sealed record, by the module that
+// declares the answer set -- so no word of systemd's lives in this file to drift from systemd.
+import extdeps.systemd {
+  parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show,
+  SystemdUnitProperty, MainPID, ControlGroup,
+}
+import extdeps.systemd.systemctl {
+  systemctl_user_closing_active_args, systemctl_user_closing_enabled_args, systemctl_user_closing_show_args,
+  systemctl_show_property_value,
+}
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
   DashboardServeBinaryOrigin,
@@ -1201,6 +1228,50 @@ fn dashboard_apply_provision_op(
         dashboard_exec_ok(stdout: "every declared legacy writer is stopped and masked at activation")
       }
     }
+    // THE CLOSING-MARKER CUTOVER GATE. The roster closing marker changed shape in C-roadmap-2 (a plain
+    // metering-roster-closing entry became the hold slot <key>.<generation>), and the hold fences only writers
+    // that TAKE it -- so across the deploy the unit that runs the old writer has to be observed stopped AND
+    // masked, and no plain marker may be left on the host. This route reads the states and censuses the bytes;
+    // the ANSWER is the cutover module's (metering_closing_cutover_disposition), not a rule spelled here:
+    // Noop proceeds, ActivationRequired refuses naming the units and the step that excludes them, Refused
+    // refuses with its cause (an undeclared or conflicted fence, or old bytes an operator has to decide about).
+    DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: root } => {
+      let observed = match fence {
+        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit))
+        _ => []
+      }
+      match metering_closing_cutover_disposition(
+        fence: fence,
+        instance_id: instance.instance_id,
+        observed: observed,
+        census: dashboard_metering_closing_marker_census(instance: instance, root: root),
+      ) {
+        MeteringClosingNoop { reason: why } => dashboard_exec_ok(stdout: why)
+        MeteringClosingActivationRequired { units: units, step: step } =>
+          dashboard_exec_refused(detail: join(["the closing-marker writer is not excluded (", join(map(units, u => u as String), ", "), "); ", step], ""))
+        MeteringClosingCutoverRefused { cause: why } => dashboard_exec_refused(detail: why)
+      }
+    }
+    // THE FINAL RECHECK (blocker 2(d)). Same two observations, taken AGAIN, and the answer comes from
+    // metering_closing_final_gate_for -- which refuses unless the exclusion still holds AND the census still
+    // counts nothing. Nothing is carried over from the gate above: no flag, no memo, no "it passed earlier".
+    // Between the two ops a unit can be unmasked out of band, a writer process can be started, or a plain marker
+    // can be written again, and a certificate from the first look would certify all three as excluded.
+    DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: root } => {
+      let observed = match fence {
+        LegacyWriterUnits { systemctl: ctl, units: units } => map(units, unit => dashboard_metering_closing_writer_observation(instance: instance, ctl: ctl, unit: unit))
+        _ => []
+      }
+      match metering_closing_final_gate_for(
+        fence: fence,
+        instance_id: instance.instance_id,
+        observed: observed,
+        census: dashboard_metering_closing_marker_census(instance: instance, root: root),
+      ) {
+        MeteringClosingFinalGatePassed { reason: why } => dashboard_exec_ok(stdout: why)
+        MeteringClosingFinalGateRefused { cause: why } => dashboard_exec_refused(detail: why)
+      }
+    }
     DashboardMoveAttemptStateEntries { row: row, fence: fence } => {
       let parent = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
       let member = join([parent, "/", row.member as String], "")
@@ -1394,6 +1465,107 @@ fn dashboard_legacy_writer_drift(instance: HostDashboardInstance, fence: LegacyW
         LegacyWriterExcluded => ""
       }
   }
+}
+
+// WHAT THE HOST SAYS ABOUT ONE FENCED WRITER UNIT: the two questions the fence asks, through the instance's own
+// transport, in the shape the cutover module reads.
+// THE CGROUP READ PROGRAM AND PATHS, MOVED VERBATIM from gunbc.roadmap.roadmap_metering_closing_cutover
+// (review 91654 follow-up: their only consumer is the observation builder below; a helper lives with its
+// consumer). Original comments retained.
+// THE READ USED FOR THE TWO CGROUP FILES. `cat`, the same argv the cgroup v2 interface declares for
+// `ReadEvents` (extdeps.linux.cgroup_v2 `ReadEvents { transport shell { argv: ["cat", "{events_path}"] } }`), so
+// this gate is not inventing a second way to open a kernel file.
+data metering_closing_file_read_program: NonEmptyStr = "/bin/cat" as NonEmptyStr
+
+
+// THE PATH TO A UNIT'S OWN CGROUP FILES. systemd reports ControlGroup relative to the unified mount, so the
+// mount point comes from the module that owns cgroup v2 (`cgroup_v2_mount_point`) and the file names come from
+// it too (`cgroup_v2_events_path`, `cgroup_v2_procs_interface_file`) -- this gate holds no spelling of a kernel
+// file's name or location of its own.
+fn metering_closing_unit_cgroup_path(control_group: String) -> NonEmptyStr {
+  join([cgroup_v2_mount_point as String, trim(s: control_group)], "/") as NonEmptyStr
+}
+
+fn metering_closing_unit_events_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_events_path(cgroup_path: metering_closing_unit_cgroup_path(control_group: control_group))
+}
+
+fn metering_closing_unit_procs_path(control_group: String) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: metering_closing_unit_cgroup_path(control_group: control_group), child: cgroup_v2_procs_interface_file)
+}
+
+// THE WRITER OBSERVATION: what the host says about one closing-marker writer unit RIGHT NOW (blocker 2(c)).
+// Six reads, no instructions: `is-active`, `is-enabled`, `show -p MainPID --value`, `show -p ControlGroup
+// --value`, and the two files of that cgroup -- `cgroup.events` for the kernel's subtree answer and
+// `cgroup.procs` for pids attached to the cgroup itself. Whether any of it MEANS quiescence is decided by
+// `metering_closing_writer_quiescent_one` in gunbc.roadmap.roadmap_metering_closing_cutover, not here; this
+// function reports and refuses nothing, so the same six reads serve the first gate and the final recheck.
+//
+// ALL OF IT GOES THROUGH `--user`. The writer is a TRANSIENT unit in the belt user's manager
+// (`systemd_run_user_transient_command`, gunbc.extdeps.systemd.systemd_run, reached from
+// gunbc.roadmap.roadmap_belt_actuate's obligation enqueue). Asking the SYSTEM manager about that unit answers a
+// different question and returns "not loaded", which this module would otherwise read as a stopped, masked,
+// cgroup-less writer -- an exclusion certified about the wrong manager. A read that cannot reach the manager it
+// is asking leaves the cgroup side UNREAD and the gate refuses.
+// THE OBSERVATION, TAKEN AS THREE QUESTIONS TO TWO AUTHORITIES. systemd is asked what it thinks (is-active,
+// is-enabled, show MainPID/ControlGroup) and the kernel is asked what is alive (cgroup.events, cgroup.procs);
+// each answer is PARSED on the way into the record, by the module that owns that vocabulary, and an answer
+// that does not parse is carried as "no reading" rather than defaulted to a convenient word. The exit code of
+// is-enabled is deliberately not used as the check: extdeps.systemd.systemctl records the srv1 measurement
+// that a loaded unit with no install symlink prints `static` and still exits 0, so only the printed word is
+// evidence, and the word is turned into a SystemdUnitFileState here.
+fn dashboard_metering_closing_writer_observation(instance: HostDashboardInstance, ctl: NonEmptyStr, unit: NonEmptyStr) -> MeteringClosingWriterObservation {
+  let active = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_active_args(unit: unit))
+  let enabled = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_enabled_args(unit: unit))
+  // ONE `show` for both properties, with the selector spelled by the systemctl module that owns it.
+  let show = dashboard_target_exec(instance: instance, program: ctl as FilePath, args: systemctl_user_closing_show_args(unit: unit))
+  let main_pid_text = match systemctl_show_property_value(text: show.stdout, key: "MainPID") {
+    Present { value: v } => v
+    Absent => ""
+  }
+  let capture = systemctl_show_property_value(text: show.stdout, key: "ControlGroup")
+  let group = match capture {
+    Present { value: v } => trim(s: v)
+    Absent => ""
+  }
+  // The two kernel files are read only when systemd NAMED a cgroup. When it did not, the reads never ran
+  // and the answer below records the cgroup side as UNREAD (or GONE, when `show` positively answered with
+  // an empty ControlGroup) -- a read that never happened is not a read that said empty.
+  let events = if show.success && group != "" {
+    dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_events_path(control_group: group) as String])
+  } else {
+    dashboard_exec_ok(stdout: "")
+  }
+  let procs = if show.success && group != "" {
+    dashboard_target_exec(instance: instance, program: metering_closing_file_read_program as FilePath, args: [metering_closing_unit_procs_path(control_group: group) as String])
+  } else {
+    dashboard_exec_ok(stdout: "")
+  }
+  MeteringClosingWriterObservation {
+    unit: unit,
+    active_state: parse_systemd_unit_active_state(raw: trim(s: active.stdout)),
+    unit_file_state: parse_systemd_unit_file_state(raw: trim(s: enabled.stdout)),
+    main_pid: parse_systemd_main_pid_show(raw: main_pid_text),
+    // THE ONE cgroup-side CONSTRUCTION. Pairing witness (DESIGN section 3): the claims compare this route's
+    // record with dashboard_metering_closing_cgroup_answer over the scripted answers standing for the same
+    // probes, so the real route cannot keep a mapping of its own.
+    cgroup: dashboard_metering_closing_cgroup_answer(
+      show_success: show.success,
+      control_group_property: capture,
+      events: events,
+      procs: procs
+    ),
+  }
+}
+
+// THE LIVE CENSUS: two probes through the instance's transport, then the decision above -- nothing else.
+// Pairing witness (DESIGN section 3, a witness discriminates at one interface): the claims compare this
+// function's answer with dashboard_metering_closing_marker_census_decision over the scripted answers that
+// stand for what the probes said at the same fixture, and refuse every cell the decision refuses.
+fn dashboard_metering_closing_marker_census(instance: HostDashboardInstance, root: FilePath) -> MeteringClosingMarkerCensus {
+  let root_stat = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-d", root as String])
+  let listing = dashboard_target_exec(instance: instance, program: "/bin/ls", args: ["-1R", root as String])
+  dashboard_metering_closing_marker_census_decision(root: root as String, root_stat: root_stat, listing: listing)
 }
 
 // sha256 of a file read on the target ("" when it cannot be read): the first word of sha256sum's ASCII output.
@@ -2794,6 +2966,11 @@ fn dashboard_bootstrap_only_ops(
       DashboardMigrateGitWorkerSubtree { repo: _ } => false
       DashboardMoveAttemptStateEntries { row: _, fence: _ } => false
       DashboardAssertLegacyWriterExcluded { fence: _ } => false
+      DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: _ } => false
+      // The final recheck is likewise not a bootstrap step: it re-observes the writer and re-runs the
+      // closing-marker census, and the credential-free bootstrap neither runs the obligation nor reads
+      // the census. Named explicitly, as the arm above, so a new op cannot slip in by accident.
+      DashboardAssertMeteringClosingCutoverFinal { fence: _, attempt_state_root: _ } => false
     })
 }
 

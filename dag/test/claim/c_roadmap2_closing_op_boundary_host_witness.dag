@@ -1,0 +1,111 @@
+module test.claim.c_roadmap2_closing_op_boundary_host_witness
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List }
+import std.algebra { string_contains }
+import extdeps.shell
+import extdeps.tools.gnu_coreutils { rm_force_command }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, srv1_lab_dashboard_instance,
+  dashboard_instance_metering_closing_writer_fence,
+  DashboardAssertMeteringClosingWriterExcluded, DashboardAssertMeteringClosingCutoverFinal,
+}
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits }
+import gunbc.roadmap.roadmap_metering_closing_cutover { metering_closing_legacy_marker_name }
+
+// THE OP BOUNDARY, ON A REAL HOST, AGAINST REAL SYSTEMD AND REAL BYTES. This is the pairing obligation for the
+// gate's observation path: review 90693 removed every executable stand-in from #15574, so the ONE route that
+// executes `dashboard_metering_closing_writer_observation` end to end -- real `systemctl --user` execs through
+// `dashboard_target_exec`, their words parsed by parse_systemd_unit_active_state, parse_systemd_unit_file_state
+// and parse_systemd_main_pid_show -- is this entry, run on srv2 against a real user manager, in the host
+// sequence recorded in the PR body. It is NOT part of the hermetic CI groups: on a machine with no user manager
+// the observation cannot be established and these claims refuse, which is exactly what they must do; they pass
+// only where a real, stopped-and-masked writer unit and a planted marker exist.
+//
+// The ops run here are the REAL production ops -- `gunbc.roadmap.roadmap_dashboard_instance_apply.dashboard_apply_provision_op`
+// with `DashboardAssertMeteringClosingWriterExcluded` (the first gate) and `DashboardAssertMeteringClosingCutoverFinal`
+// (the final recheck, blocker 2(d)) -- not a re-implementation. The attempt-state root is SUPPLIED below and is
+// never the instance's live dispatch root (which the fence's census would then read for real): the claims create
+// it, plant a real plain marker under it, and remove it again. The writer unit is the real obligation unit
+// `gunbc.roadmap.roadmap_belt_obligation.belt_instance_obligation_unit_name` names for the srv1 lab instance --
+// the host sequence creates, stops and masks it with systemd-run the way the belt's transient enqueue does.
+
+// The supplied root, fixed so the two claims (and the host script's own checks) name the same bytes. It lives
+// under /tmp on the host, is created by the claims and removed by the host sequence; it is never the live
+// `dashboard_instance_dispatch_attempt_state_root`.
+data op_boundary_attempt_state_root: FilePath = "/tmp/c-roadmap2-op-boundary/attempt-state"
+
+data op_boundary_unused_temp_bundle: FilePath = "/tmp/c-roadmap2-op-boundary/unused-bundle"
+data op_boundary_unused_temp_verify: FilePath = "/tmp/c-roadmap2-op-boundary/unused-verify"
+
+fn op_boundary_marker_file() -> FilePath {
+  join([op_boundary_attempt_state_root as String, "/holds/", metering_closing_legacy_marker_name as String], "") as FilePath
+}
+
+fn op_boundary_plant_marker() -> Bool {
+  let holds = join([op_boundary_attempt_state_root as String, "/holds"], "")
+  shell.Mkdir.Parents(path: op_boundary_attempt_state_root).success
+    && shell.Mkdir.Parents(path: holds as FilePath).success
+    && Filesystem.Write(path: op_boundary_marker_file(), content: "closed by the pre-C-roadmap-2 build\n").success
+}
+
+fn op_boundary_fence() -> LegacyWriterFence {
+  dashboard_instance_metering_closing_writer_fence(instance: srv1_lab_dashboard_instance())
+}
+
+// 1. THE FIRST GATE, LIVE: with the writer unit stopped and masked and one plain marker planted in the supplied
+// root, the REAL op refuses, and refuses BY THE CENSUS COUNT -- which proves the whole path ran: the unit really
+// was observed (a not-masked or unreachable writer refuses for a different cause, naming the units instead), and
+// the census really counted the planted byte.
+test fn the_real_first_gate_op_refuses_a_stopped_masked_writer_that_left_a_plain_marker() -> Bool {
+  let fence = op_boundary_fence()
+  let planted = op_boundary_plant_marker()
+  let result = dashboard_apply_provision_op(
+    instance: srv1_lab_dashboard_instance(),
+    op: DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: op_boundary_attempt_state_root },
+    temp_bundle: op_boundary_unused_temp_bundle,
+    temp_verify_repo: op_boundary_unused_temp_verify,
+  )
+  planted && !result.success && string_contains(s: result.stderr, pattern: "1 plain metering-roster-closing entries")
+}
+
+// The marker is removed through the DECLARED exec surface -- `extdeps.shell`'s `shell.Exec.RunArgv` with the
+// argv built by `gunbc.extdeps.tools.gnu_coreutils.rm_force_command` (so the words `-f` and the program `rm`
+// have their one home upstream, and this file authors no command of its own). This is executing a declared
+// program, not authoring a shell script: #15574 adds no shell SCRIPT text anywhere, which is the precise claim
+// the body makes after review 90693.
+
+// 2. THE CONTROL, LIVE: remove the marker and the SAME op, against the SAME still-stopped-and-masked unit, now
+// proceeds -- so the refusal above came from the bytes, not from the setup refusing everything.
+test fn removing_the_marker_lets_the_same_real_op_proceed() -> Bool {
+  let fence = op_boundary_fence()
+  let cmd = rm_force_command(path: op_boundary_marker_file() as String)
+  let removed = shell.Exec.RunArgv(program: cmd.program.invocation as NonEmptyStr, arguments: cmd.arguments).exit_code == 0
+  let result = dashboard_apply_provision_op(
+    instance: srv1_lab_dashboard_instance(),
+    op: DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: op_boundary_attempt_state_root },
+    temp_bundle: op_boundary_unused_temp_bundle,
+    temp_verify_repo: op_boundary_unused_temp_verify,
+  )
+  removed && result.success && string_contains(s: result.stdout, pattern: "nothing to do across the deploy")
+}
+
+// 3. THE FINAL RECHECK, LIVE (blocker 2(d) on the host): with the marker gone, the last-moment recheck takes the
+// observation and the census AGAIN and passes on its own reading, not on the first gate's certificate. Its
+// independence is claimed hermetically (the rehomed witness: a refusal in the later look beats an earlier pass);
+// here it is shown to run at all against real systemd and real bytes.
+test fn the_real_final_recheck_op_passes_against_live_systemd_with_no_marker_left() -> Bool {
+  let fence = op_boundary_fence()
+  let cmd = rm_force_command(path: op_boundary_marker_file() as String)
+  let removed = shell.Exec.RunArgv(program: cmd.program.invocation as NonEmptyStr, arguments: cmd.arguments).exit_code == 0
+  let result = dashboard_apply_provision_op(
+    instance: srv1_lab_dashboard_instance(),
+    op: DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: op_boundary_attempt_state_root },
+    temp_bundle: op_boundary_unused_temp_bundle,
+    temp_verify_repo: op_boundary_unused_temp_verify,
+  )
+  removed && result.success && string_contains(s: result.stdout, pattern: "rechecked at the last moment")
+}

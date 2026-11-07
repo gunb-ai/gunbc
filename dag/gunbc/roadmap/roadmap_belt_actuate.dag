@@ -21,6 +21,7 @@ import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, Gi
 import std.integer { nat_to_int }
 import gunbc.roadmap.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
+  attempt_metering_adopt_pre_seal_record,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
   MeteredRole, metered_role_eq, metering_roster_for_attempt, metering_roster_launches, RosterRefused,
   MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
@@ -8808,7 +8809,17 @@ fn belt_metering_for_attempt(
     Present { value: e } => MeteringPersistRefused { cause: join(["the metering attempt index could not be written: ", e], "") }
     Absent =>
       if belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) {
-        metering_persist_for_attempt(instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key, departed: false)
+        // ADOPT, THEN PERSIST (DESIGN 3: the pre-seal bytes are migrated by an act, never read through). srv2
+        // holds plain records written by main's raw route; this act verifies them against the roster and its
+        // seal and commits them as a generation, so the sealed reader can serve them. It is idempotent --
+        // once a generation exists it answers AdoptAlreadyHead and writes nothing -- so it runs ahead of every
+        // persist tick for this attempt. Its refusals are not this tick's verdict: the persist below observes
+        // the same head and answers it, typed.
+        let adoption = attempt_metering_adopt_pre_seal_record(
+          instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key)
+        match adoption {
+          _ => metering_persist_for_attempt(instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key, departed: false)
+        }
       } else {
         MeteringNotDue
       }
@@ -8826,7 +8837,13 @@ fn belt_metering_departed(
         if any(attempts, p => p.node_id == a.node_id && p.attempt_key == a.attempt_key) {
           [] as List<MeteringPersist>
         } else {
-          [metering_persist_for_attempt(instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key, departed: true)]
+          // A departed attempt can hold ONLY the pre-seal plain record if it left the ledger before its
+          // first metering tick. The same adoption act runs here ahead of the seal persist, so the
+          // departed pass never strands a verified record behind the reader's migration refusal.
+          match attempt_metering_adopt_pre_seal_record(
+            instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key) {
+            _ => [metering_persist_for_attempt(instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key, departed: true)]
+          }
         })
   }
 }

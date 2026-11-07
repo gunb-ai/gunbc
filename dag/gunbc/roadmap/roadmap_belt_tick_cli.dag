@@ -626,28 +626,28 @@ fn belt_credential_recovery_cli() -> ProcessExit {
         match now_epoch_seconds() {
           Absent => exit_failure(reason: "belt_credential_recovery_cli: host clock unreadable")
           Present { value: now } => {
-            let unit = deployment_belt_service_unit_name(names: row.names)
             let recovered = match credential_acquisition_store(instance: instance) {
               CredentialAcquisitionStoreUnready { detail } => CredentialRootFailed { report: detail }
               CredentialAcquisitionStoreReady { store: credentials } =>
                 credential_recover_root(credentials: credentials, now: now, reader_for: rec =>
                   belt_credential_reader_for(instance: instance, node_id: rec.node_id, attempt_key: rec.identity))
             }
-            let receipt = serialize_json(v: json_object(members: [
-              json_kv(key: "unit", value: json_string(s: unit as String)),
-              json_kv(key: "store", value: json_string(s: credential_acquisition_slots.member as String)),
-              json_kv(key: "recovered", value: json_string(s: credential_root_recovery_report(r: recovered))),
-            ]))
-            let receipt_path = join([instance.instance_root as String, "/credential-acquisition-recovery.json"], "")
-            if string_length(s: receipt) == 0 {
-              exit_failure(reason: "belt_credential_recovery_cli: receipt was empty")
-            } else if !Filesystem.Write(path: receipt_path, content: receipt).success {
-              exit_failure(reason: join(["belt_credential_recovery_cli: receipt write failed: ", receipt_path, "\n", receipt], ""))
+            // THE RECOVERY REPORT IS THE PROCESS'S OWN OUTPUT — the timer's journal carries it, and
+            // that is who reads it. This used to also write the same report to
+            // <instance_root>/credential-acquisition-recovery.json, and NOTHING IN THE CORPUS READ
+            // THAT FILE BACK: no .dag reader, no runbook or doc that tells an operator to open it, no
+            // wet witness (the consumers checked are listed in the PR body, and the two census rows
+            // naming it are the finding about the write itself). A durable file no consumer reads is
+            // work with no purpose (DESIGN §2), so the writer is retired rather than sealed; the
+            // entries already on the live hosts are recorded for the operator to remove.
+            let report = credential_root_recovery_report(r: recovered)
+            if string_length(s: report) == 0 {
+              exit_failure(reason: "belt_credential_recovery_cli: the recovery produced no report")
             } else {
               match recovered {
                 CredentialRootOk { report: _ } => ExitSuccess
                 CredentialRootFailed { report: _ } =>
-                  exit_failure(reason: join(["belt_credential_recovery_cli:\n", receipt], ""))
+                  exit_failure(reason: join(["belt_credential_recovery_cli:\n", report], ""))
               }
             }
           }

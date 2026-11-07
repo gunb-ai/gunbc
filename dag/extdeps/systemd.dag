@@ -339,6 +339,141 @@ fn parse_systemd_unit_load_state(raw: String) -> SystemdUnitLoadState? {
   else { none } } } } }
 }
 
+// THE UNIT-FILE STATE, as `systemctl is-enabled` PRINTS IT. systemctl(1) at systemd v255 (the Sparks'
+// recorded major, 255.4-1ubuntu8), is-enabled: the verb prints the unit FILE's install state, one of
+// `enabled`, `enabled-runtime`, `linked`, `linked-runtime`, `masked`, `disabled`, `static`, `indirect`,
+// `generated`, `transient`, `bad`, `not-found`. This is a DIFFERENT vocabulary from SystemdUnitLoadState
+// above even where the words overlap: LoadState is what the manager loaded (systemd.unit(5),
+// org.freedesktop.systemd1(5) Unit.LoadState) and the file state is what the install directory says
+// about the unit. `masked` appears in both because a masked unit is both unstartable by fragment and
+// reported that way by is-enabled -- the two readings must still be parsed by their own parser, so a
+// caller cannot satisfy a file-state check with a load-state answer.
+//
+// WHY THE EXIT CODE IS NOT THE CHECK: extdeps.systemd.systemctl records, from a measurement on srv1, that
+// is-enabled on a loaded unit with no install symlink prints `static` and STILL EXITS 0. A caller that
+// trusted the exit status would read a hand-started daemon as properly installed. The printed word is the
+// fact, so the word gets a type here and the comparison happens against a variant rather than against a
+// substring of whatever was printed. A word outside the set is not guessed into one: the parse answers
+// nothing and the caller refuses it as unread.
+data systemd_unit_file_state_masked_wire: NonEmptyStr = "masked" as NonEmptyStr
+
+type SystemdUnitFileState
+  = UnitFileEnabled
+  | UnitFileEnabledRuntime
+  | UnitFileLinked
+  | UnitFileLinkedRuntime
+  | UnitFileMasked
+  | UnitFileDisabled
+  | UnitFileStatic
+  | UnitFileIndirect
+  | UnitFileGenerated
+  | UnitFileTransient
+  | UnitFileBad
+  | UnitFileNotFound
+
+// THE ONE SPELLING OF THE VOCABULARY: variant and wire word bound ONCE per row, so the parse below
+// (lookup by word) and the label below (lookup by variant) read the SAME table and can never drift --
+// §4, one grammar read in both directions. A thirteenth is-enabled word reaches this table or it has no
+// name and no parse anywhere; adding a variant without a row leaves it untabled, which the round-trip
+// witness (test.claim.c_roadmap2_systemd_file_state_table_witness) refuses, and the table's distinctness
+// and length claims refuse a duplicated word or a silently dropped row.
+type SystemdUnitFileStateRow {
+  state: SystemdUnitFileState,
+  word: NonEmptyStr,
+}
+
+data systemd_unit_file_state_table: List<SystemdUnitFileStateRow> = [
+  SystemdUnitFileStateRow { state: UnitFileEnabled, word: "enabled" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileEnabledRuntime, word: "enabled-runtime" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileLinked, word: "linked" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileLinkedRuntime, word: "linked-runtime" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileMasked, word: systemd_unit_file_state_masked_wire },
+  SystemdUnitFileStateRow { state: UnitFileDisabled, word: "disabled" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileStatic, word: "static" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileIndirect, word: "indirect" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileGenerated, word: "generated" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileTransient, word: "transient" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileBad, word: "bad" as NonEmptyStr },
+  SystemdUnitFileStateRow { state: UnitFileNotFound, word: "not-found" as NonEmptyStr },
+]
+
+fn systemd_unit_file_state_row_by_word(
+  raw: String,
+  remaining: List<SystemdUnitFileStateRow>,
+) -> SystemdUnitFileStateRow? {
+  match remaining {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if (row.word as String) == raw { Present { value: row } }
+      else { systemd_unit_file_state_row_by_word(raw: raw, remaining: rest) }
+  }
+}
+
+fn systemd_unit_file_state_row_by_state(
+  state: SystemdUnitFileState,
+  remaining: List<SystemdUnitFileStateRow>,
+) -> SystemdUnitFileStateRow? {
+  match remaining {
+    Empty => none
+    Cons { head: row, tail: rest } =>
+      if row.state == state { Present { value: row } }
+      else { systemd_unit_file_state_row_by_state(state: state, remaining: rest) }
+  }
+}
+
+fn parse_systemd_unit_file_state(raw: String) -> SystemdUnitFileState? {
+  match systemd_unit_file_state_row_by_word(raw: raw, remaining: systemd_unit_file_state_table) {
+    none => none
+    Present { value: row } => Present { value: row.state }
+  }
+}
+
+// The word systemd prints for a file state, so a gate that wants to NAME what it saw in a refusal gets the
+// word from the module that owns the vocabulary instead of re-spelling it. THE GRAMMAR IS READ BACKWARD
+// HERE AND FORWARD BY THE PARSER ABOVE -- both directions walk the one table, so a label can never name a
+// word the parser would refuse. The none arm is unreachable while the table covers every variant (the
+// round-trip witness pins that); should a variant ever be added untabled, it answers a word no parse
+// accepts and the witness goes red rather than the label lying quietly.
+fn systemd_unit_file_state_wire_label(s: SystemdUnitFileState) -> String {
+  match systemd_unit_file_state_row_by_state(state: s, remaining: systemd_unit_file_state_table) {
+    none => "untabled-unit-file-state"
+    Present { value: row } => row.word as String
+  }
+}
+
+// MAINPID AS SYSTEMD ANSWERS IT. org.freedesktop.systemd1(5) Unit.MainPID is a uint32 and systemd.service(5)
+// gives a unit with no main process the value 0, so `systemctl show -p MainPID` answering `MainPID=0` is a
+// POSITIVE answer: nothing is running as that unit's main process. An empty answer, or one that is not
+// decimal, is not an answer -- the read failed, the property was not printed, or there was no unit to ask
+// about. Those two are different facts and a gate that treats a failed read as "no process" opens on the
+// exact failure that means "we do not know", so the reading is a sum with its own unreadable case.
+type SystemdMainPidReading
+  = MainPidRunning { pid: Int }
+  | MainPidNoneEstablished
+  | MainPidUnreadable { raw: String }
+
+// Decimal-only, checked before the numeric parse: parse_int on "12a" is not something this parser should
+// have an opinion about, and a MainPID carrying a stray character is a corrupt read, not a pid with noise.
+fn systemd_main_pid_is_decimal(text: String) -> Bool {
+  fold(chars(text: text), init: true, f: (acc, cp) => acc && (cp >= 48 && cp <= 57))
+}
+
+fn parse_systemd_main_pid_show(raw: String) -> SystemdMainPidReading {
+  let text = trim(s: raw)
+  if text == "" {
+    MainPidUnreadable { raw: raw }
+  } else if systemd_main_pid_is_decimal(text: text) {
+    match parse_int(s: text) {
+      Absent => MainPidUnreadable { raw: raw }
+      Present { value: n } =>
+        if n == 0 { MainPidNoneEstablished }
+        else { if n < 0 { MainPidUnreadable { raw: raw } } else { MainPidRunning { pid: n } } }
+    }
+  } else {
+    MainPidUnreadable { raw: raw }
+  }
+}
+
 data systemd_memory_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemoryMax)
 
 data systemd_memory_swap_max_property: NonEmptyStr = systemd_unit_property_wire(property: MemorySwapMax)

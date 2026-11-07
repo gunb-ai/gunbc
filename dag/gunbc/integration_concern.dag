@@ -999,6 +999,87 @@ data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern =
   disposition: Open,
 }
 
+data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_attempt_metering_plain_head_refusal",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
+    requirement: "a pre-seal plain metering.json at an attempt entry whose sealed slot exists with generation >= 1 answers a typed refusal through the seal contract; it is never read or adopted by a fallback arm inside attempt_metering_read",
+    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass, which dissolves the population the adoption op serves" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_read"),
+    tail: [],
+  },
+  question: "Should a plain metering.json beside a sealed slot ever be readable? No: the sealed slot is the only metering record store; the refusal arm records the non-migration, and the adoption op (roadmap_attempt_metering_belt_departed_adoption) is the only route that moves plain bytes into the slot.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_current_head") },
+        tail: [],
+      },
+      account: "srv2 measured 23 plain metering.json records dated 2026-10-24 under the live attempt-state root, all predating the index route; a reader that answered absent or head for them would silently drop metered usage, so it refuses typed instead.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data roadmap_attempt_metering_belt_departed_adoption: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_attempt_metering_belt_departed_adoption",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
+    requirement: "the departed pass carries an adoption step that reads a plain metering.json exactly once, verifies it through metering_observe_against, and commits it as generation one through attempt_metering_commit with ExpectSlotAbsent; a record that fails verification refuses typed and stays in place, and adopting twice is a lost race or a no-op, never a duplicate",
+    standing: RequirementUnestablished { decided_by: "the srv2 plain-metering inventory reading empty after a full departed pass" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_actuate", decl_name: "belt_metering_departed"),
+    tail: [
+      decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "attempt_metering_commit"),
+    ],
+  },
+  question: "How do the 23 pre-seal plain metering.json records reach the sealed slot without a second read path? Through this adoption step, invoked by belt_metering_departed before the new reader serves; it retires when the srv2 inventory reads empty.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "7476b9b85bb42b3590945d0d768e77c315c97e9a",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_metering", decl_name: "metering_observe_against") },
+        tail: [],
+      },
+      account: "the 23 records predate the index route, so the for-attempt pass cannot reach them; only the departed pass (or an operator-invoked boundary over the same modeled act) can adopt them, and neither route reaches attempts already processed by the old pass -- those rows are a known gap beside this one.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_metering_closing_plain_writer_retired",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
+    requirement: "the closing cutover no longer creates plain metering.json; systemd-run --collect unit_type=exec writing metering.json is retired as a dead route, the census enumerates sealed slot generations for the closing sweep, and the gate observes the metering writer unit inactive with no process before sweeping",
+    standing: RequirementUnestablished { decided_by: "nothing; this row records a retirement, not a gap to reopen -- the sealed slot is the only metering record store" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate"),
+    tail: [],
+  },
+  question: "Any surviving route that writes a plain metering.json during closing? None: the transient-unit write is removed and the census that guards closing enumerates slot generations instead; the residual is an out-of-band unmask of the writer unit, documented and refused by the gate's observation.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0713bdf10880c52bc3bf1542bf34b2d2d2d292cc",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_metering_closing_cutover", decl_name: "metering_closing_final_gate") },
+        tail: [],
+      },
+      account: "masking gunbc-obligation-<instance>-metering.service on srv2 refused the belt's transient-unit creation (executed observation, relayed as the blocker-2(b) receipt), so the retired writer is enforceable by unit mask and the gate observes unit-inactive plus no-process before the sweep.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, roadmap_attempt_metering_plain_head_refusal, roadmap_attempt_metering_belt_departed_adoption, roadmap_metering_closing_plain_writer_retired, base_mirror_round_tolerates_unresolvable_base_git_failure]
+
 // RAISED BY WORK ITEM adhoc-d9a8b550-3f7 (2026-11-07), from a regen round observed 2026-11-06 06:18Z.
 // The round printed git's refusal to resolve a bare `main` and CONTINUED to exit 0. Nothing here was
 // built or executed: the trace is source reading plus one read-only scratch repo used to match git's
@@ -1059,7 +1140,6 @@ data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConce
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

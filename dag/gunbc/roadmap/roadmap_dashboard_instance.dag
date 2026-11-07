@@ -26,6 +26,7 @@ import std.optional { Optional, Present, Absent }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, legacy_writer_fence_for }
+import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name }
 import gunbc.roadmap.roadmap_attempt_state_move_rows { attempt_state_move_rows }
 import std.algebra { trim }
 import extdeps.access.posix {
@@ -3455,6 +3456,17 @@ type DashboardInstanceProvisionOp
     }
   // THE ACTIVATION GATE, last in the plan: the exclusion is re-observed before the new dispatcher may start.
   | DashboardAssertLegacyWriterExcluded { fence: LegacyWriterFence }
+  // THE CLOSING-MARKER CUTOVER GATE, after the activation gate. The roster closing marker changed shape in
+  // C-roadmap-2 (a plain metering-roster-closing entry became the hold slot <key>.<generation>), and the hold
+  // fences only writers that TAKE it -- so across the deploy the unit that runs the OLD writer has to be
+  // observed stopped AND masked, and no plain marker may be left on the host. The answer is the cutover
+  // module's disposition (gunbc.roadmap.roadmap_metering_closing_cutover), not a rule spelled here: this op
+  // carries the fence and the root to census, and the apply route reads the states and asks.
+  | DashboardAssertMeteringClosingWriterExcluded { fence: LegacyWriterFence, attempt_state_root: FilePath }
+  // THE FINAL RECHECK (blocker 2(d)). A second op, run after the first, that re-observes the writer exclusion
+  // and re-runs the full census. Two ops and not one, because the point is that the state is checked TWICE across
+  // the deploy: whatever the first gate saw does not bind the last moment before the seal is trusted.
+  | DashboardAssertMeteringClosingCutoverFinal { fence: LegacyWriterFence, attempt_state_root: FilePath }
 
 // live_deploy systemd-launches the dashboard process only for deployment_spec_srv1 (srv1_live);
 // deployment_spec_for has no production caller. This plan does not start the process and does not
@@ -3544,7 +3556,10 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
     shared_git_posture,
     concat(
       dashboard_instance_provider_verification_ops(instance: instance),
-      [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
+      concat(
+        [DashboardAssertLegacyWriterExcluded { fence: dashboard_instance_legacy_writer_fence(instance: instance) }],
+        dashboard_instance_metering_closing_cutover_ops(instance: instance),
+      ),
     ),
   )))))
 }
@@ -3678,6 +3693,18 @@ fn dashboard_instance_provision_op_row(
         target: "legacy dispatcher units" as String,
         detail: "activation gate: every declared legacy writer unit is observed stopped and masked again before the new dispatcher may start",
       }
+    DashboardAssertMeteringClosingWriterExcluded { fence: _, attempt_state_root: root } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "assert-metering-closing-writer-excluded" as NonEmptyStr,
+        target: root as String,
+        detail: "closing-marker cutover gate: the metering obligation unit is observed stopped and masked, and the plain metering-roster-closing census over the instance's attempt-state tree is 0, before the build that takes the closing hold may run that obligation",
+      }
+    DashboardAssertMeteringClosingCutoverFinal { fence: _, attempt_state_root: root } =>
+      DashboardInstanceProvisionPlanRow {
+        kind: "assert-metering-closing-cutover-final-recheck" as NonEmptyStr,
+        target: root as String,
+        detail: "closing-marker cutover gate: the metering obligation unit is observed stopped and masked, and the plain metering-roster-closing census over the instance's attempt-state tree is 0, before the build that takes the closing hold may run that obligation",
+      }
     DashboardMoveAttemptStateEntries { row: row, fence: _ } =>
       DashboardInstanceProvisionPlanRow {
         kind: "move-attempt-state-entries" as NonEmptyStr,
@@ -3711,6 +3738,51 @@ data legacy_writer_fences: List<LegacyWriterFenceRow> = [
 
 fn dashboard_instance_legacy_writer_fence(instance: HostDashboardInstance) -> LegacyWriterFence {
   legacy_writer_fence_for(rows: legacy_writer_fences, instance_id: instance.instance_id)
+}
+
+// THE CLOSING-MARKER WRITER, PER INSTANCE, in the same shape as the identity fence above -- and BUILT FROM THE
+// DERIVATION, not typed by hand: `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes
+// `belt_instance_obligation_unit_name(instance_id, kind)` as the unit it starts, so the unit named here IS the
+// unit the obligation runner launches and the two cannot drift apart. Only the DIRECT writer is fenced: the
+// metering obligation unit's ExecStart is what reaches `metering_roster_seal` (the symbol trace is in
+// gunbc.roadmap.roadmap_metering_closing_cutover), and masking that unit closes the enqueue path too, because
+// the enqueue starts that same unit. The transient per-attempt obligation units that ENQUEUE it are named in
+// the cutover's activation step (`metering_closing_activation_step`), not here: one per attempt, and none of
+// them writes the marker itself. Instances with no systemd (macbook_local) have no unit that can write the
+// marker, so they carry no row -- and the plan adds no gate op for them, which is what the cutover witness's
+// census claim pins.
+data metering_closing_writer_fences: List<LegacyWriterFenceRow> = [
+  metering_closing_writer_fence_row(instance_id: srv1_dashboard_lab_id),
+  metering_closing_writer_fence_row(instance_id: srv2_dashboard_lab_id),
+]
+
+fn metering_closing_writer_fence_row(instance_id: NonEmptyStr) -> LegacyWriterFenceRow {
+  LegacyWriterFenceRow {
+    instance_id: instance_id,
+    fence: LegacyWriterUnits {
+      systemctl: "/usr/bin/systemctl" as NonEmptyStr,
+      units: [belt_instance_obligation_unit_name(instance_id: instance_id as String, kind: MeteringObligation)],
+    },
+  }
+}
+
+fn dashboard_instance_metering_closing_writer_fence(instance: HostDashboardInstance) -> LegacyWriterFence {
+  legacy_writer_fence_for(rows: metering_closing_writer_fences, instance_id: instance.instance_id)
+}
+
+// The gate op exists exactly where a closing-marker fence is declared. A conflicted row still produces the op,
+// because the route has to REFUSE on a conflict rather than skip it; only an undeclared instance produces none.
+fn dashboard_instance_metering_closing_cutover_ops(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
+  let fence = dashboard_instance_metering_closing_writer_fence(instance: instance)
+  match fence {
+    LegacyWriterUndeclared => []
+    _ => [
+      DashboardAssertMeteringClosingWriterExcluded { fence: fence, attempt_state_root: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
+      // THE RECHECK, ordered last. The plan runs its ops in order, so this one observes the host again at the
+      // point where a stale certificate would do the most damage.
+      DashboardAssertMeteringClosingCutoverFinal { fence: fence, attempt_state_root: dashboard_instance_dispatch_attempt_state_root(instance: instance) },
+    ]
+  }
 }
 
 fn dashboard_instance_provision_plan_rows(

@@ -1,0 +1,97 @@
+module test.claim.c_roadmap2_systemd_file_state_table_witness
+
+import std.types { Bool, String, List }
+import std.algebra { length }
+import extdeps.systemd {
+  SystemdUnitFileState, SystemdUnitFileStateRow, systemd_unit_file_state_table,
+  UnitFileEnabled, UnitFileEnabledRuntime, UnitFileLinked, UnitFileLinkedRuntime, UnitFileMasked,
+  UnitFileDisabled, UnitFileStatic, UnitFileIndirect, UnitFileGenerated, UnitFileTransient,
+  UnitFileBad, UnitFileNotFound,
+  parse_systemd_unit_file_state, systemd_unit_file_state_wire_label,
+}
+
+// THE IS-ENABLED VOCABULARY IS SPELLED ONCE, IN ONE ROW TABLE (extdeps.systemd
+// systemd_unit_file_state_table), and the parser reads it forward (word -> variant) while the label reads
+// it backward (variant -> word). The pre-change module spelled the twelve-word grammar TWICE -- a dozen
+// string comparisons in the parse and a dozen more in the label -- so the two directions could drift
+// silently, and the label already needed its own nit fix (review 90985) to stay pointing at the masked
+// constant. These claims pin the two directions against EACH OTHER rather than against re-spelled strings:
+// every table row's word parses back to a variant that labels to the same word; every variant labels to a
+// word the parser accepts and round-trips to itself; words outside the table parse to nothing; the table
+// has the twelve rows systemctl's is-enabled prints and no word is spelled twice. A variant added without
+// a row answers the untabled word, which no parse accepts, and the variant claim goes red.
+
+fn is_table_word(raw: String) -> Bool {
+  match parse_systemd_unit_file_state(raw: raw) {
+    none => false
+    Present { value: parsed } => systemd_unit_file_state_wire_label(s: parsed) == raw
+  }
+}
+
+// label then parse back, judged where the grammar lives: the label of what came back equals the label
+// that went in. With table words distinct (claimed below) two variants can never share a word, so equal
+// labels are the same variant -- the round trip is the identity without comparing variants directly.
+fn labels_round_trip(state: SystemdUnitFileState) -> Bool {
+  match parse_systemd_unit_file_state(raw: systemd_unit_file_state_wire_label(s: state)) {
+    none => false
+    Present { value: parsed } =>
+      systemd_unit_file_state_wire_label(s: parsed) == systemd_unit_file_state_wire_label(s: state)
+  }
+}
+
+fn table_rows_round_trip(remaining: List<SystemdUnitFileStateRow>) -> Bool {
+  match remaining {
+    Empty => true
+    Cons { head: row, tail: rest } =>
+      is_table_word(raw: row.word as String) && table_rows_round_trip(remaining: rest)
+  }
+}
+
+fn no_word_repeats(remaining: List<SystemdUnitFileStateRow>) -> Bool {
+  match remaining {
+    Empty => true
+    Cons { head: row, tail: rest } =>
+      no_word_equals(remaining: rest, word: row.word as String) && no_word_repeats(remaining: rest)
+  }
+}
+
+fn no_word_equals(remaining: List<SystemdUnitFileStateRow>, word: String) -> Bool {
+  match remaining {
+    Empty => true
+    Cons { head: row, tail: rest } =>
+      (row.word as String) != word && no_word_equals(remaining: rest, word: word)
+  }
+}
+
+test fn every_table_word_parses_and_labels_back_to_itself() -> Bool {
+  table_rows_round_trip(remaining: systemd_unit_file_state_table)
+}
+
+test fn every_variant_labels_to_a_word_the_parser_accepts_and_round_trips() -> Bool {
+  labels_round_trip(state: UnitFileEnabled)
+    && labels_round_trip(state: UnitFileEnabledRuntime)
+    && labels_round_trip(state: UnitFileLinked)
+    && labels_round_trip(state: UnitFileLinkedRuntime)
+    && labels_round_trip(state: UnitFileMasked)
+    && labels_round_trip(state: UnitFileDisabled)
+    && labels_round_trip(state: UnitFileStatic)
+    && labels_round_trip(state: UnitFileIndirect)
+    && labels_round_trip(state: UnitFileGenerated)
+    && labels_round_trip(state: UnitFileTransient)
+    && labels_round_trip(state: UnitFileBad)
+    && labels_round_trip(state: UnitFileNotFound)
+}
+
+test fn words_outside_the_table_parse_to_no_state() -> Bool {
+  (!is_table_word(raw: ""))
+    && (!is_table_word(raw: "banana"))
+    && (!is_table_word(raw: "enabled "))
+    && (!is_table_word(raw: " masked"))
+    && (!is_table_word(raw: "masked;echo"))
+    && (!is_table_word(raw: "active"))
+    && (!is_table_word(raw: "NOT-FOUND"))
+}
+
+test fn the_table_is_the_twelve_words_is_enabled_prints_with_none_repeated() -> Bool {
+  length(xs: systemd_unit_file_state_table) == 12 && no_word_repeats(remaining: systemd_unit_file_state_table)
+}

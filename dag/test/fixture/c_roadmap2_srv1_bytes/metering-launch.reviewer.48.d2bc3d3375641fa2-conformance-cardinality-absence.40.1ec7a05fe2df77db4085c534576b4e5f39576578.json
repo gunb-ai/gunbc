@@ -1,0 +1,1 @@
+{"schema": "gunbc-attempt-metering-roster/v2", "node_id": "shell-dag-ci-heal-regen-invoke", "attempt_key": "43d2bc0ea4c42999", "launch": {"kind": "reviewer", "criterion_key": "d2bc3d3375641fa2-conformance-cardinality-absence", "head": "1ec7a05fe2df77db4085c534576b4e5f39576578"}}

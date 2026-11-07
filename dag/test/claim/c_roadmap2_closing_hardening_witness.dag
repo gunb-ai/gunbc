@@ -1,0 +1,437 @@
+module test.claim.c_roadmap2_closing_hardening_witness
+
+// HARDENING WITNESSES for the review-91654/91662 follow-up findings (manager message f880dadc, items 2 and 3;
+// item 1's route claims live in this file too). Each claim is the ROUTE-RED for one fix: it fails on the code
+// as it stood before the fix and passes on the fix. The mutant that reddens each is named in its comment; the
+// same table lands in the PR body (item 8).
+//
+// WITNESS, NOT PROOF: the wet claims say what `ls`, the real filesystem and the hold library answer on THIS
+// host, not what every host must do.
+
+import std.logic { Bool }
+import std.types { String, FilePath, NonEmptyStr, List, Int }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemListingObservation, filesystem_listing_observation }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.roadmap.roadmap_dashboard_instance {
+  srv1_dashboard_lab_id,
+  HostDashboardInstance, isolated_dashboard_instance, DashboardActuating,
+  dashboard_instance_dispatch_attempt_state_root,
+}
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_metering_closing_marker_census, dashboard_metering_closing_writer_observation, MeteringClosingWriterObservation }
+import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult, dashboard_exec_ok, dashboard_exec_refused }
+import extdeps.systemd { parse_systemd_unit_active_state, parse_systemd_unit_file_state, parse_systemd_main_pid_show }
+import extdeps.linux.cgroup_v2 { CgroupEventsDecoding, CgroupEventsDecoded }
+import gunbc.roadmap.roadmap_belt_obligation { MeteringObligation, belt_instance_obligation_unit_name }
+import gunbc.roadmap.roadmap_metering_closing_cutover {
+  MeteringClosingMarkerCensus, CensusCounted, CensusAbsentEstablished, CensusRefused,
+  MeteringClosingCgroup, CgroupGone, CgroupRead, CgroupUnread,
+  metering_closing_cgroup_refusal, metering_closing_writer_process_quiescence, metering_closing_unit_exclusion,
+  MeteringClosingWriterQuiescence, WriterQuiescent, WriterNotQuiescent,
+  LegacyWriterExclusion, LegacyWriterExcluded, LegacyWriterNotExcluded,
+  metering_closing_legacy_marker_name,
+  dashboard_metering_closing_marker_census_decision, dashboard_metering_closing_cgroup_answer,
+}
+import gunbc.roadmap.roadmap_attempt_metering {
+  attempt_metering_read_derived, attempt_metering_roster_entry_read,
+  OptionalFileRead, OptionalFileContent, OptionalFileAbsent, OptionalFileRefused,
+  RosterEntryRead, metering_closing_hold_key,
+}
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
+import gunbc.roadmap.roadmap_attempt_state_store { attempt_state_directory_text, AttemptDirectoryRoot }
+import gunbc.harness.harness_seat_pointer { harness_seat_pointer_path, harness_seat_pointer_sibling_name, harness_seat_pointer_suffix }
+
+fn fx_lab_instance(tag: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: join(["c-roadmap2-hardening-", tag], "") as NonEmptyStr),
+    instance_id: srv1_dashboard_lab_id,
+    layout: srv1_host_layout(),
+    root: shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_c_roadmap2_hardening_", tag, ".XXXXXX"], "") as FilePath).path as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18121,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: "srv1" as NonEmptyStr,
+  )
+}
+
+fn fx_unit(i: HostDashboardInstance) -> NonEmptyStr {
+  belt_instance_obligation_unit_name(instance_id: i.instance_id as String, kind: MeteringObligation)
+}
+
+fn fx_exec_ok(stdout: String) -> DashboardExecResult { dashboard_exec_ok(stdout: stdout) }
+fn fx_exec_refused(stderr: String) -> DashboardExecResult { dashboard_exec_refused(detail: stderr) }
+
+fn fx_obs(unit: NonEmptyStr, cgroup: MeteringClosingCgroup) -> MeteringClosingWriterObservation {
+  MeteringClosingWriterObservation {
+    unit: unit,
+    active_state: parse_systemd_unit_active_state(raw: "inactive"),
+    unit_file_state: parse_systemd_unit_file_state(raw: "masked"),
+    main_pid: parse_systemd_main_pid_show(raw: "0"),
+    cgroup: cgroup,
+  }
+}
+
+fn census_variant(c: MeteringClosingMarkerCensus) -> String {
+  match c {
+    CensusCounted { count: _ } => "counted"
+    CensusAbsentEstablished => "absent"
+    CensusRefused { cause: _ } => "refused"
+  }
+}
+
+fn census_count(c: MeteringClosingMarkerCensus) -> Int {
+  match c {
+    CensusCounted { count: n } => n
+    CensusAbsentEstablished => -1
+    CensusRefused { cause: _ } => -1
+  }
+}
+
+// ===========================================================================
+// ITEM 2 -- THE CENSUS DECIDES FROM TWO PROBES; ABSENCE IS ITS OWN STAT.
+// The old census text-matched the ONE recursive listing: a failed presence check became 0 and the listing's
+// success was never required. Mutant M_census_failopen (stern's blocker-1 mutant, "map Refused to 0 again",
+// type-checks because it only edits the arms' right-hand sides) reddens every claim in this section.
+
+// The mid-walk race cell: the root's OWN stat succeeds (the root exists) while the recursive listing fails
+// with ENOENT text -- a subdirectory vanished while `ls -1R` walked. The old text-matched census read this
+// ABSENT, closing answered Noop, and the final gate passed over live markers.
+test fn census_race_cell_refuses() -> Bool {
+  let root = "/srv/gunbc/obit/x/metering"
+  let decided = dashboard_metering_closing_marker_census_decision(
+    root: root,
+    root_stat: fx_exec_ok(stdout: root),
+    listing: fx_exec_refused(stderr: "ls: cannot access '/srv/gunbc/obit/x/metering/gone': No such file or directory")
+  )
+  match decided {
+    CensusRefused { cause: _ } => true
+    CensusCounted { count: _ } => false
+    CensusAbsentEstablished => false
+  }
+}
+
+// A listing failure that is not ENOENT at all, over an existing root, is a refusal -- never a count of zero.
+test fn census_listing_failure_over_existing_root_refuses() -> Bool {
+  let root = "/srv/gunbc/obit/x/metering"
+  let decided = dashboard_metering_closing_marker_census_decision(
+    root: root,
+    root_stat: fx_exec_ok(stdout: root),
+    listing: fx_exec_refused(stderr: "ls: cannot open directory: Input/output error")
+  )
+  match decided {
+    CensusRefused { cause: _ } => true
+    CensusCounted { count: _ } => false
+    CensusAbsentEstablished => false
+  }
+}
+
+// Absence is established ONLY by the root's own stat, never by the walk's text.
+test fn census_absent_needs_its_own_stat() -> Bool {
+  let root = "/srv/gunbc/obit/x/metering"
+  let absent = dashboard_metering_closing_marker_census_decision(
+    root: root,
+    root_stat: fx_exec_refused(stderr: "ls: cannot access '/srv/gunbc/obit/x/metering': No such file or directory"),
+    listing: fx_exec_refused(stderr: "ls: cannot access '/srv/gunbc/obit/x/metering': No such file or directory")
+  )
+  match absent {
+    CensusAbsentEstablished => true
+    CensusCounted { count: _ } => false
+    CensusRefused { cause: _ } => false
+  }
+}
+
+// PAIRING (DESIGN section 3, "a witness discriminates at one interface"): the REAL census on this host must
+// answer exactly what the pure decision answers over the probe results its two commands actually produce at
+// the same fixture. Mutant M_census_producer -- the producer stops routing through the decision and keeps its
+// own text mapping -- reddens the pair whose answer differs (the marker and clean pairs pin counted equality,
+// the enotdir/enoent pairs pin the refused/absent split the old code collapsed).
+
+// PAIR 1: a clean created root. Both probes succeed; the count is zero on both sides.
+test fn census_pairs_with_the_decision_clean() -> Bool {
+  let i = fx_lab_instance(tag: "pair-clean")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let made = shell.Mkdir.Parents(path: root).success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: root)
+  let scripted = dashboard_metering_closing_marker_census_decision(
+    root: root as String,
+    root_stat: fx_exec_ok(stdout: root as String),
+    listing: fx_exec_ok(stdout: "")
+  )
+  made && census_variant(census) == census_variant(scripted) && census_count(census) == census_count(scripted) && census_count(census) == 0
+}
+
+// PAIR 2: one planted plain marker under <root>/<node>/metering. `ls -1R` prints the directory header and the
+// name; the decision counts names equal to the declared basename. Mutant M_census_count_any (count every
+// listed line) reddens the scripted side's 1 against a header-inflated count, exactly as witness 14 of the
+// cutover file does on the producer side.
+test fn census_pairs_with_the_decision_marker() -> Bool {
+  let i = fx_lab_instance(tag: "pair-marker")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let metering_dir = join([root as String, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let planted = shell.Mkdir.Parents(path: metering_dir as FilePath).success
+    && Filesystem.Write(path: join([metering_dir, "/", metering_closing_legacy_marker_name as String], "") as FilePath, content: "sealed by the pairing witness\n").success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: root)
+  let scripted = dashboard_metering_closing_marker_census_decision(
+    root: root as String,
+    root_stat: fx_exec_ok(stdout: root as String),
+    listing: fx_exec_ok(stdout: join([metering_dir, ":\n", metering_closing_legacy_marker_name as String, "\n"], ""))
+  )
+  planted && census_variant(census) == census_variant(scripted) && census_count(census) == 1 && census_count(scripted) == 1
+}
+
+// PAIR 3: the walk cannot be performed -- a component is a plain file (ENOTDIR, not ENOENT). Refused both sides.
+test fn census_pairs_with_the_decision_enotdir() -> Bool {
+  let i = fx_lab_instance(tag: "pair-enotdir")
+  let blocker = join([i.instance_root as String, "/not-a-directory"], "")
+  let planted = Filesystem.Write(path: blocker as FilePath, content: "x").success
+  let census = dashboard_metering_closing_marker_census(instance: i, root: join([blocker, "/sub"], "") as FilePath)
+  let scripted = dashboard_metering_closing_marker_census_decision(
+    root: join([blocker, "/sub"], ""),
+    root_stat: fx_exec_refused(stderr: "Not a directory"),
+    listing: fx_exec_refused(stderr: "Not a directory")
+  )
+  planted && census_variant(census) == "refused" && census_variant(census) == census_variant(scripted)
+}
+
+// PAIR 4: the root is positively gone. Both probes answer ENOENT; absence is ESTABLISHED on both sides.
+test fn census_pairs_with_the_decision_enoent() -> Bool {
+  let i = fx_lab_instance(tag: "pair-enoent")
+  let census = dashboard_metering_closing_marker_census(instance: i, root: join([i.instance_root as String, "/never-created"], "") as FilePath)
+  let scripted = dashboard_metering_closing_marker_census_decision(
+    root: join([i.instance_root as String, "/never-created"], ""),
+    root_stat: fx_exec_refused(stderr: "No such file or directory"),
+    listing: fx_exec_refused(stderr: "No such file or directory")
+  )
+  census_variant(census) == "absent" && census_variant(census) == census_variant(scripted)
+}
+
+// ===========================================================================
+// ITEM 3 -- THE CGROUP SIDE IS A SUM, NOT A BAG OF FLAGS.
+// The old record carried a String control group plus a Bool plus a count, and a `show` that answered WITHOUT
+// the ControlGroup property synthesized CgroupEventsDecoded{populated:false} -- which the gate read as
+// "cgroup gone" and PASSED. Mutant M_cgroup_synth: hand the missing-key arm CgroupRead{populated:false,
+// procs:[]} again -- cgroup_missing_key_is_unread and cgroup_gate_refuses_unread both go red (the first on
+// the variant, the second because the synthesized read certifies). Mutant M_cgroup_gone (missing property
+// reads as CgroupGone) reddens cgroup_missing_key_is_unread alone.
+
+test fn cgroup_missing_key_is_unread() -> Bool {
+  let answer = dashboard_metering_closing_cgroup_answer(
+    show_success: true,
+    control_group_property: Absent,
+    events: fx_exec_ok(stdout: "populated 0"),
+    procs: fx_exec_ok(stdout: "")
+  )
+  match answer {
+    CgroupUnread { cause: _ } => true
+    CgroupGone => false
+    CgroupRead { events: _, procs: _ } => false
+  }
+}
+
+test fn cgroup_empty_answer_is_gone() -> Bool {
+  let answer = dashboard_metering_closing_cgroup_answer(
+    show_success: true,
+    control_group_property: Present { value: "" },
+    events: fx_exec_ok(stdout: ""),
+    procs: fx_exec_ok(stdout: "")
+  )
+  match answer {
+    CgroupGone => true
+    CgroupUnread { cause: _ } => false
+    CgroupRead { events: _, procs: _ } => false
+  }
+}
+
+test fn cgroup_failed_show_is_unread() -> Bool {
+  let answer = dashboard_metering_closing_cgroup_answer(
+    show_success: false,
+    control_group_property: Absent,
+    events: fx_exec_ok(stdout: ""),
+    procs: fx_exec_ok(stdout: "")
+  )
+  match answer {
+    CgroupUnread { cause: _ } => true
+    CgroupGone => false
+    CgroupRead { events: _, procs: _ } => false
+  }
+}
+
+// THE GATE CONSUMES THE SUM: an Unread cgroup REFUSES the closing -- where the synthesized populated:false
+// read certified it.
+test fn cgroup_gate_refuses_unread() -> Bool {
+  let i = fx_lab_instance(tag: "gate-unread")
+  match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupUnread { cause: "the manager did not answer the ControlGroup property" })) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn cgroup_gate_passes_gone() -> Bool {
+  let i = fx_lab_instance(tag: "gate-gone")
+  match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupGone)) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A READ cgroup that still holds a process refuses; a READ cgroup the manager reports empty certifies.
+// Mutant M_cgroup_procs (drop the pids arm from CgroupRead) reddens the first half.
+test fn cgroup_gate_refuses_live_procs_and_passes_empty_read() -> Bool {
+  // The procs arm is the RUNNING-WRITER fact and must be judged by ITS OWN refusal, not by any other
+  // arm that happens to refuse the same record: every live assertion below pins the procs-arm reason
+  // text. A mutant that deletes the pid test while the events arm still refuses the populated:true
+  // record goes RED here (first run did exactly that, review-91654 follow-up) -- and the kernel-race
+  // cell (procs live while cgroup.events says populated:false: children reparented after the events
+  // file was read) has NO other arm to hide behind at all.
+  let i = fx_lab_instance(tag: "gate-procs")
+  let live = match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupRead {
+    events: CgroupEventsDecoded { populated: true },
+    procs: [4321] as List<Int>,
+  })) {
+    Present { value: v } => string_contains(s: v, pattern: "process(es) are attached")
+    Absent => false
+  }
+  let race = match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupRead {
+    events: CgroupEventsDecoded { populated: false },
+    procs: [9999] as List<Int>,
+  })) {
+    Present { value: v } => string_contains(s: v, pattern: "process(es) are attached")
+    Absent => false
+  }
+  let empty = match metering_closing_cgroup_refusal(o: fx_obs(unit: fx_unit(i), cgroup: CgroupRead {
+    events: CgroupEventsDecoded { populated: false },
+    procs: [] as List<Int>,
+  })) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  live && race && empty
+}
+
+// DELEGATION: the exclusion rule is ONE filter, not two that can drift. Mutant M_filter_dup -- re-add an
+// independent no-observation filter in metering_closing_unit_exclusion that forgets, say, the cgroup axis --
+// answers Excluded through one path and NotQuiescent through the other on this very list, and the claim goes
+// red on the disagreement alone (the "== not-quiescent" half pins the direction too).
+test fn exclusion_and_quiescence_agree_on_an_unread_cgroup() -> Bool {
+  let i = fx_lab_instance(tag: "delegate")
+  let unit = fx_unit(i)
+  let unread = [fx_obs(unit: unit, cgroup: CgroupUnread { cause: "unread" })] as List<MeteringClosingWriterObservation>
+  let via_quiescence = match metering_closing_writer_process_quiescence(unit: unit, observed: unread) {
+    WriterQuiescent { unit: _ } => "quiescent"
+    WriterNotQuiescent { unit: _, reason: _ } => "not-quiescent"
+  }
+  let via_exclusion = match metering_closing_unit_exclusion(unit: unit, observed: unread) {
+    LegacyWriterExcluded => "quiescent"
+    LegacyWriterNotExcluded { reason: _ } => "not-quiescent"
+  }
+  via_quiescence == via_exclusion && via_quiescence == "not-quiescent"
+}
+
+// ===========================================================================
+// ITEM 1 -- NO PATH-TAKING READS. Entries are named by declared members and observed through the directory's
+// own listing, so a name containing a traversal cannot reach bytes outside the directory: the listing and
+// the read must AGREE, and a read the listing does not corroborate is a refusal, never content.
+// Mutant M_traversal: drop the listing corroboration from attempt_metering_read_derived (read the joined
+// path directly, as the deleted attempt_metering_read_within did -- its guard was a starts_with text check
+// that "<dir>/../../x" passed).
+
+test fn traversal_read_cannot_escape_the_directory() -> Bool {
+  let i = fx_lab_instance(tag: "trav")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let made = shell.Mkdir.Parents(path: dir as FilePath).success
+  // A real file OUTSIDE the directory, reachable from inside only by traversal.
+  let outside = join([root, "/secret-metering"], "")
+  let planted = Filesystem.Write(path: outside as FilePath, content: "bytes that live one level up\n").success
+  let read = attempt_metering_read_derived(dir: dir, name: "../secret-metering" as NonEmptyStr)
+  made && planted && match read {
+    OptionalFileContent { content: _ } => false
+    OptionalFileAbsent => true
+    OptionalFileRefused { cause: _ } => true
+  }
+}
+
+// The same name WITHOUT the traversal returns the content -- the claim above is about the escape, not about
+// reads being broken in general. (Mutant M_derived_absent, which makes derived always answer Absent, reddens
+// this and not the claim above: the pair pins both directions.)
+test fn declared_member_read_returns_its_content() -> Bool {
+  let i = fx_lab_instance(tag: "declared")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let made = shell.Mkdir.Parents(path: dir as FilePath).success
+  let planted = Filesystem.Write(path: join([dir, "/metering-roster.json"], "") as FilePath, content: "declared bytes\n").success
+  let read = attempt_metering_read_derived(dir: dir, name: "metering-roster.json" as NonEmptyStr)
+  made && planted && match read {
+    OptionalFileContent { content: c } => c == "declared bytes\n"
+    OptionalFileAbsent => false
+    OptionalFileRefused { cause: _ } => false
+  }
+}
+
+// ROSTER ENTRY READS RUN ON THE SHARED LISTING: an entry the roster listing does not contain cannot come back
+// as content even when the file is there (a file created after the listing -- the roster's entries are the
+// listing's, not the filesystem's second opinion). Mutant M_roster_perread: re-give each entry read its own
+// unlisted Filesystem.Read (the pre-fix shape, one listing per ENTRY and no corroboration) -- the O(n) list
+// disappears from the witness's cost line and the disagreement half goes red.
+test fn roster_entry_read_never_invents_entries() -> Bool {
+  let i = fx_lab_instance(tag: "roster")
+  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
+  let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let made = shell.Mkdir.Parents(path: dir as FilePath).success
+  let planted = Filesystem.Write(path: join([dir, "/metering-roster.json"], "") as FilePath, content: "roster bytes\n").success
+    && Filesystem.Write(path: join([dir, "/late.json"], "") as FilePath, content: "late bytes\n").success
+  let listed = Filesystem.List(path: dir as FilePath)
+  let listing = filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error)
+  let first = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "metering-roster.json")
+  let second = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "metering-roster.json")
+  let third = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "late.json")
+  let fourth = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "never-created.json")
+  let ok_first = match first.read { OptionalFileContent { content: c } => c == "roster bytes\n", _ => false }
+  let ok_second = match second.read { OptionalFileContent { content: c } => c == "roster bytes\n", _ => false }
+  let ok_third = match third.read { OptionalFileContent { content: c } => c == "late bytes\n", _ => false }
+  let ok_fourth = match fourth.read { OptionalFileAbsent => true, OptionalFileContent { content: _ } => false, OptionalFileRefused { cause: _ } => false }
+  made && planted && ok_first && ok_second && ok_third && ok_fourth
+}
+
+
+
+// ===========================================================================
+// SEAT POINTER NAME/PATH AGREEMENT (item 1's second half): the pointer's NAME is derived from its PATH by
+// one suffix row, so the two can never disagree -- the pair the deleted attempt_metering_read_at could be
+// handed three strings about. Mutant M_seat_split: change the suffix in harness_seat_pointer_path alone.
+test fn seat_pointer_name_and_path_agree() -> Bool {
+  let dir = "/srv/gunbc/obit/x/attempt/metering"
+  let p = harness_seat_pointer_path(events_path: dir)
+  let n = harness_seat_pointer_sibling_name(events_name: "metering-roster.json")
+  p == join([dir, harness_seat_pointer_suffix()], "") && n == join(["metering-roster.json", harness_seat_pointer_suffix()], "") && string_contains(s: p, pattern: harness_seat_pointer_suffix())
+}
+
+// THE MARKER AND THE HOLD SLOT CARRY ONE NAME (review 91654 PLAUSIBLE item). The pre-seal marker written by
+// the old build and the closing hold's own file name are both the sealed roster basename; two symbols, one
+// definition (roster_closing_basename). Mutant M_rename: change one of the two data rows' right-hand side --
+// the closing would then census one name while the hold library filed another.
+test fn the_marker_and_the_hold_slot_carry_one_name() -> Bool {
+  (metering_closing_legacy_marker_name as String) == (metering_closing_hold_key as String)
+    && (metering_closing_hold_key as String) == (attempt_metering_slots.roster_closing_basename as String)
+}
+
+// THE BUILDER ROUTES THE CGROUP SIDE THROUGH THE ANSWER (manager note: "the real apply route has to
+// construct it"). Producer pairing at ONE interface: `/bin/echo` stands in for systemctl -- every exec
+// succeeds and no printed line can parse as a `ControlGroup=` property, so the REAL builder's record must
+// carry CgroupUnread with the missing-property cause. A builder that kept a mapping of its own (or
+// synthesized CgroupRead{populated:false} for the missing key, review 91654 item 3) fails here while every
+// word-parse claim stays green. Mutants M_cgroup_synth / M_cgroup_gone flip it.
+test fn the_builder_routes_the_cgroup_side_through_the_answer() -> Bool {
+  let i = fx_lab_instance(tag: "cgroup-builder-pair")
+  let rec = dashboard_metering_closing_writer_observation(instance: i, ctl: "/bin/echo" as NonEmptyStr, unit: "gunbc-cgroup-builder-pair.service" as NonEmptyStr)
+  match rec.cgroup {
+    CgroupUnread { cause: c } => string_contains(s: c, pattern: "ControlGroup")
+    CgroupGone => false
+    CgroupRead { events: _, procs: _ } => false
+  }
+}

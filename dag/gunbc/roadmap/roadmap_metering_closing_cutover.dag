@@ -1,0 +1,506 @@
+module gunbc.roadmap.roadmap_metering_closing_cutover
+
+import std.types { String, Bool, NonEmptyStr, List, Int }
+// `trim` is called below on the control-group path, so it is imported from its declarer rather than
+// resolved by proximity -- residual_class_names.bare_name_resolved_by_proximity_standing_in_for_resolution.
+import std.algebra { trim }
+import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
+import gunbc.roadmap.roadmap_attempt_state_layout_move {
+  LegacyWriterFence, LegacyWriterUnits, LegacyWriterExclusion, LegacyWriterExcluded, LegacyWriterNotExcluded,
+  LegacyWriterUndeclared, LegacyWriterFenceConflict,
+}
+// THE CGROUP AUTHORITY. The gate asks the kernel whether anything is alive under the writer's cgroup, so it takes
+// the mount point, the file names and the decoder from the module that owns cgroup v2 rather than spelling any of
+// them here.
+import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
+import extdeps.linux.cgroup_v2 {
+  CgroupEventsDecoding, CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
+  decode_cgroup_procs, cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
+  cgroup_v2_procs_interface_file,
+}
+// THE SYSTEMD AUTHORITY. The gate asks systemd three questions -- is the unit running, is it masked, does it
+// have a main process -- so the three vocabularies it answers in are taken from the module that owns them
+// rather than re-spelled as strings here. A string word list of systemd's states would be a second name for
+// an upstream fact (DESIGN §3) and would drift the first time systemd's answer set changed; worse, a word
+// list can admit a word that is not a stop ("deactivating" -- the unit's processes are still running) or
+// treat a failed read ("" ) as one. Parsing is `parse_systemd_unit_active_state`,
+// `parse_systemd_unit_file_state` and `parse_systemd_main_pid_show`; each answers NOTHING (or its own
+// unreadable case) for text outside systemd's set, which is what makes the refusal below reachable.
+import extdeps.systemd {
+  SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed,
+  parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
+  SystemdUnitFileState, UnitFileMasked, parse_systemd_unit_file_state, systemd_unit_file_state_wire_label,
+  SystemdMainPidReading, MainPidRunning, MainPidNoneEstablished, MainPidUnreadable, parse_systemd_main_pid_show,
+}
+
+// THE CLOSING-MARKER MOVE, AND THE WRITER IT MUST EXCLUDE (stern-ram-763 on #15574, 2026-11-01).
+//
+// THE MOVE. The roster closing marker was a PLAIN entry named `metering-roster-closing` inside the attempt's
+// metering directory. It is now a hold slot the hold library writes as `<key>.<generation>` (the key is the
+// same declared basename row, `attempt_metering_slots.roster_closing_basename`, and the hold library appends
+// the generation). Two writers acting on one attempt -- the build deployed today and the build this PR
+// changes -- would otherwise both act on the closing of the same attempt: the pre-PR writer creates the plain
+// entry and lists the roster, the post-PR writer takes the hold and lists it again. The hold fences only
+// writers that TAKE it, so it does not fence a pre-PR build by itself: the boundary is the deploy, and across
+// that boundary the legacy writer's host units have to be excluded, exactly as #15413's identity-store move
+// requires (`legacy_writer_fence_for`, `legacy_writer_exclusion` in gunbc.roadmap.roadmap_attempt_state_layout_move).
+//
+// THE WRITER, BY SYMBOL. `metering_roster_seal` (gunbc.roadmap.roadmap_attempt_metering) is the only route
+// that takes the closing hold, and it has exactly one production caller: `metering_persist_current`, reached
+// from `metering_persist_for_attempt` (both in gunbc.roadmap.roadmap_attempt_metering), reached from
+// `belt_metering_for_attempt` and `belt_metering_departed` (gunbc.roadmap.roadmap_belt_actuate), which are
+// called only from `belt_metering_attempts_for_instance` (same module), which is called only from
+// `belt_instance_obligation_run` under `BeltInstanceObligation.MeteringObligation`
+// (gunbc.roadmap.roadmap_belt_tick_cli). That obligation is what the metering obligation unit's ExecStart
+// runs: `belt_instance_obligation_cli("metering")` (same module).
+//
+// THE WRITER, BY HOST UNIT. `belt_instance_obligation_unit_name(instance_id, MeteringObligation)`
+// (gunbc.roadmap.roadmap_belt_obligation) spells it `gunbc-obligation-<instance_id>-<kind_key>.service` and
+// the kind key `belt_instance_obligation_kind_key` gives MeteringObligation is "metering" -- so on srv1's lab
+// instance the direct writer is `gunbc-obligation-srv1-lab-codex-feedback-v0-metering.service`. The unit that
+// ENQUEUES that obligation is the belt service unit, `<stem>-belt.service`
+// (gunbc.live_deploy.spec `deployment_belt_service_unit_name`), whose tick reaches
+// `belt_attempt_obligations_pass` (gunbc.roadmap.roadmap_belt_tick_cli); the per-attempt obligation units
+// `gunbc-obligation-attempt-<node>-<key>.service` (spelled by `belt_attempt_obligation_unit_name`) run
+// `belt_attempt_obligations_cli` and are transient -- one per attempt, so they are not a fixed list, and the
+// activation step below drains in-flight ones rather than masking a name that does not persist.
+//
+// ENTRIES TRACED AND NOT REACHING IT. The serve unit's entry (`roadmap_serve_handle_srv1_lab` →
+// `roadmap_serve_route` → `roadmap_serve_attempt_route` → `belt_actuate_spawn_for_instance`) reaches the
+// attempt mint, not the metering pass; the exit drain, the publication answer drain and credential recovery do
+// not call `metering_persist_for_attempt`. `metering_roster_seal` has no other production caller (the other
+// `metering_roster_seal*` names in the tree are the JSON codec, not the route).
+//
+// UNKNOWN, RECORDED RATHER THAN ASSUMED. Whether srv1 loads the metering obligation unit TODAY, and whether a
+// timer starts the belt unit, are host facts this branch cannot read from here (the witness host has no
+// systemctl and no route to srv1's systemd); the disposition function below therefore refuses on an UNDECLARED
+// fence and requires an OBSERVED state per declared unit -- an unobserved unit is not excluded. The 2026-11-01
+// census of srv1's lab attempt-state tree (0 plain closing markers across 20 attempt directories) says nothing
+// is sitting there to migrate; it does NOT say no unit can still write one, which is what the fence is for.
+
+// THE NAME THE OLD WRITER LEFT BEHIND. It is the slots module's own basename row -- the same row the hold
+// library now addresses with a generation suffix -- which is why the mint refuses a plain entry of this name
+// instead of reading both layouts.
+data metering_closing_legacy_marker_name: NonEmptyStr = attempt_metering_slots.roster_closing_basename
+
+// THE FENCE ITSELF IS DECLARED WHERE THE OTHER LEGACY-WRITER FENCES ARE --
+// `gunbc.roadmap.roadmap_dashboard_instance.metering_closing_writer_fences`, beside #15413's
+// `legacy_writer_fences` -- because the route that acts on a cutover is the instance's own apply route, and a
+// fence that lives anywhere else is a fact no route reads. What lives HERE is the answer the route asks that
+// fence for: given the units the fence names, what states were observed for them, and what plain markers are on
+// the host, what does the cutover do. The unit names are not spelled here at all: the rows (declared in
+// gunbc.roadmap.roadmap_dashboard_instance) are built from `belt_instance_obligation_unit_name`, the same call
+// `belt_instance_obligation_enqueue` (gunbc.roadmap.roadmap_belt_actuate) passes as the unit it starts, so the
+// fence and the launched unit cannot drift apart.
+
+// WHAT WAS OBSERVED ABOUT ONE WRITER UNIT, as systemctl and the kernel read it (blocker 2(c), stern-ram-763:
+// the gate must OBSERVE that no writer is running, not instruct a drain). Six reads, and no opinions among them:
+//   active_state / enabled_state -- `is-active`, `is-enabled`: what the unit MANAGER believes.
+//   main_pid                     -- `show -p MainPID --value`: the unit's own main process ("0"/"" if none).
+//   control_group                -- `show -p ControlGroup --value`: the unit's own cgroup. "" is POSITIVE
+//                                   absence, not missing data -- systemd removes a stopped unit's cgroup
+//                                   (gunbc.runner.runner_slot_retirement:83-85).
+//   cgroup_events                -- the kernel's `populated` bit for that cgroup, decoded by the module that
+//                                   owns the file (extdeps.linux.cgroup_v2.decode_cgroup_events_populated).
+//   writer_process_count         -- pids attached to that cgroup itself, from `cgroup.procs`.
+//
+// WHY `cgroup.events` AND NOT A LINE COUNT OF `cgroup.procs`, which is what an earlier revision of THIS gate
+// did and what a first reading of the blocker suggests: `cgroup.procs` lists only the processes attached to THAT
+// cgroup and nothing below it, and systemd places a service's children in scoped child cgroups -- so a unit
+// whose workers were alive one level down reads as an EMPTY parent. The landed record of exactly that mistake
+// (gunbc.runner.runner_slot_retirement CgroupOccupancy, in the note beside CgroupObservedPopulated) is a
+// teardown and capacity release permitted over live work. `populated` is
+// the kernel's own subtree answer, so this gate asks the kernel instead of counting a directory.
+// A NON-EMPTY `cgroup.procs` is still trusted, but only in the direction it can speak: it can prove a process is
+// there, and an empty one is never read as absence.
+//
+// WHY NOT `pgrep -f <pattern>`, which is what the first draft of this arm did: a command-line match attributes
+// nothing. It counts the gate's own probe and anyone's editor, and it cannot say a given pid belongs to the
+// writer. The unit's own cgroup can.
+type MeteringClosingWriterObservation {
+  unit: NonEmptyStr,
+  // What `systemctl is-active` printed, ALREADY PARSED by extdeps.systemd.parse_systemd_unit_active_state.
+  // `none` is not a state: it is the empty answer, the failed read, or text outside systemd's set. It is
+  // carried rather than defaulted because the difference decides the gate -- see the refusal below.
+  active_state: SystemdUnitActiveState?,
+  // What `systemctl is-enabled` printed, ALREADY PARSED by extdeps.systemd.parse_systemd_unit_file_state.
+  // UnitFileMasked is the state that makes the writer unstartable by fragment (systemd.unit(5), the
+  // /dev/null link); every other state -- including `static`, which srv1 measures as exit 0 -- leaves the
+  // unit startable and therefore unexcluded.
+  unit_file_state: SystemdUnitFileState?,
+  // What `systemctl show -p MainPID` answered, ALREADY PARSED by extdeps.systemd.parse_systemd_main_pid_show:
+  // a positive pid, the established 0, or an unreadable answer. Only the middle one is "no main process".
+  main_pid: SystemdMainPidReading,
+  // What the cgroup side SAID, as one sum: positive absence, a complete read, or an unread (review 91654
+  // follow-up, item 3; DESIGN section 5, construction over validation). The old record carried
+  // control_group:String + cgroup_events + cgroup_read_established:Bool + writer_process_count:Int, where a
+  // `show` that answered WITHOUT a ControlGroup key produced "" + a synthesized CgroupEventsDecoded
+  // {populated:false} that read as "cgroup gone" -- a failed read indistinguishable from positive absence.
+  // One sum now; no bool that can lie.
+  cgroup: MeteringClosingCgroup,
+}
+
+// THE CGROUP SIDE OF AN OBSERVATION, as a sum of what was actually ESTABLISHED.
+//   CgroupGone   -- `show` ANSWERED and the ControlGroup property came back EMPTY: the unit has no cgroup.
+//                  Only a positive answer establishes this; a stopped-and-masked unit reads this way.
+//   CgroupRead   -- both kernel files answered: the events body and the pids are what they are.
+//   CgroupUnread -- anything else: `show` did not answer, the ControlGroup property was MISSING from an
+//                  otherwise good answer, or either kernel file failed. The gate refuses on this arm.
+type MeteringClosingCgroup
+  = CgroupGone
+  | CgroupRead { events: CgroupEventsDecoding, procs: List<Int> }
+  | CgroupUnread { cause: String }
+
+// THE READ PROGRAM AND THE CGROUP PATHS MOVED (review 91654 follow-up) to
+// gunbc.roadmap.roadmap_dashboard_instance_apply, whose writer-observation builder is their only consumer;
+// they now live beside it, unchanged. This module keeps only the EVIDENCE SHAPE they fill: the
+// MeteringClosingCgroup sum above, matched into refusals -- never a path or a program spelled here.
+
+// WHETHER ONE OBSERVATION CERTIFIES AN ABSENT WRITER, fail-closed. Every way of NOT establishing it is its own
+// case with its own words, so a refusal names the question that went unanswered instead of collapsing into "not
+// excluded". Nothing here reads "I could not tell" as "nothing is running" -- that substitution is the fail-open
+// this blocker exists to close, and it is the same shape as the census refusing on `CensusRefused` below.
+type MeteringClosingWriterQuiescence
+  = WriterQuiescent { unit: NonEmptyStr }
+  | WriterNotQuiescent { unit: NonEmptyStr, reason: String }
+
+// WHAT STILL HAS TO BE TRUE, as a reason or nothing. The order is deliberate: a systemd answer that never
+// arrived is refused BEFORE anything is inferred from the kernel's side, because a unit whose state is
+// unknown is a unit that may be running, and the cgroup can be empty a moment before a process attaches.
+// Each refusal quotes the word systemd printed (through the upstream label function, not a copy of it).
+fn metering_closing_writer_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.active_state {
+    // NO READING IS NOT A STOPPED STATE. This arm is the one the pre-fix code did not have: an empty or
+    // unparseable `systemctl is-active` used to fall into the same bucket as "inactive".
+    Absent => Present { value: join(["the writer unit ", o.unit as String, " gave no ActiveState systemd understands (an empty or unparseable `systemctl is-active` answer); a read that failed is not a stopped state and cannot certify the writer idle", ""]) }
+    Present { value: s } =>
+      if !metering_closing_active_state_stopped(state: s) {
+        Present { value: join(["the writer unit ", o.unit as String, " reports ActiveState=", systemd_unit_active_state_wire_label(s: s), "; only `inactive` and `failed` are stopped, and `deactivating` in particular is NOT -- its processes are still running while systemd tears them down; a writer is running now, so the cutover waits instead of instructing a drain"]) }
+      } else {
+        metering_closing_unit_file_refusal(o: o)
+      }
+  }
+}
+
+// THE MASK, next. `is-enabled` is the only thing that says whether systemd would still start this name.
+fn metering_closing_unit_file_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.unit_file_state {
+    Absent => Present { value: join(["the writer unit ", o.unit as String, " gave no is-enabled state systemd understands; the mask is what makes the transient writer unstartable, so an unreadable file state refuses the gate rather than being assumed", ""]) }
+    Present { value: f } =>
+      if !metering_closing_unit_file_masked(state: f) {
+        Present { value: join(["the writer unit ", o.unit as String, " is not masked (is-enabled printed `", systemd_unit_file_state_wire_label(s: f), "`); without the /dev/null fragment (systemd.unit(5)) systemd will still create the belt's transient unit of that name, and srv1 measures that is-enabled exits 0 even on a `static` unit, so the word -- not the status -- is the evidence"]) }
+      } else {
+        metering_closing_main_pid_refusal(o: o)
+      }
+  }
+}
+
+// AND THE MAIN PROCESS, last of systemd's three answers.
+fn metering_closing_main_pid_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.main_pid {
+    MainPidRunning { pid: n } =>
+      Present { value: join(["the writer unit ", o.unit as String, " still has main pid ", to_string(value: n), "; a stopped unit answers MainPID=0, so a positive pid is a live writer however the words read"]) }
+    MainPidUnreadable { raw: r } =>
+      Present { value: join(["the writer unit ", o.unit as String, " answered MainPID with '", r, "', which is neither a pid nor systemd's 0 for no main process; a corrupt read is not evidence that no process exists"]) }
+    MainPidNoneEstablished =>
+      metering_closing_cgroup_refusal(o: o)
+  }
+}
+
+// ONLY `inactive` AND `failed` STOP THE WRITER. `deactivating` is a unit still holding its processes,
+// `activating`/`active`/`reloading` need no argument, and the list is exhaustive over the upstream sum so a
+// new systemd state is a compile error here rather than a silent "not stopped" -- or worse, a silent pass.
+fn metering_closing_active_state_stopped(state: SystemdUnitActiveState) -> Bool {
+  match state {
+    Inactive => true
+    Failed => true
+    Active => false
+    Activating => false
+    Deactivating => false
+    Reloading => false
+  }
+}
+
+// `masked` is the only file state that removes the writer's ability to be started by name; every other
+// state leaves systemd free to create the belt's transient unit, so each is named rather than wildcased.
+fn metering_closing_unit_file_masked(state: SystemdUnitFileState) -> Bool {
+  match state {
+    UnitFileMasked => true
+    UnitFileEnabled => false
+    UnitFileEnabledRuntime => false
+    UnitFileLinked => false
+    UnitFileLinkedRuntime => false
+    UnitFileDisabled => false
+    UnitFileStatic => false
+    UnitFileIndirect => false
+    UnitFileGenerated => false
+    UnitFileTransient => false
+    UnitFileBad => false
+    UnitFileNotFound => false
+  }
+}
+
+// THE KERNEL'S SIDE OF THE ANSWER, which is the only side that can see a process the unit itself did not
+// expect: the cgroup. An unanswered read refuses; `populated` refuses; only a decoded, established
+// not-populated answer -- or the positive absence of a cgroup whose ControlGroup read SUCCEEDED -- is idle.
+fn metering_closing_cgroup_refusal(o: MeteringClosingWriterObservation) -> String? {
+  match o.cgroup {
+    // systemd was ASKED and answered with no control group: the cgroup is GONE, the positive absence the
+    // landed note describes. This is the only cgroup-side arm that certifies the writer.
+    CgroupGone =>
+      none
+    CgroupRead { events, procs } =>
+      if procs.filter(p => p > 0).length() > 0 {
+        // The pid list is the running-writer fact: a positive pid in cgroup.procs is a live process.
+        Present { value: join([to_string(value: procs.filter(p => p > 0).length()), " process(es) are attached to ", o.unit as String, "; a running writer needs no argument"]) }
+      } else {
+        match events {
+          CgroupEventsUnparseable { cause: c } =>
+            Present { value: join(["cgroup.events of ", o.unit as String, " did not answer the populated question (", c, "); a file that will not decode is not a file that says nobody is home"]) }
+          CgroupEventsDecoded { populated: true } =>
+            // The 15576 lesson: events=1 with procs empty is a LIVE unit; the kernel says activity.
+            Present { value: join(["the kernel reports the cgroup of ", o.unit as String, " populated: a writer, or one of its children, is alive under it", ""]) }
+          CgroupEventsDecoded { populated: false } =>
+            none
+        }
+      }
+    // UNKNOWN IS REFUSED: `show` silent, the ControlGroup property missing from an answer, or either kernel
+    // file unread means the running-writer question was NEVER OBSERVED -- and an unobserved writer stops the
+    // seal (gunbc.runner.runner_slot_retirement CgroupOccupancy: an unanswered question is not evidence of
+    // absence). The old record mapped the missing-key case to a populated:false read that PASSED: the
+    // fail-open this sum closes.
+    CgroupUnread { cause } =>
+      Present { value: join(["the cgroup files of ", o.unit as String, " could not be read (", cause, "); an unanswered question is not evidence of absence (gunbc.runner.runner_slot_retirement CgroupOccupancy: an empty cgroup.procs is not positive absence, still less a read that failed)"]) }
+  }
+}
+
+fn metering_closing_writer_quiescent_one(o: MeteringClosingWriterObservation) -> MeteringClosingWriterQuiescence {
+  match metering_closing_writer_refusal(o: o) {
+    Absent => WriterQuiescent { unit: o.unit }
+    Present { value: r } => WriterNotQuiescent { unit: o.unit, reason: r }
+  }
+}
+
+// ALL OBSERVATIONS OF THIS UNIT MUST CERTIFY IT; one refusal wins, and a later quiescent row cannot overwrite it.
+fn metering_closing_writer_process_quiescence(unit: NonEmptyStr, observed: List<MeteringClosingWriterObservation>) -> MeteringClosingWriterQuiescence {
+  let states = observed.filter(o => o.unit == unit)
+  if length(xs: states) == 0 {
+    WriterNotQuiescent { unit: unit, reason: join(["the closing-marker writer unit ", unit as String, " has no observation at all; an unobserved writer is not an absent writer"], "") }
+  } else {
+    fold(states, init: WriterQuiescent { unit: unit } as MeteringClosingWriterQuiescence, f: (acc, o) =>
+      match acc {
+        WriterNotQuiescent { unit: u, reason: r } => WriterNotQuiescent { unit: u, reason: r }
+        WriterQuiescent { unit: _ } => metering_closing_writer_quiescent_one(o: o)
+      })
+  }
+}
+
+// THE CLOSING-MARKER CENSUS, THREE-WAY AND FAIL-CLOSED (stern-ram-763, respawn 2). The census used to be an Int
+// and the gate read `0` as "no markers, proceed" -- so a census that FAILED (a presence probe that could not
+// stat, or an `ls -1R` that returned non-zero) collapsed into the same `0` as a census that succeeded and found
+// nothing, and the seal proceeded on an UNKNOWN host. The three states separate that:
+//   Counted            -- the listing SUCCEEDED; `count` is the number of plain closing markers actually seen.
+//   AbsentEstablished -- the tree is positively established absent (ls reported ENOENT), so 0 markers is a fact,
+//                       not the silence of a failed probe.
+//   Refused           -- the census could not establish anything (ls failed for a reason other than ENOENT). The
+//                       cutover MUST refuse on this; it is the fail-open this closes.
+type MeteringClosingMarkerCensus
+  = CensusCounted { count: Int }
+  | CensusAbsentEstablished
+  | CensusRefused { cause: String }
+
+// The exclusion of one declared unit, through the ONE exclusion rule the accepted cutover uses: stopped is not
+// enough, a unit that is merely stopped can be started again, so it has to be masked as well. A declared unit
+// with no observation at all is NOT excluded -- the cutover does not get to assume silence means absence.
+fn metering_closing_unit_exclusion(unit: NonEmptyStr, observed: List<MeteringClosingWriterObservation>) -> LegacyWriterExclusion {
+  // ONE filter, one rule (review 91654 follow-up): the per-observation filter lives in
+  // metering_closing_writer_process_quiescence, which also refuses a live pid, an unpopulated-but-unread
+  // cgroup, a non-masked unit and an unestablished MainPID. Re-filtering here invited the two to drift.
+  // Only the ZERO case is guarded here, because exclusion names it in its own words: silence is not absence.
+  if observed.length() == 0 {
+    LegacyWriterNotExcluded { reason: join(["the closing-marker writer unit ", unit as String, " has no observed state; an unobserved unit is not excluded"], "") }
+  } else {
+    match metering_closing_writer_process_quiescence(unit: unit, observed: observed) {
+      WriterNotQuiescent { unit: _, reason: why } => LegacyWriterNotExcluded { reason: why }
+      WriterQuiescent { unit: _ } => LegacyWriterExcluded
+    }
+  }
+}
+// THE DISPOSITION, per host. Noop only where every declared writer unit is observed stopped AND masked and no
+// plain marker is on the host; ActivationRequired naming every declared unit that is not excluded, with the
+// step that excludes it (that is the disposition for a host where the old writer can still run); Refused where
+// the fence is undeclared or conflicted, or where the writer is excluded but plain markers are still on the
+// host -- those bytes are the mint's refusal case and a human has to say what happens to them.
+type MeteringClosingCutover
+  = MeteringClosingNoop { reason: String }
+  | MeteringClosingActivationRequired { units: List<NonEmptyStr>, step: String }
+  | MeteringClosingCutoverRefused { cause: String }
+
+data metering_closing_activation_step: NonEmptyStr = "drain any in-flight gunbc-obligation-attempt-<node>-<key> unit, stop and mask the named unit before the build that takes the closing hold is deployed, deploy, restart the unit from the new build, then re-census the plain closing-marker name across the instance's attempt-state tree and require 0" as NonEmptyStr
+
+// The declared units that are NOT excluded -- an empty list is the only answer that lets the move be a Noop.
+fn metering_closing_held_back_units(
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+) -> List<NonEmptyStr> {
+  declared.filter(u => match metering_closing_unit_exclusion(unit: u, observed: observed) {
+    LegacyWriterExcluded => false
+    LegacyWriterNotExcluded { reason: _ } => true
+  })
+}
+
+fn metering_closing_answer(
+  instance_id: NonEmptyStr,
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+  census: MeteringClosingMarkerCensus,
+) -> MeteringClosingCutover {
+  let held_back = metering_closing_held_back_units(declared: declared, observed: observed)
+  if length(xs: held_back) > 0 {
+    MeteringClosingActivationRequired { units: held_back, step: metering_closing_activation_step as String }
+  } else {
+    match census {
+      // FAIL CLOSED: a census that could not establish anything must refuse the seal, not read as zero markers.
+      CensusRefused { cause: c } => MeteringClosingCutoverRefused { cause: join(["the closing-marker census could not be established: ", c], "") }
+      CensusCounted { count: n } =>
+        if n > 0 {
+          MeteringClosingCutoverRefused { cause: join(["the closing-marker writer is excluded, but ", to_string(value: n), " plain ", metering_closing_legacy_marker_name as String, " entries are still on this host; the mint refuses them and an operator has to say what happens to those bytes"], "") }
+        } else {
+          MeteringClosingNoop { reason: join(["every declared closing-marker writer unit for instance ", instance_id as String, " is observed stopped and masked, and the census counted no plain ", metering_closing_legacy_marker_name as String, " entry on the host: nothing to do across the deploy"], "") }
+        }
+      // Absence is ESTABLISHED (ls reported ENOENT on the root), so 0 is a fact, not a failed probe.
+      CensusAbsentEstablished => MeteringClosingNoop { reason: join(["every declared closing-marker writer unit for instance ", instance_id as String, " is observed stopped and masked, and the attempt-state tree is established absent (no plain ", metering_closing_legacy_marker_name as String, " entry can exist): nothing to do across the deploy"], "") }
+    }
+  }
+}
+
+// THE FINAL GATE (blocker 2(d), stern-ram-763): the last check before the seal is trusted must RECHECK the writer
+// exclusion AND the full census, and must not trust what an earlier check saw. The first gate runs early in the
+// provision plan; between it and the activation that takes the closing hold a unit can be unmasked out of band, a
+// writer process can be started, or a plain marker can be written again. A one-time check would then certify a
+// state that is no longer true, which is exactly the window the exclusion exists to close.
+//   Both halves are re-derived from the observations passed in -- no memo, no "it passed before". The census is
+// re-typed (CensusRefused refuses; a count above 0 refuses), so a gate that rechecks only the units cannot pass.
+type MeteringClosingFinalGate
+  = MeteringClosingFinalGatePassed { reason: String }
+  | MeteringClosingFinalGateRefused { cause: String }
+
+fn metering_closing_final_gate(
+  instance_id: NonEmptyStr,
+  declared: List<NonEmptyStr>,
+  observed: List<MeteringClosingWriterObservation>,
+  census: MeteringClosingMarkerCensus,
+) -> MeteringClosingFinalGate {
+  let held_back = metering_closing_held_back_units(declared: declared, observed: observed)
+  if length(xs: held_back) > 0 {
+    MeteringClosingFinalGateRefused { cause: join(["the final recheck found ", to_string(value: length(xs: held_back)), " declared closing-marker writer unit(s) no longer excluded (", join(map(held_back, u => u as String), ", "), "); the exclusion has to hold at the LAST check, not only at the first"], "") }
+  } else {
+    match census {
+      CensusRefused { cause: c } => MeteringClosingFinalGateRefused { cause: join(["the final recheck could not establish the closing-marker census: ", c], "") }
+      CensusCounted { count: n } =>
+        if n > 0 {
+          MeteringClosingFinalGateRefused { cause: join(["the final recheck counted ", to_string(value: n), " plain ", metering_closing_legacy_marker_name as String, " entries after the first gate passed; something wrote one during the deploy and the seal cannot proceed beside it"], "") }
+        } else {
+          MeteringClosingFinalGatePassed { reason: join(["rechecked at the last moment for instance ", instance_id as String, ": every declared closing-marker writer unit is still observed stopped, masked and with no writer process alive, and the census still counts no plain ", metering_closing_legacy_marker_name as String, " entry"], "") }
+        }
+      CensusAbsentEstablished => MeteringClosingFinalGatePassed { reason: join(["rechecked at the last moment for instance ", instance_id as String, ": every declared closing-marker writer unit is still excluded, and the attempt-state tree is still established absent"], "") }
+    }
+  }
+}
+
+// THE FINAL GATE ON THE FENCE, so the apply route cannot pass an undeclared or conflicted fence through a path
+// that skips the fence's own refusals.
+fn metering_closing_final_gate_for(
+  fence: LegacyWriterFence,
+  instance_id: NonEmptyStr,
+  observed: List<MeteringClosingWriterObservation>,
+  census: MeteringClosingMarkerCensus,
+) -> MeteringClosingFinalGate {
+  match fence {
+    LegacyWriterUndeclared => MeteringClosingFinalGateRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the final recheck cannot certify an exclusion that was never declared"], "") }
+    LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingFinalGateRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; the final recheck cannot choose between them"], "") }
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_final_gate(instance_id: instance_id, declared: declared, observed: observed, census: census)
+  }
+}
+
+fn metering_closing_cutover_disposition(
+  fence: LegacyWriterFence,
+  instance_id: NonEmptyStr,
+  observed: List<MeteringClosingWriterObservation>,
+  census: MeteringClosingMarkerCensus,
+) -> MeteringClosingCutover {
+  match fence {
+    LegacyWriterUndeclared => MeteringClosingCutoverRefused { cause: join(["no closing-marker writer fence is declared for instance ", instance_id as String, "; the cutover refuses rather than assuming nothing on this host still writes ", metering_closing_legacy_marker_name as String], "") }
+    LegacyWriterFenceConflict { instance_id: i, rows: n } => MeteringClosingCutoverRefused { cause: join(["the closing-marker writer fence for instance ", i as String, " is declared ", to_string(value: n), " times; one row per instance is what the cutover can act on"], "") }
+    LegacyWriterUnits { systemctl: _, units: declared } => metering_closing_answer(instance_id: instance_id, declared: declared, observed: observed, census: census)
+  }
+}
+
+// THE CENSUS DECISION, factored so every cell -- including the one only the live race produces -- is
+// claim-reachable over SCRIPTED answers (review 91654 follow-up, item 2; DESIGN section 5: the check fails
+// CLOSED). The rule the cells encode:
+//   ABSENCE IS ESTABLISHED ONLY BY THE ROOT'S OWN STAT. `ls -1R` prints "No such file or directory" when the
+//   root is gone AND when a subdirectory vanishes mid-walk while the root stands -- so the recursive listing's
+//   stderr text can never establish absence. The root gets its own `ls -d`: ENOENT there is positive absence
+//   of the whole tree; any other stat failure is refused.
+//   ANY non-zero from the recursive listing over a root that EXISTS is CensusRefused, whatever its stderr.
+//   The old census text-matched the recursive listing's stderr, so the mid-walk race read ABSENT, the cutover
+//   answered Noop and the final gate passed over live markers: the fail-open this closes.
+fn dashboard_metering_closing_marker_census_decision(
+  root: String,
+  root_stat: DashboardExecResult,
+  listing: DashboardExecResult,
+) -> MeteringClosingMarkerCensus {
+  if !root_stat.success {
+    if string_contains(s: root_stat.stderr, pattern: "No such file or directory") {
+      // The root's OWN stat reports ENOENT: positive absence of the whole tree, systemd-independent
+      // (stern-ram-763 ruling). This is the only arm that establishes absence.
+      CensusAbsentEstablished
+    } else {
+      CensusRefused { cause: join(["the census refused: it could not even stat the root ", root, ": ", trim(s: root_stat.stderr)], "") }
+    }
+  } else if !listing.success {
+    CensusRefused { cause: join(["the recursive listing of ", root, " refused over a root that EXISTS: ", trim(s: listing.stderr)], "") }
+  } else {
+    CensusCounted {
+      count: length(xs: split(s: trim(s: listing.stdout), delimiter: "\n").filter(line => line == (metering_closing_legacy_marker_name as String))) as Int,
+    }
+  }
+}
+
+// THE ONE PLACE THE CGROUP SIDE IS DECIDED, as a pure function of what the probes SAID (review 91654
+// follow-up, item 3; DESIGN section 5: construction over validation -- the missing-key case CANNOT be built
+// as a "gone" record any more, because "gone" is a constructor that only an empty positive answer reaches).
+// The claims script every cell through here; the builder above holds no cgroup branch of its own and its
+// output is compared with this function's on the scripted answers (pairing witnesses).
+fn dashboard_metering_closing_cgroup_answer(
+  show_success: Bool,
+  control_group_property: String?,
+  events: DashboardExecResult,
+  procs: DashboardExecResult,
+) -> MeteringClosingCgroup {
+  if !show_success {
+    CgroupUnread { cause: "systemctl show did not answer; the ControlGroup question was never put to a working systemd" }
+  } else {
+    match control_group_property {
+      // It answered, but NOT about ControlGroup: the property read itself failed. That is not "cgroup gone";
+      // the old record made exactly this case a populated:false read the gate PASSED. The gate refuses here.
+      Absent => CgroupUnread { cause: "systemctl show answered without a ControlGroup property" }
+      Present { value: raw } =>
+        if trim(s: raw) == "" {
+          // POSITIVE absence: systemd was asked and answered EMPTY. A stopped-and-masked unit reads this
+          // way; nothing else can build this constructor.
+          CgroupGone
+        } else if !events.success {
+          CgroupUnread { cause: join(["cgroup.events of ", trim(s: raw), " did not answer: ", trim(s: events.stderr)], "") }
+        } else if !procs.success {
+          CgroupUnread { cause: join(["cgroup.procs of ", trim(s: raw), " did not answer: ", trim(s: procs.stderr)], "") }
+        } else {
+          CgroupRead {
+            events: decode_cgroup_events_populated(body: events.stdout),
+            procs: decode_cgroup_procs(body: procs.stdout),
+          }
+        }
+    }
+  }
+}

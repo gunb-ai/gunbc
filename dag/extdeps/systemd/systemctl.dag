@@ -6,7 +6,7 @@ import extdeps.transports.shell { ShellOutcome }
 import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
 import std.algebra { trim }
 import std.optional { Absent, Present }
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path }
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, systemd_binary_path, MainPID, ControlGroup }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -67,13 +67,39 @@ fn systemctl_version_command() -> ArgvCommand {
   argv_command(program: systemctl_absolute_program(), arguments: ["--version"])
 }
 
+// The `--property=A,B` selector, spelled ONCE: the local command below and any caller that has to run
+// systemctl through a connector (a remote host's user manager) must not each re-spell it.
+fn systemctl_show_property_selector(properties: List<SystemdUnitProperty>) -> String {
+  concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ","))
+}
+
 // systemctl_show_properties_argv as a command, for one unit: `Name=value` lines, one per property.
 fn systemctl_show_properties_command(unit: NonEmptyStr, properties: List<SystemdUnitProperty>) -> ArgvCommand {
-  argv_command(program: systemctl_absolute_program(), arguments: [
-    "show",
-    concat("--property=", join(map(properties, p => systemd_unit_property_wire(property: p) as String), ",")),
-    unit as String,
-  ])
+  argv_command(program: systemctl_absolute_program(), arguments: ["show", systemctl_show_property_selector(properties: properties), unit as String])
+}
+
+// THE SAME `show` FOR THE USER MANAGER, as argv rather than a command, for a caller that cannot exec
+// systemctl locally and runs it through a connector instead. It composes the selector above, so a property
+// THE CLOSING GATE'S OWN THREE QUESTIONS, each composed from THIS module's authorities rather than restated at
+// the call site: the `--user` scope (a system-scope question about a transient unit answers `not loaded`, which a
+// caller could then read as a stopped writer), the verb rows, and the property-selector builder above. The witness
+// `c_roadmap2_closing_cutover_witness.the_observation_asks_systemctl_exactly_what_the_upstream_builders_compose`
+// compares the gate's requests against these by equality, element for element, in order.
+fn systemctl_user_closing_active_args(unit: NonEmptyStr) -> List<String> {
+  ["--user", systemctl_is_active_verb as String, unit as String]
+}
+
+fn systemctl_user_closing_enabled_args(unit: NonEmptyStr) -> List<String> {
+  ["--user", systemctl_is_enabled_verb as String, unit as String]
+}
+
+fn systemctl_user_closing_show_args(unit: NonEmptyStr) -> List<String> {
+  systemctl_user_show_properties_argv(unit: unit, properties: [MainPID, ControlGroup])
+}
+
+// asked for here is spelled the same way as one asked for locally; only the `--user` connector differs.
+fn systemctl_user_show_properties_argv(unit: NonEmptyStr, properties: List<SystemdUnitProperty>) -> List<String> {
+  ["--user", systemctl_show_verb as String, systemctl_show_property_selector(properties: properties), unit as String]
 }
 
 // ONE PROPERTY OF `systemctl show` OUTPUT: the text after `Key=` on the line that starts with it.
@@ -191,6 +217,12 @@ data systemctl_start_verb: NonEmptyStr = "start" as NonEmptyStr
 data systemctl_is_active_verb: NonEmptyStr = "is-active" as NonEmptyStr
 
 data systemctl_is_enabled_verb: NonEmptyStr = "is-enabled" as NonEmptyStr
+
+// SHOW IS THE FOURTH VERB THIS CORPUS ASKS, hoisted to the same row pattern for the same reason: the
+// metering-closing observation and the shared test stand-in (test.fixture.systemd_fence_stub) both name
+// it, and a verb authored twice in two spellings is how a check starts answering a slightly different
+// question than the one it claims to.
+data systemctl_show_verb: NonEmptyStr = "show" as NonEmptyStr
 
 // RELOAD IS A THIRD TRANSITION, NOT A GENTLER RESTART, and the distinction is the reason it is
 // here rather than spelled as `restart` at a call site. reload runs the unit's own ExecReload and

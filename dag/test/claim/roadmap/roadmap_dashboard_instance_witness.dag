@@ -2,6 +2,7 @@ module test.claim.roadmap.roadmap_dashboard_instance_witness
 
 import std.optional { Present, Absent }
 import std.types { Bool, String, NonEmptyStr, FilePath, Port }
+import std.algebra { list_map }
 import gunbc.roadmap.dashboard_instance_directories { dashboard_instance_directory_demands }
 import gunbc.owned_directory { owned_directory_path }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
@@ -123,6 +124,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
+  dashboard_instance_provision_plan_rows,
   dashboard_instance_reconcile,
   dashboard_instance_retract_plan,
   dashboard_instance_dispatch_worktree_root,
@@ -268,22 +270,75 @@ fn plan_binds_source_ref_translation(
     })
 }
 
+// The provision plan is asserted by IDENTITY, never by length. A length copied off the current tree is a
+// change detector (DESIGN 5) and nothing watches it: the pins this file carried said eleven and nine long
+// after the plan had grown to fourteen and twelve, and because no CI job runs dag/test/claim they were
+// failing quietly on main. So the claims below name the steps the plan must contain, in the order the
+// cutover requires, and compare the plan's own step names against that list -- a rename, a dropped step or
+// a step moved out of order fails by NAME, and an unrelated step joining the plan is a decision someone has
+// to write down here rather than a number that silently stops matching.
+fn provision_plan_names_its_steps_in_order(
+  instance: HostDashboardInstance,
+  kinds: List<String>,
+) -> Bool {
+  join(
+    list_map(
+      xs: filter(
+        xs: dashboard_instance_provision_plan_rows(instance: instance),
+        predicate: row => any(kinds, k => k == row.kind),
+      ),
+      f: row => row.kind,
+    ),
+    separator: ",",
+  )
+    == join(kinds, separator: ",")
+}
+
+// srv1_lab's steps, in the order the cutover requires: the attempt-state moves first (the legacy writers
+// must be gone before anything new is written), then the controller history, then the bundle is prepared,
+// the serve binary and ownership marker put in place, the bundle staged, the origin and source repo
+// ensured, the shared-repository posture set BEFORE the worker subtree is migrated (git stamps a worktree's
+// private files with the mode it has at creation), the provider verified, and only then the two writer
+// gates -- #15413's legacy writers and this PR's metering closing writer.
+fn srv1_lab_provision_step_kinds() -> List<String> {
+  [
+    "move-attempt-state-entries", "move-attempt-state-entries", "hydrate-controller-history",
+    "prepare-git-bundle", "ensure-serve-binary", "ensure-ownership-marker", "stage-git-bundle",
+    "ensure-local-origin", "ensure-source-repo", "ensure-git-shared-repository-posture",
+    "migrate-git-worker-subtree", "verify-provider-runtime", "verify-provider-auth",
+    "assert-legacy-writer-excluded", "assert-metering-closing-writer-excluded",
+  ]
+}
+
+// srv2_lab is the otherwise-identical instance whose worker is STILL the service user: no shared-repository
+// posture and no subtree migration, which is why the identity list -- not a count -- is what distinguishes
+// the two plans.
+fn srv2_lab_provision_step_kinds() -> List<String> {
+  [
+    "move-attempt-state-entries", "move-attempt-state-entries", "hydrate-controller-history",
+    "prepare-git-bundle", "ensure-serve-binary", "ensure-ownership-marker", "stage-git-bundle",
+    "ensure-local-origin", "ensure-source-repo", "verify-provider-runtime", "verify-provider-auth",
+    "assert-legacy-writer-excluded", "assert-metering-closing-writer-excluded",
+  ]
+}
+
 test fn dashboard_provision_plan_consumes_one_instance() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  // ELEVEN, where srv2_lab -- the otherwise-identical instance whose worker is STILL the service user --
-  // stays at nine. The tenth and eleventh ops are WORKER-ROOT-EQUIVALENT-3's shared-repository posture
-  // and its one-time subtree migration, and they exist for one reason each: with a dedicated worker the
-  // repository must be group-shared BEFORE an attempt's linked worktree is added, because git stamps the
-  // worktree's private files (index, HEAD, logs/HEAD) with the mode it has at creation time; and the
-  // directories that ALREADY EXIST in that repository (objects/f9 and the rest of the fan-out, refs/,
-  // logs/) were created by the owner alone, so a group bit asserted on the three tops does not reach
-  // them -- the first worker commit dies inside objects/f9. Both are named by the ops below rather than
-  // only counted, and their ORDER is pinned by name in the other witness. Asserted by count as well as
-  // by name, so a rename or a silently dropped op cannot hide behind either.
-  // TEN since the lab is seeded by convergence: the four controller-side ops (hydrate, prepare,
-  // stage, local origin) are gone, and the one source op resets to the dispatch base ref.
-  count(plan) == 10
+  // The plan is asserted by IDENTITY: srv1_lab's steps, each present, in the required order (see
+  // srv1_lab_provision_step_kinds). Where srv2_lab -- the otherwise-identical instance whose worker is STILL
+  // the service user -- differs, it differs by NAME: no shared-repository posture and no subtree migration.
+  // Those two steps exist for one reason each: with a dedicated worker the repository must be group-shared
+  // BEFORE an attempt's linked worktree is added, because git stamps the worktree's private files (index,
+  // HEAD, logs/HEAD) with the mode it has at creation time; and the directories that ALREADY EXIST in that
+  // repository (objects/f9 and the rest of the fan-out, refs/, logs/) were created by the owner alone, so a
+  // group bit asserted on the three tops does not reach them -- the first worker commit dies inside
+  // objects/f9. The last step is this PR's closing-marker cutover gate
+  // (assert-metering-closing-writer-excluded), pinned by kind and by instance in
+  // test.claim.c_roadmap2_closing_cutover_witness the_plan_carries_the_closing_gate_for_the_instances_that_declare_a_fence.
+  // No length is asserted anywhere: a copied count is a change detector, and the eleven/nine pins this file
+  // used to carry had already rotted on main without anything noticing.
+  provision_plan_names_its_steps_in_order(instance: lab, kinds: srv1_lab_provision_step_kinds())
     && plan_has_one_shared_repository_posture(plan: plan, instance: lab)
     && plan_has_one_worker_subtree_migration(plan: plan, instance: lab)
     && demands_cover_every_auth_store(instance: lab)
@@ -494,14 +549,26 @@ test fn the_lab_plan_has_no_controller_anchor_read_and_the_bundling_lab_keeps_it
     DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => true
     _ => false
   })
-    && any(lab, op => match op {
-      DashboardResetConvergedSourceRepo { repo, anchor_ref } =>
-        repo == srv1_lab_dashboard_instance().repo_root
-          && (anchor_ref as String) == (srv1_lab_admitted_revision_source.ref_name as String)
-      _ => false
-    })
-    && any(bundling, op => match op {
-      DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => true
+    && any(plan, op => match op {
+    DashboardPrepareGitBundle {
+      controller_repo,
+      anchor_ref,
+    } =>
+      controller_repo == srv1_dashboard_controller_repo
+        // THE BUNDLE IS PREPARED FROM THE INSTANCE'S OWN ANCHOR, compared by equality against that
+        // authority: srv1 lab's row names its admitted ref (roadmap_dashboard_instance
+        // srv1_lab_dashboard_instance), so the literal this claim used to carry -- the ref the row no
+        // longer reads -- had gone stale on main and nothing ran it (CI runs no dag/test/claim).
+        && anchor_ref as String == instance_anchor_ref(i: lab)
+    _ => false
+  })
+    && any(plan, op => match op {
+      DashboardStageGitBundle {
+        controller_repo,
+        staged_bundle,
+      } =>
+        controller_repo == srv1_dashboard_controller_repo
+          && staged_bundle == "/opt/gunbc-lab/codex-provider-feedback-v0/inbox/source.bundle"
       _ => false
     })
 }
@@ -621,12 +688,25 @@ fn witness_synthetic_instance() -> HostDashboardInstance {
 // shared literal. Two labs may lawfully follow the same ref (srv1 and srv2 labs both follow main).
 
 test fn source_anchor_is_per_instance_not_one_shared_literal() -> Bool {
+  let srv1 = srv1_lab_dashboard_instance()
+  let srv2 = srv2_lab_dashboard_instance()
   let synthetic = instance_anchor_ref(i: witness_synthetic_instance())
-  let srv2_lab = instance_anchor_ref(i: srv2_lab_dashboard_instance())
-  let srv1_lab = instance_anchor_ref(i: srv1_lab_dashboard_instance())
+  let srv1_lab = instance_anchor_ref(i: srv1)
+  let srv2_lab = instance_anchor_ref(i: srv2)
+  // EACH LAB'S SERVE ANCHOR IS THE REF ITS OWN ROW ADMITS, compared by EQUALITY against that
+  // authority instead of a literal: srv1 lab's row passes srv1_lab_admitted_revision_source.ref_name
+  // (roadmap_dashboard_instance srv1_lab_dashboard_instance -- it used to read a ref convergence also
+  // wrote as a scratch target, so the lab's admitted revision and a shared remote-tracking ref held
+  // two meanings), and srv2 lab follows the fleet authority. The two labs therefore differ, which is
+  // what per-instance means; re-pinning either row to a shared literal fails here. The two literals
+  // this claim used to carry had gone stale against main's own anchor changes (srv1 lab now names its
+  // admitted ref; the fleet anchor is named by fleet_main_revision fleet_landed_main_ref_name), and
+  // because CI runs no dag/test/claim nothing executed them -- the authority-comparison form cannot go
+  // stale the same way.
   synthetic == "refs/heads/witness-anchor"
-    && srv2_lab == (fleet_admitted_revision_source.ref_name as String)
-    && srv1_lab == (srv1_lab_admitted_revision_source.ref_name as String)
+    && srv1_lab == srv1.admitted_revision.ref_name as String
+    && srv2_lab == srv2.admitted_revision.ref_name as String
+    && srv1_lab != srv2_lab
 }
 
 // serve_binary MOVED OFF THE LAYOUT AND THIS CLAIM CAUGHT IT, which is the whole reason it exists.
@@ -704,7 +784,11 @@ test fn srv2_lab_owns_paths_disjoint_from_preview_and_production() -> Bool {
 test fn srv2_lab_has_a_provision_plan_bound_to_itself() -> Bool {
   let lab = srv2_lab_dashboard_instance()
   let plan = dashboard_instance_provision_plan(instance: lab)
-  count(plan) == 12
+  // identity, not length: srv2_lab's own step list (srv2_lab_provision_step_kinds) -- the same steps as
+  // srv1_lab's MINUS the shared-repository posture and the subtree migration, because its worker is still the
+  // service user, and ending with this PR's closing-marker cutover gate, pinned by kind in
+  // test.claim.c_roadmap2_closing_cutover_witness.
+  provision_plan_names_its_steps_in_order(instance: lab, kinds: srv2_lab_provision_step_kinds())
     && demands_cover_every_auth_store(instance: lab)
     && plan_binds_instance_paths(plan: plan, instance: lab)
     && plan_binds_source_ref_translation(plan: plan, instance: lab)
