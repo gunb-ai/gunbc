@@ -337,10 +337,10 @@ import gunbc.roadmap.roadmap_refused_retry {
   RefusalCauseInfrastructure, RefusalCauseCandidate,
   compute_refusal_program, compute_refusal_reason, compute_refusal_cause,
   refused_retry_standing, refused_retry_wakes, refused_retry_ledger_entry_name, refused_retry_ledger_count, refused_retry_terminal_ordinal,
-  refused_retry_exhausted_reason, refused_retry_bound,
+  refused_retry_exhausted_reason, refused_retry_bound, refusal_cause_class,
   RefusedRetryVerdict, RefusedRetryPassThrough, RefusedRetryRun, RefusedRetryStop, belt_verification_retry_verdict,
 }
-import gunbc.roadmap.roadmap_verification_receipt { verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
+import gunbc.roadmap.roadmap_verification_receipt { belt_verification_refused_cause, verification_file_evidence_for, VerificationFileDecoded, VerificationFileUnreadable, VerificationFileAbsent,
   SharedComputationCitation, ComputationAttached, ComputationComputed,
   VerificationEvidence, VerificationEvidenceForSubject,
   VerificationSubject,
@@ -9619,8 +9619,8 @@ fn belt_verify_terminal_attempt(
                           mode: mode,
                           instance: instance,
                           progress: progress,
-                          receipt_basename: address.receipt_basename,
                           expected: subject,
+                          receipt_basename: exact_verification_receipt_basename(head_sha: head_sha, window_identity_hex: identity_hex),
                           source: exact_source,
                         ) {
                           BeltVerificationEvidenceUnreadable { reason } =>
@@ -14653,7 +14653,6 @@ fn belt_verify_retry_wakes(instance: HostDashboardInstance, progress: WorkflowAt
     CaptureObligation => false
     ReviewObligation => false
     AuditObligation => false
-    AcceptanceOutcomeObligation => false
     PublishObligation => false
   }
 }
