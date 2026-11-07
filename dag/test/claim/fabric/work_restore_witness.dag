@@ -343,9 +343,27 @@ test fn empty_and_unknown_values_refuse() -> Bool {
 
 // (12) OpaqueEffects.reason is DIAGNOSTIC, not bound by the key (module header): an edit to it restores the same
 // key. This control pins the stated limitation so a change to either side reds.
-test fn opaque_reason_is_diagnostic_and_not_detected() -> Bool {
+// Key equality (same_work) cannot see a carried field outside the key. The transported-field check is the
+// canonical wire itself: persist(restored) must equal the wire that was restored, byte for byte, so a
+// decoder that drops or rewrites ANY carried field (the OpaqueEffects reason included) turns this red
+// while the key stays the same.
+fn repersisted(r: WorkRestoration) -> String {
+  match r {
+    WorkRestored { work } => match work_persist(work: work) { WorkPersisted { wire } => wire  WorkPersistRefused { axes: _ } => "PERSIST-REFUSED" }
+    WorkRestoreRefused { cause: _ } => "RESTORE-REFUSED"
+  }
+}
+
+test fn restored_work_repersists_to_the_exact_wire() -> Bool {
+  let wire = wire_of(fields: base_fields())
+  repersisted(r: work_restore(wire: wire, expected_principal: principal)) == wire
+}
+
+test fn opaque_reason_is_diagnostic_not_bound_but_is_carried_exactly() -> Bool {
   let edited = wire_of(fields: replace_at(fields: base_fields(), index: 12, value: "edited"))
   restores_to_key(r: work_restore(wire: edited, expected_principal: principal), key: base_work().id.key)
+    && repersisted(r: work_restore(wire: edited, expected_principal: principal)) == edited
+    && edited != wire_of(fields: base_fields())
 }
 
 // (13) INHABITANCE: a Work produced by the real serving route (gunbc.serving.turn_demand serving_turn_work)

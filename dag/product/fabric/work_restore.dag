@@ -528,8 +528,9 @@ fn work_restore_decoded(w: DecodedWork, expected_principal: NonEmptyStr) -> Work
 }
 
 // THE EXPECTED PRINCIPAL IS AN ARGUMENT, supplied by the caller independently of the bytes. The stored
-// principal is read only to refuse a disagreement; the key is derived under the expected one, so a
-// payload rewritten to carry a different principal cannot make a swap look consistent.
+// principal is read only to refuse a disagreement. The Work is constructed under the expected context and its
+// key derived from the decoded contract and requirements (the principal is a separate FabricIdentity field,
+// not a key input), so a payload carrying a different principal is refused, never silently adopted.
 fn work_restore(wire: String, expected_principal: NonEmptyStr) -> WorkRestoration {
   match tokenize(text: wire, index: 0) {
     TokenizedRefused { cause } => WorkRestoreRefused { cause: cause }
