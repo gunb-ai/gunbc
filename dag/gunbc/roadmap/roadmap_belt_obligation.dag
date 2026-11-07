@@ -159,14 +159,18 @@ fn belt_segment_complete(segments: List<WorkflowSegment>, kind: WorkflowSegmentK
   }
 }
 
-// THE WORKER HAS ENDED when the provider's own evidence says so -- the same three arms
+// THE WORKER HAS ENDED when the provider's own evidence says so -- the arms
 // gunbc.roadmap.roadmap_belt_commit belt_commit_decision treats as terminal, so capture is outstanding
-// exactly when the capture core would act.
+// exactly when the capture core would act. A REQUEST-PENDING worker HAS ENDED too: it recorded the
+// durable turn.request_pending and exited, and the belt owes it the capture step that records the
+// yield (CaptureAbsent) -- so that the continuation can read a settled capture and reach its
+// request-pending branch, rather than being refused for a capture the projection never owed.
 fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
   match provider {
     ProviderCompleted { activity: _ } => true
     ProviderFailed { activity: _, detail: _ } => true
     ProviderBudgetSpent { activity: _, detail: _ } => true
+    ProviderRequestPending { activity: _, detail: _ } => true
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
     ProviderAwaitingSeat { detail: _ } => false

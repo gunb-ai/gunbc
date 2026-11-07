@@ -1081,6 +1081,17 @@ fn activity_view_from_progress(progress: WorkflowAttemptProgress) -> ActivityVie
         throughput: harness_throughput_from_ledger(ledger: progress.rounds),
         current_activity: provider_execution_activity(state: progress.provider),
       )
+    // A PENDING REQUEST RIDES THE ACTIVITY VIEW AS WAITING. Its current_activity is the provider
+    // projection's own word ("request-pending · awaiting re-delivery"), never a failure label; the
+    // round strip shows it waiting, and the attempt is not marked failed or superseded.
+    ProviderRequestPending { activity: _, detail: _ } =>
+      activity_view_from_parts(
+        segments: progress.segments,
+        remaining: progress.reconciliation.remaining_count,
+        process: progress.process,
+        throughput: harness_throughput_from_ledger(ledger: progress.rounds),
+        current_activity: provider_execution_activity(state: progress.provider),
+      )
   }
 }
 
