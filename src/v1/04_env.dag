@@ -1124,7 +1124,26 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 fn global_bare_declarer_in_scope(env: TypeEnv, name: String, declarer: String) -> Bool {
   let declarer_segs = module_path_segments(path: declarer)
   segment_lcp_len(a: declarer_segs, b: module_path_segments(path: env.module_path)) == (declarer_segs |> count)
-    || (import_visible_name(env: env, name: name) && env.parents |> any(p => p.module_path == declarer))
+    || (import_visible_name(env: env, name: name)
+      && (env.parents |> any(p => p.module_path == declarer) || named_import_chain_declares(env: env, name: name, declarer: declarer)))
+}
+
+// THE AUTHOR'S NAMED IMPORT IS FOLLOWED TO THE MODULE THAT DECLARES THE NAME, because a module that
+// imports a name by name re-exports it and the direct parents are one hop only. Without the chain, a
+// name reached through a re-export (c imports b { d }, b imports a { d }) has its declarer `a` outside
+// the direct parents, the census answers NotFound, and declaring_module_for_local_binding falls back to
+// the IMPORTER as owner -- an identity no registry row can carry, so the effect join refuses with
+// "names no registry row". bare_occurrence_import_terminal is the one answer to "which module declares
+// this imported name" (declaration_named_in_module asks it for types); this asks it for values.
+fn named_import_chain_declares(env: TypeEnv, name: String, declarer: String) -> Bool {
+  match symbol_index_named_import_source(index: env.symbol_index, module_path: env.module_path, name: name) {
+    Absent => false
+    Present { value: from_module } =>
+      match bare_occurrence_import_terminal(index: env.symbol_index, module_path: from_module, name: name, fuel: 16) {
+        BareOccurrenceImportedByName { module_path: declaring, declaration: _ } => declaring == declarer
+        _ => false
+      }
+  }
 }
 
 fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
