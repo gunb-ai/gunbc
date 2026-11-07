@@ -1135,7 +1135,99 @@ data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConce
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key]
+// ── CREDENTIAL CONSOLIDATION, P1 (shared RFC 3339 instant; credential validity) ──────────────────
+// Sighted at the P1 base while extracting extdeps.time.rfc3339 rfc3339_parse_instant and building
+// std.credential_admission. Each is a remaining sibling the change found and did not move; the change
+// that moves it closes the row with Integrated evidence.
+data credential_consolidation_base_revision: CommitSha = "1e27f7cffc81586c8b1449db1543347af85d836e"
+
+data roadmap_utc_instant_reader_beside_the_shared_parse: IntegrationConcern = IntegrationConcern {
+  identity: "roadmap_utc_instant_reader_beside_the_shared_parse",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant"),
+      second: decl_ref(module_path: "gunbc.roadmap.roadmap_launch_deployment_observe", decl_name: "iso8601_utc_epoch_seconds"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_launch_deployment_observe", decl_name: "iso8601_utc_epoch_seconds"),
+    tail: [],
+  },
+  question: "Which declaration reads an RFC 3339 instant into Unix seconds? The roadmap observer hand-reads the whole-second Z spelling by fixed offsets beside the shared parse, which already refuses the same malformed inputs with typed causes.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_consolidation_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_launch_deployment_observe", decl_name: "iso8601_utc_epoch_seconds") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant") }],
+      },
+      account: "Found by git grep for iso8601_unix_seconds_at callers while extracting the shared parse. The roadmap reader checks width 20, the six separators and two-digit fields, then composes iso8601_unix_seconds_at; it does not refuse a leap second with a typed cause and accepts only one spelling. Not moved in P1, whose consumers are approval_capability and the credential carriers.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.time.rfc3339", decl_name: "rfc3339_parse_instant") },
+    preserve: [],
+    next: climbs_when(capability: "the roadmap observer reads its timestamps through rfc3339_parse_instant (with its own spelling policy read off Rfc3339Spelling if it needs one) and iso8601_utc_epoch_seconds is deleted"),
+  },
+}
+
+data utc_instant_seconds_total_over_a_partial_domain: IntegrationConcern = IntegrationConcern {
+  identity: "utc_instant_seconds_total_over_a_partial_domain",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds"),
+    requirement: "an instant's Unix seconds are read only from text that is a canonical instant, and a caller holding non-canonical text gets a refusal rather than a number",
+    standing: RequirementUnestablished { decided_by: "the follow-up that changes utc_instant_seconds and utc_instant_seconds_after to return the parse (or Int?) and moves their consumers" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds"),
+    tail: [decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds_after")],
+  },
+  question: "utc_instant_seconds returns an Int for any text and reads digits at fixed offsets; its precondition (canonical input, established by utc_instant_is_canonical) is stated in prose and enforced by nothing in its type. Should its signature carry the parse?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_consolidation_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_capability", decl_name: "utc_instant_seconds") },
+        tail: [],
+      },
+      account: "Seen while moving approval_capability onto the shared parse. Returning a sentinel on refusal was tried and rejected (a fabricated instant, and min-Int minus a positive overflows inside utc_instant_seconds_after). The pre-existing total behaviour was kept and is recorded here; utc_instant_seconds_after has about twenty consumers, so the signature change is its own change.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data session_expiry_refused_as_free_text_beside_typed_stale_evidence: IntegrationConcern = IntegrationConcern {
+  identity: "session_expiry_refused_as_free_text_beside_typed_stale_evidence",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "std.credential_admission", decl_name: "credential_validity_decision"),
+      second: decl_ref(module_path: "gunbc.auth.request_authentication", decl_name: "human_authentication_decision"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.auth.request_authentication", decl_name: "human_authentication_decision"),
+    tail: [],
+  },
+  question: "Is an expired authenticated session the same fact as stale credential evidence? request_authentication refuses it as AccessPolicyRefused with a sentence, while std.access now carries AccessEvidenceStale with the observation and the deadline.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: credential_consolidation_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.request_authentication", decl_name: "human_authentication_decision") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.access", decl_name: "AccessRefusalCause") }],
+      },
+      account: "Seen while checking which modules match std.access AccessRefusalCause before adding arms. The session's expiry is on a wall Timestamp, not a monotonic deadline, so whether it inhabits CredentialValidity or only the refusal arm is undecided.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [controller_executor_fence_handoff, provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_utc_instant_reader_beside_the_shared_parse, utc_instant_seconds_total_over_a_partial_domain, session_expiry_refused_as_free_text_beside_typed_stale_evidence]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))

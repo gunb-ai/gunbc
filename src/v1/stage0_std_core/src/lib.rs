@@ -84,6 +84,15 @@ pub mod std_algebra;
 #[path = "../../stage0/src/std_nat.rs"]
 pub mod std_nat;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_constructors.rs"]
+pub mod std_constructors;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_machine_constraints.rs"]
+pub mod std_machine_constraints;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_integer.rs"]
+pub mod std_integer;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_node.rs"]
 pub mod std_node;
 #[rustfmt::skip]
@@ -152,6 +161,12 @@ pub mod std_kernel_type_name;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_target_representation.rs"]
 pub mod std_target_representation;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_integer_interval.rs"]
+pub mod std_integer_interval;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_integer_width_construction.rs"]
+pub mod std_integer_width_construction;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_literal_elaboration.rs"]
 pub mod std_literal_elaboration;
