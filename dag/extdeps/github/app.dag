@@ -1908,10 +1908,16 @@ type GitHubInstallationCredential sole_constructor {
   validity: CredentialValidity
 }
 
+// A REQUEST NAMING ONE AXIS TWICE IS REFUSED BEFORE ANY SEND. The request encoder
+// (github_installation_token_permissions) sends the FIRST entry for an axis, so [contents:read,
+// contents:write] asks for read; a binding recorded from that list would claim write. The binding
+// must be what was asked for, so the ambiguity is refused rather than resolved either way, and the
+// sealed mint refuses it too, so no caller can construct that binding.
 type GitHubInstallationAcquisition
   = GitHubInstallationAcquired { credential: GitHubInstallationCredential }
   | GitHubInstallationClockUnread { detail: String }
   | GitHubInstallationRefused { refusal: RestRefusal }
+  | GitHubInstallationPermissionAxisRepeated { axis: GitHubPermissionAxis }
 
 fn installation_credential_of(
   token: Secret,
@@ -1920,10 +1926,10 @@ fn installation_credential_of(
   repositories: List<String>,
   permissions: List<GitHubAppPermission>,
   acquisition: AcquisitionClockReading,
-) -> GitHubInstallationCredential
+) -> GitHubInstallationAcquisition
   admit_callers: [
-    decl_ref(module_path: "extdeps.github.app", decl_name: "acquire_scoped_installation_token"),
-    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_github_credential"),
+    decl_ref(module_path: "extdeps.github.app", decl_name: "acquire_scoped_installation_token_unambiguous"),
+    decl_ref(module_path: "test.claim.credential_validity_witness", decl_name: "fx_github_acquisition"),
   ]
 {
   let validity = match rfc3339_parse_instant(text: expires_at) {
@@ -1931,18 +1937,33 @@ fn installation_credential_of(
     Rfc3339InstantParsed { instant: expiry, spelling: _ } =>
       credential_validity_of(basis: IssuerStated { stated_expiry: expiry, acquisition: acquisition })
   }
-  GitHubInstallationCredential {
-    token: token,
-    binding: GitHubInstallationBinding {
-      installation_id: installation_id,
-      repositories: if repositories == [] { RepositoriesInstallationWide } else { RepositoriesSelected { names: repositories } },
-      permissions: if permissions == [] { PermissionsInstallationWide } else { PermissionsSelected { permissions: permissions } },
-    },
-    validity: validity,
+  match first_duplicated_permission(perms: permissions) {
+    Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
+    Absent => GitHubInstallationAcquired { credential: GitHubInstallationCredential {
+      token: token,
+      binding: GitHubInstallationBinding {
+        installation_id: installation_id,
+        repositories: if repositories == [] { RepositoriesInstallationWide } else { RepositoriesSelected { names: repositories } },
+        permissions: if permissions == [] { PermissionsInstallationWide } else { PermissionsSelected { permissions: permissions } },
+      },
+      validity: validity,
+    } }
   }
 }
 
 fn acquire_scoped_installation_token(
+  app_jwt: Secret,
+  installation_id: Int,
+  repositories: List<String>,
+  permissions: List<GitHubAppPermission>,
+) -> GitHubInstallationAcquisition uses net: Network {
+  match first_duplicated_permission(perms: permissions) {
+    Present { value: dup } => GitHubInstallationPermissionAxisRepeated { axis: dup.name }
+    Absent => acquire_scoped_installation_token_unambiguous(app_jwt: app_jwt, installation_id: installation_id, repositories: repositories, permissions: permissions)
+  }
+}
+
+fn acquire_scoped_installation_token_unambiguous(
   app_jwt: Secret,
   installation_id: Int,
   repositories: List<String>,
@@ -1957,12 +1978,10 @@ fn acquire_scoped_installation_token(
       ) {
         RestRefused { refusal: r } => GitHubInstallationRefused { refusal: r }
         RestAnswered { answer: a } =>
-          GitHubInstallationAcquired {
-            credential: installation_credential_of(
-              token: a.token, expires_at: a.expires_at, installation_id: installation_id,
-              repositories: repositories, permissions: permissions, acquisition: acq,
-            )
-          }
+          installation_credential_of(
+            token: a.token, expires_at: a.expires_at, installation_id: installation_id,
+            repositories: repositories, permissions: permissions, acquisition: acq,
+          )
       }
   }
 }
