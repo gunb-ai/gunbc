@@ -71,8 +71,7 @@ pub use crate::v1_compiler_emit_core_support::{
     extract_test_projections, has_mock_prefix, is_leaf_type_item, is_type_alias_item,
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, sanitize_service_name, service_var_name, test_function_name, to_pascal,
-    to_screaming_snake, to_snake, to_string, to_string_helper, unique_strings, EmitResult,
-    TestProjection,
+    to_screaming_snake, to_snake, to_string, to_string_helper, EmitResult, TestProjection,
 };
 pub use crate::v1_compiler_infer::{
     build_params_scope, call_param_caller_labels, extend_scope, is_where_refinement_type,
@@ -1602,42 +1601,6 @@ pub fn emit_node_type(
     render_node_type(n, target, v1_rt::rc_empty_set::<String>(), source_indices)
 }
 
-pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec<String>> {
-    match inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: var_id, .. }) => Rc::new(vec![var_id.clone()]),
-        Some(InferredNode::Resolved { node: rt, .. }) => named_type_vars_in_node(rt.clone()),
-        _ => Rc::new(vec![]),
-    }
-}
-
-pub fn named_type_vars_in_node(n: Rc<Node>) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let self_vars = named_type_vars_in_inferred(n.inferred.clone());
-        let child_vars = Rc::new({
-            let mut __result = Vec::new();
-            for ch in n.children.clone().iter().cloned() {
-                __result.extend((*named_type_vars_in_node(ch.clone())).iter().cloned());
-            }
-            __result
-        });
-        let param_vars = Rc::new({
-            let mut __result = Vec::new();
-            for p in n.params.clone().iter().cloned() {
-                __result.extend(
-                    (*named_type_vars_in_node(crate::v1_std_core::param_node_type_expr(p.clone())))
-                        .iter()
-                        .cloned(),
-                );
-            }
-            __result
-        });
-        crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(
-            v1_rt::concat(self_vars.clone(), child_vars.clone()),
-            param_vars.clone(),
-        ))
-    })
-}
-
 pub fn render_named_type_base(
     n: Rc<Node>,
     target: RenderTarget,
@@ -1653,7 +1616,7 @@ pub fn render_named_type_base(
             ),
             tn.clone(),
         );
-        let explicit_params = Rc::new({
+        let param_names = Rc::new({
             let mut __result = Vec::new();
             for p in n.params.clone().iter().cloned() {
                 __result.push(render_node_type(
@@ -1665,12 +1628,6 @@ pub fn render_named_type_base(
             }
             __result
         });
-        let inferred_params = if ((explicit_params.clone().len() as i64) == 0) {
-            named_type_vars_in_node(n.clone())
-        } else {
-            Rc::new(vec![])
-        };
-        let param_names = v1_rt::concat(explicit_params.clone(), inferred_params.clone());
         if ((param_names.clone().len() as i64) == 0) {
             base.clone()
         } else {
