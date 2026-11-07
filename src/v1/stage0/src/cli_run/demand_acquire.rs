@@ -63,7 +63,7 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     String,
 > {
     let custom = Rc::new(custom_root_module_census(source_roots)?);
-    let (_, _, resolved) = demand_acquired_provider_fixed_point(
+    let resolved = demand_acquired_provider_fixed_point(
         source_roots,
         entry_file,
         &custom,
@@ -72,14 +72,14 @@ pub fn resolve_entry_graph_demand_acquired_with_diagnostics(
     Ok(resolved)
 }
 
-/// THE ONE PROVIDER LOOP, FOR RUN AND FOR COMPILE.
+/// THE PROVIDER LOOP FOR `gunbc run` (the entry compile's is `demand_acquired_entry_resolved`).
 /// GENERATED PROVIDERS ON THE DEMAND-ACQUIRED PATH. The acquired closure holds only what the entry's
 /// authored references reach, so a provider a generated reference demands is outside it. The index
 /// carries the layout's answer for such a module (provider_layout); the resolve core records every
 /// provider the model asks to acquire that the layout holds and the index does not, and this loop
 /// rebuilds the closure seeded with them. The seeds only grow and the layout is finite, so the loop
 /// ends at a resolve that needs nothing outside, or at a refusal that names nothing new.
-/// Returns the index the final resolve ran over, the seeds it needed, and that resolve's outputs.
+/// Returns the final resolve's outputs.
 #[allow(clippy::type_complexity)]
 pub(crate) fn demand_acquired_provider_fixed_point(
     source_roots: &[String],
@@ -88,13 +88,9 @@ pub(crate) fn demand_acquired_provider_fixed_point(
     duplicates: CustomRootDuplicate,
 ) -> Result<
     (
-        Rc<MultiEntryIndex>,
-        Vec<(String, Rc<v1_compiler_compile::SourceFile>)>,
-        (
-            Rc<v1_compiler_compile::ResolvedGraph>,
-            Rc<HashMap<String, Rc<NewlineIndex>>>,
-            Rc<im::Vector<Rc<crate::v1_std_core::ErrorNode>>>,
-        ),
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+        Rc<im::Vector<Rc<crate::v1_std_core::ErrorNode>>>,
     ),
     String,
 > {
@@ -109,7 +105,7 @@ pub(crate) fn demand_acquired_provider_fixed_point(
         }));
         match super::entry_resolve::resolve_entry_typed(&index, entry_file)? {
             super::entry_resolve::CoreResolve::Resolved(graph, si, diags) => {
-                return Ok((index, seeds, (graph, si, diags)))
+                return Ok((graph, si, diags))
             }
             super::entry_resolve::CoreResolve::NeedsAcquisition(providers) => {
                 let fresh: Vec<_> = providers
@@ -125,29 +121,97 @@ pub(crate) fn demand_acquired_provider_fixed_point(
     }
 }
 
-/// The sources an ENTRY COMPILE emits over: the entry's reference-derived closure in the index the
-/// run path's provider loop settled on, plus each acquired provider's own closure (the same
-/// `provider_closure_of` the resolve core extends with). Compile now acquires generated providers
-/// exactly as `gunbc run` does.
-pub(crate) fn demand_acquired_entry_sources(
+/// What an ENTRY COMPILE emits from: the final ordered closure and the ONE complete `.dag` resolution
+/// of it. Generated providers the entry demands join the closure exactly as `gunbc run` acquires
+/// them (same layout answers, same snapshot-seeded rebuild for a provider outside the acquired
+/// index), but every provider round is a complete `.dag` compile and the round that settles is the
+/// result emission starts from: the settled closure is never resolved a second time.
+pub(crate) fn demand_acquired_entry_resolved(
     source_roots: &[String],
     entry_file: &str,
     duplicates: CustomRootDuplicate,
-) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    options: v1_compiler_compile::CompilePipelineOptions,
+) -> Result<
+    (
+        Vec<Rc<v1_compiler_compile::SourceFile>>,
+        Rc<v1_compiler_compile::ResolvedPipelineResult>,
+    ),
+    String,
+> {
+    use super::provider_acquire::{ClosureOfError, PoolAnswer};
+    use std::cell::RefCell;
     let custom = Rc::new(custom_root_module_census_under(source_roots, duplicates)?);
-    let (index, seeds, _resolved) =
-        demand_acquired_provider_fixed_point(source_roots, entry_file, &custom, duplicates)?;
-    let mut sources = super::entry_resolve::load_sources_for_entry_with_pool(&index, entry_file)?;
-    for (module, _) in &seeds {
-        let closure = super::entry_resolve::provider_closure_of(&index, module)
-            .map_err(|e| format!("acquired provider {module}: {e:?}"))?;
-        for s in closure {
-            if !sources.iter().any(|x| x.path == s.path) {
-                sources.push(s);
+    struct Acquired {
+        index: Rc<MultiEntryIndex>,
+        seeds: Vec<(String, Rc<v1_compiler_compile::SourceFile>)>,
+        snapshots: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
+    }
+    let entry_sources = |index: &Rc<MultiEntryIndex>,
+                         seeds: &[(String, Rc<v1_compiler_compile::SourceFile>)]|
+     -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+        let mut sources =
+            super::entry_resolve::load_sources_for_entry_with_pool(index, entry_file)?;
+        for (module, _) in seeds {
+            let closure = super::entry_resolve::provider_closure_of(index, module)
+                .map_err(|e| format!("acquired provider {module}: {e:?}"))?;
+            for s in closure {
+                if !sources.iter().any(|x| x.path == s.path) {
+                    sources.push(s);
+                }
             }
         }
-    }
-    Ok(sources)
+        Ok(sources)
+    };
+    let index = build_demand_acquired_index(source_roots, entry_file, &custom, &[], duplicates)?;
+    let sources = entry_sources(&index, &[])?;
+    let state = RefCell::new(Acquired {
+        index,
+        seeds: Vec::new(),
+        snapshots: std::collections::HashMap::new(),
+    });
+    // A module the index holds was read when the index was built. Outside it only the layout has an
+    // answer, and a Holds keeps the bytes it read so the rebuild acquires exactly those.
+    let pool = |m: &str| {
+        if state.borrow().index.source_files.contains_key(m) {
+            return PoolAnswer::Holds;
+        }
+        match layout_provider_answer(source_roots, &custom, m, duplicates) {
+            super::entry_resolve::ProviderLayoutAnswer::Holds(source) => {
+                state.borrow_mut().snapshots.insert(m.to_string(), source);
+                PoolAnswer::Holds
+            }
+            super::entry_resolve::ProviderLayoutAnswer::Unreadable => PoolAnswer::Unreadable,
+            super::entry_resolve::ProviderLayoutAnswer::Lacks => PoolAnswer::Lacks,
+        }
+    };
+    let closure_of = |m: &str| -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, ClosureOfError> {
+        let index = state.borrow().index.clone();
+        super::entry_resolve::provider_closure_of(&index, m)
+    };
+    let rebuild = |outside: &[String], _current: &[Rc<v1_compiler_compile::SourceFile>]| {
+        let mut st = state.borrow_mut();
+        let fresh: Vec<_> = outside
+            .iter()
+            .filter(|m| !st.seeds.iter().any(|(s, _)| s == *m))
+            .filter_map(|m| st.snapshots.get(m).map(|src| (m.clone(), src.clone())))
+            .collect();
+        if fresh.is_empty() {
+            return Err("generated provider acquisition made no progress on the demand-acquired path: every provider it asked for is already seeded".to_string());
+        }
+        st.seeds.extend(fresh);
+        let index =
+            build_demand_acquired_index(source_roots, entry_file, &custom, &st.seeds, duplicates)?;
+        let sources = entry_sources(&index, &st.seeds)?;
+        st.index = index;
+        Ok(sources)
+    };
+    super::provider_acquire::compile_to_provider_fixed_point_with(
+        sources.clone(),
+        options,
+        &pool,
+        &closure_of,
+        &rebuild,
+    )
 }
 
 fn build_demand_acquired_index(
@@ -638,7 +702,7 @@ fn module_graph_facts_from_acquired(
 mod tests {
     use super::{
         build_demand_acquired_index, custom_root_module_census_under,
-        demand_acquired_entry_sources, resolve_entry_graph_demand_acquired, CustomRootDuplicate,
+        demand_acquired_entry_resolved, resolve_entry_graph_demand_acquired, CustomRootDuplicate,
     };
     use crate::v1_compiler_compile;
     use std::fs;
@@ -1114,9 +1178,20 @@ mod tests {
             ws.join("dag").to_string_lossy().to_string(),
             ws.join("src/v2").to_string_lossy().to_string(),
         ];
-        let acquired =
-            demand_acquired_entry_sources(&roots, &entry, CustomRootDuplicate::FirstRootWins)
-                .expect("the loop settles");
+        let (acquired, resolved) = demand_acquired_entry_resolved(
+            &roots,
+            &entry,
+            CustomRootDuplicate::FirstRootWins,
+            v1_compiler_compile::default_compile_pipeline_options(),
+        )
+        .expect("the loop settles");
+        // The returned resolution IS the compile of the returned ordered closure: emission starts
+        // from it with no second resolve, so its module set is exactly the closure's.
+        let graph = resolved
+            .graph
+            .clone()
+            .expect("the settled closure resolves");
+        assert_eq!(graph.modules.len(), acquired.len());
         let custom = custom_root_module_census_under(&roots, CustomRootDuplicate::FirstRootWins)
             .expect("census");
         let unseeded_index = build_demand_acquired_index(
