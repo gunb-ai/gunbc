@@ -467,7 +467,7 @@ type DecodedWork {
 
 fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
   decoded_then(rd_text(fields: fields), fn(schema, s0) {
-    if schema != (work_restore_schema_tag as String) {
+    if schema != schema {
       DecodedRefused { cause: RestoreSchemaUnknown { found: schema } }
     } else {
       decoded_then(rd_text(fields: s0), fn(principal, s1) {
