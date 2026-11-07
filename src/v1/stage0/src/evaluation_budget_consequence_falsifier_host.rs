@@ -102,6 +102,29 @@ pub(crate) enum EvaluationBudgetConsequenceRefusal {
     WorktreeCreationFailed {
         observation: CommandObservation,
     },
+    /// THE CLAIM COULD NOT BE RESERVED: something already occupies the path this run asked to own.
+    /// The code this replaces ADOPTED whatever stood at its generated path and later deleted it; this
+    /// refuses, and the occupant is left exactly where it was. Remedy: clear the residue in the
+    /// scratch root, or point the scratch somewhere that is not already holding trees.
+    WorktreeClaimOccupied {
+        path: String,
+        detail: String,
+    },
+    /// A claim was reserved but its record could not be written, or the created worktree's identity
+    /// could not be sealed into it. A run that cannot record what it made cannot later tell that tree
+    /// from a neighbour's, so it stops before building anything instead of becoming a remover that
+    /// guesses.
+    WorktreeClaimUnwritable {
+        detail: String,
+    },
+    /// THE TEARDOWN REFUSED TO REMOVE, naming the proof that failed. This is the replacement for the
+    /// old unconditional `worktree remove --force`: the tree at the claim's derived path STAYS on disk
+    /// and the reason is reported. The trade is deliberate and it is the point of the change --
+    /// stranded scratch is an operator's cleanup, while a tree another session was working in cannot
+    /// be cleaned up afterwards by anybody.
+    WorktreeRemovalRefused {
+        ownership: WorktreeOwnership,
+    },
     AuthorityOccurrenceNotExactlyOne {
         occurrences: usize,
     },
@@ -317,6 +340,270 @@ fn worktree_admin_area_present(worktree: &Path) -> Result<(), String> {
             "the worktree's admin directory {gitdir} no longer exists, so {} is no longer a registered worktree; another process sharing this repository pruned it",
             worktree.display()
         ))
+    }
+}
+
+/// THE FILE A RUN WRITES INSIDE ITS OWN CLAIM ROOT, BEFORE THE WORKTREE IT CLAIMS EXISTS.
+const WORKTREE_CLAIM_RECORD: &str = "claim";
+
+/// OWNERSHIP OF THE EXPERIMENT'S WORKTREE, ESTABLISHED BEFORE THE WORKTREE EXISTS.
+///
+/// Removal used to identify its target by NAME. The path was `ebc-falsifier-<pid>` under the
+/// scratch root and the comment beside the removal argued the point outright: "the path is our own
+/// scratch directory under a name this run generated, so nothing else can be addressed by it." That
+/// is a heuristic over shared state, and in this repository the state IS shared -- the scratch root
+/// arrives from an unvalidated environment variable, PIDs are reused across a long-lived host, and
+/// the registry the removal consulted (`git worktree remove`, `git worktree prune`) is the single
+/// common directory every session on the machine writes to. A name can be occupied by something
+/// else; a registry row can be rewritten by another process at any moment. Neither can ever say
+/// which tree a given run made, and a removal that cannot say that is a removal that deletes at
+/// random. `gunbc.recurring_failure_mode.private_tree_inside_a_public_worktree_publishes_on_archive`
+/// states the shape of this defect exactly: the protection is path-shaped while the hazard is
+/// content-shaped.
+///
+/// So ownership is not re-derived after the fact. It is CREATED first, as a record -- the shape this
+/// repository already holds for the same invalid state at
+/// `gunbc.roadmap.roadmap_attempt_worktree_claim`, where a create-only claim is written before
+/// `worktree add` runs, every release is derived from that claim, and a tree the claim does not
+/// vouch for is KEPT and reported rather than removed. This is not a second mechanism beside that
+/// one; it is that mechanism applied where it was missing. It cannot be imported: the seed sits
+/// below the substrate that row lives in, and the row's own note cites the cycle. Its dissolution
+/// is that row's lane, not a new one.
+#[derive(Debug, Clone)]
+pub(crate) struct WorktreeClaim {
+    /// The directory this run created for ITSELF, exclusively. `std::fs::create_dir` refuses when
+    /// anything already occupies the path, so holding this value means the path was unoccupied
+    /// moments ago and this call made it. That is why a tree that is already there is never adopted,
+    /// and it is the strongest ownership evidence available without a kernel capability.
+    pub(crate) root: PathBuf,
+    /// THE ONLY PATH THIS RUN MAY REMOVE. Derived from the claim by construction; never chosen, and
+    /// never read back out of the shared registry.
+    pub(crate) worktree_path: PathBuf,
+    /// A value this run minted, written into the claim record and sealed against the identity the
+    /// created worktree reported for itself. Its work is the case a name cannot cover: a tree that
+    /// ARRIVES at a path this run once holds -- renamed in, symlinked in, recreated after deletion
+    /// by something else -- fails the comparison instead of being deleted.
+    pub(crate) token: String,
+}
+
+/// WHETHER THE CLAIM STILL VOUCHES FOR THE TREE AT ITS DERIVED PATH. Every arm but `Proven` is a
+/// reason to KEEP the tree and report it; none of them is a reason to remove it, because none of
+/// them says this run made what is standing there.
+#[derive(Debug, Clone)]
+pub(crate) enum WorktreeOwnership {
+    /// The record is present under the claim root, carries this run's token, and the tree at the
+    /// derived path still reports the identity sealed when this run created it.
+    Proven,
+    /// The claim record is gone. The tree at the derived path is no longer vouched for by anything.
+    ClaimRecordAbsent { record_path: PathBuf },
+    ClaimRecordUnreadable {
+        record_path: PathBuf,
+        detail: String,
+    },
+    /// A record exists at the claim path and does not carry this run's token. Whoever wrote it owns
+    /// the tree; it is not this run.
+    ClaimTokenMismatch {
+        record_path: PathBuf,
+        expected: String,
+        found: String,
+    },
+    /// The tree at the derived path does not report the identity sealed at creation. The directory
+    /// at that path is a different tree from the one this run made.
+    WorktreeIdentityMismatch {
+        worktree_path: PathBuf,
+        expected: String,
+        found: String,
+    },
+    /// Nothing at the derived path identifies itself as a linked worktree at all, so nothing ties it
+    /// to this run. Absence of evidence is not ownership.
+    WorktreeIdentityAbsent { worktree_path: PathBuf },
+    /// A derived path that does not sit inside its own claim root: the claim was built wrong, and a
+    /// wrong claim does not get to delete anything.
+    ClaimRootMismatch {
+        worktree_path: PathBuf,
+        root: PathBuf,
+    },
+}
+
+/// The path a claim's record lives at: inside the claim root, OUTSIDE the worktree, so removing the
+/// worktree cannot take the proof with it.
+fn claim_record_path(claim: &WorktreeClaim) -> PathBuf {
+    claim.root.join(WORKTREE_CLAIM_RECORD)
+}
+
+/// The identity a linked worktree carries for itself: the `.git` FILE at its root, whose single line
+/// names the admin directory it is registered under. Read from the tree rather than derived from the
+/// repository, so it describes the tree that is standing there and not the registry's opinion.
+fn worktree_identity(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path.join(".git"))
+        .map(|text| text.trim().to_string())
+        .map_err(|e| format!("reading the worktree identity at {}: {e}", path.display()))
+}
+
+/// A line of the claim record, or its absence.
+fn claim_record_field(record: &str, field: &str) -> Option<String> {
+    record.lines().find_map(|line| {
+        line.split_once('=')
+            .filter(|(key, _)| *key == field)
+            .map(|(_, value)| value.to_string())
+    })
+}
+
+/// A token this run minted for itself. It is not a secret and it is not a lock: its whole job is to
+/// be a value that was NOT available to whoever made the thing now standing at this run's path.
+fn claim_token() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or_default();
+    format!("{}-{}", std::process::id(), nanos)
+}
+
+/// MINT A CLAIM: reserve a root this run owns, EXCLUSIVELY, and write its record before any worktree
+/// exists. The exclusivity is the point -- `create_dir` fails on an occupied path, and this run then
+/// refuses rather than adopting a directory it did not make.
+fn mint_worktree_claim(
+    scratch: &Path,
+    token: &str,
+) -> Result<WorktreeClaim, EvaluationBudgetConsequenceRefusal> {
+    let root = scratch.join(format!("ebc-falsifier-{token}"));
+    // The scratch root is made if it is missing, and its failure is a DIFFERENT fact from a claim path
+    // being occupied: one is the operator pointing the instrument somewhere it cannot write, the other
+    // is a path already holding something. Collapsing them would send an operator to clear a residue
+    // that was never there.
+    if let Err(e) = std::fs::create_dir_all(scratch) {
+        return Err(
+            EvaluationBudgetConsequenceRefusal::WorktreeClaimUnwritable {
+                detail: format!("creating the scratch root {}: {e}", scratch.display()),
+            },
+        );
+    }
+    if let Err(e) = std::fs::create_dir(&root) {
+        return Err(EvaluationBudgetConsequenceRefusal::WorktreeClaimOccupied {
+            path: root.display().to_string(),
+            detail: e.to_string(),
+        });
+    }
+    // The worktree is named from the token, not from a constant: a linked worktree's REGISTRY name is
+    // its directory basename, so a constant basename would collide across runs in the shared common
+    // directory, and a collision there is the same hazard one level down.
+    let claim = WorktreeClaim {
+        worktree_path: root.join(format!("ebc-{token}")),
+        root,
+        token: token.to_string(),
+    };
+    let record = claim_record_path(&claim);
+    let written = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&record)
+        .and_then(|mut file| file.write_all(format!("token={}\n", claim.token).as_bytes()));
+    if let Err(e) = written {
+        return Err(
+            EvaluationBudgetConsequenceRefusal::WorktreeClaimUnwritable {
+                detail: format!("writing {}: {e}", record.display()),
+            },
+        );
+    }
+    Ok(claim)
+}
+
+/// SEAL THE CREATED WORKTREE'S IDENTITY INTO THE CLAIM, immediately after it is created and before
+/// anything is built in it. Without this step the claim names a path; with it, the claim names the
+/// tree.
+fn seal_worktree_identity(claim: &WorktreeClaim) -> Result<(), EvaluationBudgetConsequenceRefusal> {
+    let identity = worktree_identity(&claim.worktree_path).map_err(|detail| {
+        EvaluationBudgetConsequenceRefusal::WorktreeClaimUnwritable {
+            detail: format!("sealing the created worktree: {detail}"),
+        }
+    })?;
+    let record = claim_record_path(claim);
+    let appended = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&record)
+        .and_then(|mut file| file.write_all(format!("identity={identity}\n").as_bytes()));
+    if let Err(e) = appended {
+        return Err(
+            EvaluationBudgetConsequenceRefusal::WorktreeClaimUnwritable {
+                detail: format!("sealing {}: {e}", record.display()),
+            },
+        );
+    }
+    Ok(())
+}
+
+/// THE OWNERSHIP JUDGMENT, read entirely from this run's own record and from the tree's own
+/// self-description. It never asks the shared registry what it knows, because the registry is the
+/// thing another session can change; that question is what this host used to answer "may I delete
+/// this", and it is what the 2026-11-05 destruction rested on.
+fn worktree_ownership(claim: &WorktreeClaim) -> WorktreeOwnership {
+    if claim.worktree_path.parent() != Some(claim.root.as_path()) {
+        return WorktreeOwnership::ClaimRootMismatch {
+            worktree_path: claim.worktree_path.clone(),
+            root: claim.root.clone(),
+        };
+    }
+    let record_path = claim_record_path(claim);
+    let record = match std::fs::read_to_string(&record_path) {
+        Ok(record) => record,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return WorktreeOwnership::ClaimRecordAbsent { record_path }
+        }
+        Err(e) => {
+            return WorktreeOwnership::ClaimRecordUnreadable {
+                record_path,
+                detail: e.to_string(),
+            }
+        }
+    };
+    let sealed_identity = match claim_record_field(&record, "identity") {
+        Some(identity) => identity,
+        None => {
+            return WorktreeOwnership::ClaimRecordUnreadable {
+                record_path,
+                detail: "the record carries no sealed worktree identity".to_string(),
+            }
+        }
+    };
+    if claim_record_field(&record, "token").as_deref() != Some(claim.token.as_str()) {
+        return WorktreeOwnership::ClaimTokenMismatch {
+            record_path,
+            expected: claim.token.clone(),
+            found: claim_record_field(&record, "token").unwrap_or_else(|| "<absent>".to_string()),
+        };
+    }
+    let live_identity = match worktree_identity(&claim.worktree_path) {
+        Ok(identity) => identity,
+        // The directory is gone: nothing to compare and nothing left to remove. That is discharged by
+        // the read-back below, not by an ownership claim, so it is reported as absent identity here.
+        Err(_) => {
+            return WorktreeOwnership::WorktreeIdentityAbsent {
+                worktree_path: claim.worktree_path.clone(),
+            }
+        }
+    };
+    if live_identity != sealed_identity {
+        return WorktreeOwnership::WorktreeIdentityMismatch {
+            worktree_path: claim.worktree_path.clone(),
+            expected: sealed_identity,
+            found: live_identity,
+        };
+    }
+    WorktreeOwnership::Proven
+}
+
+/// REMOVE THE CLAIM'S DERIVED TREE AND NOTHING ELSE, and only on a proven claim. The caller holds the
+/// registry side of the teardown; this is the filesystem side, which exists because the registry can
+/// be rewritten by another process while the run is in flight.
+fn release_claimed_worktree(claim: &WorktreeClaim) -> Result<(), WorktreeOwnership> {
+    match worktree_ownership(claim) {
+        WorktreeOwnership::Proven => {
+            // Best-effort here is honest because the post-condition is checked separately: the caller
+            // reads the path back and refuses if it survives.
+            let _ = std::fs::remove_dir_all(&claim.worktree_path);
+            Ok(())
+        }
+        ownership => Err(ownership),
     }
 }
 
@@ -1135,7 +1422,15 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
     // wall, it is a source of false refusals that would train a reader to ignore the real one. What
     // this transaction OWNS is its own worktree, so that is what is verified gone.
 
-    let worktree = scratch.join(format!("ebc-falsifier-{}", std::process::id()));
+    // THE CLAIM IS RESERVED BEFORE THE WORKTREE IS CREATED, and the worktree is created at the path
+    // the claim derives. This is what makes the teardown's question answerable at all: after the fact
+    // there is no fact of the matter about which tree a run made, and the old code manufactured one
+    // from the path's name.
+    let claim = match mint_worktree_claim(scratch, &claim_token()) {
+        Ok(claim) => claim,
+        Err(refusal) => return EvaluationBudgetConsequenceFalsifierOutcome::Refused(refusal),
+    };
+    let worktree = claim.worktree_path.clone();
     let worktree_str = worktree.to_string_lossy().into_owned();
     let created = git(
         repo_root,
@@ -1143,25 +1438,26 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
         long,
     );
     if !completed_zero(&created) {
+        // The root was reserved by this call and by no other, so clearing it takes back this run's own
+        // record and whatever `worktree add` left inside it -- and nothing outside it.
+        let _ = std::fs::remove_dir_all(&claim.root);
         return EvaluationBudgetConsequenceFalsifierOutcome::Refused(
             EvaluationBudgetConsequenceRefusal::WorktreeCreationFailed {
                 observation: created,
             },
         );
     }
+    if let Err(refusal) = seal_worktree_identity(&claim) {
+        // The tree exists and this run cannot record WHICH tree it is. So it is left standing, and the
+        // refusal says why. A host that has lost the ability to identify its own experiment does not
+        // get to delete things in its neighbourhood.
+        return EvaluationBudgetConsequenceFalsifierOutcome::Refused(refusal);
+    }
 
     let outcome = run_bound_transaction(&worktree, &head, &tree, long, short);
 
     // 10. RESTORE AND REMOVE, unconditionally. The primary cause survives a cleanup failure.
-    let cleanup = finalize(
-        repo_root,
-        &worktree,
-        &worktree_str,
-        &head,
-        &tree,
-        long,
-        short,
-    );
+    let cleanup = finalize(repo_root, &claim, &head, &tree, long, short);
     match (outcome, cleanup) {
         (out, None) => out,
         (EvaluationBudgetConsequenceFalsifierOutcome::Refused(primary), Some(cleanup)) => {
@@ -1180,23 +1476,38 @@ pub(crate) fn run_evaluation_budget_consequence_falsifier(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn finalize(
     repo_root: &Path,
-    worktree: &Path,
-    worktree_str: &str,
+    claim: &WorktreeClaim,
     head: &str,
     tree: &str,
     long: Duration,
     short: Duration,
 ) -> Option<EvaluationBudgetConsequenceRefusal> {
-    // The worktree is removed with --force because the transaction deliberately leaves it dirty on
-    // failure; refusing to clean up a known-dirty disposable copy would strand the operator with a
-    // directory whose only purpose was to be thrown away.
+    let worktree = claim.worktree_path.as_path();
+    let worktree_str = claim.worktree_path.to_string_lossy().into_owned();
+    // WHAT MAY BE REMOVED IS DECIDED BY THIS RUN'S OWN RECORD, and by nothing else. The version this
+    // replaces asked the SHARED registry two questions -- does the path still look like a worktree,
+    // and did `remove` accept it -- and answered a question about OWNERSHIP from those answers, with
+    // the comment stating the heuristic plainly: "the path is our own scratch directory under a name
+    // this run generated, so nothing else can be addressed by it." On a host where every session
+    // shares one common directory, a name is not an owner and a registry row is not a title. So the
+    // claim written before `worktree add` is consulted first, and a tree it does not vouch for is
+    // kept and reported. This is the ordering `gunbc.roadmap.roadmap_attempt_worktree_claim` already
+    // enforces for the same invalid state: release derives from the record, and an unrecorded tree is
+    // somebody else's.
+    let ownership = worktree_ownership(claim);
+    if !matches!(ownership, WorktreeOwnership::Proven) {
+        return Some(EvaluationBudgetConsequenceRefusal::WorktreeRemovalRefused { ownership });
+    }
+    // --force, on a tree this run proved it made, whose dirt this run made. The force was never the
+    // hazard; the hazard was deciding to force on a tree that had not been identified. Refusing to
+    // clean a known-dirty copy this run owns would strand the operator on a directory whose only
+    // purpose was to be thrown away, which is a cost someone can undo.
     if worktree.exists() {
         let removed = git(
             repo_root,
-            &["worktree", "remove", "--force", worktree_str],
+            &["worktree", "remove", "--force", &worktree_str],
             long,
         );
         if !completed_zero(&removed) {
@@ -1208,12 +1519,11 @@ fn finalize(
             // distinction `ExperimentWorktreeUnregistered` already draws on the build path, drawn
             // here on the teardown path rather than duplicated as a second notion of the same thing.
             //
-            // The obligation this function actually owes is that OUR directory is gone and no
-            // registration of ours survives. When git has already forgotten the path, discharging
-            // that obligation is ours to finish, so we remove the tree directly. This does NOT widen
-            // the refusal: every post-condition below still runs unchanged, and a directory or a
-            // registration that survives this still refuses. The path is our own scratch directory
-            // under a name this run generated, so nothing else can be addressed by it.
+            // The obligation this function owes is that the tree THIS CLAIM MADE is gone and no
+            // registration of ours survives. When the registry has already forgotten the path,
+            // finishing that obligation falls to us -- and it is finished on the strength of the
+            // claim and the sealed identity, re-checked at this instant, not on the strength of the
+            // path's name. If that re-check fails, the tree stays and the reason is reported.
             let deregistered = matches!(
                 &removed,
                 CommandObservation::Completed { exit_code, stderr, .. }
@@ -1225,7 +1535,11 @@ fn finalize(
                         && stderr.text().contains("is not a working tree")
             );
             if deregistered {
-                let _ = std::fs::remove_dir_all(worktree);
+                if let Err(ownership) = release_claimed_worktree(claim) {
+                    return Some(EvaluationBudgetConsequenceRefusal::WorktreeRemovalRefused {
+                        ownership,
+                    });
+                }
             } else {
                 return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
                     observation: removed,
@@ -1233,16 +1547,20 @@ fn finalize(
             }
         }
     }
-    let _ = git(repo_root, &["worktree", "prune"], short);
+    // NO `git worktree prune`. This host used to run it here, against the ONE common directory every
+    // session on this machine registers in: a sweep that deregisters whatever else happens to look
+    // stale, including another session's live worktree mid-edit. It fixed this instrument's own stale
+    // row by mutating state it does not own, which is the same defect as deleting a tree it cannot
+    // prove it made, one verb away. It is not replaced by a narrower sweep, because no narrower
+    // registry sweep exists: if a row naming this instrument's own path survives, that leak is
+    // REPORTED below rather than silently repaired, and the operator sees a residue instead of a
+    // neighbour losing a registration.
     if worktree.exists() {
         return Some(EvaluationBudgetConsequenceRefusal::WorktreeCleanupFailed {
             observation: CommandObservation::Completed {
                 exit_code: 0,
                 stdout: StreamOutcome::Closed {
-                    text: format!(
-                        "{} still present after remove and prune",
-                        worktree.display()
-                    ),
+                    text: format!("{} still present after remove", worktree.display()),
                 },
                 stderr: StreamOutcome::Closed {
                     text: String::new(),
@@ -1307,7 +1625,7 @@ fn finalize(
             observation: CommandObservation::Completed {
                 exit_code: 0,
                 stdout: StreamOutcome::Closed {
-                    text: format!("{worktree_str} still registered after remove and prune"),
+                    text: format!("{worktree_str} still registered after remove"),
                 },
                 stderr: StreamOutcome::Closed {
                     text: String::new(),
@@ -1315,6 +1633,11 @@ fn finalize(
             },
         });
     }
+    // THE CLAIM ROOT GOES BACK ONLY ONCE EVERYTHING IT VOUCHED FOR IS DISCHARGED. It is a directory
+    // this run reserved exclusively, so removing it removes nothing but this run's own record -- and
+    // on any refusal path above it is deliberately LEFT, because the record is what an operator needs
+    // in order to know which tree this run made and which it refused to touch.
+    let _ = std::fs::remove_dir_all(&claim.root);
     None
 }
 
@@ -2218,5 +2541,168 @@ mod observation_failure_arms {
         assert!(parse_flat_json_object(&malformed).is_err());
         let trailing = format!("{{\"code\":\"x\"}} {long_multibyte}");
         assert!(parse_flat_json_object(&trailing).is_err());
+    }
+}
+
+#[cfg(test)]
+mod worktree_claim_arms {
+    use super::*;
+
+    // Filesystem only: no git, no build, no serve. What is under test is the judgment that decides
+    // what a teardown may remove, and a judgment that could only be exercised by running the whole
+    // instrument could not be exercised at all -- which is how the removal rule survived long enough
+    // to destroy a tree on 2026-11-05.
+    fn scratch_root(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-worktree-claim-{}-{label}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("the test's scratch root");
+        root
+    }
+
+    /// A stand-in for a created linked worktree: a directory carrying the `.git` pointer file a real
+    /// one carries, naming the admin directory it is registered under.
+    fn planted_worktree(path: &Path, pointer: &str) {
+        std::fs::create_dir_all(path).expect("the planted experiment directory");
+        std::fs::write(path.join(".git"), format!("{pointer}\n")).expect("the planted identity");
+    }
+
+    /// GREEN. A tree this run reserved, created and sealed is the tree its claim vouches for, and the
+    /// teardown removes it. The instrument still cleans up after itself; the change is what it has to
+    /// show first.
+    #[test]
+    fn a_worktree_this_run_recorded_is_removed() {
+        let scratch = scratch_root("own");
+        let claim = mint_worktree_claim(&scratch, &claim_token()).expect("a free claim path");
+        planted_worktree(&claim.worktree_path, "gitdir: /repo/.git/worktrees/ebc-own");
+        seal_worktree_identity(&claim).expect("sealing the created tree");
+        assert!(matches!(
+            worktree_ownership(&claim),
+            WorktreeOwnership::Proven
+        ));
+        release_claimed_worktree(&claim).expect("this run's own tree is removable");
+        assert!(
+            !claim.worktree_path.exists(),
+            "the claim's own tree was left behind"
+        );
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    /// RED, IN THE 2026-11-05 SHAPE. Something that is NOT the tree this run made now stands at the
+    /// claim's derived path -- here, a foreign linked worktree arriving at a path this run had
+    /// reserved. The teardown refuses, names the proof that failed, and the foreign tree is STILL
+    /// THERE afterwards. Under the rule this replaces, the path's name was the evidence and a tree
+    /// under a generated name was deleted whatever it was.
+    #[test]
+    fn a_tree_that_arrived_at_the_claim_path_survives() {
+        let scratch = scratch_root("foreign");
+        let claim = mint_worktree_claim(&scratch, &claim_token()).expect("a free claim path");
+        planted_worktree(
+            &claim.worktree_path,
+            "gitdir: /repo/.git/worktrees/ebc-mine",
+        );
+        seal_worktree_identity(&claim).expect("sealing the created tree");
+        // The tree this run made is gone; somebody else's live worktree is standing at the path.
+        std::fs::remove_file(claim.worktree_path.join(".git"))
+            .expect("clearing the planted identity");
+        planted_worktree(
+            &claim.worktree_path,
+            "gitdir: /shared/.git/worktrees/someone-elses-live-fix",
+        );
+        assert!(matches!(
+            worktree_ownership(&claim),
+            WorktreeOwnership::WorktreeIdentityMismatch { .. }
+        ));
+        let refused = release_claimed_worktree(&claim);
+        assert!(matches!(
+            refused,
+            Err(WorktreeOwnership::WorktreeIdentityMismatch { .. })
+        ));
+        assert!(
+            claim.worktree_path.exists(),
+            "a tree this run did not make was removed"
+        );
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    /// RED. A record exists at the claim path but does not carry this run's token: whoever wrote it
+    /// owns what is under it, and this run does not get to delete their work.
+    #[test]
+    fn a_claim_written_by_someone_else_refuses_the_removal() {
+        let scratch = scratch_root("other-token");
+        let claim = mint_worktree_claim(&scratch, &claim_token()).expect("a free claim path");
+        planted_worktree(
+            &claim.worktree_path,
+            "gitdir: /repo/.git/worktrees/ebc-mine",
+        );
+        seal_worktree_identity(&claim).expect("sealing the created tree");
+        std::fs::write(
+            claim_record_path(&claim),
+            "token=someone-else\nidentity=gitdir: /repo/.git/worktrees/ebc-mine\n",
+        )
+        .expect("replacing the record with another run's");
+        assert!(matches!(
+            worktree_ownership(&claim),
+            WorktreeOwnership::ClaimTokenMismatch { .. }
+        ));
+        assert!(release_claimed_worktree(&claim).is_err());
+        assert!(
+            claim.worktree_path.exists(),
+            "a tree under another run's claim was removed"
+        );
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    /// RED. With the record gone, nothing vouches for the tree at the derived path -- and absence of
+    /// evidence is not ownership. The tree stays.
+    #[test]
+    fn a_missing_claim_record_keeps_the_tree() {
+        let scratch = scratch_root("no-record");
+        let claim = mint_worktree_claim(&scratch, &claim_token()).expect("a free claim path");
+        planted_worktree(
+            &claim.worktree_path,
+            "gitdir: /repo/.git/worktrees/ebc-mine",
+        );
+        seal_worktree_identity(&claim).expect("sealing the created tree");
+        std::fs::remove_file(claim_record_path(&claim)).expect("removing the record");
+        assert!(matches!(
+            worktree_ownership(&claim),
+            WorktreeOwnership::ClaimRecordAbsent { .. }
+        ));
+        assert!(release_claimed_worktree(&claim).is_err());
+        assert!(
+            claim.worktree_path.exists(),
+            "an unvouched-for tree was removed"
+        );
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+
+    /// RED. A claim is created, never adopted: an occupied root is refused and the occupant's own
+    /// record and tree are untouched. This is the step that makes the removal question answerable at
+    /// all -- a run that adopted a directory it did not make could never prove anything about what
+    /// stood inside it.
+    #[test]
+    fn a_claim_never_adopts_a_root_that_is_already_occupied() {
+        let scratch = scratch_root("occupied");
+        let token = claim_token();
+        let first = mint_worktree_claim(&scratch, &token).expect("the first mint");
+        planted_worktree(
+            &first.worktree_path,
+            "gitdir: /repo/.git/worktrees/ebc-first",
+        );
+        seal_worktree_identity(&first).expect("sealing the created tree");
+        let again = mint_worktree_claim(&scratch, &token);
+        assert!(matches!(
+            again,
+            Err(EvaluationBudgetConsequenceRefusal::WorktreeClaimOccupied { .. })
+        ));
+        assert!(
+            claim_record_path(&first).exists(),
+            "the occupying claim's record was disturbed"
+        );
+        assert!(first.worktree_path.exists());
+        let _ = std::fs::remove_dir_all(&scratch);
     }
 }
