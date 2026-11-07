@@ -12,7 +12,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 import std.optional { Present, Absent }
 import gunbc.systemd_unit_names {
   dispatch_attempt_unit_name, dispatch_review_unit_name, dispatch_audit_unit_name,
-  dispatch_supervisor_unit_name, belt_attempt_obligation_unit_name,
+  belt_attempt_obligation_unit_name,
 }
 import extdeps.systemd {
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
@@ -22,8 +22,8 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole, AttemptReviewerRole,
   attempt_unit_role_token, attempt_unit_role_of, AttemptUnitRoleDecoded, AttemptUnitRoleUnknown,
   AttemptExitRecordRoleOf, AttemptExitRecordRoleNone,
-  AttemptUnitRoleMalformed, AttemptObligationRole, AttemptSupervisorRole,
-  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  AttemptUnitRoleMalformed, AttemptObligationRole,
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed, attempt_worker_invocation_of,
   AttemptProcessExitedWith, AttemptProcessSignaled,
   AttemptWorkerRole, AttemptReviewerRole, AttemptAuditorRole,
   attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
@@ -309,14 +309,6 @@ test fn the_auditor_record_derives_the_audit_unit() -> Bool {
   }
 }
 
-test fn the_supervisor_record_derives_the_supervisor_unit_for_its_turn() -> Bool {
-  match attempt_exit_entry_decode(entry_name: "node-a+key-1+supervise.t3+0123456789abcdef0123456789abcdef+completed+exited+0") {
-    AttemptExitEntryDecoded { record } =>
-      record.unit == dispatch_supervisor_unit_name(node_id: "node-a", attempt_key: "key-1", turn: 3)
-    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
-  }
-}
-
 test fn the_obligation_record_derives_the_obligation_unit() -> Bool {
   match attempt_exit_entry_decode(entry_name: "node-a+key-1+obligation+0123456789abcdef0123456789abcdef+completed+exited+0") {
     AttemptExitEntryDecoded { record } =>
@@ -424,7 +416,6 @@ test fn a_role_token_decodes_back_to_the_role_that_rendered_it() -> Bool {
     AttemptObligationRole,
     AttemptReviewerRole { criterion_key: "ci-green", head_sha: "abc1234" },
     AttemptAuditorRole { head_sha: "def9876" },
-    AttemptSupervisorRole { turn: 7 },
   ]
   all(roles, role =>
     match attempt_unit_role_of(token: attempt_unit_role_token(role: role)) {
@@ -444,11 +435,36 @@ test fn a_role_token_the_grammar_does_not_name_is_refused_not_guessed() -> Bool 
   let auditor_missing_head = match attempt_unit_role_of(token: "audit.") {
     AttemptUnitRoleDecoded { role: AttemptAuditorRole { head_sha } } => head_sha == ""  _ => false
   }
-  let supervisor_not_a_turn = match attempt_unit_role_of(token: "supervise.tx") {
-    AttemptUnitRoleMalformed { token: _, detail: _ } => true  _ => false
-  }
   let unclaimed = match attempt_unit_role_of(token: "gardener") {
     AttemptUnitRoleUnknown { token: t } => t == "gardener"  _ => false
   }
-  worker && reviewer_short && auditor_missing_head && supervisor_not_a_turn && unclaimed
+  worker && reviewer_short && auditor_missing_head && unclaimed
+}
+
+
+// THE WORKER INVOCATION IS READ ONCE, FROM THE ROLE ARM THE DECODER PRODUCED (review 90556): a first worker
+// is invocation 0, a resumed worker its ordinal, a reviewer/obligation is no worker, and a worker-shaped
+// word that does not decode is a Malformed entry -- never silently an "other role" that drops out of the
+// seat owners and the latest-end reader. The malformed control is RED against a reader that parses the
+// word with parse_int and treats Absent as not-a-worker.
+fn witness_worker_invocation(entry_name: String) -> Int? {
+  match attempt_exit_entry_decode(entry_name: entry_name) {
+    AttemptExitEntryDecoded { record } =>
+      match record.subject {
+        RoadmapAttemptExit { node_id: _, attempt_key: _, role } => attempt_worker_invocation_of(role: role)
+        ComputeAttemptExit { identity: _ } => none
+      }
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => none
+  }
+}
+
+test fn a_worker_role_word_decodes_to_its_invocation_and_a_malformed_one_is_refused() -> Bool {
+  let first = match witness_worker_invocation(entry_name: "n+k+worker+0123456789abcdef0123456789abcdef+success+exited+0") { Present { value: n } => n == 0 Absent => false }
+  let resumed = match witness_worker_invocation(entry_name: "n+k+worker-resumed-2+0123456789abcdef0123456789abcdef+success+exited+0") { Present { value: n } => n == 2 Absent => false }
+  let obligation = match witness_worker_invocation(entry_name: "n+k+obligation+0123456789abcdef0123456789abcdef+success+exited+0") { Present { value: _ } => false Absent => true }
+  let malformed = match attempt_exit_entry_decode(entry_name: "n+k+worker-resumed-x+0123456789abcdef0123456789abcdef+success+exited+0") {
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => true
+    AttemptExitEntryDecoded { record: _ } => false
+  }
+  first && resumed && obligation && malformed
 }
