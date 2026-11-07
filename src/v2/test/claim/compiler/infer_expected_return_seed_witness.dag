@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some, DeclaredTypePosition, PositionDeclaredReturn, diagnostics_inhabitance_position }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, String }
@@ -85,6 +85,26 @@ fn ers_fatal_is(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   }
 }
 
+// THE POSITION BESIDE THE REASON, read from the SAME infer call through the one accessor. A reason
+// alone says a refusal carried that reason; asserting the position too means a refusal of the same
+// shape reported at some other position fails this claim instead of passing it, and neither fact is
+// inferred from the other.
+fn ers_fatal_position(o: Outcome<ResolvedTree>) -> Optional<DeclaredTypePosition> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+      }
+  }
+}
+
+fn ers_fatal_at(o: Outcome<ResolvedTree>, reason: Symbol, position: DeclaredTypePosition) -> Bool {
+  ers_fatal_is(o: o, reason: reason) && ers_fatal_position(o: o) == Present { value: position }
+}
+
+
 fn ers_has(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
   match o {
     Rejected { diagnostics: _ } => false
@@ -117,4 +137,4 @@ test fn ers_k_refuses_at_the_argument_holds() -> Bool { ers_has(o: ers_k(), reas
 
 fn ers_pick() -> Outcome<ResolvedTree> { ers_assemble(body: concat(ers_row(), "fn pick<T>(a: T) -> T { a }\n\nfn kp(c: Cell) -> Row { pick(c) }\n")) }
 test fn ers_k_seeded_conflict_refuses_at_the_argument_holds() -> Bool { ers_has(o: ers_pick(), reason: ^application_argument_does_not_inhabit) }
-test fn ers_k_seeded_conflict_is_not_the_return_refusal_holds() -> Bool { !ers_has(o: ers_pick(), reason: ^arrow_body_does_not_inhabit_declared_return) }
+test fn ers_k_seeded_conflict_is_not_the_return_refusal_holds() -> Bool { !ers_has(o: ers_pick(), reason: ^inhabitance_structural_roots_differ) && ers_fatal_position(o: ers_pick()) == Absent }

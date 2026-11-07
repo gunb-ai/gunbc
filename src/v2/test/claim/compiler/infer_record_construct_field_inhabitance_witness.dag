@@ -12,7 +12,7 @@ import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus }
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, None, Outcome, Rejected, Some, Suggested, Unavailable, diagnostics_has_reason, node_locus, DeclaredTypePosition, PositionDeclaredReturn, diagnostic_inhabitance_position }
 import v2.std.integer { integer_int_type_node }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
@@ -198,6 +198,22 @@ fn rcf_refuses_with(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
     RcfInferAccepted { diagnostics: _ } => false
     RcfResolveRefused => false
   }
+}
+
+// THE POSITION, ALONGSIDE THE REASON, from the same verdict and the same diagnostic. rcf_refusal
+// already picks the diagnostic that carries a given reason; this reads that diagnostic's judgment
+// position through the one accessor, so the two facts are asserted separately and each can fail
+// alone -- a refusal of the same shape reported at some other position fails the claim.
+fn rcf_position_at(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Optional<DeclaredTypePosition> {
+  match rcf_refusal(resolved: resolved, reason: reason) {
+    Present { value: d } => diagnostic_inhabitance_position(d: d)
+    Absent => optional_absent()
+  }
+}
+
+fn rcf_refuses_at(resolved: Outcome<ResolvedTree>, reason: Symbol, position: DeclaredTypePosition) -> Bool {
+  rcf_refuses_with(resolved: resolved, reason: reason)
+    && rcf_position_at(resolved: resolved, reason: reason) == Present { value: position }
 }
 
 fn rcf_refusal(resolved: Outcome<ResolvedTree>, reason: Symbol) -> Optional<Diagnostic> {
@@ -404,7 +420,8 @@ test fn rcf_a_generic_records_second_field_must_inhabit_the_instance_holds() -> 
 // the declared-return judgment (a data initializer is a nullary Arrow's body); before record
 // introduction the body's type was not derived and the case was not decided.
 test fn rcf_a_construct_is_its_declared_record_at_a_declared_type_holds() -> Bool {
-  rcf_refuses_with(resolved: rcf_resolved_other(), reason: ^arrow_body_does_not_inhabit_declared_return)
+  rcf_refuses_at(resolved: rcf_resolved_other(), reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] })
 }
 
 // A BOOL-DECLARED FIELD IS JUDGED LIKE AN INT-DECLARED ONE: `m: Bool` holding `3` refuses. Until the
@@ -615,11 +632,13 @@ test fn rcf_generic_nullary_arm_let_annotation_is_accepted_holds() -> Bool {
 
 // FsEmpty fits any FsList<X>. The red is a String head at FsList<Int>.
 test fn rcf_generic_nullary_arm_closed_int_at_string_return_refuses_holds() -> Bool {
-  rcf_refuses_with(resolved: rcf_resolved_fs_return_mismatch(), reason: ^arrow_body_does_not_inhabit_declared_return)
+  rcf_refuses_at(resolved: rcf_resolved_fs_return_mismatch(), reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] })
 }
 
 // UNFOLDING AN ALIAS DOES NOT ADMIT A DIFFERENT TYPE. `type AliasInt = Int` then `true` at that
 // return still refuses: the declared position is Int after identity unfold, not a free pass.
 test fn rcf_alias_to_a_different_type_still_refuses_holds() -> Bool {
-  rcf_refuses_with(resolved: rcf_resolved_alias_wrong(), reason: ^arrow_body_does_not_inhabit_declared_return)
+  rcf_refuses_at(resolved: rcf_resolved_alias_wrong(), reason: ^inhabitance_structural_roots_differ,
+    position: PositionDeclaredReturn { argument_ordinal_path: [] })
 }

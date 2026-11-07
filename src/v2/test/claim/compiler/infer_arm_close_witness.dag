@@ -9,7 +9,7 @@ import v2.extdeps.languages.dag { dag_language_model }
 import std.algebra { Cons, Empty }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason, diagnostics_has_reason, Some, DeclaredTypePosition, PositionDeclaredReturn, diagnostics_inhabitance_position }
 import v2.std.node { Symbol }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, String }
@@ -84,6 +84,26 @@ fn ers_fatal_is(o: Outcome<ResolvedTree>, reason: Symbol) -> Bool {
       }
   }
 }
+
+// THE POSITION BESIDE THE REASON, read from the SAME infer call through the one accessor. A reason
+// alone says a refusal carried that reason; asserting the position too means a refusal of the same
+// shape reported at some other position fails this claim instead of passing it, and neither fact is
+// inferred from the other.
+fn ers_fatal_position(o: Outcome<ResolvedTree>) -> Optional<DeclaredTypePosition> {
+  match o {
+    Rejected { diagnostics: _ } => optional_absent()
+    Accepted { value: root, diagnostics: _ } =>
+      match infer(tree: root) {
+        Accepted { value: _, diagnostics: _ } => optional_absent()
+        Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+      }
+  }
+}
+
+fn ers_fatal_at(o: Outcome<ResolvedTree>, reason: Symbol, position: DeclaredTypePosition) -> Bool {
+  ers_fatal_is(o: o, reason: reason) && ers_fatal_position(o: o) == Present { value: position }
+}
+
 
 fn ers_error_count(o: Outcome<ResolvedTree>) -> Int {
   match o {
@@ -290,11 +310,11 @@ test fn rb_s_if_and_both_match_forms_refuse_with_one_reason() -> Bool { ers_fata
 fn rb_k1() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { Absent } else { OtherNone } } }\n") }
 fn rb_k2() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { OtherNone } else { Absent } } }\n") }
 fn rb_k3() -> Outcome<ResolvedTree> { ers_assemble(body: "fn f(b: Bool, c: Bool) -> Int? { if b { Present { value: 1 } } else { if c { Absent } else { Absent } } }\n") }
-test fn rb_k1_nested_arm_of_another_type_refuses_after_closure() -> Bool { ers_fatal_is(o: rb_k1(), reason: ^arrow_body_does_not_inhabit_declared_return) && !ers_infer_accepted(o: rb_k1()) }
-test fn rb_k2_same_in_the_other_inner_arm_order() -> Bool { ers_fatal_is(o: rb_k2(), reason: ^arrow_body_does_not_inhabit_declared_return) && !ers_infer_accepted(o: rb_k2()) }
+test fn rb_k1_nested_arm_of_another_type_refuses_after_closure() -> Bool { ers_fatal_at(o: rb_k1(), reason: ^inhabitance_structural_roots_differ, position: PositionDeclaredReturn { argument_ordinal_path: [] }) && !ers_infer_accepted(o: rb_k1()) }
+test fn rb_k2_same_in_the_other_inner_arm_order() -> Bool { ers_fatal_at(o: rb_k2(), reason: ^inhabitance_structural_roots_differ, position: PositionDeclaredReturn { argument_ordinal_path: [] }) && !ers_infer_accepted(o: rb_k2()) }
 test fn rb_k3_absent_beside_absent_accepts() -> Bool { ers_infer_accepted(o: rb_k3()) }
 fn rb_k4() -> Outcome<ResolvedTree> { ers_assemble(body: "type Other<T> = OtherNone | OtherSome { value: T }\nfn f(b: Bool, c: Bool) -> Int? { OtherNone }\n") }
-test fn rb_k4_foreign_constructor_at_the_declared_position_refuses_with_the_declared_return_judgment() -> Bool { ers_fatal_is(o: rb_k4(), reason: ^arrow_body_does_not_inhabit_declared_return) }
+test fn rb_k4_foreign_constructor_at_the_declared_position_refuses_with_the_declared_return_judgment() -> Bool { ers_fatal_at(o: rb_k4(), reason: ^inhabitance_structural_roots_differ, position: PositionDeclaredReturn { argument_ordinal_path: [] }) }
 
 // RULE A, RECORD FIELDS AND DECLARED FORMALS: the expected type seeds the generic instantiation at every position that declares one.
 // Each refusal asserts its exact fatal reason and has its accepting positive beside it.
