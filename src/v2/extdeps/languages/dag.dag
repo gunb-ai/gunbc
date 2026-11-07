@@ -8368,7 +8368,7 @@ fn dag_authored_name_is_parse_production_projection(name: Symbol) -> Bool {
 // Stamp edges on a MODULE SURFACE only. Same spelling on an ordinary record is a user field
 // and must still be judged (DESIGN §5: refuse, never widen).
 fn dag_edge_is_module_surface_parse_projection(carrier: Node, name: Symbol) -> Bool {
-  dag_node_is_module_surface(node: carrier) &&
+  (dag_node_is_module_surface(node: carrier) || service_payload_node_is_marked(node: carrier)) &&
     dag_authored_name_is_parse_production_projection(name: name)
 }
 
@@ -8429,6 +8429,30 @@ fn namespace_graft_namespace_body_members_onto(body: Node, acc: FreeMonoid<Edge>
       Positional => Cons { head: e, tail: a }
     }
   })
+}
+
+// THE MARK MEANS A SERVICE'S OPERATION PAYLOAD. The leaf a service lowers its operations into is a Conj of
+// Arrow members, the same shape a resource declaration's capabilities lower to, so the shape cannot say
+// which it is. The stamp is the same provenance vocabulary the module body uses (identity atom under
+// grammar_production_identity_node_projection) with its own identity, so it is NOT a module body
+// (namespace_graft_node_is_module_body is false on it) and every reader that already skips that edge
+// skips this one. Constructed by v2.compiler.body_lowering_fold body_lower_service_node_image; read by
+// v2.compiler.symbol_index_fill.
+data service_payload_identity: Symbol = ^service_payload
+
+fn service_payload_node(edges: List<Edge>, source: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat([dag_named_edge(name: ^grammar_production_identity_node_projection, target: dag_inhabitant_atom(id: service_payload_identity))], edges),
+    occurrence_id: source.occurrence_id
+  }
+}
+
+fn service_payload_node_is_marked(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == service_payload_identity
+    Absent => false
+  }
 }
 
 fn namespace_graft_node_is_module_body(node: Node) -> Bool {
