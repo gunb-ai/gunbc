@@ -65,7 +65,7 @@ data srv1_serving_wrapper: RetainedShellScript = RetainedShellScript {
 // THE WRAPPER THAT THE RELAUNCH WILL INSTALL. srv1_serving_wrapper above stays the body the running
 // container was launched from (its sha256 is the startup receipt's, history); this is the body the
 // allowance now requires, kept apart until the operator-gated relaunch makes the host copy equal it.
-// The memory flags and the cache-tier size of the body below are RENDERED from srv1_serving_allowance, not typed beside it:
+// ONLY the --memory/--memory-swap/--shm-size flags and the LMCACHE_L1_GB value of the body below are RENDERED from srv1_serving_allowance. The rest is the text of the host copy that already runs (sha-pinned, relaunched 2026-11-07T19:43:49Z): its header comment (71/56/66 GiB), its START line (L1 100G, L2 160G) and its removal wait are typed text, and a new allowance re-renders the flags but not those. That is a declared defect of this copy, fixed only by the next wrapper revision.
 // the body's bytes equal the host copy's (pinned by srv1_resized_wrapper_sha256_hex), so editing the allowance without a
 // matching declared relaunch changes the hash and the witness fails. A figure the renderers refuse yields an empty
 // string, which the sha pin then refuses: no default is invented.
