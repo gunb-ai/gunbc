@@ -2415,21 +2415,7 @@ pub(crate) fn resolved_graph_from_sources_with_index_typed(
             let extended = super::provider_acquire::extend_with_acquired(
                 sources.clone(),
                 &modules,
-                &|module: &str| {
-                    let provider = index
-                        .source_files
-                        .get(module)
-                        .cloned()
-                        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
-                    let walked = resolve_transitively(
-                        vec![provider],
-                        &index.source_files,
-                        &index.module_graph_facts,
-                    )
-                    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
-                    extend_sources_to_both_closure_fixpoint(walked, index)
-                        .map_err(super::provider_acquire::ClosureOfError::Closure)
-                },
+                &|module: &str| provider_closure_of(index, module),
             )?;
             let typed_refusal = match extended {
                 super::provider_acquire::Extension::Extended(merged) => {
@@ -4037,4 +4023,26 @@ mod entry_resolve_refusal_tests {
         }
         let _ = fs::remove_dir_all(&dir);
     }
+}
+
+/// One acquired provider's closure, built from the source the index already holds: the same import
+/// walk and reference fixpoint an entry's closure takes, so no byte is read from disk and no read can
+/// fail. Shared by the resolve core's acquisition step and the entry compile's closure.
+pub(crate) fn provider_closure_of(
+    index: &MultiEntryIndex,
+    module: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, super::provider_acquire::ClosureOfError> {
+    let provider = index
+        .source_files
+        .get(module)
+        .cloned()
+        .ok_or(super::provider_acquire::ClosureOfError::OutsideIndex)?;
+    let walked = resolve_transitively(
+        vec![provider],
+        &index.source_files,
+        &index.module_graph_facts,
+    )
+    .map_err(super::provider_acquire::ClosureOfError::Closure)?;
+    extend_sources_to_both_closure_fixpoint(walked, index)
+        .map_err(super::provider_acquire::ClosureOfError::Closure)
 }
