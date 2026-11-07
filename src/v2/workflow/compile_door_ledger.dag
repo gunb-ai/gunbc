@@ -24,6 +24,7 @@ import v2.workflow.floor_diff_observe {
   FloorNameStatusDiffResult,
   NameStatusDiffFail,
   NameStatusDiffOk,
+  NameStatusBaseRefUnresolvable,
   floor_observe_git_diff_name_status_for_ci
 }
 import v2.std.artifact { Artifact, SourceFile }
@@ -219,6 +220,10 @@ fn affected_ledger_from_diff(
 ) -> AffectedLedgerResult {
   match diff {
     NameStatusDiffFail { reason: r } => AffectedDiffRefused { reason: r }
+    // A base that names nothing is a REFUSAL to ledger, not an empty ledger: widening the
+    // affected set because the observation could not be located is the absorbing fallback this
+    // row exists to keep out (DESIGN section 5).
+    NameStatusBaseRefUnresolvable { reason: r } => AffectedDiffRefused { reason: r }
     NameStatusDiffOk { changed_paths: changed, departed_paths: _ } =>
       AffectedLedgered {
         rows: door_ledger(paths: dag_module_paths(paths: changed), pool_roots: pool_roots)

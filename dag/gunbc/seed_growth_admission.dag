@@ -143,6 +143,8 @@ import gunbc.floor.floor_cost_debt_edit_seed_growth { floor_cost_debt_edit_seed_
 import gunbc.listing_completeness_seed_growth { listing_completeness_seed_growth_justification }
 import gunbc.derived_row_roster_seed_growth { derived_row_roster_seed_growth_justification }
 import gunbc.run_demand_acquire_seed_growth { run_demand_acquire_seed_growth_justification }
+import gunbc.compile_entry_demand_acquired_seed_growth { compile_entry_demand_acquired_seed_growth_justification }
+import gunbc.keyed_module_lookup_seed_growth { keyed_module_lookup_seed_growth_justification }
 import gunbc.generated_provider_acquire_seed_growth { generated_provider_acquire_seed_growth_justification }
 import gunbc.live_tree_stamp_detector_seed_growth { live_tree_stamp_detector_seed_growth_justification }
 import gunbc.floor.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
@@ -293,6 +295,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     listing_completeness_seed_growth_justification,
     derived_row_roster_seed_growth_justification,
     run_demand_acquire_seed_growth_justification,
+    keyed_module_lookup_seed_growth_justification,
     generated_provider_acquire_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
     cross_claim_demand_census_seed_growth_justification,
@@ -400,7 +403,8 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     native_product_cache_seed_growth_justification,
     run_arg_typed_bind_seed_growth_justification,
     rust_shell_stderr_capture_seed_growth_justification,
-    cli_wire_program_producer_seed_growth_justification
+    cli_wire_program_producer_seed_growth_justification,
+    compile_entry_demand_acquired_seed_growth_justification
   ]
 }
 
