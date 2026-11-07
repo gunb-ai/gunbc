@@ -540,7 +540,6 @@ data reference_conservation_stratified_sample_paths: List<String> = [
   "dag/test/claim/systemctl_status_read_scaffold.dag",
   "dag/test/claim/time_scale_factor_derivation.dag",
   "dag/test/claim/uefi_boot_config.dag",
-  "dag/test/claim/v1_dag_parse_witness.dag",
   "dag/test/claim/wet_hermetic_equivalence_witness.dag",
   "dag/test/ctl/neg_field.dag",
   "dag/test/fixture/decl_fact_value_projection/specimens.dag",

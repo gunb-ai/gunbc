@@ -246,7 +246,6 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_host_binary(path: "src/bin/interp_recorded_fixture_witness.rs"),
   retained_host_binary(path: "src/bin/namespace_structural_root_exposure_generated_witness.rs"),
   retained_host_binary(path: "src/bin/parse_witness.rs"),
-  retained_host_binary(path: "src/bin/v1_src_dag_parse.rs"),
   retained_test_harness(path: "tests/bounded_shell_stream_capture_replay.rs"),
   retained_test_harness(path: "tests/interpreter_dispatch_authority.rs"),
   retained_test_harness(path: "tests/interpreter_dispatch_bijection_compile_red.rs"),

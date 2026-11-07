@@ -88,6 +88,74 @@ fn parse_sweep_refusal_location_follows_the_offending_line() {
     );
 }
 
+// Re-homed in-process from the deleted `v1_src_dag_parse` bin rows of
+// `test.claim.diagnostic_span_location_rendering_witness`: a file with no lexemes has no position
+// to name, so the sweep must say so by name rather than fabricate a line:col.
+#[test]
+fn parse_sweep_refuses_a_comments_only_file_as_unlocated_naming_the_file() {
+    let dir = scratch_root("no_lexemes");
+    let errors = sweep_errors(&dir, "no_lexemes", "// only a comment\n");
+
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one refusal, got {errors:?}"
+    );
+    assert!(
+        errors[0].contains("probe.dag") && errors[0].contains("file has no lexemes"),
+        "the refusal must name the file and the unlocated phrase, got: {}",
+        errors[0]
+    );
+    assert!(
+        !errors[0].contains("probe.dag:1:") && !errors[0].contains("probe.dag:2:"),
+        "an unlocated refusal must not fabricate a line:col, got: {}",
+        errors[0]
+    );
+}
+
+// Refusal isolation: one bad file among valid ones yields exactly one finding, naming the bad file.
+#[test]
+fn parse_sweep_one_bad_file_among_valid_files_gives_exactly_one_finding() {
+    let dir = scratch_root("isolation");
+    let root = dir.join("probe_root");
+    std::fs::create_dir_all(&root).expect("probe root");
+    for n in 0..3 {
+        std::fs::write(
+            root.join(format!("ok_{n}.dag")),
+            format!("module probe_root.ok_{n}\n\ndata ok: Bool = true\n"),
+        )
+        .expect("valid source");
+    }
+    // Clean-workspace control: with only the valid files the sweep must succeed and count all
+    // three, so a sweep that never read them could not pass the isolation assertion below.
+    match v1_compiler::cli_run::run_dag_parse_sweep(&dir, &["probe_root"]) {
+        Ok(sweep) => assert_eq!(
+            sweep.parse_clean, 3,
+            "the three valid files must be read clean"
+        ),
+        Err(errors) => panic!("valid files alone must sweep clean, got {errors:?}"),
+    }
+    std::fs::write(root.join("bad.dag"), "// only a comment\n").expect("bad source");
+
+    let errors = match v1_compiler::cli_run::run_dag_parse_sweep(&dir, &["probe_root"]) {
+        Ok(sweep) => panic!(
+            "sweep reported {} clean file(s); bad.dag must refuse",
+            sweep.parse_clean
+        ),
+        Err(errors) => errors,
+    };
+    assert_eq!(
+        errors.len(),
+        1,
+        "expected exactly one finding, got {errors:?}"
+    );
+    assert!(
+        errors[0].contains("bad.dag"),
+        "the finding must name bad.dag, got: {}",
+        errors[0]
+    );
+}
+
 // Out-of-closure body grammaticality belongs to the parse sweep, not to an entry compile.
 // Pair A: the entry's dependency closure compiles; the same malformed body, once IN the closure,
 // still refuses the compile. Pair B: the same population under `run_dag_parse_sweep` refuses at

@@ -29,9 +29,9 @@ module test.claim.diagnostic_span_location_rendering_witness
 //        |
 //      9 |     2
 //        |     ^
-//   the parse sweep (`v1_src_dag_parse`, the instrument its own header recommends for an
-//   unattributed parse refusal) over a workspace holding one comments-only file:
-//     v1_src_dag_parse: …/dag/no_lexemes.dag:3:1: expected keyword 'module', found Eof
+//   (the parse sweep's own no-lexemes and refusal-isolation rows left this witness for in-process
+//   tests: `dag_parse_sweep_refusal_location.rs`, `parse_sweep_refuses_a_comments_only_file_as_unlocated_naming_the_file`
+//   and `parse_sweep_one_bad_file_among_valid_files_gives_exactly_one_finding`, calling `run_dag_parse_sweep` directly)
 //
 // THE UNITS ARE THE DEFECT. The offsets above are the file's own byte positions, and they are
 // where a reader is sent: 90 is line 7 column 19 -- one column past the last character of
@@ -64,8 +64,6 @@ module test.claim.diagnostic_span_location_rendering_witness
 
 import std.logic { Bool }
 import std.types { Int, String, List, FilePath }
-import std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }
-import std.measure { byte_size }
 import extdeps.git
 import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.git.inspect
@@ -86,11 +84,10 @@ import extdeps.process.posix_exit {
   exit_code_command_invoked_cannot_execute,
   exit_code_command_not_found,
 }
-import v1.std.core { unlocated_position_phrase }
 
 data claim_subject: String = "a refusal's location is rendered by one authority in the units the author reads (line:col), and the EOF span ends at the last lexeme rather than at the consumed position"
 
-data real_execution_home_doc: String = "LocalRepoWetLane: every row runs the checkout's own built binary (target/release/gunbc, target/release/v1_src_dag_parse) over fixtures this claim WRITES at run time under the gitignored target/, and the text a row asserts on exists only on that process's output stream. No job runs it; it is covered by v1_required_lanes_withdrawn."
+data real_execution_home_doc: String = "LocalRepoWetLane: every row runs the checkout's own built binary (target/release/gunbc) over fixtures this claim WRITES at run time under the gitignored target/, and the text a row asserts on exists only on that process's output stream. No job runs it; it is covered by v1_required_lanes_withdrawn."
 
 // ---------------------------------------------------------------------------------------------
 // THE FIXTURES. Each is the smallest file that refuses for exactly ONE reason, so a row cannot
@@ -112,32 +109,6 @@ data eof_plain_source: String = "module probe.eof.plain\n\nfn bad() -> Int {\n  
 // the compile lane and `9:5` by the emitted CLI. The comment sits INSIDE the call, so the
 // straddled span is not a newline artifact either.
 data arity_control_source: String = "module probe.arity.control\n\nfn f(x: Int) -> Int { x }\n\nfn bad() -> Int {\n  f(\n    1,\n    // a whole comment line inside the call\n    2\n  )\n}\n"
-
-// THE NO-LEXEMES FILE: nothing but trivia, so there is no lexeme to end a span at. Measured: the
-// sweep sends the author to `no_lexemes.dag:3:1`, a line this file does not have (it is 2 lines
-// plus a trailing newline), and `gunbc compile` never parses it at all -- closure-load refuses it
-// with 'has no provenance in the module-graph facts pool … missing a module declaration'.
-data comments_only_source: String = "// nothing but a comment\n// and another\n"
-
-// A valid module, written beside the no-lexemes file in the sweep's workspace. THE INSTRUMENT'S
-// OWN CONTROL: its header warns 'a bin that read no files would report the same thing', so a
-// clean-reporting sweep is only evidence if a real file is reported clean while the bad one is
-// still refused.
-// One per sweep root, each with its OWN module identity: four files declaring the same module is a
-// duplicate-identity refusal, which would make the clean sweep dirty for a reason that has nothing
-// to do with what row 6 is measuring.
-data valid_dag_module_source: String = "module scratch.clean.dag.module\n\nfn ok() -> Int { 1 }\n"
-data valid_v1_module_source: String = "module scratch.clean.v1.module\n\nfn ok() -> Int { 1 }\n"
-data valid_v2_module_source: String = "module scratch.clean.v2.module\n\nfn ok() -> Int { 1 }\n"
-data valid_body_module_source: String = "module scratch.clean.body.module\n\nfn ok() -> Int { 1 }\n"
-
-// THE AUTHORITY'S WORD for "this refusal has no position", IMPORTED from the authority itself
-// (`data unlocated_position_phrase` in src/v1/00_core.dag) rather than copied, so the no-lexemes row
-// asserts the string the authority actually prints and there is no second literal to drift. The row
-// is still a POSITIVE assertion, not the absence of a shape: e.g.
-// `no_lexemes.dag: (no position: file has no lexemes)`. The phrase carries no digit-after-colon run,
-// so it is not a location by the predicate below either.
-data unlocated_marker: String = unlocated_position_phrase
 
 // The digits and separators an AUTHORITY-FORMAT position must contain, so "a position" is decided
 // structurally rather than by the specific numbers in the header: `m.dag:9:5` qualifies,
@@ -310,8 +281,6 @@ type WitnessOutcome {
 
 data gunbc_instrument: String = "target/release/gunbc"
 data gunbc_instrument_entry: String = "gunbc"
-data parse_instrument: String = "target/release/v1_src_dag_parse"
-data parse_instrument_entry: String = "v1_src_dag_parse"
 
 // THE NAME A SUCCESSFUL LISTING OF THE INSTRUMENT DIRECTORY CANNOT CONTAIN. Used only by the row
 // that proves this gate bites; it lives in the same directory as the real instruments, so the
@@ -491,14 +460,6 @@ fn compiled_gated(root: String, name: String, content: String) -> InstrumentRun 
   )
 }
 
-fn swept_gated(root: String, with_no_lexemes_file: Bool) -> InstrumentRun {
-  instrument_gate(
-    instrument: parse_instrument,
-    entry: parse_instrument_entry,
-    result: swept(root: root, with_no_lexemes_file: with_no_lexemes_file)
-  )
-}
-
 // The one driver. `--target dag` is what the CI lanes compile, so a row exercises the route an
 // author is on rather than a neighbouring one.
 fn compiled(root: String, name: String, content: String) -> WitnessOutcome {
@@ -519,50 +480,6 @@ fn compiled(root: String, name: String, content: String) -> WitnessOutcome {
   // are deleted here rather than left for a later reader to trip over.
   let discarded = shell.Remove.RecursiveForce(path: case_dir(root: root, name: name) as FilePath)
   result
-}
-
-// The parse sweep over a workspace THIS ROW BUILDS. The sweep walks the four roots named by
-// cli_run::DAG_PARSE_SWEEP_ROOTS relative to its CWD, so the row supplies all four (measured: with
-// `dag/` holding only the no-lexemes file and no sibling roots, the sweep refuses to run at all --
-// 'no .dag files found under …/dag -- check the workspace root' -- so a sweep row that skipped
-// this would assert on a refusal to MEASURE rather than on a refusal to parse).
-// `with_no_lexemes_file` is the only difference between a row's bad workspace and its clean one,
-// so the pair can only be explained by the file itself.
-fn swept(root: String, with_no_lexemes_file: Bool) -> WitnessOutcome {
-  let toplevel = git.Inspect.Toplevel()
-  let made_dag = shell.Mkdir.Parents(path: concat(root, "/dag") as FilePath)
-  let made_v1 = shell.Mkdir.Parents(path: concat(root, "/src/v1") as FilePath)
-  let made_v2 = shell.Mkdir.Parents(path: concat(root, "/src/v2") as FilePath)
-  let made_body = shell.Mkdir.Parents(path: concat(root, "/test/primitive_runtime_body") as FilePath)
-  let good_dag = Filesystem.Write(path: concat(root, "/dag/dag_module.dag"), content: valid_dag_module_source)
-  let good_v1 = Filesystem.Write(path: concat(root, "/src/v1/v1_module.dag"), content: valid_v1_module_source)
-  let good_v2 = Filesystem.Write(path: concat(root, "/src/v2/v2_module.dag"), content: valid_v2_module_source)
-  let good_body = Filesystem.Write(path: concat(root, "/test/primitive_runtime_body/body_module.dag"), content: valid_body_module_source)
-  let bad = if with_no_lexemes_file {
-    Filesystem.Write(path: concat(root, "/dag/no_lexemes.dag"), content: comments_only_source)
-  } else { made_dag }
-  gunbc.WitnessBin.Run(
-    workdir: root as FilePath,
-    bin_path: concat(toplevel.path, "/target/release/v1_src_dag_parse"),
-    // A tail wide enough to hold the census. Measured at the head: in a scratch cwd the sweep
-    // prints ~83 CITATION-DEBT-ROW-STALE lines (~20 KB) BEFORE its census line, so the default
-    // BoundedTail of 16384 bytes truncates the census away and the row would fail for a reason
-    // unrelated to spans. `Complete` is not available here -- measured refusal,
-    // WitnessStderrCaptureCompleteBudgetUnreadable: it requires the GUNBC_MEMORY_BUDGET_BYTES
-    // authority, which a claim does not set.
-    stderr_capture: BoundedTail { bytes: byte_size(count: 262144) }
-  )
-}
-
-// A finding line is what the SWEEP prints per refusal; its header says 'ONE LINE PER REFUSAL
-// NAMING THE FILE'. The census line shares the prefix but names no file, so it is excluded here
-// and asserted separately, where its own shape is the subject.
-fn is_sweep_finding_line(l: String) -> Bool {
-  starts_with(s: l, prefix: "v1_src_dag_parse: ") && contains(l, ".dag:") && !contains(l, "parse-clean")
-}
-
-fn sweep_finding_lines(result: WitnessOutcome) -> List<String> {
-  filter(refusal_lines(result: result), is_sweep_finding_line)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -681,42 +598,6 @@ test fn the_compile_lane_line_and_the_cli_line_render_the_same_position_for_the_
   }
 }
 
-// NO LEXEMES => NO POSITION, AND NO FABRICATED ONE. A file of pure trivia has no lexeme to end a
-// span at, so it must be refused with the authority's typed Unlocated cause -- never `byte 0`, and
-// never a position at a line the file does not have. Measured: the sweep prints
-// `no_lexemes.dag:3:1` for a 2-line file, and `gunbc compile` cannot see the case at all (its
-// closure-load refuses the file for a missing module declaration, which is why THIS row uses the
-// instrument whose header exists for exactly that: 'this binary prints ONE LINE PER REFUSAL NAMING
-// THE FILE'). Pre-fix: FAILS, because the author is sent to a fabricated line rather than told the
-// refusal is unlocated.
-test fn a_file_with_no_lexemes_is_refused_as_unlocated_rather_than_at_a_fabricated_position() -> ProcessExit {
-  let root = scratch_root()
-  if !scratch_is_usable(root: root) {
-    return instrument_refusal(instrument: parse_instrument, cause: "no scratch root could be created, so no fixture exists to judge")
-  }
-  match swept_gated(root: root, with_no_lexemes_file: true) {
-    NoVerdict { instrument: i, cause: c } => instrument_refusal(instrument: i, cause: c)
-    Ran { instrument: i, result: result } => {
-      let findings = sweep_finding_lines(result: result)
-      let text = join(findings, separator: "\n")
-      let usable = discard_scratch(root: root)
-      let refused_our_file = result.exit_code != 0 && contains(text, "no_lexemes.dag")
-      let is_our_refusal = contains(text, "expected keyword 'module'")
-      verdict(
-        usable && (
-          refused_our_file && is_our_refusal
-            && contains(text, unlocated_marker)
-            && !contains(text, "no_lexemes.dag:3:1")
-            && !contains(text, "byte 0")
-            && !contains(text, ":0:1:")
-        ),
-        i,
-        "the no-lexemes file being refused as unlocated rather than at a fabricated position"
-      )
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // THE POSITIVE CONTROLS. Both PASS at the head, before any fix, with the same binaries and the
 // same harness. They are what makes the four rows above evidence: without them, a row that reads
@@ -755,60 +636,6 @@ test fn an_ordinary_code_span_is_located_in_line_col_with_the_caret_on_the_lexem
   }
 }
 
-// THE INSTRUMENT DISCRIMINATES. Its own header: 'a bin that read no files would report the same
-// thing', so a sweep that refuses the bad file must simultaneously report the good ones clean --
-// not silently, but by naming them in its parse-clean population. Measured: the finding names
-// exactly one file, `dag/no_lexemes.dag`, and the valid modules it wrote in the same run are not
-// findings. PASS at the head.
-test fn the_sweep_refuses_the_no_lexemes_file_while_reporting_the_valid_modules_clean() -> ProcessExit {
-  let root = scratch_root()
-  if !scratch_is_usable(root: root) {
-    return instrument_refusal(instrument: parse_instrument, cause: "no scratch root could be created, so no fixture exists to judge")
-  }
-  // EACH RUN IS GATED SEPARATELY. This row drives the sweep twice (once expecting a refusal, once
-  // expecting clean), and a verdict needs BOTH to have been observable: a clean run that never started
-  // would look exactly like a clean run that found nothing, which is the shape this row exists to
-  // distinguish.
-  match swept_gated(root: concat(root, "/clean"), with_no_lexemes_file: false) {
-    NoVerdict { instrument: i, cause: c } => instrument_refusal(instrument: i, cause: c)
-    Ran { instrument: i, result: clean } => {
-      let clean_findings = sweep_finding_lines(result: clean)
-      let clean_census = any_line_with(refusal_lines(result: clean), "parse-clean")
-      let list_is_empty_clean = count(clean_findings) == 0
-      match swept_gated(root: concat(root, "/bad"), with_no_lexemes_file: true) {
-        NoVerdict { instrument: j, cause: d } => instrument_refusal(instrument: j, cause: d)
-        Ran { instrument: _, result: bad } => {
-          let bad_findings = sweep_finding_lines(result: bad)
-          let bad_text = join(bad_findings, separator: "\n")
-          let bad_refused_our_file = count(bad_findings) > 0 && contains(bad_text, "no_lexemes.dag")
-          let usable = discard_scratch(root: root)
-          // THE DISCRIMINATION, scoped to the files THIS ROW WROTE. Other findings may appear in the same
-          // sweep (a real parse refusal anywhere in the repo's own sources, or an empty scratch root --
-          // measured at the head: `dag/valid_module.dag:1:1` from an earlier revision of this harness);
-          // those are other lanes' business and asserting their absence would make this row fail for
-          // reasons unrelated to spans. What must hold is that none of the FOUR VALID FILES I WROTE is a
-          // finding, while the no-lexemes file is.
-          let names_only_the_bad_file = contains(bad_text, "no_lexemes.dag")
-            && !any_line_with(refusal_lines(result: bad), "dag_module.dag")
-            && !any_line_with(refusal_lines(result: bad), "v1_module.dag")
-            && !any_line_with(refusal_lines(result: bad), "v2_module.dag")
-            && !any_line_with(refusal_lines(result: bad), "body_module.dag")
-          verdict(
-            usable && (
-              clean_census
-                && list_is_empty_clean
-                && bad_refused_our_file
-                && names_only_the_bad_file
-            ),
-            i,
-            "the sweep refusing the no-lexemes file while reporting the valid modules clean"
-          )
-        }
-      }
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // THE GUARD ITSELF, TESTED. Everything above assumes an instrument exists; this row is the reason
 // that assumption is not load-bearing. It is a RED in the sense that matters here: it must FAIL if
@@ -817,7 +644,7 @@ test fn the_sweep_refuses_the_no_lexemes_file_while_reporting_the_valid_modules_
 
 // THE GATE MUST REFUSE, NOT ASSERT OVER NOTHING, FOR A BINARY THAT IS NOT THERE. The name is a real
 // path in the real instrument directory -- which is what makes the absence ESTABLISHED: the listing
-// succeeds (the directory holds `gunbc` and `v1_src_dag_parse`) and does not name it, so this is not
+// succeeds (the directory holds `gunbc`) and does not name it, so this is not
 // the 'could not look' arm standing in for 'not there'. The row passes only if BOTH halves hold: the
 // gate says there is no verdict, AND the refusal the row would hand the harness is an `ExitFailure`
 // carrying that instrument's name. Delete the presence check from `instrument_gate` and the gate

@@ -23300,7 +23300,6 @@ mod module_grain_affected_equivalence_tests {
             "dag/test/claim/card_intake_risk_witness.dag",
             "dag/test/claim/ebay_listing_witness.dag",
             "src/v2/test/claim/bash_program_fold.dag",
-            "dag/test/claim/v1_dag_parse_witness.dag",
             "dag/gunbc/instruments/host_prelude.dag",
             "dag/gunbc/instruments/build_step.dag",
             "dag/gunbc/ci/ci_layer_roots.dag",

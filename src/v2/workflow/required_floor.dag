@@ -747,7 +747,6 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.type_reference_",
     "test.claim.namespace_",
     "test.claim.parse",
-    "test.claim.v1_dag_parse_witness",
     "test.claim.match_exhaustiveness_coproduct_witness",
     "test.claim.coproduct_payload_soundness_witness",
     "test.claim.action_use_admission_witness",

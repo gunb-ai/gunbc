@@ -415,8 +415,6 @@ fn floor_route_gap_chunk_03() -> List<String> {
       tail: Cons {
       head: "test.claim.typed_witness_invocation.typed_witness_bin_run_workdir_anchors_root_control_holds",
       tail: Cons {
-      head: "test.claim.v1_dag_parse_witness.v1_dag_parse_witnesses",
-      tail:     Cons {
       head: "v2.test.claim.auth_declared_but_unwired_witness.auth_declared_but_unwired_witness_keystone_holds",
       tail: Cons {
       head: "v2.test.claim.bootstrap.bootstrap_witness_keystone_holds",
@@ -433,7 +431,6 @@ fn floor_route_gap_chunk_03() -> List<String> {
       tail:   Cons {
       head: "v2.test.claim.execution.proactive_verification_ledger_overlap_execution.proactive_verification_ledger_overlap_execution_holds",
       tail:    Empty {}
-    }
     }
     }
     }
