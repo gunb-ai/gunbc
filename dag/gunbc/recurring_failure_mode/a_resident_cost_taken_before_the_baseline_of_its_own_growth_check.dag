@@ -1,0 +1,26 @@
+module gunbc.recurring_failure_mode.a_resident_cost_taken_before_the_baseline_of_its_own_growth_check
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread }
+
+data a_resident_cost_taken_before_the_baseline_of_its_own_growth_check: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_resident_cost_taken_before_the_baseline_of_its_own_growth_check" as NonEmptyStr,
+
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "INVALID STATE: a growth-bounded resident check reads its baseline at the first point it measures, so any cost the SAME process acquired before that point is folded into the baseline instead of being measured against it. In the heal regen round the one-resident-generation admission (v2.workflow.regen_convergence_transaction.regen_admit_generation_begin) compares orchestrator_resident_bytes_now against orchestrator_resident_bytes_at_first_generation plus a ceiling, and the round driver run_regen_round_cost (v1 seed, src/v1/stage0/src/required_regen_host.rs) can acquire whole-tree resolve indices in the orchestrator process before generation 0 is admitted, when its affected_scope selection is requested through claim_executor --regen-affected-scope. That selection reaches regen_emission_scope_for_diff, which reaches regen_scope_worktree_admitted, render_scope_selection, and affected_set_bound_for (through regen_module_edges and render_affected_set_bound), each building the whole-tree index whose cost the same file measures elsewhere. None of it can trip the bound, because all of it lands in the floor the bound is added to.",
+
+    "RECOGNITION RULE. Ask WHEN the resident state was acquired, not only what acquired it: before the first measurement of the check that is supposed to bound it, or after. A cost taken before the first measurement is unmeasurable by that check at any size, and the check still reports admitted. Where a process also runs generations, the question becomes whether the acquisition precedes the first generation's admission.",
+
+    "DISTINGUISHING FACT: this is not 'the orchestrator holds too much', and it is not a breach of the one-resident-generation contract as declared. Pre-baseline round-driver work is not generation state, and moving it off the parent is not what this row asks. What it asks is that a resident ceiling name the population it bounds and the instant from which it measures. A ceiling whose baseline is taken inside the measured process bounds only growth-after-that-instant, which is a different guarantee from the one its name advertises.",
+
+    "STRUCTURAL PREDICTION (DESIGN section 6b, stated before the confirming run): a round run with the affected-scope selection requested must show its first-generation baseline raised by the scope selection's own index cost while the admission still reports admitted; the same round with the selection off must keep its baseline at the demand-route floor. PR #16012 records the off half only: every baseline measured so far sits at the floor, because no run has requested the selection. The raising half is prediction, not observation, until a run requests it.",
+
+    "RUNG: unread, cause CeilingNotStated. No ceiling is stated anywhere for orchestrator-resident cost acquired before the first generation's admission, so there is no rung to read -- the guarantee the check's name advertises and the guarantee it delivers differ in the population they bound, not in how reliably they hold. The repair is not to raise a bound; it is for the ceiling to state the population it bounds, or for the acquisition to leave the measured process the way generation state already does.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster. Production consumer: the heal regen round's generation-begin admission, v2.workflow.regen_convergence_transaction.regen_admit_generation_begin. WHAT WOULD MOVE IT OFF UNREAD: a round run with the affected-scope selection requested that reports a first-generation baseline including the scope selection's index cost, beside an admission that states which population its ceiling bounds at the place the bound is read, not in a comment.",
+  ],
+
+  evidence: [],
+}
