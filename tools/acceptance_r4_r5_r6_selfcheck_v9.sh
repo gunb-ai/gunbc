@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-# acceptance_r4_r5_r6_selfcheck_v8 — the fixture self-test for the three v8 packets: one job per row (R4,
+# acceptance_r4_r5_r6_selfcheck_v9 — the fixture self-test for the three v8 packets: one job per row (R4,
 # R5, and R6 held). Item 8 is the v5 stream fix (the completion record is the runner's stderr, not stdout).
 # NOTHING FROM EITHER REPOSITORY IS EXECUTED and nothing is run on srv1: it feeds synthetic claim logs,
 # synthetic cgroup and memory.events files, synthetic run dirs and the packets' OWN tokenized command lines
@@ -13,36 +13,55 @@
 # end: (1) the launcher frame, (2) the pre-work bounds gate, (3) the strict OOM contract, (4) the three-code
 # exit contract, (5) the "discriminates nothing" statement, (6) wall accounting, (7) the completion record and
 # the verdict exactness rules, and (8, v5) WHICH STREAM carries the completion record: the producer emits it
-# with eprintln! (stderr) at line 1460 of the pinned claim_batch.rs while verdicts go to stdout, so the gate
+# with a single eprintln!("{}", partition.render(&timings)) call site in run() (line 1460 of the bytes at
+# these pins, a position recorded in the manifest rather than cited as a name) while verdicts go to stdout, so the gate
 # must read logs/<leg>.err and the classifier <leg>.out. Getting that wrong is #15695 G1 by another route:
 # every leg reports 0 records, a full-green row NO_OBSERVATIONs, and the grant is spent.
 #
-# Content checks are byte-identity gated, never proximate: a working-tree file stands in for the pinned bytes
-# only when `git hash-object` of it equals the blob id AT the pin; otherwise the check reports SKIPPED, never
-# passed. (This checkout is a blob:none partial clone: `git cat-file blob <pin>:<path>` would lazily FETCH and
-# can hang on a credential prompt, so pinned bytes are reached through local tree objects plus hash-equality,
-# and every git call here gets /dev/null on stdin.)
+# Content checks are pinned against PINNED bytes (v9): the bytes of <pin>:<path> are materialized by
+# `git cat-file blob` into a scratch file and re-verified with `git hash-object`, then grepped. v8 compared
+# the pinned blob id against the WORKING COPY, so whichever branch happened to be checked out decided
+# whether a byte check ran at all - 7 R6 audit checks and 2 others skipped themselves that way, and a skip
+# had been cited as coverage. Now no check reads a working-tree file, so a checkout cannot make one vanish.
+# A pinned blob this object store cannot produce offline is reported UNRESOLVED, and the run is INCOMPLETE
+# with a non-zero exit; unavailable content is never reported as a pass. (This checkout is a blob:none
+# partial clone: `git cat-file blob <pin>:<path>` lazily FETCHES for a missing blob and could hang on a
+# credential prompt, so the fetch risk is real; every git call here still gets /dev/null on stdin.)
+#
+# WHAT v9 CHANGES IN THIS HARNESS
+#   - skip() is relabelled UNRESOLVED and recorded; the summary reports INCOMPLETE and exits non-zero (2)
+#     whenever any check was skipped, and fixtures drive that rule (report_state below).
+#   - pinned bytes are compared blob-to-blob via pinfile(); ancestry claims go through ancestor_proof(),
+#     which treats a miss in a shallow clone as UNRESOLVED (a truncated graph can only hide ancestry) and
+#     reports the found chain length. The repo's shallow/partial-clone state is attested on stdout.
+#   - the v8 grep control on the run-path registration could not fail (both directions grepped the mutated
+#     copy); grepctl() now greps the SHIPPED packet and the mutated copy and can fail in either direction.
+#   - new inversions: cs_check's per-leg claim binding, its leg-set exactness, its cross-file duplicate scan,
+#     final_verdict's use of the cs_check snapshot, and the removal of every -k kill grace. Each must bite.
+#   - the fixture suites and this selfcheck are re-run under env -i with an empty HOME and PATH only: the
+#     fixtures need no host git identity, and the v8 git shape (identity on init only) must FAIL there.
 #
 # usage: acceptance_r4r5_selfcheck_v3.sh [repo-with-pinned-commits]
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# acceptance_r4_r5_r6_selfcheck_v8 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
+# acceptance_r4_r5_r6_selfcheck_v9 -> v6: v6 SPLITS the combined R4/R5 packet into two single-row jobs,
 # because the installed calmcrab-udrv v4 (855920ac) refuses any RUNTIME_S above 7200 in its own preflight
 # (sleek-owl-397 via calm-eagle-670 msg_384bca0f; same shape as #15695 diag-v2 booked at 11700). So each
 # row is its own job: its own clone/fetch/checkout/build, its own legs, its own launcher line, and its own
 # wall_gate that refuses a booking over the cap BEFORE any fetch. Every v5 gate stays, in all three.
-P4="$HERE/acceptance_r4_claim_run_v8.sh"
-P5="$HERE/acceptance_r5_claim_run_v8.sh"
-P6="$HERE/acceptance_r6_live_read_claim_run_v8.sh"
+P4="$HERE/acceptance_r4_claim_run_v9.sh"
+P5="$HERE/acceptance_r5_claim_run_v9.sh"
+P6="$HERE/acceptance_r6_live_read_claim_run_v9.sh"
 PKTS="$P4 $P5 $P6"
+SELF="$HERE/$(basename "$0")"
 REPO="${1:-}"
 for f in "$P4" "$P5" "$P6"; do [ -f "$f" ] || { echo "packet $f not found next to the self-check" >&2; exit 1; }; done
 g() { git "$@" < /dev/null; }
 
-PASS_N=0; FAIL_N=0; SKIP_N=0; FAILED=()
+PASS_N=0; FAIL_N=0; SKIP_N=0; FAILED=(); UNRES=()
 ok()   { PASS_N=$((PASS_N+1)); }
 bad()  { FAIL_N=$((FAIL_N+1)); FAILED+=("$1"); echo "  NOT: $1"; }
-skip() { SKIP_N=$((SKIP_N+1)); echo "  SKIPPED: $1"; }
+skip() { SKIP_N=$((SKIP_N+1)); UNRES+=("$1"); echo "  UNRESOLVED (skipped, NOT passed): $1"; }
 check() { local name="$1" want="$2"; shift 2
   local out rc; out=$("$@" 2>&1); rc=$?
   if [ "$rc" = "$want" ]; then ok; else bad "$name (rc=$rc want=$want): $(printf '%s' "$out" | head -2 | tr '\n' '|')"; fi; }
@@ -54,6 +73,16 @@ grep_in() { local name="$1" f="$2" pat="$3"; grep -qF -- "$pat" "$f" && ok || ba
 grep_not() { local name="$1" f="$2" pat="$3"; grep -qF -- "$pat" "$f" && bad "$name: '$pat' IS in $(basename "$f")" || ok; }
 
 SB="$(mktemp -d "${TMPDIR:-/tmp}/r4r5r6-selfcheck-v6-XXXXXX")"
+# gx: every fixture git call, hermetically. The identity comes from the fixture, on every call; no host
+# or system git config is read; hooks point at an empty directory; HOME is an empty directory of this
+# harness's own. A fixture that needs a host git identity is a fixture that fails on a clean runner,
+# and a run-path that fails there is a NO_OBSERVATION on the machine that actually runs the packet.
+gx() { local hx="$SB/git-home"; mkdir -p "$hx/empty-hooks"
+  env -i PATH="$PATH" HOME="$hx" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+       GIT_AUTHOR_NAME=selfcheck GIT_AUTHOR_EMAIL=fixture@selfcheck \
+       GIT_COMMITTER_NAME=selfcheck GIT_COMMITTER_EMAIL=fixture@selfcheck \
+       git -c user.name=selfcheck -c user.email=fixture@selfcheck -c core.hooksPath="$hx/empty-hooks" \
+       "$@" </dev/null; }
 chmod 700 "$SB"
 trap 'rm -rf "$SB"' EXIT
 S4="$SB/fake/wt-r4/target/release/claim_batch"; S5="$SB/fake/wt-r5/target/release/claim_batch"; S6="$SB/fake/wt-r6/target/release/claim_batch"
@@ -62,7 +91,7 @@ S4="$SB/fake/wt-r4/target/release/claim_batch"; S5="$SB/fake/wt-r5/target/releas
 # the packets' own constants, read out by NAME (an open-ended assignment grep would also pick up runtime
 # lines like `O=$OUT/receipt.txt`, which is not a constant and would explode here)
 csv() { local s; s=$(printf '%s,' $1); printf '%s' "${s%,}"; }
-CONSTS='J|U|H|H4|H5|T|T4|T5|E4A|E4B|E5|E6|B4A|B4B|B5|B6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|BOOKED|RUNTIME_S|DRIVER_S|LAUNCHER_CAP|N_LEGS|WALL_SUM|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG'
+CONSTS='J|U|H|H4|H5|T|T4|T5|E4A|E4B|E5|E6|B4A|B4B|B5|B6|N4A|N4B|N5|N6|C4A|C4B|C5|C6|BOOKED|RUNTIME_S|DRIVER_S|LAUNCHER_CAP|N_LEGS|WALL_SUM|MEMMAX_G|MEMHIGH_G|TASKS_MAX|CPU_PCT|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG|T_SELFRUN|T_KILL|N_TIMEOUTS_RUN|N_TIMEOUT_CALL_SITES'
 eval "$(cat "$P4" "$P5" "$P6" | grep -E "^($CONSTS)=")"
 export BOOKED   # a bash -c probe must see the booked string the packet freezes
 load_cmds() { eval "$(grep -E "^CMD_[A-Z0-9_]+=" "$1")"; }
@@ -87,7 +116,7 @@ for f in $PKTS; do
   np=$(printf '%s\n' "$out" | grep -c '^FIXTURE PASS'); nf=$(printf '%s\n' "$out" | grep -c '^FIXTURE FAIL')
   # v6 was 178/176/180, v7 227/225/229; v8 adds the claim-set gate and its 33 fixtures per packet, so a
   # count under 250 means fixtures were dropped, which is the same as a rule losing its proof.
-  if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 250 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf (want rc 0, 0 failures, > 250 assertions)"; fi
+  if [ "$rc" = 0 ] && [ "$nf" = 0 ] && [ "$np" -gt 285 ]; then ok; else bad "$(basename "$f") embedded fixtures: rc=$rc pass=$np fail=$nf (want rc 0, 0 failures, > 285 assertions)"; fi
   echo "  $(basename "$f"): $np embedded fixtures pass, $nf fail (rc=$rc)"
 done
 
@@ -274,8 +303,14 @@ check "the grant gate refuses blank, whitespace and flag-like references" 0 bash
 echo "== the frame's own claims are testable: timeouts, wall arithmetic, no mutation"
 for f in $PKTS; do
   b=$(basename "$f")
-  n=$(grep -cE 'timeout "\$T_(SETUP_CLONE|SETUP_FETCH|SETUP_CHECKOUT|BUILD|LEG)"' "$f")
-  [ "$n" -ge 5 ] && ok || bad "$b wraps only $n steps in a frozen timeout"
+  n=$(grep -cE 'timeout -k "\$T_KILL" "\$T_(SETUP_CLONE|SETUP_FETCH|SETUP_CHECKOUT|BUILD|SELFRUN|LEG)"' "$f")
+  [ "$n" -ge 6 ] && ok || bad "$b wraps only $n steps in a frozen timeout"
+  # a timeout with no -k is an unbounded tail: TERM may never be answered, and the row's capped sum stops
+  # being a ceiling. Counted here as well as in the packet's own fixtures.
+  k=$(grep -cE '[t]imeout ["]["$]T_' "$f")
+  [ "$k" = 0 ] && ok || bad "$b has $k run-path timeouts with no -k kill grace"
+  grep_in "$b counts its run-path timeouts as a term of the sum" "$f" 'N_TIMEOUTS_RUN=$(( 4 + 1 + N_LEGS ))'
+  grep_in "$b's wall sum carries the self-run and the kill graces" "$f" 'N_LEGS*T_LEG + T_SELFRUN + N_TIMEOUTS_RUN*T_KILL ))'
   m=$(grep -n 'mutation' "$f" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vc 'mutation_legs=0\|no mutation leg')
   [ "$m" = 0 ] && ok || bad "$b mentions 'mutation' in $m executable lines (a presence row must define none)"
   for badtok in 'git push' 'git commit' 'ssh ' 'scp ' 'rsync ' 'patch -' 'git apply' 'checkout -b' '/opt/gunbc'; do
@@ -295,16 +330,16 @@ done
 
 for f in $PKTS; do
   b=$(basename "$f")
-  eval "$(grep -E '^(RUNTIME_S|DRIVER_S|LAUNCHER_CAP|N_LEGS|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG)=' "$f")"
-  sum=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG ))
+  eval "$(grep -E '^(RUNTIME_S|DRIVER_S|LAUNCHER_CAP|N_LEGS|T_SETUP_CLONE|T_SETUP_FETCH|T_SETUP_CHECKOUT|T_BUILD|T_LEG|T_SELFRUN|T_KILL|N_TIMEOUTS_RUN)=' "$f")"
+  sum=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG + T_SELFRUN + N_TIMEOUTS_RUN*T_KILL ))
   pr=$(bash "$f" --predict-only)
   printf '%s\n' "$pr" | grep -qF "scope_RuntimeMaxSec=$RUNTIME_S" && ok || bad "$b's launcher RUNTIME_S ($RUNTIME_S) is not the scope wall its manifest states"
   printf '%s\n' "$pr" | grep -qF "wall_capped_sum_s=$sum " && ok || bad "$b states a capped step sum that is not the sum of its own frozen timeouts ($sum)"
   printf '%s\n' "$pr" | grep -qF "driver_RuntimeMaxSec=$((RUNTIME_S+300))" && ok || bad "$b's manifest does not size the driver unit at RUNTIME_S plus 300"
   case "$b" in
-    acceptance_r4_*) exp="5400 4920 2";;
-    acceptance_r5_*) exp="4500 4020 1";;
-    acceptance_r6_*) exp="4800 4020 1";;
+    acceptance_r4_*) exp="5400 5360 2";;
+    acceptance_r5_*) exp="4500 4440 1";;
+    acceptance_r6_*) exp="4800 4440 1";;
   esac
   set -- $exp
   [ "$RUNTIME_S" = "$1" ] && [ "$sum" = "$2" ] && [ "$N_LEGS" = "$3" ] && [ "$DRIVER_S" = "$(( $1 + 300 ))" ] \
@@ -317,8 +352,8 @@ for f in $PKTS; do
 done
 # the three bookings, restated here independently of the packets' own arithmetic, so a packet cannot
 # satisfy this file by moving a constant around inside itself
-check "the v6 arithmetic, restated: R4 4920<=5400, R5 4020<=4500, R6 4020<=4800, each <= 7200, driver +300" 0 bash -c '
-  for spec in "5400 4920 5700" "4500 4020 4800" "4800 4020 5100"; do
+check "the v9 arithmetic, restated: R4 5360<=5400, R5 4440<=4500, R6 4440<=4800, each <= 7200, driver +300" 0 bash -c '
+  for spec in "5400 5360 5700" "4500 4440 4800" "4800 4440 5100"; do
     set -- $spec
     [ "$2" -le "$1" ] || exit 1
     [ "$1" -le 7200 ] || exit 1
@@ -343,62 +378,105 @@ check "the R4/R5 packet compares the FINAL snapshot against the last leg" 0 bash
 echo "== the classifier matches what the PINNED runner actually prints"
 RBIN=src/v1/stage0/src/bin/claim_batch.rs
 pinned_at() { local id; id=$(g -C "$REPO" rev-parse "$1:$2" 2>/dev/null) || true; printf '%s' "${id:-}"; }
-worktree_file_equals_blob() { local h; h=$(g -C "$REPO" hash-object -- "$1" 2>/dev/null) || true; [ -n "$h" ] && [ "$h" = "$2" ]; }
+# v9 compares a PINNED blob against the same PINNED blob. v8 compared the pinned blob id against the
+# WORKING COPY, so whichever branch happened to be checked out decided whether a byte check ran at all:
+# on a branch checkout or a partial clone it silently skipped, and a skip read as coverage.
+pinfile() { # pinfile <pin> <path> -> a file holding the bytes of <pin>:<path>, or nothing when this object
+            # store cannot produce them offline. Never the working copy.
+  local id out
+  id=$(pinned_at "$1" "$2"); [ -n "$id" ] || { printf ''; return; }
+  mkdir -p "$SB/pinned"
+  out="$SB/pinned/$(printf '%s' "$2" | tr '/' '_').$id"
+  # GIT_NO_LAZY_FETCH plus an emptied extensions.partialClone: on a partial clone a missing blob must read
+  # as missing here, not as a network fetch that can block on a credential prompt.
+  if [ ! -s "$out" ]; then
+    GIT_NO_LAZY_FETCH=1 git -C "$REPO" -c extensions.partialClone= cat-file blob "$id" < /dev/null > "$out" 2>/dev/null \
+      || { rm -f "$out"; printf ''; return; }
+  fi
+  if [ "$(g -C "$REPO" hash-object -- "$out" 2>/dev/null)" = "$id" ]; then printf '%s' "$out"
+  else rm -f "$out"; printf ''; fi; }
+ancestor_proof() { # ancestor_proof <ancestor> <descendant> <label>. A FOUND parent chain is sound even in a
+                   # shallow clone: truncation can only remove edges, so it can produce a false negative, never
+                   # a false positive. A MISS in a shallow clone is therefore UNRESOLVED, not a falsification.
+  if g -C "$REPO" merge-base --is-ancestor "$1" "$2" 2>/dev/null; then
+    n=$(g -C "$REPO" rev-list --ancestry-path "$1..$2" 2>/dev/null | grep -c .)
+    echo "  ANCESTRY: $3 - $1..$2 reads as a chain of $n commit(s) in this object store"; ok
+  elif [ "$(g -C "$REPO" rev-parse --is-shallow-repository 2>/dev/null)" = true ]; then
+    skip "ancestry $3: $1 cannot be proven an ancestor of $2 from this SHALLOW clone (a truncated graph can only hide ancestry, so this is undecided, not false)"
+  else
+    bad "ancestry: $1 is not an ancestor of $2"
+  fi; }
+PINNED_READS=0
 if [ -n "$REPO" ] && g -C "$REPO" rev-parse --git-dir >/dev/null 2>&1; then
+  echo "  REPO ATTESTATION: $REPO is-shallow=$(g -C "$REPO" rev-parse --is-shallow-repository 2>/dev/null) partial-clone-filter=$(g -C "$REPO" config --get remote.origin.partialclonefilter 2>/dev/null) has-origin-main=$(if g -C "$REPO" rev-parse --verify -q origin/main >/dev/null 2>&1; then echo yes; else echo no; fi)"
   RB=$(pinned_at "$H4" "$RBIN"); [ "$RB" = "$(pinned_at "$H5" "$RBIN")" ] && ok || bad "claim_batch.rs differs between the two pins; the classifier assumes one shape"
-  if worktree_file_equals_blob "$RBIN" "$RB"; then
-    grep_in "the pinned runner prints a bare PASS line" "$REPO/$RBIN" 'ClaimOutcome::Pass => println!("PASS {}", function)'
-    grep_in "the pinned runner prints a bare FAIL line" "$REPO/$RBIN" 'println!("FAIL {}", function);'
+  RBFILE=$(pinfile "$H4" "$RBIN"); [ -n "$RBFILE" ] && PINNED_READS=$((PINNED_READS+1))
+  if [ -n "$RBFILE" ]; then
+    grep_in "the pinned runner prints a bare PASS line" "$RBFILE" 'ClaimOutcome::Pass => println!("PASS {}", function)'
+    grep_in "the pinned runner prints a bare FAIL line" "$RBFILE" 'println!("FAIL {}", function);'
     for lit in 'UNOBSERVED {} (' 'PANICKED {} (' 'FAIL {} (runtime error' 'FAIL {} (returned ProcessExit::ExitFailure'; do
-      grep_in "the pinned runner's qualified line exists: ${lit:0:14}" "$REPO/$RBIN" "$lit"
+      grep_in "the pinned runner's qualified line exists: ${lit:0:14}" "$RBFILE" "$lit"
     done
-    grep_in "the pinned runner exits 1 on any failure, 2 on any unobserved" "$REPO/$RBIN" 'if any_failed || partition_failed {'
-    grep_in "…and 2 for unobserved" "$REPO/$RBIN" '} else if any_unobserved || partition_unobserved {'
+    grep_in "the pinned runner exits 1 on any failure, 2 on any unobserved" "$RBFILE" 'if any_failed || partition_failed {'
+    grep_in "…and 2 for unobserved" "$RBFILE" '} else if any_unobserved || partition_unobserved {'
     for flag in --source-root --entry --function --functions --claim-run --wet --hermetic --record --eval-budget-ms --fixture-store --pre-push --print-entry-closure --outcomes-out; do
-      grep_in "parser accepts $flag" "$REPO/$RBIN" "\"$flag\" =>"
+      grep_in "parser accepts $flag" "$RBFILE" "\"$flag\" =>"
     done
-    grep_in "parser splits --functions on a comma" "$REPO/$RBIN" "csv.split(',')"
-    grep_in "parser rejects an unknown argument with exit 2" "$REPO/$RBIN" "unknown argument"
-    grep_in "the pinned runner renders the completion record with eprintln (stderr)" "$REPO/$RBIN" 'eprintln!("{}", partition.render(&timings));'
-    n=$(grep -cF 'partition.render(&timings)' "$REPO/$RBIN"); [ "$n" = 1 ] && ok || bad "the pinned claim_batch.rs renders the completion record at $n sites, expected exactly 1"
+    grep_in "parser splits --functions on a comma" "$RBFILE" "csv.split(',')"
+    grep_in "parser rejects an unknown argument with exit 2" "$RBFILE" "unknown argument"
+    grep_in "the pinned runner renders the completion record with eprintln (stderr)" "$RBFILE" 'eprintln!("{}", partition.render(&timings));'
+    n=$(grep -cF 'partition.render(&timings)' "$RBFILE"); [ "$n" = 1 ] && ok || bad "the pinned claim_batch.rs renders the completion record at $n sites, expected exactly 1"
     check_out "the packet's own producer_gate accepts the pinned claim_batch.rs bytes" 0 OK bash -c "source '$H'; producer_gate '$REPO/$RBIN'"
     for f in $PKTS; do grep_in "$(basename "$f") pins the producer blob id that git reports at its pin" "$f" "PRODBLOB=$RB"; done
     skip_if=0
   else
-    skip "claim_batch.rs at the pin is not byte-identical to the working copy: parser checks skipped"
+    skip "the pinned bytes of $RBIN ($RB) cannot be read from this object store offline: the parser, verdict-format and render-site checks are UNRESOLVED, not passed"
   fi
   for pin in "$H4" "$H5"; do
     [ "$(g -C "$REPO" cat-file -t "$pin" 2>/dev/null)" = commit ] && ok || bad "pin $pin is not a commit in the repo"
   done
   [ "$(g -C "$REPO" rev-parse "$H4^{tree}")" = "$T4" ] && ok || bad "the R4 tree gate would refuse: tree at $H4 is $(g -C "$REPO" rev-parse "$H4^{tree}"), packet freezes $T4"
   [ "$(g -C "$REPO" rev-parse "$H5^{tree}")" = "$T5" ] && ok || bad "the R5 tree gate would refuse: tree at $H5 is $(g -C "$REPO" rev-parse "$H5^{tree}"), packet freezes $T5"
-  check "the R5 pin (the #15936 squash) is an ancestor of the R4 pin (main at freeze)" 0 bash -c "git -C '$REPO' merge-base --is-ancestor '$H5' '$H4'"
-  OM=$(g -C "$REPO" rev-parse origin/main)
-  check "the R4 pin is an ancestor of (or equal to) origin/main" 0 bash -c "git -C '$REPO' merge-base --is-ancestor '$H4' origin/main"
-  echo "  (origin/main now reads $OM; the packets freeze $H4 / $H5)"
+  ancestor_proof "$H5" "$H4" "the #15936 squash precedes the R4 freeze pin"
+  OM=$(g -C "$REPO" rev-parse --verify -q origin/main 2>/dev/null || true)
+  if [ -n "$OM" ]; then
+    ancestor_proof "$H4" "$OM" "the R4 freeze pin precedes origin/main"
+    ancestor_proof "$H5" "$OM" "the R5/R6 pin precedes origin/main"
+  else
+    skip "origin/main does not resolve in this repo: pin-versus-tip ancestry is UNRESOLVED"
+  fi
+  echo "  (origin/main reads ${OM:-unset}; the packets freeze $H4 / $H5)"
   for pair in "$E4A:$B4A" "$E4B:$B4B" "$E5:$B5" "$E6:$B6"; do
     p="${pair%%:*}"; want="${pair##*:}"
     [ "$(pinned_at "$OM" "$p")" = "$want" ] && ok || bad "origin/main blob of $p is $(pinned_at "$OM" "$p"), the packets freeze $want"
     [ "$(pinned_at "$H4" "$p")" = "$want" ] && ok || bad "$p at the R4 pin is not the frozen blob"
     [ "$(pinned_at "$H5" "$p")" = "$want" ] && ok || bad "$p at the R5/R6 pin is not the frozen blob"
   done
-  check_name() { local label="$1" pin="$2" path="$3" blob="$4" name="$5"
-    if ! worktree_file_equals_blob "$path" "$blob"; then skip "$label: cannot read the pinned bytes of $path offline (partial clone)"; return; fi
-    grep -qE "^test fn $name\(" "$REPO/$path" && ok || bad "$label: '$name' is not a test fn in $path at $pin ($blob)"; }
+  check_name() { local label="$1" pin="$2" path="$3" blob="$4" name="$5" pf
+    pf=$(pinfile "$pin" "$path")
+    if [ -z "$pf" ]; then skip "$label: the pinned bytes of $path ($blob) cannot be read offline: the claim name $name is UNRESOLVED"; return; fi
+    PINNED_READS=$((PINNED_READS+1))
+    grep -qE "^test fn $name\(" "$pf" && ok || bad "$label: '$name' is not a test fn in $path at $pin ($blob)"; }
   for n in $N4A; do check_name "R4/a" "$H4" "$E4A" "$B4A" "$n"; done
   for n in $N4B; do check_name "R4/b" "$H4" "$E4B" "$B4B" "$n"; done
   for n in $N5;  do check_name "R5"  "$H5" "$E5"  "$B5"  "$n"; done
   for n in $N6;  do check_name "R6"  "$H5" "$E6"  "$B6"  "$n"; done
   # the names gate uses the same spelling as the claim module
-  if worktree_file_equals_blob "$E5" "$B5"; then
-    n=$(grep -c "^test fn " "$REPO/$E5"); [ "$n" -ge 5 ] && ok || bad "the names gate pattern '^test fn ' matches only $n entries in $E5"
+  pf=$(pinfile "$H5" "$E5")
+  if [ -n "$pf" ]; then
+    PINNED_READS=$((PINNED_READS+1))
+    n=$(grep -c "^test fn " "$pf"); [ "$n" -ge 5 ] && ok || bad "the names gate pattern '^test fn ' matches only $n entries in $E5 at the pin ($B5)"
+  else
+    skip "the pinned bytes of $E5 ($B5) cannot be read offline: the '^test fn ' gate-pattern count is UNRESOLVED"
   fi
   # the R6 audit's load-bearing lines, each against the bytes AT THE PIN
-  grep_at_pin() { local label="$1" pin="$2" path="$3" lit="$4" id
+  grep_at_pin() { local label="$1" pin="$2" path="$3" lit="$4" id pf
     id=$(pinned_at "$pin" "$path")
     if [ -z "$id" ]; then bad "$label: $path absent at $pin"; return; fi
-    if ! worktree_file_equals_blob "$path" "$id"; then skip "$label: $path differs from the pin ($id); byte-identity check skipped"; return; fi
-    grep -qF -- "$lit" "$REPO/$path" && ok || bad "$label: '$lit' not found in $path at $pin ($id)"; }
+    pf=$(pinfile "$pin" "$path")
+    if [ -z "$pf" ]; then skip "$label: the pinned bytes of $path ($id) cannot be read offline: the literal is UNRESOLVED"; return; fi
+    PINNED_READS=$((PINNED_READS+1))
+    grep -qF -- "$lit" "$pf" && ok || bad "$label: '$lit' not found in $path at $pin ($id)"; }
   grep_at_pin "R6 audit" "$H5" "dag/gunbc/fabric/fabric_storage_binding.dag" "FabricStoragePlaced { host: _, instance: _, endpoint, door_socket: _ } => FabricStorageServed {"
   grep_at_pin "R6 audit" "$H5" "dag/gunbc/deployment_risk.dag" "data prod_role_selection: ProdRoleSelection = ProdRoleHeldBy { deployment: srv1_daily_workspace_deployment }"
   grep_at_pin "R6 audit" "$H5" "dag/gunbc/roadmap/roadmap_dashboard_instance.dag" "fn srv1_live_dashboard_instance() -> HostDashboardInstance {"
@@ -531,7 +609,7 @@ done
 printf '%s\n' "$M6" | grep -qE '^PREDICT-ONLY row=R6 .* state=HELD gate=keen-otter-msg_3407a188' && ok || bad "the R6 manifest does not state the hold and its gate"
 printf '%s\n' "$M4" | grep -qE '^PREDICT-ONLY row=R4 job=fierce-wren-19-r4-db56530f host_booked=srv1' && ok || bad "the R4 manifest does not name its own row and job"
 printf '%s\n' "$M5" | grep -qE '^PREDICT-ONLY row=R5 job=fierce-wren-19-r5-dff57af7 host_booked=srv1' && ok || bad "the R5 manifest does not name its own row and job"
-for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v8_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
+for m in M4 M5; do printf '%s\n' "${!m}" | grep -qE 'script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v9_manifest\.md' && ok || bad "$m defers its own sha256 to the manifest without stating it"; done
 for m in M4 M5 M6; do
   f=$(eval printf '%s' "\${P${m#M}}")
   d=$(diff <(printf '%s\n' "${!m}" | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)') <(cd "$SB" && bash "$f" --predict-only | grep -E '^(cmd|blob|pin|tree|bounds|wall|claims|exit|launcher|driver)'))
@@ -723,7 +801,7 @@ for f in "$P4" "$P5" "$P6"; do
   if [ "$hits" = 0 ]; then ok; else bad "$b: $hits non-comment lines still name a row state variable"; fi
   # the wiring, by name: post-leg gates before the decision, the pre-leg hash, the argument gate, the
   # bounded self-run, and CARGO_HOME under the evidence dir.
-  for needle in 'post_leg_gate "$WT" "$RUNNER" "$PREBIN"' 'final_verdict' 'out_gate "$OUT" "$J"' 'timeout "$T_SELFRUN" bash "$0" --classifier-fixtures' 'T_SELFRUN=' 'export CARGO_HOME=$OUT/cargo-home' 'gate-read-$GV' 'leg_rc_expect' 'claims classified:'; do
+  for needle in 'post_leg_gate "$WT" "$RUNNER" "$PREBIN"' 'final_verdict' 'out_gate "$OUT" "$J"' 'timeout -k "$T_KILL" "$T_SELFRUN" bash "$0" --classifier-fixtures' 'T_SELFRUN=' 'export CARGO_HOME=$OUT/cargo-home' 'gate-read-$GV' 'leg_rc_expect' 'claims classified:'; do
     grep -qF "$needle" "$f" && ok || bad "$b: missing wiring: $needle"
   done
   grep -qE 'PREBIN[456]=\$\(bin_sha' "$f" && ok || bad "$b: the runner is not hashed before the legs (PREBINn=\$(bin_sha …))"
@@ -770,9 +848,9 @@ for hpair in "$SB/h4.sh:$P4" "$SB/h5.sh:$P5" "$SB/h6.sh:$P6"; do
   plg_case() { # $1=dir $2=clean|dirtywt|binchanged -> the cause text
     local d=$1 wt=$1/wt pre
     rm -rf "$d"; mkdir -p "$d/logs" "$wt"
-    git -c init.defaultBranch=main -c user.email=fixture@selfcheck -c user.name=selfcheck init -q "$wt" </dev/null >/dev/null 2>&1
-    printf 'x\n' > "$wt/file"; git -C "$wt" add file </dev/null >/dev/null 2>&1
-    git -C "$wt" commit -q -m seed </dev/null >/dev/null 2>&1
+    gx -c init.defaultBranch=main init -q "$wt" >/dev/null 2>&1
+    printf 'x\n' > "$wt/file"; gx -C "$wt" add file >/dev/null 2>&1
+    gx -C "$wt" commit -q -m seed >/dev/null 2>&1
     : > "$d/bin"; pre=$(sha256sum "$d/bin" | cut -d' ' -f1)
     case "$2" in
       dirtywt) printf 'left behind\n' > "$wt/untracked" ;;
@@ -907,15 +985,20 @@ assert old in s
 open(p,"w").write(s.replace(old, 'if [ -z "$post" ]; then', 1))
 PY24
 
-negctl() { # negctl <label> <base packet> <mutation script>: the mutated copy must fail its OWN fixtures
-  local label=$1 base=$2 mut=$3
+negctl() { # negctl <label> <base packet> <mutation script>: the mutated copy must fail its OWN fixtures.
+  # Its output goes to a file, not a variable: the first v9 run lost a mutated run's FIXTURE FAIL lines
+  # through the variable and reported a real bite as decorative.
+  local label=$1 base=$2 mut=$3 log rc
   cp "$base" "$SB/neg.sh"
   if ! python3 "$mut" "$SB/neg.sh"; then bad "$label: the mutation did not apply"; return; fi
-  local out rc; out=$(bash "$SB/neg.sh" --classifier-fixtures 2>&1); rc=$?
-  if [ "$rc" = 0 ] && printf '%s\n' "$out" | tail -1 | grep -q 'fail=0 \(of '; then
+  log="$SB/neg.log"
+  bash "$SB/neg.sh" --classifier-fixtures > "$log" 2>&1; rc=$?
+  if [ "$rc" = 0 ] && tail -1 "$log" | grep -q 'fail=0'; then
     bad "$label: the mutated packet still passes its own fixtures"
-  elif printf '%s\n' "$out" | grep -qE '^FIXTURE FAIL'; then
-    echo "  $label -> $(printf '%s\n' "$out" | grep -m1 '^FIXTURE FAIL') | $(printf '%s\n' "$out" | tail -1) (rc=$rc)"; ok
+  elif grep -qE '^FIXTURE FAIL' "$log"; then
+    echo "  $label -> $(grep -m1 '^FIXTURE FAIL' "$log") | $(tail -1 "$log") (rc=$rc)"; ok
+  elif [ "$rc" != 0 ] && tail -1 "$log" | grep -qE 'fail=[1-9]'; then
+    echo "  $label -> $(tail -1 "$log") (rc=$rc; the run refused before naming a fixture)"; ok
   else
     bad "$label: the mutated packet did not fail on its OWN fixtures (rc=$rc) — the control would be decorative"
   fi; }
@@ -1041,7 +1124,8 @@ for f in $PKTS; do
   grep_in "$b counts the booked claims" "$f" 'N_CLAIMS_BOOKED=$(printf'
   grep_in "$b snapshots the booked set so a fixture can restore it" "$f" 'BOOK_LEGS="$LEGS_BOOKED"'
   grep_in "$b registers into the run directory, not somewhere implied" "$f" '$OUT/claims-registered.txt'
-  grep_in "$b states what v8 changes" "$f" '# WHAT v8 CHANGES (calm-eagle-670 msg_8ed9b50b)'
+  grep_in "$b states what v9 changes" "$f" '# WHAT v9 CHANGES'
+  grep_in "$b keeps the v8 change list as history, not as the current header" "$f" '# History: what v8 changed'
   grep_in "$b says plainly what the fail-open was" "$f" 'printed VERDICT=AS_EXPECTED and exited 0'
 done
 grep_in "R4 books its two legs" "$P4" 'LEGS_BOOKED="R4a R4b"'
@@ -1071,12 +1155,17 @@ for f in $PKTS; do
   lcs=$(grep -n '^cs_check() {' "$f" | head -1 | cut -d: -f1)
   lfv=$(grep -n 'final_verdict() {' "$f" | head -1 | cut -d: -f1)
   lgate=$(grep -n 'if ! cs_check; then' "$f" | head -1 | cut -d: -f1)
-  lsum=$(awk -v s="$lfv" 'NR>s && /for f in "\$OUT"\/\*\.classes; do/ {print NR; exit}' "$f")
+  lsum=$(awk -v s="$lfv" 'NR>s && /for f in .*\.classes; do/ {print NR; exit}' "$f")
   lloop=$(grep -n '^leg \|^leg  ' "$f" | head -1 | cut -d: -f1)
   [ -n "$lreg" ] && ok || bad "$b never registers the booked claim set in its run path"
   [ -n "$lloop" ] && [ "$lreg" -lt "$lloop" ] && ok || bad "$b registers the claim set after its first leg call"
   [ -n "$lgate" ] && [ "$lgate" -gt "$lfv" ] && ok || bad "$b's final_verdict does not call cs_check"
   [ -n "$lgate" ] && [ "$lgate" -lt "$lsum" ] && ok || bad "$b sums classes files before consulting the claim-set gate"
+  fin=$(awk -v s="$lfv" 'NR>s && /^}/ {print NR; exit}' "$f")
+  live=$(awk -v s="$lfv" -v e="$fin" 'NR>s && NR<e && /\$OUT\/\*\.classes/ {c++} END {print c+0}' "$f")
+  [ "$live" = 0 ] && ok || bad "$b's final_verdict re-reads the live classes files instead of the snapshot cs_check validated"
+  grep_in "$b's final_verdict counts the snapshot cs_check validated" "$f" 'for f in "$CS_SNAP"/*.classes; do'
+  grep_in "$b refuses to count when cs_check produced no snapshot" "$f" 'claim-set refused:snapshot-missing'
   grep_in "$b also gates that the booked leg count is the leg count it runs" "$f" 'nbl_booked='
   grep_in "$b refuses a registration that disagrees with its own constants" "$f" 'the booked claim set could not be registered'
 done
@@ -1160,25 +1249,149 @@ old = "      printf '%s %s\\n' \"$L\" \"$n\" >> \"$OUT/claims-registered.txt\""
 assert old in s
 open(p,"w").write(s.replace(old,'      true',1))
 PY27
-for mu in 25 26 27; do
-  negctl "cs_check/registration neutered (mutation $mu applied to the R4 packet)" "$P4" "$SB/mut$mu.py"
-  negctl "cs_check/registration neutered (mutation $mu applied to the R5 packet)" "$P5" "$SB/mut$mu.py"
-  negctl "cs_check/registration neutered (mutation $mu applied to the R6 packet)" "$P6" "$SB/mut$mu.py"
+cat > "$SB/mut28.py" <<'PY28A'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = """          if [ -n "$(awk -v l="$stem" -v n2="$n" '$1==l && $2==n2' "$reg")" ]; then :"""
+new = """          if [ -n "$(awk -v n2="$n" '$2==n2' "$reg")" ]; then :"""
+assert old in s
+open(p,"w").write(s.replace(old,new,1))
+PY28A
+cat > "$SB/mut29.py" <<'PY29'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = """  dupx=$(for f in "$OUT"/*.classes; do [ -f "$f" ] || continue; awk 'NF {print $1}' "$f"; done | sort | uniq -d | head -1)"""
+new = '  dupx=""'
+assert old in s
+open(p,"w").write(s.replace(old,new,1))
+PY29
+cat > "$SB/mut30.py" <<'PY30'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = r"""  if [ "$(awk 'NF {print $1}' "$reg" | sort -u | tr '\n' ' ')" != "$(printf '%s\n' $LEGS_BOOKED | sort | tr '\n' ' ')" ]; then"""
+new = r"""  if [ "$(awk 'NF {print $1}' "$reg" | sort -u | wc -l)" != "$(printf '%s\n' $LEGS_BOOKED | grep -c .)" ]; then"""
+assert old in s, 'mut30 anchor'
+open(p,"w").write(s.replace(old,new,1))
+PY30
+cat > "$SB/mut31.py" <<'PY31'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = '    cp "$OUT/$l1.classes" "$CS_SNAP/$l1.classes" 2>/dev/null || { CS_CAUSE="snapshot-copy-failed:$l1"; return 1; }'
+new = '    :'
+assert old in s, 'mut31 anchor'
+open(p,"w").write(s.replace(old,new,1))
+PY31
+cat > "$SB/mut32.py" <<'PY32'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = "WALL_SUM=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG + T_SELFRUN + N_TIMEOUTS_RUN*T_KILL ))"
+new = "WALL_SUM=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG ))"
+assert old in s
+open(p,"w").write(s.replace(old,new,1))
+PY32
+cat > "$SB/mut33.py" <<'PY33'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'timeout -k "$T_KILL" "$T_'
+assert old in s
+open(p,"w").write(s.replace(old,'timeout "$T_'))
+PY33
+for mu in 25 26 27 28 29 30 31 32 33; do
+  negctl "a shipped gate neutered (mutation $mu applied to the R4 packet)" "$P4" "$SB/mut$mu.py"
+  negctl "a shipped gate neutered (mutation $mu applied to the R5 packet)" "$P5" "$SB/mut$mu.py"
+  negctl "a shipped gate neutered (mutation $mu applied to the R6 packet)" "$P6" "$SB/mut$mu.py"
 done
-# the run-path registration call is not exercised by fixtures, so it is checked by grep on a mutated copy
-cp "$P4" "$SB/negcs.sh"
-python3 - "$SB/negcs.sh" <<'PY28'
+
+echo
+echo "== the fixture suites need NO host git identity: empty HOME, PATH only; the v8 git shape must fail there"
+envi_suite() { # envi_suite <label> <cmd...>: the command runs with an empty HOME, PATH=/usr/bin:/bin and
+               # nothing else inherited, so no host git config, credential helper or identity can help it.
+  local label=$1; shift
+  local h log rc
+  h=$(mktemp -d); log=$(mktemp)
+  timeout -k 30 "$T_SELFRUN" env -i HOME="$h" PATH=/usr/bin:/bin "$@" > "$log" 2>&1; rc=$?
+  if [ "$rc" = 0 ]; then
+    echo "  $label -> $(tail -1 "$log") (rc=0)"; ok
+  else
+    bad "$label: rc=$rc: $(tail -1 "$log")"
+  fi; }
+for f in $PKTS; do
+  envi_suite "$(basename "$f") passes its own fixtures under env -i (empty HOME, PATH only)" bash "$f" --classifier-fixtures
+done
+# and the inversion: the v8 fixture git shape (identity on init only, host config visible) must NOT pass
+# there. Without this, "the suite needs no host identity" would be an assertion rather than a measurement.
+cp "$P4" "$SB/nogitid.sh"
+python3 - "$SB/nogitid.sh" <<'PYG'
+import sys
+p=sys.argv[1]; s=open(p).read()
+old = 'gxf -C "$wt" commit -q -m seed'
+assert old in s
+open(p,"w").write(s.replace(old,'git -C "$wt" commit -q -m seed',1))
+PYG
+h=$(mktemp -d)
+out=$(timeout -k 30 "$T_SELFRUN" env -i HOME="$h" PATH=/usr/bin:/bin bash "$SB/nogitid.sh" --classifier-fixtures 2>&1); rc=$?
+if [ "$rc" != 0 ] && printf '%s\n' "$out" | grep -q '^FIXTURE FAIL'; then
+  echo "  the v8 git shape (identity on init only) inverts under env -i -> $(printf '%s\n' "$out" | grep -m1 '^FIXTURE FAIL') (rc=$rc)"; ok
+else
+  bad "the v8 git shape did NOT fail under an empty HOME (rc=$rc): the hermeticity claim would be decorative"
+fi
+if [ -n "$REPO" ] && [ -z "${R4R5R6_NO_SUB:-}" ]; then
+  local_nested_log=$(mktemp)
+  h=$(mktemp -d)
+  timeout -k 60 2700 env -i R4R5R6_NO_SUB=1 HOME="$h" PATH=/usr/bin:/bin bash "$SELF" "$REPO" > "$local_nested_log" 2>&1; rc=$?
+  line=$(grep -m1 '^SELF-TEST:' "$local_nested_log" || echo 'no SELF-TEST line')
+  if [ "$rc" = 0 ]; then
+    echo "  this selfcheck re-run under env -i (empty HOME, PATH only) -> $line (rc=0)"; ok
+  else
+    bad "this selfcheck did not pass under env -i: $line (rc=$rc)"
+  fi
+elif [ -n "$REPO" ]; then
+  echo "  (inner run: the nested selfcheck is not re-entered, so this run's count omits it)"
+else
+  skip "no repo argument: the selfcheck was not re-run under env -i, so that count is UNRESOLVED"
+fi
+# the run-path registration call is not exercised by fixtures, so it is checked by grep on a mutated copy.
+# v8's version of this control could not fail: it grepped the MUTATED copy twice, so the "shipped packet has
+# it" direction was never tested. grepctl tests both, on the right file each time.
+grepctl() { # grepctl <label> <packet> <mutation script> <literal>: the SHIPPED packet must contain the
+            # literal, and the mutated copy must not.
+  local label=$1 pkt=$2 mut=$3 lit=$4
+  cp "$pkt" "$SB/grepctl.sh"
+  if ! python3 "$mut" "$SB/grepctl.sh"; then bad "$label: the mutation script failed"; return; fi
+  if ! grep -qF -- "$lit" "$pkt"; then bad "$label: the SHIPPED packet does not contain the literal"; return; fi
+  if grep -qF -- "$lit" "$SB/grepctl.sh"; then bad "$label: the mutated copy still contains the literal"; return; fi
+  ok; }
+cat > "$SB/mutreg.py" <<'PYREG'
 import sys
 p=sys.argv[1]; s=open(p).read()
 old = 'regmsg=$(register_claims 2>&1)'
 assert old in s
 open(p,"w").write(s.replace(old,'regmsg=""',1))
-PY28
-grep -q 'regmsg=$(register_claims 2>&1)' "$P4" && ok || bad "the shipped R4 packet does not register the claim set in its run path"
-grep -q 'regmsg=$(register_claims 2>&1)' "$SB/negcs.sh" && bad "the mutated copy still registers" || ok
-grep -q 'regmsg=$(register_claims 2>&1)' "$P5" && grep -q 'regmsg=$(register_claims 2>&1)' "$P6" && ok || bad "R5 or R6 lost the run-path registration"
+PYREG
+for f in $PKTS; do
+  grepctl "the run path registers the booked claim set before any leg ($(basename "$f"))" "$f" "$SB/mutreg.py" 'regmsg=$(register_claims 2>&1)'
+done
 
 echo
-echo "SELF-TEST: $PASS_N passed, $FAIL_N failed, $SKIP_N skipped"
-if [ "$FAIL_N" -ne 0 ]; then printf 'FAILED: %s\n' "${FAILED[@]}"; exit 1; fi
-exit 0
+report_state() { # report_state <passed> <failed> <skipped> prints the summary and yields the exit code that
+                 # goes with it. A skipped check is an UNRESOLVED check, so COMPLETE requires no failures AND
+                 # no skips: this file must never read as a clean pass when a check could not be decided.
+  local p=$1 f=$2 k=$3 verdict=COMPLETE
+  [ "$f" -ne 0 ] && verdict=FAILED
+  [ "$k" -ne 0 ] && verdict=INCOMPLETE
+  echo "SELF-TEST: $p passed, $f failed, $k skipped -> VERDICT=$verdict"
+  if [ "$f" -ne 0 ]; then return 1; fi
+  if [ "$k" -ne 0 ]; then echo "UNRESOLVED: $k check(s) could not be decided; the harness is INCOMPLETE and must not be read as a clean pass"; return 2; fi
+  return 0; }
+check "the summary is COMPLETE with rc 0 when nothing failed and nothing was skipped" 0 report_state 3 0 0
+check "a skipped check alone makes the harness exit non-zero (rc 2)" 2 report_state 3 0 1
+check "a failed check exits 1 with no skips" 1 report_state 3 1 0
+check "a failure outranks a skip in the code while both are still counted" 1 report_state 3 1 1
+check_out "the summary line names all three counts and the verdict" 1 '7 passed, 2 failed, 3 skipped -> VERDICT=INCOMPLETE' report_state 7 2 3
+check "the shipped skip() plus report_state() turn one named gap into a non-zero exit" 2 bash -c "PASS_N=1; FAIL_N=0; SKIP_N=0; FAILED=(); UNRES=(); source <(grep -m1 '^skip() ' '$SELF'); source <(sed -n '/^report_state()/,/^  return 0; }/p' '$SELF'); skip 'a named gap'; report_state 1 0 1"
+echo
+report_state "$PASS_N" "$FAIL_N" "$SKIP_N"; rcsum=$?
+if [ "$FAIL_N" -ne 0 ]; then printf 'FAILED: %s\n' "${FAILED[@]}"; fi
+if [ "$SKIP_N" -ne 0 ]; then printf 'UNRESOLVED: %s\n' "${UNRES[@]}"; fi
+echo "  pinned-blob materializations read from the object store during this run: $PINNED_READS"
+exit $rcsum

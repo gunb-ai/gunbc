@@ -1,10 +1,29 @@
-# script.sh (frozen copy for fierce-wren-19-r5-dff57af7, v8): acceptance grant set row R5,
+# script.sh (frozen copy for fierce-wren-19-r5-dff57af7, v9): acceptance grant set row R5,
 # gunbc. PREPARE ONLY: this file has not been RUN anywhere. It is the staged script a booked calmcrab-udrv
 # v4 row would execute on srv1, re-framed on keen-otter's hardened srv1 frame (template:
 # wise-moth-707-rdpo's rdpo.sh, sha256 aaf32964184a30d66f6320de707bfb03975f0df683cccd1133dcf2d024ed9366,
 # gunbc#15938 comment 6672252712). No claim execution, no ssh, no partition write happened here.
 #
-# WHAT v8 CHANGES (calm-eagle-670 msg_8ed9b50b), ONE fail-open in the exit decision:
+# WHAT v9 CHANGES (three things, all of them in how the packet CHECKS itself; the booking, the pins, the
+# bounds, the wall constants, the claim inventory and the command digests are unchanged):
+#   1. cs_check binds a claim to its OWN leg. v8 compared claim names as a flat set, so a claim registered
+#      under leg A sitting in leg B's classes file was accepted. v9 requires each <stem>.classes to hold
+#      exactly the names registered under that stem, each once (literal awk field comparisons, never an
+#      interpolated regex), adds a cross-file duplicate scan, and refuses a registration whose leg names are
+#      not exactly the booked legs even when the line count still matches.
+#   2. cs_check SNAPSHOTS what it validated (cs-snapshot/, with digests) and final_verdict counts only the
+#      snapshot; a file rewritten after validation changes nothing in the verdict and revalidation refuses it.
+#   3. the fixture repo cannot inherit a host git identity: user.name/user.email on init AND commit, an empty
+#      HOME, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_GLOBAL=/dev/null and core.hooksPath pointing at an empty dir.
+#   4. the wall sum now counts, INSIDE an unchanged RUNTIME_S (R4 5400 s, R5 4500 s, R6 4800 s - the
+#      values this row already had, not raised): every setup allowance, the 300 s fixture self-run, and
+#      a 20 s kill-after grace for every run-path timeout. Every run-path timeout now carries -k, so no
+#      grace is an unaccounted tail; what is left over is a STATED reserve, with its NO_OBSERVATION risk
+#      stated next to it. No budget is increased, no row is re-split, no per-phase limit is retuned to
+#      fit under a cap, and 7200 s is treated as the launcher's capability rather than an authorization.
+# R4 5360 <= 5400, R5 4440 <= 4500, R6 4440 <= 4800. Nothing here executes a claim: PREPARE ONLY.
+
+# History: what v8 changed (kept so the v8 -> v9 delta can be read against it)
 #   final_verdict looped over whatever $OUT/*.classes files existed. With no classes files at all, or one
 #   leg's file missing or short, it summed nothing, printed VERDICT=AS_EXPECTED and exited 0 - a green
 #   verdict from an empty run. v8 registers the booked claim set into $OUT/claims-registered.txt from the
@@ -54,10 +73,10 @@
 #   R5    5 claims  entry dag/test/claim/roadmap/roadmap_acceptance_inbox_witness.dag
 # Row R4 (six partition-witness claims, pin db56530f) is NOT here either: it is its own job
 # fierce-wren-19-r4-db56530f with its own clone, build and launcher line, in
-# acceptance_r4_claim_run_v8.sh. One row per job is what keeps every RUNTIME_S inside the
+# acceptance_r4_claim_run_v9.sh. One row per job is what keeps every RUNTIME_S inside the
 # installed launcher cap.
 # Row R6 (one live-corpus claim) is NOT here: it reads the live fabric store and is held behind
-# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v8.sh.
+# keen-otter's msg_3407a188; it has its own file, acceptance_r6_live_read_claim_run_v9.sh.
 #
 # PINS (fetched from the hard-coded origin by sha; HEAD and the tree must both match, and the entry
 # files must be the frozen blobs, before anything is built):
@@ -72,15 +91,31 @@
 #           the same crate, so the same budget. A nonzero exit, a timeout or a missing binary is 2.  = 2400 s
 #   legs    900 s: R5 (5 claims), one claim_batch invocation; claims in a leg are evaluated in one
 #           process, so a leg that times out loses all its claims at once.                    1 x 900 =  900 s
-#   CAPPED SUM = 720 + 2400 + 900 = 4020 s. That capped sum is NOT a prediction of the wall: it is the
-#   ceiling the timeouts admit.
-# WALL ACCOUNTING (v7, per row — unchanged from v6): the scope's RuntimeMaxSec is 4500 s — the capped sum 4020 s (720 setup +
-#   2400 build + 1 x 900 leg) plus a 480 s margin for process startup, the build's cargo-network stall
-#   allowance and evidence writing; a row that RuntimeMaxSec cuts off is incomplete, which is
-#   NO_OBSERVATION (2). 4020 <= 4500 <= 7200 (the installed calmcrab-udrv v4 preflight cap) and the driver
-#   row calmcrab-drv-<JOB>.service is RuntimeMaxSec 4800 = RUNTIME_S plus 300 s. wall_gate below checks
-#   that arithmetic (including the cap) from the packet's own timeout constants and refuses before any
-#   fetch or build if the launcher books anything else; the bounds gate refuses other mismatches.
+#   self-run the packet's own fixture suite, timeout 300 s, run in this scope before any probe  = 300 s
+#   graces   6 run-path timeouts x 20 s kill-after (timeout -k): a step that ignores TERM is    = 120 s
+#           killed 20 s later, so a grace is a BOUNDED, COUNTED term and the ceiling stays a ceiling.
+#   CAPPED SUM = 720 setup + 2400 build + 900 legs + 300 self-run + 120 kill graces                = 4440 s
+#   That capped sum is not a prediction of the wall: it is the ceiling EVERY timeout in this packet
+#   admits - clone, fetch, checkout, build, the leg and the self-run, each with its -k grace.
+#   RESERVED MARGIN = 4500 - 4440 = 60 s: process startup, the bounds and OOM gate reads, evidence writes and
+#   receipt hashing. THE RISK OF THAT MARGIN, stated as required: if the residual work needs more than
+#   60 s, RuntimeMaxSec 4500 sends TERM to the scope and the driver row's RuntimeMaxSec 4800 sends SIGKILL 300
+#   s later; a row cut off mid-step is incomplete, which is NO_OBSERVATION (2) for this claim.
+#   THE BUDGET IS NOT RAISED, and no timeout below a booked one is shortened either: 4500 s is exactly what v6 booked and v8 kept for this row. Nothing here
+#   re-splits a row or retunes a per-phase limit to fit under a cap. The only new terms are the self-run
+#   (v8 capped it but never counted it) and the -k graces (v8 left them unbounded), and both fit inside
+#   the unchanged RUNTIME_S.
+# WALL ACCOUNTING (v9): the scope's RuntimeMaxSec is 4500 s, the capped sum is 4440 s (720 setup + 2400 build +
+#   1 x 900 legs + 300 self-run + 6 x 20 kill graces) and the reserve is 60 s. A row that RuntimeMaxSec cuts off
+#   is incomplete, which is NO_OBSERVATION (2). 4440 <= 4500 <= 7200: the installed calmcrab-udrv v4 (855920ac)
+#   refuses any RUNTIME_S above 7200 in its own preflight, but 7200 is that tool's CAPABILITY and not an
+#   authorization. This booking stays where it was booked (4500 s) and no larger ceiling is implied anywhere
+#   in this packet: an increase over an approved timeout needs operator sign-off, a never-granted proposal
+#   is not an approved ceiling, and no split, retry or per-phase retune may be used to get around a cap
+#   (keen-otter msg_42c3c192). The driver row calmcrab-drv-<JOB>.service is RuntimeMaxSec 4800 = RUNTIME_S
+#   plus 300 s. wall_gate below recomputes the whole arithmetic - constants, graces, self-run, cap and
+#   driver offset - from the packet's own constants, and refuses before any fetch or build if the launcher
+#   books anything else; the bounds gate refuses other mismatches.
 #
 # BOOKED BOUNDS (keen-otter (1)); the bounds gate (v3 item 2) reads its OWN cgroup's memory.max,
 #   memory.high, memory.swap.max, pids.max and cpu.max AFTER the scope gate and BEFORE any fetch or build,
@@ -235,11 +270,25 @@ BOOK_LEGS="$LEGS_BOOKED"; BOOK_ALL="$CLAIMS_ALL"; BOOK_N="$N_CLAIMS_BOOKED"
 
 
 T_SETUP_CLONE=300; T_SETUP_FETCH=300; T_SETUP_CHECKOUT=120; T_BUILD=2400; T_LEG=900
-# the fixture self-run is a step like any other: uncapped, a hung classifier would burn the wall budget
-# before a probe was spent, and the wall arithmetic below would be a fiction. It is inside the margin.
+# the fixture self-run is a step like any other. v8 already wrapped it in timeout 300 s but left it out
+# of the sum, so the row's margin silently carried it: a hung classifier would burn the wall budget
+# before a probe was spent and the arithmetic below would still read as a ceiling. T_SELFRUN keeps its
+# v8 value; v9 only makes it a term of the sum.
 T_SELFRUN=300
-# the row's CAPPED SUM: one clone + one shallow fetch + one checkout + one build + N_LEGS legs
-WALL_SUM=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG ))
+# a kill-after grace on every run-path timeout. Without -k, timeout(1) sends TERM and then waits for a
+# child that may never exit: an unbounded tail that no constant accounts for, and the one place where a
+# capped sum stops being a ceiling. 20 s per timeout. No step's own limit changes - the constants v8
+# froze (clone 300, fetch 300, checkout 120, build 2400, leg 900, self-run 300) are byte for byte here.
+T_KILL=20
+# the run-path timeouts counted rather than estimated: clone, fetch, checkout, build, the self-run and
+# one per leg. A new run-path timeout must raise this count, and the sum with it.
+N_TIMEOUTS_RUN=$(( 4 + 1 + N_LEGS ))
+# the number of timeout CALL SITES (the legs share one). The fixture that proves every run-path timeout
+# carries -k counts these.
+N_TIMEOUT_CALL_SITES=6
+# the row's CAPPED SUM: one clone + one shallow fetch + one checkout + one build + N_LEGS legs + the
+# self-run + a kill-after grace for each of those timeouts
+WALL_SUM=$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG + T_SELFRUN + N_TIMEOUTS_RUN*T_KILL ))
 
 # FROZEN COMMAND STRINGS: what --predict-only prints (bytes + sha256 over the literal string) and what
 # the run executes are the SAME variables. Expansion points named in the manifest: $OUT (the one argument),
@@ -305,17 +354,33 @@ register_claims() { # $OUT/claims-registered.txt, one "<leg> <claim>" line per b
   done
   return 0; }
 
-# cs_check: are the classes files EXACTLY the registered claim set? Sets CS_CAUSE to the reason tokens and
-# returns 1 on any of: no registration at all; a registration that disagrees with this packet's frozen
-# constants (wrong line count, wrong leg set, a name this packet does not book, a booked claim it omits, a
-# name twice); a *.classes file count that is not the number of booked legs; a file for a leg that was never
-# booked; a booked leg whose file is missing or empty; a claim named in a file that is not registered; a
-# claim named twice; or a file whose claim count differs from what that leg registered.
+# cs_check: are the classes files EXACTLY the claim set this packet registered, LEG BY LEG? On success it
+# also SNAPS that validated set (see the snapshot paragraph). It returns 1 and names every cause it found in
+# CS_CAUSE for any of: no registration at all; a registration whose claim-line count is not
+# N_CLAIMS_BOOKED; a registration line that is not exactly two whitespace-free fields; a registration whose
+# DISTINCT leg names are not exactly the booked legs (a leg name this packet never booked, or a booked leg it
+# never names, even when the count still adds up); a claim name the packet does not book; a booked claim the
+# registration omits or names twice. Then, of the classes files: a *.classes file count that is not the
+# number of booked legs; a file for a leg that was never booked; a booked leg whose file is missing or
+# empty; a file with a malformed line; a claim named twice inside one file; a claim named in two different
+# leg files (claim-duplicated-across-files); and the per-LEG BINDING - the names in <stem>.classes must be
+# EXACTLY the names the registration registers UNDER THAT SAME STEM, each exactly once. A claim registered
+# under leg A does not satisfy leg B: a name in a file that is registered for a DIFFERENT leg is
+# claim-wrong-leg:<stem>:<name>; a name in a file that the registration does not name at all is
+# claim-unregistered:<name>; and a name registered for that stem which its own file does not carry exactly
+# once is claim-count:<stem>. All of those comparisons are LITERAL awk field comparisons ($1==stem && $2==name),
+# never an interpolated regular expression built from a name, so a name cannot match by accident.
+# SNAPSHOT: only after all of the above pass, each validated file is copied into a fresh $OUT/cs-snapshot
+# and its digest recorded in cs-snapshot/digests.txt; final_verdict counts ONLY the snapshot, so a file that
+# changes between validation and the verdict cannot be counted, and a copy that does not match what was
+# validated is itself a cause (snapshot-copy-failed / snapshot-digest-mismatch / snapshot-incomplete).
 cs_check() {
-  local reg="$OUT/claims-registered.txt" f stem n files=0
-  CS_CAUSE=""
+  local reg="$OUT/claims-registered.txt" f stem n files=0 dupx cn cc bad
+  CS_CAUSE=""; CS_SNAP="$OUT/cs-snapshot"; CS_SNAP_OK=0
   [ -s "$reg" ] || { CS_CAUSE="registration-missing-or-empty"; return 1; }
   if [ "$(awk 'NF' "$reg" | wc -l)" != "$N_CLAIMS_BOOKED" ]; then CS_CAUSE="registration-claim-count"; return 1; fi
+  bad=$(awk 'NF && (NF!=2 || $0!=$1" "$2) {c++} END{print c+0}' "$reg")
+  [ "$bad" = 0 ] || { CS_CAUSE="registration-malformed-line"; return 1; }
   if [ "$(awk 'NF {print $1}' "$reg" | sort -u | tr '\n' ' ')" != "$(printf '%s\n' $LEGS_BOOKED | sort | tr '\n' ' ')" ]; then
     CS_CAUSE="registration-leg-count"; return 1; fi
   if [ "$(awk 'NF {print $2}' "$reg" | sort -u | wc -l)" != "$N_CLAIMS_BOOKED" ]; then CS_CAUSE="$CS_CAUSE claim-duplicated"; fi
@@ -323,9 +388,9 @@ cs_check() {
   for rn in $(awk 'NF {print $2}' "$reg"); do
     case " $CLAIMS_ALL " in *" $rn "*) : ;; *) CS_CAUSE="$CS_CAUSE claim-not-booked" ;; esac
   done
-  local cn
   for cn in $CLAIMS_ALL; do
-    grep -q " $cn\( \|$\)" "$reg" || CS_CAUSE="$CS_CAUSE claim-not-registered"
+    cc=$(awk -v n="$cn" '$2==n' "$reg" | wc -l)
+    [ "$cc" = 1 ] || CS_CAUSE="$CS_CAUSE claim-not-registered:$cn"
   done
   for f in "$OUT"/*.classes; do
     [ -f "$f" ] || continue
@@ -334,15 +399,24 @@ cs_check() {
     case " $LEGS_BOOKED " in
       *" $stem "*)
         if [ ! -s "$f" ]; then CS_CAUSE="$CS_CAUSE leg-file-missing:$stem"; continue; fi
+        bad=$(awk 'NF && (NF!=2 || $0!=$1" "$2) {c++} END{print c+0}' "$f")
+        if [ "$bad" != 0 ]; then CS_CAUSE="$CS_CAUSE malformed-classes-line:$stem"; continue; fi
+        if [ -n "$(awk 'NF {print $1}' "$f" | sort | uniq -d | head -1)" ]; then CS_CAUSE="$CS_CAUSE claim-duplicated:$stem"; fi
         for n in $(awk 'NF {print $1}' "$f"); do
-          grep -q " $n\( \|$\)" "$reg" || CS_CAUSE="$CS_CAUSE claim-unregistered:$n"
+          if [ -n "$(awk -v l="$stem" -v n2="$n" '$1==l && $2==n2' "$reg")" ]; then :
+          elif [ -n "$(awk -v n2="$n" '$2==n2' "$reg")" ]; then CS_CAUSE="$CS_CAUSE claim-wrong-leg:$stem:$n"
+          else CS_CAUSE="$CS_CAUSE claim-unregistered:$n"; fi
         done
-        if [ "$(awk 'NF {print $1}' "$f" | sort | uniq -d | wc -l)" != 0 ]; then CS_CAUSE="$CS_CAUSE claim-duplicated:$stem"; fi
+        for n in $(awk -v l="$stem" '$1==l {print $2}' "$reg"); do
+          [ "$(awk -v n2="$n" '$1==n2' "$f" | wc -l)" = 1 ] || CS_CAUSE="$CS_CAUSE claim-count:$stem"
+        done
         if [ "$(awk 'NF' "$f" | wc -l)" != "$(awk -v l="$stem" '$1==l' "$reg" | wc -l)" ]; then CS_CAUSE="$CS_CAUSE claim-count:$stem"; fi
         ;;
       *) CS_CAUSE="$CS_CAUSE classes-file-not-booked:$stem" ;;
     esac
   done
+  dupx=$(for f in "$OUT"/*.classes; do [ -f "$f" ] || continue; awk 'NF {print $1}' "$f"; done | sort | uniq -d | head -1)
+  [ -z "$dupx" ] || CS_CAUSE="$CS_CAUSE claim-duplicated-across-files"
   local nbl; nbl=$(printf '%s\n' $LEGS_BOOKED | grep -c .)
   [ "$files" = "$nbl" ] || CS_CAUSE="$CS_CAUSE classes-file-count:$files-want-$nbl"
   local l1
@@ -354,6 +428,18 @@ cs_check() {
     CS_CAUSE=${CS_CAUSE% }
     return 1
   fi
+  rm -rf "$CS_SNAP"
+  mkdir -m 700 "$CS_SNAP" 2>/dev/null || { CS_CAUSE="snapshot-dir-unusable"; return 1; }
+  local a b
+  for l1 in $LEGS_BOOKED; do
+    cp "$OUT/$l1.classes" "$CS_SNAP/$l1.classes" 2>/dev/null || { CS_CAUSE="snapshot-copy-failed:$l1"; return 1; }
+    a=$(sha256sum -- "$OUT/$l1.classes" 2>/dev/null | cut -d' ' -f1)
+    b=$(sha256sum -- "$CS_SNAP/$l1.classes" 2>/dev/null | cut -d' ' -f1)
+    [ -n "$a" ] && [ "$a" = "$b" ] || { CS_CAUSE="snapshot-digest-mismatch:$l1"; return 1; }
+    printf '%s %s\n' "$l1" "$b" >> "$CS_SNAP/digests.txt"
+  done
+  [ "$(grep -c . "$CS_SNAP/digests.txt" 2>/dev/null)" = "$nbl" ] || { CS_CAUSE="snapshot-incomplete"; return 1; }
+  CS_SNAP_OK=1
   return 0; }
 
 scope_gate() { # $1=/proc/self/cgroup content $2=JOB; prints the cgroup path, or fails
@@ -521,7 +607,7 @@ leg() { # $1=leg name $2=CMD variable name $3=name list
   local L=$1 rc k0 k1 LO st cl sv pc causes n p q rcst
   cmd=${2}
   k0=$(oom_snap "$EV" "$L-leg-before")
-  timeout "$T_LEG" bash -c "$2" > "$OUT/$L.out" 2> "$OUT/logs/$L.err"; rc=$?
+  timeout -k "$T_KILL" "$T_LEG" bash -c "$2" > "$OUT/$L.out" 2> "$OUT/logs/$L.err"; rc=$?
   k1=$(oom_snap "$EV" "$L-leg-after"); LO=$(oom_pair_verdict "$k0" "$k1"); LASTOOM=$k1
   echo "== $L rc=$rc oom=$LO ($k0 -> $k1) $(tm "$OUT/logs/$L.err")" >> "$O"
   # Every condition below is a LEG-level cause. A cause does not end the packet: it makes every claim in
@@ -589,7 +675,14 @@ final_verdict() {
     echo "NO_OBSERVATION:claim-set$cscause" >&2; exit 2
   fi
   [ -s "$OUT/post-leg.cause" ] && pc=$(cat "$OUT/post-leg.cause")
-  for f in "$OUT"/*.classes; do
+  # v9: cs_check validated the live files and copied them; count ONLY that snapshot (digests recorded in
+  # cs-snapshot/digests.txt), so a classes file rewritten between validation and the verdict cannot be counted.
+  if [ "${CS_SNAP_OK:-0}" != 1 ] || [ ! -d "${CS_SNAP:-}" ]; then
+    echo "VERDICT=NO_OBSERVATION claims=0 legs-booked=$N_LEGS claims-booked=$N_CLAIMS_BOOKED claim-set refused:snapshot-missing (cs_check validated no snapshot to count)" >> "$O"
+    echo "DONE $(date -u +%FT%TZ)" >> "$O"
+    echo "NO_OBSERVATION:claim-set snapshot-missing" >&2; exit 2
+  fi
+  for f in "$CS_SNAP"/*.classes; do
     [ -f "$f" ] || continue
     nlegs=$((nlegs+1))
     for n in $(awk '{print $1}' "$f"); do
@@ -762,7 +855,16 @@ oom 0' oom)"
   [ $ra != 0 ] && [ $rb != 0 ] && ck hash-two-failures-not-equal refused refused || ck hash-two-failures-not-equal refused accepted
   # wall accounting must be arithmetic a reader can check, not prose
   ck capped-sum 8940 "$(( 2*(T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT) + 2*T_BUILD + 3*T_LEG ))"
-  ck wall-sum-arithmetic 4020 "$WALL_SUM"
+  ck wall-sum-arithmetic 4440 "$WALL_SUM"
+  ck wall-sum-counts-every-timeout-and-grace 1 "$([ "$WALL_SUM" = "$(( T_SETUP_CLONE + T_SETUP_FETCH + T_SETUP_CHECKOUT + T_BUILD + N_LEGS*T_LEG + T_SELFRUN + N_TIMEOUTS_RUN*T_KILL ))" ] && echo 1 || echo 0)"
+  ck wall-sum-counts-the-kill-graces 120 "$(( WALL_SUM - (T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT+T_BUILD+N_LEGS*T_LEG+T_SELFRUN) ))"
+  ck run-path-timeout-count 6 "$N_TIMEOUTS_RUN"
+  ck kill-grace-is-bounded 20 "$T_KILL"
+  ck no-run-timeout-lacks-a-kill-grace 1 "$([ "$(grep -c '[t]imeout ["]["$]T_' "$0")" -eq 0 ] && echo 1 || echo 0)"
+  ck every-run-timeout-site-carries-a-kill-grace 1 "$([ "$(grep -c '[t]imeout -k ["]["$]T_KILL["] ["]["$]T_' "$0")" -ge "$N_TIMEOUT_CALL_SITES" ] && echo 1 || echo 0)"
+  ck wall-reserve-is-stated 60 "$(( RUNTIME_S - WALL_SUM ))"
+  ck wall-sum-includes-the-self-run "$T_SELFRUN" "$(( WALL_SUM - (T_SETUP_CLONE+T_SETUP_FETCH+T_SETUP_CHECKOUT+T_BUILD+N_LEGS*T_LEG+N_TIMEOUTS_RUN*T_KILL) ))"
+  ck wall-sum-inside-the-scope 1 "$([ "$WALL_SUM" -le "$RUNTIME_S" ] && [ "$RUNTIME_S" -le "$LAUNCHER_CAP" ] && [ "$DRIVER_S" = "$(( RUNTIME_S + 300 ))" ] && echo 1 || echo 0)"
   ck wall-gate-accepts-this-row OK "$(wall_gate "$WALL_SUM" "$RUNTIME_S" "$LAUNCHER_CAP" "$DRIVER_S")"
   ck runtime-s-within-installed-launcher-cap ok "$([ "$RUNTIME_S" -le "$LAUNCHER_CAP" ] && echo ok || echo over-cap)"
   ck driver-wall-is-scope-plus-300 ok "$([ "$DRIVER_S" = "$((RUNTIME_S+300))" ] && echo ok || echo short)"
@@ -836,9 +938,11 @@ oom 0' oom)"
   inv 'dmes' 'g ' 'memory evidence never consults the kernel ring buffer' 0
   inv 'journalct' 'l ' 'memory evidence never consults the journal' 0
   invmin 'memory.eve' 'nts' 'the evidence source is the cgroup counter file' 1
-  inv 'timeout "$T_LE' 'G"' 'a leg runs under its own capped timeout' 1
-  inv 'timeout "$T_BUIL' 'D"' 'the build runs under its own capped timeout' 1
-  inv 'timeout "$T_SETUP_FETC' 'H"' 'the fetch runs under its own capped timeout' 1
+  inv 'timeout -k "$T_KILL" "$T_LE' 'G"' 'a leg runs under its own capped timeout' 1
+  inv 'timeout -k "$T_KILL" "$T_BUIL' 'D"' 'the build runs under its own capped timeout' 1
+  inv 'timeout -k "$T_KILL" "$T_SETUP_FETC' 'H"' 'the fetch runs under its own capped timeout' 1
+  inv 'timeout -k "$T_KIL' 'L" "$T_LEG"' 'a leg timeout carries its bounded kill-after grace' 1
+  inv '-k "$T_KILL" "$T_BUIL' 'D"' 'the build timeout carries its bounded kill-after grace' 1
   inv 'pc=$(pp_che' 'ck "$OUT/logs/$L.err")' 'the completion gate reads the leg stderr capture, where the record is emitted' 1
   inv 'pc=$(pp_check "$OUT/logs/$L.er' 'r")' 'the completion gate reads the leg stderr capture, where the record is emitted' 1
   inv 'pp_check "$OUT/$L.o' 'ut' 'no completion gate reads the leg stdout, which carries only the verdicts' 0
@@ -1093,6 +1197,80 @@ LEGX b" "LEG:a b" "LEGX=a HELD
 b FAILED"
   ck "cs-complete-set-with-a-fail-is-still-1" 1 "$(cat "$T/cs-FAILSTILL1/fv.rc")"
   ckp cs-fail-still-decides-per-claim FALSIFIED "$(cat "$T/cs-FAILSTILL1/fv.out")"
+  # ---- v9: the per-LEG BINDING. A claim registered under one leg does not satisfy another leg. Each of
+  # ---- these drives the SHIPPED cs_check through final_verdict on a synthetic booked set.
+  cs_case CROSSLEG "LEGX LEGY" "a b c" "LEGX a
+LEGX b
+LEGY c" "LEG:a b" "LEG:c" "LEGX=a HELD
+b HELD" "LEGY=b HELD"
+  ck "cs-claim-from-another-leg-exits-2" 2 "$(cat "$T/cs-CROSSLEG/fv.rc")"
+  ckp cs-crossleg-names-the-claim-cause "claim-wrong-leg:LEGY:b" "$(cat "$T/cs-CROSSLEG/fv.out")"
+  ckp cs-crossleg-names-the-cross-file-cause "claim-duplicated-across-files" "$(cat "$T/cs-CROSSLEG/fv.out")"
+  cs_case SWAP "LEGX LEGY" "a b c d" "LEGX a
+LEGX b
+LEGY c
+LEGY d" "LEG:a b" "LEG:c d" "LEGX=c HELD
+d HELD" "LEGY=a HELD
+b HELD"
+  ck "cs-claims-moved-between-legs-exit-2" 2 "$(cat "$T/cs-SWAP/fv.rc")"
+  ckp cs-swap-names-both-files-cause "claim-wrong-leg:LEGX:c" "$(cat "$T/cs-SWAP/fv.out")"
+  ckp cs-swap-names-the-other-file-cause "claim-wrong-leg:LEGY:a" "$(cat "$T/cs-SWAP/fv.out")"
+  ckp cs-swap-names-the-count-cause "claim-count:LEGX" "$(cat "$T/cs-SWAP/fv.out")"
+  cs_case SUBST "LEGX LEGY" "a b c" "LEGX a
+LEGY b
+LEGY c" "LEG:a" "LEG:b c" "LEGX=a HELD" "LEGY=q HELD"
+  ck "cs-substituted-name-exits-2" 2 "$(cat "$T/cs-SUBST/fv.rc")"
+  ckp cs-subst-names-the-substituted-cause "claim-unregistered:q" "$(cat "$T/cs-SUBST/fv.out")"
+  cs_case LEGSET "LEGX LEGY" "a b c d" "LEGX a
+LEGX b
+LEGZ c
+LEGZ d" "LEG:a b" "LEG:c d" "LEGX=a HELD
+b HELD" "LEGY=c HELD
+d HELD"
+  ck "cs-registration-naming-an-unbooked-leg-exits-2" 2 "$(cat "$T/cs-LEGSET/fv.rc")"
+  ckp cs-legset-names-the-leg-cause "registration-leg-count" "$(cat "$T/cs-LEGSET/fv.out")"
+  cs_case MALREG "LEGX LEGY" "a b" "LEGX a extra
+LEGY b" "LEG:a" "LEG:b" "LEGX=a HELD" "LEGY=b HELD"
+  ck "cs-malformed-registration-line-exits-2" 2 "$(cat "$T/cs-MALREG/fv.rc")"
+  ckp cs-malreg-names-the-cause "registration-malformed-line" "$(cat "$T/cs-MALREG/fv.out")"
+  cs_case MALFILE "LEGX LEGY" "a b" "LEGX a
+LEGY b" "LEG:a" "LEG:b" "LEGX=a HELD extra" "LEGY=b HELD"
+  ck "cs-malformed-classes-line-exits-2" 2 "$(cat "$T/cs-MALFILE/fv.rc")"
+  ckp cs-malfile-names-the-cause "malformed-classes-line:LEGX" "$(cat "$T/cs-MALFILE/fv.out")"
+  # the snapshot: what cs_check validated is what final_verdict counts. Validate a good set, tamper the live
+  # file afterwards, and the snapshot still holds the validated bytes while the tampered live set refuses.
+  mkdir -p "$T/cs-SNAPPOS"; svOUT=$OUT; svO=$O; OUT="$T/cs-SNAPPOS"
+  register_claims > /dev/null 2>&1
+  for lgt in $LEGS_BOOKED; do
+    eval "shplist=\"\$CLAIMS_$lgt\""
+    : > "$T/cs-SNAPPOS/$lgt.classes"
+    for clm in $shplist; do printf '%s HELD\n' "$clm" >> "$T/cs-SNAPPOS/$lgt.classes"; done
+  done
+  O="$T/cs-SNAPPOS/receipt.txt"
+  cs_check > "$T/cs-SNAPPOS/cc.out" 2>&1; rcsc=$?
+  ck cs-snapshot-validates-a-good-set 0 "$rcsc"
+  ck cs-snapshot-flag-is-set 1 "${CS_SNAP_OK:-0}"
+  SNAPDIR=$CS_SNAP
+  ck cs-snapshot-has-one-digest-per-leg "$(printf '%s\n' $LEGS_BOOKED | grep -c .)" "$(grep -c . "$SNAPDIR/digests.txt" 2>/dev/null || echo 0)"
+  snapok=1
+  for lgt in $LEGS_BOOKED; do
+    want=$(sha256sum -- "$OUT/$lgt.classes" | cut -d' ' -f1)
+    got=$(awk -v l="$lgt" '$1==l {print $2}' "$SNAPDIR/digests.txt")
+    [ "$want" = "$got" ] || snapok=0
+  done
+  ck cs-snapshot-digests-match-the-validated-bytes 1 "$snapok"
+  printf '%s\n' 'a claim nobody registered' >> "$OUT/$lgt.classes"
+  cs_check > "$T/cs-SNAPPOS/cc2.out" 2>&1; rcsc2=$?
+  ck cs-tampered-live-set-refuses-revalidation 1 "$rcsc2"
+  snapok2=1
+  for lgt in $LEGS_BOOKED; do
+    got=$(sha256sum -- "$SNAPDIR/$lgt.classes" 2>/dev/null | cut -d' ' -f1)
+    want=$(awk -v l="$lgt" '$1==l {print $2}' "$SNAPDIR/digests.txt")
+    [ -n "$got" ] && [ "$got" = "$want" ] || snapok2=0
+  done
+  ck cs-snapshot-still-holds-the-validated-bytes 1 "$snapok2"
+  OUT=$svOUT; O=$svO
+
   # ---- THE MULTI-CLAIM LEG CONTRACT end to end, through this packet's real leg() and its real exit
   # ---- decision. A stub stands in for claim_batch: bare verdict lines on stdout, the frozen completion
   # ---- record on stderr, and the exit code the case asks for. Every case reports
@@ -1149,10 +1327,18 @@ b FAILED"
     local D=$T/pg_$1 wt=$T/pg_$1/wt ex pre
     mkdir -p "$D/logs" "$wt"
     # real git in a throwaway temp dir, because the gate runs real git: stubbing git would test the stub.
-    git -c init.defaultBranch=main -c user.email=fixture@packet -c user.name=fixture init -q "$wt" </dev/null >/dev/null 2>&1
+    # The identity is passed to EVERY git invocation in the fixture (init AND commit), HOME is isolated to an
+    # empty directory, and no config outside the repo can reach it: GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_GLOBAL=
+    # /dev/null, core.hooksPath set to an empty dir. A fixture that needs some host's global git identity is
+    # a fixture that fails on a machine nobody has configured, and on srv1 that would spend the grant.
+    mkdir -p "$T/nohooks" "$T/nohome"
+    gxf() { env -i PATH="$PATH" HOME="$T/nohome" TMPDIR="$T" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        GIT_AUTHOR_NAME=fixture GIT_AUTHOR_EMAIL=fixture@packet GIT_COMMITTER_NAME=fixture GIT_COMMITTER_EMAIL=fixture@packet \
+        git -c user.name=fixture -c user.email=fixture@packet -c core.hooksPath="$T/nohooks" "$@"; }
+    gxf -c init.defaultBranch=main init -q "$wt" </dev/null >/dev/null 2>&1
     printf 'x\n' > "$wt/file"
-    git -C "$wt" add file </dev/null >/dev/null 2>&1
-    git -C "$wt" commit -q -m seed </dev/null >/dev/null 2>&1
+    gxf -C "$wt" add file </dev/null >/dev/null 2>&1
+    gxf -C "$wt" commit -q -m seed </dev/null >/dev/null 2>&1
     OUT=$D; O=$D/receipt.txt
     book_case_set "LEGX" "a b" "a b" || { echo "fixture could not book its own claim set: pg"; return 1; }
     pgr=$(register_claims 2>&1) || { echo "fixture could not register its own claim set: $pgr"; return 1; }
@@ -1214,7 +1400,7 @@ bytes_of() { printf '%s' "$1" | wc -c | tr -d ' '; }
 if [ "${1:-}" = "--predict-only" ]; then
   # Writes NOTHING, contacts nothing: no run dir, no clone, no build, no store. The bytes and sha256 below
   # are over the LITERAL frozen string, before $OUT / $BIN4 / $BIN5 are expanded at run time.
-  echo "PREDICT-ONLY row=R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v8_manifest.md"
+  echo "PREDICT-ONLY row=R5 job=$J host_booked=srv1 script_sha256_frozen=see-tools/acceptance_r4_r5_r6_v9_manifest.md"
   echo "THIS ROW DISCRIMINATES NOTHING: presence observations, no mutation leg, none proposed."
   echo "pin_r5=$H5 tree_r5=$T5"
   printf 'blob %s %s\n' "$E5" "$B5"
@@ -1265,7 +1451,7 @@ S=$(bin_sha "$0") || nox "cannot hash the staged script at $0" script-hash
 echo "script_sha256=$S (compare with the published frozen value; a file cannot gate its own hash)" >> "$O"
 
 # FIXTURES BEFORE ANY WORK IS SPENT: a misfired classifier ends the row with no claim attempted.
-timeout "$T_SELFRUN" bash "$0" --classifier-fixtures > "$OUT/logs/selfcheck.log" 2>&1; SFX=$?
+timeout -k "$T_KILL" "$T_SELFRUN" bash "$0" --classifier-fixtures > "$OUT/logs/selfcheck.log" 2>&1; SFX=$?
 [ "$SFX" = 0 ] || nox "the packet's own classifier fixtures misfired or hung (exit $SFX); no claim attempted (see logs/selfcheck.log)" "fixtures(exit=$SFX)"
 echo "fixtures: $(grep -c '^FIXTURE PASS' "$OUT/logs/selfcheck.log") pass, $(grep -c '^FIXTURE FAIL' "$OUT/logs/selfcheck.log") fail" >> "$O"
 
@@ -1289,11 +1475,11 @@ blob_gate() { # $1=clone $2=path $3=blob
 pin_clone() { # $1=worktree name $2=pin $3=tree; fetches, checks out, gates HEAD/tree/blobs/names
   local W=$OUT/$1 H T n
   H=$H5; T=$T5
-  timeout "$T_SETUP_CLONE" bash -c "$CMD_CLONE_5" > "$OUT/logs/$1-init.log" 2>&1 \
+  timeout -k "$T_KILL" "$T_SETUP_CLONE" bash -c "$CMD_CLONE_5" > "$OUT/logs/$1-init.log" 2>&1 \
     || nox "git init of $W failed or exceeded ${T_SETUP_CLONE}s" clone
-  timeout "$T_SETUP_FETCH" bash -c "$CMD_FETCH_5" > "$OUT/logs/$1-fetch.log" 2>&1 \
+  timeout -k "$T_KILL" "$T_SETUP_FETCH" bash -c "$CMD_FETCH_5" > "$OUT/logs/$1-fetch.log" 2>&1 \
     || nox "shallow fetch of $H into $W failed or exceeded ${T_SETUP_FETCH}s" clone
-  timeout "$T_SETUP_CHECKOUT" bash -c "$CMD_CHECKOUT_5" > "$OUT/logs/$1-checkout.log" 2>&1 \
+  timeout -k "$T_KILL" "$T_SETUP_CHECKOUT" bash -c "$CMD_CHECKOUT_5" > "$OUT/logs/$1-checkout.log" 2>&1 \
     || nox "checkout of FETCH_HEAD in $W failed or exceeded ${T_SETUP_CHECKOUT}s" clone
   local gotH gotT
   gotH=$(git -C "$W" rev-parse HEAD 2>/dev/null || echo unreadable)
@@ -1310,7 +1496,7 @@ build_pin() { # $1=worktree; builds claim_batch under the booked bounds, OOM jud
   local W=$OUT/$1 k0 k1 BO B
   cd "$W" || nox "cannot cd into $W" clone
   k0=$(oom_snap "$EV" "$1-build-before")
-  timeout "$T_BUILD" /usr/bin/time -v bash -c "$CMD_BUILD_5" > "$OUT/logs/$1-build.log" 2>&1; BX=$?
+  timeout -k "$T_KILL" "$T_BUILD" /usr/bin/time -v bash -c "$CMD_BUILD_5" > "$OUT/logs/$1-build.log" 2>&1; BX=$?
   k1=$(oom_snap "$EV" "$1-build-after"); BO=$(oom_pair_verdict "$k0" "$k1")
   echo "== build $1 exit=$BX oom=$BO $(tm "$OUT/logs/$1-build.log")" >> "$O"
   [ "$BX" = 124 ] && nox "$1 build timed out at ${T_BUILD}s" build-timeout
