@@ -369,6 +369,15 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
       runner: selected_ci_runner_target(),
+      // THE REQUIRED JOB'S WALL BUDGET is a policy budget (DESIGN 5), not a measurement. Raised from 90 to
+      // 120 minutes on 2026-11-07 (quick-newt-573, under the operator ruling to follow my recommendations; supersedes #16006,
+      // valiant-deer-27, which proposed 150 by default of operator escalation msg_ebf6e9b0). Evidence: runs
+      // 42292182286 (main at 1e27f7cffc81) and 42276359442 (PR #16000) passed BOTH emit-and-build steps (about
+      // 28-32 min each) and were then cancelled at 90:00 in the parse-population walk, so a green subject could
+      // not finish; srv3/srv4-class runners measured about 85-95 min in total and srv1 about 60. The walk's true
+      // wall is UNMEASURED, because every over-budget attempt was cut at the wall: a cancel at 120 is drift to
+      // investigate, not a reason to raise this again. Dissolution: a runtime slice that brings the job back
+      // under 90 restores this row to minute(90).
       timeout: minute(120),
       source_roots: witness_layer_roots,
       schedule: Absent,
