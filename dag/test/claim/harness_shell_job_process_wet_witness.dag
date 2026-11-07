@@ -1,0 +1,127 @@
+module test.claim.harness_shell_job_process_wet_witness
+
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.measure { second }
+import extdeps.shell
+import extdeps.posix.signal
+import extdeps.filesystem.filesystem_io
+import extdeps.posix.process
+import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
+import gunbc.harness.harness_shell_job_policy { ShellJobSchedule }
+import gunbc.harness.harness_shell_job {
+  HarnessShellSpawn, ShellSpawned, ShellSpawnFailed, harness_start_shell_job, harness_await_pid,
+  harness_kill_running_job, JobKillConfirmed, JobKillUnconfirmed,
+  harness_job_backstop_standing, JobBackstopHit, JobOwnExit, JobBackstopUndecided,
+}
+
+// THE REAL-PROCESS CLAIMS, AT THE harness_shell_job INTERFACE. Their import closure does not reach
+// gunbc.harness.harness_tool (and so not gunbc.compute.test_run or gunbc.host.host_effect), so they
+// are observable at a head whose seed refuses the validate_worktree edge. The dispatch-level
+// pairing claim is test.claim.harness_shell_job_wet_witness.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn schedule_with_backstop(backstop: Int) -> ShellJobSchedule {
+  ShellJobSchedule {
+    inline_hold: second(count: 1),
+    wait_base: second(count: 3),
+    wait_factor: 2,
+    wait_request_cap_factor: 4,
+    wait_minimum: second(count: 1),
+    backstop: second(count: backstop),
+  }
+}
+
+test fn a_long_command_stays_running_past_the_hold_and_the_group_kill_confirms() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let spawn = harness_start_shell_job(
+    worktree: dir.path as FilePath,
+    job_output_directory: out.path as FilePath,
+    timeout_program: "/usr/bin/timeout" as FilePath,
+    command: "sleep 20",
+    schedule: schedule_with_backstop(backstop: 20),
+  )
+  let ok = match spawn {
+    ShellSpawnFailed { program: _, cause: _ } => false
+    ShellSpawned { job } =>
+      match harness_await_pid(pid: job.pid, remaining: second(count: 1)) {
+        StillRunning =>
+          match harness_kill_running_job(job: job) {
+            JobKillConfirmed { job: _ } => true
+            JobKillUnconfirmed { job: _, detail: _ } => false
+          }
+        _ => false
+      }
+  }
+  let _c1 = shell.Remove.RecursiveForce(path: dir.path)
+  let _c2 = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && ok
+}
+
+// RED control against the backstop reading: the same exit status from the command itself, inside
+// the backstop, must NOT read as the harness backstop.
+test fn the_expiry_status_inside_the_backstop_is_the_commands_own_exit() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let spawn = harness_start_shell_job(
+    worktree: dir.path as FilePath,
+    job_output_directory: out.path as FilePath,
+    timeout_program: "/usr/bin/timeout" as FilePath,
+    command: join(["exit ", to_string(value: coreutils_timeout_expired_exit_code)], ""),
+    schedule: schedule_with_backstop(backstop: 20),
+  )
+  let ok = match spawn {
+    ShellSpawnFailed { program: _, cause: _ } => false
+    ShellSpawned { job } =>
+      match harness_await_pid(pid: job.pid, remaining: second(count: 5)) {
+        Exited { code } =>
+          code == coreutils_timeout_expired_exit_code
+            && (match harness_job_backstop_standing(job: job, code: code) {
+              JobOwnExit => true
+              JobBackstopHit => false
+              JobBackstopUndecided => false
+            })
+        _ => false
+      }
+  }
+  let _c1 = shell.Remove.RecursiveForce(path: dir.path)
+  let _c2 = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && ok
+}
+
+test fn the_backstop_expiry_kills_the_process_group_and_reads_as_the_backstop() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let out = shell.Mktemp.Dir()
+  let marker = join([out.path, "/grandchild-28391.pid"], "")
+  let spawn = harness_start_shell_job(
+    worktree: dir.path as FilePath,
+    job_output_directory: out.path as FilePath,
+    timeout_program: "/usr/bin/timeout" as FilePath,
+    command: join(["sleep 28391 & printf %s $! > ", marker, "; sleep 28392"], ""),
+    schedule: schedule_with_backstop(backstop: 2),
+  )
+  let hit = match spawn {
+    ShellSpawnFailed { program: _, cause: _ } => false
+    ShellSpawned { job } =>
+      match harness_await_pid(pid: job.pid, remaining: second(count: 8)) {
+        Exited { code } =>
+          code == coreutils_timeout_expired_exit_code
+            && (match harness_job_backstop_standing(job: job, code: code) {
+              JobBackstopHit => true
+              JobOwnExit => false
+              JobBackstopUndecided => false
+            })
+        _ => false
+      }
+  }
+  let grandchild = Filesystem.Read(path: marker)
+  let gone = if grandchild.success && grandchild.content.length() > 0 {
+    !posix.Signal.TerminateProcess(pid: grandchild.content as NonEmptyStr).success
+  } else {
+    false
+  }
+  let _c1 = shell.Remove.RecursiveForce(path: dir.path)
+  let _c2 = shell.Remove.RecursiveForce(path: out.path)
+  dir.success && out.success && hit && gone
+}

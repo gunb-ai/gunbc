@@ -1189,6 +1189,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_harness_shell_job_wet_reason,
     dissolution: excl_harness_shell_job_wet_dissolve},
   WitnessExclusionRow {
+    pattern: "harness_shell_job_process_wet_witness.dag",
+    classification: LocalRepoWetLane,
+    reason: excl_harness_shell_job_wet_reason,
+    dissolution: excl_harness_shell_job_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "repo_local_git_config_real_execution.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
