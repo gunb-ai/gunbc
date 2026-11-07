@@ -1,11 +1,11 @@
 module v2.std.diagnostic
 
 import std.types { List }
-import std.algebra { Cons, Empty, FreeMonoid, Monoid, Semigroup, list_append, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
+import std.algebra { FreeMonoid, Monoid, Semigroup, list_append, list_find_first, list_snoc_item, freemonoid_empty, bag_eq, fold_list, collection_concat_shape, collection_map_shape, collection_join_shape }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { node_equal_ignoring_provenance, node_occurrence_eq, Node, NodeOccurrence, Symbol, symbol_lexeme }
 import std.nat { Nat }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_is_absent, optional_present }
 
 type Extent
   = WholeFile
@@ -366,23 +366,20 @@ fn diagnostics_fatal_reason(d: NonEmptyDiagnostics) -> Symbol {
 // Absent means NO diagnostic in this list is an inhabitance judgment. It is not a default position
 // and there is no default position: the field on InhabitanceRefused is not an Optional, so the only
 // way to get Absent here is genuinely to have no judgment diagnostic.
+// THE ONE LOOKUP, BUILT ON THE EXISTING SEARCH. std.algebra already owns "first element satisfying a
+// predicate" -- list_find_first, which moved into std.algebra precisely because a second consumer
+// appeared and re-expressing the shape locally would grow net concepts by re-invention
+// (gunbc.design_argument::witness_one_interface). This is that second consumer's sibling, so it calls the
+// helper instead of writing Empty/Cons recursion a third time; the only thing local here is WHICH
+// diagnostic carries the position and what to project from it.
 fn diagnostics_inhabitance_position(d: Diagnostics) -> Optional<DeclaredTypePosition> {
   match d {
     None => optional_absent()
-    Some { diagnostics: ds } => match diagnostic_inhabitance_position(d: ds.head) {
-      Present { value: p } => Present { value: p }
-      Absent => diagnostic_inhabitance_position_in_rest(xs: ds.tail)
-    }
-  }
-}
-
-fn diagnostic_inhabitance_position_in_rest(xs: List<Diagnostic>) -> Optional<DeclaredTypePosition> {
-  match xs {
-    Empty => optional_absent()
-    Cons { head: x, tail: rest } => match diagnostic_inhabitance_position(d: x) {
-      Present { value: p } => Present { value: p }
-      Absent => diagnostic_inhabitance_position_in_rest(xs: rest)
-    }
+    Some { diagnostics: ds } =>
+      match list_find_first(xs: ds, predicate: fn(x) { !optional_is_absent(opt: diagnostic_inhabitance_position(d: x)) }) {
+        Absent => optional_absent()
+        Present { value: x } => diagnostic_inhabitance_position(d: x)
+      }
   }
 }
 fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
