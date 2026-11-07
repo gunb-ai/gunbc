@@ -358,19 +358,19 @@ test fn nal_node_concrete_declared_side_is_reachable_holds() -> Bool {
 }
 
 test fn nal_node_concrete_produced_is_instantiation_holds() -> Bool {
-  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_concrete_declared_is_instantiation_holds() -> Bool {
-  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_concrete_produced_arguments_positional_holds() -> Bool {
-  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: nal_arguments_are_positional)
+  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_arguments_are_positional(n: n) })
 }
 
 test fn nal_node_concrete_declared_arguments_positional_holds() -> Bool {
-  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: nal_arguments_are_positional)
+  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_arguments_are_positional(n: n) })
 }
 
 // THE SOUNDNESS CELL. Both sides spell Pair<Int, String> and the body is the parameter itself, so the
@@ -384,53 +384,53 @@ test fn nal_node_concrete_sides_are_structurally_equal_holds() -> Bool {
 }
 
 test fn nal_node_concrete_produced_denotation_reads_holds() -> Bool {
-  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: nal_denotation_reads)
+  nal_on_produced(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_denotation_reads(n: n) })
 }
 
 test fn nal_node_concrete_declared_denotation_reads_holds() -> Bool {
-  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: nal_denotation_reads)
+  nal_on_declared(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_denotation_reads(n: n) })
 }
 
 // --- the site-6 shape: Pair<K, String> declared against Pair<K, Int> produced --------------------------
 
 test fn nal_node_generic_produced_is_instantiation_holds() -> Bool {
-  nal_on_produced(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+  nal_on_produced(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_generic_declared_is_instantiation_holds() -> Bool {
-  nal_on_declared(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+  nal_on_declared(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_generic_produced_arguments_positional_holds() -> Bool {
-  nal_on_produced(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+  nal_on_produced(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_arguments_are_positional(n: n) })
 }
 
 test fn nal_node_generic_declared_arguments_positional_holds() -> Bool {
-  nal_on_declared(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+  nal_on_declared(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_arguments_are_positional(n: n) })
 }
 
 // --- the same two sides after alias normalization, which is the shape the judge compares ----------------
 
 test fn nal_node_generic_produced_normalized_is_instantiation_holds() -> Bool {
-  nal_on_normalized_produced(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+  nal_on_normalized_produced(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_generic_declared_normalized_is_instantiation_holds() -> Bool {
-  nal_on_normalized_declared(subject: "gunbc.nal_generic_differ", f: nal_kind_is_instantiation)
+  nal_on_normalized_declared(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_generic_produced_normalized_arguments_positional_holds() -> Bool {
-  nal_on_normalized_produced(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+  nal_on_normalized_produced(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_arguments_are_positional(n: n) })
 }
 
 test fn nal_node_generic_declared_normalized_arguments_positional_holds() -> Bool {
-  nal_on_normalized_declared(subject: "gunbc.nal_generic_differ", f: nal_arguments_are_positional)
+  nal_on_normalized_declared(subject: "gunbc.nal_generic_differ", f: fn(n) { nal_arguments_are_positional(n: n) })
 }
 
 test fn nal_node_concrete_produced_normalized_is_instantiation_holds() -> Bool {
-  nal_on_normalized_produced(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+  nal_on_normalized_produced(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
 
 test fn nal_node_concrete_declared_normalized_is_instantiation_holds() -> Bool {
-  nal_on_normalized_declared(subject: "gunbc.nal_concrete_ident", f: nal_kind_is_instantiation)
+  nal_on_normalized_declared(subject: "gunbc.nal_concrete_ident", f: fn(n) { nal_kind_is_instantiation(n: n) })
 }
