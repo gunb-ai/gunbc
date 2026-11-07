@@ -50,7 +50,7 @@ import std.optional { Absent, Present }
 import extdeps.bmc.megarac
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
 import extdeps.shell
-import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import extdeps.tools.curl { classify_curl_http_code_after_newline, CurlWroteHttpStatus, CurlWroteNoHttpStatus, CurlCookieJarParsed, CurlCookieJarMalformedRow, curl_cookie_jar_read }
 import gunbc.host.managed_host { managed_host_binding_for }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake.fan_observe { FanObserveAdmitted, FanObserveRefused, fan_observe_admission, fan_observe_refusal_text }
@@ -826,30 +826,14 @@ fn ui_octets_contain(hay: List<Int>, needle: List<Int>) -> Bool {
   }
 }
 
-// Cookie values of a Netscape jar: tab-separated, seven fields, the value last. A `#HttpOnly_` line is a
-// cookie; any other `#` line is a comment; a blank line is skipped. EVERY other row must be a
-// well-formed seven-field record, and one that is not makes the whole jar Absent: a malformed row next
-// to a valid one would otherwise leave a screen set that looks complete and is not (fail closed, nothing
-// is written). An empty cookie value is well-formed but dropped from the set (an empty needle matches
-// nothing, and listing it would make the check look broader than it is).
-fn ui_cookie_jar_rows(jar_text: String) -> List<String> {
-  split(s: jar_text, delimiter: "\n")
-    |> filter(line => count(ui_octets_of(line)) > 0)
-    |> filter(line => !ui_octets_starts_with(hay: ui_octets_of(line), needle: [35]) || ui_octets_starts_with(hay: ui_octets_of(line), needle: ui_octets_of("#HttpOnly_")))
-}
-
+// The session's cookie values, read through curl's own jar model (extdeps.tools.curl). A jar that does
+// not parse refuses as a whole (Absent): a malformed row beside a valid one would otherwise leave a
+// screen set that looks complete and is not, so nothing is written. An empty value is well-formed but
+// dropped (an empty needle matches nothing, and listing it would make the check look broader).
 fn ui_cookie_values_of_jar(jar_text: String) -> List<List<Int>>? {
-  let rows = ui_cookie_jar_rows(jar_text: jar_text)
-  if any(rows, row => count(split(s: row, delimiter: "\t")) != 7) {
-    none
-  } else {
-    Present { value: rows
-      |> map(row => split(s: row, delimiter: "\t"))
-      |> map(fields => match fields |> get(6) {
-        null => []
-        value => ui_octets_of(value)
-      })
-      |> filter(value => count(value) > 0) }
+  match curl_cookie_jar_read(jar_text: jar_text) {
+    CurlCookieJarMalformedRow { row_number: _, cause: _ } => none
+    CurlCookieJarParsed { rows: rows } => Present { value: rows |> map(row => ui_octets_of(row.value)) |> filter(value => count(value) > 0) }
   }
 }
 

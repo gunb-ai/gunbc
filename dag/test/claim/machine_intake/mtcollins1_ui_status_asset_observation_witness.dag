@@ -22,6 +22,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
 import std.encoding { utf8_decode_bytes }
 import std.measure { byte_size, byte_size_count, second_count }
 import gunbc.machine_intake.megarac_media_attach { megarac_media_read_max_time }
+import extdeps.tools.curl { CurlCookieJarParsed, CurlCookieJarMalformedRow, CurlCookieJarRow, curl_cookie_jar_read }
 import std.optional { Absent, Present }
 import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   AdmittedUiAssetPath,
@@ -1589,4 +1590,32 @@ test fn w_the_captured_text_lines_state_that_wire_bytes_are_not_established() ->
     string_contains(s: witness_lines_text(reading: refused), pattern: "wire_bytes=not_established") &&
     !string_contains(s: witness_lines_text(reading: written), pattern: "gzip") &&
     string_contains(s: join([ui_page_shape_line(reading: written) as String], ""), pattern: "basis=captured_text_utf8")
+}
+
+// The jar layout is curl's, modeled in extdeps.tools.curl: the HttpOnly prefix is a typed flag and not
+// part of the domain, flags and expiry are typed, and a bad row is located by its 1-based row among the
+// cookie rows (comments and blanks do not count). A flag that is neither TRUE nor FALSE is malformed.
+test fn w_the_curl_cookie_jar_model_types_the_row_and_locates_a_bad_one() -> Bool {
+  let http_only_row = "#HttpOnly_192.168.1.228\tFALSE\t/\tTRUE\t1700000000\tSID\tabc"
+  let plain_row = "192.168.1.228\tTRUE\t/x\tFALSE\t0\tOTHER\tdef"
+  let parsed = match curl_cookie_jar_read(jar_text: concat("# c\n", concat(http_only_row, concat("\n\n", plain_row)))) {
+    CurlCookieJarParsed { rows: rows } =>
+      count(rows) == 2 &&
+        witness_first_row_is_http_only(rows: rows) &&
+        count(rows |> filter(r => !r.http_only && r.include_subdomains && r.path == "/x" && r.expiry_epoch_seconds == 0 && r.name == "OTHER" && r.value == "def")) == 1
+    CurlCookieJarMalformedRow { row_number: _, cause: _ } => false
+  }
+  let located = match curl_cookie_jar_read(jar_text: concat(plain_row, "\nshort\tline")) {
+    CurlCookieJarParsed { rows: _ } => false
+    CurlCookieJarMalformedRow { row_number: n, cause: _ } => n == 2
+  }
+  let bad_flag = match curl_cookie_jar_read(jar_text: "192.168.1.228\tMAYBE\t/\tFALSE\t0\tN\tv") {
+    CurlCookieJarParsed { rows: _ } => false
+    CurlCookieJarMalformedRow { row_number: n, cause: _ } => n == 1
+  }
+  parsed && located && bad_flag
+}
+
+fn witness_first_row_is_http_only(rows: List<CurlCookieJarRow>) -> Bool {
+  count(rows |> filter(r => r.http_only && r.domain == "192.168.1.228" && r.secure && r.expiry_epoch_seconds == 1700000000 && r.name == "SID" && r.value == "abc")) == 1
 }
