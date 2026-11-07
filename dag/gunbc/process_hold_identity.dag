@@ -44,6 +44,27 @@ fn text_at(xs: List<String>, i: Int) -> String {
   }
 }
 
+// A HOLD OWNER THAT NAMES A PROCESS, read back: `<head>@boot=…` split once at process_hold_marker. The head is the
+// consumer's own (a fixed prefix one consumer compares, a run or escalation id another reads); the process part is
+// decoded here and nowhere else. Two refusals stay distinct because consumers report them differently: an owner with no
+// process part (no marker, or an empty head) and one whose process part does not decode.
+type ProcessHoldOwnerReading
+  = ProcessHoldOwnerRead { head: NonEmptyStr, holder: ProcessHoldHolder }
+  | ProcessHoldOwnerNamesNoProcess
+  | ProcessHoldOwnerProcessUndecodable
+
+fn process_hold_owner_read(owner: String) -> ProcessHoldOwnerReading {
+  let halves = split(s: owner, delimiter: process_hold_marker)
+  if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
+    ProcessHoldOwnerNamesNoProcess
+  } else {
+    match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
+      Present { value: h } => ProcessHoldOwnerRead { head: text_at(xs: halves, i: 0) as NonEmptyStr, holder: h }
+      Absent => ProcessHoldOwnerProcessUndecodable
+    }
+  }
+}
+
 fn process_hold_decode(text: String) -> ProcessHoldHolder? {
   let parts = split(s: text, delimiter: ",")
   if count(parts) != 4 {

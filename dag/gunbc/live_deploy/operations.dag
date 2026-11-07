@@ -10,17 +10,13 @@ import extdeps.systemd.systemctl {
   systemctl_mask_now_argv,
   systemctl_unmask_argv,
   systemctl_stop_argv,
+  systemctl_start_argv,
 }
 import extdeps.tools.gnu_coreutils {
   coreutils_install_directory_argv,
   coreutils_install_binary_name,
   coreutils_rm_force_argv,
   coreutils_rm_force_recursive_argv,
-  coreutils_install_mode_flag,
-  coreutils_install_file_owned_argv,
-  coreutils_install_directory_owned_argv,
-  coreutils_install_owner_flag,
-  coreutils_install_group_flag,
 }
 import extdeps.tools.diffutils { diffutils_cmp_program }
 import gunbc.fleet.fleet_posix_accounts { fleet_visudo_binary_path, fleet_cp_binary_path, fleet_mv_binary_path }
@@ -117,13 +113,20 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
   }
 }
 
-fn install_directory_owned_command(
-  mode: FileMode,
-  owner: NonEmptyStr,
-  group: NonEmptyStr,
-  path: String,
-) -> String {
-  shell_privileged_command_text_of_argv(
-    argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path),
-  )
-}
+// install_directory_owned_command (mode/owner/group/path -> rendered install text) is DELETED here:
+// its one body was the exact composition shell_privileged_command_text_of_argv(coreutils_install_
+// directory_owned_argv(...)) that gunbc.live_deploy.emit install_d_owned_for_user now spells
+// directly against the argv authorities -- a second spelling of the same install words (§3). It had
+// no production consumer (grep-verified). The live ACT on an owned-directory leaf goes through the
+// ONE provider, gunbc.owned_directory owned_directory_ensure -- called for every ApplyLegEnsureDirectory
+// by gunbc.host.host_effect_realize live_deploy_apply_ensure_directory_on_host and by
+// gunbc.roadmap.roadmap_dashboard_instance_apply. The roadmap node "Realize live_deploy's
+// install-owned leaves as typed fs writes with an ownership effect" is REALIZED THERE at an
+// ESTABLISHED RUNG (§4b, review 90635): the acting route re-observes and re-decides at apply time
+// and refuses a handover between the handover baseline and the act re-read
+// (owned_directory_act_time_handover); today every caller passes no carried plan reading, so the
+// window established by executed evidence is the decide-to-act window inside the provider call.
+// The node stays OPEN with its next rung stated: thread the release_member_plan's own observation
+// into owned_directory_ensure's plan_reading to cover the full plan-to-apply window. What remains in gunbc.live_deploy.emit is a DISPLAY surface --
+// the same argv authority's words rendered as text (kept by the pinned witness, inert by admission,
+// its refusal a false command) -- not an acting route.

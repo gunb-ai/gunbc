@@ -3,6 +3,7 @@ module extdeps.colo.databank
 import std.types { NonEmptyStr, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { FreeSemigroup }
+import std.measure { watt }
 import extdeps.colo.types {
   ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly,
   CabinetDensityClaim, DensityPublished, DensityUnread, PublishedDensityFigure, CabinetPowerFigure, PublishedRealPower,

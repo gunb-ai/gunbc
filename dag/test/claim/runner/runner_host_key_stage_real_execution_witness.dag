@@ -1,0 +1,91 @@
+module test.claim.runner.runner_host_key_stage_real_execution_witness
+
+import std.types { Bool, List, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.shell
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.runner.runner_host_medium { runner_host_key_gen_argv, runner_host_key_pub_argv, runner_host_key_fingerprint_argv }
+import test.claim.runner.runner_host_medium_witness { keyed_capture, observed_boot }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE INHABITANCE CLAIM (DESIGN section 3, the pairing obligation): the key stages the image runs, executed for real.
+// The supplied-capture tests in runner_host_medium_witness say what the reader does with a console it is HANDED; this one says the real
+// commands produce a console the reader takes. The argv builders are the ones the stages render (runner_host_medium_witness asserts the image's seed carries exactly their rendering over the declared path,
+// so deleting or rewiring a stage turns THAT red and an unrunnable command turns this red), run against the real ssh-keygen in a scratch directory. ROUTE, not only answer: the generated key's own
+// public half and ITS fingerprint make a pin (checked_host_key through the production reader), while the same public
+// half with the fingerprint of a DIFFERENT real key does not, so the binding is observed, not assumed. CONTROL: with
+// the generation stage not run, the public-half read is refused and no pin is taken. The private half stays in the
+// scratch directory, which is removed; nothing is printed.
+fn key_stage_text(outcome_text: String?) -> String {
+  match outcome_text {
+    Present { value: t } => concat(t, "\n")
+    Absent => ""
+  }
+}
+
+fn key_stage_run(command: ArgvCommand) -> String? {
+  match run_shell_command_capture(command: command, transport: LocalExec) {
+    ProcessOutputPresent { text: t } => Present { value: t }
+    ProcessOutputAbsent => Present { value: "" }
+    ProcessRefused { exit_code: _, stderr: _ } => none
+  }
+}
+
+fn real_key_pair_texts(dir: String, name: String) -> List<String> {
+  let key = concat(dir, "/", name)
+  let pub_file = concat(key, ".pub")
+  let gen = key_stage_run(command: runner_host_key_gen_argv(key_file: key))
+  let pubtext = key_stage_run(command: runner_host_key_pub_argv(public_key_file: pub_file))
+  let fptext = key_stage_run(command: runner_host_key_fingerprint_argv(public_key_file: pub_file))
+  match gen {
+    Absent => []
+    Present { value: _ } => match pubtext {
+      Absent => []
+      Present { value: p } => match fptext {
+        Absent => []
+        Present { value: f } => [p, f]
+      }
+    }
+  }
+}
+
+fn with_scratch(scenario: fn(String) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path as String)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+test fn the_real_stages_emit_a_public_half_and_a_fingerprint() -> Bool {
+  with_scratch(scenario: fn(dir) { count(real_key_pair_texts(dir: dir, name: "a")) == 2 })
+}
+
+test fn the_reader_takes_a_pin_from_the_real_stages_output() -> Bool {
+  with_scratch(scenario: fn(dir) {
+    let a = real_key_pair_texts(dir: dir, name: "a")
+    observed_boot(capture: keyed_capture(key_exit: "0", pub: key_stage_text(outcome_text: first(a)), fp: key_stage_text(outcome_text: first(skip(a, n: 1))))) == "aaaaaaaa-0000-4000-8000-000000000001"
+  })
+}
+
+test fn the_real_public_half_with_another_real_keys_fingerprint_is_not_a_pin() -> Bool {
+  with_scratch(scenario: fn(dir) {
+    let a = real_key_pair_texts(dir: dir, name: "a")
+    let b = real_key_pair_texts(dir: dir, name: "b")
+    count(a) == 2 && count(b) == 2
+      && observed_boot(capture: keyed_capture(key_exit: "0", pub: key_stage_text(outcome_text: first(a)), fp: key_stage_text(outcome_text: first(skip(a, n: 1))))) != "not-observed"
+      && observed_boot(capture: keyed_capture(key_exit: "0", pub: key_stage_text(outcome_text: first(a)), fp: key_stage_text(outcome_text: first(skip(b, n: 1))))) == "not-observed"
+  })
+}
+
+test fn without_the_generation_stage_the_public_half_read_is_refused() -> Bool {
+  with_scratch(scenario: fn(dir) {
+    match key_stage_run(command: runner_host_key_pub_argv(public_key_file: concat(dir, "/never.pub"))) {
+      Absent => true
+      Present { value: _ } => false
+    }
+  })
+}

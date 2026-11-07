@@ -1,0 +1,44 @@
+module test.claim.std_nat_ceil_div_saturating_sub_witness
+
+import std.types { Bool }
+import std.nat { Nat, Zero, nat_ceil_div, nat_ceil_div_by_succ, nat_saturating_sub }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Ceiling division and floored subtraction, exercised on the arithmetic facts that distinguish them from
+// truncating division and from raw subtraction.
+
+fn ceil_is(a: Nat, b: Nat, expected: Nat) -> Bool {
+  match nat_ceil_div(a: a, b: b) {
+    Absent => false
+    Present { value: q } => q == expected
+  }
+}
+
+test fn a_zero_divisor_has_no_ceiling_quotient() -> Bool {
+  match nat_ceil_div(a: 5, b: Zero) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn ceiling_division_is_exact_when_divisible_and_rounds_up_otherwise() -> Bool {
+  ceil_is(a: 6, b: 3, expected: 2)
+    && ceil_is(a: 7, b: 3, expected: 3)
+    && ceil_is(a: 1, b: 1000, expected: 1)
+    && ceil_is(a: 0, b: 3, expected: 0)
+}
+
+test fn the_total_form_divides_by_the_successor_of_its_argument() -> Bool {
+  nat_ceil_div_by_succ(a: 0, divisor_prev: 999) == 0
+    && nat_ceil_div_by_succ(a: 1000, divisor_prev: 999) == 1
+    && nat_ceil_div_by_succ(a: 1001, divisor_prev: 999) == 2
+    && nat_ceil_div_by_succ(a: 7, divisor_prev: 0) == 7
+}
+
+test fn saturating_subtraction_floors_at_zero_and_is_ordinary_otherwise() -> Bool {
+  nat_saturating_sub(a: 3, b: 17) == 0
+    && nat_saturating_sub(a: 17, b: 17) == 0
+    && nat_saturating_sub(a: 17, b: 3) == 14
+}

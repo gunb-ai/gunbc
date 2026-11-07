@@ -3,7 +3,7 @@ module extdeps.fans.delta
 import std.types { NonEmptyStr }
 import std.measure { Milliampere, micrometer, millivolt, milliwatt, milliampere, millilitre_per_second, pascal, rpm }
 import extdeps.units.iec_61672 { tenths_dba }
-import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerOutlet, BlowerDepthEdge, RadialBlowerRating }
+import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerOutlet, BlowerDepthEdge, RadialBlowerRating, RadialBlowerMountingHole }
 import extdeps.vendor.delta { delta_electronics }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -71,9 +71,12 @@ data delta_bfb1012m_envelope_standing: CitedFigureStanding = CitedToAuthority { 
 //
 // The front view also dimensions the impeller centre (50.0 +/- 0.5 from the 94.4 mm edge, 52.0 +/- 0.5
 // from the 97.2 mm edge), the intake (diameter 45.4, ring 58.9) and the two 4.5 mm holes (one 39.0 +/-
-// 0.3 right of and above the centre, one 32.0 +/- 0.3 left of and below it). Nothing in this repository
-// places the blower by its holes or its intake ring yet, so those figures are recorded here and not
-// modelled as rows; the row that first consumes one carries it.
+// 0.3 right of and above the centre, one 32.0 +/- 0.3 left of and below it). Re-read at higher
+// resolution (2026-11-03), each hole is dimensioned in both directions from the centre: the hole nearer the
+// outlet sits 50.0 - 32.0 = 18.0 from the outlet edge and 52.0 + 32.0 = 84.0 from the edge the outlet runs
+// from, so 84.0 along the outlet edge from the outlet's corner. That hole is the row below the outlet (first
+// consumer: product.printed_chassis.blower_outlet_mount); the far hole and the intake ring are consumed by
+// nothing yet and stay recorded here only.
 data delta_bfb1012m_outlet: RadialBlowerOutlet = RadialBlowerOutlet {
   edge: BlowerDepthEdge,
   opening_along_edge: micrometer(count: 53900),
@@ -83,6 +86,27 @@ data delta_bfb1012m_outlet: RadialBlowerOutlet = RadialBlowerOutlet {
 }
 
 data delta_bfb1012m_outlet_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
+
+// The stub depth is NOT dimensioned on the drawing: it is the distance from the outlet face to the housing
+// just past the frame's end (58.1 mm along: 11.2; 62.1: 12.1; 66.0: 12.7; 70.0: 13.4 mm, then out to the
+// lug), measured 2026-11-04 by scale on the front view of the DIMENSIONS DRAWING of the pinned copy
+// (4.56 px/mm, about +/-0.3 mm; corner fillet about 2 mm). A scale reading, so a bet, not a cited figure.
+// How far the housing stands off the outlet face just past the frame's end: beyond the frame along the edge
+// nothing of the housing is nearer than this, so a socket no deeper than this clears it. Its own row, apart
+// from the cited outlet record, because its standing differs.
+data delta_bfb1012m_outlet_stub_depth: Micrometer = micrometer(count: 11200)
+
+data delta_bfb1012m_outlet_stub_depth_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Undimensioned on the datasheet drawing; read by scale at about +/-0.3 mm. A vendor drawing or caliper reading of the distance from the outlet face to the housing past the frame would cite it."
+}
+
+data delta_bfb1012m_outlet_side_hole: RadialBlowerMountingHole = RadialBlowerMountingHole {
+  from_outlet_edge: micrometer(count: 18000),
+  from_outlet_corner: micrometer(count: 84000),
+  position_tolerance: micrometer(count: 300),
+}
+
+data delta_bfb1012m_outlet_side_hole_standing: CitedFigureStanding = CitedToAuthority { authority: delta_bfb_series_datasheet }
 
 // THE RATING ROW, read from the same sheet for -R00/-F00. Free-air flow and speed, pressure at zero
 // flow; "function type is optional". The sheet states flow as 0.640 m3/min (22.60 CFM), carried as

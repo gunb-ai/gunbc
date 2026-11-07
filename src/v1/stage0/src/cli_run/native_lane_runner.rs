@@ -80,14 +80,6 @@ const NATIVE_COMPILE_ENTRY: &str = "src/v2/compiler/source_root_eval.dag";
 /// than this file growing a second copy of that sequence.
 const V2_NATIVE_CLI_ENTRY: &str = "src/v2/cli/compile_cli.dag";
 
-pub(crate) fn native_compile_entry() -> &'static str {
-    NATIVE_COMPILE_ENTRY
-}
-
-pub(crate) fn v2_native_cli_entry() -> &'static str {
-    V2_NATIVE_CLI_ENTRY
-}
-
 /// The malformed control: deliberately unterminating bytes any honest front-end must refuse at
 /// tokenize. THE COMMITTED CARRIER IS NOT A `.dag` FILE — the bytes are not a dag program, and
 /// carrying the extension put them in the changed-witness observation's parse path, where the
@@ -3982,12 +3974,13 @@ pub fn run_native_claim_program(
     ))
 }
 
-/// ONE RUN OF A `std.compiler_entry` `NativeServeDriver` SERVICE, as the observation
+/// ONE RUN OF A `std.compiler_entry` `NativeIngressDriver` SERVICE, as the observation
 /// `gunbc.native_serve_probe` `native_serve_probe_standing` needs and nothing it decides: the line
-/// the service announced once bound, the bytes each request got back (in request order), and the
-/// status and stderr of a second launch the door must refuse before binding. `refused_status` is
-/// `None` when that launch did not exit by itself within the deadline (it was killed), which the
-/// reader receives as a negative status and so as a start that was not refused.
+/// each instance announced, the responses in request order, each refused launch's status and stderr,
+/// and each deadline launch's announcement, response and exit status. Every argv is the reader's
+/// (`gunbc.native_serve_probe_plan` `native_serve_probe_launch`); the host spells no flag. A status
+/// is None when the process had to be killed at the run deadline, which the reader receives as a
+/// negative status and so as a process that did not exit by itself.
 pub struct NativeServeProgramRun {
     pub closure_identity: String,
     pub binary_identity: String,
@@ -3997,52 +3990,73 @@ pub struct NativeServeProgramRun {
     pub peer_announcement: String,
     pub peer_port: i64,
     pub responses: Vec<String>,
-    pub refused_status: Option<i32>,
-    pub refused_stderr: String,
-    pub served_exit_status: Option<i32>,
+    pub refused_statuses: Vec<Option<i32>>,
+    pub refused_stderrs: Vec<String>,
+    pub deadline_announcements: Vec<String>,
+    pub deadline_responses: Vec<String>,
+    pub deadline_exit_statuses: Vec<Option<i32>>,
+    /// The account the host's own effective uid resolves to, when the subject was served on a unix
+    /// socket: the peer the kernel must attest for every connection the host made. Empty otherwise.
+    pub unix_peer_account: String,
+    /// The contended launches, in `NativeServeLaunches::unix_contended` order: each one's status
+    /// and stderr, and whether its path still holds what the host put there (empty when not run).
+    pub unix_contended_statuses: Vec<Option<i32>>,
+    pub unix_contended_stderrs: Vec<String>,
+    pub unix_contended_kept: Vec<bool>,
     pub stderr: String,
 }
 
 /// WHICH PHASES A RUN PERFORMS, as the binding row declares them (`gunbc.native_serve_probe_plan`
-/// `NativeServePhase`). The host reads the three answers off the row and holds no per-binding
+/// `NativeServePhase`). The host reads the four answers off the row and holds no per-binding
 /// branch: a phase that is not declared is not run, and its observation reaches the reader as the
-/// absent value (no announcement, port -1, status -1).
+/// absent value (no announcement, port -1, empty lists).
 #[derive(Clone, Copy)]
 pub struct NativeServePhases {
     pub peer_instance: bool,
     pub refused_launch: bool,
-    pub stuck_ceiling_exit: bool,
+    pub deadline_exit: bool,
+    pub unix_socket: bool,
+}
+
+/// The launches a run performs, each an argv the reader rendered. Under the unix-socket phase the
+/// subject's argv names the socket path the host chose (`unix_socket_path`), and every request is
+/// exchanged over that socket.
+pub struct NativeServeLaunches {
+    pub subject: Vec<String>,
+    pub unix_socket_path: Option<String>,
+    /// Under the unix-socket phase, the CONTENDED launches: each a path the host contends, how it
+    /// contends it, and the argv that launches the subject's binary there. Each must refuse and
+    /// leave the path as the host holds it.
+    pub unix_contended: Vec<(NativeServeContention, String, Vec<String>)>,
+    pub refused: Vec<Vec<String>>,
+    pub deadline: Vec<Vec<String>>,
+}
+
+/// HOW THE HOST CONTENDS A SOCKET PATH under the unix-socket phase, the two ways another
+/// realization can be found at a path.
+#[derive(Clone, Copy)]
+pub enum NativeServeContention {
+    /// A live listener that never took the path's lock: the launch must find it live and refuse,
+    /// and a connection by that path must still reach the host's listener afterwards.
+    LiveListener,
+    /// A stale socket whose lock the host holds, the moment at which another realization has
+    /// judged the path stale and not yet bound it: the launch must refuse on the lock and leave the
+    /// stale socket untouched (the same inode).
+    HeldLock,
 }
 
 /// How long a launch, an announcement or one exchange may take before the run stops waiting. A
 /// deadline here is the instrument refusing to hang, not a budget the service is judged by.
 const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn native_serve_launch_args(release_revision: &str, request_deadline_ms: &str) -> Vec<String> {
-    vec![
-        "--request-deadline-ms".to_string(),
-        request_deadline_ms.to_string(),
-        "--host".to_string(),
-        "127.0.0.1".to_string(),
-        "--port".to_string(),
-        "0".to_string(),
-        "--release-revision".to_string(),
-        release_revision.to_string(),
-    ]
-}
-
-/// The launch that must refuse: wait for it to exit by itself, killing it at the deadline.
+/// A launch that must refuse: wait for it to exit by itself, killing it at the deadline.
 fn native_serve_refused_launch(
     binary: &Path,
-    refused_revision: &str,
-    request_deadline_ms: &str,
+    argv: &[String],
 ) -> Result<(Option<i32>, String), String> {
     use std::io::Read;
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(
-            refused_revision,
-            request_deadline_ms,
-        ))
+        .args(argv)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -4071,13 +4085,26 @@ fn native_serve_refused_launch(
 
 /// One request written to a fresh connection, and every byte the service sent before closing it.
 fn native_serve_exchange(address: &str, request: &str) -> String {
-    use std::io::{Read, Write};
-    let mut stream = match std::net::TcpStream::connect(address) {
-        Ok(stream) => stream,
-        Err(cause) => return format!("connect failed: {cause}"),
-    };
-    let _ = stream.set_read_timeout(Some(NATIVE_SERVE_DEADLINE));
-    let _ = stream.set_write_timeout(Some(NATIVE_SERVE_DEADLINE));
+    match std::net::TcpStream::connect(address) {
+        Ok(stream) => native_serve_exchange_on(stream, request),
+        Err(cause) => format!("connect failed: {cause}"),
+    }
+}
+
+/// The same exchange over the unix socket at `path`, the host's own process being the peer the
+/// service's kernel attests.
+fn native_serve_unix_exchange(path: &str, request: &str) -> String {
+    match std::os::unix::net::UnixStream::connect(path) {
+        Ok(stream) => native_serve_exchange_on(stream, request),
+        Err(cause) => format!("connect failed: {cause}"),
+    }
+}
+
+fn native_serve_exchange_on<S: std::io::Read + std::io::Write + NativeServeTimeouts>(
+    mut stream: S,
+    request: &str,
+) -> String {
+    stream.bound(NATIVE_SERVE_DEADLINE);
     if let Err(cause) = stream.write_all(request.as_bytes()) {
         return format!("write failed: {cause}");
     }
@@ -4088,19 +4115,62 @@ fn native_serve_exchange(address: &str, request: &str) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-/// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeServeDriver` ENTRY. Preparation is the same
+/// The read and write bound on one exchange's connection, either kind.
+trait NativeServeTimeouts {
+    fn bound(&self, deadline: std::time::Duration);
+}
+
+impl NativeServeTimeouts for std::net::TcpStream {
+    fn bound(&self, deadline: std::time::Duration) {
+        let _ = self.set_read_timeout(Some(deadline));
+        let _ = self.set_write_timeout(Some(deadline));
+    }
+}
+
+impl NativeServeTimeouts for std::os::unix::net::UnixStream {
+    fn bound(&self, deadline: std::time::Duration) {
+        let _ = self.set_read_timeout(Some(deadline));
+        let _ = self.set_write_timeout(Some(deadline));
+    }
+}
+
+/// The account this host process's effective uid resolves to: under the unix-socket phase, the peer
+/// the service's kernel must attest. Read the way the service reads its peer (getpwuid_r), from the
+/// host's own uid rather than any connection.
+fn native_serve_host_account() -> Result<String, String> {
+    let uid = unsafe { libc::geteuid() };
+    let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buf = vec![0 as libc::c_char; 4096];
+    let mut result: *mut libc::passwd = std::ptr::null_mut();
+    let rc = unsafe { libc::getpwuid_r(uid, &mut pwd, buf.as_mut_ptr(), buf.len(), &mut result) };
+    if rc != 0 || result.is_null() {
+        return Err(format!(
+            "NATIVE-SERVE REFUSAL cause=HostAccountUnresolved — uid {uid} resolves to no account"
+        ));
+    }
+    Ok(unsafe { std::ffi::CStr::from_ptr(pwd.pw_name) }
+        .to_string_lossy()
+        .into_owned())
+}
+
+/// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeIngressDriver` ENTRY. Preparation is the same
 /// `prepare_emitted_compiler_for_entry` every native route uses. The host reads the bound address
 /// off the announcement (the service binds port 0, so the OS chooses and the announcement is the
 /// only place the choice is published) and otherwise carries bytes. A refusal here -- emission,
 /// build, spawn, or no announcement -- is the subject never having been reached.
+///
+/// THE DEADLINE LAUNCHES each start their own instance, send it one request and await its exit:
+/// a request that crosses the effective deadline ends the process (`gunbc.native_serve`
+/// `native_serve_deadline_exit_code`), so one instance can show one crossing. The host holds a
+/// loopback listener it never answers for the whole run and hands its port to the reader's
+/// deadline requests, which is how a handler is made to wait on the wall clock at almost no CPU.
 pub fn run_native_serve_program(
     source_roots: &[String],
     entry: &str,
-    release_revision: &str,
-    refused_revision: &str,
-    request_deadline_ms: &str,
+    launches: &NativeServeLaunches,
     phases: NativeServePhases,
     requests_for_peer_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
+    deadline_requests_for_silent_port: &dyn Fn(i64) -> Result<Vec<String>, String>,
 ) -> Result<NativeServeProgramRun, String> {
     let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
     eprintln!(
@@ -4108,11 +4178,69 @@ pub fn run_native_serve_program(
         prepared.closure_identity,
         prepared.binary_path.display()
     );
-    let (refused_status, refused_stderr) = if phases.refused_launch {
-        native_serve_refused_launch(&prepared.binary_path, refused_revision, request_deadline_ms)?
-    } else {
-        (None, String::new())
-    };
+    let mut refused_statuses = Vec::new();
+    let mut refused_stderrs = Vec::new();
+    if phases.refused_launch {
+        for argv in &launches.refused {
+            let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+            refused_statuses.push(status);
+            refused_stderrs.push(stderr);
+        }
+    }
+    // THE CONTENDED LAUNCHES: each path is held by the host in the way its contention names, the
+    // binary is launched there, and what the path holds afterwards is read back.
+    let mut unix_contended_statuses = Vec::new();
+    let mut unix_contended_stderrs = Vec::new();
+    let mut unix_contended_kept = Vec::new();
+    for (contention, path, argv) in &launches.unix_contended {
+        let unbound = |cause: std::io::Error| {
+            format!(
+                "NATIVE-SERVE REFUSAL cause=ContentionUnheld entry={entry} path={path} — {cause}"
+            )
+        };
+        let (status, stderr, kept) = match contention {
+            NativeServeContention::LiveListener => {
+                let held = std::os::unix::net::UnixListener::bind(path).map_err(unbound)?;
+                let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+                let kept = std::os::unix::net::UnixStream::connect(path).is_ok()
+                    && held.set_nonblocking(true).is_ok()
+                    && held.accept().is_ok();
+                (status, stderr, kept)
+            }
+            NativeServeContention::HeldLock => {
+                use std::os::unix::fs::MetadataExt;
+                use std::os::unix::io::AsRawFd;
+                drop(std::os::unix::net::UnixListener::bind(path).map_err(unbound)?);
+                let before = std::fs::metadata(path).map_err(unbound)?.ino();
+                let lock = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(format!("{path}.lock"))
+                    .map_err(unbound)?;
+                if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+                    return Err(unbound(std::io::Error::last_os_error()));
+                }
+                let (status, stderr) = native_serve_refused_launch(&prepared.binary_path, argv)?;
+                let kept = std::fs::metadata(path)
+                    .map(|m| m.ino() == before)
+                    .unwrap_or(false);
+                drop(lock);
+                (status, stderr, kept)
+            }
+        };
+        unix_contended_statuses.push(status);
+        unix_contended_stderrs.push(stderr);
+        unix_contended_kept.push(kept);
+    }
+    // THE STALE SOCKET: under the unix-socket phase the subject's path already holds a socket no
+    // process listens on, which the subject must show stale and replace before it can announce.
+    if let Some(path) = &launches.unix_socket_path {
+        drop(std::os::unix::net::UnixListener::bind(path).map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=StaleSocketUncreated entry={entry} path={path} — {cause}")
+        })?);
+    }
     // The PEER is a second instance of the same entry: the local server the entry's bound REST
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
@@ -4120,8 +4248,7 @@ pub fn run_native_serve_program(
         Some(native_serve_start(
             &prepared.binary_path,
             entry,
-            release_revision,
-            request_deadline_ms,
+            &launches.subject,
         )?)
     } else {
         None
@@ -4154,12 +4281,7 @@ pub fn run_native_serve_program(
             return Err(cause);
         }
     };
-    let mut subject = match native_serve_start(
-        &prepared.binary_path,
-        entry,
-        release_revision,
-        request_deadline_ms,
-    ) {
+    let mut subject = match native_serve_start(&prepared.binary_path, entry, &launches.subject) {
         Ok(subject) => subject,
         Err(cause) => {
             if let Some(instance) = &mut peer {
@@ -4168,26 +4290,74 @@ pub fn run_native_serve_program(
             return Err(cause);
         }
     };
-    let responses = match &subject.address {
-        Some(address) => requests
+    // UNDER THE UNIX-SOCKET PHASE every request goes over the socket the reader's argv named; the
+    // announcement still says whether the service bound, and the reader judges it.
+    let responses = match (&launches.unix_socket_path, &subject.address) {
+        (Some(path), Some(_)) => requests
+            .iter()
+            .map(|request| native_serve_unix_exchange(path, request))
+            .collect(),
+        (None, Some(address)) => requests
             .iter()
             .map(|request| native_serve_exchange(address, request))
             .collect(),
-        None => Vec::new(),
+        (_, None) => Vec::new(),
     };
-    // The last case drives the subject past its stuck-worker ceiling, after which it exits by
-    // itself; wait for that (bounded) and carry the status to the reader unjudged. Only a process
-    // still running at the deadline is killed, and it reports no status. The peer serves no budget
-    // case and is stopped.
-    let (served_exit_status, stderr) = if phases.stuck_ceiling_exit {
-        subject.await_exit()
+    let unix_peer_account = if phases.unix_socket {
+        match native_serve_host_account() {
+            Ok(account) => account,
+            Err(cause) => {
+                subject.stop();
+                if let Some(instance) = &mut peer {
+                    instance.stop();
+                }
+                return Err(cause);
+            }
+        }
     } else {
-        (None, subject.stop())
+        String::new()
     };
+    let stderr = subject.stop();
     let (peer_announcement, peer_stderr) = match &mut peer {
         Some(instance) => (instance.announcement.clone(), instance.stop()),
         None => (String::new(), String::new()),
     };
+    let mut deadline_announcements = Vec::new();
+    let mut deadline_responses = Vec::new();
+    let mut deadline_exit_statuses = Vec::new();
+    let mut deadline_stderr = String::new();
+    if phases.deadline_exit {
+        let silent = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=SilentListenerUnbound entry={entry} — {cause}")
+        })?;
+        let silent_port = silent
+            .local_addr()
+            .map_err(|cause| {
+                format!("NATIVE-SERVE REFUSAL cause=SilentListenerUnbound entry={entry} — {cause}")
+            })?
+            .port() as i64;
+        let deadline_requests = deadline_requests_for_silent_port(silent_port)?;
+        if deadline_requests.len() != launches.deadline.len() {
+            return Err(format!(
+                "NATIVE-SERVE REFUSAL cause=DeadlineCasesUnjoined entry={entry} — {} deadline launches but {} deadline requests",
+                launches.deadline.len(),
+                deadline_requests.len()
+            ));
+        }
+        for (argv, request) in launches.deadline.iter().zip(deadline_requests.iter()) {
+            let mut instance = native_serve_start(&prepared.binary_path, entry, argv)?;
+            let response = match &instance.address {
+                Some(address) => native_serve_exchange(address, request),
+                None => String::new(),
+            };
+            let (status, instance_stderr) = instance.await_exit();
+            deadline_announcements.push(instance.announcement.clone());
+            deadline_responses.push(response);
+            deadline_exit_statuses.push(status);
+            deadline_stderr.push_str(&instance_stderr);
+        }
+        drop(silent);
+    }
     Ok(NativeServeProgramRun {
         closure_identity: prepared.closure_identity,
         binary_identity: prepared.binary_identity,
@@ -4197,10 +4367,16 @@ pub fn run_native_serve_program(
         peer_announcement,
         peer_port,
         responses,
-        refused_status,
-        refused_stderr,
-        served_exit_status,
-        stderr: format!("{stderr}{peer_stderr}"),
+        refused_statuses,
+        refused_stderrs,
+        deadline_announcements,
+        deadline_responses,
+        deadline_exit_statuses,
+        unix_peer_account,
+        unix_contended_statuses,
+        unix_contended_stderrs,
+        unix_contended_kept,
+        stderr: format!("{stderr}{peer_stderr}{deadline_stderr}"),
     })
 }
 
@@ -4252,15 +4428,11 @@ impl NativeServeInstance {
 fn native_serve_start(
     binary: &Path,
     entry: &str,
-    release_revision: &str,
-    request_deadline_ms: &str,
+    argv: &[String],
 ) -> Result<NativeServeInstance, String> {
     use std::io::{BufRead, Read};
     let mut child = Command::new(binary)
-        .args(native_serve_launch_args(
-            release_revision,
-            request_deadline_ms,
-        ))
+        .args(argv)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -5723,38 +5895,5 @@ pub fn run_self_host_frontier(
     output.status.code().ok_or_else(|| {
         "V2-NATIVE REFUSAL cause=NativeRunKilled — the self-host-frontier child exited without a status"
             .to_string()
-    })
-}
-
-/// A CENSUS RUN BY THE EMITTED COMPILER (`demand-census`, `decl-ref-census`: one relay, the verb is
-/// the parameter). The seed's whole job is the preparation it shares with every native instrument;
-/// the census is the emitted binary's, which prints its own lines and decides its own exit. The
-/// child's stdout is relayed line for line and its status is returned unjudged.
-pub fn run_v2_census_verb(verb: &str, source_roots: &[String]) -> Result<i32, String> {
-    let preparation = prepare_emitted_compiler(source_roots)?;
-    let mut args = vec![verb.to_string()];
-    args.extend(source_roots.iter().cloned());
-    let output = Command::new(&preparation.binary_path)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                preparation.binary_path.display()
-            )
-        })?;
-    let stdout = String::from_utf8(output.stdout).map_err(|cause| {
-        format!("V2-NATIVE REFUSAL cause=NativeRunStdoutNotUtf8 — {verb} stdout: {cause}")
-    })?;
-    for line in stdout.lines() {
-        println!("{line}");
-    }
-    for line in String::from_utf8_lossy(&output.stderr).lines() {
-        eprintln!("{line}");
-    }
-    output.status.code().ok_or_else(|| {
-        format!(
-            "V2-NATIVE REFUSAL cause=NativeRunKilled — the {verb} child exited without a status"
-        )
     })
 }

@@ -1,4 +1,5 @@
 module extdeps.github.code_search
+import std.types { Bearer }
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Secret }
 import std.nat { Nat }

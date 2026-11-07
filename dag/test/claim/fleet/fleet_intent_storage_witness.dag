@@ -1,12 +1,14 @@
 module test.claim.fleet.fleet_intent_storage_witness
 
+import std.algebra { length }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn every_host_carries_its_real_drive() -> Bool {
-  list_length(items: srv1_host.storage) == 1
-    && list_length(items: srv2_host.storage) == 1
-    && list_length(items: srv3_host.storage) == 1
+  length(xs: srv1_host.storage) == 1
+    && length(xs: srv2_host.storage) == 1
+    && length(xs: srv3_host.storage) == 1
 }
 
 test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {

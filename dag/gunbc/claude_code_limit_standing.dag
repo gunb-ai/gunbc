@@ -2,7 +2,7 @@ module gunbc.claude_code_limit_standing
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { basis_point_count, basis_point_unity_count }
-import std.algebra { trim }
+import std.algebra { trim, length }
 import std.optional { Present, Absent }
 import extdeps.llm.claude_code_stream_json {
   ClaudeCodeStreamLine,
@@ -202,7 +202,7 @@ fn claude_limit_observations(
   match info {
     Absent => [LimitObservationUnobserved { reason: "the claude code trip emitted no rate_limit_event line" as NonEmptyStr }]
     Present { value: i } =>
-      if list_length(items: i.windows) == 0 {
+      if length(xs: i.windows) == 0 {
         concat(
           [LimitObservationUnobserved { reason: "the claude code rate_limit_event reported no unifiedWindows" as NonEmptyStr }],
           claude_unattributed_rejection(credential: credential, info: i),

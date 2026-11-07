@@ -1,4 +1,6 @@
 module gunbc.heal_workflow
+import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, AbsenceRefused }
+import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
 import extdeps.github.expressions { Expression, ContextAccess, ExpressionTemplate, Inputs, Github, LiteralText, Interpolation, LogicalOr, interpolate, serialize_template }
 
@@ -35,8 +37,6 @@ import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.ci.ci_spec {
   gunbc_ci_stage0_round_invoke,
-  gunbc_ci_seed_build_artifacts_regen_invoke,
-  gunbc_ci_heal_stage0_overlap_invoke,
   gunbc_ci_heal_candidate_stage0_invoke
 }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
@@ -221,40 +221,12 @@ fn heal_stage0_round_step() -> Step {
   }
 }
 
-fn heal_stage0_overlap_step() -> Step {
-  RunStep {
-    name: Present { value: "Refuse when the stage0 round wrote a file the seed-build writer owns" },
-    id: none,
-    run: gunbc_ci_heal_stage0_overlap_invoke(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn heal_seed_build_artifacts_step() -> Step {
-  RunStep {
-    name: Present { value: "Regenerate the seed-build artifacts without loading the registry" },
-    id: none,
-    run: gunbc_ci_seed_build_artifacts_regen_invoke(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
 // THE SUBJECT FACTS ARRIVE AS ENVIRONMENT VALUES, NEVER INTERPOLATED INTO A SCRIPT. A branch name is
 // pull-request-controlled text; spliced into a command it would be shell, and read from the
 // environment it is a value the producer refuses if it is empty.
 fn heal_candidate_step() -> Step {
   RunStep {
-    name: Present { value: "Produce the sealed repair candidate" },
+    name: Present { value: "Refuse stage0/writer overlap, regenerate the seed-build artifacts, produce the sealed repair candidate" },
     id: none,
     run: gunbc_ci_heal_candidate_stage0_invoke(),
     shell: none,
@@ -285,12 +257,13 @@ fn heal_candidate_upload_step() -> Step {
     id: none,
     uses: upload_artifact_action,
     with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: heal_repair_candidate_artifact_name as String)),
-        kv(key: "path", value: yaml_string(s: heal_candidate_directory)),
-        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
-        kv(key: "retention-days", value: yaml_int(n: heal_candidate_artifact_retention_days))
-      ]
+      value: workflow_artifact_upload_with(
+        name: heal_repair_candidate_artifact_name as String,
+        path: heal_candidate_directory,
+        retention_days: Present { value: heal_candidate_artifact_retention_days },
+        compression_level: none,
+        absence: AbsenceRefused,
+      )
     },
     env: none,
     if_condition: none,
@@ -338,19 +311,9 @@ fn heal_workflow_bound_steps() -> List<HealBoundStep> {
       step_name: "Converge the stage0 mirrors to the seed's own fixed point",
     },
     HealBoundStep {
-      step: heal_stage0_overlap_step(),
-      role: capability_neutral,
-      step_name: "Refuse when the stage0 round wrote a file the seed-build writer owns",
-    },
-    HealBoundStep {
-      step: heal_seed_build_artifacts_step(),
-      role: capability_neutral,
-      step_name: "Regenerate the seed-build artifacts without loading the registry",
-    },
-    HealBoundStep {
       step: heal_candidate_step(),
       role: capability_neutral,
-      step_name: "Produce the sealed repair candidate",
+      step_name: "Refuse stage0/writer overlap, regenerate the seed-build artifacts, produce the sealed repair candidate",
     },
     HealBoundStep {
       step: heal_candidate_upload_step(),

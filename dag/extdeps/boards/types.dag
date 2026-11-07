@@ -3,6 +3,7 @@ module extdeps.boards.types
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure {
+  Micrometer,
   Watt, watt, watt_count,
   Millimeter, millimeter_count,
   SquareMillimeter, square_millimeter, square_millimeter_count,
@@ -12,8 +13,11 @@ import extdeps.bmc.endpoint { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
+import extdeps.standards.motherboard_mounting_location { MountingLocationId }
+import extdeps.standards.motherboard_mounting_grid { StandardMountingGrid, standard_mounting_grid_locations }
+import std.optional { Present, Absent }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -21,6 +25,38 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Motherboard"
   }
+}
+
+// A BOARD'S EXPANSION SLOTS, AS POSITIONS ALONG THE REAR EDGE. A slot is named by the vendor's
+// designator; its position is counted in expansion-slot pitches along the rear I/O edge, so two slots
+// whose positions differ by N sit N pitches apart, centre to centre. The pitch itself is not a board
+// fact: it is the PCIe CEM slot width (extdeps.standards.pcie_cem cem_slot_width), and a product
+// multiplies the position difference by it. The positions carry ONE standing for the whole list,
+// because they are read together, from one drawing or one ruler pass; a board whose drawing gives no
+// dimensions carries the read that would settle them.
+type BoardExpansionSlot {
+  designator: NonEmptyStr
+  position: Nat
+}
+
+type BoardExpansionSlots {
+  slots: List<BoardExpansionSlot>
+  positions: CitedFigureStanding
+  lane_obstacles: List<SlotLaneObstacle>
+}
+
+// A COMPONENT STANDING PROUD OF THE BOARD IN A SLOT'S LANE, PAST WHERE A CARD ENDS: the space a duct or a
+// blower at a card's far end must clear. It is located by the slot whose lane it sits in, its depth from the
+// rear bracket plane along the card direction, and its height above the board's top face; half_extent bounds
+// its footprint about that point in both board directions, so a part kept that far away clears it whatever
+// the footprint's orientation.
+type SlotLaneObstacle {
+  label: NonEmptyStr
+  slot: NonEmptyStr
+  depth_from_bracket_plane: Micrometer
+  half_extent: Micrometer
+  height_above_board: Micrometer
+  standing: CitedFigureStanding
 }
 
 // A vendor manual copy a board model was read from. Title and sha256 are optional: a reading
@@ -187,3 +223,85 @@ type BoardFunctionSwitch
   = JumperSwitch { designator: NonEmptyStr, off_position: NonEmptyStr, citation: NonEmptyStr }
   | FirmwareSetupSwitch { menu: NonEmptyStr, item: NonEmptyStr, off_meaning: NonEmptyStr, citation: NonEmptyStr }
   | SwitchNotStated { coarser: NonEmptyStr? }
+
+// Moved here from extdeps.boards.asrock_rack when the Supermicro H11SSL-i became the second board to
+// need it. HoleCorrespondenceInferred is a correspondence read off a board-specific vendor figure (the
+// ALTRAD8UD's section 1.4 layout, the H11SSL's Figure 2-1 "Motherboard Mounting Holes"). A vendor's
+// bare form-factor claim is deliberately NOT a standing: a board labelled ATX may omit or move a
+// standard hole -- the H11SSL moves J -- so a label never admits a standoff (review 5775062390).
+//
+// WHAT IS KNOWN about a standard location on this specific board. Every arm names its evidence
+// route, so the grade is readable from the constructor rather than from prose beside it.
+// Image-position estimates (used by Jade review) do not establish a location; unlike
+// a correspondence to exact standard coordinates, they cannot admit a standoff.
+type BoardLocationStanding
+  = HoleCorrespondenceInferred
+  | HolePositionEstimatedFromImage
+  | HoleAbsenceExplicitlyDirected
+  | HoleNotObservedInDrawing
+  | HolePhysicallyConfirmedPresent
+  | HolePhysicallyConfirmedAbsent
+
+// WHY a location must stay empty. Distinct from the standing that established it.
+type StandoffProhibitionCause
+  = ProductSaysRemove
+  | NoAdmittedBoardHole
+
+// WHAT IS DONE at a standard location by a chassis built for this board.
+type StandoffPlacementDecision
+  = StandoffAdmitted
+  | StandoffProhibited { cause: StandoffProhibitionCause }
+
+// The join, and the reason the two types are worth separating: this is total, so a new standing arm
+// cannot be added without deciding what a chassis does about it. FIT will add exactly that — the
+// physically-confirmed arms below are unpopulated today and are the shape the measurement lands in.
+fn standoff_placement(standing: BoardLocationStanding) -> StandoffPlacementDecision {
+  match standing {
+    HolePositionEstimatedFromImage => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HoleCorrespondenceInferred => StandoffAdmitted
+    HolePhysicallyConfirmedPresent => StandoffAdmitted
+    HoleAbsenceExplicitlyDirected => StandoffProhibited { cause: ProductSaysRemove }
+    HoleNotObservedInDrawing => StandoffProhibited { cause: NoAdmittedBoardHole }
+    HolePhysicallyConfirmedAbsent => StandoffProhibited { cause: NoAdmittedBoardHole }
+  }
+}
+
+type BoardStandardLocationCorrespondence sole_constructor {
+  location: MountingLocationId
+  standing: BoardLocationStanding
+}
+
+fn board_location_correspondence(
+  location: MountingLocationId,
+  standing: BoardLocationStanding,
+) -> BoardStandardLocationCorrespondence {
+  BoardStandardLocationCorrespondence { location: location, standing: standing }
+}
+
+// A BOARD'S HOLE ROSTER, bound to the standard grid its letters are read against. The grid is part of
+// the board's fact, not of whatever consumes it: pairing a correspondence with a grid at each use site
+// let a microATX board be read against ATX's grid, where R, S and B have no coordinate, and the review
+// emitter then admitted standoffs with no position (review 90795). So the pair is constructed once,
+// in the board's module, and only through the checked constructor below, which refuses -- returns
+// Absent -- unless the list is nonempty, names each letter once, and every letter resolves to exactly
+// one location in the grid. A roster that exists therefore has a coordinate for every row.
+// The grid is a nominal standard identity (extdeps.standards.motherboard_mounting_grid), resolved by
+// that module's one total resolver, so no authored list can stand in for a standard's population.
+type BoardStandardLocationRoster sole_constructor {
+  grid: StandardMountingGrid
+  locations: List<BoardStandardLocationCorrespondence>
+}
+
+fn board_standard_location_roster(
+  grid: StandardMountingGrid,
+  locations: List<BoardStandardLocationCorrespondence>,
+) -> BoardStandardLocationRoster? {
+  let population = standard_mounting_grid_locations(grid: grid)
+  if count(locations) > 0
+    && all(locations, r => count(filter(population, m => m.id == r.location)) == 1)
+    && all(locations, r => count(filter(locations, x => x.location == r.location)) == 1) {
+    Present { value: BoardStandardLocationRoster { grid: grid, locations: locations } }
+  } else {
+    Absent
+  }
+}

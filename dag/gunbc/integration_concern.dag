@@ -1,0 +1,1188 @@
+module gunbc.integration_concern
+
+import std.types { String, List, Bool, Int, NonEmptyStr, CommitSha }
+import std.optional { Optional, Present, Absent }
+import std.algebra { FreeSemigroup }
+import std.list { first_duplicate_by_key, distinct_by_key }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.process { ExitSuccess }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.guarantee_stall { NextRungTrigger, climbs_when }
+import gunbc.target_syntax_transcription { target_syntax_debts, debt_declarations }
+import extdeps.shell
+
+// THE INTEGRATION REGISTER: where an unfinished reconciliation is recorded instead of remembered
+// (DESIGN section 6b, continuous generalization; ruling gunbc.design_ruling
+// continuous_generalization_is_two_sided). A change may leave integration unfinished; a material
+// concern it identified stays discoverable here, with an explicit disposition, after the session
+// that found it ends.
+//
+// WHAT THIS IS NOT. It is not a census and it gates nothing: rows are concerns somebody raised, not
+// a population discovered completely. It is not evidence that pressure is operating: briefing does
+// not read it, nothing schedules a periodic review over it, and no handoff transfers a row's
+// ownership when a session ends. Those three routes are reported as unconnected (`unconnected_routes`)
+// until they exist, and the view prints that list beside every reading.
+//
+// ONE MODULE, NOT ONE FILE PER ROW, DELIBERATELY. The one-row-per-file ledgers
+// (gunbc.recurring_failure_mode, gunbc.rung_drop, gunbc.guarantee_stall) get their rosters from the
+// seed's DERIVED_ROW_ROSTERS table; enrolling a fourth is a seed change this first cut does not
+// need for a handful of rows. The cost is merge contention when two lanes add rows at once; the
+// trigger to move to row files is that contention actually occurring.
+
+// A SUSPECTED FORK NEEDS TWO DISTINCT AUTHORITIES. FreeSemigroup only proves one or more, and two
+// entries need not be two sites, so the checked constructor is `distinct_authorities`, which refuses
+// any repeated declaration. Outside this module the compiler refuses a DistinctAuthorities literal
+// (sole_constructor). Inside it, a row literal cannot call the checked constructor (a data row has no
+// way to unwrap the refusal), so `fork_rows_have_distinct_authorities` re-checks every committed fork
+// row through it and the witness holds that reading -- validation over this module's rows, stated as such. A repeated identity is the module path and declaration name:
+// two fields of one declaration are one authority for this purpose.
+type DistinctAuthorities sole_constructor {
+  first: DeclarationRef
+  second: DeclarationRef
+  rest: List<DeclarationRef>
+}
+
+// The identity key: module path and declaration name, joined by a space, which neither may contain.
+fn declaration_identity(r: DeclarationRef) -> String {
+  concat(r.module_path as String, concat(" ", r.decl_name as String))
+}
+
+fn distinct_authorities(first: DeclarationRef, second: DeclarationRef, rest: List<DeclarationRef>) -> DistinctAuthorities? {
+  match first_duplicate_by_key(xs: concat([first, second], rest), key: r => declaration_identity(r: r)) {
+    Present { value: _ } => Absent
+    Absent => Present { value: DistinctAuthorities { first: first, second: second, rest: rest } }
+  }
+}
+
+fn authorities_list(d: DistinctAuthorities) -> List<DeclarationRef> {
+  concat([d.first, d.second], d.rest)
+}
+
+fn fork_authorities_distinct(c: IntegrationConcern) -> Bool {
+  match c.kind {
+    SuspectedFork { authorities: d } => match distinct_authorities(first: d.first, second: d.second, rest: d.rest) { Present { value: _ } => true Absent => false }
+    SuspectedCapabilityGap { model: _, requirement: _, standing: _ } => true
+  }
+}
+
+// BOTH KINDS ARE SUSPICIONS UNTIL TRIAGE. A fork is two or more authorities that seem to answer one
+// question; a capability gap is one model that seems unable to express a concrete requirement, so
+// pressure can start before anyone writes the second path. Neither is a confirmed defect: triage,
+// not the kind, carries the conclusion.
+type ConcernKind
+  = SuspectedFork { authorities: DistinctAuthorities }
+  | SuspectedCapabilityGap { model: DeclarationRef, requirement: NonEmptyStr, standing: RequirementStanding }
+
+// WHETHER THE REQUIREMENT A GAP NAMES IS ITSELF ESTABLISHED. A gap can be recorded before anyone
+// knows the requirement is real; recording it does not promote it. Unestablished names the reading
+// that would decide it, and the view prints that beside the row.
+type RequirementStanding
+  = RequirementEstablished { by: SightingEvidence }
+  | RequirementUnestablished { decided_by: NonEmptyStr }
+
+// WHERE THE SHARED MEANING BELONGS is a semantic fact, separate from where the affected
+// declarations are stored. Namespace ancestry is never consulted for it.
+type ConceptHome
+  = ExistingHome { model: DeclarationRef }
+  | HomeUnresolved { question: NonEmptyStr }
+
+// A CITATION AT THE REVISION WHERE IT EXISTED. Closing a concern usually deletes its superseded
+// declarations, so these are plain names pinned to a commit and are never resolved against HEAD;
+// a closed record must not break because the integration it records happened.
+type HistoricalDeclaration {
+  at: CommitSha
+  module_path: NonEmptyStr
+  decl_name: NonEmptyStr
+}
+
+// A RETAINED EXECUTION RESULT: which control ran, where the run's record is kept, and what it
+// concluded. A control that merely exists is not a result.
+type RetainedExecutionResult {
+  control: DeclarationRef
+  run: NonEmptyStr
+  conclusion: NonEmptyStr
+}
+
+// WHAT A SIGHTING CITES. Facts with an owner are cited, not restated: a quantity is cited through
+// the declaration that owns it, an output through its digest, a removed declaration at its
+// revision. Nothing here is a second copy of a number another module carries.
+type SightingEvidence
+  = CitesDeclaration { declaration: DeclarationRef }
+  | CitesHistorical { declaration: HistoricalDeclaration }
+  | CitesArtifact { label: NonEmptyStr, sha256: Sha256Digest }
+
+// ONE SIGHTING OF A CONCERN: the main revision it was made against, what it cites, and the account
+// of what was seen -- the one irreducibly prose part. A later sighting of the same concern is
+// appended to the row's `sightings`; it never adds a second row.
+type ConcernSighting {
+  revision: CommitSha
+  evidence: FreeSemigroup<SightingEvidence>
+  account: NonEmptyStr
+}
+
+// AN OBLIGATION A CONSOLIDATION MUST KEEP, held by a declaration, with the control that exercises
+// it where one exists. Its holder is an implicated declaration, so it takes part in relevance.
+type PreservedObligation {
+  holder: DeclarationRef
+  control: DeclarationRef?
+  statement: NonEmptyStr
+}
+
+type IntegrationEvidence {
+  integrated_at: CommitSha
+  superseded: List<HistoricalDeclaration>
+  replacement: FreeSemigroup<DeclarationRef>
+  executions: FreeSemigroup<RetainedExecutionResult>
+}
+
+// THE DISPOSITION. Only Distinct, Withdrawn and Integrated close a row. Triaged carries its next
+// step as gunbc.guarantee_stall NextRungTrigger: the capability owed stands alone and any work item
+// is an `awaiting` referent beside it, so a work item reaching done, being archived or being
+// reassigned closes nothing -- only Integrated evidence does.
+type ConcernDisposition
+  = Open
+  | Triaged { home: ConceptHome, preserve: List<PreservedObligation>, next: NextRungTrigger }
+  | Distinct { reason: NonEmptyStr, scope_examined: NonEmptyStr }
+  | Withdrawn { reason: NonEmptyStr }
+  | Integrated { evidence: IntegrationEvidence }
+
+type IntegrationConcern {
+  identity: NonEmptyStr
+  kind: ConcernKind
+  affected: FreeSemigroup<DeclarationRef>
+  question: NonEmptyStr
+  sightings: FreeSemigroup<ConcernSighting>
+  disposition: ConcernDisposition
+}
+
+fn concern_is_open(c: IntegrationConcern) -> Bool {
+  match c.disposition {
+    Open => true
+    Triaged { home: _, preserve: _, next: _ } => true
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+}
+
+fn kind_label(k: ConcernKind) -> String {
+  match k {
+    SuspectedFork { authorities: _ } => "suspected fork"
+    SuspectedCapabilityGap { model: _, requirement: _, standing: _ } => "suspected capability gap"
+  }
+}
+
+fn disposition_label(d: ConcernDisposition) -> String {
+  match d {
+    Open => "open, untriaged"
+    Triaged { home: _, preserve: _, next: n } => concat("triaged; owed: ", n.capability)
+    Distinct { reason: r, scope_examined: _ } => concat("closed as distinct: ", r as String)
+    Withdrawn { reason: r } => concat("withdrawn: ", r as String)
+    Integrated { evidence: e } => concat("integrated at ", e.integrated_at as String)
+  }
+}
+
+fn kind_declarations(k: ConcernKind) -> List<DeclarationRef> {
+  match k {
+    SuspectedFork { authorities: a } => authorities_list(d: a)
+    SuspectedCapabilityGap { model: m, requirement: _, standing: _ } => [m]
+  }
+}
+
+fn disposition_declarations(d: ConcernDisposition) -> List<DeclarationRef> {
+  match d {
+    Triaged { home: h, preserve: ps, next: _ } => concat(match h { ExistingHome { model: m } => [m] HomeUnresolved { question: _ } => [] }, map(ps, o => o.holder))
+    _ => []
+  }
+}
+
+// Every declaration a concern implicates: its affected locations, the authorities or model its
+// kind names, and, once triaged, an existing semantic home and the holders of preserved obligations.
+// Sighting evidence is cited, not implicated, so it does not take part in relevance.
+fn concern_declarations(c: IntegrationConcern) -> List<DeclarationRef> {
+  concat(concat(concat([c.affected.head], c.affected.tail), kind_declarations(k: c.kind)), disposition_declarations(d: c.disposition))
+}
+
+fn concern_modules(c: IntegrationConcern) -> List<String> {
+  distinct_by_key(xs: map(concern_declarations(c: c), r => r.module_path as String), key: m => m)
+}
+
+// RELEVANCE IS MEMBERSHIP, NOT ANCESTRY. A change is described by the modules it changes and the
+// existing models it references -- a new consumer is relevant to the model it reads even when it
+// changes nothing there. A concern is relevant when one of its declarations lives in one of those
+// modules exactly. Sharing a namespace prefix with a concern never makes it relevant.
+type ConcernScope {
+  changed: List<String>
+  referenced: List<String>
+}
+
+fn concern_relevant(c: IntegrationConcern, s: ConcernScope) -> Bool {
+  let scope_modules = concat(s.changed, s.referenced)
+  any(concern_modules(c: c), m => any(scope_modules, x => x == m))
+}
+
+fn concerns_for(s: ConcernScope, rows: List<IntegrationConcern>) -> List<IntegrationConcern> {
+  filter(rows, c => concern_relevant(c: c, s: s))
+}
+
+// BROWSING, NOT RELEVANCE: every concern with a declaration inside the subtree, including concerns
+// whose other declarations live elsewhere. The match is on whole path segments, so `product.print`
+// does not contain `product.printing`.
+fn module_in_subtree(m: String, prefix: String) -> Bool {
+  m == prefix || starts_with(s: m, prefix: concat(prefix, "."))
+}
+
+fn concerns_in_subtree(prefix: String, rows: List<IntegrationConcern>) -> List<IntegrationConcern> {
+  filter(rows, c => any(concern_modules(c: c), m => module_in_subtree(m: m, prefix: prefix)))
+}
+
+// THE ROUTES THAT WOULD MAKE THIS REGISTER EXERT PRESSURE, AND THAT DO NOT EXIST YET. Printed with
+// every reading so a reader is never told the practice is operating when only the record is.
+data unconnected_routes: List<String> = [
+  "briefing: no work-item brief is generated with the relevant concerns; a brief carries them only if its author ran this view",
+  "periodic review: nothing schedules a bounded integration review over open rows",
+  "ownership handoff: a session or work item closing does not transfer the rows it raised; a row's obligation survives only as the row",
+]
+
+// ---------------------------------------------------------------------------------------------
+// THE ROWS.
+
+data duct_print_source_revision: CommitSha = "799697f5c76b2e86dc34f3408878aef9e0d3d750"
+
+// The revisions the CAS rows beside were measured at: the head whose six store rows were run against two
+// mutant heads, and the base entry compile of the fold's own witness file.
+data d6_witness_measurement_revision: CommitSha = "eae15daee5d175a5abca6f3c380d98b351e2c7ab"
+
+data d6_witness_base_revision: CommitSha = "bbec474015b0127181893ec2850b1f94d376cc22"
+
+
+data duct_print_plate: SightingEvidence = CitesArtifact {
+  label: "a16-blower-flat-on-end-duct plate 3MF prepared by product.printed_chassis.print_workflow prepare_request_plate, printed on printer-01 2026-11-01",
+  sha256: Sha256Digest { hex: "7145d866de97f62491ef6c3d250288e24e0fc2f2b12ff25a0a230860554821cb" as Sha256DigestHex },
+}
+
+data support_restriction_scope: IntegrationConcern = IntegrationConcern {
+  identity: "support_restriction_scope",
+  kind: SuspectedCapabilityGap {
+    model: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    requirement: "a manufacturing restriction scoped to a region of a part, where the part as a whole still needs support",
+    standing: RequirementUnestablished { decided_by: "the A16 duct fit check's head-to-fan gap, read before and after removing support residue from the seat face: if cleanup restores the model-derived clearance, no region restriction is required" },
+  },
+  affected: FreeSemigroup {
+    head: decl_field_ref(module_path: "product.printed_chassis.print_preparation", decl_name: "PlatePreparation", field_name: "support_free"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff"),
+      decl_ref(module_path: "product.printing.process_geometry", decl_name: "prototype_support_policy"),
+    ],
+  },
+  question: "Does a part need a support restriction finer than whole-part support_free, and if so is it a no-contact region, a permitted post-process, or a tolerance on the resulting geometry?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.gpu_duct", decl_name: "plane_on_end_blower_bottom_standoff") },
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printing.deposited_geometry", decl_name: "deposited_geometry_source") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.functional_print_features_confused_with_supports", decl_name: "functional_print_features_confused_with_supports") },
+        ],
+      },
+      account: "Printed shoulder-down under the bed-only automatic support policy, the duct's generated support reached the seat face the blower rests on, which sets the model-derived head clearance. The readback's support record is motion centerlines, not a contact surface, so it shows where support was laid, not what it left on the face. The earlier failure-mode row cited is a related lesson about support meeting functional geometry, not the same concern.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data started_operation_ownership: IntegrationConcern = IntegrationConcern {
+  identity: "started_operation_ownership",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    requirement: "a started physical operation has an owner through terminal observation and handoff that survives the initiating session and the temporary access it used",
+    standing: RequirementUnestablished { decided_by: "reading whether the in-band converge_print route already carries a started print to terminal observation without its initiating session, and whether physical-machine boot has the same gap" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.print_converge", decl_name: "converge_print"),
+    tail: [decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate")],
+  },
+  question: "Who owns a started physical operation until it is observed to finish and handed off, and does that hold for operations started outside the fleet route?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: duct_print_source_revision,
+      evidence: FreeSemigroup {
+        head: duct_print_plate,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.print_workflow", decl_name: "prepare_request_plate") }],
+      },
+      account: "On operator direction the duct was prepared through prepare_request_plate and started on printer-01 outside the fleet route, so no fleet print record exists. The starting session read the printer's access code with an operator-supplied short-lived token; once it expired the session could not observe the job and handed observation back to the operator.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data duct_placement_chosen_by_hand: IntegrationConcern = IntegrationConcern {
+  identity: "duct_placement_chosen_by_hand",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "BlowerHome"),
+    requirement: "a blower placement is selected from candidate placements against the chassis's current arrangement and the operator's stated preference between rear depth and side space, and the selected placement is realized through the printable-assembly route without a new duct root being authored per layout",
+    standing: RequirementUnestablished { decided_by: "an operator ruling recorded in gunbc.design_ruling: the preference was stated in conversation on 2026-11-02 and no ruling row carries it yet" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "a16_route_report"),
+    tail: [
+      decl_ref(module_path: "product.printed_chassis.printable_assembly_selection", decl_name: "duct_root_selection"),
+      decl_ref(module_path: "product.printed_chassis.chassis_clearances", decl_name: "side_lane_width"),
+    ],
+  },
+  question: "How does a card's blower placement follow from the chassis arrangement and the operator's rear-versus-side preference, and how do placement candidates (BlowerHome) relate to printable realizations (DuctRootKind) -- selection and realization between them, or something else?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f441733b7ac73f9e9114fcf1b09bef6e782b66f0",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.card_cooling_route", decl_name: "beside_the_row_demand") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.chassis_clearances", decl_name: "side_lane_width") },
+          CitesDeclaration { declaration: decl_ref(module_path: "product.printed_chassis.printable_assembly", decl_name: "DuctRootKind") },
+        ],
+      },
+      account: "The operator expected the blower mounted against the card's side with a short turn into the end, and received the flat-on-end duct. At this revision the closest candidate, BesideTheRow, REFUSES: it spends the blower's shorter face across the lane, and the lane row it is judged against is an eye estimate from a two-card row. The operator's described pose instead lays the blower's broad face against the card's side and spends mainly its thickness outward, so no existing candidate models it, and the operator now says nothing sits beside the A16 -- a different arrangement from the one the lane row records. The operator also stated the preference itself: where rear space is available they may prefer to keep side space free for more cards. Which candidate is built is chosen by hand and the preference has no carrier.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// EFFECT-JOIN CALLEE IDENTITY IN THE PRESENTATION WITNESS (filed on operator direction, 2026-11-05).
+// Surfaced by the #15856 closure campaign and REPRODUCED ON MAIN: the entry
+// test.claim.roadmap.roadmap_presentation_witness refuses at emit with four hard
+// "effect summary incomplete" diagnostics — calls whose callee identity is never established, so
+// their effects cannot be joined. The fix owner is the effect-declaration wiring at those callees,
+// not a caller-side workaround; recorded here instead of remembered.
+data presentation_witness_effect_join_callees: IntegrationConcern = IntegrationConcern {
+  identity: "presentation_witness_effect_join_callees",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key"),
+    requirement: "a test claim that compiles or renders through workflow_segment_state_key and try_serialize_html_source has those calls' effects joined, so the entry test.claim.roadmap.roadmap_presentation_witness compiles at emit without an effect-summary refusal",
+    // The gap is established, not open: the origin/main baseline compile (cited artifact) settled
+    // attribution with the identical four diagnostics. What remains open is the FIX, and that
+    // reading lives in `question` below.
+    standing: RequirementEstablished {
+      by: CitesArtifact {
+        label: "origin/main baseline compile of the same entry (git archive of main, same gunbc binary): the identical 4 hard effect-summary diagnostics",
+        sha256: Sha256Digest { hex: "d97d6959031570dc2400e76946b59fe024be6488580dc8c776274bcd42a8d6af" as Sha256DigestHex },
+      },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key"),
+    tail: [
+      decl_ref(module_path: "extdeps.languages.html", decl_name: "try_serialize_html_source"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_refused_and_completed_arms_carry_the_roster"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_issue_breadcrumb_renders_root_to_leaf_with_canonical_links"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost"),
+      decl_ref(module_path: "test.claim.roadmap.roadmap_presentation_witness", decl_name: "witness_issue_breadcrumb_refusal_renders_no_partial_path"),
+    ],
+  },
+  question: "What establishes a callee's identity for the effect join, and why do these two callees — reached from claim code that names them plainly — never get it: a missing effect declaration at the callee, a visibility gap in the resolver's callee table, or claims resolved through a path that bypasses it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f6b50b0e9899b86219c6e92953799c781c656e9c",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.roadmap.roadmap_workflow_stage", decl_name: "workflow_segment_state_key") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.languages.html", decl_name: "try_serialize_html_source") },
+          CitesArtifact {
+            label: "closure-campaign compile log for test.claim.roadmap.roadmap_presentation_witness at the #15856 head: refused at emit, 4 hard effect-summary diagnostics",
+            sha256: Sha256Digest { hex: "cbfb6057d168549265580ba8b36fffd274e7ac02a2fbed9a8eadb263ae4c3a80" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "origin/main baseline compile of the same entry (git archive of main, same gunbc binary): the identical 4 hard effect-summary diagnostics",
+            sha256: Sha256Digest { hex: "d97d6959031570dc2400e76946b59fe024be6488580dc8c776274bcd42a8d6af" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "The #15856 scoped closure campaign compiled 31 approved entries one per gunbc compile at head f6b50b0e9899b86219c6e92953799c781c656e9c; 30 answered rc=0 and this one refused at emit with four hard diagnostics: one 'effect summary incomplete: call to workflow_segment_state_key ... has no established callee identity, so its effects cannot be joined' in witness_refused_and_completed_arms_carry_the_roster, and three for try_serialize_html_source in the issue-breadcrumb claims. Neither callee is touched by that PR. Attribution was settled by compiling a git archive of origin/main with the same binary: the identical four diagnostics, same functions and messages, line numbers offset by exactly the three lines the PR adds to the witness file (retired_blockers fields the new RoadmapBlockers shape requires). The gap is main's, seen while closing another work item; the two cited digests are the campaign log and the baseline log as produced (deterministic reproduction: gunbc compile of the entry on the cited revisions).",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// Every module the target-syntax ledger rows implicate, read from the ledger rather than restated, so
+// a row added there widens this concern's relevance with no edit here.
+data target_syntax_ledger_ref: DeclarationRef = decl_ref(module_path: "gunbc.target_syntax_transcription", decl_name: "target_syntax_debts")
+data target_syntax_built_by_hand_in_application_modules: IntegrationConcern = IntegrationConcern {
+  identity: "target_syntax_built_by_hand_in_application_modules",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection"),
+    requirement: "an application written as ordinary .dag is emitted to Swift and TypeScript by the target model and each language's grammar rows, so no application module names a target language's syntax constructors (DESIGN section 4, one grammar read in both directions)",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_transcribed_swift_frontier") } },
+  },
+  affected: FreeSemigroup { head: target_syntax_ledger_ref, tail: flat_map(target_syntax_debts, d => debt_declarations(d: d)) },
+  question: "Which forms must the shared value-expression projection and the declaration door gain -- and which browser and Node surfaces must be modelled as extdeps -- before each ledgered module can be written as ordinary .dag and emitted, and in what order do they unblock the most modules?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "fe796707f7a302c58830523b17b528c02c988f61",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: target_syntax_ledger_ref },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.extdeps.languages.swift_expr_door", decl_name: "swift_syntax_forms_outside_value_expression_projection_frontier") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.approve_ios_app", decl_name: "approve_ios_bodied_member_frontier") },
+        ],
+      },
+      account: "Read with git grep over dag/ and src/ for calls to any function named sw_* or ts_*, excluding the grammars (extdeps/languages and src/v2/extdeps/languages) and the compiler's emit and parse claims, and three name collisions that are not builders (v2.compiler.infer ts_declared_inhabitants_*, gunbc.instruments.emit_host_transport ts_host_stdout_is_the_sum, test.claim.scoped_authorization_scope_wire sw_scope). Swift: the five approve_ios_swift_* printers build every generated app file's tree; three of them are recorded by the app's own frontier rows, the two that print from a model (enrolment machine, operation errors) were recorded nowhere, and six app files are hand-written with retained rows. TypeScript: twelve browser and server client modules build their scripts as ts_* trees -- the largest are gunbc.roadmap.roadmap_component and gunbc.roadmap.roadmap_issue_sort, mostly ts_ident, ts_member, ts_call, ts_binop and string literals over DOM, fetch, timers and storage -- and none carried a dissolution or frontier row, so that debt was an untracked stall until the ledger. On the route side: the Swift door spells only identifiers, positional calls, member access, bool and int literals and memberwise init, and lists the rest at swift_syntax_forms_outside_value_expression_projection_frontier; the TypeScript route already emits closures, enum unions, imports and record construction from ordinary .dag by execution (src/v2/test/claim/execution typescript_*_by_execution), but has no row naming the forms it cannot, and no extdeps model of the browser surfaces the clients call. Not read: other targets (bash, YAML, CSS, HTML), and whether any client could migrate today.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "v2.std.compilers.target_model", decl_name: "TargetValueExpressionProjection") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.approve_ios_swift_wire", decl_name: "approve_ios_wire_swift_file"),
+        control: Absent,
+        statement: "a migrated module's emitted file stays what its consumer runs today: the app's Swift files and the served scripts change only where the migration intends, read against the files the printers produce at the revision the migration starts from",
+      },
+    ],
+    next: climbs_when(capability: "the shared value-expression projection and the declaration door print the forms the ledgered modules use (statements, closures, string and collection literals, operators, switch bodies), and the browser and Node surfaces they call are modelled as extdeps, SUFFICIENT FOR one ledgered module per target -- a Swift model printer and a TypeScript client -- to be rewritten as ordinary .dag, emitted by the route, and its ledger row removed"),
+  },
+}
+
+// THE CAS GENERATION RULE IS DECIDED TWICE. Whether an attempt's expectation is admissible against what
+// a compare-and-set slot holds is answered by std.durable_compare_and_set's cas_expectation_admits AND,
+// independently, by the ProbedAbsent arm of gunbc.durable_cas_file_store's cas_compare_and_set_outcome.
+// The fork is measured, not inferred: a mutation that makes the std arm admit ExpectSlotGeneration against
+// an absent observation leaves EVERY row of test.claim.durable_cas_file_store_wet_witness green (branch
+// sharp-otter-429/d6-witness-main-mutant-stdfold at 2167708a09307e9c24dc0718401e02570d4b690f, six rows
+// PASS), while the same retired ordering restored in the store's own arm turns exactly the empty-store row
+// red and leaves the other five green (505c4b6e2839beefe999a13cea3502b1d7822df2). A mutation of the std
+// rule cannot reach the store's rows at all, which is what a duplicated rule looks like in execution. The
+// std fold's only consumer is gunbc.roadmap.roadmap_event_carrier's roadmap_event_parent_admitted.
+data cas_generation_expectation_admitted_twice: IntegrationConcern = IntegrationConcern {
+  identity: "cas_generation_expectation_admitted_twice",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+      second: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+    tail: [
+      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      decl_ref(module_path: "gunbc.roadmap.roadmap_event_carrier", decl_name: "roadmap_event_parent_admitted"),
+      decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+    ],
+  },
+  question: "Which declaration decides whether an attempt's generation expectation is admissible against what a compare-and-set slot holds, and in particular who refuses ExpectSlotGeneration against a slot that was never created?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: d6_witness_measurement_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits") },
+          CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution") },
+        ],
+      },
+      account: "Six rows of the store's wet witness were run at two heads. Mutating the std fold's absent arm to admit a generation expectation: six green, no row moved. Mutating the store's own ProbedAbsent arm to commit a generation expectation at the successor of the EXPECTED generation -- the ordering the store's header retires -- reddened exactly the empty-store row. The store reads the slot and decides inline; it never calls the std fold. So the rule the store enforces and the rule the std fold enforces are two rules, kept in agreement by nothing.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.durable_cas_file_store", decl_name: "cas_compare_and_set_outcome"),
+        control: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+        statement: "an ExpectSlotGeneration attempt against a store holding nothing refuses, the refusal names the absence rather than a competing version, and the store is left with no slot file at all",
+      },
+    ],
+    next: climbs_when(capability: "the file store's absent-slot arm consumes std.durable_compare_and_set's cas_expectation_admits and its inline copy is deleted, so a mutation of that one rule reddens a store row -- measured today, a mutation of that rule reddens none"),
+  },
+}
+
+// THE FOLD'S OWN CLAIMS HAVE NO EXECUTING WITNESS. test.claim.durable_compare_and_set states the fold's
+// decision table, including the superseded-generation refusal the store relies on, but its module resolves
+// none of its own types: it imports neither std.types (which declares NonEmptyStr) nor
+// std.durable_compare_and_set. Measured at base bbec474015b with the same compiler used for the runs beside
+// the row above: the entry refuses with 134 hard errors, the first an unresolved type 'LiveTreeDisposition'
+// at the file's first data declaration, and the same 134 with src/v1 added as a source root. The claim lane
+// discovers rows by the test fn marker in the file and runs them by name, so an entry that never resolves
+// has zero executable rows: its nine rows are unevaluated claims, and they have been silently rotting. A row
+// of mine added there was reverted for exactly this reason -- it could not go red.
+data cas_fold_claims_have_no_executing_witness: IntegrationConcern = IntegrationConcern {
+  identity: "cas_fold_claims_have_no_executing_witness",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+    requirement: "a generation-expectation rule that the store enforces has a witness row that executes at the entry it is claimed from, so a change to the rule cannot land without a row going red",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_update_from_a_superseded_generation_refuses_and_reports_the_current_head"),
+    tail: [
+      decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_attempt_against_the_last_generation_refuses_as_exhausted_and_one_below_commits_to_it"),
+      decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_expectation_admits"),
+      decl_ref(module_path: "test.claim.durable_cas_file_store_wet_witness", decl_name: "a_generation_expectation_against_an_empty_store_refuses_and_writes_no_slot_by_real_execution"),
+    ],
+  },
+  question: "Does any claim in test.claim.durable_compare_and_set lack a witness elsewhere -- and if none does, is that entry revived (given its imports, its rows re-checked against the current fold) or retired with each claim named against the row that now covers it?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: d6_witness_base_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_update_from_a_superseded_generation_refuses_and_reports_the_current_head") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "std.durable_compare_and_set", decl_name: "cas_generation_exhausted") }],
+      },
+      account: "Compiling the file as its own entry produced 134 hard errors, the first an unresolved type at the file's first data declaration; adding src/v1 as a source root changed nothing. The row I had added there was reverted rather than left as an unexecutable claim. The same rule is witnessed today only at the store surface, by the row named in the requirement above.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved {
+      question: "revive the entry beside std.durable_compare_and_set's own claims, or retire it and name where each of its nine claims is witnessed",
+    },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "test.claim.durable_compare_and_set", decl_name: "an_update_from_a_superseded_generation_refuses_and_reports_the_current_head"),
+        control: Absent,
+        statement: "an update attempted from a generation the store no longer holds refuses and reports the generation the store does hold; wherever that claim is witnessed, it must go red if the refusal stops naming the current head",
+      },
+    ],
+    next: climbs_when(capability: "the entry compiles at its own entry and its rows execute, or the file is retired with every claim named against the row that covers it"),
+  },
+}
+
+data broker_status_decision_is_unreceipted: IntegrationConcern = IntegrationConcern {
+  identity: "broker_status_decision_is_unreceipted",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read"),
+    requirement: "an operator decision acted on by a non-operator runner job is the broker's MAC-receipted store record, verifiable by the runner with a verify-only key half, not a bare loopback status response",
+    standing: RequirementUnestablished { decided_by: "approval_store_receipt_mac_key_secret_ref is not yet minted, and a verifier holding the current single key could also mint receipts, so a verify-only half must exist first" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing"),
+    tail: [
+      decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+      decl_ref(module_path: "gunbc.fleet.printer_operator_approval", decl_name: "approve_and_print"),
+    ],
+  },
+  question: "How does a runner job verify that a decision read from the broker's loopback escalation-status route is the operator's recorded decision? Residual until then: a loopback-reachable forger of the status response can present Approved for the printer hold release and for the bed-clear approval, which both read that route at the same trust.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "b79423bb29e6b7a2804dc0bd0d3db629eb5688f4",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_broker_standing") }],
+      },
+      account: "The printer job runs as the plain CI runner and cannot read the operator-only approval store, so the printer hold release reads the decision through the broker's unauthenticated loopback status route, the same route and trust as the converge's bed-clear approval. The MAC-receipted store route exists but its key is unminted.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.auth.approval_gate", decl_name: "approval_standing_read") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_operator_grant"),
+        control: Absent,
+        statement: "a hold releases only on an approved decision over this exact hold and generation; Denied, Expired, Pending and mismatched intent refuse",
+      },
+    ],
+    next: climbs_when(capability: "the store-receipt MAC key is minted and pinned with a verify-only half the runner holds, and approval_standing_read verifies the receipt before returning a standing for both the printer hold and bed-clear consumers"),
+  },
+}
+
+
+data typed_argv_allowlist_refuses_a_modeled_format_constant: IntegrationConcern = IntegrationConcern {
+  identity: "typed_argv_allowlist_refuses_a_modeled_format_constant",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_portable_argv_char_allowed"),
+    requirement: "a command word that a modeled constant DECLARES (the stat format gunbc.owned_directory owned_directory_stat_format, spelled %F|%U|%G|%a) is admitted by the typed argv route that carries it over ssh, instead of being refused as an unportable token",
+    standing: RequirementEstablished { by: lab_stat_format_refusal },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.owned_directory", decl_name: "owned_directory_stat_format"),
+    tail: [
+      decl_ref(module_path: "gunbc.typed_argv_exec", decl_name: "typed_argv_portable_argv_char_allowed"),
+      decl_ref(module_path: "gunbc.executor_privileged_operation", decl_name: "ReadDirectoryIdentity"),
+    ],
+  },
+  question: "How does a modeled format constant reach a remote typed argv without widening the portable character allowlist by hand: does the format word travel as a typed value the route quotes, or is the route-local allowlist a second authority over what a declared word may spell?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "0c283689c72649d1ee996cf3f52ae1949636006f",
+      evidence: FreeSemigroup {
+        head: lab_stat_format_refusal,
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.owned_directory", decl_name: "owned_directory_stat_format") }],
+      },
+      account: "srv1_lab_dashboard_preflight_wet at this head returned the source decision Ready, then refused at step initial-reconcile: the stat of /opt/gunbc-lab was carried over ssh and typed_argv refused the argv token %F|%U|%G|%a as outside the portable allowlist. The word is the one owned_directory_stat_format declares. The srv1 lab no longer reaches this route (its transport is selected local from placement), so the defect stays live for any genuinely remote apply, srv2 next.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data lab_stat_format_refusal: SightingEvidence = CitesArtifact {
+  label: "loyal-deer-449 srv1 preflight log ld449-pf15877.log at head 0c283689c726, step initial-reconcile refusal",
+  sha256: Sha256Digest { hex: "253cedfce9673503494475953815c7ba199dfcb9fd6f71d202fb8abbf4871d21" as Sha256DigestHex },
+}
+
+// THE SECOND LOCAL COPY OF ONE RULE, SIGHTED BY THE Mt. COLLINS UI ASSET OBSERVER (DESIGN section 6b:
+// "the trigger is the second local implementation of one rule"). Verified at 9230f9d0893486a2d3812d2669b1cc120aa67add
+// with `git grep -nE "fn [a-z_]*(index_of|starts_with|ends_with|match_at)\\(" -- dag`: nine declarations answer two
+// questions -- where does a needle first occur in a haystack, and does this sequence end with that one.
+// The list is a candidate inventory from that grep, not a complete census of the tree.
+data byte_sequence_search_reimplemented_per_module: IntegrationConcern = IntegrationConcern {
+  identity: "byte_sequence_search_reimplemented_per_module",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+      second: decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of"),
+      rest: [
+        decl_ref(module_path: "extdeps.version.semver", decl_name: "semver_index_of"),
+        decl_ref(module_path: "gunbc.instruments.emit_copy_qualification_transport", decl_name: "path_ends_with"),
+        decl_ref(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "ends_with_segment"),
+        decl_ref(module_path: "extdeps.languages.json.grammar", decl_name: "json_text_starts_with_at"),
+        decl_ref(module_path: "extdeps.whatwg.html_attribute_tokenization", decl_name: "html_octets_match_at"),
+        decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_starts_with"),
+        decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_string_ends_with"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+    tail: [
+      decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of"),
+      decl_ref(module_path: "extdeps.version.semver", decl_name: "semver_index_of"),
+      decl_ref(module_path: "gunbc.instruments.emit_copy_qualification_transport", decl_name: "path_ends_with"),
+      decl_ref(module_path: "gunbc.auth.heal_publisher_provision", decl_name: "ends_with_segment"),
+      decl_ref(module_path: "extdeps.languages.json.grammar", decl_name: "json_text_starts_with_at"),
+      decl_ref(module_path: "std.bytes", decl_name: "bytes_octets"),
+      decl_ref(module_path: "std.algebra", decl_name: "string_contains"),
+    ],
+  },
+  question: "Where does one octet-sequence search live, and which local copies migrate to it? std.bytes today carries octet constructors and no search; std.algebra's string_contains answers whether text contains text and reports no offset, so nothing in std is a home a caller can already use. The candidates: does one rule cover octets and text, or does an octet search and a text search stay two rules with two homes?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "9230f9d0893486a2d3812d2669b1cc120aa67add",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.known_red_derivation", decl_name: "known_red_index_of") }],
+      },
+      account: "PR 15724's reviewer ran the grep above at the PR head and counted a sixth local copy of the same two rules. The new copies exist because the observation walks a fetched JavaScript asset by BYTE OFFSET -- the offset and length it commits must be offsets into the asset's octets, so a text-level contains test cannot produce the evidence -- and std offers no octet-level index or suffix primitive. The copies are not generalizing because no std home exists to generalize INTO: adding one here means choosing std.bytes' shape for six call sites in five modules, three of which are read by other lanes' sweeps.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: HomeUnresolved { question: "std.bytes (which holds octet constructors, no search) or std.algebra beside string_contains (whose needle is text, not octets)? The two questions decide each other: an octet search placed in std.algebra would duplicate string_contains, and one placed in std.bytes leaves text callers with a second rule." },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+        control: Present { value: decl_ref(module_path: "test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_an_asset_that_never_reads_the_rows_status_has_nothing_to_quote") },
+        statement: "no match is an ABSENT optional, never a zero offset, and every caller distinguishes the two by matching the optional rather than comparing it to none -- the PR's evidence gate failed open exactly once when a no-match reading was inverted, so a shared helper must carry Absent through unchanged and a migration is only done when a no-match input still refuses",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation", decl_name: "ui_octets_index_of"),
+        control: Present { value: decl_ref(module_path: "test.claim.machine_intake.mtcollins1_ui_status_asset_observation_witness", decl_name: "w_the_excerpt_is_not_checkable_when_the_offset_moves_by_one") },
+        statement: "the offset it reports is an index into OCTETS, not into characters or UTF-16 units, because the committed excerpt records are byte offsets and byte lengths within the asset",
+      },
+    ],
+    next: climbs_when(capability: "a shared octet-sequence index/starts-with/ends-with rule exists in std with a home chosen above, and one existing caller outside this PR is migrated to it and its witness stays green -- the first migration proves the shape fits a call site the author does not own; the remaining copies then follow, and the leaf copies are deleted in the same change that migrates them"),
+  },
+}
+
+// srv13 AND srv15 NAME ONE BOARD (recorded 2026-11-05; the operator keeps srv15, "bobo"). Both slots read
+// ASRock Rack ALTRAD8UD-1L2T board serial BR80S6102300049 with host NIC 9c:6b:00:e7:ca:63. srv13's first
+// contact (2026-10-07) found the controller at 192.168.1.247, MAC 9c:6b:00:e7:c9:83, on BMC 2.07.00, and
+// pushed 3.22.00. srv15's in-band recovery (2026-10-29) found it at 192.168.1.248, MAC 9c:6b:00:e7:c9:e7.
+// On 2026-11-05 the router lists .247 inactive and .248 active, and .248's unauthenticated Redfish root
+// answers ServiceEntryPointUUID 6e884505-ba5e-49f2-af66-cedf82ef8d8c, the one srv13's capture carries.
+// The merge is left open, not done, because srv13's slot is not only a name: the machine-intake witnesses
+// replay its 2026-10-07 captures at .247 through srv13's own write-controller row, and the row model has no
+// way to name an endpoint a board HAD. Repointing them at srv15 (.248) would assert the captures came from
+// an address they did not.
+data srv13_srv15_sighting_revision: CommitSha = "64671d19744d133e78e2e9af35602833cfa07dc5"
+
+data srv13_and_srv15_name_one_board: IntegrationConcern = IntegrationConcern {
+  identity: "srv13_and_srv15_name_one_board",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv13"),
+      second: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15"),
+      rest: [
+        decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "srv13_baseboard"),
+        decl_ref(module_path: "gunbc.fleet.fleet_intent", decl_name: "srv15_baseboard"),
+      ],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv13_bmc_write_controller"),
+    tail: [
+      decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+      decl_ref(module_path: "gunbc.hostname_allocation", decl_name: "gunbc_fleet_hostname_allocations"),
+      decl_ref(module_path: "gunbc.fleet.machine_board", decl_name: "machine_board_rows"),
+      decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
+    ],
+  },
+  question: "Which slot is the ALTRAD8UD-1L2T with board serial BR80S6102300049, and how do the machine-intake witnesses keep replaying its 2026-10-07 captures at 192.168.1.247 once srv13 stops being a fleet host?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: srv13_srv15_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesArtifact {
+          label: "artifacts/bmc/srv13-first-contact-2026-10-07/bmc-3.22.00/root_Systems_system.json (SerialNumber BR80S6102300049)",
+          sha256: Sha256Digest { hex: "fd4ad69ffdbef8db4e21eedb4b7c107627abd662d9f0bc3fd0effff1484469da" as Sha256DigestHex },
+        },
+        tail: [
+          CitesArtifact {
+            label: "artifacts/bmc/srv15-inband-recovery-2026-10-29/redfish_v1_Systems_system.json (SerialNumber BR80S6102300049)",
+            sha256: Sha256Digest { hex: "281dbfefd5d55d5c30b2d6f730d45d28062162bc9a2d5ce6be396a30bbfe948a" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "artifacts/bmc/srv13-first-contact-2026-10-07/FINDINGS.txt (BMC 192.168.1.247 MAC 9c:6b:00:e7:c9:83; host NIC 9C:6B:00:E7:CA:63)",
+            sha256: Sha256Digest { hex: "81bb5b9576a26c909ed769ebb3ae75cc85c3397192ec82e2a98613e329041567" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "artifacts/bmc/srv15-inband-recovery-2026-10-29/00_README.txt (BMC 192.168.1.248 MAC 9c:6b:00:e7:c9:e7; board serial BR80S6102300049; host lease from NIC 9c:6b:00:e7:ca:63)",
+            sha256: Sha256Digest { hex: "6f4a3c900238b2575d386bd4b6d96cb014e1d8439d3b2274b988d8644b8e0d4e" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Both slots' captures report board serial BR80S6102300049 and host NIC 9c:6b:00:e7:ca:63, an Intel I210 address burned into the board; only the controller's MAC and lease differ, across a BMC firmware push from 2.07.00 to 3.22.00 that srv13's own capture records. Read-only on 2026-11-05: the controller at .248 serves Redfish with srv13's captured ServiceEntryPointUUID, and the router shows srv13's reservation (.247) inactive. srv15's recovery also found the root credential changed by hand without a record, which is what srv13's forced first rotation would leave. Not established: whether the MAC change came from the firmware push or from a later reflash.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fleet.fleet_host_identity", decl_name: "operator_host_srv15") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.bmc_write_controller", decl_name: "srv15_bmc_write_controller"),
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_write_controller_witness", decl_name: "srv15_admits_a_per_write_approval_at_its_own_controller"),
+        statement: "the board's write-controller row admits a per-write approval only at the board's own current controller and refuses the standing grant",
+      },
+      PreservedObligation {
+        holder: decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "srv13_bmc_observed_network"),
+        control: decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness", decl_name: "the_forced_state_admits_only_its_own_controller_and_build"),
+        statement: "the forced-first-rotation and arrival witnesses keep replaying the board's 2026-10-07 factory 403 and Manager captures against the controller as it was then (192.168.1.247, OpenBMC 3.22.00), and still refuse another controller or build",
+      },
+    ],
+    next: climbs_when(capability: "a write-controller row (or the witnesses' supplied controller) can name the endpoint a board HAD at a capture's time apart from the endpoint it has now, so srv13's 2026-10-07 captures replay against srv15's board; then operator_host_srv13, srv13_baseboard, srv13_bmc_write_controller and srv13's hostname row are deleted and every srv13 consumer is repointed at srv15"),
+  },
+}
+
+data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = IntegrationConcern {
+  identity: "run_closure_typecheck_exceeds_eval_demand",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
+    requirement: "a gunbc run pays memory and wall time for the part of its entry's closure that evaluation reaches, not for every module the import closure names, while every refusal that typechecking the closure raises today still fires where it fires today",
+    standing: RequirementUnestablished { decided_by: "a design that names which typecheck obligations an unreached module still owes (its own refusals, its importers' bindings) and shows they can be discharged without typechecking its bodies; until then the requirement is a memory and wall-time observation, not an established obligation" },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired"),
+    tail: [decl_ref(module_path: "v2.compiler.module_acquisition", decl_name: "acquisition_lookup")],
+  },
+  question: "Is the pre-entry typecheck of a gunbc run's whole demand-acquired closure owed, or is it the larger half of the private lanes' memory floor that no model has yet been asked to narrow? Measured at seed e1f753b9 with the private overlay: the private drift entry typechecks 2918 closure modules, the roster entry 3245, and evaluation touches 227-278 of them (about 9.5 percent); the isolated audit_packet_witness entry reaches 12.9 GiB at the end of pre-entry (closure_typecheck 664,822 ms over 2775 files) before evaluation starts. This floor is undesigned and carries no estimate: the whole-pool burst (keyed_module_reads_walk_the_whole_pool) is the named, repairable part, and removing it leaves this floor standing.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "resolve_entry_graph_demand_acquired") },
+        tail: [],
+      },
+      account: "Bisect of the private projection-drift regression (2026-11-05) and two isolated srv1 runs (qn-roster-peak40: roster cgroup peak 35.88 GiB; qn-auditpacket-peak40: audit_packet_witness VmHWM 26.84 GiB) put roughly 13-16 GiB of each private lane in pre-entry typecheck and the rest in one whole-pool burst plus per-witness evaluation. The same floor shows up as wall time on small entries: a read-only runner_host_file_observe on srv3 (run 42037046961) spent its whole 15-minute step typechecking v2.compiler modules its entry's closure names and timed out before reading a drop-in. Recorded so a lane blocked on it can cite a named cause rather than an assertion; no fix is designed.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationConcern {
+  identity: "keyed_module_reads_walk_the_whole_pool",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "with_module_path_index"),
+      second: decl_ref(module_path: "v1_compiler.cli_run.source_layout_lookup", decl_name: "module_storage_relative"),
+      rest: [decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at")],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at"),
+    tail: [
+      decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at"),
+      decl_ref(module_path: "v2.lens.module_graph", decl_name: "module_declaration_facts_at_live"),
+    ],
+  },
+  question: "Where is a module found by name? gunbc.source_layout says the name determines the path (DESIGN section 3: a location read out of a file is a second authority, and makes finding one module cost reading all of them), and gunbc run's demand acquisition already finds modules that way through module_storage_relative. The keyed reads module_declaration_fact_at and eval_decl_facts_at instead answer from a whole-pool index built by reading every pool file's declaration, so their first call costs the population read they were written to avoid.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f08a6ae4e44dc0636eda71f25f0009e97ffde1d1",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "module_declaration_fact_at") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "eval_decl_facts_at") }],
+      },
+      account: "Found while choosing the repair for the private audit_packet burst (strategy.audit_packet audit_module_facts, measured +8.3 GiB in 16 s from one module_declaration_facts call over the composed pool of 10164 files). Moving that consumer to either keyed read would move the burst to the first lookup and remove nothing, because module_declaration_fact_at reads through with_module_path_index and eval_decl_facts_at filters decl_facts_for_roots_shared. The repair belongs in the keyed reads: derive the storage path from the name per pool root and read that one file, keeping multiplicity across roots so DeclarationRefAmbiguous still fires.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: "d4051f7afa02968d0c0ea0e35c95799b36f12636",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.keyed_module_lookup", decl_name: "keyed_module_path") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "keyed_decl_facts") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.keyed_module_lookup_seed_growth", decl_name: "keyed_module_lookup_seed_growth_justification") },
+          ],
+        },
+        account: "gunbc#15930 (merged as this revision) moved module_declaration_fact_at and eval_decl_facts_at onto keyed reads that derive the storage path from the name through demand_acquire's shared read_layout_file. type_names still reads the census. Evidence on the PR head, public pool (dag + src/v2): controls (a)-(d) with a first-hit RED on (a); a differential against the census (every module's keyed fact equals its index row, and every 7th module's keyed decl rows equal the census rows); peak resident 15.3 MiB keyed vs 6.1 GiB census. NOT YET SHOWN, so the row stays open: (1) the private-pool burst this row was opened on has no before/after pair. The 'before' at seed a24ef0d9 refused at resolve on the #15175 equality admission, and the 'after' needs the private keyed repair (strategy.audit_packet through resolve_declaration_ref_live), which is not pushed. The pair needs a public seed with both this revision and the #15175 repair. (2) Nested pool roots (dag together with dag/strategy) were never compared against the census, and no control exists for them.",
+      },
+    ],
+  },
+  disposition: Open,
+}
+
+// Separate integration obligations by their semantic owners; none grants the whole lifecycle.
+data durable_request_attempt_integration: IntegrationConcern = IntegrationConcern {
+  identity: "durable_request_attempt_integration",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState"),
+    requirement: "Connect durably accepted request identity to fenced attempt minting and recovery without a second live attempt or either direct launch bypass.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState"), tail: [decl_ref(module_path: "gunbc.durable_handoff_host", decl_name: "HostAcceptedRequest"), decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_provide")] },
+  question: "Connect durably accepted request identity to fenced attempt minting and recovery without a second live attempt or either direct launch bypass.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.compute.attempt_lifecycle", decl_name: "AttemptState") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.durable_handoff_host", decl_name: "HostAcceptedRequest"), control: Absent, statement: "Acceptance precedes dispatch; same request reattaches without duplicate execution." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.deploy_transition_bootstrap", decl_name: "unit_quiescence_admission"), control: Absent, statement: "Resource release requires independently proved quiescence; terminal receipt arrival is not descendant discharge." }],
+    next: climbs_when(capability: "PR 3 controller consumes accepted requests and existing attempt CAS semantics; PR 6 deletes both direct local launch paths; restart, cancellation and lost-launch controls prove no overlapping attempts."),
+  },
+}
+
+data execution_grant_composition_integration: IntegrationConcern = IntegrationConcern {
+  identity: "execution_grant_composition_integration",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant"),
+    requirement: "Realize the existing all-ledgers-or-none grant contract over cell and host reservations plus the executor permit; reservation success alone never launches.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant"), tail: [decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"), decl_ref(module_path: "gunbc.runner.runner_revision_job_launch", decl_name: "revision_job_launch_plan")] },
+  question: "Realize the existing all-ledgers-or-none grant contract over cell and host reservations plus the executor permit; reservation success alone never launches.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.execution", decl_name: "ExecutionGrant") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.fabric.fabric_control_plane", decl_name: "CellReservation"), control: Absent, statement: "Cell occupancy remains distinct from host resource conservation and cannot be double spent." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.runner.runner_revision_job_launch", decl_name: "revision_job_launch_plan"), control: Absent, statement: "The microVM profile preserves its provisioning, isolation and root-approval obligations; a grant does not substitute for profile admission." }],
+    next: climbs_when(capability: "PR 4/5 compose committed reservation and permit evidence into one canonical grant consumed by local and microVM profiles; failed/partial admission cannot launch and concurrent demand cannot overspend."),
+  },
+}
+
+data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern {
+  identity: "execution_receipt_outcome_binding",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt"),
+    requirement: "Bind admitted domain outcome and terminal evidence to canonical source and work identity in the existing attempt-and-lease receipt contract.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt"), tail: [decl_ref(module_path: "product.fabric.work", decl_name: "SourceManifestRef"), decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOutcome")] },
+  question: "Bind admitted domain outcome and terminal evidence to canonical source and work identity in the existing attempt-and-lease receipt contract.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "dc2b59fd53bb3b57da5e49bc2173d96c1e297711",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") }, tail: [] },
+      account: "PR 1 records a required integration, not an executed capability. The owning cut must reuse the existing contract and retain discriminating execution evidence. Program owner quick-newt-573 dispatches implementation; bold-dove-340 owns request/attempt lifecycle.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.execution", decl_name: "Receipt") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "product.fabric.execution", decl_name: "admit_receipt_for_grant"), control: Present { value: decl_ref(module_path: "test.claim.fabric.fabric_terminal_contract_witness", decl_name: "acceptance_compares_lease_identity_not_only_generation") }, statement: "Preserve complete lease identity and attempt admission; generation equality alone is insufficient." }, PreservedObligation { holder: decl_ref(module_path: "product.fabric.work", decl_name: "SourceManifestRef"), control: Absent, statement: "Source identity is provider-neutral; clean Git and dirty worktrees are adapters with provenance distinct." }, PreservedObligation { holder: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "WorkOutcome"), control: Absent, statement: "Preserve the existing five endings; OOM and watchdog evidence inhabit infrastructure refusal rather than domain failure or a sixth ending." }],
+    next: climbs_when(capability: "PR 2/3/5 bind the existing ReceiptPayload.ExecutionReceipt to source/work and typed terminal evidence; mismatched or stale receipts cannot complete requests and the existing lease-identity control remains green."),
+  },
+}
+
+data provider_materializes_source_twice: IntegrationConcern = IntegrationConcern {
+  identity: "provider_materializes_source_twice",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"),
+    requirement: "Derive a clean commit's source identity from the executor's one materialization instead of a throwaway checkout beside the run checkout.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject"), tail: [decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_leased")] },
+  question: "The clean-tree adapter hashes a throwaway detached worktree of the commit, then the lease flow checks the commit out again for the run; the layout is keyed by the identity, so the identity cannot come from the run checkout. Collapse to one materialization.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject") }, tail: [] },
+      account: "Remote-build PR 2 (option A, agreed with quick-newt-573) admits the double materialization so identity lands before the executor exists. Cost: one extra checkout per clean-tree request.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"), control: Absent, statement: "Clean and dirty adapters keep producing one identity for equal bytes." }],
+    next: climbs_when(capability: "PR 5 executor extraction computes identity from the executor's own single materialization; the throwaway checkout in compute_resolve_subject is deleted."),
+  },
+}
+
+data toolchain_file_read_without_toml_ingest: IntegrationConcern = IntegrationConcern {
+  identity: "toolchain_file_read_without_toml_ingest",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.languages.toml.types", decl_name: "TomlDocument"),
+    requirement: "Read rust-toolchain.toml's channel through a TOML ingest into TomlDocument, so header comments, whitespace, dotted keys and escapes are the grammar's, not a scanner's.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel"), tail: [decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement")] },
+  question: "TOML has an emit side only; the toolchain file's one field is read by a bounded line scanner that covers comments, header whitespace and the dotted form, and refuses typed (naming the form) on escapes and multi-line values. A TOML ingest grammar (rows in extdeps/languages/toml) would replace it; a file the scanner misreads refuses typed as naming no channel.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") }, tail: [] },
+      account: "Remote-build PR 2 needs one field of one file; building a TOML ingest grammar is a separate language-layer change (review 91579).",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.languages.toml.types", decl_name: "TomlDocument") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement"), control: Absent, statement: "A toolchain file naming a channel yields a requirement; one that names none refuses typed, never defaults." }],
+    next: climbs_when(capability: "A TOML ingest into TomlDocument exists; rustup_toolchain_file_channel then reads toolchain.channel from the document and the line scanner is deleted."),
+  },
+}
+
+data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
+  identity: "equality_synthesis_helper_binding_is_import_authority",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
+    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
+      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
+    ],
+  },
+  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity. (#15972's interim gate equality_helpers_visible and its import-enumeration interim were reverted by #16000 on operator decision; they re-land with #15992 and this row's sightings then resume.)",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
+      },
+      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
+    },
+    tail: [ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
+        tail: [],
+      },
+      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
+    }],
+  },
+  disposition: Open,
+}
+
+data entry_closure_provider_settling_has_two_loops: IntegrationConcern = IntegrationConcern {
+  identity: "entry_closure_provider_settling_has_two_loops",
+  kind: SuspectedFork {
+    authorities: DistinctAuthorities {
+      first: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demand_acquired_provider_fixed_point"),
+      second: decl_ref(module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "compile_to_provider_fixed_point_with"),
+      rest: [],
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demand_acquired_entry_resolved"),
+    tail: [decl_ref(module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolve_entry_typed")],
+  },
+  question: "Two loops answer one question, how an entry closure is settled once generated providers join it: gunbc run rebuilds the acquired index with seeds and resolves through the lossy resolve_entry_typed (empty OccurrenceTransport), while the entry compile runs a complete .dag compile per provider round over a growing source list. Is the run loop to migrate onto the .dag resolution (semantic home std.occurrence_identity and compile.dag), or does gunbc run owe something the compile loop cannot give? Migrating run is out of scope of the change that made the compile loop the single resolution for emission.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "465d3d96ba6a92138f61beef36421225ffc456b6",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.demand_acquire", decl_name: "demand_acquired_provider_fixed_point") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.provider_acquire", decl_name: "compile_to_provider_fixed_point_with") }],
+      },
+      account: "Found while carrying the acquired resolution into the entry compile (gunbc#16018): the entry compile now settles through compile_to_provider_fixed_point_with, and gunbc run keeps its own loop over resolve_entry_typed.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}
+
+// RAISED BY WORK ITEM adhoc-d9a8b550-3f7 (2026-11-07), from a regen round observed 2026-11-06 06:18Z.
+// The round printed git's refusal to resolve a bare `main` and CONTINUED to exit 0. Nothing here was
+// built or executed: the trace is source reading plus one read-only scratch repo used to match git's
+// error strings, and the round-time binary and head object are both gone.
+data base_mirror_round_sighting_revision: CommitSha = "700fe5008e3826a82105ae081d449f7c4ac5966d"
+
+data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConcern = IntegrationConcern {
+  identity: "base_mirror_round_tolerates_unresolvable_base_git_failure",
+
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_base_ref_verdict"),
+    requirement: "an observation that asks git whether a base ref resolves must yield an outcome its caller cannot drop: a fatal printed on stderr while the round continues and exits 0 is not an outcome, and DESIGN section 5 requires a failure arm to refuse rather than widen",
+    standing: RequirementUnestablished { decided_by: "identify, in a build pinned to main, the caller that handed a bare `main` to a git operation during `claim_executor --regen-round-cost --base-mirror`; if no such caller exists on main the requirement is not established here and this row closes as branch-side" },
+  },
+
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_base_ref_verdict"),
+    tail: [
+      decl_ref(module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_run_git_diff_unified"),
+      decl_ref(module_path: "gunbc.diff_baseline", decl_name: "resolve_diff_baseline"),
+      decl_ref(module_path: "gunbc.diff_baseline", decl_name: "resolve_merge_target"),
+      decl_ref(module_path: "gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror", decl_name: "regen_candidate_reverts_hand_authored_mirror"),
+    ],
+  },
+
+  question: "When git cannot resolve the base a round is about to diff against, is there any model-level outcome that stops the round — or can a caller print git's fatal, ignore it, and reach exit 0 with the tree rewritten?",
+
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: base_mirror_round_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.workflow.floor_diff_observe", decl_name: "floor_base_ref_verdict") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.diff_baseline", decl_name: "resolve_diff_baseline") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.diff_baseline", decl_name: "resolve_merge_target") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.merge_admission_subject", decl_name: "merge_admission_merge_base_ref") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.git", decl_name: "Diff") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.git", decl_name: "DiffNameOnly") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.git", decl_name: "DiffNameOnlyNoRenames") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.git", decl_name: "DiffNameOnlyMerge") },
+          CitesDeclaration { declaration: decl_ref(module_path: "extdeps.git.inspect", decl_name: "ResolveRefCommit") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.cross_pr_contradiction_instrument", decl_name: "observe_pull_request") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.merge_admission_capture", decl_name: "tested_subject_capture") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.merge_admission_current_context", decl_name: "main") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.merge_admission_walk", decl_name: "merge_target_refresh") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.path_writer_set_instrument", decl_name: "observe_pull_request") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.pr_containment_instrument", decl_name: "establish_containment_subject") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.instruments.pr_containment_instrument", decl_name: "classify_branch") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.namespace_cut.namespace_step0_subject_collector", decl_name: "collect_step0_subject_vector_at") },
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror", decl_name: "regen_candidate_reverts_hand_authored_mirror") },
+        ],
+      },
+      account: "A `--base-mirror` regen round (`claim_executor --regen-round-cost --base-mirror`, base supplied bare as HEAL_BASE_MIRROR_COMMIT) run in a clone with neither refs/heads/main nor refs/remotes/origin/main printed, mid-round: `fatal: ambiguous argument 'main': unknown revision or path not in the working tree. Use '--' to separate paths from revisions`, then the floor teardown line, then exit 0 with 11 modified files under src/v1/stage0/. git's exit code was 128 and the round did not stop. WHICH CALLER IS UNKNOWN. The exact string is produced by `git show -s --format=%H main`, `git diff main HEAD` and `git diff --name-only main HEAD` (each run against a scratch repo to compare strings), and NOT by the changed-mirror scope operation — its argv renders `main...HEAD` as one argument — and NOT by the round's worktree-versus-index observation, which takes no revision at all and prints `fatal: bad revision 'main'`. So the failure came from a `git.Inspect.ResolveRefCommit`-shaped or `extdeps.git` diff-shaped operation given a bare branch name. THE CANDIDATE CALLERS, each named by its enclosing declaration with the position beside it: `observe_pull_request` (gunbc.instruments.cross_pr_contradiction_instrument:219), `tested_subject_capture` (gunbc.instruments.merge_admission_capture:168), `main` (gunbc.instruments.merge_admission_current_context:121), `merge_target_refresh` (gunbc.instruments.merge_admission_walk:334), `observe_pull_request` (gunbc.instruments.path_writer_set_instrument:230), `establish_containment_subject` and `classify_branch` (gunbc.instruments.pr_containment_instrument:237 and :511), and `collect_step0_subject_vector_at` (gunbc.namespace_cut.namespace_step0_subject_collector:392); on the operation side `Diff`, `DiffNameOnly`, `DiffNameOnlyNoRenames` and `DiffNameOnlyMerge` (dag/extdeps/git.dag:1830, :1842, :1857 and :1873), whose `head` input defaults to `HEAD`. No data-row base on main is bare: `merge_admission_merge_base_ref` (gunbc.merge_admission_subject:76) is `gunbc_merge_target_ref`, origin/main, and `resolve_merge_target` (gunbc.diff_baseline:233-:245, called from `resolve_diff_baseline`) composes `origin/<name>` for a merge target, while gunbc.extdeps.git's `default_branch_names` has no consumers. THE UNKNOWN STATED PLAINLY: the round ran from a branch-tree build at 6f4cfe70d792 whose round-time head cca9623369be is pruned, so a branch-side caller that resolved `main` directly cannot be excluded — which is why this stands as a concern with an unestablished requirement rather than as a defect with a site.",
+    },
+    tail: [],
+  },
+
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops]
+
+fn fork_rows_have_distinct_authorities() -> Bool {
+  all(integration_concerns, c => fork_authorities_distinct(c: c))
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE READING PATH.
+//
+//   CONCERN_CHANGED=a.b,c.d CONCERN_REFERENCED=e.f gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//   CONCERN_SUBTREE=product gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/integration_concern.dag
+//
+// Module paths are comma-separated. With neither variable set it lists every open concern.
+// Deriving `changed` and `referenced` from a diff is not done here; the caller supplies them.
+
+fn env_list(name: String) -> List<String> {
+  match shell.Env.Get(name: name as NonEmptyStr).value {
+    Absent => []
+    Present { value: v } => filter(split(s: v, delimiter: ","), x => x != "")
+  }
+}
+
+fn declaration_text(r: DeclarationRef) -> String {
+  let base = concat(r.module_path as String, concat(" ", r.decl_name as String))
+  match r.field {
+    WholeDeclaration => base
+    NamedField { field_name: f } => concat(base, concat(".", f as String))
+    TypeParameter { name: n } => concat(base, concat("<", concat(n as String, ">")))
+  }
+}
+
+fn evidence_text(e: SightingEvidence) -> String {
+  match e {
+    CitesDeclaration { declaration: d } => concat("declaration ", declaration_text(r: d))
+    CitesHistorical { declaration: h } => join(["declaration ", h.module_path as String, " ", h.decl_name as String, " at ", h.at as String], "")
+    CitesArtifact { label: l, sha256: d } => join(["artifact sha256 ", d.hex as String, " (", l as String, ")"], "")
+  }
+}
+
+fn sighting_lines(g: ConcernSighting) -> List<String> {
+  concat(
+    [concat("  sighting at ", g.revision as String), concat("    account: ", g.account as String)],
+    map(concat([g.evidence.head], g.evidence.tail), e => concat("    cites: ", evidence_text(e: e))),
+  )
+}
+
+fn requirement_lines(k: ConcernKind) -> List<String> {
+  match k {
+    SuspectedFork { authorities: _ } => []
+    SuspectedCapabilityGap { model: m, requirement: r, standing: st } => [
+      concat("  model: ", declaration_text(r: m)),
+      concat("  requirement: ", r as String),
+      match st {
+        RequirementEstablished { by: e } => concat("  requirement established by: ", evidence_text(e: e))
+        RequirementUnestablished { decided_by: d } => concat("  requirement NOT established; decided by: ", d as String)
+      },
+    ]
+  }
+}
+
+fn obligation_lines(d: ConcernDisposition) -> List<String> {
+  match d {
+    Triaged { home: _, preserve: ps, next: _ } => map(ps, o => join(["  preserve (", declaration_text(r: o.holder), "): ", o.statement as String], ""))
+    _ => []
+  }
+}
+
+fn concern_text(c: IntegrationConcern) -> String {
+  join(concat(concat(concat(
+    [
+      concat("- ", c.identity as String),
+      concat("  kind: ", kind_label(k: c.kind)),
+      concat("  disposition: ", disposition_label(d: c.disposition)),
+      concat("  question: ", c.question as String),
+      concat("  modules: ", join(concern_modules(c: c), ", ")),
+    ],
+    requirement_lines(k: c.kind)),
+    obligation_lines(d: c.disposition)),
+    flat_map(concat([c.sightings.head], c.sightings.tail), g => sighting_lines(g: g))), "\n")
+}
+
+fn reading_text(title: String, rows: List<IntegrationConcern>) -> String {
+  join(concat(concat([title], map(rows, c => concern_text(c: c))), concat(["unconnected routes:"], map(unconnected_routes, r => concat("- ", r)))), "\n")
+}
+
+fn main() -> CliWireResponse {
+  let changed = env_list(name: "CONCERN_CHANGED")
+  let referenced = env_list(name: "CONCERN_REFERENCED")
+  let subtree = env_list(name: "CONCERN_SUBTREE")
+  let open_rows = filter(integration_concerns, c => concern_is_open(c: c))
+  let text = if count(subtree) > 0 {
+    reading_text(title: concat("open integration concerns in subtree ", join(subtree, ",")), rows: flat_map(subtree, p => concerns_in_subtree(prefix: p, rows: open_rows)))
+  } else if count(changed) + count(referenced) > 0 {
+    reading_text(title: "open integration concerns relevant to the given scope", rows: concerns_for(s: ConcernScope { changed: changed, referenced: referenced }, rows: open_rows))
+  } else {
+    reading_text(title: "all open integration concerns", rows: open_rows)
+  }
+  CliWirePrintable { bytes: text, exit: ExitSuccess }
+}

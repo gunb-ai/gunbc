@@ -10,7 +10,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile,
 }
-import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node { Atom, Node, Symbol, TypeNode, NodeOccurrence }
 import v2.std.logic { Bool }
 import std.live_tree { LiveTreeDisposition }
 import v2.lens.cost {
@@ -61,7 +61,7 @@ fn prop_synthetic_leaf(identity: Symbol) -> Node {
 
 data prop_leaf: Node = prop_synthetic_leaf(identity: ^prop_size_source)
 
-data prop_variable: SizeVariable = SizeVariable { source: prop_leaf }
+data prop_variable: SizeVariable = SizeVariable { source: NodeOccurrence { node: prop_leaf } }
 
 data prop_diagnostic: Diagnostic = Diagnostic {
   reason: ^cost_reason_unmodeled_symbolic_cost,

@@ -1,5 +1,6 @@
 module gunbc.runner.runner_service_slot_controller
 
+import gunbc.host.host_boot_id { HostBootId, host_boot_id_of_kernel_text }
 import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput }
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { String, NonEmptyStr, Int, List, Bool }
@@ -17,7 +18,7 @@ import gunbc.runner.runner_unit_file { RunnerJobUserUidReading, JobUserUidObserv
 import extdeps.tools.findutils { find_path_probe_command }
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.auth.jws { JwsSigningKeyRef }
-import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
 import gunbc.fleet.host_credential_custody_converge {
   host_credential_custody_row, HostCredentialCustodyRow, ServiceSlotAppKey, custody_row_readable_by, custody_row_placement, CustodyPlaced, CustodyPlacementRefused,
   custody_file_legs, custody_dir_legs, CustodyPathLegs, CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathUnobservable, custody_path_metadata_wire,
@@ -35,13 +36,11 @@ import gunbc.github_effect_perform {
   JitMintPerformance, JitMintReceived, service_slot_app_key,
 }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, HostUnitSlotPurpose, ServiceSlot, host_unit_listener_wait, ListenerPartOf, HostUnitListenerReady, HostUnitListenerUnbuilt, ServiceBootId, service_boot_id_of, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
+  HostUnitSlot, HostUnitSlotPurpose, ServiceSlot, host_unit_listener_wait, ListenerPartOf, HostUnitListenerReady, HostUnitListenerUnbuilt, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
   host_unit_slot_for, host_unit_slot_pass_root, host_unit_slot_listener_argv, service_slot_name_parse, service_slot_selected_workflow,
   CurrentServicePopulation, CurrentServicePopulationStanding, CurrentServicePopulationDerived, CurrentServicePopulationRefused,
   current_service_population, current_population_has_unit,
 }
-import gunbc.machine_intake.host_capture_envelope { KernelBootId }
-import extdeps.uuid { uuid_of }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_deregistration {
   JitSlotExit, SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, SlotListenerOutcomeUnobserved, SlotUnitStopping, JitRegistration, JitDeregistration, JitRunnerDeregistered,
@@ -110,10 +109,10 @@ type ServiceSlotRebuild
 
 // THE UNIT NAME IS A CANDIDATE, NOT AN AUTHORITY: it is parsed through the service-slot grammar (only
 // its index is taken from the name), the slot is rebuilt by the same fold that names it under the
-// ADMITTED boot -- a typed ServiceBootId, never the parsed boot string -- and it is admitted only when
+// ADMITTED boot -- a typed HostBootId, never the parsed boot string -- and it is admitted only when
 // the rebuilt name equals the unit this process runs as exactly, so a unit created for another boot
 // rebuilds as a different name and is refused.
-fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot: ServiceBootId, unit: String, receipt: RunnerUserSessionReceiptInput) -> ServiceSlotRebuild {
+fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot: HostBootId, unit: String, receipt: RunnerUserSessionReceiptInput) -> ServiceSlotRebuild {
   match service_slot_name_parse(host: identity, name: unit) {
     Absent => ServiceSlotUnitUnparsed { unit: unit }
     Present { value: parsed } =>
@@ -186,17 +185,13 @@ fn service_slot_local_read(command: ArgvCommand) -> ServiceSlotLocalRead {
 // ── the current boot, read independently ────────────────────────────────────────────────────────
 
 type ServiceSlotBootRead
-  = ServiceSlotBootObserved { boot: ServiceBootId }
+  = ServiceSlotBootObserved { boot: HostBootId }
   | ServiceSlotBootUnread { cause: NonEmptyStr }
 
 fn service_slot_boot_of_text(text: String) -> ServiceSlotBootRead {
-  match uuid_of(text: trim(s: text)) {
+  match host_boot_id_of_kernel_text(text: text) {
     Absent => ServiceSlotBootUnread { cause: "the kernel boot id is not a uuid" as NonEmptyStr }
-    Present { value: u } =>
-      match service_boot_id_of(run: KernelBootId { boot_id: u }) {
-        Absent => ServiceSlotBootUnread { cause: "the kernel boot id yields no service boot id" as NonEmptyStr }
-        Present { value: b } => ServiceSlotBootObserved { boot: b }
-      }
+    Present { value: b } => ServiceSlotBootObserved { boot: b }
   }
 }
 
@@ -218,7 +213,7 @@ fn service_slot_boot_read() -> ServiceSlotBootRead {
 
 type ServiceSlotMintAdmission sole_constructor {
   slot: HostUnitSlot
-  boot: ServiceBootId
+  boot: HostBootId
   population: CurrentServicePopulation
 }
 
@@ -231,7 +226,7 @@ type ServiceSlotAdmission
 // (gunbc.runner.runner_host_unit_slot current_service_population_over), so an index outside it (999), a unit of
 // another boot, and a name nobody bound are each refused here and mint nothing. The admission is the only value
 // service_slot_pass takes the slot from.
-fn service_slot_admit(current_boot: ServiceBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild, unit: String) -> ServiceSlotAdmission
+fn service_slot_admit(current_boot: HostBootId, population: CurrentServicePopulationStanding, rebuilt: ServiceSlotRebuild, unit: String) -> ServiceSlotAdmission
   admit_callers: [
     decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_admit_current"),
     decl_ref(module_path: "test.claim.runner.runner_service_slot_admission_witness", decl_name: "admission_over"),
@@ -261,7 +256,7 @@ fn service_slot_admit(current_boot: ServiceBootId, population: CurrentServicePop
   }
 }
 
-fn service_slot_admit_current(host: HostControlStanding, identity: HostIdentity, current_boot: ServiceBootId, unit: String, receipt: RunnerUserSessionReceiptInput) -> ServiceSlotAdmission
+fn service_slot_admit_current(host: HostControlStanding, identity: HostIdentity, current_boot: HostBootId, unit: String, receipt: RunnerUserSessionReceiptInput) -> ServiceSlotAdmission
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_unit_standing")]
 {
   service_slot_admit(
@@ -412,13 +407,13 @@ fn service_slot_isolate_listener_as(
 fn service_slot_isolate_listener(identity: HostIdentity, row: HostCredentialCustodyRow) -> ServiceSlotIsolation
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_controller_main")]
 {
-  match runner_host_spec_for(host: identity) {
-    RunnerHostSpecAbsent { host: h } => ServiceSlotListenerUserUnspecified { host: h }
-    RunnerHostSpecFound { spec: spec } =>
+  match host_unit_slot_runner_user(host: identity) {
+    RunnerUserUndeclared { host: h } => ServiceSlotListenerUserUnspecified { host: h }
+    RunnerUserSelected { user: user } =>
       service_slot_isolate_listener_as(
         row: row,
-        user: spec.runner_user,
-        listener: service_slot_uid_of(name: spec.runner_user),
+        user: user,
+        listener: service_slot_uid_of(name: user),
         file_owner: service_slot_uid_of(name: row.file_ownership.user),
         dir_owner: service_slot_uid_of(name: row.dir_ownership.user),
       )

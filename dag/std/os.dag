@@ -1,4 +1,5 @@
 module std.os
+import std.os.types { MacosDistributionCatalogRow, OperatingSystemSurface, UbuntuDistributionCatalogRow, WindowsDistributionCatalogRow }
 
 
 fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> OperatingSystemSurface {

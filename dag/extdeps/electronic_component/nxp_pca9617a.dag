@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.nxp_semiconductors { nxp_semiconductors }
 import std.measure { millivolt }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkDescribedNotStructured,
   ElectronicComponentRow, LevelTranslatorSpec, LevelTranslatorSpecification, MillivoltRange, TranslatorPin,
   PortA, PortB, OutputEnable, TranslatorGround, SupplyA, SupplyB,
 }
@@ -41,7 +41,7 @@ data pca9617adp: ElectronicComponentRow = ElectronicComponentRow {
   vendor: nxp_semiconductors,
   ordering_code: "PCA9617ADP",
   package: "TSSOP8 (SOT505-1)",
-  top_marking: "P617A / <date and lot lines>",
+  top_marking: Present { value: MarkDescribedNotStructured { text: "P617A / <date and lot lines>", why: "the document names the date and lot lines without printing their glyphs or positions, so the mark is described, not structured" } },
   specification: LevelTranslatorSpec { translator: LevelTranslatorSpecification {
     channels: 2,
     supply_a: MillivoltRange { minimum: millivolt(count: 800), maximum: millivolt(count: 5500) },

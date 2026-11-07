@@ -5,7 +5,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import std.measure { millivolt }
-import extdeps.electronic_component.types {
+import extdeps.electronic_component.types { MarkStructured, ListedOnly, MarkLine, FixedGlyphs,
   ElectronicComponentRow,
   HotSwapControllerSpec,
   HotSwapControllerSpecification,
@@ -68,7 +68,7 @@ data lm5066i_pwp: ElectronicComponentRow = ElectronicComponentRow {
   vendor: texas_instruments,
   ordering_code: "LM5066IPMHE/NOPB",
   package: "HTSSOP-28 (PWP), exposed pad to ground",
-  top_marking: "LM5066I",
+  top_marking: Present { value: MarkStructured { lines: [MarkLine { segments: [FixedGlyphs { text: "LM5066I" }] }], coverage: ListedOnly } },
   specification: HotSwapControllerSpec { controller: HotSwapControllerSpecification {
     pins: [
       ControllerPin { number: 1, name: "OUT", role: OutputFeedback },

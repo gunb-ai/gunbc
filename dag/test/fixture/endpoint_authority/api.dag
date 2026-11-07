@@ -1,0 +1,12 @@
+// dag/test/fixture/endpoint_authority/api.dag — THE PROVIDING MODULE for the imported-endpoint
+// controls in `test.claim.service_endpoint_supply_emit_control`. This is the shape the corpus
+// actually writes: the host a service names lives in ANOTHER module and arrives through a by-name
+// `import` (`extdeps.github.gists` declares `endpoint: default_api_base` while the datum lives in
+// `extdeps.github.github`). A consumer imports ONE of these data declarations by name; the other is
+// deliberately left unimported, so a control can demand that a name no import of the consumer lists
+// does NOT answer -- scope is what the author wrote, not what happens to exist in the tree.
+module test.fixture.endpoint_authority.api
+
+data default_api_base: String = "https://api.github.com"
+
+data unimported_api_base: String = "https://never.imported.example"

@@ -1,0 +1,49 @@
+module test.claim.runner.runner_host_listener_account_witness
+
+// OPERATOR DECISION B (merry-fox-82, 2026-10-27), AT ITS TWO CONDITIONS: an image-baked host never resolves to an
+// SSH-applied deploy and never appears in the deploy roster (the RED), and every spec-backed host's selected runner
+// user is exactly its spec row's runner_user, unchanged by the new selection (the control). The image-baked host's
+// user is the account its boot image declares.
+
+import std.types { Bool, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.ci.ci_fleet { fleet_image_baked_offers, fleet_host_is_image_baked }
+import gunbc.runner.runner_host_deploy {
+  runner_host_deploy_for, runner_host_spec_rows, fleet_runner_host_deploys, runner_host_realized_by_image_cause,
+  RunnerHostDeployRefused, RunnerHostDeployFound, RunnerHostDeployUnmodeled,
+}
+import gunbc.runner.runner_host_medium { runner_host_medium_runner_account }
+import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RED. mtcollins1 is image-baked; it resolves Refused with the image cause (BEFORE any spec lookup, so removing the
+// check would make it Unmodeled and fail this), and no member of the deploy roster is an image-baked host.
+test fn an_image_baked_host_never_resolves_to_a_deploy_or_joins_the_roster() -> Bool {
+  fleet_host_is_image_baked(host: operator_host_mtcollins1)
+    && (match runner_host_deploy_for(host: operator_host_mtcollins1) {
+      RunnerHostDeployRefused { host: _, cause: c } => c == runner_host_realized_by_image_cause
+      RunnerHostDeployFound { deploy: _ } => false
+      RunnerHostDeployUnmodeled { host: _ } => false
+    })
+    && count(fleet_image_baked_offers) > 0
+    && !(fleet_runner_host_deploys |> any(d => fleet_image_baked_offers |> any(o => (o.supply.physical.identity as String) == (d.host_label as String))))
+}
+
+// THE CONTROL. Every spec-backed host's selected user is its spec row's runner_user, exactly as the service slot read
+// it before the selection existed; and there is at least one such host, so this is not vacuous.
+test fn every_spec_backed_host_keeps_its_spec_runner_user() -> Bool {
+  count(runner_host_spec_rows) > 0
+    && (runner_host_spec_rows |> all(r => match host_unit_slot_runner_user(host: r.host) {
+      RunnerUserSelected { user: u } => (u as String) == (r.spec.runner_user as String)
+      RunnerUserUndeclared { host: _ } => false
+    }))
+}
+
+test fn the_image_baked_host_runs_as_the_account_its_image_declares() -> Bool {
+  match host_unit_slot_runner_user(host: operator_host_mtcollins1) {
+    RunnerUserSelected { user: u } => (u as String) == (runner_host_medium_runner_account as String)
+    RunnerUserUndeclared { host: _ } => false
+  }
+}

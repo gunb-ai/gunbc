@@ -1,0 +1,478 @@
+module test.claim.bmc.redfish_network_boot_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { list_at_optional }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.bmc.redfish_network_boot {
+  RedfishEthernetInterfaceRead,
+  RedfishBootOptionRead,
+  RedfishBootOptionsRead, RedfishEthernetInterfaceCollectionRead,
+  redfish_ethernet_interface_of,
+  redfish_boot_options_of,
+  redfish_ethernet_interface_collection_of,
+  redfish_network_boot_document, redfish_network_boot_optional_string,
+  redfish_undecodable_detail, redfish_optional_value,
+  redfish_key_mac_address, redfish_key_link_status,
+  RedfishOptionalProperty, PropertyAbsent, PropertyPublished, PropertyUndecodable,
+  render_redfish_ethernet_interface,
+  render_redfish_boot_options,
+  render_redfish_boot_options_not_served,
+  render_redfish_ethernet_interface_collection,
+  RedfishLinkStatus, LinkUp, NoLink, LinkDown, redfish_link_status_of, redfish_link_status_text,
+  RedfishDevicePathMac, PathNamesMac, PathNamesNoMac, PathMacUndecodable, redfish_device_path_mac,
+}
+// THE ADDRESS CARRIER THE READER NOW PRODUCES. The witness builds the expected address with the codec's own
+// constructor and compares addresses, so a claim cannot pass because two spellings happen to be equal text.
+import extdeps.network.mac { Eui48Address, mac_address, render_mac_address, mac_addresses_are_equal }
+
+// THE NIC AND BOOT-OPTION READERS: WHAT A MEMBER IS, AND WHAT "NOT SERVED" IS.
+//
+// The bodies below are transcribed from the committed captures (the H11SSL unit-1 EthernetInterfaces resource
+// and srv13's Systems_system_BootOptions.json, which is an error envelope). The bounded inhabitance claim that
+// reads the files themselves is carried by the battery fold's witness, which owns the filesystem reads.
+//
+// REDS, each with its positive control on the same probe: a resource with no Id refuses rather than becoming
+// anonymous (control: the same probe with the Id reads); a BootOptions body with no Members array refuses as
+// unreadable rather than becoming the empty collection (control: an authored empty Members array reads as the
+// empty collection, which IS a claim the service made).
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ADDRESS THE SPECIMEN BODY PUBLISHES, AS A VALUE. The body spells it lowercase in `MACAddress` and
+// uppercase in `PermanentMACAddress` -- both spellings are in the DMTF schema's range, and both parse to these
+// six octets.
+fn h11ssl_mac() -> Eui48Address {
+  mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 176)
+}
+
+fn h11ssl_ethernet_interface_body() -> String {
+  join([
+    "{",
+    "\"@odata.id\": \"/redfish/v1/Systems/1/EthernetInterfaces/1\",",
+    "\"Id\": \"1\",",
+    "\"Name\": \"OnBoard LAN 1\",",
+    "\"InterfaceEnabled\": true,",
+    "\"PermanentMACAddress\": \"AC:1F:6B:E3:F6:B0\",",
+    "\"MACAddress\": \"ac:1f:6b:e3:f6:b0\",",
+    "\"LinkStatus\": \"LinkUp\"",
+    "}",
+  ], "")
+}
+
+fn srv13_boot_options_not_served_body() -> String {
+  "{\"error\": {\"code\": \"Base.1.16.0.ResourceNotFound\", \"message\": \"The requested resource BootOptions is not available\"}}"
+}
+
+fn boot_options_body(options: List<RedfishBootOptionRead>) -> String {
+  render_redfish_boot_options(options: options)
+}
+
+fn pxe_boot_option() -> RedfishBootOptionRead {
+  RedfishBootOptionRead {
+    id: "Boot0001" as NonEmptyStr,
+    display_name: Present { value: "UEFI: PXE IPv4 Realtek" },
+    uefi_device_path: Present { value: "PciRoot(0x0)/Pci(0x1C,0x4)/Pci(0x0,0x0)/MAC(ac1f6be3f6b0,0x0)" },
+    enabled: Present { value: true },
+  }
+}
+
+test fn ethernet_interface_resource_reads_its_published_members() -> Bool {
+  match redfish_ethernet_interface_of(body: h11ssl_ethernet_interface_body()) {
+    ObservationEstablished { observed: read } =>
+      read.id == "1" as NonEmptyStr
+        && read.name == Present { value: "OnBoard LAN 1" }
+        && read.mac_address == Present { value: h11ssl_mac() }
+        && read.link_status == Present { value: LinkUp }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// RED + POSITIVE CONTROL: a resource that does not name itself is refused; the same body carrying an Id reads.
+test fn ethernet_interface_without_id_refuses_rather_than_becoming_anonymous() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Name\": \"OnBoard LAN 1\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "no Id")
+        && match redfish_ethernet_interface_of(body: h11ssl_ethernet_interface_body()) {
+             ObservationEstablished { observed: read } => read.id == "1" as NonEmptyStr
+             ObservationRefused { cause: other } => false
+           }
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// An omitted MAC is absent, not zeroed and not the PermanentMACAddress: the reader reads what the named member
+// says and does not substitute a neighbour's value for it.
+test fn ethernet_interface_without_a_published_mac_leaves_it_absent() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"2\", \"PermanentMACAddress\": \"AC:1F:6B:E3:F6:B1\"}") {
+    ObservationEstablished { observed: read } =>
+      read.id == "2" as NonEmptyStr && read.mac_address == none && read.name == none
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// srv13's committed BootOptions body is the service saying the resource is not there. That is an answer.
+test fn boot_options_error_envelope_is_an_answer_not_a_failure() -> Bool {
+  match redfish_boot_options_of(body: srv13_boot_options_not_served_body()) {
+    ObservationEstablished { observed: BootOptionsNotServed { message: m } } =>
+      string_contains(s: m as String, pattern: "ResourceNotFound")
+    ObservationEstablished { observed: BootOptionsListed { options: listed } } => false
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn boot_options_collection_reads_every_member_it_publishes() -> Bool {
+  match redfish_boot_options_of(body: boot_options_body(options: [pxe_boot_option()])) {
+    ObservationEstablished { observed: BootOptionsListed { options: listed } } =>
+      count(listed) == 1
+        && match list_at_optional(xs: listed, index: 0) {
+             Present { value: option } =>
+               option.id == "Boot0001" as NonEmptyStr
+                 && option.enabled == Present { value: true }
+                 && match option.uefi_device_path {
+                      Present { value: path } => string_contains(s: path, pattern: "MAC(ac1f6be3f6b0")
+                      Absent => false
+                    }
+             Absent => false
+           }
+    ObservationEstablished { observed: BootOptionsNotServed { message: m } } => false
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// RED + POSITIVE CONTROL: no Members array is unreadable; an empty Members array is the empty collection.
+test fn boot_options_body_without_members_array_is_unreadable_not_empty() -> Bool {
+  match redfish_boot_options_of(body: "{\"@odata.type\": \"#BootOptionCollection.BootOptionCollection\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "no Members array")
+        && match redfish_boot_options_of(body: boot_options_body(options: [])) {
+             ObservationEstablished { observed: BootOptionsListed { options: listed } } => count(listed) == 0
+             ObservationEstablished { observed: BootOptionsNotServed { message: m } } => false
+             ObservationRefused { cause: other } => false
+           }
+    ObservationEstablished { observed: answer } => false
+  }
+}
+
+// THE RENDER SIDE, BESIDE THE PARSE SIDE: what the renderer writes is what the reader reads back.
+test fn rendered_ethernet_interface_reads_back_as_the_same_resource() -> Bool {
+  match redfish_ethernet_interface_of(body: h11ssl_ethernet_interface_body()) {
+    ObservationEstablished { observed: original } =>
+      match redfish_ethernet_interface_of(body: render_redfish_ethernet_interface(read: original)) {
+        ObservationEstablished { observed: again } => again == original
+        ObservationRefused { cause: c } => false
+      }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// THE COLLECTION ENVELOPE, PRINTED AND READ BACK. This is the envelope the modeled arm of the first-contact
+// battery prints a simulated controller's ports through, so the pairing of writer and reader is pinned here:
+// the members it names and the count it announces come back as the same collection. The count is the part that
+// matters — a collection that announces more ports than were read is what makes the battery refuse rather than
+// report a short list — so it has to survive the trip through the renderer.
+test fn rendered_collection_reads_back_as_the_same_collection() -> Bool {
+  let wanted = RedfishEthernetInterfaceCollectionRead {
+    member_ids: ["PCIe1" as NonEmptyStr, "PCIe2" as NonEmptyStr],
+    announced_count: Present { value: 2 },
+  }
+  match redfish_ethernet_interface_collection_of(body: render_redfish_ethernet_interface_collection(read: wanted)) {
+    ObservationEstablished { observed: again } => again == wanted
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn rendered_not_served_envelope_reads_back_as_not_served() -> Bool {
+  match redfish_boot_options_of(body: render_redfish_boot_options_not_served(code: "Base.1.16.0.ResourceNotFound")) {
+    ObservationEstablished { observed: BootOptionsNotServed { message: m } } =>
+      m == "Base.1.16.0.ResourceNotFound" as NonEmptyStr
+    ObservationEstablished { observed: BootOptionsListed { options: listed } } => false
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// ── P1 CONTROL, side chat review of 460637f: AN ABSENT PROPERTY AND AN UNDECODABLE ONE ARE DIFFERENT ────
+// The optional-property helpers used to answer BOTH with `none`, which made a present-but-malformed property
+// indistinguishable from a property the service never published -- and let a decode failure flow onward as a
+// shorter, successful read. Each RED below is paired with the valid absent-property case beside it, on the same
+// reader, so the pair shows the two facts are reported differently rather than one of them being renamed.
+test fn ethernet_interface_with_a_non_string_mac_address_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": 12345}") {
+    ObservationEstablished { observed: read } => false
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+        && string_contains(s: c as String, pattern: "cannot decode")
+        // CONTROL: the same resource with the property ABSENT is a successful read that leaves the MAC absent.
+        && match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\"}") {
+             ObservationEstablished { observed: absent_case } =>
+               absent_case.id == "1" as NonEmptyStr && absent_case.mac_address == none && absent_case.name == Present { value: "OnBoard LAN 1" }
+             ObservationRefused { cause: other } => false
+           }
+  }
+}
+
+test fn boot_option_with_a_non_string_enabled_flag_refuses_naming_the_property() -> Bool {
+  match redfish_boot_options_of(body: raw_boot_options_body(members: "{\"Id\": \"Boot0001\", \"UefiDevicePath\": \"PciRoot(0x0)/MAC(ac1f6be3f6b0,0x0)\", \"BootOptionEnabled\": \"yes\"}")) {
+    ObservationEstablished { observed: read } => false
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "BootOptionEnabled")
+        && string_contains(s: c as String, pattern: "cannot decode")
+        // CONTROL: the same member with the flag ABSENT reads successfully, and leaves the flag absent -- which
+        // the battery reads as "not enabled", never as "unreadable".
+        && match redfish_boot_options_of(body: raw_boot_options_body(members: "{\"Id\": \"Boot0001\", \"UefiDevicePath\": \"PciRoot(0x0)/MAC(ac1f6be3f6b0,0x0)\"}")) {
+             ObservationEstablished { observed: BootOptionsListed { options: listed } } =>
+               count(listed) == 1
+                 && match listed.first() {
+                      Present { value: option } => option.enabled == none && option.id == "Boot0001" as NonEmptyStr
+                      Absent => false
+                    }
+             ObservationEstablished { observed: BootOptionsNotServed { message: m } } => false
+             ObservationRefused { cause: other } => false
+           }
+  }
+}
+
+test fn boot_option_with_a_non_string_uefi_device_path_names_that_property_not_another() -> Bool {
+  match redfish_boot_options_of(body: raw_boot_options_body(members: "{\"Id\": \"Boot0001\", \"UefiDevicePath\": 7, \"BootOptionEnabled\": true}")) {
+    ObservationEstablished { observed: read } => false
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "UefiDevicePath")
+        // the refusal names the property that is actually wrong: two malformed properties do not collapse into
+        // one undifferentiated "bad BootOptions", and a valid flag is not reported as a defect.
+        && string_contains(s: c as String, pattern: "BootOptionEnabled") == false
+    ObservationEstablished { observed: other } => false
+  }
+}
+
+// THE OPTIONAL PROPERTY ITSELF, at the grain the reader reports it: undecodable, absent and published are three
+// answers, and the reader's refusal text names the undecodable one by key while the absent one stays silent.
+test fn an_undecodable_optional_property_is_not_the_same_answer_as_an_absent_one() -> Bool {
+  match redfish_network_boot_document(body: "{\"Id\": \"1\", \"MACAddress\": 12345}", what: "EthernetInterface") {
+    ObservationRefused { cause: c } => false
+    ObservationEstablished { observed: doc } =>
+      match redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address) {
+        PropertyAbsent => false
+        PropertyPublished { value: v } => false
+        PropertyUndecodable { key: k, cause: c } => k == redfish_key_mac_address
+      }
+      && match redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status) {
+           PropertyAbsent => match redfish_undecodable_detail(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status)) {
+             Absent => match redfish_optional_value(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_link_status)) {
+               Absent => true
+               Present { value: v } => false
+             }
+             Present { value: detail } => false
+           }
+           _ => false
+         }
+      && match redfish_undecodable_detail(property: redfish_network_boot_optional_string(obj: doc, key: redfish_key_mac_address)) {
+           Absent => false
+           Present { value: detail } => string_contains(s: detail as String, pattern: "MACAddress")
+         }
+  }
+}
+
+// A raw Members list, for the malformed-member cases: the renderer only ever prints a well-formed option, so a
+// malformed one has to be written out. Nothing here duplicates a rendered body -- these bodies are the point.
+fn raw_boot_options_body(members: String) -> String {
+  concat(concat("{\"Members\": [", members), "]}")
+}
+
+// ── THE MAC IS PARSED HERE, AT THE BOUNDARY ──────────────────────────────────────────────────────────────
+// The observing layer joins a boot option to a port, and that join is only sound if both sides hold ADDRESSES.
+// So this module -- which is where the wire text stops being text -- is where the six octets are read, in both
+// spellings the upstreams actually use: DMTF Redfish publishes `MACAddress` as six hex pairs (the schema's
+// examples are uppercase), and EDK2 prints a UEFI device path's `MAC(...)` node as twelve packed digits
+// (lowercase). Refusing either spelling would report a real published port as no port at all.
+
+// THE SCHEMA'S OWN SPELLING PARSES. The specimen body publishes lowercase; this is the uppercase form, which is
+// what most Redfish services print.
+test fn an_uppercase_mac_address_is_the_same_address() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"AC:1F:6B:E3:F6:B0\"}") {
+    ObservationEstablished { observed: read } => read.mac_address == Present { value: h11ssl_mac() }
+      && render_mac_address(addr: h11ssl_mac()) == "ac:1f:6b:e3:f6:b0"
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// A PUBLISHED MAC THAT IS NOT SIX OCTETS IS A DECODE REFUSAL, NOT AN ABSENT PROPERTY. The empty string is the
+// same case: it is a value, and it names no address.
+test fn a_mac_address_that_is_not_six_octets_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"zz:1f\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+        && string_contains(s: c as String, pattern: "expected six hex octets, saw 2")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// SIX OCTET GROUPS, NONE OF THEM HEX: a different external fact from a wrong count, and the parser keeps
+// them apart instead of flattening every bad MAC into one message.
+test fn a_mac_address_of_unhexed_octets_refuses_naming_the_octet() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"zz:zz:zz:zz:zz:zz\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+        && string_contains(s: c as String, pattern: "not two hex digits")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+test fn an_empty_mac_address_refuses_rather_than_reading_as_absent() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "MACAddress")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// THE ABSENT-PROPERTY PAIR: no `MACAddress` at all is a legitimate answer (the schema allows it), and the reader
+// establishes the resource with no address rather than refusing. Paired with the two claims above, this is the
+// distinction the acquisition contract asks for -- absent, malformed, published.
+test fn an_absent_mac_address_is_an_answer_not_a_failure() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\"}") {
+    ObservationEstablished { observed: read } => read.mac_address == none && read.id == "1" as NonEmptyStr
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// ── THE CLOSED DMTF ENUM ─────────────────────────────────────────────────────────────────────────────────
+// `LinkStatus` is `Resource.v1_0_0.LinkStatus`, whose schema lists exactly three members. An open String there
+// would accept a word the schema does not define and hand it downstream as a fact about the link; the fourth
+// case is a refusal that names what arrived. The spellings are spelled ONCE, in `redfish_link_status_text`, and
+// both the parser and the renderer read them from there.
+test fn the_three_dmtf_members_are_the_whole_vocabulary() -> Bool {
+  redfish_link_status_of(text: "LinkUp") == Present { value: LinkUp }
+    && redfish_link_status_of(text: "NoLink") == Present { value: NoLink }
+    && redfish_link_status_of(text: "LinkDown") == Present { value: LinkDown }
+    && redfish_link_status_text(status: LinkUp) == "LinkUp"
+    && redfish_link_status_text(status: NoLink) == "NoLink"
+    && redfish_link_status_text(status: LinkDown) == "LinkDown"
+}
+
+// A WORD OUTSIDE THE ENUM REFUSES THE PORT READ, NAMING THE PROPERTY.
+test fn a_link_status_outside_the_enum_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"MACAddress\": \"ac:1f:6b:e3:f6:b0\", \"LinkStatus\": \"LinkOn\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "LinkStatus")
+        && string_contains(s: c as String, pattern: "LinkOn")
+    ObservationEstablished { observed: read } => false
+  }
+}
+
+// AND THE THREE MEMBERS SURVIVE THE RENDERER, which prints them from the same vocabulary: a rendered body reads
+// back as the same resource, address and enum included.
+test fn a_rendered_interface_keeps_its_address_and_its_link_status() -> Bool {
+  match redfish_ethernet_interface_of(body: "{\"Id\": \"1\", \"Name\": \"OnBoard LAN 1\", \"MACAddress\": \"AC:1F:6B:E3:F6:B0\", \"LinkStatus\": \"NoLink\"}") {
+    ObservationEstablished { observed: original } =>
+      match redfish_ethernet_interface_of(body: render_redfish_ethernet_interface(read: original)) {
+        ObservationEstablished { observed: again } =>
+          again == original
+            && again.link_status == Present { value: NoLink }
+            && again.mac_address == Present { value: h11ssl_mac() }
+        ObservationRefused { cause: c } => false
+      }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+// ── THE `MAC(...)` NODE OF A UEFI DEVICE PATH ────────────────────────────────────────────────────────────
+// The node is the delimiter. Reading the address out of it, rather than out of the path text, is what stops a
+// PCI function number from being read as a NIC and stops a malformed node from looking like "no NIC named".
+
+test fn the_mac_node_is_read_from_the_node_and_not_from_the_path() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0x1C,0x4)/Pci(0x0,0x0)/MAC(ac1f6be3f6b0,0x0)") {
+    PathNamesMac { address: address } => mac_addresses_are_equal(left: address, right: h11ssl_mac())
+    PathNamesNoMac => false
+    PathMacUndecodable { text: text } => false
+  }
+}
+
+// THE SAME NODE, IN EITHER SPELLING AND EITHER CASE -- some firmware prints the colon form inside the node.
+test fn the_mac_node_accepts_either_spelling_and_either_case() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/MAC(AC:1F:6B:E3:F6:B0,0x1)") {
+    PathNamesMac { address: address } => mac_addresses_are_equal(left: address, right: h11ssl_mac())
+    _ => false
+  }
+}
+
+// DIGITS THAT SIT OUTSIDE ANY `MAC(...)` NODE NAME NOTHING. This is the case the old substring test accepted:
+// the packed digits appear inside a `Pci(...)` node.
+test fn digits_outside_a_mac_node_name_no_nic() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0xac1f6be3f6b0,0x0)") {
+    PathNamesNoMac => true
+    _ => false
+  }
+}
+
+// A `MAC(...)` NODE THAT IS NOT AN ADDRESS IS A DECODE FAILURE, NOT "NO MAC HERE". The distinction is what lets
+// the first-contact battery refuse instead of reporting an absence for a question the firmware answered.
+test fn a_mac_node_that_is_not_an_address_is_reported_as_undecodable() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0x1C,0x4)/MAC(00ff,0x1)") {
+    PathMacUndecodable { text: text } => string_contains(s: text, pattern: "00ff")
+    _ => false
+  }
+}
+
+test fn a_path_with_no_mac_node_names_no_nic() -> Bool {
+  match redfish_device_path_mac(path: "PciRoot(0x0)/Pci(0x1C,0x4)/Pci(0x0,0x0)") {
+    PathNamesNoMac => true
+    _ => false
+  }
+}
+
+// THE ANNOUNCED COUNT, THREE ANSWERS. A collection that announces no count is still a collection (the
+// control); a count published as a string is a decode refusal naming the property, because an unread count is
+// what lets one committed member stand in for a whole fleet.
+test fn a_collection_that_announces_no_count_is_still_a_collection() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"Id\": \"1\"}], \"Members@odata.count\": 1}") {
+    ObservationEstablished { observed: c } => c.announced_count == Present { value: 1 }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn a_string_announced_count_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"Id\": \"1\"}], \"Members@odata.count\": \"1\"}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "Members@odata.count")
+    ObservationEstablished { observed: c } => false
+  }
+}
+
+// THE ERROR ENVELOPE, THREE ANSWERS. A well-formed envelope is the service's own refusal (pinned by
+// `boot_options_error_envelope_is_an_answer_not_a_failure`); no envelope means the resource was served and
+// Members is read next (pinned by `boot_options_collection_reads_every_member_it_publishes`); an envelope
+// that cannot be read -- a code that is a number, or an empty code -- is a failed read, not "no refusal code".
+test fn an_error_envelope_whose_code_is_not_a_string_refuses_rather_than_reading_as_none() -> Bool {
+  match redfish_boot_options_of(body: "{\"error\": {\"code\": 400, \"message\": \"x\"}}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "code") && !string_contains(s: c as String, pattern: "not served")
+    ObservationEstablished { observed: o } => false
+  }
+}
+
+test fn an_error_envelope_with_an_empty_code_refuses_rather_than_reading_as_none() -> Bool {
+  match redfish_boot_options_of(body: "{\"error\": {\"code\": \"\", \"message\": \"x\"}}") {
+    ObservationRefused { cause: c } => string_contains(s: c as String, pattern: "empty code")
+    ObservationEstablished { observed: o } => false
+  }
+}
+
+// A MEMBER THAT PUBLISHES AN ID IT CANNOT READ. The control is the shape the committed captures actually
+// carry -- navigation links with `@odata.id` and no `Id` -- which names no member and keeps its announced
+// count; a member whose `Id` is present but is not a string refuses the collection, it does not disappear
+// from the list.
+test fn a_collection_of_navigation_links_names_no_member_and_keeps_its_count() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"@odata.id\": \"/redfish/v1/Systems/1/EthernetInterfaces/1\"}], \"Members@odata.count\": 1}") {
+    ObservationEstablished { observed: c } => c.member_ids == [] && c.announced_count == Present { value: 1 }
+    ObservationRefused { cause: c } => false
+  }
+}
+
+test fn a_member_publishing_an_unreadable_id_refuses_naming_the_property() -> Bool {
+  match redfish_ethernet_interface_collection_of(body: "{\"Members\": [{\"Id\": 7}], \"Members@odata.count\": 1}") {
+    ObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "member") && string_contains(s: c as String, pattern: "Id")
+    ObservationEstablished { observed: c } => false
+  }
+}
