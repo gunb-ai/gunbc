@@ -117,7 +117,7 @@ data known_frontier_causes: List<CauseOwnership> = [
   CauseOwnership {
     cause: ^service_realization_argv_refused,
     lane: SharedSelfHostCriticalPath,
-    flip_trigger: "a shell argv that is empty, not a list, malformed, or that binds an undeclared input refuses the service at the argv node (v2.compiler.service_realization shell_argv_refusal). A non-literal executable and an unsupported argv expression are NOT this cause: they are operation-grain (argv_cause_is_operation_grain), lower as an unrealizable marker entry and refuse at each call (infer_reason_service_operation_unrealizable). Wall over authored input; flips only if that shape becomes unwritable"
+    flip_trigger: "a shell argv that is empty, not a list, malformed, or that binds an undeclared input refuses the service at the argv node (v2.compiler.service_realization shell_argv_refusal). A non-literal executable and an unsupported argv expression are NOT this cause: they are operation-grain (std.operation_argv argv_refusal_cause_grain), lower as an unrealizable marker entry and refuse at each call (infer_reason_service_operation_unrealizable). Wall over authored input; flips only if that shape becomes unwritable"
   },
   CauseOwnership {
     cause: ^body_lowering_reason_service_member_unread,

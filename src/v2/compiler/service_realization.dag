@@ -275,10 +275,9 @@ fn status_code_int_optional(pat: Node) -> Optional<Int> {
 // `argv` carries the shared argv vocabulary's cause (std.operation_argv ArgvRefusalCause) when the
 // refusal is a shell argv's, and is Absent otherwise.
 // An entry the strict wall refuses only for an operation-grain argv cause: `name` is the operation's
-// label, `entry` its authored entry, `refusal` the located refusal (at the offending argv).
+// label, `refusal` the located refusal (at the offending argv).
 type UnrealizableOperation {
   name: Symbol
-  entry: Node
   refusal: RealizationRefusal
 }
 
@@ -433,7 +432,7 @@ fn realization_judgment_with(acc: RealizationJudgment, member: Edge, r: Realizat
   match realization_refusal_grain(r: r) {
     OperationGrain =>
       match named_label(e: member) {
-        Present { value: n } => RealizationJudgment { fatal: acc.fatal, unrealizable: list_snoc_item(xs: acc.unrealizable, item: UnrealizableOperation { name: n, entry: member.target, refusal: r }) }
+        Present { value: n } => RealizationJudgment { fatal: acc.fatal, unrealizable: list_snoc_item(xs: acc.unrealizable, item: UnrealizableOperation { name: n, refusal: r }) }
         Absent => realization_judgment_fatal(acc: acc, r: r)
       }
     ServiceGrain => realization_judgment_fatal(acc: acc, r: r)
