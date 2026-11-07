@@ -3803,6 +3803,10 @@ type DashboardInstanceObserved {
   health_current: Bool
   production_untouched: Bool
   source_anchor_matches: Bool
+  // The served bytes are the declared origin's bytes (sha256 against the declared built binary) or, for the
+  // build-in-place origin that has no bytes before the build, name the desired source revision. Existence
+  // of the file is never this fact: a stale binary at the path is not current.
+  serve_binary_current: Bool
 }
 
 // Source convergence has two independent equalities. source_anchor_matches compares the target
@@ -3905,7 +3909,8 @@ fn dashboard_instance_reconcile(
       && observed.provider_runtime_ready
       && observed.provider_authenticated
       && observed.source_anchor_matches
-      && observed.source_revision_current {
+      && observed.source_revision_current
+      && observed.serve_binary_current {
     DashboardInstanceConverged
   } else {
     DashboardInstanceApply { plan: dashboard_instance_provision_plan(instance: instance) }

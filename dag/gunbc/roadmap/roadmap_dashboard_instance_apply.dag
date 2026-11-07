@@ -144,6 +144,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_ownership_marker_path,
   dashboard_instance_checkout_branch,
   dashboard_instance_apply_workdir,
+  dashboard_instance_serve_binary_origin,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
   dashboard_instance_provision_plan,
@@ -2080,7 +2081,43 @@ fn dashboard_instance_observe(
     health_current: dashboard_health_names_instance(instance: instance, result: health),
     production_untouched: production_untouched,
     source_anchor_matches: dashboard_source_anchor_matches(instance: instance),
+    serve_binary_current: dashboard_serve_binary_current(instance: instance, desired_source_revision: desired_source_revision),
   }
+}
+
+// CONVERGED IMPLIES THE SERVED BYTES ARE THE DECLARED ORIGIN'S BYTES. The plan's DashboardEnsureServeBinary
+// only runs when reconcile derives Apply, and reconcile used to read no serve-binary fact at all, so a stale
+// binary at the path converged without the op ever running (srv1 lab, 2026-11-07: old 5592b17b served,
+// declared b42e9077 never copied, verdict Converged). Declared origins compare sha256 of the declared
+// artifact (controller side) with sha256 of the served path (target side); an unreadable side is never
+// current, because two failed reads must not agree. The build-in-place origin has no bytes before the build,
+// so its served binary must name the desired revision, the same readback the install itself demands.
+fn dashboard_serve_binary_current(instance: HostDashboardInstance, desired_source_revision: CommitSha) -> Bool {
+  match dashboard_instance_serve_binary_origin(instance: instance) {
+    BuildInPlaceFromAdmittedRevision => {
+      let version = dashboard_target_exec(instance: instance, program: instance.serve_binary, args: ["--version"])
+      version.success
+        && string_contains(s: version.stdout, pattern: desired_source_revision as String)
+        && !string_contains(s: version.stdout, pattern: join([desired_source_revision as String, "-dirty"], ""))
+    }
+    DeclaredBuiltBinary { path: declared } => dashboard_declared_serve_binary_current(instance: instance, declared: declared)
+    CargoReleaseOfInstanceCheckout { path: declared } => dashboard_declared_serve_binary_current(instance: instance, declared: declared)
+  }
+}
+
+fn dashboard_declared_serve_binary_current(instance: HostDashboardInstance, declared: FilePath) -> Bool {
+  let local = dashboard_local_exec(
+    workdir: dashboard_instance_apply_workdir(instance: instance),
+    program: "/usr/bin/sha256sum" as FilePath,
+    args: ["--", declared as String],
+  )
+  let local_sum = if local.success {
+    fold(split(s: trim(s: local.stdout), delimiter: " "), init: "", f: (acc, w) => if acc == "" { w } else { acc })
+  } else {
+    ""
+  }
+  let served_sum = dashboard_target_digest(instance: instance, path: instance.serve_binary as String)
+  serve_binary_digest_check(built_sha256: local_sum, installed_sha256: served_sum) == ServeBinaryDigestsAgree
 }
 
 // A FRESH HOST COULD NOT REACH THE STEP THAT UNBLOCKS IT. Preflight ran in full before any plan
