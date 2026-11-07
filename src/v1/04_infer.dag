@@ -4461,7 +4461,11 @@ fn equality_plan_helpers(plan: EqualityPlan) -> List<EqualitySynthHelper> {
 // UNEXECUTED ARM (concern gunbc.integration_concern
 // equality_missing_helper_census_refusal_unwitnessed): the false branch below, which makes
 // equality_body_block_reason answer with the located census-absent refusal, has no executed
-// witness at this revision; the fixture design that would exercise it lives on that row.
+// witness at this revision. The fixture is PINNED as claim rows (non_empty_diagnostics_family_
+// helper_absent_refuses_at_subject and ..._helper_realized_emits_paired_definition_and_call in
+// dag/test/claim/self_host_equality_admission_witness.dag) but has not run here; at census grain
+// those rows pin class and subject, not the located reason, so they cannot discriminate this
+// refusal from a member-unjudgeable refusal - the arm stays unwitnessed even at green rows.
 fn equality_helper_declared(helper: EqualitySynthHelper, index: SymbolIndex) -> Bool {
   match symbol_index_lookup(index: index, qualified_name: concat(helper.module_path, ".", helper.fn_name)) {
     // Narrower HELPER GATE owned by equality_helper_declared (not the resolver's predicate): a

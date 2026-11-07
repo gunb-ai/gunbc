@@ -356,6 +356,62 @@ test fn a_planned_equality_call_has_its_definition_in_the_emitted_module() -> Bo
   )
 }
 
+// THE NON_EMPTY_DIAGNOSTICS FAMILY AND THE HELPER-SELECTION PATH (gunbc.integration_concern
+// .equality_missing_helper_census_refusal_unwitnessed; keen-otter-392 disposition msg_8fa94024 option (i)).
+// The failing family is v2.std.diagnostic NonEmptyDiagnostics { head: Diagnostic, tail: List<Diagnostic> }:
+// at the un-relanded heads its derived equality body skips the std.algebra step-helper while the call side
+// still lowered, and the build-materialized v2-emitted-policy-unit-2 failed E0425 cannot find function
+// equality_derived_non_empty_diagnostics (run 42303377868 at 783a8f0cd24e). The family shape below mirrors it:
+// a product whose tail step names the std.algebra zip_eq helper. The census corpus is the probed source plus
+// the closure of ITS OWN imports (compile_dag_diagnostic_census, src/v1/stage0/src/cli_run/emit_host.rs), so
+// WITHOUT any std.types import the corpus omits std.algebra and the helper is census-absent BEFORE census
+// construction (dag/std/types.dag:4 is the realization edge that brings it in); WITH that import the helper
+// is declared and the same shape emits. Fixture design per the concern row's prepared expectations.
+// LIMITATION, STATED NOT HIDDEN (keen-otter msg_8fa94024): the census row grain is { diagnostic_class,
+// subject_name, blocking, count, rendered_pair } (cli_run.rs:4094-4102); for EqualityMemberUnjudgeable the
+// name half is type_name (cli_run/compile_clean.rs:811) and rendered_pair is None (:917), so these rows
+// CANNOT discriminate the helper-absence refusal from a member-unjudgeable refusal at the same class and
+// subject. They pin the family, the subject-grain refusal, and the call/definition COHERENCE (the E0425
+// shape: a lowered call without its definition). The located reason text is not observable at any current
+// grain; that behavior is NOT reported as proven, and the arm stays discriminated only by the realization
+// pair below plus regeneration (whose observable is the emitted-closure build compiling without E0425).
+data ned_family_helper_absent_source: String = "module test.claim.ned_family_helper_absent_probe\ntype NedDiag { reason: String }\ntype Bag { head: NedDiag, tail: List<NedDiag> }\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+
+data ned_family_helper_realized_source: String = "module test.claim.ned_family_helper_realized_probe\nimport std.types { List, String }\ntype NedDiag { reason: String }\ntype Bag { head: NedDiag, tail: List<NedDiag> }\nfn same(a: Bag, b: Bag) -> Bool { a == b }\n"
+
+// TOTAL-BLOCKING-AT-SUBJECT HELPER (zero-competing-wall control, concern row control (d)): every blocking
+// row at the subject must be the refusal class, and the census must have RUN (CensusObserved) - a
+// CensusNotRunnable census is not the arm.
+fn eq_blocking_total_at_subject_in(census: CompileDiagnosticCensus, subject: String) -> Int {
+  match census {
+    CensusObserved { rows: rows } => census_blocking_rows(rows: rows)
+      |> filter(r => r.subject_name == subject)
+      |> size
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn non_empty_diagnostics_family_helper_absent_refuses_at_subject() -> Bool {
+  let census = eq_census_of(source: ned_family_helper_absent_source)
+  eq_census_observed_in(census: census)
+    && eq_blocking_count_at_subject_in(census: census, wanted: "EqualityMemberUnjudgeable", subject: "Bag") >= 1
+    && eq_blocking_total_at_subject_in(census: census, subject: "Bag")
+      == eq_blocking_count_at_subject_in(census: census, wanted: "EqualityMemberUnjudgeable", subject: "Bag")
+}
+
+// THE PAIR (concern row control (a)): the SAME shape with the realization edge import is admitted, and the
+// emitted module carries the derived definition AND its use-site call together - the exact pairing whose
+// absence was the E0425 defect shape (a_planned_equality_call_has_its_definition_in_the_emitted_module is
+// the general control; this one names the family and the realized-helper path).
+test fn non_empty_diagnostics_family_helper_realized_emits_paired_definition_and_call() -> Bool {
+  compile_dag_rust_emit_check(
+    ned_family_helper_realized_source,
+    "src/test_claim_ned_family_helper_realized_probe.rs",
+    ["fn equality_derived_bag(", "equality_derived_bag(a.clone(), b.clone())"],
+    []
+  )
+}
+
 // A WILDCARD AFTER AN EXHAUSTIVE ARM SET IS AN UNREACHABLE PATTERN (gunbc#15175, v2-bootstrap under -D warnings): a
 // single-variant coproduct's inner match is exhaustive on its one arm, so the derived equality emits no `_ => false`.
 test fn a_single_variant_derived_equality_emits_no_unreachable_wildcard() -> Bool {
