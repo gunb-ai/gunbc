@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_review_role {
   HeadVerdict, ReviewApproved, ReviewChangesRequested, ReviewCannotJudge,
   ReviewVerdictDecode, ReviewVerdictDecoded, ReviewVerdictUndecodable,
   ReviewReceiptSource, ReviewReceiptAbsent, ReviewReceiptPresent, ReviewReceiptUnreadable,
-  CriterionReviewEvidence, review_reconcile, review_all_approved,
+  CriterionReviewEvidence, review_reconcile, review_all_approved, standing_blocks, criterion_standing,
   review_verdict_decode, review_verdict_key, review_verdict_detail, review_brief,
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
@@ -94,6 +94,7 @@ test fn a_killed_or_exited_stage_without_a_verdict_is_failed_not_refused() -> Bo
     && (match e.state { WorkflowSegmentFailed => true  _ => false })
     && (match with_approved.state { WorkflowSegmentFailed => true  _ => false })
     && !review_all_approved(evidence: [killed])
+    && !standing_blocks(s: criterion_standing(e: killed)) && !standing_blocks(s: criterion_standing(e: exited))
 }
 
 // Every design-grounded criterion names a proposition the modeled argument carries; the roster is

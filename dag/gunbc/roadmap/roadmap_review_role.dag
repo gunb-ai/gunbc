@@ -290,8 +290,8 @@ fn standing_blocks(s: CriterionStanding) -> Bool {
     CriterionUndecodable { key: _, reason: _ } => true
     CriterionUnreadable { key: _, detail: _ } => true
     CriterionReviewerRunning { key: _ } => false
-    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
-    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => true
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => false
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => false
     CriterionReviewerUnobserved { key: _, reason: _ } => true
     CriterionAwaitingReviewer { key: _ } => false
   }
