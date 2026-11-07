@@ -1,6 +1,6 @@
 module v2.test.claim.decl_ref_resolution_native_witness
 
-import std.algebra { Cons, Empty, FreeMonoid, contains, empty_map, fold_list, length, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, contains, empty_map, fold_list, length, map_insert }
 import std.occurrence_identity { occurrence_id_allocator_initial }
 import v2.compiler.live_resolution_context { live_resolution_context }
 import v2.compiler.program_assembly { program_assembly_ingest_scope_outcome }
@@ -188,7 +188,7 @@ fn dr_live_resolution(targets: List<String>, names: List<String>, ref: Declarati
         Rejected { diagnostics: _ } => Absent
         Accepted { value: scope, diagnostics: _ } =>
           let live = live_resolution_context(
-            read: fn(m) { map_lookup(m: map_insert(map_insert(empty_map(), "v2.ncr_relay", ncr_relay_read()), "v2.ncr_home_a", ncr_home_a_read()), key: m) },
+            by_name: map_insert(map_insert(empty_map(), "v2.ncr_relay", ncr_relay_read()), "v2.ncr_home_a", ncr_home_a_read()),
             targets: targets,
             names: fold_list(xs: names, empty: empty_map(), cons: fn(acc, n) { map_insert(acc, n, true) }),
             lm: front.lm,
