@@ -2,7 +2,7 @@ module std.observation
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
-import std.algebra { fold_list }
+import std.algebra { fold_list, is_prefix_of }
 import std.measure { ClockBasis, CpuClock, WallClock, clock_basis_eq, clock_basis_label }
 import std.measure { ObservationInstant, ClockDomain, clock_domain_eq }
 import std.measure {
@@ -40,7 +40,6 @@ import std.change {
   KeyedDiffRemovedHunk,
   KeyedDiffModifiedHunk,
 }
-import std.effect_grant { path_is_prefix }
 // fold_list was CALLED here without being imported. A bare free call resolves against the
 // corpus-wide declaration census, so it type-checked -- but the declaring module was never pulled
 // into the compiled population, so its registry row did not exist and this module's effect summary
@@ -112,7 +111,7 @@ fn observation_subject_path(subject: ObservationSubject) -> List<String> {
   map(subject.segments, seg => observation_segment_key(seg: seg))
 }
 
-// Ancestry reuses std.effect_grant.path_is_prefix — the ONE prefix relation already carrying the
+// Ancestry reuses std.algebra is_prefix_of — the ONE prefix relation over FreeMonoid, which also carries the
 // containment question for effect targets, rather than a second walk written here (DESIGN section
 // 3). Observation is one more consumer of the containment structure the resolver walks,
 // content-addressing hashes, and effect admissibility tests. The subject tree is deliberately NOT
@@ -123,9 +122,10 @@ fn observation_subject_path(subject: ObservationSubject) -> List<String> {
 // std.effect_grant.namespace_tree_note.
 
 fn observation_subject_contains(ancestor: ObservationSubject, descendant: ObservationSubject) -> Bool {
-  path_is_prefix(
+  is_prefix_of(
     prefix: observation_subject_path(subject: ancestor),
-    path: observation_subject_path(subject: descendant)
+    xs: observation_subject_path(subject: descendant),
+    eq: fn(a, b) { a == b }
   )
 }
 
@@ -1173,7 +1173,7 @@ fn observation_rollup_accept(
 }
 
 data observation_rollup_contract: Disposition = Terminal {
-  reason: "The rollup fold is a pure reader over the vocabulary this module already owns — subject containment (observation_subject_contains, itself std.effect_grant.path_is_prefix), grain depth, and the single density table. It mints no grain taxonomy, no second collapse rule and no threshold: which grain to roll up to is the consumer's parameter, and when to emit is the renderer's projection over these counts. Terminal because the fold is total over the closed event-class roster; a new class must extend observation_counts_accept, which the exhaustive match forces."
+  reason: "The rollup fold is a pure reader over the vocabulary this module already owns — subject containment (observation_subject_contains, itself std.algebra is_prefix_of), grain depth, and the single density table. It mints no grain taxonomy, no second collapse rule and no threshold: which grain to roll up to is the consumer's parameter, and when to emit is the renderer's projection over these counts. Terminal because the fold is total over the closed event-class roster; a new class must extend observation_counts_accept, which the exhaustive match forces."
 }
 
 // Whether a ledger producer can still append. Three arms, not two, because the reader is not always

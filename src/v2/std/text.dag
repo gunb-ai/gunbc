@@ -2,7 +2,7 @@ module v2.std.text
 import std.optional { Absent, Optional, Present }
 
 
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, contains, fold_list, for_all, is_empty, join_separated, length, list_head, list_reverse, list_starts_with, list_tail, skip }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, contains, fold_list, for_all, is_empty, join_separated, length, list_head, list_reverse, is_prefix_of, list_tail, skip }
 import std.types { Char }
 type String = FreeMonoid<Char>
 
@@ -113,7 +113,7 @@ fn string_eq(a: String, b: String) -> Bool {
 }
 
 fn string_split_step(state: StringSplitState, delimiter: String) -> StringSplitState {
-  if list_starts_with(xs: state.rest, prefix: delimiter, eq: char_eq) {
+  if is_prefix_of(prefix: delimiter, xs: state.rest, eq: char_eq) {
     StringSplitState {
       rest: skip(xs: state.rest, n: length(xs: delimiter)),
       field_reversed: Empty,

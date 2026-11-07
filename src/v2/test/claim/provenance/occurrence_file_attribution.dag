@@ -40,7 +40,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_with_occurrence_id, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.compiler.normalized_tree { NormalizedTree }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_reverse, list_starts_with, list_at_optional, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, is_suffix_of, list_at_optional, map_lookup }
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance {
@@ -320,11 +320,7 @@ fn door_probe_cli_detail() -> String {
 // file-only assertion would pass for a renderer that found the index entry and dropped its extent --
 // leaving the operator with the right file and no idea where to look in it.
 fn detail_ends_with(detail: String, expected: String) -> Bool {
-  list_starts_with(
-    xs: list_reverse(xs: detail),
-    prefix: list_reverse(xs: expected),
-    eq: char_eq
-  )
+  is_suffix_of(suffix: expected, xs: detail, eq: char_eq)
 }
 
 test fn cli_fatal_line_names_the_file_and_bytes_holds() -> Bool {
