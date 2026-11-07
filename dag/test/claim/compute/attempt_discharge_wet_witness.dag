@@ -16,6 +16,7 @@ import std.algebra { trim, string_contains }
 import std.measure { Kibibyte, kibibyte, kibibyte_count }
 import std.durable_compare_and_set { cas_generation_first }
 import product.capacity.event_chain { PartitionId }
+import gunbc.owned_directory { owned_directory_path }
 import gunbc.compute.host_capacity {
   compute_root, compute_root_directory, compute_capacity_directories,
   ComputeCapacitySubject, host_capacity_subject_in, ComputeBuildPool, compute_reserve_against, ComputeReservation, ComputeReserved,
@@ -73,7 +74,7 @@ fn fresh_root() -> String {
   let instance = instance_at(root: made)
   let root_ok = shell.Mkdir.Parents(path: owned_directory_path(t: compute_root_directory(instance: instance)) as String).success
   let cap_ok = all(compute_capacity_directories(instance: instance), d => shell.Mkdir.Parents(path: owned_directory_path(t: d) as String).success)
-  if root_ok && cap_ok { made } else { "" }
+  if root_ok && cap_ok { made as String } else { "" }
 }
 
 // THE SUBJECT IS MINTED, NEVER BUILT: the ledger roots under the isolated instance's own compute root through the
