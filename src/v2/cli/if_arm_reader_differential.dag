@@ -14,7 +14,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_match_spine_left,
   body_lower_match_spine_right
 }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.parse { parse_artifact_span_index, PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.tokenize { tokenize }
@@ -360,7 +360,7 @@ fn iard_file(prepared: PreparedGrammar, read: DagSourceReadWitness) -> IardFileO
     Accepted { value: artifact, diagnostics: _ } =>
       IardFileRead {
         path: read.artifact.file_path,
-        spans: artifact.span_index,
+        spans: parse_artifact_span_index(artifact: artifact),
         sites: iard_sites(tree: artifact.tree)
       }
   }
