@@ -95,16 +95,24 @@ data occurrence_supervisor_unit_prefix: String = "gunbc-supervisor-"
 // covers both obligation name shapes (gunbc-obligation-attempt-<node>-<key> and
 // gunbc-obligation-<instance>-<kind>). A prefix in neither list is NOT a gunbc unit, and that is an answer
 // with a carrier, not a default to fall through to.
+//
+// THE NAME CARRIES ITS SUBJECT ON PURPOSE. gunbc.live_deploy.member_identity already declares
+// a type UnitManagerStanding, and it is a DIFFERENT FACT: whether the manager's LOADED COPY of a unit is
+// the file on disk (the unit property NeedDaemonReload), which is what an interrupted deploy leaves
+// behind. Nothing about that standing says which manager runs the unit, and nothing here says whether a
+// manager needs a daemon reload; adopting that name for this coproduct would have made one name mean two
+// things and would have hidden the launch-manager fact behind a reload standing. This type is the
+// manager that RUNS the unit, so it is named for that.
 data occurrence_system_manager_unit_prefixes: List<String> = ["gunbc-attempt-"]
 
 data occurrence_user_manager_unit_prefixes: List<String> = ["gunbc-compute-", "gunbc-review-", "gunbc-audit-", "gunbc-supervisor-", "gunbc-obligation-"]
 
-type UnitManagerStanding
+type UnitLaunchManagerStanding
   = UnitRunOnSystemManager
   | UnitRunOnUserManager
   | UnitManagerUnclaimed { unit: String }
 
-fn occurrence_unit_manager_standing(unit: String) -> UnitManagerStanding {
+fn occurrence_unit_launch_manager_standing(unit: String) -> UnitLaunchManagerStanding {
   if any(occurrence_system_manager_unit_prefixes, p => starts_with(s: unit, prefix: p)) {
     UnitRunOnSystemManager
   } else if any(occurrence_user_manager_unit_prefixes, p => starts_with(s: unit, prefix: p)) {
