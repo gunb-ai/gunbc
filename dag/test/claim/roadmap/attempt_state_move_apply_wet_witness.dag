@@ -5,21 +5,32 @@ module test.claim.roadmap.attempt_state_move_apply_wet_witness
 // collision is Refused and nothing moves; and the identity store mints Ready only after the Apply. The mint is
 // Unready before it, named by its detail, never projected to an empty value.
 
+import std.optional { Present, Absent }
 import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.deployment_risk { deployment_id }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
+import gunbc.live_deploy.emit { live_deploy_serve_unit_file_over }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
+import gunbc.live_deploy.unit_standing { service_unit_expectation_of, ServiceExpectationDerived, ServiceExpectationUnderivable }
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision,
-  dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries, DashboardAssertLegacyWriterExcluded,
+  dashboard_instance_dispatch_attempt_state_root, DashboardMoveAttemptStateEntries, DashboardAssertLegacyWriterExcluded, DashboardRetireLegacyWriters,
 }
-import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op }
+import gunbc.roadmap.roadmap_dashboard_instance_apply { dashboard_apply_provision_op, legacy_writer_runs_of_show }
 import gunbc.roadmap.roadmap_dashboard_instance_observe { DashboardExecResult }
 import gunbc.roadmap.roadmap_attempt_identity_slots { attempt_identity_slots }
-import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterFenceRow, legacy_writer_fence_for, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, executor_privileged_operation_elevated_argv }
+import gunbc.roadmap.roadmap_attempt_state_layout_move {
+  LegacyWriterUnitReading, LegacyWriterUnitRead, LegacyWriterUnitUnreadable, LegacyWriterRunsOther, legacy_writer_exclusion, legacy_writer_retirement, legacy_writer_retirement_operations, legacy_writer_restore_operations,
+  LegacyWriterAlreadyExcluded, LegacyWriterRetireEtcFragment, LegacyWriterRetirementRefused, LegacyWriterExcluded, LegacyWriterNotExcluded,
+}
+import gunbc.roadmap.roadmap_attempt_state_layout_move { LegacyWriterFence, LegacyWriterUnit, LegacyWriterUnits, LegacyWriterUndeclared, LegacyWriterFenceConflict, LegacyWriterFenceRow, legacy_writer_fence_for, MoveRow, CarryBytes, move_hold_payload, move_readback_refusal }
+import extdeps.systemd { SystemdUnitLoadState, SystemdUnitActiveState, UnitLoaded, UnitLoadNotFound, UnitLoadMasked, Active, Inactive, Failed }
 import gunbc.roadmap.roadmap_dogfood_start_slots { dogfood_start_slots }
 import gunbc.roadmap.roadmap_attempt_identity_store_root {
   attempt_identity_store, AttemptIdentityStoreReady, AttemptIdentityStoreUnready, attempt_identity_claim,
@@ -69,15 +80,19 @@ fn plant(i: HostDashboardInstance) -> Bool {
 // A stand-in for systemctl, written executable into the fixture instance: it answers the two questions the
 // fence asks from two marker files beside it, so a test chooses what the host "says" by what it plants. The
 // real transport reaches /usr/bin/systemctl; the stand-in exercises the same argv through the same target.
-fn fence_stub(i: HostDashboardInstance, active: String, enabled: String) -> LegacyWriterFence {
-  let stub = join([parent_of(i: i), "/../fence-systemctl-", active, "-", enabled], "")
-  let body = join(["#!/bin/sh\ncase \"$1\" in is-active) echo ", active, "; exit 3;; is-enabled) echo ", enabled, "; exit 0;; esac\nexit 1\n"], "")
+fn lw_unit(name: String) -> LegacyWriterUnit {
+  LegacyWriterUnit { name: name as NonEmptyStr, etc_fragment: join(["/etc/systemd/system/", name], "") as NonEmptyStr }
+}
+
+fn fence_stub(i: HostDashboardInstance, active: String, load: String) -> LegacyWriterFence {
+  let stub = join([parent_of(i: i), "/../fence-systemctl-", active, "-", load], "")
+  let body = join(["#!/bin/sh\ncase \"$1\" in show) printf 'LoadState=", load, "\\nActiveState=", active, "\\nFragmentPath=\\n'; exit 0;; esac\nexit 1\n"], "")
   let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
-  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr, "legacy-dispatcher-two.service" as NonEmptyStr] }
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: [lw_unit(name: "legacy-dispatcher.service"), lw_unit(name: "legacy-dispatcher-two.service")], rollback_store: "/unused-store" as NonEmptyStr }
 }
 
 fn excluded_fence(i: HostDashboardInstance) -> LegacyWriterFence {
-  fence_stub(i: i, active: "inactive", enabled: "masked")
+  fence_stub(i: i, active: "inactive", load: "masked")
 }
 
 fn run_move(i: HostDashboardInstance) -> Bool {
@@ -328,17 +343,17 @@ fn move_with_fence(i: HostDashboardInstance, fence: LegacyWriterFence) -> Dashbo
 test fn the_move_refuses_unless_the_legacy_writer_is_observed_stopped_and_masked() -> Bool {
   let i = fresh_instance(tag: "fence")
   let ready = plant(i: i)
-  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
-  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
-  let unreadable = move_with_fence(i: i, fence: LegacyWriterUnits { systemctl: "/nonexistent/systemctl" as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] })
+  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", load: "loaded"))
+  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", load: "loaded"))
+  let unreadable = move_with_fence(i: i, fence: LegacyWriterUnits { systemctl: "/nonexistent/systemctl" as NonEmptyStr, units: [lw_unit(name: "legacy-dispatcher.service")], rollback_store: "/unused-store" as NonEmptyStr })
   let undeclared = move_with_fence(i: i, fence: LegacyWriterUndeclared)
   let untouched = string_contains(s: Filesystem.List(path: parent_of(i: i)).entries, pattern: "attempt-identity-a-n1")
     && string_length(s: Filesystem.List(path: member_of(i: i)).entries) == 0
   let moved = move_with_fence(i: i, fence: excluded_fence(i: i))
   ready
     && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
-    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
-    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "is not stopped")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "still loadable")
+    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "could not be read")
     && !undeclared.success && string_contains(s: undeclared.stderr, pattern: "no legacy dispatcher unit is declared")
     && untouched
     && moved.success
@@ -360,9 +375,9 @@ test fn a_noop_move_does_not_need_the_fence() -> Bool {
 fn flipping_fence(i: HostDashboardInstance, quiet_calls: Int) -> LegacyWriterFence {
   let stub = join([parent_of(i: i), "/../fence-systemctl-flip-", to_string(value: quiet_calls)], "")
   let count = join([stub, ".n"], "")
-  let body = join(["#!/bin/sh\nn=$(cat ", count, " 2>/dev/null || echo 0)\ncase \"$1\" in is-active) n=$((n+1)); echo $n > ", count, "; if [ $n -gt ", to_string(value: quiet_calls), " ]; then echo active; else echo inactive; fi; exit 3;; is-enabled) echo masked; exit 0;; esac\nexit 1\n"], "")
+  let body = join(["#!/bin/sh\nn=$(cat ", count, " 2>/dev/null || echo 0)\ncase \"$1\" in show) n=$((n+1)); echo $n > ", count, "; if [ $n -gt ", to_string(value: quiet_calls), " ]; then a=active; else a=inactive; fi; printf 'LoadState=masked\\nActiveState=%s\\nFragmentPath=\\n' $a; exit 0;; esac\nexit 1\n"], "")
   let written = Filesystem.WriteCreateNewWithMode(path: stub, content: body, mode: 493).success || Filesystem.Read(path: stub).content == body
-  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: ["legacy-dispatcher.service" as NonEmptyStr] }
+  LegacyWriterUnits { systemctl: (if written { stub } else { "/nonexistent/fence-stub" }) as NonEmptyStr, units: [lw_unit(name: "legacy-dispatcher.service")], rollback_store: "/unused-store" as NonEmptyStr }
 }
 
 // ARM 15, BROKEN: the exclusion is lifted MID-CUTOVER. The start check (call 1) and the first entry's boundary
@@ -395,12 +410,12 @@ test fn the_exclusion_lifted_mid_cutover_stops_the_line_before_any_flat_entry_is
 test fn a_noop_move_with_a_live_or_unmasked_writer_is_refused_and_with_an_excluded_one_proceeds() -> Bool {
   let i = fresh_instance(tag: "noopfence")
   let ready = shell.Mkdir.Parents(path: member_of(i: i) as FilePath).success
-  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", enabled: "enabled"))
-  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", enabled: "disabled"))
+  let running = move_with_fence(i: i, fence: fence_stub(i: i, active: "active", load: "loaded"))
+  let unmasked = move_with_fence(i: i, fence: fence_stub(i: i, active: "inactive", load: "loaded"))
   let held = move_with_fence(i: i, fence: excluded_fence(i: i))
   ready
     && !running.success && string_contains(s: running.stderr, pattern: "is not stopped")
-    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "is not masked")
+    && !unmasked.success && string_contains(s: unmasked.stderr, pattern: "still loadable")
     && held.success
 }
 
@@ -418,15 +433,15 @@ fn gate_with(i: HostDashboardInstance, f: LegacyWriterFence) -> DashboardExecRes
 test fn the_activation_gate_refuses_a_running_writer() -> Bool {
   let i = fresh_instance(tag: "gate1")
   let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
-  let r = gate_with(i: i, f: fence_stub(i: i, active: "active", enabled: "masked"))
+  let r = gate_with(i: i, f: fence_stub(i: i, active: "active", load: "masked"))
   ready && !r.success && string_contains(s: r.stderr, pattern: "must not be activated")
 }
 
 test fn the_activation_gate_refuses_an_unmasked_writer() -> Bool {
   let i = fresh_instance(tag: "gate2")
   let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
-  let r = gate_with(i: i, f: fence_stub(i: i, active: "inactive", enabled: "enabled"))
-  ready && !r.success && string_contains(s: r.stderr, pattern: "is not masked")
+  let r = gate_with(i: i, f: fence_stub(i: i, active: "inactive", load: "loaded"))
+  ready && !r.success && string_contains(s: r.stderr, pattern: "still loadable")
 }
 
 test fn the_activation_gate_passes_an_excluded_writer() -> Bool {
@@ -438,11 +453,138 @@ test fn the_activation_gate_passes_an_excluded_writer() -> Bool {
 test fn two_fence_rows_for_one_instance_are_a_typed_conflict_that_refuses_the_move_and_the_noop() -> Bool {
   let i = fresh_instance(tag: "dupfence")
   let id = "dup-instance" as NonEmptyStr
-  let row = LegacyWriterFenceRow { instance_id: id, fence: LegacyWriterUnits { systemctl: "/usr/bin/systemctl" as NonEmptyStr, units: ["a.service" as NonEmptyStr] } }
+  let row = LegacyWriterFenceRow { instance_id: id, fence: LegacyWriterUnits { systemctl: "/usr/bin/systemctl" as NonEmptyStr, units: [lw_unit(name: "a.service")], rollback_store: "/unused-store" as NonEmptyStr } }
   let other = LegacyWriterFenceRow { instance_id: id, fence: LegacyWriterUndeclared }
-  let single = match legacy_writer_fence_for(rows: [row], instance_id: id) { LegacyWriterUnits { systemctl: _, units: _ } => true, LegacyWriterUndeclared => false, LegacyWriterFenceConflict { instance_id: _, rows: _ } => false }
-  let conflict = match legacy_writer_fence_for(rows: [row, other], instance_id: id) { LegacyWriterFenceConflict { instance_id: _, rows: n } => n == 2, LegacyWriterUnits { systemctl: _, units: _ } => false, LegacyWriterUndeclared => false }
+  let single = match legacy_writer_fence_for(rows: [row], instance_id: id) { LegacyWriterUnits { systemctl: _, units: _, rollback_store: _ } => true, LegacyWriterUndeclared => false, LegacyWriterFenceConflict { instance_id: _, rows: _ } => false }
+  let conflict = match legacy_writer_fence_for(rows: [row, other], instance_id: id) { LegacyWriterFenceConflict { instance_id: _, rows: n } => n == 2, LegacyWriterUnits { systemctl: _, units: _, rollback_store: _ } => false, LegacyWriterUndeclared => false }
   let ready = plant(i: i)
   let refused = move_with_fence(i: i, fence: LegacyWriterFenceConflict { instance_id: id, rows: 2 })
   single && conflict && ready && !refused.success && string_contains(s: refused.stderr, pattern: "declares 2 rows")
+}
+
+
+// ── THE RETIREMENT LEG (a unit whose fragment lives in /etc cannot be masked; it is retired) ─────────────────
+fn reading(load: SystemdUnitLoadState, active: SystemdUnitActiveState, fragment: String) -> LegacyWriterUnitReading {
+  LegacyWriterUnitRead { load_state: load, active_state: active, fragment_path: fragment, runs: LegacyWriterRunsOther }
+}
+
+fn running_reading(exec_start: String) -> LegacyWriterUnitReading {
+  LegacyWriterUnitRead { load_state: UnitLoaded, active_state: Active, fragment_path: "/etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service", runs: legacy_writer_runs_of_show(row: srv1_lab_desired_deployment(), show: exec_start) }
+}
+
+// The successor's `systemctl show` ExecStart value for a given release revision, built from the ExecStart the declared
+// lab deployment EMITS (live_deploy_serve_unit_file_over, the unit the install step writes), not from a restated
+// argument list. `ExecStart` is the argv text; systemd renders it inside `{ path=P ; argv[]=A ; ignore_errors=no }`.
+fn successor_exec_start_for(revision: String) -> String {
+  match service_unit_expectation_of(file: live_deploy_serve_unit_file_over(spec: selected_deployment_spec(row: srv1_lab_desired_deployment()), revision: RevisionBoundAtEmission { revision: revision }, oidc_env: [])) {
+    ServiceExpectationDerived { expectation: e } => join(["{ path=/opt/gunbc/bin/gunbc ; argv[]=", e.exec_start, " ; ignore_errors=no }"], "")
+    ServiceExpectationUnderivable { detail: d } => d
+  }
+}
+
+fn successor_revision() -> String {
+  "0123456789abcdef0123456789abcdef01234567"
+}
+
+fn successor_exec_start() -> String {
+  successor_exec_start_for(revision: successor_revision())
+}
+
+fn legacy_exec_start() -> String {
+  "{ path=/opt/gunbc/bin/gunbc ; argv[]=/opt/gunbc/bin/gunbc serve --listen 127.0.0.1:18081 --handler roadmap_serve_handle_srv1_lab ; ignore_errors=no }"
+}
+
+fn unreadable_reading() -> LegacyWriterUnitReading {
+  LegacyWriterUnitUnreadable { detail: "systemctl show failed" }
+}
+
+fn lab_unit() -> LegacyWriterUnit {
+  lw_unit(name: "gunbc-srv1-lab-codex-feedback-v0.service")
+}
+
+fn ops_text(ops: List<ExecutorPrivilegedOperation>) -> String {
+  join(map(ops, op => join(executor_privileged_operation_elevated_argv(op: op), " ")), " ; ")
+}
+
+// RED CONTROL on the reading this replaced: a stopped unit systemd cannot load (not-found) or that is masked IS
+// excluded though no is-enabled text exists; a stopped but still LOADABLE unit is not; an unreadable one never is.
+test fn exclusion_is_load_state_plus_active_state_not_is_enabled_masked() -> Bool {
+  let notfound = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoadNotFound, active: Inactive, fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let masked = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoadMasked, active: Failed, fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let loadable = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoaded, active: Inactive, fragment: "/etc/systemd/system/u")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "still loadable") }
+  let running = match legacy_writer_exclusion(unit: "u", reading: reading(load: UnitLoadNotFound, active: Active, fragment: "")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "is not stopped") }
+  let unreadable = match legacy_writer_exclusion(unit: "u", reading: unreadable_reading()) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "could not be read") }
+  notfound && masked && loadable && running && unreadable
+}
+
+// The /etc case: a loaded fragment at the declared path is retired by stop, rename into the rollback store, reload;
+// afterwards the unit reads not-found and stopped, which is excluded.
+test fn an_etc_fragment_is_retired_by_stop_rename_and_reload_then_reads_excluded() -> Bool {
+  let u = lab_unit()
+  let plan = legacy_writer_retirement(unit: u, reading: reading(load: UnitLoaded, active: Active, fragment: u.etc_fragment as String))
+  let ops = legacy_writer_retirement_operations(rollback_store: "/etc/systemd/system" as NonEmptyStr, unit: u, plan: plan)
+  let after = match legacy_writer_exclusion(unit: u.name as String, reading: reading(load: UnitLoadNotFound, active: Inactive, fragment: "")) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let is_etc = match plan { LegacyWriterRetireEtcFragment => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetirementRefused { reason: _ } => false }
+  is_etc && after
+    && ops_text(ops: ops) == "/usr/bin/sudo -n /usr/bin/systemctl stop gunbc-srv1-lab-codex-feedback-v0.service ; /usr/bin/sudo -n /usr/bin/mv -n -- /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service.retired-by-gunbc-apply ; /usr/bin/sudo -n /usr/bin/systemctl daemon-reload"
+}
+
+test fn a_vendor_fragment_refuses_because_no_mask_is_granted() -> Bool {
+  let u = lab_unit()
+  match legacy_writer_retirement(unit: u, reading: reading(load: UnitLoaded, active: Inactive, fragment: "/usr/lib/systemd/system/x.service")) {
+    LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "no mask is granted")
+    LegacyWriterAlreadyExcluded => false
+    LegacyWriterRetireEtcFragment => false
+  }
+}
+
+test fn an_unreadable_unit_or_a_foreign_fragment_refuses_and_an_excluded_one_needs_nothing() -> Bool {
+  let u = lab_unit()
+  let unreadable = match legacy_writer_retirement(unit: u, reading: unreadable_reading()) { LegacyWriterRetirementRefused { reason: _ } => true, LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
+  let foreign = match legacy_writer_retirement(unit: u, reading: reading(load: UnitLoaded, active: Inactive, fragment: "/run/systemd/system/x.service")) { LegacyWriterRetirementRefused { reason: r } => string_contains(s: r, pattern: "not the declared"), LegacyWriterAlreadyExcluded => false, LegacyWriterRetireEtcFragment => false }
+  let nothing = match legacy_writer_retirement(unit: u, reading: reading(load: UnitLoadNotFound, active: Inactive, fragment: "")) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
+  unreadable && foreign && nothing
+}
+
+// ROLLBACK: the retained bytes go back to the declared fragment, then the manager reloads.
+test fn rollback_restores_the_retained_fragment() -> Bool {
+  let u = lab_unit()
+  let ops = legacy_writer_restore_operations(rollback_store: "/etc/systemd/system" as NonEmptyStr, unit: u, plan: LegacyWriterRetireEtcFragment)
+  ops_text(ops: ops) == "/usr/bin/sudo -n /usr/bin/mv -n -- /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service.retired-by-gunbc-apply /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service ; /usr/bin/sudo -n /usr/bin/systemctl daemon-reload"
+}
+
+fn retire_with(i: HostDashboardInstance, f: LegacyWriterFence) -> DashboardExecResult {
+  dashboard_apply_provision_op(instance: i, op: DashboardRetireLegacyWriters { fence: f }, temp_bundle: "/unused-bundle" as FilePath, temp_verify_repo: "/unused-verify" as FilePath)
+}
+
+// THE LEG ITSELF over the fixture: an already-excluded writer passes with no privileged act; a loadable one whose
+// fragment is neither the declared nor a vendor path, an unreadable one, and an undeclared fence all refuse.
+test fn the_retirement_leg_passes_an_excluded_writer_and_refuses_the_rest() -> Bool {
+  let i = fresh_instance(tag: "retire1")
+  let ready = shell.Mkdir.Parents(path: parent_of(i: i) as FilePath).success
+  let ok = retire_with(i: i, f: fence_stub(i: i, active: "inactive", load: "not-found"))
+  let loadable = retire_with(i: i, f: fence_stub(i: i, active: "inactive", load: "loaded"))
+  let unreadable = retire_with(i: i, f: LegacyWriterUnits { systemctl: "/nonexistent/systemctl" as NonEmptyStr, units: [lab_unit()], rollback_store: "/unused-store" as NonEmptyStr })
+  let undeclared = retire_with(i: i, f: LegacyWriterUndeclared)
+  ready && ok.success && string_contains(s: ok.stdout, pattern: "already excluded")
+    && !loadable.success && string_contains(s: loadable.stderr, pattern: "not the declared")
+    && !unreadable.success && string_contains(s: unreadable.stderr, pattern: "could not be read")
+    && !undeclared.success && string_contains(s: undeclared.stderr, pattern: "nothing can be retired")
+}
+
+
+// THE FENCE FACT IS "NO UNIT RUNS THE FLAT-ENTRY WRITER": the successor runs under the legacy unit's own name, so
+// the name cannot be the discriminator (a fence by name refuses the lab's own serve forever).
+test fn a_running_unit_is_the_legacy_writer_by_what_it_runs_and_the_successor_under_the_same_name_is_excluded() -> Bool {
+  let legacy = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: legacy_exec_start())) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: r } => string_contains(s: r, pattern: "is not stopped") }
+  let successor = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: successor_exec_start())) { LegacyWriterExcluded => true, LegacyWriterNotExcluded { reason: _ } => false }
+  let noexec = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: "")) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  let unreadable = match legacy_writer_exclusion(unit: "u", reading: unreadable_reading()) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  // A unit that CARRIES the release argument but runs something else is not the successor: a different handler, a
+  // revision that is not a commit id, and a trailing extra word each refuse.
+  let other_handler = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: replace(successor_exec_start(), "roadmap_serve_handle_srv1_lab", "another_handler"))) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  let not_a_commit = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: successor_exec_start_for(revision: "abc123"))) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  let extra_word = match legacy_writer_exclusion(unit: "u", reading: running_reading(exec_start: replace(successor_exec_start(), " ; ignore_errors", " --extra ; ignore_errors"))) { LegacyWriterExcluded => false, LegacyWriterNotExcluded { reason: _ } => true }
+  let retire_successor = match legacy_writer_retirement(unit: lab_unit(), reading: running_reading(exec_start: successor_exec_start())) { LegacyWriterAlreadyExcluded => true, LegacyWriterRetireEtcFragment => false, LegacyWriterRetirementRefused { reason: _ } => false }
+  legacy && successor && noexec && unreadable && other_handler && not_a_commit && extra_word && retire_successor
 }
