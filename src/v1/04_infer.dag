@@ -4428,47 +4428,40 @@ fn equality_plan_synthesizable(plan: EqualityPlan) -> Bool {
   plan.declarations |> all(d => !d.generic && equality_reading_is_read(reading: d.reading))
 }
 
-// A synthesized helper call the derived body will carry: the (module, fn) pair named by the step's
-// own arm at equality_step_own_helper - THE single home, shared with admission. One row per helper
-// the body names.
+// A synthesized helper call the derived body will carry: the (module, fn) pair named by the lift
+// step's arm at equality_lift_step_helper - THE single home, shared with admission. One row per
+// helper the body names.
 type EqualitySynthHelper { module_path: String, fn_name: String }
 
-// THE ONE HOME of the arm->helper fact (DESIGN §3 minimization; review 91824): which helper an
-// EqualityStep arm itself calls - or none, by an arm listed as helper-free on purpose (no silent
-// widen: a new step form must decide here). BOTH consumers read this: the admission census walk
-// (equality_step_helpers) and the synthesizing emitter (equality_synth_step_qcall). Emission and
-// admission cannot diverge about which (module, fn) a step calls; a drift brought in by a second
-// copy is the very helper-not-declared failure class this change closes.
-fn equality_step_own_helper(s: EqualityStep) -> EqualitySynthHelper? {
-  match s {
-    EqualityPresence { inner: _ } => Present { value: EqualitySynthHelper { module_path: "std.optional", fn_name: "optional_eq" } }
-    EqualityElements { element: _ } => Present { value: EqualitySynthHelper { module_path: "std.algebra", fn_name: "zip_eq" } }
-    EqualityMapValues { value: _ } => Present { value: EqualitySynthHelper { module_path: "std.algebra", fn_name: "map_values_eq" } }
-    // The routed arm's callable is DATA carried by the step, not a name spelled here; the
-    // structural arms call no helper. Listed, not defaulted.
-    EqualityRouted { function: _ } => Absent
-    EqualityThroughPlan { declaration: _ } => Absent
-    EqualityByTarget => Absent
+// THE ONE HOME of the arm->helper fact (DESIGN §3 minimization; review 91824), stated as a
+// declared sub-coproduct of the helper-carrying EqualityStep arms (review 91860): the map is
+// TOTAL over EqualityLiftStep, so a helper-free arm (routed, by-target, through-plan) cannot be
+// named here at all - no optional result, no sentinel branch, no adapter: the wrong state is
+// unwritable rather than validated (DESIGN §5). Membership of the three lift arms is stated once,
+// by the type; BOTH consumers restate arms the language already forces them to enumerate - the
+// admission census walk (equality_step_helpers) and the synthesizing emitter
+// (equality_synth_step_qcall) - and read the SAME (module, fn) fact from this one home, so an
+// admitted body and an emitted call cannot disagree about which helper a step calls.
+type EqualityLiftStep = LiftPresence { inner: EqualityStep } | LiftElements { element: EqualityStep } | LiftMapValues { value: EqualityStep }
+
+fn equality_lift_step_helper(l: EqualityLiftStep) -> EqualitySynthHelper {
+  match l {
+    LiftPresence { inner: _ } => EqualitySynthHelper { module_path: "std.optional", fn_name: "optional_eq" }
+    LiftElements { element: _ } => EqualitySynthHelper { module_path: "std.algebra", fn_name: "zip_eq" }
+    LiftMapValues { value: _ } => EqualitySynthHelper { module_path: "std.algebra", fn_name: "map_values_eq" }
   }
 }
 
-// Every helper a plan's steps will name, innermost first.
+// Every helper a plan's steps will name, innermost first. The helper-free arms name none, listed
+// not defaulted (no silent widen: a new step form decides here).
 fn equality_step_helpers(s: EqualityStep) -> List<EqualitySynthHelper> {
   match s {
-    EqualityPresence { inner: i } => equality_step_own_helper_list(s: s) |> concat(equality_step_helpers(s: i))
-    EqualityElements { element: e } => equality_step_own_helper_list(s: s) |> concat(equality_step_helpers(s: e))
-    EqualityMapValues { value: v } => equality_step_own_helper_list(s: s) |> concat(equality_step_helpers(s: v))
+    EqualityPresence { inner: i } => [equality_lift_step_helper(l: LiftPresence { inner: i })] |> concat(equality_step_helpers(s: i))
+    EqualityElements { element: e } => [equality_lift_step_helper(l: LiftElements { element: e })] |> concat(equality_step_helpers(s: e))
+    EqualityMapValues { value: v } => [equality_lift_step_helper(l: LiftMapValues { value: v })] |> concat(equality_step_helpers(s: v))
     EqualityRouted { function: _ } => []
     EqualityThroughPlan { declaration: _ } => []
     EqualityByTarget => []
-  }
-}
-
-// Zero-or-one view of the one home, for the walk's concat.
-fn equality_step_own_helper_list(s: EqualityStep) -> List<EqualitySynthHelper> {
-  match equality_step_own_helper(s: s) {
-    Present { value: h } => [h]
-    Absent => []
   }
 }
 
@@ -4523,9 +4516,10 @@ fn equality_helper_declared(helper: EqualitySynthHelper, index: SymbolIndex) -> 
   }
 }
 
-// The located reason a body is not emitted, or Absent when it is. One answer serves both doors:
-// equality_derived_body_emitted is its no-cause projection and the use door quotes the reason
-// verbatim, so the refusal and the skip can never disagree. Nesting is NOT traversed here on
+// The located reason a body is not emitted, or Absent when it is. The use door matches THIS
+// answer directly and quotes the reason verbatim; the emitting door uses the boolean projection
+// equality_derived_body_emitted. One answer, matched once per door, so the refusal and the skip
+// can never disagree. Nesting is NOT traversed here on
 // purpose: every `==` a synthesized body carries descends through the SAME by-target use door as
 // an authored one, so each nested call to a skipped sibling is refused at its own use site, at
 // its own location - a parent body never needs to pre-refuse its members, and no cross-module
@@ -4556,13 +4550,9 @@ fn equality_derived_target(plan: EqualityPlan, index: SymbolIndex) -> EqualityDe
           } else {
             match d.reading {
               DeclarationRead { reference: r } =>
-                if !equality_derived_body_emitted(row: d, index: index) {
-                  match equality_body_block_reason(row: d, index: index) {
-                    Present { value: why } => EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " in ", r.module_path as String, " is not emitted: ", why) }
-                    Absent => EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " in ", r.module_path as String, " is not emitted") }
-                  }
-                } else {
-                  EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+                match equality_body_block_reason(row: d, index: index) {
+                  Absent => EqualityCallsDeclared { function: decl_ref(module_path: r.module_path as String, decl_name: equality_derived_name(decl_name: r.decl_name as String)) }
+                  Present { value: why } => EqualityRootRefused { member: concat("the derived equality body for ", r.decl_name as String, " in ", r.module_path as String, " is not emitted: ", why) }
                 }
               DeclarationUnreadable { declaration_name: unread } => EqualityRootRefused { member: concat("DeclarationUnreadable: the declaration reaching a routed equality could not be read to a DeclarationRef: ", unread) }
             }
@@ -20656,9 +20646,9 @@ fn equality_synth_compare(m: String, step: EqualityStep, x: Node, y: Node, depth
     EqualityByTarget => equality_synth_binop(m: m, op: Eq, l: x, r: y)
     EqualityThroughPlan { declaration: _ } => equality_synth_binop(m: m, op: Eq, l: x, r: y)
     EqualityRouted { function: f } => equality_synth_qcall(m: m, module_path: f.module_path as String, fn_name: f.decl_name as String, args: [x, y])
-    EqualityPresence { inner: i } => equality_synth_step_qcall(m: m, step: step, args: [x, y, equality_synth_inner(m: m, step: i, depth: depth)])
-    EqualityElements { element: e } => equality_synth_step_qcall(m: m, step: step, args: [x, y, equality_synth_inner(m: m, step: e, depth: depth)])
-    EqualityMapValues { value: v } => equality_synth_step_qcall(m: m, step: step, args: [x, y, equality_synth_inner(m: m, step: v, depth: depth)])
+    EqualityPresence { inner: i } => equality_synth_step_qcall(m: m, lift: LiftPresence { inner: i }, args: [x, y, equality_synth_inner(m: m, step: i, depth: depth)])
+    EqualityElements { element: e } => equality_synth_step_qcall(m: m, lift: LiftElements { element: e }, args: [x, y, equality_synth_inner(m: m, step: e, depth: depth)])
+    EqualityMapValues { value: v } => equality_synth_step_qcall(m: m, lift: LiftMapValues { value: v }, args: [x, y, equality_synth_inner(m: m, step: v, depth: depth)])
   }
 }
 
@@ -20698,17 +20688,14 @@ fn equality_synth_qcall(m: String, module_path: String, fn_name: String, args: L
   make_named_expr_node(occurrence_identity: OccurrenceSynthetic, name: qualified, expr_data: ExprCall { call_semantics: none, descent_evidence: none }, children: args |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: sp, name_span: sp)), inferred: none, span: sp, name_span: sp)
 }
 
-// The emitter's view of the one arm->helper home (equality_step_own_helper): a helper-carrying arm
-// emits the call that home names - the SAME fact the admission census checked, so an admitted body
-// and an emitted call cannot disagree about (module, fn) (review 91824). The Absent path is
-// structurally unreachable here (this wrapper is reached only from the three helper-carrying arms);
-// it FAILS CLOSED by emitting a call to a name no module declares - resolve refuses loudly at the
-// located site, and the compiler never silently compares anything else (§5: no hidden fallback).
-fn equality_synth_step_qcall(m: String, step: EqualityStep, args: List<Node>) -> Node {
-  match equality_step_own_helper(s: step) {
-    Present { value: h } => equality_synth_qcall(m: m, module_path: h.module_path, fn_name: h.fn_name, args: args)
-    Absent => equality_synth_qcall(m: m, module_path: "gunbc.internal.equality_step_own_helper_absent", fn_name: "unreachable", args: args)
-  }
+// The emitter's view of the one arm->helper home: it receives an EqualityLiftStep - the declared
+// sub-coproduct of the helper-carrying arms - so a helper-free step cannot be passed in at all,
+// and the call emitted names the SAME (module, fn) the admission census checked (review 91824;
+// review 91860: no made-up-name placeholder, no sentinel arm - the wrong state is unwritable at
+// the signature, not refused downstream (DESIGN §5)).
+fn equality_synth_step_qcall(m: String, lift: EqualityLiftStep, args: List<Node>) -> Node {
+  let h = equality_lift_step_helper(l: lift)
+  equality_synth_qcall(m: m, module_path: h.module_path, fn_name: h.fn_name, args: args)
 }
 
 fn equality_synth_lambda(m: String, p: String, q: String, body: Node) -> Node {

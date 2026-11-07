@@ -7339,36 +7339,34 @@ pub struct EqualitySynthHelper {
     pub fn_name: String,
 }
 
-// THE ONE HOME of the arm->helper fact (DESIGN §3; review 91824): which helper an EqualityStep arm
-// itself calls - or none, for arms listed helper-free on purpose. Both consumers read this: the
-// admission census walk (equality_step_helpers) and the synthesizing emitter (equality_synth_step_qcall).
-pub fn equality_step_own_helper(s: Rc<EqualityStep>) -> Option<Rc<EqualitySynthHelper>> {
-    match (*s.clone()).clone() {
-        EqualityStep::EqualityPresence { inner: _, .. } => Some(Rc::new(EqualitySynthHelper {
-            module_path: "std.optional".to_string(),
-            fn_name: "optional_eq".to_string(),
-        })),
-        EqualityStep::EqualityElements { element: _, .. } => Some(Rc::new(EqualitySynthHelper {
-            module_path: "std.algebra".to_string(),
-            fn_name: "zip_eq".to_string(),
-        })),
-        EqualityStep::EqualityMapValues { value: _, .. } => Some(Rc::new(EqualitySynthHelper {
-            module_path: "std.algebra".to_string(),
-            fn_name: "map_values_eq".to_string(),
-        })),
-        // The routed arm's callable is DATA carried by the step; the structural arms call no
-        // helper. Listed, not defaulted.
-        EqualityStep::EqualityRouted { function: _, .. } => None,
-        EqualityStep::EqualityThroughPlan { declaration: _, .. } => None,
-        EqualityStep::EqualityByTarget => None,
-    }
+// THE ONE HOME of the arm->helper fact (DESIGN §3; review 91824), stated as a declared
+// sub-coproduct of the helper-carrying EqualityStep arms (review 91860): the map is TOTAL over
+// EqualityLiftStep - a helper-free arm cannot be named here at all, so there is no optional
+// result, no sentinel branch: the wrong state is unwritable at the type, not validated (§5).
+// Both consumers read this same fact: the admission census walk (equality_step_helpers) and the
+// synthesizing emitter (equality_synth_step_qcall).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum EqualityLiftStep {
+    LiftPresence { inner: Rc<EqualityStep> },
+    LiftElements { element: Rc<EqualityStep> },
+    LiftMapValues { value: Rc<EqualityStep> },
 }
 
-// Zero-or-one view of the one home, for the walk's concat.
-pub fn equality_step_own_helper_list(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
-    match equality_step_own_helper(s.clone()) {
-        Some(h) => Rc::new(vec![h]),
-        None => Rc::new(vec![]),
+pub fn equality_lift_step_helper(l: Rc<EqualityLiftStep>) -> Rc<EqualitySynthHelper> {
+    match (*l.clone()).clone() {
+        EqualityLiftStep::LiftPresence { inner: _ } => Rc::new(EqualitySynthHelper {
+            module_path: "std.optional".to_string(),
+            fn_name: "optional_eq".to_string(),
+        }),
+        EqualityLiftStep::LiftElements { element: _ } => Rc::new(EqualitySynthHelper {
+            module_path: "std.algebra".to_string(),
+            fn_name: "zip_eq".to_string(),
+        }),
+        EqualityLiftStep::LiftMapValues { value: _ } => Rc::new(EqualitySynthHelper {
+            module_path: "std.algebra".to_string(),
+            fn_name: "map_values_eq".to_string(),
+        }),
     }
 }
 
@@ -7376,15 +7374,21 @@ pub fn equality_step_own_helper_list(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualityS
 pub fn equality_step_helpers(s: Rc<EqualityStep>) -> Rc<Vec<Rc<EqualitySynthHelper>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
         EqualityStep::EqualityPresence { inner: i, .. } => v1_rt::concat(
-            equality_step_own_helper_list(s.clone()),
+            Rc::new(vec![equality_lift_step_helper(Rc::new(
+                EqualityLiftStep::LiftPresence { inner: i.clone() },
+            ))]),
             equality_step_helpers(i.clone()),
         ),
         EqualityStep::EqualityElements { element: e, .. } => v1_rt::concat(
-            equality_step_own_helper_list(s.clone()),
+            Rc::new(vec![equality_lift_step_helper(Rc::new(
+                EqualityLiftStep::LiftElements { element: e.clone() },
+            ))]),
             equality_step_helpers(e.clone()),
         ),
         EqualityStep::EqualityMapValues { value: v, .. } => v1_rt::concat(
-            equality_step_own_helper_list(s.clone()),
+            Rc::new(vec![equality_lift_step_helper(Rc::new(
+                EqualityLiftStep::LiftMapValues { value: v.clone() },
+            ))]),
             equality_step_helpers(v.clone()),
         ),
         EqualityStep::EqualityRouted { function: _, .. } => Rc::new(vec![]),
@@ -38337,7 +38341,7 @@ pub fn equality_synth_compare(
         ),
         EqualityStep::EqualityPresence { inner: i, .. } => equality_synth_step_qcall(
             m.clone(),
-            step.clone(),
+            Rc::new(EqualityLiftStep::LiftPresence { inner: i.clone() }),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
@@ -38346,7 +38350,7 @@ pub fn equality_synth_compare(
         ),
         EqualityStep::EqualityElements { element: e, .. } => equality_synth_step_qcall(
             m.clone(),
-            step.clone(),
+            Rc::new(EqualityLiftStep::LiftElements { element: e.clone() }),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
@@ -38355,7 +38359,7 @@ pub fn equality_synth_compare(
         ),
         EqualityStep::EqualityMapValues { value: v, .. } => equality_synth_step_qcall(
             m.clone(),
-            step.clone(),
+            Rc::new(EqualityLiftStep::LiftMapValues { value: v.clone() }),
             Rc::new(vec![
                 x.clone(),
                 y.clone(),
@@ -38502,31 +38506,23 @@ pub fn equality_synth_qcall(
     }
 }
 
-// The emitter's view of the one arm->helper home (equality_step_own_helper): a helper-carrying arm
-// emits the call that home names - the SAME fact the admission census checked, so an admitted body
-// and an emitted call cannot disagree about (module, fn) (review 91824). The None path is
-// structurally unreachable here (this wrapper is reached only from the three helper-carrying arms);
-// it FAILS CLOSED by emitting a call to a name no module declares - resolve refuses loudly at the
-// located site, and the compiler never silently compares anything else (§5: no hidden fallback).
+// The emitter's view of the one arm->helper home: it receives an EqualityLiftStep - the declared
+// sub-coproduct of the helper-carrying arms - so a helper-free step cannot be passed in at all,
+// and the call emitted names the SAME (module, fn) the admission census checked (review 91824;
+// review 91860: no made-up-name placeholder arm - the wrong state is unwritable at the signature,
+// not refused downstream, DESIGN §5).
 pub fn equality_synth_step_qcall(
     m: String,
-    step: Rc<EqualityStep>,
+    lift: Rc<EqualityLiftStep>,
     args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
-    match equality_step_own_helper(step.clone()) {
-        Some(h) => equality_synth_qcall(
-            m.clone(),
-            h.module_path.clone(),
-            h.fn_name.clone(),
-            args.clone(),
-        ),
-        None => equality_synth_qcall(
-            m.clone(),
-            "gunbc.internal.equality_step_own_helper_absent".to_string(),
-            "unreachable".to_string(),
-            args.clone(),
-        ),
-    }
+    let h = equality_lift_step_helper(lift);
+    equality_synth_qcall(
+        m.clone(),
+        h.module_path.clone(),
+        h.fn_name.clone(),
+        args.clone(),
+    )
 }
 
 pub fn equality_synth_lambda(m: String, p: String, q: String, body: Rc<Node>) -> Rc<Node> {
