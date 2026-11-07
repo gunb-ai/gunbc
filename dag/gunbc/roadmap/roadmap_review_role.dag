@@ -248,6 +248,26 @@ fn standing_is_approved(s: CriterionStanding) -> Bool {
     CriterionAwaitingReviewer { key: _ } => false
   }
 }
+// A STAGE WHOSE PROCESS ENDED WITHOUT A VERDICT -- exited or killed (an OOM kill reads as SIGKILL in its
+// exit record) -- is a TERMINAL fact about that launch: the belt never respawns it
+// (belt_review_call, belt_audit_verified_attempt), so nothing can ever change this standing. It is
+// not `blocks`: that arm is Refused, which the continuation reads as an environment fact to wait out
+// (ContinuationHold), and a hold on a stage that cannot resume is a wedged attempt (the 2026-11-07
+// srv1 goal-audit OOM). Unobserved stays a block: the process's end is unknown, not known.
+fn standing_is_stage_death(s: CriterionStanding) -> Bool {
+  match s {
+    CriterionApproved { key: _, summary: _ } => false
+    CriterionChangesRequested { key: _, reasons: _ } => false
+    CriterionCannotJudge { key: _, reason: _ } => false
+    CriterionUndecodable { key: _, reason: _ } => false
+    CriterionUnreadable { key: _, detail: _ } => false
+    CriterionReviewerRunning { key: _ } => false
+    CriterionReviewerExitedWithoutVerdict { key: _, exit_code: _ } => true
+    CriterionReviewerSignaledWithoutVerdict { key: _, signal: _ } => true
+    CriterionReviewerUnobserved { key: _, reason: _ } => false
+    CriterionAwaitingReviewer { key: _ } => false
+  }
+}
 fn standing_is_running(s: CriterionStanding) -> Bool {
   match s {
     CriterionApproved { key: _, summary: _ } => false
@@ -424,6 +444,8 @@ fn review_reconcile_standings(standings: List<CriterionStanding>) -> ReviewRecon
     ReviewReconciliation { state: WorkflowSegmentRefused, detail: "no review criteria are declared, so nothing can approve this head" }
   } else if any(standings, s => standing_is_changes(s: s)) {
     ReviewReconciliation { state: WorkflowSegmentFailed, detail: review_feedback_text(f: review_feedback_standings(standings: standings)) }
+  } else if any(standings, s => standing_is_stage_death(s: s)) {
+    ReviewReconciliation { state: WorkflowSegmentFailed, detail: join(map(filter(standings, s => standing_is_stage_death(s: s)), s => criterion_standing_text(s: s)), " · ") }
   } else if any(standings, s => standing_blocks(s: s)) {
     ReviewReconciliation { state: WorkflowSegmentRefused, detail: join(map(filter(standings, s => standing_blocks(s: s)), s => criterion_standing_text(s: s)), " · ") }
   } else if all(standings, s => standing_is_approved(s: s)) {
