@@ -35,6 +35,10 @@ import gunbc.host.host_layout {
 import gunbc.deployment_risk { deployment_id }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_converged_ref,
+  DashboardServeBinaryOrigin,
+  DeclaredBuiltBinary,
+  CargoReleaseOfInstanceCheckout,
+  BuildInPlaceFromAdmittedRevision,
   WorkerIsServiceUser,
   dispatch_base_branch,
   prod_role_realization,
@@ -126,6 +130,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_path_is_under,
   srv1_linux_toolchain,
   dispatch_worker_memory_ceiling,
+  compute_build_memory_ceiling_default,
   belt_max_concurrent_default,
   srv1_lab_belt_max_concurrent,
 }
@@ -194,7 +199,7 @@ fn instance_anchor_ref(i: HostDashboardInstance) -> String {
       history_remote: _,
     } => anchor_ref as String
     DashboardExistingRepo { anchor_ref } => anchor_ref as String
-    DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => dashboard_instance_converged_ref(instance: i) as String
+    DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => dashboard_instance_converged_ref(instance: i) as String
   }
 }
 
@@ -653,7 +658,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
         history_remote: _,
       } => controller_repo == "/witness/controller-repo"
       DashboardExistingRepo { anchor_ref: _ } => false
-      DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => false
+      DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
     }
     && !(i.serve_binary == srv1_gunbc_serve_binary)
     && !(dashboard_instance_provider_state_root(instance: i) == srv1_roadmap_codex_home)
@@ -665,7 +670,7 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
         history_remote: _,
       } => controller_repo == srv1_dashboard_controller_repo
       DashboardExistingRepo { anchor_ref: _ } => false
-      DashboardSeededByConvergence { built_binary: _, apply_workdir: _ } => false
+      DashboardSeededByConvergence { serve_binary_origin: _, apply_workdir: _ } => false
     })
 }
 
@@ -729,7 +734,7 @@ fn plan_ensures_serve_binary(
   instance: HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
-    DashboardEnsureServeBinary { apply_workdir: _, built_binary: _, path } =>
+    DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin: _, path } =>
       path == instance.serve_binary
     _ => false
   })
@@ -847,6 +852,7 @@ fn witness_production_slot(
     admitted_revision: fleet_admitted_revision_source,
     toolchain: srv1_linux_toolchain,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,
+    compute_build_memory_ceiling: compute_build_memory_ceiling_default,
     belt_max_concurrent: belt_max_concurrent_default,
     directory_owner: srv1_live_dashboard_instance().directory_owner,
     worker: WorkerIsServiceUser,
@@ -1218,6 +1224,7 @@ fn outside_instance_claiming_live_id_on_live_footprint() -> HostDashboardInstanc
     admitted_revision: live.admitted_revision,
     toolchain: live.toolchain,
     dispatch_worker_memory_max: live.dispatch_worker_memory_max,
+    compute_build_memory_ceiling: live.compute_build_memory_ceiling,
     belt_max_concurrent: live.belt_max_concurrent,
     directory_owner: live.directory_owner,
     worker: WorkerIsServiceUser,
@@ -1279,14 +1286,15 @@ test fn a_demand_list_without_the_session_slots_creator_leaves_that_root_uncreat
   slot_store_roots_without_a_creator(instance: lab, demands: without) == [sessions]
 }
 
-// The lab declares NO serve-binary source (srv1 holds no declared build): the plan carries the step with an
-// Absent input, so the apply refuses by name rather than copying a guessed path.
-test fn the_lab_serve_binary_input_is_absent_not_guessed() -> Bool {
+// The lab NAMES its serve-binary source: it builds in place from the admitted revision, chosen on the instance and
+// never defaulted by the apply, so there is no guessed path and no Absent to default from.
+test fn the_lab_serve_binary_input_is_a_named_in_place_build() -> Bool {
   any(dashboard_instance_provision_plan(instance: srv1_lab_dashboard_instance()), op => match op {
-    DashboardEnsureServeBinary { apply_workdir: _, built_binary, path: _ } =>
-      match built_binary {
-        Absent => true
-        Present { value: _ } => false
+    DashboardEnsureServeBinary { apply_workdir: _, serve_binary_origin, path: _ } =>
+      match serve_binary_origin {
+        BuildInPlaceFromAdmittedRevision => true
+        DeclaredBuiltBinary { path: _ } => false
+        CargoReleaseOfInstanceCheckout { path: _ } => false
       }
     _ => false
   })

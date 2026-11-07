@@ -1,9 +1,13 @@
 module extdeps.standards.atx_2_2
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import std.measure { Micrometer, micrometer, Millimeter, millimeter }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.climbing_holds.types { DimensionEvidence, VendorDrawingRead }
+import extdeps.standards.motherboard_mounting_location {
+  MountingLocation, mounting_location, LocA, LocC, LocF, LocG, LocH, LocJ, LocK, LocL, LocM,
+}
 // THE ATX SPECIFICATION, VERSION 2.2, as its own subject. It is the form-factor authority that the
 // ATX FAMILY of board outlines and mounting-hole grids descends from, and it is modelled separately
 // from any board because a specification and a product that claims conformance to it are two
@@ -34,28 +38,32 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 //
 // WHAT THIS MODULE OWNS, AND WHAT IT DELIBERATELY NO LONGER OWNS.
 //
-// ATX 2.2 facts only: the full-size board extents and the two datum offsets its Figure 7 labels.
-// The microATX envelope, lettered location population and coordinates USED TO LIVE HERE and were
-// moved to extdeps.standards.micro_atx, because sharing some mounting locations with ATX is not
-// shared governance -- microATX is a separately governed specification with its own revision, and a
-// change to it must not require editing this file.
-//
-// This module carries NO location population. If one is added later it will be ATX 2.2's own, read
-// from this document, and the shared shapes will move to a neutral home at that point -- when a
-// second standard actually enumerates, which is the event that makes the extraction correct.
+// ATX 2.2 facts only: the full-size board extents, the two datum offsets its Figure 7 labels, and
+// ATX 2.2's own mounting-location population read from its Figure 3 (atx_mounting_locations below).
+// The microATX envelope, population and coordinates live in extdeps.standards.micro_atx, because
+// sharing some mounting locations with ATX is not shared governance -- microATX is a separately
+// governed specification with its own revision, and a change to it must not require editing this
+// file. The lettered shapes both populations use live in
+// extdeps.standards.motherboard_mounting_location.
 // THE ROUNDED AND THE EXACT ARE BOTH CARRIED, and the exact one is a Micrometer rather than a
 // sentence. An earlier revision kept 243.84 in a prose row that said it was "preserved in this note
 // rather than silently lost" — but a note is exactly where a number IS lost: no Accepted program can
 // read one, so the only surviving machine-readable value was the rounded 244. The whole-millimetre
 // carrier cannot hold the spec's figure; the micrometre carrier can, so the spec's figure lives
 // there and the rounding stops being lossy.
-data atx_board_width_along_rear_io: Millimeter = millimeter(count: 244)
-data atx_board_width_along_rear_io_exact: Micrometer = micrometer(count: 243840)
+//
+// THE AXES, CORRECTED. Section 3.1 reads "A full size ATX board is 12" wide by 9.6" deep (305mm x
+// 244mm)", and Figure 3's outline confirms which edge is which: the 12 in edge is the one B and C sit
+// 0.4 in from, the rear edge. An earlier revision of this module carried 244 mm as the width along
+// the rear I/O edge and 305 mm as the depth, with the comment that micro-ATX reduces the depth; both
+// were transposed. micro-ATX shortens the rear edge and keeps the 9.6 in depth.
+data atx_board_width_along_rear_io: Millimeter = millimeter(count: 305)
+data atx_board_width_along_rear_io_exact: Micrometer = micrometer(count: 304800)
 
-// 12.000 in, the full-size ATX board depth. Carried because it is the dimension the micro-ATX and
-// deep-micro-ATX variants reduce, NOT as a claim about any board in this corpus.
-data atx_full_size_depth: Millimeter = millimeter(count: 305)
-data atx_full_size_depth_exact: Micrometer = micrometer(count: 304800)
+// 9.600 in, the full-size ATX board depth from the rear edge. Carried as the standard's figure, NOT
+// as a claim about any board in this corpus.
+data atx_full_size_depth: Millimeter = millimeter(count: 244)
+data atx_full_size_depth_exact: Micrometer = micrometer(count: 243840)
 // THE TWO BOARD-MOUNTING-HOLE OFFSETS the specification's figure labels as REF dimensions. They are
 // the only hole-related numbers with an extractable text layer in the whole document, and they are
 // offsets from datum rather than hole positions: on their own they place nothing — two offsets
@@ -63,3 +71,44 @@ data atx_full_size_depth_exact: Micrometer = micrometer(count: 304800)
 // first-party reading of Figure 3 has to agree with them, which makes them a check on that reading.
 data atx_board_mtg_hole_offset_a: Micrometer = micrometer(count: 16510)
 data atx_board_mtg_hole_offset_b: Micrometer = micrometer(count: 10160)
+
+// ATX 2.2'S MOUNTING-LOCATION POPULATION: A, C, F, G, H, J, K, L, M (Figure 2's table; section 3.2
+// requires all of them for full compliance, F included, and says B is no longer used).
+//
+// HOW THE COORDINATES WERE READ, at the grain the standing turns on. Figure 3 ("Sample ATX Layout
+// Diagram, all dimensions shown in inches", PDF page 12) is vector artwork whose dimension text is
+// drawn as paths, so no number in it is extractable as text. Its GEOMETRY is: the board outline is
+// one rectangle of 244.3 x 306.3 points, and the mounting holes are ten circles of one radius. Read
+// first-party from the page's content stream (2026-11-04), scaling each axis by the outline it lies
+// along (306.3 pt = 12 in along the rear edge, 244.3 pt = 9.6 in deep), the ten centres are:
+//
+//   along rear edge, in:  0.249  6.449  8.247  11.348
+//   depth from rear, in:  0.40 / 1.30 / 6.49 / 9.34
+//
+// Seven of the ten land within 0.01 in on the microATX values extdeps.standards.micro_atx carries for
+// the shared letters (F 0.25/1.30, J 0.25/6.50, M 0.25/9.35, C 6.45/0.40, H 6.45/6.50, L 6.45/9.35)
+// and on B (8.25/0.40), which Figure 3 still draws. That agreement is what licenses reading the other
+// three off the same drawing: A, G and K sit at 11.348 in along the rear edge, 4.899 in beyond C,
+// at the same three depths as C, H and L. They are carried at the nominal 11.350 in. The reading's
+// accuracy is the drawing's, about 0.01 in, and the per-axis scales disagree by 0.3 percent, which
+// is why the along-edge axis is scaled by the along-edge outline only.
+//
+// The shared letters carry the same nominal values micro_atx does, because a letter is one location
+// in both standards. A first-party OCR of Figure 3's dimension text would tighten A, G and K to the
+// figure's printed precision; until then their standing is this drawing read.
+data atx_mounting_location_provenance: DimensionEvidence = VendorDrawingRead {
+  authority: extdeps_external_authority_anchor,
+  read_on: "2026-11-04: ATX 2.2 Figure 3 hole centres read from the PDF's vector geometry, scaled by the drawn board outline; dimension text not extractable",
+}
+
+data atx_mounting_locations: List<MountingLocation> = [
+  mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 33020)),
+  mounting_location(id: LocJ, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocM, along_rear_edge: micrometer(count: 6350), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocC, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocH, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocL, along_rear_edge: micrometer(count: 163830), depth_from_rear_edge: micrometer(count: 237490)),
+  mounting_location(id: LocA, along_rear_edge: micrometer(count: 288290), depth_from_rear_edge: micrometer(count: 10160)),
+  mounting_location(id: LocG, along_rear_edge: micrometer(count: 288290), depth_from_rear_edge: micrometer(count: 165100)),
+  mounting_location(id: LocK, along_rear_edge: micrometer(count: 288290), depth_from_rear_edge: micrometer(count: 237490)),
+]

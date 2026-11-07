@@ -1,0 +1,279 @@
+module product.electrical.mark_comparison
+
+import std.types { List, NonEmptyStr, String, Char }
+import std.logic { Bool }
+import std.algebra { Cons, Empty, is_empty }
+import std.coercion { unicode_scalar_unfold }
+import std.nat { Nat, Zero, Succ, nat_to_decimal_string }
+import v2.std.text { char_eq, string_join }
+import extdeps.electronic_component.types {
+  Complete,
+  ElectronicComponentRow,
+  FixedGlyphs,
+  ListedOnly,
+  MarkDescribedNotStructured,
+  MarkLine,
+  MarkSegment,
+  MarkStructured,
+  PublishedMark,
+  VariableField
+}
+import product.electrical.photograph { BoardSightings }
+import product.electrical.identification {
+  ComponentIdentification,
+  GlyphReduction,
+  MarkingCandidate,
+  MarkingReading,
+  MarkingReadingSet,
+  ReducedLine,
+  Reduced,
+  ReductionUnavailable,
+  identify_by_marking,
+  reduced_content,
+  scalar_of
+}
+
+// WHAT A BENCH READING SAYS ABOUT A PUBLISHED MARK. The comparison is over `PublishedMark`
+// (extdeps.electronic_component.types) and reads the reading through the ONE reduction
+// (product.electrical.identification reduced_content), so there is no second spacing rule here.
+// Three answers, and only the first can support an identification:
+//   Matches      every line the mark lists is accounted for by the reading's glyphs
+//   Differs      the reading's glyphs contradict the mark, WHERE says where
+//   Undecidable  the comparison cannot say, WHY says which of the typed causes
+// '?' is an unread glyph: silence, not dissent. At a fixed position it makes the line undecidable
+// unless another position already differs. A line the bench did not transcribe is silence too.
+type MarkUndecidableCause
+  = NoPublishedMark
+  | PublishedMarkDescribed { why: NonEmptyStr }
+  | ListedOnlyCannotCertifyWholeMark
+  | ReadingCoversFewerLines
+  | UnreadGlyphAtFixedPosition
+  | ReductionRefused { why: NonEmptyStr }
+
+type MarkComparison
+  = Matches
+  | Differs { place: NonEmptyStr }
+  | Undecidable { cause: MarkUndecidableCause }
+
+type LineVerdict
+  = LineYes
+  | LineNo
+  | LineMaybe
+
+type LineCount
+  = SameLineCount
+  | ReadingHasFewer
+  | ReadingHasMore
+
+fn both(a: LineVerdict, b: LineVerdict) -> LineVerdict {
+  match a {
+    LineNo => LineNo
+    LineMaybe => match b {
+      LineNo => LineNo
+      LineYes => LineMaybe
+      LineMaybe => LineMaybe
+    }
+    LineYes => b
+  }
+}
+
+// Alternative splits of one variable field: any split that matches is a match.
+fn either(a: LineVerdict, b: LineVerdict) -> LineVerdict {
+  match a {
+    LineYes => LineYes
+    LineMaybe => match b {
+      LineYes => LineYes
+      LineNo => LineMaybe
+      LineMaybe => LineMaybe
+    }
+    LineNo => b
+  }
+}
+
+fn fixed_chars(t: NonEmptyStr) -> List<Char> {
+  let host = t as String
+  unicode_scalar_unfold(s: host)
+}
+
+fn glyph_verdict(got: Char, want: Char, unread: Char) -> LineVerdict {
+  if char_eq(a: got, b: unread) {
+    LineMaybe
+  } else if char_eq(a: got, b: want) {
+    LineYes
+  } else {
+    LineNo
+  }
+}
+
+// Each recursion below consumes at least one element of `got` or of `segs`/`want`, so it is bounded by
+// the reading's length plus the mark's; the unstated-width field tries every split by consuming one
+// character at a time and stops at the end of the reading.
+fn match_segments(segs: List<MarkSegment>, got: List<Char>, unread: Char) -> LineVerdict {
+  match segs {
+    Empty => if is_empty(xs: got) { LineYes } else { LineNo }
+    Cons { head: s, tail: rest } =>
+      match s {
+        FixedGlyphs { text: t } => match_fixed(want: fixed_chars(t: t), got: got, rest: rest, unread: unread)
+        VariableField { legend: _, width: w } =>
+          match w {
+            Present { value: n } => skip_exact(n: n, got: got, rest: rest, unread: unread)
+            Absent => skip_some(got: got, rest: rest, unread: unread)
+          }
+      }
+  }
+}
+
+fn match_fixed(want: List<Char>, got: List<Char>, rest: List<MarkSegment>, unread: Char) -> LineVerdict {
+  match want {
+    Empty => match_segments(segs: rest, got: got, unread: unread)
+    Cons { head: w, tail: wt } =>
+      match got {
+        Empty => LineNo
+        Cons { head: g, tail: gt } =>
+          both(
+            a: glyph_verdict(got: g, want: w, unread: unread),
+            b: match_fixed(want: wt, got: gt, rest: rest, unread: unread)
+          )
+      }
+  }
+}
+
+fn skip_exact(n: Nat, got: List<Char>, rest: List<MarkSegment>, unread: Char) -> LineVerdict {
+  match n {
+    Zero => match_segments(segs: rest, got: got, unread: unread)
+    Succ { prev: p } =>
+      match got {
+        Empty => LineNo
+        Cons { head: _, tail: gt } => skip_exact(n: p, got: gt, rest: rest, unread: unread)
+      }
+  }
+}
+
+// A field whose width the source does not state: at least one character, then stop or take another.
+fn skip_some(got: List<Char>, rest: List<MarkSegment>, unread: Char) -> LineVerdict {
+  match got {
+    Empty => LineNo
+    Cons { head: _, tail: gt } =>
+      either(
+        a: match_segments(segs: rest, got: gt, unread: unread),
+        b: skip_some(got: gt, rest: rest, unread: unread)
+      )
+  }
+}
+
+fn count_relation(mark: List<MarkLine>, read: List<ReducedLine>) -> LineCount {
+  match mark {
+    Empty => if is_empty(xs: read) { SameLineCount } else { ReadingHasMore }
+    Cons { head: _, tail: m } =>
+      match read {
+        Empty => ReadingHasFewer
+        Cons { head: _, tail: r } => count_relation(mark: m, read: r)
+      }
+  }
+}
+
+fn line_number_text(i: Nat) -> NonEmptyStr {
+  string_join(fields: ["line ", nat_to_decimal_string(value: i)], separator: "") as NonEmptyStr
+}
+
+// Lines are compared pairwise (equal counts are established first). The first definite mismatch is
+// the answer; otherwise any unread glyph makes it undecidable.
+fn compare_lines(mark: List<MarkLine>, read: List<ReducedLine>, unread: Char, index: Nat) -> MarkComparison {
+  match mark {
+    Empty => Matches
+    Cons { head: ml, tail: mt } =>
+      match read {
+        Empty => Matches
+        Cons { head: rl, tail: rt } => line_then_rest(
+          here: match_segments(segs: ml.segments, got: rl.glyphs, unread: unread),
+          mark: mt,
+          read: rt,
+          unread: unread,
+          index: index
+        )
+      }
+  }
+}
+
+fn line_then_rest(here: LineVerdict, mark: List<MarkLine>, read: List<ReducedLine>, unread: Char, index: Nat) -> MarkComparison {
+  match here {
+    LineNo => Differs { place: line_number_text(i: index) }
+    LineYes => compare_lines(mark: mark, read: read, unread: unread, index: Succ { prev: index })
+    LineMaybe =>
+      match compare_lines(mark: mark, read: read, unread: unread, index: Succ { prev: index }) {
+        Differs { place: p } => Differs { place: p }
+        Matches => Undecidable { cause: UnreadGlyphAtFixedPosition }
+        Undecidable { cause: c } => Undecidable { cause: c }
+      }
+  }
+}
+
+fn compare_reduced(lines: List<MarkLine>, read: List<ReducedLine>) -> MarkComparison {
+  match scalar_of(one: "?") {
+    Absent => Undecidable { cause: ReductionRefused { why: "no scalar could be obtained for the unread-glyph mark" } }
+    Present { value: unread } =>
+      match count_relation(mark: lines, read: read) {
+        ReadingHasFewer => Undecidable { cause: ReadingCoversFewerLines }
+        ReadingHasMore => Differs { place: "line count: the reading has more glyph lines than the published mark" }
+        SameLineCount => compare_lines(mark: lines, read: read, unread: unread, index: 1)
+      }
+  }
+}
+
+fn compare_reading_to_mark(mark: PublishedMark, reading: MarkingReading) -> MarkComparison {
+  match mark {
+    MarkDescribedNotStructured { text: _, why: w } => Undecidable { cause: PublishedMarkDescribed { why: w } }
+    MarkStructured { lines: ls, coverage: cov } =>
+      match cov {
+        ListedOnly => Undecidable { cause: ListedOnlyCannotCertifyWholeMark }
+        Complete =>
+          match reduced_content(c: reading.content) {
+            ReductionUnavailable { why: w } => Undecidable { cause: ReductionRefused { why: w } }
+            Reduced { lines: read } => compare_reduced(lines: ls, read: read)
+          }
+      }
+  }
+}
+
+fn compare_reading_to_row(row: ElectronicComponentRow, reading: MarkingReading) -> MarkComparison {
+  match row.top_marking {
+    Absent => Undecidable { cause: NoPublishedMark }
+    Present { value: m } => compare_reading_to_mark(mark: m, reading: reading)
+  }
+}
+
+fn cause_text(c: MarkUndecidableCause) -> NonEmptyStr {
+  match c {
+    NoPublishedMark => string_join(fields: ["the row publishes no top marking"], separator: "") as NonEmptyStr
+    PublishedMarkDescribed { why: w } => string_join(fields: ["the published mark is described, not structured: ", w as String], separator: "") as NonEmptyStr
+    ListedOnlyCannotCertifyWholeMark => string_join(fields: ["the row lists only some of the published marking, so agreeing listed lines cannot certify the whole mark"], separator: "") as NonEmptyStr
+    ReadingCoversFewerLines => string_join(fields: ["the reading transcribes fewer lines than the published mark has (silence, not dissent)"], separator: "") as NonEmptyStr
+    UnreadGlyphAtFixedPosition => string_join(fields: ["a glyph at a fixed position is unread (?)"], separator: "") as NonEmptyStr
+    ReductionRefused { why: w } => string_join(fields: ["the reading could not be reduced: ", w as String], separator: "") as NonEmptyStr
+  }
+}
+
+// THE JOIN. Identification goes only through identify_by_marking (roster-bound, sealed reliance): a
+// published-mark comparison that is not Matches leaves the part a MarkingCandidate whose discriminator
+// states the typed cause first and the author's question after it. This function never constructs
+// IdentifiedByMarking itself.
+fn identify_by_published_mark(
+  roster: BoardSightings,
+  row: ElectronicComponentRow,
+  readings: MarkingReadingSet,
+  discriminator: NonEmptyStr
+) -> ComponentIdentification {
+  match compare_reading_to_row(row: row, reading: readings.relied_on) {
+    Matches => identify_by_marking(roster: roster, row: row, readings: readings, discriminator: discriminator)
+    Differs { place: p } => MarkingCandidate {
+      row: row,
+      marking: readings.relied_on,
+      discriminator: string_join(fields: ["differs from the published mark at ", p as String, ". ", discriminator as String], separator: "") as NonEmptyStr
+    }
+    Undecidable { cause: c } => MarkingCandidate {
+      row: row,
+      marking: readings.relied_on,
+      discriminator: string_join(fields: ["undecidable against the published mark: ", cause_text(c: c) as String, ". ", discriminator as String], separator: "") as NonEmptyStr
+    }
+  }
+}

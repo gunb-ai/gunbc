@@ -2,7 +2,7 @@ module gunbc.auth.approval_gate
 
 import std.decl_ref { decl_ref }
 import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp }
-import std.measure { Second, second_count }
+import std.measure { Second, second_count, second }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.scoped_authorization {
@@ -161,6 +161,23 @@ fn approval_instant_from_probe(reading: NonEmptyStr?) -> Timestamp? {
 fn approval_instant_now() -> Timestamp? {
   approval_instant_from_probe(reading: clock_now_probed_at())
 }
+
+// THE APPROVAL'S LIFE, STATED ONCE, IN THE MODEL THAT OWNS APPROVALS. How long a filed request stays
+// decidable is a property of the approval, not of the run that filed it: it is what the filing stamps
+// into expires_at, what the poll's fold compares the clock against, and what every wait bound in every
+// caller is measured against. Stating it here rather than per-run is what keeps the two ends of one
+// fact from drifting apart -- a run that polls LONGER than the approval lives meets a runner kill where
+// it had a typed thing to say (run 41972155901 was killed two minutes before its own deadline), and a
+// run that polls LESS throws away a decision the operator was free to give.
+//
+// THE DEFAULT IS FOUR HOURS, quick-newt's pick of 2026-11-05 under the operator's ruling that a
+// 30-minute window lapses before a human can reach the phone; it is a row, not a literal, because the
+// operator may change it. The ceiling on raising it is not taste: the jobs that carry this wait derive
+// their backstop minutes from the step bound this feeds, and extdeps.github.actions
+// max_job_timeout_minutes is 360 -- checked_job_timeout_minutes is the guard that refuses when the
+// arithmetic stops fitting. The expiry itself is KEPT: a stale approval must still lapse safely, which
+// is why a longer window buys a reachable decision rather than a permanently open door.
+data approval_request_window: Second = second(count: 14400)
 
 fn approval_expires_at(issued: Timestamp, window: Second) -> Timestamp {
   Clock.TimestampAdd(timestamp: issued, offset: second_count(s: window)).result
