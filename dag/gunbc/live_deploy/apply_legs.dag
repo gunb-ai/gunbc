@@ -44,6 +44,9 @@ import extdeps.systemd.unit_file { systemd_system_credstore_directory }
 import gunbc.live_deploy.release_locus { approval_broker_helper_root_principal, ReleaseRevisionBinding, RevisionBoundAtEmission, release_revision_execstart_text }
 import gunbc.live_deploy.emit { install_file_shared_mode }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
+import gunbc.host.host_axis_caps { control_shadow_removal_argvs }
+import gunbc.live_deploy.slice_bounds { attempt_worker_slice_unit_name }
+import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property }
 import extdeps.crypto.hash { Digest }
 import std.layout { doc_text, render }
 import extdeps.systemd.unit_file { serialize_systemd_unit_file }
@@ -813,6 +816,22 @@ fn deploy_apply_attempt_drain_plan(spec: DeploymentSpec, revision: ReleaseRevisi
   }
 }
 
+// THE INSTALLED SLICE FILE MUST BE THE EFFECTIVE VALUE. A `systemctl set-property` leaves
+// 50-MemoryMax.conf / 50-MemoryHigh.conf under system.control, and those directories outrank
+// /etc/systemd/system, so srv1's attempt-worker slice read 66 GiB (written 2026-11-04 17:01, modeled
+// nowhere) over the 44 GiB file. This removes exactly the two MEMORY residue files (never swap, never
+// `systemctl revert`, which removes every drop-in:
+// gunbc.recurring_failure_mode a_residue_teardown_removes_every_dropin_of_the_unit_it_names),
+// reusing gunbc.host.host_axis_caps control_shadow_removal_argvs. The daemon-reload that makes the
+// file effective is the lifecycle leg deploy_apply_lifecycle_legs appends after every unit write.
+fn attempt_worker_slice_memory_residue_legs() -> List<DeployApplyLeg> {
+  map(
+    control_shadow_removal_argvs(
+      unit: attempt_worker_slice_unit_name,
+      properties: [systemd_memory_max_property as NonEmptyStr, systemd_memory_high_property as NonEmptyStr]),
+    argv => apply_root_leg(step: "attempt-worker-slice-memory-residue", argv: argv))
+}
+
 fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
   match spec.target.lab_plan {
     LabPlanRefused { cause: c } =>
@@ -825,7 +844,10 @@ fn deploy_apply_worker_sandbox_plan(spec: DeploymentSpec, revision: ReleaseRevis
               ApplyPlanRefused { step: "attempt-worker-slice", reason: join(["live-deploy apply refused: ", c, " (DESIGN 5: refuse, never widen)"], "") }
             AttemptWorkerSliceUnitFileReady { file: f } =>
               deploy_apply_chain(
-                first: ApplyPlanReady { legs: [apply_staged_leg(step: "attempt-worker-slice", dest: gunbc_attempt_worker_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))] },
+                first: ApplyPlanReady { legs: list_append(
+                  left: [apply_staged_leg(step: "attempt-worker-slice", dest: gunbc_attempt_worker_slice_unit_path() as String, payload: apply_unit_text(file_text: serialize_systemd_unit_file(file: f)))],
+                  right: attempt_worker_slice_memory_residue_legs(),
+                ) },
                 rest: deploy_apply_attempt_launcher_plan(spec: spec, revision: revision),
               )
           }

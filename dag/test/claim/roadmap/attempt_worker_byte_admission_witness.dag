@@ -1,0 +1,84 @@
+module test.claim.roadmap.attempt_worker_byte_admission_witness
+
+import std.types { Int, Bool, String }
+import std.measure { byte_size_count }
+import gunbc.live_deploy.slice_bounds { attempt_worker_slice_memory_max }
+import gunbc.roadmap.attempt_worker_byte_admission {
+  InFlightAttemptCap, InFlightCapKnown, InFlightCapUnknown, AttemptByteAdmission,
+  AttemptByteAdmitted, AttemptByteWaits, AttemptByteRefused,
+  attempt_byte_admission_decision, attempt_worker_byte_admission, in_flight_cap_of_reading,
+}
+
+data gib: Int = 1073741824
+
+fn known(n: Int) -> InFlightAttemptCap { InFlightCapKnown { unit: "u", bytes: n * gib } }
+
+// The slice bound the decision reads IS slice_bounds' figure (50 GiB), not a restated one.
+test fn the_bound_is_read_from_slice_bounds() -> Bool {
+  byte_size_count(b: attempt_worker_slice_memory_max) == 50 * gib
+}
+
+// lab: 6 x 8 GiB = 48 admits the sixth (5 in flight + 8 = 48 <= 50)
+test fn the_lab_six_by_eight_admits() -> Bool {
+  match attempt_worker_byte_admission(in_flight: [known(8), known(8), known(8), known(8), known(8)], candidate: 8 * gib) {
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: h } => h == 2 * gib
+    AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } => false
+    AttemptByteRefused { reason: _ } => false
+  }
+}
+
+// live: 3 x 22 = 66 queues the third (44 + 22 > 50); the second still fits (22 + 22 = 44)
+test fn the_live_three_by_twenty_two_queues_the_third() -> Bool {
+  let third = match attempt_worker_byte_admission(in_flight: [known(22), known(22)], candidate: 22 * gib) {
+    AttemptByteWaits { in_flight_declared: d, candidate: _, bound: _ } => d == 44 * gib
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: _ } => false
+    AttemptByteRefused { reason: _ } => false
+  }
+  let second = match attempt_worker_byte_admission(in_flight: [known(22)], candidate: 22 * gib) {
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: h } => h == 6 * gib
+    AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } => false
+    AttemptByteRefused { reason: _ } => false
+  }
+  third && second
+}
+
+// mixed: 2 x 22 + 1 x 8 = 52 > 50 queues
+test fn the_mixed_two_live_and_one_lab_queues() -> Bool {
+  match attempt_worker_byte_admission(in_flight: [known(22), known(22)], candidate: 8 * gib) {
+    AttemptByteWaits { in_flight_declared: _, candidate: c, bound: b } => c == 8 * gib && b == 50 * gib
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: _ } => false
+    AttemptByteRefused { reason: _ } => false
+  }
+}
+
+// exactly at the bound admits (<=), one byte over waits: the positive control on the edge
+test fn the_bound_edge_admits_exactly_and_waits_one_byte_over() -> Bool {
+  let at = match attempt_byte_admission_decision(bound: 100, in_flight: [InFlightCapKnown { unit: "a", bytes: 60 }], candidate: 40) {
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: h } => h == 0
+    AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } => false
+    AttemptByteRefused { reason: _ } => false
+  }
+  let over = match attempt_byte_admission_decision(bound: 100, in_flight: [InFlightCapKnown { unit: "a", bytes: 60 }], candidate: 41) {
+    AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } => true
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: _ } => false
+    AttemptByteRefused { reason: _ } => false
+  }
+  at && over
+}
+
+// an in-flight unit with an unknown cap REFUSES (fail-closed); "infinity" is unknown, never zero
+test fn an_unknown_in_flight_cap_refuses() -> Bool {
+  let inf = in_flight_cap_of_reading(unit: "x", reading: "infinity\n")
+  match attempt_worker_byte_admission(in_flight: [inf], candidate: 8 * gib) {
+    AttemptByteRefused { reason: _ } => true
+    AttemptByteAdmitted { in_flight_declared: _, headroom_after: _ } => false
+    AttemptByteWaits { in_flight_declared: _, candidate: _, bound: _ } => false
+  }
+}
+
+test fn a_decimal_reading_is_a_known_cap() -> Bool {
+  match in_flight_cap_of_reading(unit: "x", reading: "23622320128\n") {
+    InFlightCapKnown { unit: _, bytes: b } => b == 22 * gib
+    InFlightCapUnknown { unit: _, observed: _ } => false
+  }
+}

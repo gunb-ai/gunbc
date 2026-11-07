@@ -1,0 +1,71 @@
+module gunbc.roadmap.attempt_worker_byte_admission
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import gunbc.live_deploy.slice_bounds { attempt_worker_slice_memory_max }
+import std.measure { byte_size_count }
+
+// ── THE HOST-LEVEL BYTE ADMISSION BOUND FOR gunbc-attempt-worker.slice (operator ruling, option A) ──────────
+// THE SLICE IS HOST-GLOBAL: every dashboard instance on the host launches its attempt transients into the one
+// gunbc-attempt-worker.slice, each with its own per-unit MemoryMax (instance.dispatch_worker_memory_max: 8 GiB
+// for the srv1 lab, 22 GiB for the others). The slice's MemoryMax (slice_bounds attempt_worker_slice_memory_max,
+// 50 GiB) bounds the sum of what the kernel lets them hold, but nothing bounded how many were LAUNCHED: three
+// 22 GiB units declare 66 GiB against a 50 GiB slice, and the slice would OOM-kill a victim instead of queueing.
+// THIS is what makes the 50 GiB slice safe: a new transient is admitted only while
+//   sum(declared MemoryMax of attempts in flight in the slice, across EVERY instance) + candidate <= bound.
+// Otherwise the attempt WAITS (it is not a failure and it is not launched). An in-flight unit whose cap cannot
+// be read refuses the decision (fail-closed, DESIGN 5): an unknown cap is not read as zero.
+//
+// The 2026-11-04 peaks of 12.5-18.2 GiB (gunbc.live_deploy.srv1_worker_slice_receipt) PREDATE the per-unit
+// caps; the declared caps are the only bound this decision reads, not those peaks.
+
+type InFlightAttemptCap
+  = InFlightCapKnown { unit: String, bytes: Int }
+  | InFlightCapUnknown { unit: String, observed: String }
+
+type AttemptByteAdmission
+  = AttemptByteAdmitted { in_flight_declared: Int, headroom_after: Int }
+  | AttemptByteWaits { in_flight_declared: Int, candidate: Int, bound: Int }
+  | AttemptByteRefused { reason: String }
+
+fn in_flight_unknown_units(in_flight: List<InFlightAttemptCap>) -> List<String> {
+  flat_map(in_flight, c => match c {
+    InFlightCapKnown { unit: _, bytes: _ } => [] as List<String>
+    InFlightCapUnknown { unit: u, observed: _ } => [u]
+  })
+}
+
+fn in_flight_declared_sum(in_flight: List<InFlightAttemptCap>) -> Int {
+  fold(in_flight, init: 0, f: (acc, c) => match c {
+    InFlightCapKnown { unit: _, bytes: b } => acc + b
+    InFlightCapUnknown { unit: _, observed: _ } => acc
+  })
+}
+
+fn attempt_byte_admission_decision(bound: Int, in_flight: List<InFlightAttemptCap>, candidate: Int) -> AttemptByteAdmission {
+  if candidate <= 0 {
+    AttemptByteRefused { reason: "the candidate attempt has no declared MemoryMax, so its demand on the slice is unknown" }
+  } else if count(in_flight_unknown_units(in_flight: in_flight)) > 0 {
+    AttemptByteRefused { reason: join(["an in-flight attempt's MemoryMax could not be read: ", join(in_flight_unknown_units(in_flight: in_flight), ", ")], "") }
+  } else if in_flight_declared_sum(in_flight: in_flight) + candidate <= bound {
+    AttemptByteAdmitted { in_flight_declared: in_flight_declared_sum(in_flight: in_flight), headroom_after: bound - in_flight_declared_sum(in_flight: in_flight) - candidate }
+  } else {
+    AttemptByteWaits { in_flight_declared: in_flight_declared_sum(in_flight: in_flight), candidate: candidate, bound: bound }
+  }
+}
+
+// THE BOUND IS READ FROM slice_bounds, never restated here.
+fn attempt_worker_byte_admission(in_flight: List<InFlightAttemptCap>, candidate: Int) -> AttemptByteAdmission {
+  attempt_byte_admission_decision(bound: byte_size_count(b: attempt_worker_slice_memory_max), in_flight: in_flight, candidate: candidate)
+}
+
+// A `systemctl show --property=MemoryMax --value` reading: a decimal byte count, or "infinity" / empty / junk,
+// which is an UNKNOWN cap and so refuses.
+fn in_flight_cap_of_reading(unit: String, reading: String) -> InFlightAttemptCap {
+  let t = trim(s: reading)
+  match parse_int(s: t) {
+    Present { value: n } => if n > 0 { InFlightCapKnown { unit: unit, bytes: n } } else { InFlightCapUnknown { unit: unit, observed: t } }
+    Absent => InFlightCapUnknown { unit: unit, observed: t }
+  }
+}

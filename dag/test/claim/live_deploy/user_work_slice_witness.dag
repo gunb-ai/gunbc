@@ -25,6 +25,8 @@ import gunbc.live_deploy.slice_bounds {
   declared_system_slice_memory_maxes, modeled_system_slice_memory_max,
   attempt_worker_slice_unit_name, attempt_worker_slice_memory_max,
 }
+import gunbc.live_deploy.srv1_worker_slice_receipt { PeakBoundHolds, PeakBoundExceeded, attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check, broker_peak_fits }
+import gunbc.live_deploy.slice_bounds { user_work_slot_memory_max, approval_broker_slice_memory_max }
 import gunbc.live_deploy.user_work_pool_slots { user_work_pool_slots, UserWorkPoolSlotsDerived, user_work_charged_slots }
 import gunbc.live_deploy.served_slice_charge {
   user_work_charged_in_served_allowance,
@@ -107,14 +109,47 @@ fn slice_hits(words: List<String>) -> Int {
   filter(words, w => string_contains(s: w, pattern: slice_needle())).length()
 }
 
-test fn user_work_slice_max_is_pool_slots_times_the_runner_ceiling() -> Bool {
+test fn user_work_slice_max_is_pool_slots_times_the_user_work_slot() -> Bool {
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } =>
       slots == user_work_charged_slots
         && byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
-          == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
+          == 47244640256
+        && byte_size_count(b: user_work_slot_memory_max) * 2 == 47244640256
+        && byte_size_count(b: user_work_slot_memory_max) != byte_size_count(b: gunbc_runner_slot_desired().memory_max)
         && byte_size_count(b: user_work_charged_in_served_allowance())
           == byte_size_count(b: user_work_slice_memory_max_of(slots: slots))
+  }
+}
+
+test fn attempt_worker_slice_keeps_two_runner_slots() -> Bool {
+  byte_size_count(b: attempt_worker_slice_memory_max)
+    == byte_size_count(b: gunbc_runner_slot_desired().memory_max) * 2
+    && byte_size_count(b: attempt_worker_slice_memory_max) == 53687091200
+}
+
+test fn the_concurrent_attempt_peak_sum_fits_the_attempt_worker_bound_with_stated_margin() -> Bool {
+  match attempt_worker_concurrent_peak_check(bound: attempt_worker_slice_memory_max) {
+    PeakBoundExceeded { excess: _ } => false
+    PeakBoundHolds { margin: m } => byte_size_count(b: m) == 2952790016
+  }
+}
+
+test fn a_bound_below_the_measured_peak_sum_refuses_rather_than_widening() -> Bool {
+  match attempt_worker_concurrent_peak_check(bound: byte_size(48318382080)) {
+    PeakBoundExceeded { excess: _ } => true
+    PeakBoundHolds { margin: _ } => false
+  }
+}
+
+test fn the_broker_and_user_work_readings_fit_their_declared_bounds() -> Bool {
+  match broker_peak_fits(bound: approval_broker_slice_memory_max) {
+    PeakBoundExceeded { excess: _ } => false
+    PeakBoundHolds { margin: _ } =>
+      match user_work_cgroup_peak_check(bound: user_work_slice_memory_max_of(slots: user_work_charged_slots)) {
+        PeakBoundExceeded { excess: _ } => false
+        PeakBoundHolds { margin: _ } => true
+      }
   }
 }
 

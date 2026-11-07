@@ -177,6 +177,10 @@ import gunbc.live_deploy.slice_bounds {
 import gunbc.live_deploy.user_work_pool_slots {
   user_work_pool_slots, UserWorkPoolSlotsDerived,
 }
+import gunbc.live_deploy.srv1_worker_slice_receipt {
+  PeakBoundCheck, PeakBoundHolds, PeakBoundExceeded,
+  attempt_worker_concurrent_peak_check, user_work_cgroup_peak_check,
+}
 import gunbc.auth.approval_broker_placement { approval_broker_base_url_of_holder }
 import gunbc.auth.approval_broker_endpoint { approval_broker_base_url_env_name }
 import gunbc.owned_directory {
@@ -1412,6 +1416,12 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
   match user_work_pool_slots() {
     UserWorkPoolSlotsDerived { slots } => {
       let max = user_work_slice_memory_max_of(slots: slots)
+      match user_work_cgroup_peak_check(bound: max) {
+        PeakBoundExceeded { excess: _ } =>
+          UserWorkSliceUnitFileRefused {
+            cause: "user-work MemoryMax is below the recorded user-work cgroup peak (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+          }
+        PeakBoundHolds { margin: _ } =>
       match user_work_slice_memory_high_of(memory_max: max) {
         UserWorkSliceHighGapExceedsMax =>
           UserWorkSliceUnitFileRefused {
@@ -1432,6 +1442,7 @@ fn user_work_slice_unit_file() -> UserWorkSliceUnitFile {
             },
           }
       }
+      }
     }
   }
 }
@@ -1441,6 +1452,12 @@ type AttemptWorkerSliceUnitFile
   | AttemptWorkerSliceUnitFileRefused { cause: String }
 
 fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
+  match attempt_worker_concurrent_peak_check(bound: attempt_worker_slice_memory_max) {
+    PeakBoundExceeded { excess: _ } =>
+      AttemptWorkerSliceUnitFileRefused {
+        cause: "attempt-worker MemoryMax is below the measured concurrent attempt peak-sum (gunbc.live_deploy.srv1_worker_slice_receipt); refused, never widened (DESIGN 5)",
+      }
+    PeakBoundHolds { margin: _ } =>
   match attempt_worker_slice_memory_high() {
     UserWorkSliceHighGapExceedsMax =>
       AttemptWorkerSliceUnitFileRefused {
@@ -1460,6 +1477,7 @@ fn attempt_worker_slice_unit_file() -> AttemptWorkerSliceUnitFile {
           install: NotInstallable,
         },
       }
+  }
   }
 }
 

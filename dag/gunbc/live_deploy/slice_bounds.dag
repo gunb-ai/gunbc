@@ -312,11 +312,26 @@ data user_work_slice_high_gap: ByteSize = byte_size(1073741824)
 // the user manager itself, not the work slice's members.
 data user_manager_remainder: ByteSize = byte_size(4294967296)
 
-// MemoryMax IS THE POOL APPROPRIATION, not a transcribed GiB. per-slot bytes are
-// gunbc_runner_slot_desired().memory_max (no longer the ceiling dispatch_worker_memory_max names: that is authored separately since 2026-11-04).
+// MemoryMax IS THE POOL APPROPRIATION: user_work_slot_memory_max x slots. THE PER-SLOT CEILING IS
+// THE USER-WORK POOL'S OWN, DECOUPLED FROM THE 25 GiB BUILD-SIZED RUNNER SLOT (operator direction
+// 2026-11-07 relayed by cool-badger-99: LOWER budgets, the model is the authority). The 2026-11-04
+// ruling above called for this decoupling. 22 GiB is the figure srv1's live user-work slice already
+// carries (2 x 22 GiB = 44 GiB, memory.max 47244640256 read 2026-11-07); the model converges DOWN to
+// live rather than live up to the model. Measured: memory.peak 10080440320 over an 8 h uptime window
+// (snappy-hawk-700, read-only, 2026-11-07). A LOWER ceiling is to be REVISITED from the 30 h cgroup
+// series the parent is sampling (srv1-slices.tsv on snappy-hawk-700's host); that series, not this
+// sentence, is the instrument to re-derive from, and its numbers are not yet recorded here.
 // Slot count is gunbc.live_deploy.user_work_pool_slots -- kept out of this leaf so unit_bounds
 // can import the name here without closing a cycle through roadmap_belt.
+data user_work_slot_memory_max: ByteSize = byte_size(23622320128)
+
 fn user_work_slice_memory_max_of(slots: Nat) -> ByteSize {
+  byte_size(byte_size_count(b: user_work_slot_memory_max) * slots)
+}
+
+// THE ATTEMPT-WORKER SLICE KEEPS THE BUILD-SIZED RUNNER SLOT PER SLOT: its transients are build-sized
+// (12.5-18.2 GB measured peaks, see gunbc.live_deploy.srv1_worker_slice_receipt).
+fn attempt_worker_slice_memory_max_of(slots: Nat) -> ByteSize {
   byte_size(byte_size_count(b: gunbc_runner_slot_desired().memory_max) * slots)
 }
 
@@ -366,7 +381,7 @@ data attempt_worker_slice_unit_name: NonEmptyStr = "gunbc-attempt-worker.slice"
 // transient workers stay bounded by this 2-slot figure even though the belt admits 6 to launch.
 data attempt_worker_slice_charged_slots: Nat = Succ { prev: Succ { prev: Zero } }
 
-data attempt_worker_slice_memory_max: ByteSize = user_work_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)
+data attempt_worker_slice_memory_max: ByteSize = attempt_worker_slice_memory_max_of(slots: attempt_worker_slice_charged_slots)
 
 fn attempt_worker_slice_memory_high() -> UserWorkSliceHigh {
   user_work_slice_memory_high_of(memory_max: attempt_worker_slice_memory_max)
