@@ -988,10 +988,10 @@ test fn sibling_with_function_member_refuses_at_its_own_name_through_a_container
 // key), CENSUS PRESENCE of the exact qualified helper name, and candidate COUNT (1 resolves,
 // 0 refuses via the gate, many give CallableAmbiguous).
 // The prior cross-module cell (v2.std.node Edge) was deleted, not replaced: its subject carried
-// target: Node, and Node is equality-inadmissible corpus-wide (src/v2/std/node.dag:613; seed fold
-// at src/v2/std/node.dag:679-680 is a REFERRING comment naming equality_route_for and
-// equality_root_refused_leaf_names, both DECLARED in v1.compiler.infer (src/v1/04_infer.dag:3587
-// and :3600)), so the cell could only
+// target: Node, and Node is equality-inadmissible corpus-wide (src/v2/std/node.dag:613; the comment
+// at src/v2/std/node.dag:679-680 refers to the gate's symbols equality_route_for and
+// equality_root_refused_leaf_names, both DECLARED in v1.compiler.infer, src/v1/04_infer.dag:3587
+// and :3600), so the cell could only
 // pass by the instrument ignoring the member. Lost coverage stated: positive cross-module census
 // admission remains unexecuted until the bootstrap and this fixture run under a granted workload.
 // Prepared cell (commented out; do not enable without an executed validation grant):
