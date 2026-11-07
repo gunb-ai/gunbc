@@ -2,7 +2,7 @@ module gunbc.serving.srv1_serving_launch
 
 import std.types { String, NonEmptyStr, Port, List }
 import std.optional { Absent, Present }
-import std.measure { token_count_value }
+import std.measure { token_count_value, gibibyte_count }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { FreeSemigroup }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -18,7 +18,7 @@ import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApi
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
-import gunbc.serving.serving_container_allowance { srv1_serving_allowance, wrapper_allowance_verdict, WrapperAllowanceVerdict }
+import gunbc.serving.serving_container_allowance { lmcache_l1_gib, srv1_l1_tier_sizing, srv1_serving_allowance, wrapper_allowance_verdict, WrapperAllowanceVerdict }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, srv1_serving_startup_ground }
 
 // SRV1'S SERVING LAUNCH, MODELED. srv1 (the RTX PRO 6000 Blackwell box, 100.69.18.126) serves
@@ -123,7 +123,7 @@ data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
   hardware: lil_serve_hardware_rtx_pro_6000_pcie,
   environment: [
     lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "56" as NonEmptyStr),
+    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: to_string(gibibyte_count(g: lmcache_l1_gib(a: srv1_serving_allowance, z: srv1_l1_tier_sizing))) as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "150" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),

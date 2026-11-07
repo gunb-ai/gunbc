@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.nat { Nat }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_to_byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count, gibibyte, gibibyte_count, gibibyte_to_byte_size }
 import gunbc.serving.serving_container_allowance {
   ServingContainerAllowance, srv1_serving_allowance, srv1_serving_allowance_running, srv1_inference_slice_limit, srv1_serving_non_reclaimable_demand,
   srv1_serving_non_reclaimable_demand_resized, srv1_l1_tier_sizing, lmcache_l1_gib,
@@ -174,7 +174,7 @@ test fn the_non_reclaimable_floor_fits_the_live_allowance_with_a_stated_margin()
 // = 7989198848, which is at least the anon reading (7952486400) it is meant to absorb doubling.
 test fn the_derived_cache_tier_fits_the_resized_cap_where_the_running_tier_does_not() -> Bool {
   nr_shm_over(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: srv1_serving_non_reclaimable_demand))
-    && lmcache_l1_gib(a: srv1_serving_allowance, z: srv1_l1_tier_sizing) == 56
+    && gibibyte_count(g: lmcache_l1_gib(a: srv1_serving_allowance, z: srv1_l1_tier_sizing)) == 56
     && byte_size_count(b: non_reclaimable_floor(d: srv1_serving_non_reclaimable_demand_resized)) == 68246470656
     && nr_fits_margin(v: non_reclaimable_verdict(a: srv1_serving_allowance, d: srv1_serving_non_reclaimable_demand_resized), n: 7989198848)
 }

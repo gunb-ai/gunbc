@@ -75,13 +75,19 @@ data srv1_l1_tier_sizing: L1TierSizing = L1TierSizing {
   shm_resident_overhead: byte_size(count: 164442112),
 }
 
-fn lmcache_l1_gib(a: ServingContainerAllowance, z: L1TierSizing) -> Nat {
+fn lmcache_l1_gib(a: ServingContainerAllowance, z: L1TierSizing) -> Gibibyte {
   let reserved = 2 * byte_size_count(b: z.anon) + byte_size_count(b: z.shm_resident_overhead)
   if reserved > byte_size_count(b: a.memory) {
-    0
+    gibibyte(count: 0)
   } else {
-    (byte_size_count(b: a.memory) - reserved) / 1073741824
+    gibibyte(count: (byte_size_count(b: a.memory) - reserved) / 1073741824)
   }
+}
+
+// THE TIER'S RESIDENT BYTES, one unit: LMCACHE_L1_GB counts GiB (the 164442112 B overhead reading is the
+// resident 107538624512 B minus 100 * 2^30), so the tier is converted through std.measure, never by 10^9.
+fn lmcache_l1_resident(a: ServingContainerAllowance, z: L1TierSizing) -> ByteSize {
+  byte_size(count: byte_size_count(b: gibibyte_to_byte_size(g: lmcache_l1_gib(a: a, z: z))) + byte_size_count(b: z.shm_resident_overhead))
 }
 
 // The swap the container may use. Absent when memory_swap_total is below memory, which docker refuses.
@@ -262,8 +268,8 @@ data srv1_serving_non_reclaimable_demand: NonReclaimableDemand = NonReclaimableD
 // floor against a 76,235,669,504 B allowance: 7,989,198,848 B of margin, at least the anon reading itself.
 // Planned until the relaunch; the post-change readback replaces it with a reading.
 data srv1_serving_non_reclaimable_demand_resized: NonReclaimableDemand = NonReclaimableDemand {
-  shm_resident: byte_size(count: 60293984256),
-  anon: byte_size(count: 7952486400),
+  shm_resident: lmcache_l1_resident(a: srv1_serving_allowance, z: srv1_l1_tier_sizing),
+  anon: srv1_l1_tier_sizing.anon,
   provenance: "PLANNED, not read: LMCACHE_L1_GB=56 (56 * 2^30 = 60129542144 B) plus the 164442112 B resident overhead read at L1=100, with anon 7952486400 B read 2026-11-07T17:39:25Z" as NonEmptyStr,
 }
 

@@ -346,7 +346,7 @@ data srv1_vllm_engine_memory: ServingEngineMemory = ServingEngineMemory {
   memory_cap: ServingMemoryRead { bytes: srv1_serving_allowance.memory, provenance: "gunbc.serving.serving_container_allowance srv1_serving_allowance: the one allowance the launch wrapper is checked against and the host budget charges; resized from the running 139586437120 (docker inspect 2026-11-07T17:39Z) so srv1 keeps its 3 CI slots once charged; takes effect at the operator-gated relaunch" as NonEmptyStr },
   swap_cap: srv1_vllm_swap_reading(),
   base: ServingMemoryUnread { reason: "srv1 vLLM base: the container's memory with LMCache L1 empty, read after its next start" as NonEmptyStr },
-  conversation_cache: ServingMemoryRead { bytes: byte_size(count: lmcache_l1_gib(a: srv1_serving_allowance, z: srv1_l1_tier_sizing) * 1000000000), provenance: "LMCache L1_GB derived by gunbc.serving.serving_container_allowance lmcache_l1_gib from the one allowance (56; the running container still carries 100, read by calm-crab-645 2026-10-30); LMCache's GB is taken as 10^9 bytes and that reading is unconfirmed" as NonEmptyStr },
+  conversation_cache: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: lmcache_l1_gib(a: srv1_serving_allowance, z: srv1_l1_tier_sizing)), provenance: "LMCache L1_GB derived by gunbc.serving.serving_container_allowance lmcache_l1_gib from the one allowance (56; the running container still carries 100, read by calm-crab-645 2026-10-30); L1_GB counts GiB, the unit the resident-overhead reading (107538624512 B at L1=100) fixes" as NonEmptyStr },
   conversation_slots: Absent,
 }
 
