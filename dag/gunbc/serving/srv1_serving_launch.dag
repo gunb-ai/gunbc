@@ -551,7 +551,10 @@ fn srv1_serving_group_selection(group: Srv1ServingGpuGroup) -> Srv1ServingDevice
 
 // The docker `--device` words: two tokens per admitted device (`--device` then the CDI device selector from
 // extdeps.container.nvidia_container_toolkit). A pending member contributes NOTHING, so a TP=2 group that
-// cannot fully resolve renders no device at all — never one, never `all`.
+// cannot fully resolve renders NO device — never one, never `all`. Such a body is not an installable wrapper:
+// srv1_serving_wrapper_adoption reports Srv1ServingWrapperNotInstallable (and srv1_serving_device_gate refuses
+// the deploy install), so no plausible GPU-less container is ever staged (DESIGN 5: no plausible output is
+// fabricated — the model refuses instead).
 fn srv1_serving_docker_device_words_of(members: List<Srv1ServingDeviceMember>) -> List<NonEmptyStr> {
   members.flat_map(m => match m {
     Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: _ } => ["--device" as NonEmptyStr, nvidia_cdi_device_selector_of(uuid: u)]
@@ -598,19 +601,25 @@ fn srv1_serving_device_gate() -> Srv1ServingDeviceGate {
   }
 }
 
-// The device-selection authority the installed wrapper must carry, and the state of the wrapper against the
-// host the running container was launched from (gunbc.host.srv1_serving_startup_receipt wrapper_sha256_hex).
-// The model body is ahead of the running host whenever the two shas differ: that divergence is a DECLARED,
-// TYPED pending relaunch the OPERATOR performs — NOT a red witness and NOT an automatic restart (this module
-// never stops or starts the live container; see gunbc.recurring_failure_mode
-// a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it).
+// The state of the installed wrapper against the host the running container was launched from
+// (gunbc.host.srv1_serving_startup_receipt wrapper_sha256_hex).
+//
+//  - Refused group → Srv1ServingWrapperNotInstallable. When the declared group cannot resolve to a fully
+//    admitted set there is NOTHING to install: srv1_serving_docker_device_words renders no device, and rather
+//    than present a plausible GPU-less `docker run` as an installable body (DESIGN 5: no plausible output is
+//    fabricated), the model says outright it is not installable. It is the SAME condition
+//    srv1_serving_device_gate reports (the deploy consults the gate), so the wrapper the boot unit could stage
+//    is never a silent no-device container.
+//  - Admitted group → the model body is Adopted once its sha equals the running wrapper's, and
+//    PendingOperatorRelaunch while it is ahead of the host: a DECLARED, TYPED relaunch the OPERATOR performs —
+//    NOT a red witness and NOT an automatic restart (this module never stops or starts the live container; see
+//    gunbc.recurring_failure_mode a_relaunch_from_the_retained_wrapper_reverts_an_image_applied_outside_it).
 type Srv1ServingWrapperAdoption
-  = Srv1ServingWrapperAdopted { wrapper_sha256_hex: NonEmptyStr }
+  = Srv1ServingWrapperNotInstallable { reason: NonEmptyStr }
+  | Srv1ServingWrapperAdopted { wrapper_sha256_hex: NonEmptyStr }
   | Srv1ServingWrapperPendingOperatorRelaunch { running_sha256_hex: NonEmptyStr, installed_sha256_hex: NonEmptyStr, obligation: NonEmptyStr }
 
-fn srv1_serving_wrapper_adoption() -> Srv1ServingWrapperAdoption {
-  let installed = sha256_hex_of_text(text: srv1_serving_wrapper.body) as NonEmptyStr
-  let running = srv1_serving_startup_reading.wrapper_sha256_hex
+fn srv1_serving_wrapper_installed_vs_running(installed: NonEmptyStr, running: NonEmptyStr) -> Srv1ServingWrapperAdoption {
   if installed == (running as String) {
     Srv1ServingWrapperAdopted { wrapper_sha256_hex: running }
   } else {
@@ -621,6 +630,23 @@ fn srv1_serving_wrapper_adoption() -> Srv1ServingWrapperAdoption {
     }
   }
 }
+
+fn srv1_serving_wrapper_adoption() -> Srv1ServingWrapperAdoption {
+  let installed = sha256_hex_of_text(text: srv1_serving_wrapper.body) as NonEmptyStr
+  let running = srv1_serving_startup_reading.wrapper_sha256_hex
+  match srv1_serving_device_gate() {
+    Srv1ServingDeviceGateRefused { reason: r } => Srv1ServingWrapperNotInstallable { reason: r }
+    Srv1ServingDevicesAdmitted {} => srv1_serving_wrapper_installed_vs_running(installed: installed, running: running)
+  }
+}
+
+// THE DECLARED CLOSURE TRIGGER the wrapper frontier row dissolves into (gunbc.std.dissolution bound_dissolution):
+// the modelled condition under which the operator's relaunch obligation is DISCHARGED. It resolves to the
+// adoption condition above — the row retires when this reports Srv1ServingWrapperAdopted (a startup receipt reads
+// the running wrapper's sha equal to the installed body's). It is a real declaration, not a forward reference to
+// an unbuilt row, so the frontier row names a trigger that EXISTS (DESIGN 4b "a class below ceiling names its
+// next-rung trigger"; DESIGN 3 "a home that does not resolve is a citation defect").
+data srv1_serving_device_flag_adoption_node: Srv1ServingWrapperAdoption = srv1_serving_wrapper_adoption()
 
 // ── the enrollment row: this launch, routable, with a declared ceiling ───────────────────────
 //
