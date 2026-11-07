@@ -794,7 +794,16 @@ data run_closure_typecheck_exceeds_eval_demand: IntegrationConcern = Integration
       },
       account: "Bisect of the private projection-drift regression (2026-11-05) and two isolated srv1 runs (qn-roster-peak40: roster cgroup peak 35.88 GiB; qn-auditpacket-peak40: audit_packet_witness VmHWM 26.84 GiB) put roughly 13-16 GiB of each private lane in pre-entry typecheck and the rest in one whole-pool burst plus per-witness evaluation. The same floor shows up as wall time on small entries: a read-only runner_host_file_observe on srv3 (run 42037046961) spent its whole 15-minute step typechecking v2.compiler modules its entry's closure names and timed out before reading a drop-in. Recorded so a lane blocked on it can cite a named cause rather than an assertion; no fix is designed.",
     },
-    tail: [],
+    tail: [
+      ConcernSighting {
+        revision: "153b7f953e1a02d39b6c6402c603e50a21eef6b8",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_cap_release_ci_wet") },
+          tail: [CitesDeclaration { declaration: decl_ref(module_path: "gunbc.runner.runner_host_cap_bracket", decl_name: "release_owned_slots_over") }],
+        },
+        account: "Duplicate whole-closure load inside one fleet-converge job. The release/cleanup step runs as `gunbc run --entry dag/gunbc/runner/runner_host_file_converge.dag --function runner_host_cap_release_ci_wet`, so it pays the SAME whole-converge pre-entry again (observed 31.7 min, found nothing owed) after the apply step already paid it (~32 min). Static import-closure (no run) shows why splitting a module is the wrong lever: runner_host_file_converge is 1017 gunbc modules; every release helper (release_decision_of, release_owned_slots_over, release_verdict_of, release_verdict_is_settled, read_bracket_obligation, release_receipt_text, runner_host_cap_obligation_identity) lives in runner_host_cap_bracket, whose own closure is 935 gunbc modules because it pulls the census->workflow-emit subtree (fleet_targeted_wait_bound); the finalizer entry also calls runner_host_file_subject, which reaches fleet-host-deploy-authority + executor-bootstrap + slot-deploy + retirement. So the reload is about 83 percent whole-closure typecheck -- which the reachability-scoped typecheck named on this row removes for every entry at once. Extracting modules to shrink this one closure would be redundant with that change (DESIGN 2: do not build what that change makes redundant), and the extracted pure functions would have no consumer beyond testability. Deferred rather than built; recorded so the decision is not re-litigated per lane.",
+      },
+    ],
   },
   disposition: Open,
 }
