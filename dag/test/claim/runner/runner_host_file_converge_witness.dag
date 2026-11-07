@@ -509,24 +509,24 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
         && (known_hosts_host_field(address: s.target.address) as String) == "srv1"
         && length(s.desired_units) >= 1
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
-        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
   }
 }
 
 // THE OBSERVE ROSTER sleek-owl-397 READS: runner_host_file_subject is what observe builds
-// before any SSH. On srv1, committed width 3 (user-work 88 GiB plus the stacked attempt-worker
-// slice) desires the deploy slot 02 ALONE (it is charged before the CI prefix, so 01 is a retiree at the 25 GiB slot);
-// fabric member 13 is not a retiree; the union of open rows retires 01, 03..12 and 15..50.
+// before any SSH. On srv1, committed width 4 (memory width 3 plus the declared transitional CI slot, operator
+// option (a) 2026-11-05) desires the deploy slot 02 (charged first) and the transitional srv1-01;
+// fabric member 13 is not a retiree; the union of open rows retires 03..12 and 15..50.
 test fn observe_on_srv1_lists_open_transition_retirees() -> Bool {
   match runner_host_file_subject(host: operator_host_srv1) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
-      length(s.desired_units) == 1
-        && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
+      length(s.desired_units) == 2
+        && any(s.desired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && any(s.desired_units, u => (u as String) == "actions-runner@srv1-02.service")
-        && any(s.retired_units, u => (u as String) == "actions-runner@srv1-01.service")
+        && !any(s.retired_units, u => (u as String) == "actions-runner@srv1-01.service")
         && !any(s.desired_units, u => (u as String) == "actions-runner@srv1-03.service")
-        && length(s.retired_units) == 47
+        && length(s.retired_units) == 46
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-03.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-04.service")
         && any(s.retired_units, u => (u as String) == "actions-runner@srv1-12.service")
