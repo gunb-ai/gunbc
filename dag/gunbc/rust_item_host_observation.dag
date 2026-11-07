@@ -53,7 +53,7 @@ import std.integer { int_to_decimal_string }
 // THE FAIL-CLOSED RULE THIS MODULE EXISTS TO HOLD: a changed hand-written Rust region that cannot
 // be attributed to an item REFUSES; it never reports an empty delta. An unattributed change
 // rendered as "nothing changed" is DESIGN's empty-observation narrow -- worse than the widen
-// section 5 forbids, since a widen is merely expensive while a narrow is silently uncovered -- and
+// gunbc.design_argument::fail_closed forbids, since a widen is merely expensive while a narrow is silently uncovered -- and
 // the one failure that would make the admission join read green while admitting what it exists to
 // refuse.
 // Supplies RustItemChangeObservation over merge-base-to-HEAD (added, modified and deleted hand
@@ -78,7 +78,7 @@ type RustSourceNamespaceRow {
 // in gunbc.stage0.stage0_rust_source_lifecycle_scaffold as discovery hints; the tooling namespace row needs
 // the same prefix, importing it from the scaffold would close a cycle (scaffold ->
 // seed_growth_admission -> this module), and restating the literal is the second representation
-// DESIGN section 3 forbids. So the four constants live in the layer that owns "where hand Rust
+// gunbc.design_argument::single_authority forbids. So the four constants live in the layer that owns "where hand Rust
 // lives and what namespace it carries", and the scaffold imports them from here.
 data rust_source_prefix_test_harness: String = "src/v1/tests/"
 
@@ -368,7 +368,7 @@ fn parse_hunk_header(header: String) -> HunkRangeParse {
 
 // THE CURRENT FILE'S RANGES ACCUMULATE IN THE STATE AND ARE FLUSHED ONCE, not merged into the files
 // list per hunk: that form walked every collected file on every hunk, cost files times hunks -- the
-// copied-accumulator shape DESIGN section 6 says is always fixed regardless of realized n.
+// copied-accumulator shape gunbc.design_argument::how_to_work says is always fixed regardless of realized n.
 type DiffRangeFoldState {
   files: List<RustFileChangedRanges>
   current_path: String
@@ -549,7 +549,7 @@ fn change_state_refuse(state: RustChangeFoldState, refusal: RustItemChangeObserv
 }
 
 // MEMBERSHIP IS A SET LOOKUP AND NOT A LINEAR SCAN PER ITEM. Scan-per-item costs items squared, and
-// cli_run.rs alone carries thousands; DESIGN section 6 fixes a proven cost shape regardless of the
+// cli_run.rs alone carries thousands; gunbc.design_argument::how_to_work fixes a proven cost shape regardless of the
 // realized n, because n is not a time-stable fact.
 fn item_key_set(items: List<RustItemIdentity>) -> Set<String> {
   fold_list(
@@ -1156,7 +1156,7 @@ fn observe_current_live_hand_rust() -> LiveHandRustObservation {
 //
 // gunbc.v1.v1_consumer_census needs "who in Rust reaches v1_rt / v1_interpreter" at consumer x
 // consumed-authority grain, and until this producer existed it answered with four hand-named crate
-// roots (v1_shim_items) -- a measurement copied from the tree, which DESIGN section 5 refuses as an
+// roots (v1_shim_items) -- a measurement copied from the tree, which gunbc.design_argument::fail_closed refuses as an
 // oracle. What was missing was not a new authority (the scan, the identity and the projection all
 // exist above) but the FOLD: take the live surface, keep the files whose text carries a token, scan
 // those, attribute every token-carrying line to the innermost item enclosing it, and project that

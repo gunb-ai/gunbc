@@ -11,7 +11,7 @@ data enforcement_exhibits_the_shape_it_refuses: RecurringFailureMode = Recurring
   receipts: [
     "**the machinery that enforces an invariant is itself written in the shape that invariant refuses** (INVALID STATE: a gate, lens or fold rejects a construction, and the code performing that rejection contains the same construction. The check is correct, the refusal is real, and the enforcement is a standing instance of the class it exists to eliminate -- so the corpus's own worst example of the defect lives in the one place that cannot report it.",
 
-    "**THE DISCRIMINATOR: the subject of the check and the implementation of the check exhibit the same property, and only the subject is judged.** DESIGN section 7 states the general obligation -- every principle governs the system that implements it -- and this is the failure of that obligation in the direction nobody looks, because the enforcement's own code is read as infrastructure rather than as a subject.",
+    "**THE DISCRIMINATOR: the subject of the check and the implementation of the check exhibit the same property, and only the subject is judged.** gunbc.design_argument::self_hosting states the general obligation -- every principle governs the system that implements it -- and this is the failure of that obligation in the direction nobody looks, because the enforcement's own code is read as infrastructure rather than as a subject.",
 
     "HARM, and it is not hypothetical cost. The enforcement runs on EVERY subject, so its own violation is multiplied by the corpus while each judged instance is paid once. A quadratic fold inside a linear-cost lens is the lens's dominant cost, and it is charged to every compile that the lens protects.",
 
@@ -27,7 +27,7 @@ data enforcement_exhibits_the_shape_it_refuses: RecurringFailureMode = Recurring
 
     "CEILING: structurally guaranteed. Whether a declaration exhibits a modelled shape is exactly the question the lenses already answer, so the enforcement becoming a SUBJECT of the lens it implements is a coverage question rather than a new capability -- the lens walks a corpus, and the corpus can include the compiler.",
 
-    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the required-lens gates applied to the compiler's own modules as ordinary subjects, so `v2.compiler.compile` is judged by the roster it runs. Self-application is what DESIGN section 7 already claims; this trigger is that claim made executable rather than asserted.)",
+    "NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the required-lens gates applied to the compiler's own modules as ordinary subjects, so `v2.compiler.compile` is judged by the roster it runs. Self-application is what gunbc.design_argument::self_hosting already claims; this trigger is that claim made executable rather than asserted.)",
   ],
 
   evidence: [],

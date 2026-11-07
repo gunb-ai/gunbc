@@ -12,7 +12,7 @@ import std.bignat {
 // gunbc#11645). The wall establishes that no caller OUTSIDE std.bignat can mint a carrier with
 // negative or oversized limbs. It establishes nothing about whether the module's OWN constructions
 // preserve the limb invariant they all reason from, and a wall whose protected interior is never
-// exercised is specification-without-execution (DESIGN 5).
+// exercised is specification-without-execution (gunbc.design_argument::fail_closed).
 //
 // SO THESE CLAIMS RUN THE REAL PRODUCERS AND READ THEIR ANSWERS. They are deliberately small-modulus
 // rather than P-256 sized: the subject is whether Montgomery arithmetic over this carrier returns

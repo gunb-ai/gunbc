@@ -196,7 +196,7 @@ fn harness_premise_text(p: HarnessPremise) -> String {
 // nothing else"), so workers iterated with the widest pattern and paid a compiler build per edit.
 // The scoped-iteration conclusion is derived from the three premises that make it true -- the
 // pattern selects modules, a changed tree rebuilds, and acceptance is the contract validation --
-// so deleting any of them removes the imperative. This is still guidance (mitigation, DESIGN §4b
+// so deleting any of them removes the imperative. This is still guidance (mitigation, gunbc.design_argument::guarantee_ladder
 // rung 1); its climb is the harness refusing a whole-tree pattern and deriving the narrow pattern
 // from the diff's import closure. The exact call is spelled by gunbc.harness.harness_tool harness_validate_worktree_call, from the
 // tool's own wire members, so the prompt and the tool cannot drift apart, and the withheld capability

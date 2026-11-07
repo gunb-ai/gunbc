@@ -211,7 +211,7 @@ fn first_collector_gap(profile: PreOsObservationCapabilities, collectors: List<C
 // then every required collector's proof; the first gap refuses and nothing downstream of it is
 // constructed. On a platform whose console capability is SolAbsent there is no session to hold,
 // so an honestly absent lease is not a gap there (review 64441); demanding one would be the
-// over-generalised prohibition DESIGN section 4d names. The lease decision and the construction
+// over-generalised prohibition gunbc.design_argument::epistemic_humility names. The lease decision and the construction
 // live in ONE function so no helper can be handed an unchecked lease and asked to construct
 // (review 64457). Note what is NOT an input: a power action. Readiness is decided with no
 // knowledge of what will be done, so it cannot be relaxed for a "harmless" one.
@@ -358,7 +358,7 @@ fn power_actuation_outcome(request: PowerActuationRequest, ack: ControllerAcknow
 // ── the declared frontier ──────────────────────────────────────────────────────────────────────
 
 // THE EFFECTFUL ISSUER IS NOT IN THIS CHANGE, AND THIS ROW SAYS SO RATHER THAN LEAVING A func THAT
-// NOTHING CALLS (DESIGN section 3c). Producing a CollectorsReady from live instruments means
+// NOTHING CALLS (gunbc.design_argument::consumption). Producing a CollectorsReady from live instruments means
 // spawning the console capture under a held lease, reading the SEL cursor, and observing the
 // controller reachable, then handing the request to extdeps.bmc.ipmi ChassisPowerControl and
 // reading its exit status into a ControllerAcknowledgement. That orchestrator is the capability

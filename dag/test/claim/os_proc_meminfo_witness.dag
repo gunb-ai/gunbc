@@ -35,7 +35,7 @@ test fn proc_meminfo_witnesses() -> Bool {
 // OF THEM HAS NO OTHER WITNESS. A UNITLESS line (`HugePages_Total: 0`) is excluded by the arity
 // requirement; a line with the WRONG unit (`SomeFutureField: 64 MB`) is excluded only by the unit
 // COMPARISON, and nothing in /proc/meminfo authors that shape today -- so without the fixture the
-// comparison would be a permanently green decoration (DESIGN 4b: ask whether the RED is authorable
+// comparison would be a permanently green decoration (gunbc.design_argument::guarantee_ladder: ask whether the RED is authorable
 // before writing the check, and a fixture is where it is authorable). Found by mutating the
 // comparison away and watching this cell stay GREEN.
 //

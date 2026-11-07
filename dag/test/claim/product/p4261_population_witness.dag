@@ -341,7 +341,7 @@ test fn a_component_is_bound_only_to_its_own_boards_revision() -> Bool {
   // at 191 parts. A DesignatorReading is a sighting of printed text; an InstalledComponent is an observation
   // of a body. Binding the two is what admit_correspondence does, so it must refuse the readings whose
   // part this board has never been shown -- giving such a row an InstalledComponent would assert an
-  // installation nobody observed (DESIGN §4d). The numbers are pinned, not derived from the code under test:
+  // installation nobody observed (gunbc.design_argument::epistemic_humility). The numbers are pinned, not derived from the code under test:
   // if a future edit starts binding unobserved parts, this claim goes red rather than following along.
   // The 2026-11-03 body sightings move exactly 66 of them from refused to admitted, so 191 + 66 = 257 and
   // 71 - 66 = 5 -- until the 2026-11-04 C3_F1 correction deleted that position's DesignatorReading, which

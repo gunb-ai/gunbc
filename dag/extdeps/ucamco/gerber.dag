@@ -40,7 +40,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // compatibility projection hardcoding 'X2' would have pinned the wrong revision of a live upstream
 // on the strength of recollection. WHY THIS IS A SEPARATE SUBJECT FROM IPC-DPMX: Ucamco and the
 // IPC-2581 Consortium are independently governed, so a single 'PCB output format' enum spanning
-// both would fuse two upstreams into one nickname (DESIGN §3). THE LOAD-BEARING FACT FOR A
+// both would fuse two upstreams into one nickname (gunbc.design_argument::single_authority). THE LOAD-BEARING FACT FOR A
 // MANUFACTURING HANDOFF is the carriage roster below, not the revision: layer imagery travels in
 // the layer format, fabrication characteristics in a SEPARATE job file, and connectivity/BOM/
 // placement not in the image files at all. That asymmetry is why 'we emitted Gerbers' is not 'we
@@ -54,7 +54,7 @@ data gerber_format: GerberFormat = GerberFormatTarget
 
 // Carriage rows reuse extdeps.ipc.dpmx's ManufacturingSemantic axis deliberately: the axis is
 // "what a manufacturing projection can carry", one concept, and forking a parallel
-// GerberSemantic enum would duplicate it at the meaning layer (DESIGN §2/§3). The upstream
+// GerberSemantic enum would duplicate it at the meaning layer (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). The upstream
 // authorities stay separate; only the shared question they both answer is shared.
 data gerber_semantic_carriage: List<FormatSemanticRow> = [
   FormatSemanticRow {

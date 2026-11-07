@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, MechanicallyPreventable }
 
-// THE DECLARED SCAFFOLD for the interim literal-only where-refinement judgment (DESIGN 4b(3), 3b). Ruling
+// THE DECLARED SCAFFOLD for the interim literal-only where-refinement judgment (gunbc.design_argument::guarantee_ladder (no silent regression), 3b). Ruling
 // where_refinements_retire_for_checked_constructors (2026-10-02) said no infer judgment is coming: refinements
 // become checked constructors returning Optional. The operator decision of 2026-10-23, recorded as gunbc.design_ruling literal_only_refinement_judgment_is_interim, admits ONE exception: a
 // string/int literal at a call argument or record field whose declared type is a `where` refinement of the

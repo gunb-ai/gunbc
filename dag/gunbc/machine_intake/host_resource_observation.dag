@@ -37,7 +37,7 @@ import product.fabric.supply { UnmetShapeAxis, unmet_shape_axes }
 // supplier offer is judged by. Every field is a std.goal_assessment ObservationAttempt: a field that
 // is missing or malformed is ObservationRefused with its cause, never a zero.
 //
-// DECLARED FRONTIER (DESIGN 3c): publishing this reading into the host's product.capacity.pool (the
+// DECLARED FRONTIER (gunbc.design_argument::consumption): publishing this reading into the host's product.capacity.pool (the
 // gunbc.compute.host_capacity appropriation) is triggered by the host's FABRIC ENROLMENT -- a
 // HostDashboardInstance naming it -- which mtcollins1 does not have yet. Until then the executing
 // consumers are host_topology_assessment and host_workload_eligibility below.

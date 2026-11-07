@@ -501,7 +501,7 @@ data curated_cargo_probe_record_fold_accumulator_reason: Symbol = ^curated_cargo
 // FN-SIG/closure-param TYPE position (render_rust_fn_sig_type and 4 sibling fns in 05_emit_rust,
 // e.g. a closure param typed impl Fn(v2.lens.foo.Bar) -> bool rendering the dotted name literally)
 // — fixed the same way, one shared rust_fn_sig_leaf_name helper wrapping qualified_last_segment,
-// reused at all 5 call sites (DESIGN section 3: single authority, no forked per-site patch). A
+// reused at all 5 call sites (gunbc.design_argument::single_authority: single authority, no forked per-site patch). A
 // fifth and sixth sibling defect (VALUE-expression position in emit_value_ref_ident, CALL-callee
 // position in emit_typed_call) were folded in the same session, both re-keyed on
 // qualified_last_segment rather than the raw dotted string. Re-probed by execution

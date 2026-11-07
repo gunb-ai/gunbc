@@ -12,7 +12,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // 2026-08-19) replaced the ReprGroundingDeriveTrait coproduct -- sixteen Rust and serde trait names
 // sitting in a std interface -- and moved every Rust-specific row into
 // extdeps.languages.rust.capabilities, so a new target is ROWS in its own extdeps module and never
-// an edit to this fold (DESIGN section 4 N-times-M). WHY THE CARRIER IS A TYPE PARAMETER AND NOT A
+// an edit to this fold (gunbc.design_argument::closed_grounded_substrate N-times-M). WHY THE CARRIER IS A TYPE PARAMETER AND NOT A
 // TYPE, which is the part that was learned the expensive way: an intermediate revision of this
 // migration declared TargetCapabilityKey HERE as Symbol where brand(...), which forced import
 // v2.std.node into this module. required_regen_host compiles stage0 from regen_input_sources, whose

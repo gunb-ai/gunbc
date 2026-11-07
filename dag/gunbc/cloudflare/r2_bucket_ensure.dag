@@ -68,7 +68,7 @@ import gunbc.auth.secret_ref_credential {
 // independent read of the bucket (goal-blind: the Get takes the name the roster allocated and
 // returns what the account answered), a POINT classification pairing a verdict with Noop | Apply |
 // Refuse, the one Apply the classifier can choose (create the bucket), and a readback by a second
-// Get that must itself classify Converged. Selection happened earlier and elsewhere (DESIGN 3d):
+// Get that must itself classify Converged. Selection happened earlier and elsewhere (gunbc.design_argument::selection_precedes_convergence):
 // which purposes exist, which bucket each gets and in which jurisdiction are the roster's and the
 // standing's; this module chooses none of them.
 //

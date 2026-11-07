@@ -13,7 +13,7 @@ module gunbc.scm.status
 // working tree and NO remote anywhere in it. So modified-files, staged-versus-unstaged BY PATH,
 // ahead/behind, and current-branch cannot appear -- not deferred, but unproducible: no fact in the
 // envelope yields them. A status surface reporting any of them would be fabricating, which is
-// exactly the plausible-output failure DESIGN section 5 forbids at a user-facing boundary.
+// exactly the plausible-output failure gunbc.design_argument::fail_closed forbids at a user-facing boundary.
 //
 // THE STRUCTURE IS THE MODEL AND THE TEXT IS ONE REALIZATION OF IT. repository_status answers a
 // typed value; render_repository_status is a projection of that value. They are split because a
@@ -93,14 +93,14 @@ type StagedRole
 
 // THE COMMIT COUNT AND THE CHECKED-OUT COMMIT, NOT THE WHOLE LOG. A `log` verb will exist and will
 // own what happened; status owning it too would be two surfaces for one fact, which is the
-// redundancy DESIGN section 2 prices and the second authority section 3 forbids. This is the least
+// redundancy gunbc.design_argument::minimize_redundancy prices and the second authority gunbc.design_argument::single_authority forbids. This is the least
 // forced of the decisions here, since `log` does not exist yet -- but building status to duplicate a
 // verb we know is coming buys nothing, and shrinking a published surface later is harder than
 // growing one.
 //
 // THE OBJECT-STORE POPULATION IS DELIBERATELY ABSENT. A store object count is a fact about
 // REPRESENTATION, not about the author's intent state, and below-boundary representation is opaque
-// (DESIGN section 3). A reader who needs it wants a store-inspection verb, not status.
+// (gunbc.design_argument::single_authority). A reader who needs it wants a store-inspection verb, not status.
 //
 // THE PENDING PROPOSAL IS IN STATUS RATHER THAN BEHIND ITS OWN VERB, because "what have I staged
 // that is not committed" is the primary question status exists to answer -- and given how little

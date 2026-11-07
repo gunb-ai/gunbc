@@ -99,7 +99,7 @@ type RunnerSlotAddSequence
 // the filtered remainder would download GitHub's runner in order never to run it. A compute-fabric
 // slot is a different payload, not a GitHub runner with pieces removed, and its provisioning
 // sequence is not modeled yet. A plausible subsequence would be the fabricated-plausible-output
-// failure DESIGN section 5 forbids; refusing names the gap and stops the line.
+// failure gunbc.design_argument::fail_closed forbids; refusing names the gap and stops the line.
 //
 // THE FABRIC SLOT HAS NO PROVISIONING SEQUENCE, HERE OR ANYWHERE, AND THIS ANNOTATION SAID
 // OTHERWISE. A previous revision claimed the fabric slot's own provisioning sequence "now exists",
@@ -108,8 +108,8 @@ type RunnerSlotAddSequence
 // existed: the PR that wrote the sentence deleted the FabricCellProvisionStep vocabulary in the
 // same diff and replaced it with a membership model, so the annotation described the shape the work
 // started from. It is corrected rather than deleted because the reason the families stay apart is
-// still load-bearing, and because a fabricated symbol in a citation is the exact defect DESIGN
-// section 3 makes symbolic citation decidable to catch (found by side-chat review, not by any
+// still load-bearing, and because a fabricated symbol in a citation is the exact defect
+// gunbc.design_argument::single_authority makes symbolic citation decidable to catch (found by side-chat review, not by any
 // gate).
 //
 // WHAT gunbc.fabric.fabric_cell_converge ACTUALLY MODELS: the fabric family's DESIRED AND OBSERVED

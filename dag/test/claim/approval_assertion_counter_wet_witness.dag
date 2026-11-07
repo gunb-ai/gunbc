@@ -161,7 +161,7 @@ fn admit_sequentially(root: String, enrollment_id: NonEmptyStr, next: Int, last:
   }
 }
 
-// THE CLAIM THAT WOULD HAVE CAUGHT THE CLIFF, AT ONE INTERFACE (DESIGN section 3). Its subject is
+// THE CLAIM THAT WOULD HAVE CAUGHT THE CLIFF, AT ONE INTERFACE (gunbc.design_argument::witness_one_interface). Its subject is
 // head discovery and the next admission past generation 4096 -- not 4200 admissions each run end to
 // end, which cost ~22 s and re-executed a path the claims above already execute for real. So the
 // history is SUPPLIED: 4200 contiguous generations are written into the slot through the store's own

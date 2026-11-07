@@ -2472,7 +2472,7 @@ fn rust_logic_family_target_model_meet_zero_staging() -> TargetModel {
 }
 
 // SCAFFOLD, ADMITTED BY OPERATOR DEFAULT-APPROVAL on a 15-minute timeout, 2026-09-28 (escalation
-// msg_a5787a77, decision msg_0787e379; DESIGN section 5, docs/plans/scaffold-admission-doctrine.md):
+// msg_a5787a77, decision msg_0787e379; gunbc.design_argument::fail_closed, docs/plans/scaffold-admission-doctrine.md):
 // the ONE host invocation row the identity-cast native control needs, reusing the family argv
 // dispatcher above rather than minting a second one. The population is exactly
 // rust_identity_cast_member_apply, rust_identity_cast_runtime_row, rust_identity_cast_target_model
@@ -4118,7 +4118,7 @@ fn rust_filesystem_read_family_target_model_staging(fixture_content: String) -> 
 // list is the honest spelling. The refusal arm yields a single marker token rather than an empty
 // argv: an empty list would be a fabricated plausible argv that emits a silently broken prelude,
 // while the marker can never equal "bash", so the shell_exec_run_eval_argv_is_bash_dash_s witness
-// reds instead (DESIGN 5). The arm is spelled inline rather than through std.operation_argv's
+// reds instead (gunbc.design_argument::fail_closed). The arm is spelled inline rather than through std.operation_argv's
 // helper because this module declares no imports and resolves bare references from the assembled
 // pool -- adding an import block here switches it to import-scoped resolution and breaks every
 // other bare reference in the file, proven by execution.

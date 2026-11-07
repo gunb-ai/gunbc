@@ -17,7 +17,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // extdeps.github.actions_token declared RepositoryVisibility = PublicRepository | PrivateRepository
 // for the fork-token rule, and extdeps.github.hosted_runners declared
 // RepoVisibility = PublicRepo | PrivateRepo for the runner hardware tables — one concept, two
-// spellings, free to disagree (DESIGN §3 nicknaming). Both now import this type.
+// spellings, free to disagree (gunbc.design_argument::single_authority nicknaming). Both now import this type.
 //
 // TWO FURTHER SPELLINGS OF THE SAME FACT SURVIVE AND ARE NOT CONSOLIDATED HERE, stated rather
 // than left silent: extdeps.github.github Repository carries `private: Bool` and
@@ -27,7 +27,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 //
 // GitHub's `visibility` field admits a third value, `internal`, for repositories inside an
 // enterprise account. It is NOT modeled, because no row in this corpus observes one and an arm
-// nothing constructs would be a state no evidence supports (DESIGN §4d). What it would take is an
+// nothing constructs would be a state no evidence supports (gunbc.design_argument::epistemic_humility). What it would take is an
 // observed internal repository plus a decision per consumer — the fork-token rule and the runner
 // hardware tables each treat public and private differently and neither publishes an internal row.
 

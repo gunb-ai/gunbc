@@ -3,7 +3,7 @@ module test.claim.roadmap.worker_git_subtree_builder_wet_witness
 // WORKER-ROOT-EQUIVALENT-3 wet witnesses for the argv builders the lab worker's commit grant is made
 // of: the shared-repository posture, written by the instance's own principal (extdeps/git), and the
 // bounded subtree re-group
-// (extdeps/tools/findutils). DESIGN 5 -- done means EXECUTED: an argv-shape claim stays green over a
+// (extdeps/tools/findutils). gunbc.design_argument::fail_closed -- done means EXECUTED: an argv-shape claim stays green over a
 // command that cannot run. At 2dc2b8de3f98 all five git builders rendered
 // `git env GIT_CONFIG_GLOBAL=... git config ...` (argv_words is [program] ++ arguments, and their
 // arguments began with the word env), every one exited 1 with "git: 'env' is not a git command", and
@@ -298,7 +298,7 @@ data wet_objects_pruned: List<String> = ["pack", "info"]
 // git creates a new object fan-out directory 0755 and a new reflog 0644, so the group write dies at the
 // worker's FIRST commit even though every directory above it is group-writable. At 2dc2b8de all three
 // exited 1 without writing anything, and no claim noticed. gc.auto=0 and maintenance.auto=false are the
-// consumer obligation for the repack that moves to the named maintenance job (DESIGN 3c): `git commit`
+// consumer obligation for the repack that moves to the named maintenance job (gunbc.design_argument::consumption): `git commit`
 // spawns `git maintenance run --auto`, whose sweep opens packed-refs.lock IN .git ITSELF, a path #13942
 // keeps out of the worker's reach -- measured as a printed "error unable to lock packed-refs file" over
 // an exit-0 commit, which

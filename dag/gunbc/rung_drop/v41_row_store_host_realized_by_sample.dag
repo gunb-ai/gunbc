@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
-// DECLARED 4b(3) DROP (2026-09-23, ruling A from proud-deer-538). Until this row the published Engram
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (2026-09-23, ruling A from proud-deer-538). Until this row the published Engram
 // row stores had NO constructor: gunbc.spark.v41_engram_row_store v41_published_transform_standing was
 // Unestablished, and the only route to a store's bytes was the .dag fold (v41_place_row /
 // v41_store_bytes), which a fixture exercises in full. The published stores are ~96M rows per rank and

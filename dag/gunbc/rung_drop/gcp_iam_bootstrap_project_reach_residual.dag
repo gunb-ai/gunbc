@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged, Enumerated }
 import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
-// THE RESIDUAL OF STANDING PROJECT REACH (DESIGN 4b(3)). iam-bootstrap holds setIamPolicy on every
+// THE RESIDUAL OF STANDING PROJECT REACH (gunbc.design_argument::guarantee_ladder (no silent regression)). iam-bootstrap holds setIamPolicy on every
 // secret, account and pool in the fleet project (gunbc.auth.gcp_iam_bootstrap_model
 // iam_bootstrap_delta_role_permissions); the deny set keeps it from payloads, tokens, keys, the
 // project policy and roles, but neither deny nor allow conditions can name resources for these types,

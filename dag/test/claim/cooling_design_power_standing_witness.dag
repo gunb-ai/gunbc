@@ -25,7 +25,7 @@ import product.cooling_qualification {
   cooling_catalog_verdict_admits_qualification,
 }
 
-// SUPPLIED BOUNDARY (DESIGN 3): these claims supply the realization directly and import neither
+// SUPPLIED BOUNDARY (gunbc.design_argument::witness_one_interface): these claims supply the realization directly and import neither
 // gunbc.fleet.fleet_physical_inventory nor the BMC effect route, so they execute where
 // cooling_qualification_witness cannot. The real-path inhabitance claim for the live srv3 pairing
 // stays in cooling_qualification_witness.

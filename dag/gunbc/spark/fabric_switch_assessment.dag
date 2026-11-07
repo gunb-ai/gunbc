@@ -37,7 +37,7 @@ import std.algebra { length }
 // WHAT THE SWITCH ACTUALLY REPORTS, AND THE ADMISSION THAT NOBODY HAS ASKED IT YET.
 //
 // No RouterOS reading exists in this repository today: the fleet's lane configuration has never
-// been captured. DESIGN section 3 rules that a missing observation is a coverage obligation
+// been captured. gunbc.design_argument::single_authority rules that a missing observation is a coverage obligation
 // DOWNSTREAM, never an `Unobserved` property authored into the upstream module -- so
 // `extdeps.mikrotik.crs812` carries no such field, and the gap surfaces here, as a reading that is
 // structurally absent rather than defaulted. `LaneNeverRead` is not a placeholder to be deleted when
@@ -127,7 +127,7 @@ type Crs812SwitchReceipt sole_constructor {
 //
 // Every equality this module needs is asked of one exhaustive fold per closed vocabulary, so a new
 // lane speed or FEC mode is one row and every comparison re-decides at once. The alternative --
-// comparing at each call site -- is the non-fold residue DESIGN section 6 names, and on a coproduct
+// comparing at each call site -- is the non-fold residue gunbc.design_argument::how_to_work names, and on a coproduct
 // whose arms are added by an upstream vendor it is the shape that silently keeps answering `false`
 // for a mode nobody taught it about.
 fn crs812_lane_speed_eq(a: Crs812LaneSpeed, b: Crs812LaneSpeed) -> Bool {
@@ -175,7 +175,7 @@ fn intent_for_lane(intent: Crs812SwitchIntent, interface: NonEmptyStr) -> Crs812
 
 // A LANE THE INTENT DOES NOT NAME IS A DIVERGENCE, NOT A LANE TO SKIP. Dropping it would narrow the
 // compared population to the lanes that already agree by construction, which is the absorbing
-// fallback DESIGN section 5 forbids: the switch would converge more easily the more of it went
+// fallback gunbc.design_argument::fail_closed forbids: the switch would converge more easily the more of it went
 // unmodelled.
 fn lane_divergences(intent: Crs812SwitchIntent, lane: ObservedLane) -> List<Crs812LaneDivergence> {
   match intent_for_lane(intent: intent, interface: lane.interface) {
@@ -274,8 +274,8 @@ fn lane_unknown_if_unread(
 
 // THE READ INTERFACES ARE PROJECTED ONCE, not once per expected lane. The fold this replaces called
 // `observed_lane_interfaces` INSIDE the loop, so a switch with n intent lanes and m read lanes did
-// n*m work and allocated n copies of the same list to answer one membership question each. DESIGN
-// section 6's standing rule is that a proven cost-shape defect is always fixed regardless of the
+// n*m work and allocated n copies of the same list to answer one membership question each.
+// gunbc.design_argument::how_to_work's standing rule is that a proven cost-shape defect is always fixed regardless of the
 // realized n, because n is not a time-stable fact.
 fn switch_unknowns(
   lanes: List<Crs812LaneIntent>,

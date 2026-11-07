@@ -293,7 +293,7 @@ fn convergence_first_rebound_ref(
 
 // PRESERVATION IS CHECKED BY NAME, NOT BY COUNT, and the difference is the whole check. Equal
 // cardinality is satisfied by a set that lost one ref and gained another, which is precisely what a
-// wholesale `packed-refs` replacement does. DESIGN section 5 says completeness is an identity join.
+// wholesale `packed-refs` replacement does. gunbc.design_argument::fail_closed says completeness is an identity join.
 //
 // THE BASE REF IS EXEMPT BY NAME because it is the ref this operation exists to move. Exempting it
 // by "whichever ref changed" would exempt the corruption too.

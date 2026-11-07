@@ -1005,7 +1005,7 @@ fn cause_of(readback: SlotNetworkReadback) -> String {
 
 // THE SEALED REASON IS DERIVED FROM ITS OWN AUTHORITY, never transcribed. `different_generation` owns
 // that sentence; copying it here would be a second copy that keeps agreeing with a string this
-// witness no longer reads (DESIGN section 3), and the comparison would go quietly true if the
+// witness no longer reads (gunbc.design_argument::single_authority), and the comparison would go quietly true if the
 // authority reworded it.
 fn stale_generation_reason() -> String {
   match different_generation(fact: ExpectationTableEmptyFact) {

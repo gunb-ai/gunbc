@@ -9,7 +9,7 @@ import extdeps.huggingface.hub { HubRepoId, HubModelRepo, hub_repo_https_uri }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE PUBLISHED NINFER ARTIFACT of Qwen3.8-27B NVFP4: its own authority, separate from the Qwen base model
-// and from the unsloth quantization it was built from (DESIGN 3, external upstream decomposition). Those two
+// and from the unsloth quantization it was built from (gunbc.design_argument::external_upstreams, external upstream decomposition). Those two
 // are named below as SOURCES by repository and revision only; their facts are not stated here.
 data qwen3_8_27b_ninfer_hub_repo: HubRepoId = HubRepoId {
   kind: HubModelRepo,

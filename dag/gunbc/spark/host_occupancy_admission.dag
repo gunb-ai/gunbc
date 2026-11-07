@@ -71,7 +71,7 @@ fn admit_spark_host_unoccupied(run: fn(List<String>) -> ArgvRun, host: HostIdent
 //
 // WHAT IT DOES NOT DECIDE. Stopping a Group A worker degrades the pair head on the peer host; whether
 // that is admissible at a given moment is the pair-serving authority's decision (gunbc.spark
-// pair_serving_authority), and that decision is not made here. DECLARED FRONTIER (DESIGN 3c): the
+// pair_serving_authority), and that decision is not made here. DECLARED FRONTIER (gunbc.design_argument::consumption): the
 // first real-host consumer is the V4.1 cutover of the V4 pair on srv5-srv8 and the V4.1
 // capacity-measurement serve, and its door is what binds the bracket to that authority. This change
 // runs the bracket only in claims with a supplied leg, and never against a real host.

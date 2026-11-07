@@ -1980,7 +1980,7 @@ test fn a_subtree_obligation_observed_twice_promotes() -> Bool {
 
 // ── the seed is a regression oracle: divergences are disposed of, never matched ─────────────
 //
-// DESIGN section 7 (operator ruling 2026-10-02): a divergence from the seed is a v2 regression or a
+// gunbc.design_argument::self_hosting (operator ruling 2026-10-02): a divergence from the seed is a v2 regression or a
 // recorded seed-defect correction. These claims pin both halves at the promotion gate: a complete
 // enumeration whose every case is recorded promotes, and every other shape still refuses.
 

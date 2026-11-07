@@ -53,7 +53,7 @@ type PostPowerFanGateOutcome
 
 // THE GATE OF A POWERED HOST, which has NO not-reached arm: once the host is on, the gate is either read (Reached, whose
 // refusal safe-stops) or abandoned before it passed (the settle stopped the boot) with the host safe-stopped and no fan
-// read taken. A powered host whose fans were never verified is not a state the boot may leave (DESIGN 5), so it has no
+// read taken. A powered host whose fans were never verified is not a state the boot may leave (gunbc.design_argument::fail_closed), so it has no
 // constructor here; the post-power-on boot route carries this type, never the reading below.
 type PoweredFanGate
   = PostPowerFanGateReached { fitted: FittedFanSet, outcome: PostPowerFanGateOutcome }

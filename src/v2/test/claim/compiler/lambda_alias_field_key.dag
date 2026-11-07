@@ -33,7 +33,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   the lambda-key shapes (imported alias, imported record, local alias) were ACCEPTED -- the generic matcher
 //   normalizes the actual before it binds, so the key's input is framed at the alias's expansion -- and the
 //   misspelled-field lambda refused as infer_reason_field_not_declared_on_receiver. So for the reported shape
-//   v2 is not the defect: the seed is (DESIGN section 7, a seed defect v2 does not carry forward).
+//   v2 is not the defect: the seed is (gunbc.design_argument::self_hosting, a seed defect v2 does not carry forward).
 //   But the SIBLING shape, a plain parameter `h: Hash` projected as `h.digest`, refused as
 //   infer_reason_field_not_declared_on_receiver: infer_projection_receiver read the receiver type raw, the
 //   index answered the ALIAS declaration as the payload, and an alias body declares no fields.
@@ -181,7 +181,7 @@ test fn lafk_a_lambda_key_through_an_alias_refuses_an_undeclared_field() -> Bool
   lafk_reason(src: lafk_lambda_source(prelude: lafk_alias_prelude(), element: "Hash", field: "nope")) == ^infer_reason_field_not_declared_on_receiver
 }
 
-// CENSUS CONTROLS (DESIGN 6b sibling census, keen-heron-809). Every other v2.compiler.infer site that reads a TYPE's
+// CENSUS CONTROLS (gunbc.design_argument::root_generalization sibling census, keen-heron-809). Every other v2.compiler.infer site that reads a TYPE's
 // declaration as a payload already reads it through infer_type_alias_normalized_at; these two drive that through a
 // transparent alias and are green on main and with this change. Construction THROUGH an alias name
 // (`Hash { digest: .. }`) is not an infer payload read: it refuses at assembly (resolve admits a construct tag only

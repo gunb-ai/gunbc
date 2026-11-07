@@ -108,8 +108,8 @@ fn host_session_evidence(host: HostIdentity) -> SessionResidencyEvidence {
 // so.
 
 // THE VERDICT IS A PROJECTION OF THE EVIDENCE, not a second hand-authored table beside it. Both
-// were authored per host in the first draft, which is two representations of one fact (DESIGN
-// section 2): flipping srv3 to observed-present without also flipping its verdict would have left
+// were authored per host in the first draft, which is two representations of one fact (
+// gunbc.design_argument::minimize_redundancy): flipping srv3 to observed-present without also flipping its verdict would have left
 // the module asserting a contradiction that nothing could see. Here the only per-host authoring is
 // the evidence, and the verdict cannot disagree with it because it is computed from it.
 
@@ -149,7 +149,7 @@ fn host_carries_interactive_sessions(host: HostIdentity) -> Bool {
 
 // THE COUNTS RIDE ON THE EVIDENCE ARM AND NOWHERE ELSE. An earlier revision carried them a second
 // time, in a standalone session_container_observations list beside the verdict table — two
-// authorings of one measurement, which is the parallel ledger DESIGN section 2 forbids and which a
+// authorings of one measurement, which is the parallel ledger gunbc.design_argument::minimize_redundancy forbids and which a
 // witness had to police by cross-checking the two against each other. The count now exists only
 // inside SessionsObservedPresent, so the observation and the classification it supports cannot
 // disagree.

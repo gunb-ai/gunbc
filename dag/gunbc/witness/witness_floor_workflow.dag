@@ -189,7 +189,7 @@ import std.types { Bool, List, String, Int, NonEmptyStr }
 // publishes its own check under its own name and that check is not required. The first cut
 // therefore moved regen and v2-emission into a `build` job whose failure COULD NOT BLOCK A MERGE:
 // the required `witnesses` check would go green over a regen drift or a v2 emission break, and
-// the PR would be mergeable. That is fail-open (DESIGN §5) -- and worse than the serial run it
+// the PR would be mergeable. That is fail-open (gunbc.design_argument::fail_closed) -- and worse than the serial run it
 // replaced, whose single job carried every phase into the one context that gates.
 //
 // WHY AN AGGREGATION JOB AND NOT A RULESET EDIT. No wall inside this repository can constrain what
@@ -217,7 +217,7 @@ data witness_floor_workflow_job_id: String = required_ci_context_name as String
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
 // not the required floor's; spelling "witnesses" a second time there would fork the name
-// (DESIGN §3) and the fork would fail open, not loud — a renamed workflow would leave the
+// (gunbc.design_argument::single_authority) and the fork would fail open, not loud — a renamed workflow would leave the
 // admission comparing against a name nothing produces, refusing every candidate forever.
 data witness_floor_workflow_name: String = "witnesses"
 
@@ -425,7 +425,7 @@ fn resolve_witness_floor_concurrency_group(fx: WitnessFloorGroupFixture) -> Witn
 // THE SUPERSESSION POLICY IS SEMANTIC, AND THE YAML SPELLING IS ITS PROJECTION.
 //
 // `cancel-in-progress` is a SERIALIZED SPELLING of a business decision, and the decision is a
-// workflow fact this repository owns -- DESIGN section 3 puts business policy in the workflow layer
+// workflow fact this repository owns -- gunbc.design_argument::single_authority puts business policy in the workflow layer
 // and calls modelling it in extdeps a layer inversion. So the policy is declared here as a closed
 // vocabulary and the extdeps spec is DERIVED from it, never the reverse.
 //
@@ -457,11 +457,11 @@ type WitnessFloorConcurrencyPolicy {
 // THE RUNNING AXIS IS DERIVED FROM THE OBSERVED FLEET STANDING, not authored beside it and not read
 // off a desired-state row.
 //
-// gunbc#9789 declared NeverSupersedeRunning and a DESIGN 4b(3) drop whose dissolve-on is a
+// gunbc#9789 declared NeverSupersedeRunning and a gunbc.design_argument::guarantee_ladder (no silent regression) drop whose dissolve-on is a
 // capability: no client of the required floor holds a permit whose abandonment costs future compile
 // capacity. Written as a literal, that row survives its own reason -- the fleet stops leaking and CI
 // goes on refusing to supersede, the drop stays standing, and nothing refuses because nothing joins
-// the two facts. Section 4b(3) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the
+// the two facts. gunbc.design_argument::guarantee_ladder (no silent regression) says a drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the
 // trigger is the whole check, and a check nothing evaluates is diligence rather than a check.
 //
 // IT READS THE STANDING AND NOT THE REALIZATION, for a reason that is a safety property rather than
@@ -502,7 +502,7 @@ fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInPr
 // Raised in review 58012: the running axis was already derived through cancel_in_progress_of_policy
 // while the emitted mapping named ConcurrencyMappingQueueNotMax as a literal, so flipping the
 // modeled policy to RetainPendingQueue would have moved the classifier and left CI in replacement
-// mode -- one fact with two authorities, which is the thing DESIGN 3 forbids. Both axes now fold
+// mode -- one fact with two authorities, which is the thing gunbc.design_argument::single_authority forbids. Both axes now fold
 // out of witness_floor_concurrency_policy, so the emission cannot disagree with the classifier.
 //
 // The QueueMax arm is not a hypothetical: GitHub forces cancel-in-progress into its own
@@ -764,7 +764,7 @@ fn witness_floor_toolchain_step() -> Step {
 
 // One cargo invocation, no retry arm. The predecessor carried a fallback that re-ran the build
 // with CARGO_BUILD_JOBS=1 and RUSTC_WRAPPER unset when the first attempt failed; that arm made
-// an sccache deficit unobservable by construction (DESIGN section 5, the absorbing fallback), so
+// an sccache deficit unobservable by construction (gunbc.design_argument::fail_closed, the absorbing fallback), so
 // it is not re-derived. A build failure is a build failure and stops the line.
 fn witness_floor_build_script() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
@@ -796,7 +796,7 @@ data witness_floor_build_step_name: String = "Build the witness fold"
 // THE STEP NAME IS A PARAMETER BECAUSE THE JOBS BUILD DIFFERENT THINGS FOR DIFFERENT REASONS.
 // It was the literal "Build the witness fold" until the heal job bound this same function to
 // build a regenerator, at which point one name would have described two obligations -- the
-// meaning fork DESIGN section 3 names, and the emitted yaml is exactly where a reader looks to
+// meaning fork gunbc.design_argument::single_authority names, and the emitted yaml is exactly where a reader looks to
 // find out what a job does. The construction is shared; what it is FOR is per caller.
 // THE STEP ID IS A PARAMETER, NOT A CONSTANT, because a job may carry more than one repo-self build
 // step, and two steps in one job sharing an id is not cosmetic: a step id is the key OTHER steps read
@@ -904,7 +904,7 @@ fn witness_floor_build_step(step_name: String, build_script: String) -> Step {
 // time -- its own binary path, its own --required-floor, its own --source-root spelling, folded
 // over the same witness_layer_roots -- and #8576 pinned the two together with a witness asserting
 // they agreed on source roots. That was validation standing where construction was available
-// (DESIGN §5): it stayed green while the binary path, the flag spelling or the argument ORDER
+// (gunbc.design_argument::fail_closed): it stayed green while the binary path, the flag spelling or the argument ORDER
 // drifted, because agreeing on the roots is not agreeing on the command.
 //
 // WHY THE PATHS ARE RELATIVE AND cd DOES THE WORK. shell_command_render single-quotes every word,
@@ -1006,7 +1006,7 @@ fn witness_floor_precondition() -> String {
 // files, commands and filesystems into prefixed readings rather than nonzero exits, so the step
 // cannot fail and needs no `continue-on-error`. The distinction is not cosmetic:
 // `continue-on-error` is a step that MAY report a verdict and has been told to be ignored, the
-// escape-hatch shape DESIGN 5 forbids. A step with no verdict to give is a different thing.
+// escape-hatch shape gunbc.design_argument::fail_closed forbids. A step with no verdict to give is a different thing.
 // THIS INSTRUMENT IS TEMPORARY. Its readings distinguish the three live eviction hypotheses:
 // falling free blocks/inodes identifies pressure reclamation; old mtimes plus wall-clock/uptime
 // identify age or periodic cleanup; and an end disappearance coincident with another job's start
@@ -1024,7 +1024,7 @@ fn witness_floor_precondition() -> String {
 // sampler. Both present and absent parents are rendered, so removal of the whole tree cannot look
 // like a probe that failed to run.
 //
-// Shell remains a §6 tell, bounded by the explicit condition below rather than permanent workflow
+// Shell remains a gunbc.design_argument::how_to_work tell, bounded by the explicit condition below rather than permanent workflow
 // furniture. Process-count (#46) does not retire this instrument. Typed env-vs-code classification
 // (POSIX 126/127, attempt receipts, stands-environment) is a different class and does not dissolve
 // here: BMC/host/JIT failure remains environmental after isolation. The probe retires only when
@@ -1321,19 +1321,19 @@ fn required_ci_measurement_publish_condition() -> String {
 // inherited default, above every phase sequence measured so far (preparation 553s plus
 // published-mock projection 47s locally, at bfecfd961c1), and low enough that the log arrives the
 // same working hour as the failure. Calling it derived would be the fabricated plausible output
-// DESIGN section 5 forbids, one level up -- a number with no measurement behind it wearing a
+// gunbc.design_argument::fail_closed forbids, one level up -- a number with no measurement behind it wearing a
 // measurement's authority.
 //
 // The two regen steps added 2026-08-19 are covered by the SAME job-level bound, provisionally, for
 // the same reason: neither has completed in CI either, so there is nothing to derive a separate
 // figure from. A widening of what the existing provisional number covers, not a second number --
-// DESIGN §2 (one concept, one authority) applies to a timeout bound as much as to any other fact.
+// gunbc.design_argument::minimize_redundancy (one concept, one authority) applies to a timeout bound as much as to any other fact.
 //
 // RESTORATION TRIGGER: the first run that completes this fold, floor and regen alike. Real wall
 // times replace this constant, and this note dissolves with the provisional bound it explains.
 // ONE LIST, TWO PROJECTIONS. The steps GitHub sees and the capability roles the closure reads are
 // derived from the same rows, so they cannot drift apart. A second hand-maintained list of roles
-// beside the step list would be the §3 fork this closure exists to close, reintroduced as its own
+// beside the step list would be the gunbc.design_argument::single_authority fork this closure exists to close, reintroduced as its own
 // fix.
 type WitnessFloorBoundStep {
   step: Step
@@ -1452,7 +1452,7 @@ data required_floor_claim_cost_artifact_name: String = "required-floor-claim-cos
 // within 2ms of each other while both sit near the ceiling, and one 34-row module spans 0ms to the
 // ceiling in three bands that track WHICH SHARED PRODUCER a row forces rather than what it
 // asserts. That is the floor's fresh-frame-per-claim boundary re-deriving each closure's pure
-// substrate once per claim, and DESIGN section 2 prices it as authored duplication whose least
+// substrate once per claim, and gunbc.design_argument::minimize_redundancy prices it as authored duplication whose least
 // common ancestor is the RUN.
 //
 // THE REPAIR ALREADY EXISTS AND ITS DISCOVERY MECHANISM DID NOT. `v2.workflow.floor_pure_producer_share`
@@ -1600,12 +1600,12 @@ fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path:
 
 // ONE PREPARATION, RENDERED TWICE. Checkout, toolchain and build are byte-identical in both jobs,
 // so they are authored ONCE here and each job appends only the step that distinguishes it. Two
-// copies would be two definitions of one fact, free to drift the moment either is edited -- the §3
+// copies would be two definitions of one fact, free to drift the moment either is edited -- the gunbc.design_argument::single_authority
 // fork this file already closes for the step/role pair, reintroduced across jobs.
 // THE SAME ACTION PROVIDES THE SAME CAPABILITIES WHEREVER IT RUNS. The Install Rust toolchain
 // binding below declared only [Cargo, Rustfmt] while gunbc.fleet.fleet_workflow_steps ci_setup_rust_step
 // declares [Cargo, Rustc, Rustfmt, Rustup] for the identical setup_rust_action -- one action with
-// two capability stories, the DESIGN 3 fork. Unnoticed because nothing here consumed Rustup until
+// two capability stories, the gunbc.design_argument::single_authority fork. Unnoticed because nothing here consumed Rustup until
 // the pin step did, and then the closure refused. The under-declaration is corrected rather than
 // the consumer weakened: the action really does install rustup and rustc.
 //
@@ -1853,7 +1853,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
 // FIRST, THE FACT WAS ALREADY ESTABLISHED IN THE OTHER LANE. `build_lane_build_script` is
 // `repo_self_build_all_bins_command()` -- `--bins`, every declared bin target -- so the build
 // lane's PRELUDE already compiles and links the whole binary population before that lane runs a
-// single phase. The floor lane's copy was a second authority for one fact (DESIGN section 3), and
+// single phase. The floor lane's copy was a second authority for one fact (gunbc.design_argument::single_authority), and
 // the two never disagreed because they could not: same package, same profile, same targets.
 //
 // SECOND, THE DUPLICATE WAS THE ONE ON THE CRITICAL PATH. The floor lane is the longer of the two
@@ -2023,7 +2023,7 @@ fn witness_floor_job() -> Job {
 // check_response_timeout from this row, because a queue whose response timeout is BELOW the
 // repository's own execution envelope manufactures queue failures out of runs that were going to
 // pass -- it dequeues green work for being slow. Two numbers that must not drift apart are one
-// row, read twice (DESIGN section 3).
+// row, read twice (gunbc.design_argument::single_authority).
 //
 // IT IS A Minute AND NOT AN Int, because the fact is a duration and std.measure already owns that
 // carrier. The Actions job field is an Int, so the projection unwraps it at the boundary -- which
@@ -2069,7 +2069,7 @@ data witness_floor_lane_timeout: Minute = minute(count: 180)
 // working hour -- the witnesses job's 180 reasoning applied to a smaller subject, not copied.
 //
 // It is NOT derived from a completed CI run of this job, because there has not been one. Calling
-// it derived would be the fabricated plausible output DESIGN §5 forbids.
+// it derived would be the fabricated plausible output gunbc.design_argument::fail_closed forbids.
 //
 // RESTORATION TRIGGER: the first CI run that completes this lane. A real wall time replaces the
 // constant and this note dissolves with it.
@@ -2089,7 +2089,7 @@ data witness_floor_lane_timeout: Minute = minute(count: 180)
 // restoration trigger, and is the row to read before concluding those tests are covered.
 //
 // THE LINT DID NOT GO WITH IT, and that asymmetry is the whole of this comment. Deleting it would
-// have been the below-floor regression DESIGN section 4b forbids: `repo_self_clippy_command` is
+// have been the below-floor regression gunbc.design_argument::guarantee_ladder forbids: `repo_self_clippy_command` is
 // the only command on any CI path that compiles the INTEGRATION-TEST AND EXAMPLE targets, which is
 // how twelve of them sat red on main (2026-08-30) behind a green required run. A reader tempted to
 // finish the job's removal by taking this step too would be re-opening a measured hole, not
@@ -2196,7 +2196,7 @@ fn build_lane_job() -> Job {
 // job condition owns NEITHER: only whether this job runs. `always()` is the right answer to THAT
 // question for a reason unrelated to cancellation semantics -- a required context that can be
 // SKIPPED turns mergeability on an unmeasured third-party behaviour, and under `always()` skipped
-// disappears from the context entirely. Construction over validation (DESIGN 5): the ambiguous
+// disappears from the context entirely. Construction over validation (gunbc.design_argument::fail_closed): the ambiguous
 // state becomes unrepresentable rather than tested.
 //
 // WHAT ANSWERS THE CANCELLATION QUESTION IS NOW THE GATE'S OWN BODY, where both axes are visible
@@ -2249,7 +2249,7 @@ fn build_lane_job() -> Job {
 //
 // That change landed while this one was in review and added
 // `&& needs.build.result != 'cancelled' && needs.floor.result != 'cancelled'` here, under a
-// declared DESIGN 4b(3) rung drop on a `required_lanes_aggregate_cancellation_rung_drop` row that
+// declared gunbc.design_argument::guarantee_ladder (no silent regression) rung drop on a `required_lanes_aggregate_cancellation_rung_drop` row that
 // this change deletes with the exclusion it declared. It was the right interim: with only two
 // lane-result words it could not separate the modal lawful supersession from an abandoned live
 // attempt, so it removed the false alert at the only distinction available and DECLARED the
@@ -2258,7 +2258,7 @@ fn build_lane_job() -> Job {
 // ITS OWN RESTORATION TRIGGER NAMES THIS CONSTRUCTION BY NAME -- "the operator-ranked
 // floor-current-head-binding: FloorAttemptSubject carries pull_request, measured_head, run_id;
 // FloorHeadStanding is Current, Superseded or Unobservable independently of FloorLaneTerminal".
-// So the exclusion and its declaration are removed here as a dissolution on climb (DESIGN 4b(4)):
+// So the exclusion and its declaration are removed here as a dissolution on climb (gunbc.design_argument::guarantee_ladder (dissolution on climb)):
 // production machinery deleted, evidence kept -- the consolidation witnesses that pinned the
 // exclusion are re-pointed at `always()` in the same change rather than dropped.
 //
@@ -2340,14 +2340,14 @@ fn required_lanes_run_id_expression() -> String {
 // `== "failure" || == "cancelled"`, the form instinct reaches for -- would have admitted it and
 // reported the required context GREEN over two lanes that never ran. The strict inequality admits
 // exactly one state and refuses every other, including ones the author has never heard of: the
-// difference between a closed vocabulary and a remembered one (DESIGN §5).
+// difference between a closed vocabulary and a remembered one (gunbc.design_argument::fail_closed).
 //
 // The same run is this gate's first executing receipt: the aggregator ran under `always()` with
 // both lanes non-success, refused, and published `witnesses` as a FAILURE -- the behaviour the job
 // exists for and the pre-repair shape could not produce.
 // THE SHELL IS BUILT AS NODES AND SERIALIZED THROUGH THE GRAMMAR, never spelled as text. The first
 // cut nested `concat` over string literals and handed the result to a RunStep -- the
-// medium-as-string violation DESIGN 2/3 names, raised in review 55836. Node construction lives in
+// medium-as-string violation gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority names, raised in review 55836. Node construction lives in
 // `gunbc.required_lanes_gate`; this function is the realization edge, following the
 // `gunbc.instruments.build_step` -> `v2.workflow.bash_command_fold_serialize` precedent already in tree.
 //
@@ -2551,7 +2551,7 @@ fn required_lanes_aggregate_job() -> Job {
 //
 // SPLITTING THE ROWS WOULD NOT HAVE FIXED THAT AND WAS TRIED FIRST. Two rows became four, each half
 // landing nearer the ceiling, and the fold they both paid was untouched -- an improvement in the
-// arithmetic that was a coincidence of size, one emitted line from red again. DESIGN section 2 says
+// arithmetic that was a coincidence of size, one emitted line from red again. gunbc.design_argument::minimize_redundancy says
 // to minimize the demand graph before materializing its answers; the demand here was for the
 // aggregate's serialized text, and no consumer of these two producers asks for it.
 //
@@ -2633,7 +2633,7 @@ data witness_floor_workflow: Workflow = {
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim. A
 // capability check only tests call is specification-without-execution: green forever while the
-// emitter produces the broken workflow beside it (DESIGN §5).
+// emitter produces the broken workflow beside it (gunbc.design_argument::fail_closed).
 //
 // So emission refuses. A job whose cargo consumer has no provider ordered before it yields the
 // refusal marker instead of yaml -- not a warning, not yaml-with-a-comment, because the
@@ -2646,7 +2646,7 @@ data witness_floor_workflow: Workflow = {
 // INSIDE a job -- the toolchain install does not reach across a job boundary -- so a
 // whole-workflow closure would be the wrong shape, and checking only the job that existed first
 // would leave the new one guarded by nothing while the emission still refused on its behalf.
-// That is the inert half DESIGN §6 names: machinery that exists and gates nothing.
+// That is the inert half gunbc.design_argument::how_to_work names: machinery that exists and gates nothing.
 data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and every job capability closure, one conjunct per member of witness_floor_lane_jobs; adding a job without adding its conjunct would emit that job unchecked."
 
 type WitnessFloorGenerationOutcome
@@ -2695,7 +2695,7 @@ data witness_floor_capability_closure_refusal_reason: String = "REFUSED gunbc.wi
 // relax it recurs. The subject IS the corpus. Admitting a partially-typechecking subject while
 // reporting a whole-corpus verdict is the empty-observation narrow — rendering 'I could not admit
 // this population' as 'this population is fine' — which DESIGN names as strictly worse than the
-// widen section 5 already forbids: a widen is merely expensive, a narrow is silently uncovered.
+// widen gunbc.design_argument::fail_closed already forbids: a widen is merely expensive, a narrow is silently uncovered.
 // The ordering consequence is real and owned by the operator, not this lane: the fold's first
 // green day requires the last pre-existing defect to be fixed.
 // THE FOLD'S MEMORY ENVELOPE IS A FIRST-CLASS PROPERTY, measured rather than estimated. One run was

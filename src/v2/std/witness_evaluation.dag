@@ -63,7 +63,7 @@ type WitnessEvaluation<A, S>
 
 // THE PURE BODY REFUSES; IT DOES NOT FABRICATE A SUCCESS. This previously returned WitnessReturned
 // unconditionally, so an evaluator without the frame realization reported every refusal as a
-// success - the fabricated-plausible-output failure §5 forbids, sitting in the one function whose
+// success - the fabricated-plausible-output failure gunbc.design_argument::fail_closed forbids, sitting in the one function whose
 // entire job is to report whether a subject returned or refused. It was defended as scaffolding
 // with a dissolve-on, but a declared trigger does not make a fail-open arm fail closed; it only
 // schedules its removal (review 46769).

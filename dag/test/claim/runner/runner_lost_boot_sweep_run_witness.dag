@@ -338,7 +338,7 @@ SuppliedPopulationNotDerived { refusal: _ } => false
   }
 }
 
-// PAIRING OBLIGATION (DESIGN 3): the witnesses above SUPPLY a population; this claim is the last execution
+// PAIRING OBLIGATION (gunbc.design_argument::witness_one_interface): the witnesses above SUPPLY a population; this claim is the last execution
 // of the mode's REAL route -- sweep_host_standing -> current_service_population (the host's committed
 // width). The sealed population is refused at construction when the width cannot be derived, so a sweep
 // cannot be called at all; the claim asserts the route's standing equals the independent

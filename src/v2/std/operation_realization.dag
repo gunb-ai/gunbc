@@ -161,7 +161,7 @@ fn operation_handler_selection<S>(
 
 // THE BINDINGS BY IDENTITY, BUILT ONCE WHEN THE FRAME IS ADMITTED. Every dispatch then looks its
 // operation up instead of scanning the binding list: the list is fixed for the frame's extent, so a
-// per-dispatch scan re-derived the same fact on every call (DESIGN section 2). Admission has already
+// per-dispatch scan re-derived the same fact on every call (gunbc.design_argument::minimize_redundancy). Admission has already
 // refused a realization that binds one identity twice, so each key holds exactly one binding.
 fn operation_realization_index<S>(realization: OperationRealization<S>) -> Map<String, OperationBinding<S>> {
   fold(realization.bindings, init: empty_map(), f: fn(acc, b) { map_insert(m: acc, key: operation_ref_key(at: b.at), value: b) })

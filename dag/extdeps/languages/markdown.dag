@@ -163,7 +163,7 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
     // block (0.30 §6.6 lists "<!--" among the block start conditions) and sends a line starting
     // "<!DOCTYPE" through the same way (§4.2), so Markdown's comment grammar IS HTML's and a Markdown
     // doctype IS the HTML doctype. Importing is what makes that sentence enforced rather than
-    // aspirational: re-typing "<!-- " here was a second home for one fact (§3), which review 82174 on
+    // aspirational: re-typing "<!-- " here was a second home for one fact (gunbc.design_argument::single_authority), which review 82174 on
     // #14351 caught.
     comment_grammar: CommentGrammar {
       open: html_comment_open_sequence,
@@ -192,7 +192,7 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
 // this PR required -- the fold's `concat(acc, <result>)` became a record in a String position, and the
 // language did not stop it: **b** came out as b, *i* as i, `x` as x. Delimiters vanished from committed
 // documentation, and it compiled. A detour through a foreign medium bought nothing that sp.emphasis_delim
-// does not already say, and it put a String where a result belongs -- exactly the shape §5 forbids, since
+// does not already say, and it put a String where a result belongs -- exactly the shape gunbc.design_argument::fail_closed forbids, since
 // no plausible output was fabricated and no refusal was raised.
 //
 // THE OTHER ROUTE KEEPS THE MEDIUM, AND THAT IS THE DISTINCTION: serialize_markdown_document builds an

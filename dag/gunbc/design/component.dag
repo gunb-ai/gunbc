@@ -10,7 +10,7 @@ import gunbc.design.interaction { InteractionVerb, verb_key, ElementId, element_
 // row: element structure (the ElementId it renders as, the interaction register's closed enum) x
 // role/material bindings (base_roles + a per-state chip role) x interaction STATES (idle |
 // requested | terminal-per-wire-arm) x wire-contract binding (each TerminalState carries the wire
-// label it renders). The wire binding is the load-bearing move the dispatch-button incident (§5,
+// label it renders). The wire binding is the load-bearing move the dispatch-button incident (gunbc.design_argument::fail_closed,
 // 2026-07-23) demands: the states are NOT a free enum, they are pinned to a served contract, so
 // component_wire_total cross-checks the terminal set against the wire vocabulary authority BOTH
 // directions — a wire label with no state row (labels_missing_state) and a state that fabricates a

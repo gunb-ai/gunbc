@@ -15,7 +15,7 @@ import gunbc.merge_admission {
 }
 
 // Lifecycle DYNAMICS over the gunbc.merge_admission authority — no second admission predicate
-// (DESIGN 2: derive, never restate). gunbc.merge_admission owns the static question (is THIS
+// (gunbc.design_argument::minimize_redundancy: derive, never restate). gunbc.merge_admission owns the static question (is THIS
 // receipt admissible against THIS target tree and roster); this module owns the temporal one (does
 // a merge PROCESS whose merge step consults policy_admits ever advance main to a tree the process
 // never verified). Squash semantics: the
@@ -169,17 +169,17 @@ import gunbc.merge_admission {
 // and the operator ruled the third: "Leave the hole open for now - i know merging is not sound."
 // The class is therefore carried as `gunbc.guarantee_stall.merge_admission_terminal_verdict_stall`
 // with the capability as its trigger, an informed acceptance rather than an unowned gap. A STALL
-// AND NOT A `gunbc.rung_drop` ROW: 4b(3) asserts a regression, and nothing regressed here.
+// AND NOT A `gunbc.rung_drop` ROW: gunbc.design_argument::guarantee_ladder (no silent regression) asserts a regression, and nothing regressed here.
 
 // The interleaving witness enumerates EVERY event sequence of exact length 4 over its alphabet (no
 // sampling, no silent cap — the witness asserts the full count so truncation cannot read as
-// coverage, DESIGN 5). The alphabet includes the same PR number at two different heads: the
+// coverage, gunbc.design_argument::fail_closed). The alphabet includes the same PR number at two different heads: the
 // ordinary auto-heal transition where generated artifacts are committed after an earlier head
 // earned evidence. The violation flag LATCHES in LifecycleState, so every shorter lifecycle is
 // covered as a prefix of some length-4 sequence. 4 suffices for the grounded incident (4 events),
 // for the roster axis (3 events: RunPrCi, RosterBump, MergePr), and for the heal axis (2 events:
 // RunPrCi(old head), MergePr(healed head)); widening the window or alphabet is priced only when a
-// concrete interleaving class needs it (DESIGN 6).
+// concrete interleaving class needs it (gunbc.design_argument::how_to_work).
 
 type PrIdentity {
   number: Int

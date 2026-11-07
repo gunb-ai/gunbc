@@ -36,7 +36,7 @@ import std.measure { minute_to_second }
 //
 // THE FLEET-CI POSTURE IS NOT REUSED, and that is a stated divergence: it serves gunbc's CI jobs and
 // egresses to GitHub; a workspace serves the operator and egresses nowhere. One posture name for
-// both would be the section 3 meaning fork gunbc.runner.runner_fleet_ci_posture itself names. The TYPES are
+// both would be the gunbc.design_argument::single_authority meaning fork gunbc.runner.runner_fleet_ci_posture itself names. The TYPES are
 // reused, as that module reuses Spark's.
 data workspace_demo_use_posture: FirstPartySelfUsePosture = FirstPartySelfUsePosture {
   assertion: OperatorAllocation {

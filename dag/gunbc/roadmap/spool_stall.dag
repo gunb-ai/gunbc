@@ -19,7 +19,7 @@ import extdeps.filesystem.filesystem_io {
 // The attempt-unit release (gunbc.roadmap.roadmap_belt_tick_cli attempt_unit_stall_release_cli) clears the record
 // and re-arms without a pre-check, because the root drain's next pass is the verification: an entry that is
 // still unmovable re-stalls at once, writing a fresh record, loudly.
-// THE SPOOL LINE STOP'S RECORD, ONE HOME FOR EVERY LEVEL-TRIGGERED SPOOL (DESIGN section 5, the factory
+// THE SPOOL LINE STOP'S RECORD, ONE HOME FOR EVERY LEVEL-TRIGGERED SPOOL (gunbc.design_argument::fail_closed, the factory
 // model; section 3, one authority). A spool drained by a `.path` unit whose condition is a level
 // (DirectoryNotEmpty) is started again at once by any entry its drain leaves in place, so each such drain
 // ends a pass that retired nothing and left an entry it could not move by writing this record into the
@@ -68,7 +68,7 @@ fn spool_stall_step_of_text(text: String) -> SpoolStallStep? {
 
 data spool_stall_schema: String = "gunbc.spool_stall.v1"
 
-// DECLARED VERSION TRANSITION (DESIGN section 3): the exit spool's record was first written under this
+// DECLARED VERSION TRANSITION (gunbc.design_argument::single_authority): the exit spool's record was first written under this
 // identifier, before the record layer became spool-generic. The same fields mean the same thing under both, so
 // the reader accepts it and no stall written by an earlier head is stranded as Unreadable; every writer emits
 // spool_stall_schema. Retire this row when no host holds a record written before the generic layer landed.

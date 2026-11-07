@@ -9,7 +9,7 @@ module gunbc.ci.repository_mirror_frontier
 // gunbc.ci.repository_ci_profile. The emitters and the row types they need therefore have to be written in
 // the public repository, while the rows they are given live in the other one.
 //
-// WHY THAT IS A FRONTIER AND NOT DEAD CODE. DESIGN 3c admits three classifications for a declaration the
+// WHY THAT IS A FRONTIER AND NOT DEAD CODE. gunbc.design_argument::consumption admits three classifications for a declaration the
 // public corpus does not consume, and this is the second one: named, with the consumer and the route that
 // executes it, rather than dangling. Nothing here is reachable from a public row by construction -- gunbc's
 // required gate is emitted by gunbc.witness.compiler_gate_workflow, its drift watch by

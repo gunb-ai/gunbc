@@ -2,14 +2,14 @@ module std.contract_identity
 
 import std.types { Bool, NonEmptyStr, brand }
 
-// ONE CANONICAL CONTRACT IDENTITY, because DESIGN §3 makes a name a semantic carrier: within one
+// ONE CANONICAL CONTRACT IDENTITY, because gunbc.design_argument::single_authority makes a name a semantic carrier: within one
 // naming surface and one declared effective version or epoch, holding the name constant may not
 // silently change the obligations, quality floor, refusal behavior, billing consequence or remedy.
 // A materially different contract needs a materially different name -- and where the name is
 // deliberately held constant across a material change, an EPOCH is the only thing that can
 // distinguish the two meanings. Without an epoch component a contract identity cannot express the
 // difference between "the same contract" and "the same spelling", which is the meaning-fork half of
-// §3 in its exact form.
+// gunbc.design_argument::single_authority in its exact form.
 //
 // THE IDENTITY IS THE TRIPLE AND NOTHING ELSE. It names WHICH CONTRACT is in question, never what
 // that contract does internally. The rule is inherited rather than invented: the fleet's Required CI
@@ -35,7 +35,7 @@ type ContractName = NonEmptyStr where brand("ContractName")
 // TOTAL once the container yields a nonempty string -- absent, duplicated and malformed are
 // container facts, and there is deliberately NO undecodable arm, because after a nonempty string
 // there is no second decoding step that could refuse. Such an arm would be a permanently unreachable
-// RED, which §4b forbids at the top rung: a check whose failure is unauthorable carries no
+// RED, which gunbc.design_argument::guarantee_ladder forbids at the top rung: a check whose failure is unauthorable carries no
 // information and would later be cited as coverage.
 type ContractEpoch = NonEmptyStr where brand("ContractEpoch")
 

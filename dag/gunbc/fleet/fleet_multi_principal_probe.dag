@@ -327,7 +327,7 @@ data spark_converge_execute_env_name: NonEmptyStr = "SPARK_CONVERGE_EXECUTE"
 // and its consumer read Absent as "every enrolled Spark", which fused three different
 // states onto one arm: no target requested, an unrecognized target, and an actuating run
 // with no target at all. On the observing path that is merely imprecise; on the actuating
-// path it is DESIGN section 5's absorbing fallback with effects — SPARK_CONVERGE_EXECUTE is
+// path it is gunbc.design_argument::fail_closed's absorbing fallback with effects — SPARK_CONVERGE_EXECUTE is
 // set unconditionally by the emitted step and the workflow's target input is optional, so a
 // dispatch that omitted or misspelled the target would have run enable-linger against BOTH
 // Sparks while reporting a normal converge. Widening is never the answer to not knowing.

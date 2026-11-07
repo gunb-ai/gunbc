@@ -38,7 +38,7 @@ import gunbc.fleet.fleet_convergence_verdict {
 // IT IS RUN BY NAME AND BLOCKS NO LANDING (gunbc.design_ruling
 // emit_build_subjects_are_the_two_compiler_products).
 //
-// THE FIRST TWO CASES SUPPLY the verdict's inputs at its interface (DESIGN section 3, a witness
+// THE FIRST TWO CASES SUPPLY the verdict's inputs at its interface (gunbc.design_argument::single_authority, a witness
 // discriminates at one interface); the third is the pairing obligation's inhabitance case: the real
 // enrolment producers reach the verdict through the collector's own receipt filter with nothing
 // collected, and the route it takes is asserted, not only its answer. Every row renders through the

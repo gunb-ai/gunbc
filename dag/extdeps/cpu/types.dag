@@ -182,7 +182,7 @@ type CpuUsagePower {
 
 // The uncited standing of a design-power figure whose vendor datasheet row has not been read for this
 // repository: a typed bet a consumer (product.cooling_qualification, product.node_power_envelope)
-// carries to its own answer instead of consuming it as deduced (DESIGN 4d).
+// carries to its own answer instead of consuming it as deduced (gunbc.design_argument::epistemic_humility).
 data cpu_tdp_unread_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "the vendor datasheet's thermal design power row for this exact model" as NonEmptyStr,
 }
@@ -245,7 +245,7 @@ fn cpu_model_catalog_row_eq(a: CpuModelCatalogRow, b: CpuModelCatalogRow) -> Boo
     && (a.model_number as String) == (b.model_number as String)
     // OPTIONAL EQUALITY IS COMPARISON, not a match. This used to unfold both optionals by hand --
     // Present/Present compare, Present/Absent false, Absent/Present false, Absent/Absent true -- which is
-    // the canonical surface for Option re-derived inside an extdeps file (review 81287 F3; DESIGN §2, "net
+    // the canonical surface for Option re-derived inside an extdeps file (review 81287 F3; gunbc.design_argument::minimize_redundancy, "net
     // concepts must not grow by re-invention"). `==` on two Options of a comparable leaf is that surface,
     // and it is used elsewhere in the corpus; four arms of prose became one comparison.
     && a.oem_listing_id == b.oem_listing_id

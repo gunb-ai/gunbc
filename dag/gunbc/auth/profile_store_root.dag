@@ -61,7 +61,7 @@ fn profile_store_listing(store: ProfileStore) -> FilesystemListingObservation {
   filesystem_listing_observation(directory: store.root as String, success: listed.success, entries: listed.entries, error: listed.error)
 }
 
-// A REPEATED SHAPE, GENERALIZED LATER BY NAME (DESIGN section 6b). This outcome family and its listing fold
+// A REPEATED SHAPE, GENERALIZED LATER BY NAME (gunbc.design_argument::earliest_unjustified_boundary). This outcome family and its listing fold
 // are one of three leaves of a single shape: gunbc.auth.session_store_root, gunbc.auth.profile_store_root and
 // gunbc.auth.login_transaction_store_root. Only the record and member differ. The least general rule that
 // covers them already exists: gunbc.durable_cas_file_store SlotStore, whose slot_observe / slot_commit /

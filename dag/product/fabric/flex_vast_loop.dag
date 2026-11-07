@@ -567,7 +567,7 @@ type FlexPassPlan
 // The first destroy in a cleanup plan, if there is one. It takes the ACTIONS, not a FlexReleasePlan:
 // a plan's admit field records WHY a release is authorized, and this function decides nothing about
 // authorization - wrapping a cleanup verdict in a FlexReleasePlan whose three release reasons are all
-// false, just to satisfy the signature, would put a contradictory record on the path (DESIGN 5).
+// false, just to satisfy the signature, would put a contradictory record on the path (gunbc.design_argument::fail_closed).
 fn flex_first_destroy(actions: List<FlexCleanupAction>) -> FlexCleanupAction? {
   first_where(actions, a =>
     match a {

@@ -6,7 +6,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, second, second_count 
 
 // HOW A SERVE BINARY IS BUILT FROM THE ADMITTED REVISION (live_deploy models install and verify, never the
 // build; member_observe and member_identity assume "the deploying checkout's build"). The admitted revision is
-// the single authority for WHICH binary (DESIGN section 3): the build runs IN PLACE in the instance source
+// the single authority for WHICH binary (gunbc.design_argument::single_authority): the build runs IN PLACE in the instance source
 // repo after convergence has reset it to that revision. No worktree (a linked worktree of the lab source repo
 // trips tree-sync) and no `git archive` copy (a second copy of the source, section 2). The cargo target dir is
 // outside the repo, under the instance root, so a build never dirties the checkout and stays incremental.
@@ -47,7 +47,7 @@ fn serve_binary_identity_env(build: ServeBinaryBuild) -> List<String> {
 
 // MEMORY BOUND: the 16 GiB scope loyal-deer-449's measured srv1 build ran under (BUILD_RC=0, about 556 s wall,
 // cold 9-10 min). The peak resident set was NOT measured, so the bound is an admitted ceiling, not a fit;
-// swap is denied so an overrun is refused rather than paged (DESIGN Building & checks, the memory envelope).
+// swap is denied so an overrun is refused rather than paged (gunbc.design_document::ci_contract_blocks, the memory envelope).
 data serve_binary_build_memory_max: ByteSize = byte_size(17179869184)
 data serve_binary_build_memory_swap_max: ByteSize = byte_size(0)
 
