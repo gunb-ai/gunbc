@@ -372,9 +372,9 @@ test fn reading_a_base_changes_the_report_line_and_not_the_published_payload() -
 // discriminates at one interface": its inputs are SUPPLIED VALUES at that boundary, never the result of
 // running the producer). Everything past that boundary is production code, including `acquisition_parse`
 // running over the environment the production route builds for itself (module_acquisition's acquisition_env,
-// over the repository layout and the live .dag grammar). `bindings` is empty on purpose: only the lookup
-// consumes them, and the decision under test never reads them -- a control that passed bindings would be
-// claiming coverage of a step it does not run.
+// over the repository layout and the live .dag grammar -- the same call population_verbs makes). `bindings` is
+// empty on purpose: the member lookup and the roster enumeration read them, and the decision under test reads
+// neither -- a control that passed bindings would be claiming coverage of a step it does not run.
 //
 // WHAT STAYS OPEN, DECLARED RATHER THAN PASSED. No claim in this file executes the member LOOKUP, the CLI
 // that assembles a tally from a real repository, or the two-walks-of-one-subject-tree byte comparison that is
@@ -552,7 +552,9 @@ test fn a_parsed_member_publishes_the_line_the_writer_will_publish() -> Bool {
 // the answer -- and the counts must DIFFER, which is what makes this two walks rather than one walk compared
 // with itself. Then the same members in the OPPOSITE order must produce a DIFFERENT artifact: the published
 // text is a walk-ordered artifact and not a set. (The ORDER OF THE BASE is metadata, by contrast:
-// `parse_verdict_receipt_lines` indexes by key and answers a miss with nothing -- the control below.)
+// `parse_verdict_receipt_lines` folds the base into a Map keyed by the folded line, so a lookup is a presence
+// test with no order to observe -- a Map property, exercised by no control here; what IS controlled is that the
+// base's ancestor field decides nothing, in the_named_ancestor_changes_nothing_about_standing.)
 test fn a_mixed_walk_publishes_its_own_lines_in_walk_order() -> Bool {
   match acquisition_env(layout: repository_storage_layout(), bindings: []) {
     AcquisitionEnvReady { env: env } => {
