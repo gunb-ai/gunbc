@@ -825,61 +825,19 @@ data keyed_module_reads_walk_the_whole_pool: IntegrationConcern = IntegrationCon
       },
       account: "Found while choosing the repair for the private audit_packet burst (strategy.audit_packet audit_module_facts, measured +8.3 GiB in 16 s from one module_declaration_facts call over the composed pool of 10164 files). Moving that consumer to either keyed read would move the burst to the first lookup and remove nothing, because module_declaration_fact_at reads through with_module_path_index and eval_decl_facts_at filters decl_facts_for_roots_shared. The repair belongs in the keyed reads: derive the storage path from the name per pool root and read that one file, keeping multiplicity across roots so DeclarationRefAmbiguous still fires.",
     },
-    tail: [],
-  },
-  disposition: Open,
-}
-
-
-// #15175's synthesized derived-equality bodies bind the std comparison helpers they call by NAME
-// SPELLING, which resolves through the HOLDER module's import set -- so whether a type has a
-// derived == depends on an incidental import in the holder, not on equality. v2.std.symbol_index
-// (imports std.algebra without map_values_eq) versus v2.std.node (imports zip_eq) is that accident
-// on either side of the import list. Interim, filed with the fix that adds the fail-closed
-// synthesis gate equality_helpers_visible: when a helper is not in view the derived is skipped and
-// the holder refuses at its authored comparison, located. The root disposition: the compiler's own
-// construction binds these helpers by DECLARING identity, as the derived equality binds `==`
-// itself; when that lands, delete the gate and cover it in self_host_equality_admission_witness.
-data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
-  identity: "equality_synthesis_helper_binding_is_import_authority",
-  kind: SuspectedCapabilityGap {
-    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
-    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module\'s import set, as the derived equality already binds `==` by the type\'s own declaration",
-    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder\'s selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
-  },
-  affected: FreeSemigroup {
-    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
     tail: [
-      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
-      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_helpers_visible"),
-      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
+      ConcernSighting {
+        revision: "d4051f7afa02968d0c0ea0e35c95799b36f12636",
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.cli_run.keyed_module_lookup", decl_name: "keyed_module_path") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "v1_compiler.coproduct_reflection", decl_name: "keyed_decl_facts") },
+            CitesDeclaration { declaration: decl_ref(module_path: "gunbc.keyed_module_lookup_seed_growth", decl_name: "keyed_module_lookup_seed_growth_justification") },
+          ],
+        },
+        account: "gunbc#15930 (merged as this revision) moved module_declaration_fact_at and eval_decl_facts_at onto keyed reads that derive the storage path from the name through demand_acquire's shared read_layout_file. type_names still reads the census. Evidence on the PR head, public pool (dag + src/v2): controls (a)-(d) with a first-hit RED on (a); a differential against the census (every module's keyed fact equals its index row, and every 7th module's keyed decl rows equal the census rows); peak resident 15.3 MiB keyed vs 6.1 GiB census. NOT YET SHOWN, so the row stays open: (1) the private-pool burst this row was opened on has no before/after pair. The 'before' at seed a24ef0d9 refused at resolve on the #15175 equality admission, and the 'after' needs the private keyed repair (strategy.audit_packet through resolve_declaration_ref_live), which is not pushed. The pair needs a public seed with both this revision and the #15175 repair. (2) Nested pool roots (dag together with dag/strategy) were never compared against the census, and no control exists for them.",
+      },
     ],
-  },
-  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity -- then the interim gate equality_helpers_visible is deleted and the shapes are exercised through self_host_equality_admission_witness.",
-  sightings: FreeSemigroup {
-    head: ConcernSighting {
-      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
-        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
-      },
-      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
-    },
-    tail: [ConcernSighting {
-      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
-      evidence: FreeSemigroup {
-        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
-        tail: [],
-      },
-      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
-    }, ConcernSighting {
-      revision: "ae95c5e073e7",
-      evidence: FreeSemigroup {
-        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.diagnostic", decl_name: "NonEmptyDiagnostics") },
-        tail: [],
-      },
-      account: "AUTHORING LEAK, STATED AS AN INTERIM, SCOPE: FOREIGN HELPERS ONLY. The emitted module v2.std.diagnostic (src/v2/std/diagnostic.dag) must import, for the compiler's synthesized equality bodies ONLY (hand-written code in the module uses none of these names): from std.algebra: zip_eq, map_values_eq. A module is made to import names that only the compiler's synthesized body uses. A module's OWN declarations -- including its own synthesized equality bodies -- are visible in that module by definition: the one predicate equality_derived_body_emitted answers from the module's own symbol table PLUS its named imports, and helpers the declaring module itself declares never require an import. A module importing itself (import v2.std.diagnostic { equality_derived_* } inside v2/std/diagnostic.dag, attempted at 3bc7bc26f297) is an import-graph SELF-LOOP forbidden by the acyclicity law main enforces, and main has no precedent for it: std.node imports only std.algebra helpers. Dissolution trigger: a synthesized equality body references its helpers by the declaring module's path (std.algebra), not through the consumer's import scope -- at that point zip_eq and map_values_eq are deleted from the std.algebra import verbatim, as listed. OBSERVATION: CI v2-bootstrap at 334f4ed refused the emitted build with E0425 'cannot find function equality_derived_non_empty_diagnostics in this scope' at the emitted v2_std_diagnostic.rs:590:30 -- a nested structural comparison inside a sibling derived body lowered to a call of a body the definition door had skipped because its FOREIGN helpers were not imported; importing zip_eq and map_values_eq (the ruled foreign-helper interim) makes every structural sibling in this closure emittable, which is the closure CI then judges. RESIDUAL OF THIS FAMILY (open; OWNED BY ITS OWN MAIN SLICE adhoc-a166f310-af0, filed by silent-bee-845 to start after #15972 lands -- deliberately NOT widened into #15972, whose failure mode for this residual is loud, an E0425 at emit, never a silent wrong answer, and it does not reach the closure #15972 judges): the definition door asks the predicate about the body's own FOREIGN helpers only; it does not yet ask it transitively about nested sibling declarations, so a future sibling whose own foreign imports are missing would leave a dangling nested call. The repair, when that slice runs, is transitive recursion of the SAME predicate over the plan's reachable declarations -- not a second check, and not an import self-loop.",
-    }],
   },
   disposition: Open,
 }
@@ -957,7 +915,91 @@ data execution_receipt_outcome_binding: IntegrationConcern = IntegrationConcern 
   },
 }
 
-data integration_concerns: List<IntegrationConcern> = [durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board]
+data provider_materializes_source_twice: IntegrationConcern = IntegrationConcern {
+  identity: "provider_materializes_source_twice",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"),
+    requirement: "Derive a clean commit's source identity from the executor's one materialization instead of a throwaway checkout beside the run checkout.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.durable_work_handoff", decl_name: "durable_work_handoff_plan") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject"), tail: [decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_run_leased")] },
+  question: "The clean-tree adapter hashes a throwaway detached worktree of the commit, then the lease flow checks the commit out again for the run; the layout is keyed by the identity, so the identity cannot come from the run checkout. Collapse to one materialization.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.work_provider_local", decl_name: "compute_resolve_subject") }, tail: [] },
+      account: "Remote-build PR 2 (option A, agreed with quick-newt-573) admits the double materialization so identity lands before the executor exists. Cost: one extra checkout per clean-tree request.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.fabric.fabric_source_snapshot", decl_name: "snapshot_manifest_identity"), control: Absent, statement: "Clean and dirty adapters keep producing one identity for equal bytes." }],
+    next: climbs_when(capability: "PR 5 executor extraction computes identity from the executor's own single materialization; the throwaway checkout in compute_resolve_subject is deleted."),
+  },
+}
+
+data toolchain_file_read_without_toml_ingest: IntegrationConcern = IntegrationConcern {
+  identity: "toolchain_file_read_without_toml_ingest",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "extdeps.languages.toml.types", decl_name: "TomlDocument"),
+    requirement: "Read rust-toolchain.toml's channel through a TOML ingest into TomlDocument, so header comments, whitespace, dotted keys and escapes are the grammar's, not a scanner's.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel"), tail: [decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement")] },
+  question: "TOML has an emit side only; the toolchain file's one field is read by a bounded line scanner that covers comments, header whitespace and the dotted form, and refuses typed (naming the form) on escapes and multi-line values. A TOML ingest grammar (rows in extdeps/languages/toml) would replace it; a file the scanner misreads refuses typed as naming no channel.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "c2ae07a9d9e3d8f8f0003ce93777043547b7eaf8",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.rust.rustup", decl_name: "rustup_toolchain_file_channel") }, tail: [] },
+      account: "Remote-build PR 2 needs one field of one file; building a TOML ingest grammar is a separate language-layer change (review 91579).",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "extdeps.languages.toml.types", decl_name: "TomlDocument") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "gunbc.compute.work_request", decl_name: "work_toolchain_requirement"), control: Absent, statement: "A toolchain file naming a channel yields a requirement; one that names none refuses typed, never defaults." }],
+    next: climbs_when(capability: "A TOML ingest into TomlDocument exists; rustup_toolchain_file_channel then reads toolchain.channel from the document and the line scanner is deleted."),
+  },
+}
+
+data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
+  identity: "equality_synthesis_helper_binding_is_import_authority",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    requirement: "a generated comparison body binds the equality vocabulary it calls (std.algebra map_values_eq / zip_eq, std.optional optional_eq, and the routed equality functions) by the declaring identity of the named declaration, independent of the holder module's import set, as the derived equality already binds `==` by the type's own declaration",
+    standing: RequirementEstablished { by: CitesArtifact { label: "new-interpreter compile of a pre-#15175 dag tree: 49 hard 'function std.algebra.map_values_eq not found in scope (<derived:v2.std.symbol_index>)' -- resolution of the synthesized body tracked the holder's selective imports", sha256: Sha256Digest { hex: "88c2cf1e3de156a200f8bf5fefdb03e075de3ab7577e8b0b4c8b3d6c89e9d6c2" as Sha256DigestHex } } },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_qcall"),
+    tail: [
+      decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synthesized_for"),
+      decl_ref(module_path: "std.algebra", decl_name: "map_values_eq"),
+    ],
+  },
+  question: "Should synthesized equality calls carry a resolved declaring reference (like the derived equality's own == binding) instead of a name spelling resolved through the holder's imports? Trigger: synthesized equality binds helpers by declaring identity. (#15972's interim gate equality_helpers_visible and its import-enumeration interim were reverted by #16000 on operator decision; they re-land with #15992 and this row's sightings then resume.)",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "v2.std.symbol_index", decl_name: "SymbolIndex") },
+        tail: [CitesDeclaration { declaration: decl_ref(module_path: "v1.compiler.infer", decl_name: "equality_synth_compare") }],
+      },
+      account: "symbol_index imports std.algebra without map_values_eq while v2.std.node imports zip_eq; the same synthesized-body mechanism resolves in one holder and dangles in the other, so the import set -- not the equality model -- decides. Observed as 49 hard diagnostics under a new interpreter over a dag tree predating #15175's import co-update.",
+    },
+    tail: [ConcernSighting {
+      revision: "3bb5cbff9dad86fec9636a6f5ba82a675b504e66",
+      evidence: FreeSemigroup {
+        head: CitesArtifact { label: "main-tree host_effect closure compile with the #15175 interpreter: 1 blocking diagnostic (CreateCause), derived bodies clean -- green only because every holder imports what the emitter spells", sha256: Sha256Digest { hex: "7cc9e9d96b7c0c51734e99422f98fcdefbc04e2f425cf22cc3a8f8f1b777e71c" as Sha256DigestHex } },
+        tail: [],
+      },
+      account: "On main's own tree the family is latent, not broken: the co-updated imports carry every spelled name, so the import-as-authority defect shows only when emitter and imports drift (mixed-tree compile above) or a new holder forgets a name.",
+    }],
+  },
+  disposition: Open,
+}
+
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
