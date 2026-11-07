@@ -1,0 +1,547 @@
+module product.fabric.work_restore
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.algebra { skip, list_at_optional }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.judgment_contract { length_prefixed_encode, length_prefixed_decode }
+import std.content_hash { serialize_content_hash, parse_content_hash }
+import std.measure { hardware_thread_count, hardware_thread_count_value, byte_size, byte_size_count }
+import extdeps.toolchain.types {
+  Architecture, X86_64, X86, Aarch64, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32,
+  architecture_diagnostic_name,
+}
+import product.fabric.envelope { ResourceEnvelope, CpuRequirement, MemoryRequirement }
+import product.fabric.isolation {
+  IsolationGuarantee, IsolationProfile, isolation_guarantee_label,
+  FreshWritableRoot, PrivateProcessNamespace, PrivateNetworkNamespace, PrivateUserNamespace,
+  AttemptScopedSecrets, DefaultDenyEgress, DedicatedKernel, DedicatedDevice,
+}
+import product.fabric.identity { WorkKey }
+import product.fabric.work {
+  Work, WorkContract, WorkExecution, MaterializedProgram, OfferedService, WorkStep, ResumabilityTier,
+  ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects, ProgramRef, ArtifactManifestRef, EffectContractRef,
+  OutputContractRef, SourceManifestRef, ServiceInterfaceRef, DeclaredOutputObligations, OutputObligation,
+  OutputObligationKind, OutputArtifactObligation, TerminalResultObligation, OutputObligationId,
+  output_obligation_kind_material, ExecutionRequirements, CapacityClass, ControlPlaneCapacity,
+  CustomerExecutableCapacity, capacity_class_wire, CapabilityManifestRef, TrustDomainRef, Shape,
+  HardRequirements, RevocationStanding, RevocationAccepted, WarmResidencyRequired, revocation_standing_wire,
+  work_for,
+}
+
+// THE VALIDATED WORK RESTORE CODEC (remote-build PR 2b; program gunbc.plans.durable_work_handoff).
+//
+// WHAT A RESTORED WORK PROVES, AND WHAT IT DOES NOT. `WorkRestored` proves ONE thing: the typed fields
+// decoded from the bytes, under the principal the CALLER expected, derive (through product.fabric.work
+// work_for, the sole key authority) the key text the bytes carry. That is derivation consistency. It is
+// NOT authenticated storage: a writer who can change the payload can change the stored key beside it, and
+// canonical encoding is not integrity. Trusted durable storage and authenticated ingress are the
+// durable attempt controller's obligation (PR 3), not this module's. It is NOT source-byte verification
+// either: SourceManifestRef is an identity string, and nothing here reads a file. The toolchain enters a
+// Work only through `runtime_closure`, which the caller derived by its existing path; restore derives no
+// toolchain, so there is no second toolchain derivation here.
+//
+// THE WIRE IS THE CORPUS'S EXISTING LENGTH-PREFIXED FORMAT, NOT A NEW ONE: std.judgment_contract
+// length_prefixed_encode ("<scalar-count>#<value>"), the format already used for source roots
+// (gunbc.fabric.fabric_source_snapshot), the compute-work operation preimage and the judgment encodings.
+// HOW IT RELATES TO THE IDENTITY FORM: the identity preimage (product.fabric.work work_identity_material,
+// "label:len:value" frames hashed to the key) is DERIVED from typed fields; this wire TRANSPORTS those
+// typed fields. Neither is parsed from the other, so the two cannot disagree about a field: restore
+// decodes typed fields, then asks work_for for the identity.
+//
+// ONE CANONICAL SPELLING: length_prefixed_decode reads the length with parse_int, which can admit spellings
+// the encoder never writes. Every field is therefore re-encoded and compared with the text it was read
+// from, and every Nat, flag and tag is read through an exact inverse. The whole input must tokenize and
+// every field must be consumed.
+//
+// FIELD COVERAGE AGAINST THE KEY (audited against work_identity_material):
+//   bound by the key: program, source, runtime_closure, interface, step ids and resumability tier (an
+//   idempotency key is bound), inputs, effect_contract, output_contract, obligation ids, kinds and order,
+//   capacity class, capabilities, trust domain, isolation guarantees in order, revocation, threads, cpu
+//   architecture, cpu min threads, memory bytes.
+//   DIAGNOSTIC, NOT BOUND: OpaqueEffects.reason. resumability_material maps every OpaqueEffects to the
+//   token "opaque-effects", so the reason is explanatory text, not a promise about the answer; keying it
+//   would be a PR 2 identity change. It is carried and returned, and an edit to it is NOT detected.
+//   REFUSED, NOT CARRIED: ResourceEnvelope gpu, storage and network. envelope_material does not put them in
+//   the key, so a re-derivation cannot detect an edit to them; accepting them would be an unchecked
+//   execution requirement. The writer refuses them (WorkPersistRefused) and the reader names each one
+//   (RestoreUnsupportedAxes). Dissolution: they enter the key before any Work that sets them is admitted,
+//   at the latest with the remote executor (gunbc.integration_concern work_envelope_axes_outside_work_key).
+//
+// SCOPE: Work<NonEmptyStr>. Every production principal is the NonEmptyStr "gunbc".
+// Malformed UTF-8 is unrepresentable at this String API; it belongs to the byte decoder at the storage
+// ingress, and nothing here claims it.
+
+data work_restore_schema_tag: NonEmptyStr = "gunbc.work_restore/1"
+
+type UnsupportedAxis = GpuAxis | StorageAxis | NetworkAxis
+
+type WorkRestoreRefusal
+  = RestoreTruncated
+  | RestoreNotCanonical { field_index: Int }
+  | RestoreSchemaUnknown { found: String }
+  | RestoreFieldInvalid { field: NonEmptyStr }
+  | RestoreTrailingFields { count: Int }
+  | RestoreUnsupportedAxes { axes: List<UnsupportedAxis> }
+  | RestorePrincipalMismatch { stored: String }
+  | RestoreKeyMismatch { stored: String, derived: WorkKey }
+
+type WorkRestoration
+  = WorkRestored { work: Work<NonEmptyStr> }
+  | WorkRestoreRefused { cause: WorkRestoreRefusal }
+
+// The function result is the separately named sum WorkPersistence; WorkPersisted is its success variant.
+type WorkPersistence
+  = WorkPersisted { wire: String }
+  | WorkPersistRefused { axes: List<UnsupportedAxis> }
+
+// ── ENCODE ────────────────────────────────────────────────────────────────────────────────────
+
+fn enc_nonempty(s: NonEmptyStr) -> String {
+  length_prefixed_encode(s: s as String)
+}
+
+fn flag_wire(b: Bool) -> String {
+  if b { "1" } else { "0" }
+}
+
+fn present_axis(present: Bool, axis: UnsupportedAxis) -> List<UnsupportedAxis> {
+  if present { [axis] } else { [] }
+}
+
+fn envelope_unsupported_axes(e: ResourceEnvelope) -> List<UnsupportedAxis> {
+  present_axis(present: match e.gpu { Present { value: _ } => true  Absent => false }, axis: GpuAxis {})
+    + present_axis(present: match e.storage { Present { value: _ } => true  Absent => false }, axis: StorageAxis {})
+    + present_axis(present: match e.network { Present { value: _ } => true  Absent => false }, axis: NetworkAxis {})
+}
+
+fn execution_fields(x: WorkExecution) -> List<String> {
+  match x {
+    MaterializedProgram { program, source, runtime_closure } =>
+      ["program", program as String, source as String, runtime_closure as String]
+    OfferedService { interface } => ["service", interface as String]
+  }
+}
+
+fn step_fields(s: WorkStep) -> List<String> {
+  concat([s.step_id as String], match s.resumability {
+    ReceiptSatisfiable => ["receipt"]
+    IdempotentUnderKey { idempotency_key: k } => ["idempotent", serialize_content_hash(hash: k) as String]
+    OpaqueEffects { reason } => ["opaque", reason as String]
+  })
+}
+
+fn obligation_fields(o: OutputObligation) -> List<String> {
+  [o.id as String, output_obligation_kind_material(kind: o.kind) as String]
+}
+
+fn cpu_fields(c: CpuRequirement?) -> List<String> {
+  match c {
+    Absent => ["0"]
+    Present { value: cpu } =>
+      concat(["1", to_string(hardware_thread_count_value(t: cpu.min_threads))], match cpu.architecture {
+        Absent => ["0"]
+        Present { value: a } => ["1", architecture_diagnostic_name(arch: a) as String]
+      })
+  }
+}
+
+fn memory_fields(m: MemoryRequirement?) -> List<String> {
+  match m {
+    Absent => ["0"]
+    Present { value: mem } => ["1", to_string(byte_size_count(b: mem.min_bytes))]
+  }
+}
+
+fn work_wire_fields(work: Work<NonEmptyStr>) -> List<String> {
+  let c = work.contract
+  let r = work.requirements
+  concat(
+    [work_restore_schema_tag as String, work.id.principal as String, work.id.key as String],
+    execution_fields(x: c.execution),
+    [to_string(c.steps |> count())],
+    c.steps |> flat_map(s => step_fields(s: s)),
+    [c.inputs as String, c.effect_contract as String, c.output_contract as String],
+    [to_string(c.output_obligations.required |> count())],
+    c.output_obligations.required |> flat_map(o => obligation_fields(o: o)),
+    [capacity_class_wire(c: r.capacity_class) as String, r.capabilities as String, r.trust_domain as String],
+    [to_string(r.isolation.guarantees |> count())],
+    r.isolation.guarantees |> map(g => isolation_guarantee_label(g: g)),
+    [revocation_standing_wire(s: r.revocation) as String],
+    [to_string(hardware_thread_count_value(t: r.shape.hard.threads))],
+    cpu_fields(c: r.shape.envelope.cpu),
+    memory_fields(m: r.shape.envelope.memory),
+    ["0", "0", "0"]
+  )
+}
+
+fn work_persist(work: Work<NonEmptyStr>) -> WorkPersistence {
+  let axes = envelope_unsupported_axes(e: work.requirements.shape.envelope)
+  if (axes |> count()) > 0 {
+    WorkPersistRefused { axes: axes }
+  } else {
+    WorkPersisted { wire: join(work_wire_fields(work: work) |> map(f => length_prefixed_encode(s: f)), "") }
+  }
+}
+
+// ── DECODE ────────────────────────────────────────────────────────────────────────────────────
+
+type Tokenized
+  = TokenizedOk { fields: List<String> }
+  | TokenizedRefused { cause: WorkRestoreRefusal }
+
+fn tokenize(text: String, index: Int) -> Tokenized {
+  if text == "" {
+    TokenizedOk { fields: [] }
+  } else {
+    match length_prefixed_decode(s: text) {
+      Absent => TokenizedRefused { cause: RestoreTruncated {} }
+      Present { value: f } =>
+        if join([length_prefixed_encode(s: f.value), f.rest], "") != text {
+          TokenizedRefused { cause: RestoreNotCanonical { field_index: index } }
+        } else {
+          match tokenize(text: f.rest, index: index + 1) {
+            TokenizedRefused { cause } => TokenizedRefused { cause: cause }
+            TokenizedOk { fields } => TokenizedOk { fields: concat([f.value], fields) }
+          }
+        }
+    }
+  }
+}
+
+type Decoded<T>
+  = DecodedOk { value: T, rest: List<String> }
+  | DecodedRefused { cause: WorkRestoreRefusal }
+
+fn then<A, B>(d: Decoded<A>, f: fn(A, List<String>) -> Decoded<B>) -> Decoded<B> {
+  match d {
+    DecodedRefused { cause } => DecodedRefused { cause: cause }
+    DecodedOk { value, rest } => f(value, rest)
+  }
+}
+
+fn rd_text(fields: List<String>) -> Decoded<String> {
+  match list_at_optional(xs: fields, index: 0) {
+    Absent => DecodedRefused { cause: RestoreTruncated {} }
+    Present { value: v } => DecodedOk { value: v, rest: fields |> skip(n: 1) }
+  }
+}
+
+fn rd_named(fields: List<String>, field: NonEmptyStr) -> Decoded<NonEmptyStr> {
+  then(rd_text(fields: fields), (t, rest) =>
+    if t == "" {
+      DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+    } else {
+      DecodedOk { value: t as NonEmptyStr, rest: rest }
+    }
+  )
+}
+
+fn find_wire<T>(candidates: List<T>, wire: fn(T) -> String, text: String) -> T? {
+  fold(candidates, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if wire(c) == text { Present { value: c } } else { none }
+    }
+  )
+}
+
+fn rd_tagged<T>(fields: List<String>, field: NonEmptyStr, candidates: List<T>, wire: fn(T) -> String) -> Decoded<T> {
+  then(rd_text(fields: fields), (t, rest) =>
+    match find_wire(candidates: candidates, wire: wire, text: t) {
+      Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+      Present { value: v } => DecodedOk { value: v, rest: rest }
+    }
+  )
+}
+
+fn rd_nat(fields: List<String>, field: NonEmptyStr) -> Decoded<Nat> {
+  then(rd_text(fields: fields), (t, rest) =>
+    match parse_int(s: t) {
+      Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+      Present { value: n } =>
+        if to_string(n) != t {
+          DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+        } else {
+          match checked_int_to_nat(n: n) {
+            Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+            Present { value: k } => DecodedOk { value: k, rest: rest }
+          }
+        }
+    }
+  )
+}
+
+fn rd_count(fields: List<String>, field: NonEmptyStr) -> Decoded<Int> {
+  then(rd_text(fields: fields), (t, rest) =>
+    match parse_int(s: t) {
+      Absent => DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+      Present { value: n } =>
+        if to_string(n) != t || n < 0 || n > (rest |> count()) {
+          DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+        } else {
+          DecodedOk { value: n, rest: rest }
+        }
+    }
+  )
+}
+
+fn rd_flag(fields: List<String>, field: NonEmptyStr) -> Decoded<Bool> {
+  then(rd_text(fields: fields), (t, rest) =>
+    if t == "0" {
+      DecodedOk { value: false, rest: rest }
+    } else if t == "1" {
+      DecodedOk { value: true, rest: rest }
+    } else {
+      DecodedRefused { cause: RestoreFieldInvalid { field: field } }
+    }
+  )
+}
+
+fn rd_list<T>(fields: List<String>, n: Int, item: fn(List<String>) -> Decoded<T>) -> Decoded<List<T>> {
+  if n == 0 {
+    DecodedOk { value: [], rest: fields }
+  } else {
+    then(item(fields), (x, r1) =>
+      then(rd_list(fields: r1, n: n - 1, item: item), (xs, r2) =>
+        DecodedOk { value: concat([x], xs), rest: r2 }
+      )
+    )
+  }
+}
+
+data all_capacity_classes: List<CapacityClass> = [ControlPlaneCapacity {}, CustomerExecutableCapacity {}]
+data all_revocation_standings: List<RevocationStanding> = [RevocationAccepted {}, WarmResidencyRequired {}]
+data all_obligation_kinds: List<OutputObligationKind> = [OutputArtifactObligation {}, TerminalResultObligation {}]
+data all_isolation_guarantees: List<IsolationGuarantee> = [
+  FreshWritableRoot {}, PrivateProcessNamespace {}, PrivateNetworkNamespace {}, PrivateUserNamespace {},
+  AttemptScopedSecrets {}, DefaultDenyEgress {}, DedicatedKernel {}, DedicatedDevice {},
+]
+data all_architectures: List<Architecture> = [X86_64 {}, X86 {}, Aarch64 {}, Arm {}, Armv7 {}, Mips {}, Mipsel {}, Mips64 {}, Mips64el {}, Riscv64 {}, Wasm32 {}]
+
+fn rd_execution(fields: List<String>) -> Decoded<WorkExecution> {
+  then(rd_text(fields: fields), (tag, r0) =>
+    if tag == "program" {
+      then(rd_named(fields: r0, field: "program"), (program, r1) =>
+        then(rd_named(fields: r1, field: "source"), (source, r2) =>
+          then(rd_named(fields: r2, field: "runtime_closure"), (closure, r3) =>
+            DecodedOk {
+              value: MaterializedProgram { program: program as ProgramRef, source: source as SourceManifestRef, runtime_closure: closure as ArtifactManifestRef },
+              rest: r3,
+            }
+          )
+        )
+      )
+    } else if tag == "service" {
+      then(rd_named(fields: r0, field: "interface"), (interface, r1) =>
+        DecodedOk { value: OfferedService { interface: interface as ServiceInterfaceRef }, rest: r1 }
+      )
+    } else {
+      DecodedRefused { cause: RestoreFieldInvalid { field: "execution" } }
+    }
+  )
+}
+
+fn rd_step(fields: List<String>) -> Decoded<WorkStep> {
+  then(rd_named(fields: fields, field: "step_id"), (id, r0) =>
+    then(rd_text(fields: r0), (tag, r1) =>
+      if tag == "receipt" {
+        DecodedOk { value: WorkStep { step_id: id, resumability: ReceiptSatisfiable {} }, rest: r1 }
+      } else if tag == "idempotent" {
+        then(rd_text(fields: r1), (k, r2) =>
+          match parse_content_hash(wire: k) {
+            Absent => DecodedRefused { cause: RestoreFieldInvalid { field: "idempotency_key" } }
+            Present { value: h } => DecodedOk { value: WorkStep { step_id: id, resumability: IdempotentUnderKey { idempotency_key: h } }, rest: r2 }
+          }
+        )
+      } else if tag == "opaque" {
+        then(rd_named(fields: r1, field: "opaque_reason"), (reason, r2) =>
+          DecodedOk { value: WorkStep { step_id: id, resumability: OpaqueEffects { reason: reason } }, rest: r2 }
+        )
+      } else {
+        DecodedRefused { cause: RestoreFieldInvalid { field: "resumability" } }
+      }
+    )
+  )
+}
+
+fn rd_obligation(fields: List<String>) -> Decoded<OutputObligation> {
+  then(rd_named(fields: fields, field: "obligation_id"), (id, r0) =>
+    then(rd_tagged(fields: r0, field: "obligation_kind", candidates: all_obligation_kinds, wire: k => output_obligation_kind_material(kind: k) as String), (kind, r1) =>
+      DecodedOk { value: OutputObligation { id: id as OutputObligationId, kind: kind }, rest: r1 }
+    )
+  )
+}
+
+fn rd_isolation(fields: List<String>) -> Decoded<IsolationGuarantee> {
+  rd_tagged(fields: fields, field: "isolation_guarantee", candidates: all_isolation_guarantees, wire: g => isolation_guarantee_label(g: g))
+}
+
+fn rd_cpu(fields: List<String>) -> Decoded<CpuRequirement?> {
+  then(rd_flag(fields: fields, field: "cpu"), (has, r0) =>
+    if has {
+      then(rd_nat(fields: r0, field: "cpu_min_threads"), (threads, r1) =>
+        then(rd_flag(fields: r1, field: "cpu_architecture"), (has_arch, r2) =>
+          if has_arch {
+            then(rd_tagged(fields: r2, field: "architecture", candidates: all_architectures, wire: a => architecture_diagnostic_name(arch: a) as String), (arch, r3) =>
+              DecodedOk { value: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: threads), architecture: Present { value: arch } } }, rest: r3 }
+            )
+          } else {
+            DecodedOk { value: Present { value: CpuRequirement { min_threads: hardware_thread_count(count: threads), architecture: none } }, rest: r2 }
+          }
+        )
+      )
+    } else {
+      DecodedOk { value: none, rest: r0 }
+    }
+  )
+}
+
+fn rd_memory(fields: List<String>) -> Decoded<MemoryRequirement?> {
+  then(rd_flag(fields: fields, field: "memory"), (has, r0) =>
+    if has {
+      then(rd_nat(fields: r0, field: "memory_min_bytes"), (bytes, r1) =>
+        DecodedOk { value: Present { value: MemoryRequirement { min_bytes: byte_size(count: bytes) } }, rest: r1 }
+      )
+    } else {
+      DecodedOk { value: none, rest: r0 }
+    }
+  )
+}
+
+type DecodedRequirements {
+  requirements: ExecutionRequirements
+  axes: List<UnsupportedAxis>
+}
+
+fn rd_requirements(fields: List<String>) -> Decoded<DecodedRequirements> {
+  then(rd_tagged(fields: fields, field: "capacity_class", candidates: all_capacity_classes, wire: c => capacity_class_wire(c: c) as String), (capacity, r0) =>
+    then(rd_named(fields: r0, field: "capabilities"), (capabilities, r1) =>
+      then(rd_named(fields: r1, field: "trust_domain"), (trust, r2) =>
+        then(rd_count(fields: r2, field: "isolation_count"), (n_iso, r3) =>
+          then(rd_list(fields: r3, n: n_iso, item: rd_isolation), (guarantees, r4) =>
+            then(rd_tagged(fields: r4, field: "revocation", candidates: all_revocation_standings, wire: s => revocation_standing_wire(s: s) as String), (revocation, r5) =>
+              then(rd_nat(fields: r5, field: "threads"), (threads, r6) =>
+                then(rd_cpu(fields: r6), (cpu, r7) =>
+                  then(rd_memory(fields: r7), (memory, r8) =>
+                    then(rd_flag(fields: r8, field: "gpu"), (gpu, r9) =>
+                      then(rd_flag(fields: r9, field: "storage"), (storage, r10) =>
+                        then(rd_flag(fields: r10, field: "network"), (network, r11) =>
+                          DecodedOk {
+                            value: DecodedRequirements {
+                              requirements: ExecutionRequirements {
+                                capacity_class: capacity,
+                                shape: Shape {
+                                  hard: HardRequirements { threads: hardware_thread_count(count: threads) },
+                                  envelope: ResourceEnvelope { cpu: cpu, gpu: none, memory: memory, storage: none, network: none },
+                                },
+                                capabilities: capabilities as CapabilityManifestRef,
+                                trust_domain: trust as TrustDomainRef,
+                                isolation: IsolationProfile { guarantees: guarantees },
+                                revocation: revocation,
+                              },
+                              axes: present_axis(present: gpu, axis: GpuAxis {}) + present_axis(present: storage, axis: StorageAxis {}) + present_axis(present: network, axis: NetworkAxis {}),
+                            },
+                            rest: r11,
+                          }
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+type DecodedWork {
+  stored_principal: String
+  stored_key: String
+  contract: WorkContract
+  decoded: DecodedRequirements
+}
+
+fn rd_work(fields: List<String>) -> Decoded<DecodedWork> {
+  then(rd_text(fields: fields), (schema, s0) =>
+    if schema != (work_restore_schema_tag as String) {
+      DecodedRefused { cause: RestoreSchemaUnknown { found: schema } }
+    } else {
+      then(rd_text(fields: s0), (principal, s1) =>
+        then(rd_text(fields: s1), (key, s2) =>
+          then(rd_execution(fields: s2), (execution, s3) =>
+            then(rd_count(fields: s3, field: "step_count"), (n_steps, s4) =>
+              then(rd_list(fields: s4, n: n_steps, item: rd_step), (steps, s5) =>
+                then(rd_named(fields: s5, field: "inputs"), (inputs, s6) =>
+                  then(rd_named(fields: s6, field: "effect_contract"), (effect, s7) =>
+                    then(rd_named(fields: s7, field: "output_contract"), (output, s8) =>
+                      then(rd_count(fields: s8, field: "obligation_count"), (n_ob, s9) =>
+                        then(rd_list(fields: s9, n: n_ob, item: rd_obligation), (obligations, s10) =>
+                          then(rd_requirements(fields: s10), (decoded, s11) =>
+                            DecodedOk {
+                              value: DecodedWork {
+                                stored_principal: principal,
+                                stored_key: key,
+                                contract: WorkContract {
+                                  execution: execution,
+                                  steps: steps,
+                                  inputs: inputs as ArtifactManifestRef,
+                                  effect_contract: effect as EffectContractRef,
+                                  output_contract: output as OutputContractRef,
+                                  output_obligations: DeclaredOutputObligations { required: obligations },
+                                },
+                                decoded: decoded,
+                              },
+                              rest: s11,
+                            }
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    }
+  )
+}
+
+fn work_restore_decoded(w: DecodedWork, expected_principal: NonEmptyStr) -> WorkRestoration {
+  if (w.decoded.axes |> count()) > 0 {
+    WorkRestoreRefused { cause: RestoreUnsupportedAxes { axes: w.decoded.axes } }
+  } else if w.stored_principal != (expected_principal as String) {
+    WorkRestoreRefused { cause: RestorePrincipalMismatch { stored: w.stored_principal } }
+  } else {
+    let derived = work_for(principal: expected_principal, contract: w.contract, requirements: w.decoded.requirements)
+    if (derived.id.key as String) != w.stored_key {
+      WorkRestoreRefused { cause: RestoreKeyMismatch { stored: w.stored_key, derived: derived.id.key } }
+    } else {
+      WorkRestored { work: derived }
+    }
+  }
+}
+
+// THE EXPECTED PRINCIPAL IS AN ARGUMENT, supplied by the caller independently of the bytes. The stored
+// principal is read only to refuse a disagreement; the key is derived under the expected one, so a
+// payload rewritten to carry a different principal cannot make a swap look consistent.
+fn work_restore(wire: String, expected_principal: NonEmptyStr) -> WorkRestoration {
+  match tokenize(text: wire, index: 0) {
+    TokenizedRefused { cause } => WorkRestoreRefused { cause: cause }
+    TokenizedOk { fields } =>
+      match rd_work(fields: fields) {
+        DecodedRefused { cause } => WorkRestoreRefused { cause: cause }
+        DecodedOk { value, rest } =>
+          if (rest |> count()) > 0 {
+            WorkRestoreRefused { cause: RestoreTrailingFields { count: rest |> count() } }
+          } else {
+            work_restore_decoded(w: value, expected_principal: expected_principal)
+          }
+      }
+  }
+}
