@@ -1,7 +1,15 @@
 module v2.compiler.self_host.direct_rust_door_written_compile
 
 import extdeps.rust.rustc
-import std.types { Bool, Int }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome
+}
+import extdeps.shell
+import v2.std.node { symbol_lexeme }
+import std.types { Bool, FilePath, Int }
 import v2.compiler.self_host.candidate_generation {
   RustWorkspaceWriteReceipt,
   WrittenProvenancedRustArtifact,
@@ -133,5 +141,42 @@ fn written_route_refused(observation: WrittenRustCompileObservation) -> Bool {
       diagnostics_fatal_reason(d: d) == ^produced_decl_target_unwired
     WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => false
     WrittenFileNotWritten { write: _ } => false
+  }
+}
+
+// PRINTS THE REFUSAL REASON (closes limit 3 of #15933): a claim returns Bool, so the reason the
+// missing-rule route refused with is written to a RECEIPT FILE that the wet script `cat`s into the
+// run log. The receipt lives beside, never inside, the missing-rule workspace (that directory must
+// stay absent: a refusal writes nothing). The reason is the lexeme of the fatal diagnostic symbol,
+// so a wrong-cause refusal is visible in the log even when the Bool is false.
+// The receipt directory is a PARAMETER supplied by the claim (review 91505: a reporting location is policy, not production-module data).
+
+fn written_refusal_reason_text(observation: WrittenRustCompileObservation) -> String {
+  match observation {
+    WrittenRouteRefused { diagnostics: d } => symbol_lexeme(sym: diagnostics_fatal_reason(d: d))
+    WrittenSourceCompiled { written: _, compile_accepted: _, compile_exit_code: _, compile_stderr: _ } => "NOT-REFUSED:compiled"
+    WrittenFileNotWritten { write: _ } => "NOT-REFUSED:file-not-written"
+  }
+}
+
+fn written_refusal_reason_receipt_written(observation: WrittenRustCompileObservation, receipt_dir: String) -> Bool {
+  let made = shell.Mkdir.Parents(path: receipt_dir as FilePath)
+  if made.success {
+    let r = Filesystem.Write(
+      path: concat(receipt_dir, "/refusal-reason.txt") as FilePath,
+      content: written_refusal_reason_text(observation: observation)
+    )
+    r.success
+  } else { false }
+}
+
+// THE IN-TREE READER OF THE RECEIPT (DESIGN 3c): reads the receipt file back from disk, so the bytes a
+// claim asserts are the bytes on disk, not the string that was handed to the write. A read refusal is
+// its own text, never an empty or a matching string.
+fn written_refusal_reason_receipt_read(receipt_dir: String) -> String {
+  let read = Filesystem.Read(path: concat(receipt_dir, "/refusal-reason.txt"))
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadSucceeded { content: c } => c
+    FilesystemReadRefused { error: e } => concat("READ-REFUSED:", e)
   }
 }

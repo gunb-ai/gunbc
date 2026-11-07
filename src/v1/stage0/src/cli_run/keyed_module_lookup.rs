@@ -25,10 +25,12 @@
 //! handed twice is one root, and a file reached through two nested roots is one location, so no
 //! ambiguity is fabricated by how the pool was spelled.
 //!
-//! Known divergence, stated: `read_layout_module` lets a custom-root copy win silently over the
-//! governed one. These reads keep the census contract (both copies), which is what their
-//! consumers were written against; the closure acquisition is left as it is
-//! (`gunbc.integration_concern` `keyed_module_reads_walk_the_whole_pool`, sighting).
+//! Root order is the authority on both kinds of root: this read walks the roots in order and
+//! returns every distinct copy, so its first element is the first root's copy whether that root is
+//! governed or custom. `read_layout_module` (closure acquisition) applies the same order and, where
+//! two roots hold a module, takes the first (`FirstRootWins`) or refuses (`Refuse`); this read keeps
+//! the census contract of reporting both copies, which is what its consumers were written against
+//! (`gunbc.integration_concern` `keyed_module_reads_walk_the_whole_pool`).
 //!
 //! Seed-growth receipt: `gunbc.keyed_module_lookup_seed_growth`
 //! `keyed_module_lookup_seed_growth_justification`.
@@ -184,6 +186,39 @@ mod tests {
             .into_iter()
             .map(|f| f.rel_path)
             .collect()
+    }
+
+    /// A governed root and a custom root that both hold a module: both copies are reported, and the
+    /// primary fact is the FIRST ROOT's whichever kind it is (root order, not kind, decides).
+    #[test]
+    fn governed_and_custom_copies_follow_root_order() {
+        let custom = fixture_root(
+            "gc",
+            &[(
+                "algebra_copy.dag",
+                "module std.algebra\n\nfn probe() -> Bool { true }\n",
+            )],
+        );
+        let governed = "dag".to_string();
+        let gov_first = keyed_module_sources(&[governed.clone(), custom.clone()], "std.algebra");
+        assert_eq!(
+            gov_first.len(),
+            2,
+            "both copies: {:?}",
+            gov_first.iter().map(|f| &f.path).collect::<Vec<_>>()
+        );
+        assert!(
+            gov_first[0].path.ends_with("dag/std/algebra.dag"),
+            "{}",
+            gov_first[0].path
+        );
+        let custom_first = keyed_module_sources(&[custom.clone(), governed], "std.algebra");
+        assert_eq!(custom_first.len(), 2);
+        assert!(
+            custom_first[0].path.contains("-gc-"),
+            "{}",
+            custom_first[0].path
+        );
     }
 
     /// (a) one module under two roots: both decl rows (ambiguity), the fact is the first root's.
