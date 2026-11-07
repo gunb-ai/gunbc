@@ -963,6 +963,30 @@ data toolchain_file_read_without_toml_ingest: IntegrationConcern = IntegrationCo
   },
 }
 
+data work_envelope_axes_outside_work_key: IntegrationConcern = IntegrationConcern {
+  identity: "work_envelope_axes_outside_work_key",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.fabric.envelope", decl_name: "ResourceEnvelope"),
+    requirement: "ResourceEnvelope's gpu, storage and network axes are bound by the WorkKey, so a restored Work's key re-derivation detects an edit to any of them.",
+    standing: RequirementEstablished { by: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.work", decl_name: "work_identity_material") } },
+  },
+  affected: FreeSemigroup { head: decl_ref(module_path: "product.fabric.work", decl_name: "work_identity_material"), tail: [decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore")] },
+  question: "envelope_material does not put gpu, storage or network in the key, so restore cannot verify them; work_restore refuses a wire that sets one (RestoreUnsupportedAxes) and work_persist refuses to write one. No current producer sets them. Should the three axes enter the key (a PR 2 identity change) before any Work that sets them is admitted?",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "f9334b73e24",
+      evidence: FreeSemigroup { head: CitesDeclaration { declaration: decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore") }, tail: [] },
+      account: "Remote-build PR 2b: the restore refuses the axes as a declared boundary, so the refusal is not permanent by silence.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "product.fabric.work", decl_name: "work_identity_material") },
+    preserve: [PreservedObligation { holder: decl_ref(module_path: "product.fabric.work_restore", decl_name: "work_restore"), control: Absent, statement: "A wire that sets gpu, storage or network refuses typed naming each axis; it is never carried unchecked." }],
+    next: climbs_when(capability: "The three axes enter the WorkKey, at the latest with the remote executor (PR 7); the restore refusal and the writer refusal are then deleted."),
+  },
+}
+
 data equality_synthesis_helper_binding_is_import_authority: IntegrationConcern = IntegrationConcern {
   identity: "equality_synthesis_helper_binding_is_import_authority",
   kind: SuspectedCapabilityGap {
@@ -1087,7 +1111,6 @@ data base_mirror_round_tolerates_unresolvable_base_git_failure: IntegrationConce
   disposition: Open,
 }
 
-
 data roadmap_attempt_metering_plain_head_refusal: IntegrationConcern = IntegrationConcern {
   identity: "roadmap_attempt_metering_plain_head_refusal",
   kind: SuspectedCapabilityGap {
@@ -1168,7 +1191,7 @@ data roadmap_metering_closing_plain_writer_retired: IntegrationConcern = Integra
   disposition: Open,
 }
 
-data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, roadmap_attempt_metering_plain_head_refusal, roadmap_attempt_metering_belt_departed_adoption, roadmap_metering_closing_plain_writer_retired]
+data integration_concerns: List<IntegrationConcern> = [provider_materializes_source_twice, toolchain_file_read_without_toml_ingest, durable_request_attempt_integration, execution_grant_composition_integration, execution_receipt_outcome_binding, support_restriction_scope, started_operation_ownership, duct_placement_chosen_by_hand, target_syntax_built_by_hand_in_application_modules, cas_generation_expectation_admitted_twice, cas_fold_claims_have_no_executing_witness, typed_argv_allowlist_refuses_a_modeled_format_constant, broker_status_decision_is_unreceipted, byte_sequence_search_reimplemented_per_module, presentation_witness_effect_join_callees, run_closure_typecheck_exceeds_eval_demand, keyed_module_reads_walk_the_whole_pool, equality_synthesis_helper_binding_is_import_authority, srv13_and_srv15_name_one_board, base_mirror_round_tolerates_unresolvable_base_git_failure, entry_closure_provider_settling_has_two_loops, work_envelope_axes_outside_work_key, roadmap_attempt_metering_plain_head_refusal, roadmap_attempt_metering_belt_departed_adoption, roadmap_metering_closing_plain_writer_retired]
 
 fn fork_rows_have_distinct_authorities() -> Bool {
   all(integration_concerns, c => fork_authorities_distinct(c: c))
