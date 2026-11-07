@@ -344,7 +344,7 @@ fn bmc_assimilator_grant_sets_over(c: BmcAssimilatorCells) -> List<GrantSet> {
     let member = if count(c.members) == 1 { GrantMemberResolved { member: join(c.members, "") } } else {
       GrantMemberUnresolved { cause: concat("bmc assimilator grants name more than one principal: ", join(c.members, ", ")) }
     }
-    [GrantSet { label: "bmc assimilator cells", grants: map(c.cells, x => SecretAccessGrant { target: x.target, role: x.role, condition: none }), member: member }]
+    [GrantSet { label: "bmc assimilator cells", grants: c.cells, member: member }]
   }
 }
 
