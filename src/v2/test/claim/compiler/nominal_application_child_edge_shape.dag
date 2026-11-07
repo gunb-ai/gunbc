@@ -9,16 +9,16 @@ module v2.test.claim.compiler.nominal_application_child_edge_shape
 // mismatch on every nominal application. The cells below separate the two readings without a local run:
 // every cell is a whole-module read through the real resolver and infer, and each asks one question.
 //
-// DISSOLUTION CONDITION, stated up front because §6 asks for it: this file is the instrument that
-// measures the mismatch, and it does not outlive the fix it measures. When the lowering lands, every cell
-// whose verdict is SETTLED stays -- renamed to the contract it guards, in the PR that carries the fix, as
-// the regression control that would have caught the bug -- and every cell that only measured is DELETED in
-// that same commit. Nothing here is left standing as scaffold: no cell survives unless it asserts a
-// settled verdict about the fixed contract.
+// THIS PR IS A MEASUREMENT INSTRUMENT AND IS NOT INTENDED TO MERGE. It exists to observe a fact no local
+// run is permitted to observe under this node's no-local-runs ruling: which child Edge label each side of
+// one nominal type-application actually carries. The implementation PR lands separately and carries only
+// cells whose verdict is settled by the fix -- judge-level ACCEPT/REFUSE cells plus the soundness cell --
+// as named regression controls. The measurement-only cells below (nal_node_*_reachable, *_is_instantiation,
+// *_arguments_positional, *_denotation_reads) are read here and die with this branch; they never enter main.
 //
 // Reading the table while the measurement is open: a cell RED where it is written ACCEPT means the two
 // sides of that program are NOT structurally identical, which is the lowering mismatch; a cell RED where it
-// is written REFUSE means the judge is answering for a reason other than the one named.
+// is written REFUSE means the judge answered for a reason other than the one named.
 import v2.compiler.name_resolve { Admission, ResolutionSubject, resolution_context, resolve_in_context }
 import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.resolve { ResolvedTree }
