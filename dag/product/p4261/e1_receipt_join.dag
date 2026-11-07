@@ -1,0 +1,170 @@
+module product.p4261.e1_receipt_join
+
+import std.types { List, NonEmptyStr }
+import std.algebra { Cons, Empty, is_empty }
+import std.optional { Absent, Present }
+import std.content_hash { Sha256Digest, content_hash_eq_cryptographic }
+import std.list { list_member }
+import product.electrical.connectivity { ComponentInstanceIdentity }
+import product.electrical.photograph { BytesNotInStore, InStore, PhotographCitation, PixelRegion, pixel_region_eq }
+import product.electrical.identification {
+  ComponentIdentification,
+  FootprintUnpopulated,
+  BodySeenMarkingUnread,
+  GlyphSpan,
+  IdentifiedByMarking,
+  InstalledComponent,
+  MarkingCandidate,
+  MarkingReading,
+  MarkingSharedByMakers,
+  MarkingUnresolved,
+  RatingPrintedOnBody,
+  ResistanceCodeRead,
+  glyph_spans,
+  observation_relied_on
+}
+import product.electrical.reading_receipt { DirectionRuling, ReadingReceiptRelation, relate_with_rulings }
+import product.p4261.e1_receipt_markings { ReceiptMarking }
+
+// THE MODEL'S READINGS OF E1 MARKINGS, JOINED TO WHAT THE RECEIPTS SAY WAS READ AT THE SAME BOX.
+//
+// UNIT: one glyph span of a reading's marking (a reading can have several spans, each with its own frame and
+// box). The join key is the span's own sighting -- frame digest and region, all four edges, the same exactness
+// as product.electrical.photograph same_boxed_frame -- against ReceiptMarking by that digest and that region.
+// Every receipt row at that box is related (a box can carry more than one row when two receipts, or one
+// location text, state it); a span with no row at its box is an Unjoinable, and it is KEPT, never dropped, so
+// a missing join can never read as Agrees.
+//
+// WHAT IS NOT JOINED. A span with no box in the store (no sighting, or a frame whose bytes are not stored) is
+// NoBoxedSighting. The relation is only as strong as the receipt's box: a receipt row is "this was read at
+// this box", so Agrees says two readers read the same glyphs at the same box and nothing about which of them
+// is right.
+type JoinGap
+  = NoBoxedSighting
+  | NoFrameReceipt
+  | PhotoHasNoMarkedItem
+  | BoxNotAmongPhotoItems
+
+type SpanJoin
+  = Related { receipt: ReceiptMarking, relation: ReadingReceiptRelation }
+  | Unjoinable { gap: JoinGap }
+
+type JoinedSpan {
+  specimen: ComponentInstanceIdentity
+  span: NonEmptyStr
+  sighting: PhotographCitation?
+  joins: List<SpanJoin>
+}
+
+fn identification_marking(i: ComponentIdentification) -> MarkingReading? {
+  match i {
+    IdentifiedByMarking { row: _, observation: o } => Present { value: observation_relied_on(o: o) }
+    MarkingSharedByMakers { rows: _, marking: m } => Present { value: m }
+    MarkingCandidate { row: _, marking: m, discriminator: _ } => Present { value: m }
+    RatingPrintedOnBody { rating: _, marking: m } => Present { value: m }
+    ResistanceCodeRead { milliohms: _, marking: m } => Present { value: m }
+    MarkingUnresolved { marking: m, discriminator: _ } => m
+    FootprintUnpopulated { evidence: _ } => Absent
+    BodySeenMarkingUnread { evidence: _ } => Absent
+  }
+}
+
+fn unjoinable(gap: JoinGap) -> List<SpanJoin> {
+  [Unjoinable { gap: gap }]
+}
+
+fn same_frame(row: ReceiptMarking, content: Sha256Digest) -> Bool {
+  content_hash_eq_cryptographic(left: row.frame, right: content)
+}
+
+fn at_box(row: ReceiptMarking, content: Sha256Digest, region: PixelRegion) -> Bool {
+  same_frame(row: row, content: content) && pixel_region_eq(a: row.region, b: region)
+}
+
+fn digest_eq(a: Sha256Digest, b: Sha256Digest) -> Bool {
+  content_hash_eq_cryptographic(left: a, right: b)
+}
+
+fn join_at_box(
+  span: NonEmptyStr,
+  content: Sha256Digest,
+  region: PixelRegion,
+  rows: List<ReceiptMarking>,
+  frames: List<Sha256Digest>,
+  rulings: List<DirectionRuling>
+) -> List<SpanJoin> {
+  let here = rows.filter(r => at_box(row: r, content: content, region: region))
+  if is_empty(xs: here) {
+    let same_photo = rows.filter(r => same_frame(row: r, content: content))
+    if is_empty(xs: same_photo) {
+      if list_member(xs: frames, x: content, eq: digest_eq) { unjoinable(gap: PhotoHasNoMarkedItem) } else { unjoinable(gap: NoFrameReceipt) }
+    } else {
+      unjoinable(gap: BoxNotAmongPhotoItems)
+    }
+  } else {
+    here.map(r => Related { receipt: r, relation: relate_with_rulings(model: span, receipt: r.marking_text, rulings: rulings) })
+  }
+}
+
+fn join_span(
+  g: GlyphSpan,
+  rows: List<ReceiptMarking>,
+  frames: List<Sha256Digest>,
+  rulings: List<DirectionRuling>
+) -> List<SpanJoin> {
+  match g.sighting {
+    Absent => unjoinable(gap: NoBoxedSighting)
+    Present { value: c } =>
+      match c {
+        BytesNotInStore { taken_on: _, locator: _, obligation: _ } => unjoinable(gap: NoBoxedSighting)
+        InStore { content: content, region: reg } =>
+          match reg {
+            Absent => unjoinable(gap: NoBoxedSighting)
+            Present { value: region } => join_at_box(span: g.span, content: content, region: region, rows: rows, frames: frames, rulings: rulings)
+          }
+      }
+  }
+}
+
+fn join_spans(
+  specimen: ComponentInstanceIdentity,
+  spans: List<GlyphSpan>,
+  rows: List<ReceiptMarking>,
+  frames: List<Sha256Digest>,
+  rulings: List<DirectionRuling>
+) -> List<JoinedSpan> {
+  spans.map(g => JoinedSpan {
+    specimen: specimen,
+    span: g.span,
+    sighting: g.sighting,
+    joins: join_span(g: g, rows: rows, frames: frames, rulings: rulings)
+  })
+}
+
+fn join_component(
+  c: InstalledComponent,
+  rows: List<ReceiptMarking>,
+  frames: List<Sha256Digest>,
+  rulings: List<DirectionRuling>
+) -> List<JoinedSpan> {
+  match identification_marking(i: c.identification) {
+    Absent => []
+    Present { value: m } => join_spans(specimen: c.component, spans: glyph_spans(c: m.content), rows: rows, frames: frames, rulings: rulings)
+  }
+}
+
+// THE FOLD: every glyph span of every installed component's marking reading, joined.
+fn join_components(
+  cs: List<InstalledComponent>,
+  rows: List<ReceiptMarking>,
+  frames: List<Sha256Digest>,
+  rulings: List<DirectionRuling>
+) -> List<JoinedSpan> {
+  match cs {
+    Empty => []
+    Cons { head: h, tail: t } => {
+      let here = join_component(c: h, rows: rows, frames: frames, rulings: rulings)
+      here + join_components(cs: t, rows: rows, frames: frames, rulings: rulings)
+    }
+  }
+}
