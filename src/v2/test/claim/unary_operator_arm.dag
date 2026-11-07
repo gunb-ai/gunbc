@@ -8,9 +8,13 @@ import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
 import std.algebra { Cons, Empty }
+import std.optional { Absent, Optional, Present }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
+import v2.std.diagnostic {
+  Accepted, Outcome, Rejected, DeclaredTypePosition, PositionDeclaredReturn,
+  diagnostics_fatal_reason, diagnostics_inhabitance_position
+}
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }
 import std.types { List }
@@ -62,6 +66,24 @@ fn uoa_reason(src: String, subject: List<Symbol>) -> String {
   }
 }
 
+// The reason names the decision that refused; the position is the separate typed fact about the
+// same refusal -- where it was asked. Both are asserted per specimen, so a refusal of the same shape
+// reported at another position fails the claim instead of passing it.
+fn uoa_position(src: String, subject: List<Symbol>) -> Optional<DeclaredTypePosition> {
+  match uoa_assemble(src: src, subject: subject) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Accepted { value: _, diagnostics: _ } => Absent
+        Rejected { diagnostics: d } => diagnostics_inhabitance_position(d: d)
+      }
+  }
+}
+
+fn uoa_position_is(src: String, subject: List<Symbol>, wanted: DeclaredTypePosition) -> Bool {
+  uoa_position(src: src, subject: subject) == Present { value: wanted }
+}
+
 
 
 // THE OPERATOR ROUTE OVER ARITY ONE (root std.unicode.types, with the ordering arm). A prefix `!` reads the
@@ -86,7 +108,8 @@ test fn not_of_int_refuses_holds() -> Bool {
 }
 
 test fn not_returned_as_int_refuses_holds() -> Bool {
-  uoa_reason(src: "module p\n\nfn a(x: Bool) -> Int {\n  !x\n}\n", subject: uoa_p()) == "infer:arrow_body_does_not_inhabit_declared_return"
+  uoa_reason(src: "module p\n\nfn a(x: Bool) -> Int {\n  !x\n}\n", subject: uoa_p()) == "infer:inhabitance_structural_roots_differ"
+    && uoa_position_is(src: "module p\n\nfn a(x: Bool) -> Int {\n  !x\n}\n", subject: uoa_p(), wanted: PositionDeclaredReturn { argument_ordinal_path: [] })
 }
 
 test fn negated_literal_is_int_holds() -> Bool {
