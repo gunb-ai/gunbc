@@ -48,6 +48,19 @@ module v2.workflow.reference_migration
 // through the v2 lex pass, so Rust comments and Markdown are outside this surface's continuous scope;
 // a file that will not lex is reported unread rather than certified, and a registered generated
 // output is scanned as plain text without any claim that its language was read.
+//
+// WHO CALLS THIS (DESIGN §3c). Nothing else in this change runs it, and the consumer is named rather
+// than implied: the DESIGN section-number cutover — the change after this one — whose trigger is that
+// cutover's declared population, and whose `plan-references` / `apply-references` verbs call
+// `reference_migration_plan_bound` and `reference_migration_apply_bound` at the foot of this file and
+// nothing else here. Those two are the frontier entries: the caller names the files, the declared
+// mapping, the target context and the policy, and OWNERSHIP IS TAKEN FROM THE REGISTRY — so the only
+// route from a plan to generated-output truth is the registry, never a filename. They read and write
+// through the `Filesystem` and therefore run in that verb's process: hermetic claim mode refuses a
+// DAG-originated host effect, so a claim cannot execute the reading or the writing. What a claim does
+// execute is what they delegate to — `reference_migration_plan_with_ownership` and
+// `reference_migration_apply_with_ownership`, population and roster as data — and the pure
+// `reference_migration_apply`: every guard, refusal and splice, refusals included.
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, List, String }
@@ -178,8 +191,11 @@ fn migration_ownership_authored() -> MigrationOwnership {
   MigrationOwnership { generated_paths: [] }
 }
 
+// The one place this surface reads the registry. Everything downstream — the plan, the guards, the
+// frontier entries — talks to `MigrationOwnership`, so the registry has exactly one route in and a
+// caller cannot substitute a guess for it.
 fn migration_ownership_from_registry() -> MigrationOwnership {
-  MigrationOwnership { generated_paths: committed_generated_artifact_paths() }
+  migration_ownership_with(paths: committed_generated_artifact_paths())
 }
 
 fn migration_ownership_with(paths: List<String>) -> MigrationOwnership {
@@ -660,6 +676,27 @@ fn migration_discover_generated(policy: MigrationContextPolicy, documents: List<
 // or a generated file. Malformed markers are collected only where the file was lexed: in an unlexed
 // generated file the only reading is this one, and it is the producer's to fix.
 fn migration_span_occurrences(file: String, text: String, base: Int, policy: MigrationContextPolicy, documents: List<String>, scope: MigrationOccurrenceScope) -> List<MigrationOccurrence> {
+  if !migration_text_can_hold_reference(text: text, policy: policy, documents: documents) {
+    []
+  } else {
+    migration_span_readings(file: file, text: text, base: base, policy: policy, documents: documents, scope: scope)
+  }
+}
+
+// A span with no ATTRIBUTING token holds no occurrence, and skipping it is a consequence of what a
+// citation is rather than a heuristic: a marked reference needs `@ref(`, and a positional citation
+// needs a § sign or one of the document / external-specification tokens the policy names — a bare
+// number or word is never a citation (`migration_citation_open`). This is what keeps a whole-repository
+// plan from reading every byte of every file once per pass.
+fn migration_text_can_hold_reference(text: String, policy: MigrationContextPolicy, documents: List<String>) -> Bool {
+  string_contains(s: text, pattern: "@ref(")
+    || string_contains(s: text, pattern: "§")
+    || fold_list(xs: documents + policy.documents + policy.external_specifications, empty: false, cons: fn(acc, token) {
+        acc || (token != "" && string_contains(s: text, pattern: token))
+      })
+}
+
+fn migration_span_readings(file: String, text: String, base: Int, policy: MigrationContextPolicy, documents: List<String>, scope: MigrationOccurrenceScope) -> List<MigrationOccurrence> {
   let extraction = annotation_references_text(text: text, start: base)
   let marked = list_map(xs: extraction.references, f: fn(r) {
     MigrationOccurrence { file: file, start: r.start, end: r.end, form: FormMarked { reference: r.reference }, scope: scope }
@@ -782,8 +819,11 @@ fn migration_code_is_identifier(code: Int) -> Bool {
 }
 
 // What may sit inside one citation without breaking it: spaces, the § sign, a range dash, a comma,
-// and the backtick of a backticked spelling. A line end and a full stop are NOT in this set: "DESIGN
-// 3.5" is a decimal, not a citation of section 3, and a citation may not run on past a line end.
+// and the backtick of a backticked spelling. A line end and a full stop are NOT in this set: a
+// citation may not run on past a line end, and a stop is read as a word break rather than swallowed,
+// so `DESIGN 4b.1` arrives as the words `4b` and `1` with the gap `.` between them — which is exactly
+// the shape `migration_citation_continue` recognizes as one sub-item citation. A stop with a space
+// after it (`. `) is not that shape: it ends the sentence, and what follows is prose.
 fn migration_code_is_citation_gap(code: Int) -> Bool {
   code == 32 || code == 9 || code == 167 || code == 45 || code == 8211 || code == 8212 || code == 96 || code == 44
 }
@@ -809,9 +849,9 @@ fn migration_read_citations(text: String, base: Int, policy: MigrationContextPol
     cons: fn(acc, word) { migration_citation_step(acc: acc, word: word, text: text, octets: octets, policy: policy, documents: documents) }
   )
   // The span's tail is the last word's gap: it is where the closing backtick of a backticked spelling
-  // lives when nothing follows it. Nothing follows the last word, so nothing extends it and no stop
-  // there opens a number: draining it is always a keep.
-  migration_citation_drain(state: state, gap: migration_tail_gap(text: text, octets: octets, words: words, base: base), decimal: false).found
+  // lives when nothing follows it. Nothing follows the last word to extend or contradict it, so the
+  // pending candidate — if one is open — is reported here.
+  migration_citation_drain(state: state, gap: migration_tail_gap(text: text, octets: octets, words: words, base: base)).found
 }
 
 fn migration_tail_gap(text: String, octets: List<Int>, words: List<MigrationWord>, base: Int) -> String {
@@ -847,6 +887,13 @@ fn migration_citation_continue(state: MigrationCitationState, word: MigrationWor
           found: state.found,
           last_gap: gap,
         }
+      } else if migration_citation_continues_sub_item(read: read, word_text: word_text, gap: gap) {
+        MigrationCitationState {
+          pending: Present { value: MigrationCitationRead { start: read.start, end: word.end, document: read.document, label: read.label + "." + word_text, external: read.external, backtick_open: read.backtick_open } },
+          phase: state.phase,
+          found: state.found,
+          last_gap: gap,
+        }
       } else {
         state
       }
@@ -854,20 +901,30 @@ fn migration_citation_continue(state: MigrationCitationState, word: MigrationWor
   }
 }
 
+// A label followed by a stop and then digits is ONE citation of a sub-item: `DESIGN 4b.1` cites item 1
+// of section 4b — a spelling that exists in this repository's own comments, in a string. The reader's
+// job is to see what is there, so it reads the whole number: the citation is reported over `4b.1`, and
+// the only thing that could cut a version number in half — an EDIT — is out of reach, because no rule
+// can be written against half of what was read. Whether it maps is the classifier's question.
+//
+// The gap must be the stop ALONE. `3. 5` has a space after the stop, which ends the sentence, and the
+// digits after it are prose: reading that as a sub-item would invent a section out of punctuation.
+fn migration_citation_continues_sub_item(read: MigrationCitationRead, word_text: String, gap: String) -> Bool {
+  gap == "." && read.label != "" && migration_word_is_label(word_text: word_text) && migration_word_begins_with_digit(word_text: word_text)
+}
+
 fn migration_gap_is_range(gap: String) -> Bool {
   string_contains(s: gap, pattern: "-") || string_contains(s: gap, pattern: "–") || string_contains(s: gap, pattern: "—")
 }
 
 fn migration_citation_open(state: MigrationCitationState, word: MigrationWord, word_text: String, gap: String, octets: List<Int>, text: String, policy: MigrationContextPolicy, documents: List<String>) -> MigrationCitationState {
-  // A stop in the gap makes the label the start of a NUMBER, not a section: `DESIGN 3.5` is a decimal,
-  // and dropping the whole candidate is the only honest answer — reporting `DESIGN 3` with an extent
-  // that cuts a number in half would let a migration rewrite part of a version number. The stop is
-  // only decisive when a digit follows it, whether inside the gap ("3" then ".5") or as the next word
-  // ("3" then "." then "5", because the stop is a word break); a sentence-final stop has nothing
-  // after it and keeps the citation, which is most citations in prose.
-  let decimal = migration_gap_is_decimal(gap: gap)
-    || (migration_gap_begins_with_stop(gap: gap) && migration_word_begins_with_digit(word_text: word_text))
-  let drained = migration_citation_drain(state: state, gap: gap, decimal: decimal)
+  // A candidate is reported as soon as the words stop continuing it. Nothing here decides whether the
+  // spelling is a number: `migration_citation_continue` has already taken the one shape where a stop
+  // belongs to the citation (`DESIGN 4b.1`), and a stop with a space after it ends the sentence. A
+  // candidate is never dropped for LOOKING numeric — an occurrence that cannot be understood is
+  // reported as an ambiguity and the completion law counts it, while dropping is how a population
+  // certifies clean while still holding the citation.
+  let drained = migration_citation_drain(state: state, gap: gap)
   if migration_string_list_contains(xs: documents + policy.documents, value: word_text) {
     MigrationCitationState { pending: Absent, phase: PhaseDocument { document: word_text, start: word.start, external: false, backtick_open: migration_gap_ends_with(gap: gap, code: 96) }, found: drained.found, last_gap: gap }
   } else if migration_string_list_contains(xs: policy.external_specifications, value: word_text) {
@@ -896,23 +953,17 @@ fn migration_citation_open(state: MigrationCitationState, word: MigrationWord, w
   }
 }
 
-// A candidate is reported only when the words stop continuing it, and never as a decimal: the caller
-// has already decided whether the gap and the word after it make the label the start of a NUMBER, in
-// which case the whole candidate is dropped rather than reported with an extent that would cut a
-// number in half.
-fn migration_citation_drain(state: MigrationCitationState, gap: String, decimal: Bool) -> MigrationCitationState {
+// A candidate is reported the moment the words stop continuing it. Reporting is unconditional: the
+// reader has no authority to decide that a spelling it recognized is not worth reporting, and a
+// candidate dropped here is a citation the completion law would never see.
+fn migration_citation_drain(state: MigrationCitationState, gap: String) -> MigrationCitationState {
   match state.pending {
-    Present { value: read } =>
-      if decimal {
-        MigrationCitationState { pending: Absent, phase: state.phase, found: state.found, last_gap: state.last_gap }
-      } else {
-        MigrationCitationState {
-          pending: Absent,
-          phase: state.phase,
-          found: state.found + [migration_citation_close(read: read, gap: gap)],
-          last_gap: state.last_gap,
-        }
-      }
+    Present { value: read } => MigrationCitationState {
+      pending: Absent,
+      phase: state.phase,
+      found: state.found + [migration_citation_close(read: read, gap: gap)],
+      last_gap: state.last_gap,
+    }
     Absent => state
   }
 }
@@ -929,22 +980,6 @@ fn migration_citation_close(read: MigrationCitationRead, gap: String) -> Migrati
 
 fn migration_gap_ends_with(gap: String, code: Int) -> Bool {
   migration_gap_edge(gap: gap, code: code, from_end: true)
-}
-
-// Only a gap whose full stop is FOLLOWED BY A DIGIT makes the label the start of a number: `DESIGN 3.5`
-// is a decimal and drops, while the sentence-final stop of `…described in DESIGN §3.` is punctuation
-// and keeps the citation. Dropping on any stop would silently lose every citation at the end of a
-// sentence, which is most of them.
-fn migration_gap_is_decimal(gap: String) -> Bool {
-  let codes = list_map(xs: unicode_scalar_unfold(s: migration_gap_trim(gap: gap)), f: fn(c) { unicode_char_code_point(c: c) })
-  match codes {
-    Cons { head: first, tail: rest } => first == 46 && migration_first_code(codes: rest) >= 48 && migration_first_code(codes: rest) <= 57
-    _ => false
-  }
-}
-
-fn migration_gap_begins_with_stop(gap: String) -> Bool {
-  migration_gap_starts_with(gap: gap, code: 46)
 }
 
 fn migration_word_begins_with_digit(word_text: String) -> Bool {
@@ -1838,6 +1873,30 @@ fn migration_read_population(paths: List<String>) -> List<MigrationFile> {
     let read = Filesystem.Read(path: path)
     if !read.success { acc } else { acc + [migration_file(path: path, content: read.content)] }
   })
+}
+
+// THE FRONTIER ENTRIES (see "WHO CALLS THIS" at the head of this file): the shape the cutover's verbs
+// call. The caller names the files, the mapping, the target context and the policy, and ownership is
+// NOT an argument — taking it from the registry is the whole point of routing through here. These two
+// read and write through the Filesystem, so they run in the verb's process, not inside a hermetic
+// claim.
+fn reference_migration_plan_bound(env: AcquisitionEnv, paths: List<String>, rules: List<MigrationRule>, policy: MigrationContextPolicy) -> MigrationPlan {
+  reference_migration_plan_with_ownership(env: env, population: migration_read_population(paths: paths), rules: rules, policy: policy, ownership: migration_ownership_from_registry())
+}
+
+fn reference_migration_apply_bound(env: AcquisitionEnv, paths: List<String>, rules: List<MigrationRule>, policy: MigrationContextPolicy, plan: MigrationPlan, selected: List<String>) -> MigrationApplyOutcome {
+  reference_migration_apply_files(request: migration_request(env: env, population: migration_read_population(paths: paths), rules: rules, ownership: migration_ownership_from_registry(), policy: policy), plan: plan, selected: selected)
+}
+
+// Both entries above delegate to these two, which take the population and the roster as data. They are
+// what a control can execute, and they are why no plan or apply can reach a population without
+// ownership of some kind.
+fn reference_migration_plan_with_ownership(env: AcquisitionEnv, population: List<MigrationFile>, rules: List<MigrationRule>, policy: MigrationContextPolicy, ownership: MigrationOwnership) -> MigrationPlan {
+  reference_migration_plan(request: migration_request(env: env, population: population, rules: rules, ownership: ownership, policy: policy))
+}
+
+fn reference_migration_apply_with_ownership(env: AcquisitionEnv, population: List<MigrationFile>, rules: List<MigrationRule>, policy: MigrationContextPolicy, ownership: MigrationOwnership, plan: MigrationPlan, selected: List<String>) -> MigrationApplyOutcome {
+  reference_migration_apply(request: migration_request(env: env, population: population, rules: rules, ownership: ownership, policy: policy), plan: plan, current: population, selected: selected)
 }
 
 fn reference_migration_apply_files(request: MigrationRequest, plan: MigrationPlan, selected: List<String>) -> MigrationApplyOutcome {
