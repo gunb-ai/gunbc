@@ -7,7 +7,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Permanent regression controls for the structured application mismatch wall (PR #8262). The
 // pre-wall decl_facts missing_variant specimen inlined Terminal at a ConstructionMechanism field
 // (dissolves_to); compile-clean now refuses that state, so reflection MissingProjection probes were
-// converted per DESIGN §4b dissolution-on-climb — not deleted without replacement.
+// converted per gunbc.design_argument::guarantee_ladder dissolution-on-climb — not deleted without replacement.
 // compile_dag_rust_emit_check pins the old specimen source; if the wall loosens, the RED greens and
 // this witness fails. Record-literal call-arg handoff controls live in
 // record_literal_call_arg_handoff_witness.dag plus diagnostics_witness

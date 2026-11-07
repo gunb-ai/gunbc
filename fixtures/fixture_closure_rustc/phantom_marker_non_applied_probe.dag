@@ -14,8 +14,8 @@ module fixture.closure.rustc_phantom_marker_non_applied_probe
 // annotation.
 //
 // THAT IS STILL THE FILED CLASS, and the two facts are not in tension: the source compiler accepts
-// a construction whose emission the target compiler cannot build. DESIGN section 7 makes that the
-// seed's floor rather than the target's problem, and DESIGN section 5 makes it silent wrongness on
+// a construction whose emission the target compiler cannot build. gunbc.design_argument::self_hosting makes that the
+// seed's floor rather than the target's problem, and gunbc.design_argument::fail_closed makes it silent wrongness on
 // the source-to-target path -- below the ladder, not a rung on it. The only wall that fires belongs
 // to rustc.
 //
@@ -24,7 +24,7 @@ module fixture.closure.rustc_phantom_marker_non_applied_probe
 // was taken from this very file: an `Alpha` type does exist in the emitted module. The wrong
 // account put the rejection at the annotation instead of the return and credited the emitter with a
 // decline it did not make. It is named rather than silently overwritten because a plausible wrong
-// mechanism is the kind of thing a later reader adopts (gunbc DESIGN section 3's concern about a
+// mechanism is the kind of thing a later reader adopts (gunbc gunbc.design_argument::single_authority's concern about a
 // carrier citing the wrong mechanism, not merely a stale name).
 //
 // WHY IT IS NOT IN THE RULED POSITION. `Alpha` here stands in a record field, never as an argument
@@ -51,7 +51,7 @@ module fixture.closure.rustc_phantom_marker_non_applied_probe
 //
 // WHEN THE WALL CLIMBS -- type-position resolution consulting the TYPE namespace alone and
 // refusing a name that resolves to a constructor -- THIS ARM FLIPS TO `SourceRefused` AND MUST BE
-// KEPT (DESIGN 4b(4)). What changes then is this pair's expectation, not the fixture's existence.
+// KEPT (gunbc.design_argument::guarantee_ladder (dissolution on climb)). What changes then is this pair's expectation, not the fixture's existence.
 // The names carry no domain semantics, for the reason stated in full at the control arm beside
 // this file: shape only, with no leaf spelling shared with a real `std.measure` declaration, so
 // nothing in the pair turns on a name colliding with the live corpus.

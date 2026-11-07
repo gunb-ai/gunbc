@@ -9,7 +9,7 @@ import extdeps.vllm.engram_layout {
 }
 import extdeps.deepseek.deepseek_v4_1_flash { deepseek_v4_1_flash_engram }
 
-// THE DRAW, SUPPLIED ONCE AND PAIRED WITH ITS PRODUCER (DESIGN §3, a witness discriminates at one
+// THE DRAW, SUPPLIED ONCE AND PAIRED WITH ITS PRODUCER (gunbc.design_argument::single_authority, a witness discriminates at one
 // interface). The 48 primes below are what vLLM's EngramLayout draws for this checkpoint's config
 // (two layers x three n-gram orders x eight heads, above vocab_size - 1). Every claim about the rank
 // ranges or the row-store spec consumes this value rather than re-running a Miller-Rabin search, and

@@ -16,7 +16,7 @@ import gunbc.integration_concern {
   concern_text, integration_concerns, fork_rows_have_distinct_authorities,
 }
 
-// SUPPLIED ROWS (DESIGN section 3, a witness discriminates at one interface): the relevance and
+// SUPPLIED ROWS (gunbc.design_argument::witness_one_interface, a witness discriminates at one interface): the relevance and
 // closure rules are judged over rows built here, and the last two claims run the same functions over
 // the real register, so the supplied boundary is paired with an inhabitance reading.
 

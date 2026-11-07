@@ -32,12 +32,12 @@ import std.spatial_knowledge {
 // requirement of this program stated in a type that already exists. SpatialRequirement carries a
 // precision budget, so "the consuming decision sets the tolerance, not the instrument" is enforced
 // rather than asserted. Minting a chassis-specific measurement record beside these would have been
-// the parallel-representation fork DESIGN §3 forbids, and would have re-derived the estimate-is-a-
+// the parallel-representation fork gunbc.design_argument::single_authority forbids, and would have re-derived the estimate-is-a-
 // region distinction that module's header records paying for once already.
 //
 // THE ONE RULE THIS MODULE ADDS, and it is the one the fabrication program turns on: a subject the
 // roster does not mention is UNKNOWN, and unknown REFUSES. It does not fall back to a nominal
-// catalogue figure, a form-factor standard, or a neighbouring subject's value. DESIGN §5's
+// catalogue figure, a form-factor standard, or a neighbouring subject's value. gunbc.design_argument::fail_closed's
 // absorbing fallback is exactly the tempting arm here — an 80 mm fan is 80 mm, surely — and it
 // fails open twice: the generator draws a part against a number no authority supplied, and the
 // deficit stops being countable, so the measurement never gets taken.
@@ -126,7 +126,7 @@ fn fabrication_measurement_key_eq(a: FabricationMeasurementKey, b: FabricationMe
 // same cooler height — a re-measure that disagreed, a row pasted under the wrong subject, two
 // operators measuring different units of the same product — resolve to whichever sorts later in the
 // list. Nothing refuses, nothing is counted, and the generator draws a part against a number whose
-// contradiction is sitting three lines above it in the same roster. That is DESIGN §5's silent
+// contradiction is sitting three lines above it in the same roster. That is gunbc.design_argument::fail_closed's silent
 // wrongness rather than a rung on the ladder: the roster contains the evidence that the value is in
 // dispute, and the reader throws it away.
 //
@@ -188,7 +188,7 @@ fn required_chassis_length(
 //
 // Not one chassis-critical dimension has been measured yet. The board OUTLINE is vendor-dimensioned
 // in extdeps.boards.asrock_rack and is deliberately NOT copied here — that would be the transcribed
-// measurement DESIGN §6 forbids, a number unreachable from the authority that owns it. Everything
+// measurement gunbc.design_argument::how_to_work forbids, a number unreachable from the authority that owns it. Everything
 // else in FabricationSubject is an open obligation.
 //
 // An empty roster is not a placeholder standing in for work not yet done: it is the correct value,

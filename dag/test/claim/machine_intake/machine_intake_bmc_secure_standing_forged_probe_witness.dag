@@ -9,7 +9,7 @@ import gunbc.compile_diagnostic_census {
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE PROJECTION IS THE ONLY ROUTE FROM A CONVERGED RECEIPT TO THE STANDING, ENROLLED AS AN EXECUTED RED
-// (§4b, and the seal scope item 4 asks for). BmcSecureStanding is the carrier every consumer joins on --
+// (gunbc.design_argument::guarantee_ladder, and the seal scope item 4 asks for). BmcSecureStanding is the carrier every consumer joins on --
 // gunbc.host.managed_host's secure field, gunbc.host.bmc_control_binding,
 // gunbc.host.managed_host_boot_federation, gunbc.fleet.mtcollins_firmware_converge -- so what makes
 // bmc_secure_standing_of_phase_receipt the state-shaped fold's ONE projection is not a comment saying so:

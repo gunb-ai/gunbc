@@ -65,7 +65,7 @@ fn cadquery_run_program_command(interpreter: ProgramIdentity, script_path: Strin
 // which read as consistency and was a modelling loss on one of them. The ANGULAR knob is genuinely
 // an opaque upstream number for the reason above. The LINEAR knob is a LENGTH -- upstream documents
 // it in millimetres -- and this substrate carries lengths. Spelling a length as a string merges the
-// quantity with its textual realization, which DESIGN section 3 separates: the interface here is a
+// quantity with its textual realization, which gunbc.design_argument::single_authority separates: the interface here is a
 // length, and the Python spelling is one realization of it.
 // RELATIVE IS EXPLICIT BECAUSE IT CHANGES WHAT THE LINEAR NUMBER MEANS. Upstream's `relative` flag
 // switches linear deflection between an absolute length and a fraction of the shape's size, so a

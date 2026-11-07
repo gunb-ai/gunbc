@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //    this claim runs no interpreted recursion per level, so it is not a subject for the interpreter's
 //    call-depth limit or for any stacker::maybe_grow segment.
 //
-// PRODUCER (§6: name the instrument, never transcribe its output) — the claim-batch binary,
+// PRODUCER (gunbc.design_argument::how_to_work: name the instrument, never transcribe its output) — the claim-batch binary,
 // src/v1/stage0/src/bin/claim_batch.rs:
 //   ./target/release/claim_batch --wet --source-root dag --source-root src/v2 \
 //     --entry src/v2/test/claim/std/node_occurrence_depth.dag --functions <this claim> --claim-run

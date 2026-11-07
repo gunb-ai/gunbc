@@ -36,7 +36,7 @@ import std.algebra { non_empty }
 // THE ACCESS-PATH VOCABULARY, owned here and supplied to extdeps.http.server RequestSecurityContext
 // as its AccessPath type argument. It moved from that module because which front doors this
 // deployment routes through is a fact about this deployment, not about HTTP, and enumerating it
-// there made every HTTP program import the Tailscale modules (DESIGN section 3).
+// there made every HTTP program import the Tailscale modules (gunbc.design_argument::single_authority).
 //
 // THE TAILNET PATH IS MODELED THROUGH THE EXISTING AUTHORITIES, not as ambient reachability:
 // the arm carries the tailscale serve route key and the ACL policy revision the modeling was

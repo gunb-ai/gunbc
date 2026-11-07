@@ -7,7 +7,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // THE TARGET-SYNTAX DEBT LEDGER: application code that names a target language's syntax, and what
 // would let it stop.
 //
-// THE RULE IT IS DEBT AGAINST (DESIGN section 4, "one grammar, read in both directions"): an
+// THE RULE IT IS DEBT AGAINST (gunbc.design_argument::closed_grounded_substrate, "one grammar, read in both directions"): an
 // application is ordinary .dag, and emitting it to a target language is that language's grammar rows
 // read backward through the shared target model (v2.std.compilers.target_model) -- a new target is
 // rows in extdeps/languages, never an edit to the application. Rust is emitted that way. Swift and

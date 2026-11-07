@@ -9,7 +9,7 @@ import std.types { NonEmptyStr, String }
 //
 // `extdeps.bazel.label`, `extdeps.bazel.test_status` and `extdeps.bazel.build_event_stream` each
 // model a different published surface of the SAME independently-governed upstream product, and
-// each carries its own `ExternalModelScope` with its own citation — DESIGN §3 external upstream
+// each carries its own `ExternalModelScope` with its own citation — gunbc.design_argument::external_upstreams external upstream
 // decomposition requires one scope per module, not one module per product. What they may not do
 // is mint three spellings of "Bazel"; the 2026-08-01 subject-identity verdict recorded in
 // `extdeps.external_authority` `external_subject_symbolic_identity_note` says subject identity is

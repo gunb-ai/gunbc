@@ -41,11 +41,11 @@ data liveness_probe_read_as_currency: RecurringFailureMode = RecurringFailureMod
 
     "CEILING: structurally guaranteed.",
 
-    "The question is decidable -- a running invocation either carries the definition identity it was started from or does not -- so this is DESIGN section 5's wall AFTER GROUNDING, waiting on its single authority rather than on a decidability argument.",
+    "The question is decidable -- a running invocation either carries the definition identity it was started from or does not -- so this is gunbc.design_argument::fail_closed's wall AFTER GROUNDING, waiting on its single authority rather than on a decidability argument.",
 
     "NEXT-RUNG TRIGGER, AND IT IS TWO THINGS RATHER THAN ONE, because either alone leaves the class exactly where it is: (i) an observation that joins a unit's RUNNING INVOCATION to the definition it was started from, sufficient to mint `RunningDefinitionObserved` for a live Spark -- nothing smaller counts, since a probe that reads the file, the manager's loaded definition, or liveness answers a different subject and would leave the capability dead while looking like its trigger; AND (ii) a guarded producer that routes `ReactivationUndecidable` into the convergence verdict, so a host whose running definition cannot be established stops instead of reporting converged.",
 
-    "Naming only (i) would be the grain mismatch section 4b(3) warns about: the trigger would be satisfied by a probe landing while the convergence path stayed silent, which is the whole defect.",
+    "Naming only (i) would be the grain mismatch gunbc.design_argument::guarantee_ladder (no silent regression) warns about: the trigger would be satisfied by a probe landing while the convergence path stayed silent, which is the whole defect.",
 
     "THE OBSERVED-VERSUS-DESIRED DRIFT ON BOTH SPARKS IS A CANDIDATE CONSEQUENCE OF THIS CLASS AND NOT A FINDING: nobody has read a host back, and candidate is the correct word until someone does.",
 

@@ -1079,7 +1079,7 @@ test fn w_no_route_yields_an_admitted_but_empty_assignment() -> Bool {
 
 // A FIXTURE-REACHED ARM, DECLARED AS SUCH. With one subject and four peers, no production dispatch
 // can reach a subject whose only candidate observer is itself, so this arm is driven from a fixture
-// and is NOT reported as measured on the acceptance path. It is still a wall: DESIGN section 4b
+// and is NOT reported as measured on the acceptance path. It is still a wall: gunbc.design_argument::guarantee_ladder
 // rules that a state unrepresentable in the accepted corpus may be representable as source handed
 // to the compiler by a fixture, and declining that evidence is specification-without-execution.
 test fn w_a_subject_whose_only_peer_is_itself_refuses_from_a_fixture() -> Bool {

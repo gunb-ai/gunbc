@@ -354,7 +354,7 @@ type HeadsReadingDifferentialStanding
 // row's fact and has exactly one home -- `gunbc.recurring_failure_mode`
 // `bare_reference_channel_declines_a_pull_in_silence`, which reports 1 and says why. An earlier
 // revision of this annotation claimed rung 2 here; that was a second statement of one fact on the
-// carrier a reader meets first, which is the DESIGN section 3 fork, and it was wrong on the
+// carrier a reader meets first, which is the gunbc.design_argument::single_authority fork, and it was wrong on the
 // merits besides: a gate that changes behaviour turns this target red for whoever RUNS it and
 // blocks no landing, and section 4b rung 2 is a mechanism that exposes AND blocks. Read the rung
 // from the row.

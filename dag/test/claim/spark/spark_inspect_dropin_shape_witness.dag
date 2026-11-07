@@ -79,7 +79,7 @@ test fn w_listing_argv_is_read_only() -> Bool {
 // Every procured Spark, Group A and Group B alike, is probed by every run: an IDENTITY JOIN of the
 // probe roster against the procured roster (gunbc.spark.dgx_procurement), each procured identity
 // present exactly once and nothing else present -- no count or name list copied from today's tree
-// (DESIGN §5). A hand list that dropped one (the srv5/srv6-only roster this replaced) or added a
+// (gunbc.design_argument::fail_closed). A hand list that dropped one (the srv5/srv6-only roster this replaced) or added a
 // non-Spark reds it; procuring a ninth Spark does not.
 fn occurrences(xs: List<String>, x: String) -> Int {
   length(filter(xs, y => y == x))

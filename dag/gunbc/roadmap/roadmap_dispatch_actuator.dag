@@ -369,13 +369,13 @@ fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> DispatchProvi
 // the spawn plan (now dispatch_spawn_commands_for_launch) -- had no model to supply; CI agreed, refusing at
 // belt_resolved_spawn_plan with `missing required argument model`. Passing
 // ProviderAccountDefaultModel there to make it compile would have been the absorbing fallback
-// DESIGN section 5 names: a silent widen that reports the account default for a selection that
+// gunbc.design_argument::fail_closed names: a silent widen that reports the account default for a selection that
 // resolved something else, which is precisely the class this change exists to close.
 //
 // Because the field is required and has no default, no construction of this arm can omit a model:
 // the belt route and the dispatch route both carry one or neither compiles. That is why there is no
 // belt-path witness for the drop -- the RED is not authorable, so a check here would be the
-// permanently-green decoration section 4b warns against rather than a wall. The argv-grain red
+// permanently-green decoration gunbc.design_argument::guarantee_ladder warns against rather than a wall. The argv-grain red
 // stays enrolled below, where the forbidden state IS writable.
 //
 // THIS CARRIER NAMES NO ATTEMPT AND HOLDS NO CREDENTIAL. Its callers without an attempt -- the
@@ -454,14 +454,14 @@ fn attempt_selection_launching(
 
 // The actuator's sole projection of gunbc.dispatch_selection for legacy call sites. Refusal
 // propagates typed — no Codex substitute, no ReasoningMedium default, no actuator-local process
-// fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection
-// kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3).
+// fingerprint (gunbc.design_argument::fail_closed; review 47676). Process fingerprints are consumed from the selection
+// kernel via resolved_process_fingerprint, never re-declared here (gunbc.design_argument::single_authority).
 
 // THE HARNESS IS THE DEFAULT SELECTION (DCH-3, operator direction 2026-09-02: the dedicated harness
 // is to be the only and default harness). Two things about the shape of this are deliberate.
 //
 // IT REFUSES RATHER THAN FALLING BACK. When the backend is not serving, this returns the harness's
-// own typed cause and stops. Reaching for a vendor would be the absorbing fallback DESIGN section 5
+// own typed cause and stops. Reaching for a vendor would be the absorbing fallback gunbc.design_argument::fail_closed
 // names -- a degradation wearing the fail-closed label -- and it would also be a fiction today,
 // because vendor selection cannot resolve at all: every declared offer is built with an unobserved
 // standing and eligibility requires an observed one. There is no fallback to lose.
@@ -732,7 +732,7 @@ fn claude_observed_standing_from_snapshot(snapshot: TakenCredentialSnapshot) -> 
 
 // WHERE THE CLAUDE CREDENTIAL IS HELD, which is a different fact from a snapshot of it: this names the
 // mutable custody file the take copies FROM, so it has its own carrier rather than reusing the
-// snapshot's (one name, two meanings is the fork DESIGN section 3 forbids).
+// snapshot's (one name, two meanings is the fork gunbc.design_argument::single_authority forbids).
 type ClaudeCredentialCustody
   = ClaudeCustodyBound { custody: SnapshotCustodyDeclaration }
   | ClaudeCustodyUnbound { reason: NonEmptyStr }
@@ -1043,7 +1043,7 @@ data dispatch_unrealized_capability_marker: String = "gunbc-unrealized-capabilit
 // An environment with no realization for a capability used to resolve to the empty program string.
 // Empty is non-executable, so the host did fail — but it failed as an unattributable exec error
 // with nothing naming WHICH capability was unrealized, which is a degradation that cannot be
-// counted (DESIGN 5). The marker keeps the arm non-executable and makes it self-describing at the
+// counted (gunbc.design_argument::fail_closed). The marker keeps the arm non-executable and makes it self-describing at the
 // point of failure. It is not a widening: no marker value can run. The real close is a typed
 // refusal on the resolver, which requires the argv shapers above it to carry a refusal arm — that
 // rides with the DashboardExecResult typed-refusal migration named in
@@ -1123,7 +1123,7 @@ type DispatchLeasePlan
 // this change closes everywhere else: a permit that names one provider control and not the other is
 // the shape the next author copies, and it is harmless today only because nothing in production
 // consumes this gate. Adding the field now costs one line and removes the trap; the alternative --
-// deleting the gate as the unconsumed surface it is -- is a separate section 3c question, and
+// deleting the gate as the unconsumed surface it is -- is a separate gunbc.design_argument::consumption question, and
 // leaving a known-incomplete shape standing while that is decided is the worse of the two.
 type DispatchRequestGate
   = DispatchPermitted {
@@ -1960,6 +1960,7 @@ data gunbc_harness_worker_entry: String = "dag/gunbc/harness/harness_cli.dag"
 type DispatchWorkerRun
   = DispatchWorkerFirst
   | DispatchWorkerResumed { ordinal: Int }
+  | DispatchWorkerContinuedFrom { branch: String }
 
 data gunbc_harness_worker_function: String = "harness_worker_cli"
 
@@ -1969,6 +1970,21 @@ fn dispatch_worker_run_function(run: DispatchWorkerRun) -> String {
   match run {
     DispatchWorkerFirst => gunbc_harness_worker_function
     DispatchWorkerResumed { ordinal: _ } => gunbc_harness_worker_resume_function
+    DispatchWorkerContinuedFrom { branch: _ } => gunbc_harness_worker_function
+  }
+}
+
+// THE REF A WORKTREE-ADD STARTS FROM. A first attempt branches from the instance's base ref; a
+// CONTINUED attempt (the operator's CONTINUE) branches from the HEAD OF THE EXISTING BRANCH it keeps
+// -- the general restore that re-adds a reaped worktree under a still-live branch does it from that
+// branch, so the prior attempt's committed work is the new attempt's base and is never started over.
+// Only START FRESH abandons the branch and returns to the base ref behind a new lineage generation
+// (ruling gunbc.design_ruling dispatch_is_continue_or_start_fresh).
+fn dispatch_worker_run_start_ref(run: DispatchWorkerRun, base_ref: String) -> String {
+  match run {
+    DispatchWorkerFirst => base_ref
+    DispatchWorkerResumed { ordinal: _ } => base_ref
+    DispatchWorkerContinuedFrom { branch } => branch
   }
 }
 
@@ -1976,6 +1992,7 @@ fn dispatch_worker_run_role(run: DispatchWorkerRun) -> AttemptUnitRole {
   match run {
     DispatchWorkerFirst => AttemptWorkerRole
     DispatchWorkerResumed { ordinal } => AttemptWorkerResumedRole { ordinal: ordinal }
+    DispatchWorkerContinuedFrom { branch: _ } => AttemptWorkerRole
   }
 }
 
@@ -2369,7 +2386,7 @@ fn dispatch_worker_unit_properties(
 // that account, all 185 .git/worktrees/<key> entries are owned by it, and `getent group gunbc-attempt`
 // shows it as a member). An earlier cut of this comment said the entry was root-owned and that only a
 // root step could re-group it; that was read off a BuildBuddy runner whose uid is 0, not off the lab
-// (DESIGN 4d: name where a figure or a principal was measured), and it implied a privilege the lab
+// (gunbc.design_argument::epistemic_humility: name where a figure or a principal was measured), and it implied a privilege the lab
 // deploy does not use. WHAT THE FACT STILL REQUIRES is unchanged and still load-bearing: the re-group
 // has to be done by the ENTRY'S OWNER, and it cannot be left to the worker -- chgrp to a group the
 // caller is not a member of is restricted, and the worker is not the entry's owner. Hence the step is
@@ -2462,6 +2479,7 @@ fn dispatch_attempt_worker_worktree_grant(
         pruned: [git_non_bare_git_dir_name],
         sticky: false,
         files_group_writable: true,
+        owner: instance.directory_owner.user as String,
         depth: dashboard_git_worker_subtree_walk_depth,
       ),
       find_subtree_ungranted_entry_refusal_command(
@@ -2513,6 +2531,7 @@ fn dispatch_attempt_worker_git_entry_migration(
       dashboard_git_worker_subtree_chgrp_command(
         target: dispatch_attempt_private_git_dir(instance: instance, attempt_worktree: attempt_worktree),
         group: group,
+        owner: instance.directory_owner.user as String,
         // NOTHING UNDER THE ENTRY IS CONFINED: a worktree private gitdir holds commondir, gitdir,
         // index, HEAD, ORIG_HEAD, COMMIT_EDITMSG and logs/. It has no pack, no info, no hooks, so the
         // prune group is empty -- and the builder then emits NO prune words at all rather than an
@@ -2536,6 +2555,7 @@ fn dispatch_attempt_worker_git_entry_migration(
         // not transfer: nothing under this entry is confined, and no maintenance step writes or deletes
         // through it.
         sticky: false,
+        owner: instance.directory_owner.user as String,
       ),
     ]
   }
@@ -2609,7 +2629,7 @@ type DispatchSessionContainerPlan
 // must state which one it needs rather than inheriting whichever was written first.
 //
 // The harness arm REFUSES on a host whose toolchain declares no systemd-run instead of falling back
-// to tmux. That is deliberate and it is the DESIGN section 5 rule rather than a preference: the tmux
+// to tmux. That is deliberate and it is the gunbc.design_argument::fail_closed rule rather than a preference: the tmux
 // path is precisely where this worker cannot get an enforceable memory bound, so a fallback would
 // not be a degraded success, it would be a guaranteed HostBudgetUnreadable wearing the shape of a
 // spawn that worked. macbook_local_toolchain answers `none` here because macOS has no systemd at
@@ -2970,7 +2990,7 @@ fn tmux_kill_session_argv_for_instance(
 // it might have to fake. The one failure today is the tmux pipe-pane payload: it is emitted through
 // the bash backend, and a serializer refusal has no honest command to put in tmux_event_pipe.
 // Answering with a placeholder would make an un-emittable intent indistinguishable from a
-// serialized one at the dispatch site (DESIGN 5). The refusal names the step that could not be
+// serialized one at the dispatch site (gunbc.design_argument::fail_closed). The refusal names the step that could not be
 // built, and the belt maps it onto the SpawnFailed carrier it already has, so a plan that cannot be
 // built never becomes a plan that gets run.
 
@@ -3063,6 +3083,7 @@ fn dispatch_spawn_commands_for_launch(
 fn dispatch_worker_run_admitted(run: DispatchWorkerRun, provider: DispatchCliProvider) -> String? {
   match run {
     DispatchWorkerFirst => none
+    DispatchWorkerContinuedFrom { branch: _ } => none
     DispatchWorkerResumed { ordinal: _ } =>
       match provider {
         GunbcHarnessProvider => none
@@ -3156,7 +3177,7 @@ fn dispatch_spawn_commands_for_admitted_run(
     instance: instance,
     worktree_path: worktree_path,
     branch_name: branch_name,
-    remote_ref: instance.dispatch_base_ref as String,
+    remote_ref: dispatch_worker_run_start_ref(run: run, base_ref: instance.dispatch_base_ref as String),
   )
   let state_prepare = attempt_state_prepare_argvs_for_instance(
     instance: instance,
@@ -3422,7 +3443,7 @@ fn classify_dispatch_request_for_process_fingerprint(
 // files and nothing had touched that file since.
 //
 // Carrying the selection rather than re-deriving it is the same move this module now makes for the
-// model and already made for effort and the process fingerprint (DESIGN 2: carry, rewire or share
+// model and already made for effort and the process fingerprint (gunbc.design_argument::minimize_redundancy: carry, rewire or share
 // the first value). It costs the caller nothing -- the one production shape already has a selection
 // in hand -- and it makes the refusal-propagation arm testable with a constructed refusal instead of
 // a live roster read. The alternative considered and rejected was giving http.Client.Get a
@@ -3716,7 +3737,7 @@ fn git_for_each_ref_dispatch_argv_for_instance(
 // UnknownRefused, Absent are NOT owned. Name-only tmux-ls observation yields
 // UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a
 // process fingerprint — correct R5 (no ownership proof, no reap). This owned-ness judgment lives
-// HERE (the actuator owns lease/ownership classification, §3) as a Bool; gunbc.roadmap.roadmap_belt lifts
+// HERE (the actuator owns lease/ownership classification, gunbc.design_argument::single_authority) as a Bool; gunbc.roadmap.roadmap_belt lifts
 // the Bool into gunbc.ownership.Ownership for the reconcile teardown gate, so the belt never
 // imports ObservationVerdict.
 

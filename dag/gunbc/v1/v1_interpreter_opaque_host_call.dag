@@ -136,7 +136,7 @@ fn nested_compile_reaches_wrong_dispatch_site() -> List<NonEmptyStr> {
     |> map(r => r.arm_identity)
 }
 
-// FAIL-CLOSED PROJECTION (DESIGN section 5). The operations list is reachable ONLY through the
+// FAIL-CLOSED PROJECTION (gunbc.design_argument::fail_closed). The operations list is reachable ONLY through the
 // grounded arm, so a roster that has drifted cannot be read as a shorter population: the consumer
 // matches, and the ungrounded arm carries the two located populations that explain why. A
 // `List<String>` return that silently dropped unresolved rows would be the absorbing fallback --

@@ -38,8 +38,8 @@ fn v2_compiler_architecture_body() -> List<MarkdownBlock> {
       header: r3(a: "Stage", b: "Authority today", c: "Standing against the law"),
       rows: [
         r3(a: "DESIGN.md", b: "`gunbc.design_document`", c: "implicitly aligned: section 2 models once and derives every use, section 3 forbids second authorities, section 4 makes ingest, emit and coercion one procedure, section 5 refuses fallbacks; it does not yet state 'the author supplies only residuals' as one compiler law (section 7 below)"),
-        r3(a: "grammar ingestion and emission", b: "the grammar rows read in both directions (DESIGN section 4); `extdeps.languages`", c: "strong pass: one grammar, forward for ingest and backward for emit"),
-        r3(a: "application and type floor", b: "`v2.compiler` infer; DESIGN section 4b floor", c: "the current blocker: exact argument bijection treats an omitted operand as an error; elaboration of omitted operands is the one semantic addition (1.5)"),
+        r3(a: "grammar ingestion and emission", b: "the grammar rows read in both directions (gunbc.design_argument::closed_grounded_substrate); `extdeps.languages`", c: "strong pass: one grammar, forward for ingest and backward for emit"),
+        r3(a: "application and type floor", b: "`v2.compiler` infer; gunbc.design_argument::guarantee_ladder floor", c: "the current blocker: exact argument bijection treats an omitted operand as an error; elaboration of omitted operands is the one semantic addition (1.5)"),
         r3(a: "coercion", b: "`v2.std.coercion`, `v2.std.inhabitance`", c: "strong kernel, incomplete architecture: witness-or-typed-mismatch already, no addressee and no whole-program placement yet (1.4)"),
         r3(a: "completion, residual and closure", b: "this document, section 1", c: "stated; unbuilt; its environmental specialization is the first vertical"),
         r3(a: "demand derivation and the demand engine", b: "`gunbc.plans.demand_engine_program` (D1-D13), `v2.std.demand_engine`", c: "strong pass within scope: ordinary sequential programs induce demands and relations without feature-authored rows"),

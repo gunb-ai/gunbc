@@ -196,7 +196,7 @@ fn sha256_computed_digest(message: List<Int>) -> Sha256Digest {
 
 // ── SHA-384 (§6.5): the SHA-512 computation, truncated ──────────────────────────────────────
 // WHY THIS IS A SECOND PIPELINE AND NOT THE SHA-256 ONE OVER A WIDER WORD -- a stated divergence
-// (DESIGN §3b), not an unstated one (review 69625 of gunbc#11981). The two hashes are one algorithm
+// (gunbc.design_argument::conformance), not an unstated one (review 69625 of gunbc#11981). The two hashes are one algorithm
 // over one parameter -- the word (32 or 64 bits), with the rotation amounts, round count, block size
 // and length-field width following from it -- and the family fold beside this module
 // (extdeps.crypto.nist_prime_curve) is exactly that move for the curves. The word, though, is not a

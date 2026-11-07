@@ -34,7 +34,7 @@ data ieee_802_address_authority: ExternalAuthority = ExternalAuthority {
 // departure from the sibling module rather than an oversight. extdeps.network.ipv4 declares
 // `type Octet = Int where range(min: 0, max: 255)`, and measured across the corpus that is the ONLY
 // such refinement -- so a MacOctet declared here would have been the SECOND name for one concept,
-// which is exactly the re-invention DESIGN section 2 tests for ("net concepts must not grow by
+// which is exactly the re-invention gunbc.design_argument::minimize_redundancy tests for ("net concepts must not grow by
 // re-invention"). std.integer.UInt8 is the universal authority for an 8-bit unsigned integer and
 // already exists, so the byte grounds there. Importing ipv4's Octet was the other option and is
 // worse: a MAC octet is not an IPv4 octet, and the dependency would ground a link-layer fact on a

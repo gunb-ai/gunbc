@@ -18,7 +18,7 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE FORGED GATE EVIDENCE, ENROLLED AS EXECUTED REDS (§4b meta-obligation 1: the reported rung
+// THE FORGED GATE EVIDENCE, ENROLLED AS EXECUTED REDS (gunbc.design_argument::guarantee_ladder meta-obligation 1: the reported rung
 // equals the rung established by EXECUTED evidence, and rung inflation is worse than sitting low).
 //
 // gunbc.auth.deployment_gate_authorization claims that "remove the required reviewer from

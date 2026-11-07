@@ -21,7 +21,7 @@ import gunbc.compile_diagnostic_census {
 // NOT ASSERTED: `0 - 5` at Nat. Whether it refuses depends on the arithmetic-over-grounded-carriers decision (Q1e), so no
 // cell here claims either answer.
 //
-// dissolve-on: none -- permanent regression control per DESIGN 4b(4).
+// dissolve-on: none -- permanent regression control per gunbc.design_argument::guarantee_ladder (dissolution on climb).
 
 fn pdw_refusal_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

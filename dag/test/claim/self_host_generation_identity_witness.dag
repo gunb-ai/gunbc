@@ -356,7 +356,7 @@ test fn empty_member_identity_refuses() -> Bool {
 // roster: a coproduct arm omitted from `generation_axes` is invisible to every check that folds the
 // roster, and the language cannot enumerate a coproduct's arms to derive the expected size. So the
 // count stands in for "the roster covers the type", and it is grounded in a closed authored
-// coproduct rather than measured from the corpus -- which is the narrow case DESIGN section 5 admits
+// coproduct rather than measured from the corpus -- which is the narrow case gunbc.design_argument::fail_closed admits
 // a literal for. Bumping it is part of adding an axis, not an afterthought: an author who adds an
 // arm and not a roster row learns it here.
 test fn axis_symbols_are_pairwise_distinct() -> Bool {

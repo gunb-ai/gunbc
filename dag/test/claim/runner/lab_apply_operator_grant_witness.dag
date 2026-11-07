@@ -1,0 +1,70 @@
+module test.claim.runner.lab_apply_operator_grant_witness
+
+// THE LAB APPLY'S LEG ARGVS ARE ALL IN THE RENDERED OPERATOR GRANT (operator decision A, 2026-11-05;
+// review 91233 on gunbc#15919). The grant and the leg are one fact: both derive from the same
+// ExecutorPrivilegedOperation values, and this pairs them at the rendered srv1 sudoers bytes.
+
+import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.executor_privileged_operation { executor_privileged_operation_sudoers_line }
+import gunbc.runner.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound }
+import gunbc.runner.runner_host_grants { runner_host_sudoers_content }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import gunbc.roadmap.roadmap_attempt_state_layout_move { legacy_writer_grant_operations, legacy_writer_retirement_operations, legacy_writer_restore_operations, LegacyWriterRetireEtcFragment, LegacyWriterUnits, LegacyWriterUnit }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance, dashboard_instance_legacy_writer_fence }
+
+fn srv1_sudoers() -> String {
+  match runner_host_deploy_for(host: operator_host_srv1) {
+    RunnerHostDeployFound { deploy: d } => runner_host_sudoers_content(deploy: d, artifact_path: "x")
+    _ => ""
+  }
+}
+
+fn grant_line_present(body: String, op_line: String) -> Bool {
+  string_contains(s: body, pattern: op_line)
+}
+
+test fn every_retirement_and_rollback_argv_is_in_the_rendered_grant() -> Bool {
+  let fence = dashboard_instance_legacy_writer_fence(instance: srv1_lab_dashboard_instance())
+  let body = srv1_sudoers()
+  match fence {
+    LegacyWriterUnits { systemctl: _, units: us, rollback_store: store } =>
+      count(us) == 1
+        && all(us, u => all(
+          concat(
+            legacy_writer_retirement_operations(rollback_store: store, unit: u, plan: LegacyWriterRetireEtcFragment),
+            legacy_writer_restore_operations(rollback_store: store, unit: u, plan: LegacyWriterRetireEtcFragment),
+          ),
+          op => grant_line_present(body: body, op_line: executor_privileged_operation_sudoers_line(grantee: fleet_bootstrap_principal_login(), op: op) as String)
+        ))
+    _ => false
+  }
+}
+
+test fn the_grant_is_scoped_to_the_declared_unit_and_fragment_with_no_wildcard_and_no_mask() -> Bool {
+  let body = srv1_sudoers()
+  let ops = legacy_writer_grant_operations(fence: dashboard_instance_legacy_writer_fence(instance: srv1_lab_dashboard_instance()))
+  count(ops) == 5
+    && string_contains(s: body, pattern: "briansrls ALL=(root) NOPASSWD: /usr/bin/systemctl stop gunbc-srv1-lab-codex-feedback-v0.service")
+    && string_contains(s: body, pattern: "NOPASSWD: /usr/bin/mv -n -- /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service /etc/systemd/system/gunbc-srv1-lab-codex-feedback-v0.service.retired-by-gunbc-apply")
+    && !string_contains(s: body, pattern: "briansrls ALL=(root) NOPASSWD: /usr/bin/systemctl mask")
+}
+
+// RED: with one leg argv removed from the grant text, the pairing check fails (a leg whose grant does not exist is undischargeable).
+test fn the_pairing_check_goes_red_when_a_leg_argv_is_missing_from_the_grant() -> Bool {
+  let fence = dashboard_instance_legacy_writer_fence(instance: srv1_lab_dashboard_instance())
+  let stripped = join(split(s: srv1_sudoers(), delimiter: "briansrls ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload"), "")
+  match fence {
+    LegacyWriterUnits { systemctl: _, units: us, rollback_store: store } =>
+      !all(us, u => all(
+        legacy_writer_retirement_operations(rollback_store: store, unit: u, plan: LegacyWriterRetireEtcFragment),
+        op => grant_line_present(body: stripped, op_line: executor_privileged_operation_sudoers_line(grantee: fleet_bootstrap_principal_login(), op: op) as String)
+      ))
+    _ => false
+  }
+}
+
+// Review 91357: the bootstrap principal's rendered grant is exactly the declared exception and nothing else.
+test fn the_bootstrap_principal_holds_only_the_five_declared_lab_operations() -> Bool {
+  count(split(s: srv1_sudoers(), delimiter: "briansrls ALL=(root)")) == 6
+}

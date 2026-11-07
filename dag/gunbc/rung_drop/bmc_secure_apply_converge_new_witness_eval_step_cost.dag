@@ -5,7 +5,7 @@ import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, Repla
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_bmc_secure_apply_converge_rows }
 
-// DECLARED 4b(3) DROP (gunbc#13517, 2026-10-07). Pairing requires one Apply through
+// DECLARED gunbc.design_argument::guarantee_ladder (no silent regression) DROP (gunbc#13517, 2026-10-07). Pairing requires one Apply through
 // converge_arrival_through_bmc_secure; that path still bills the arrival prefix plus the dry Apply
 // in the seed interpreter. The DECLARATION lives here; the POPULATION's authority is
 // `v2.workflow.floor_eval_step_cost_drop` `floor_eval_step_cost_drop_bmc_secure_apply_converge_rows`.

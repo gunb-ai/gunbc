@@ -53,7 +53,7 @@ fn native_serve_phase_name(p: NativeServePhase) -> String {
 // both as phase names. A declared phase the reader cannot judge would run and be ignored, and a
 // judged phase nobody runs would read defaults as observations; either is a refusal naming the
 // phase, evaluated by the host before it spawns anything, so a binding that declares a phase its
-// probe cannot satisfy stops the line (DESIGN section 5).
+// probe cannot satisfy stops the line (gunbc.design_argument::fail_closed).
 fn native_serve_phase_names(phases: List<NativeServePhase>) -> List<String> {
   map(phases, p => native_serve_phase_name(p: p))
 }

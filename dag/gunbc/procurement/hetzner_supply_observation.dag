@@ -9,7 +9,7 @@ import extdeps.toolchain.types { architecture_is_aarch64 }
 import std.types { Bool, Int, List, NonEmptyStr }
 
 // WHAT THIS MODULE IS AND WHY IT IS NOT IN extdeps. Everything here is a reading THIS REPOSITORY
-// took of a signed-in console on a particular account on a particular day. DESIGN section 3 is
+// took of a signed-in console on a particular account on a particular day. gunbc.design_argument::single_authority is
 // explicit that observations produced by this repository are receipts in the observing layer and
 // never facts owned by the observed upstream - so orderability lives here, with an edge to the
 // vendor row, while extdeps.cloud.hetzner keeps only what the vendor itself publishes.

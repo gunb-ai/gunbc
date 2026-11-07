@@ -14,7 +14,7 @@ import extdeps.uri { Uri, Https }
 // ipmitool TRANSPORT -- argv rows bound to a shell handler. This one is the WIRE FORMAT the
 // transport's `sel elist` output renders, which is a different fact with a different citation
 // (section 32 versus the tool's man page), and which a Redfish LogEntry reader would consume
-// without ever spelling an argv (DESIGN section 3: interface shape, transport, policy are three
+// without ever spelling an argv (gunbc.design_argument::single_authority: interface shape, transport, policy are three
 // facts).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -39,14 +39,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // 32.2 C0h-DFh to OEM timestamped records -- a 4-byte timestamp, a 3-byte manufacturer ID, and SIX
 // BYTES WHOSE MEANING THE SPECIFICATION ASSIGNS TO THE MANUFACTURER. The record-type classifier
 // over those codes is deliberately NOT declared here: nothing in the corpus feeds a raw type code
-// through one yet, and a fold with no route is a dangling declaration (DESIGN section 3c, review
+// through one yet, and a fold with no route is a dangling declaration (gunbc.design_argument::consumption, review
 // 64384). It lands with the SEL-ingest reader named at
 // gunbc.machine_intake.pre_os_bringup_verdict sel_window_ingest_frontier, which is also what
 // retires the hand-transcribed window rows.
 // THE OEM PAYLOAD IS CARRIED AS THE BYTES THE CONTROLLER RENDERED, AND NOTHING ELSE. Section 32.2
 // says the six data bytes are "OEM defined" -- the specification neither decodes them nor names a
 // registry a reader could consult. A field here called `meaning` would be a decode the cited
-// authority does not provide (DESIGN section 4d: do not assert as deduced what is only inferred).
+// authority does not provide (gunbc.design_argument::epistemic_humility: do not assert as deduced what is only inferred).
 // The manufacturer-ID bytes are rendered in the byte order ipmitool prints them, which is a
 // transport rendering and not an IANA enterprise number; resolving one to the other is a separate
 // upstream read this module has not performed.

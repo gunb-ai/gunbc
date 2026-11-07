@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declaring_module_for_local_binding named the IMPORTER as owner: the effect join then refused with
 // "names no registry row" (measured on srv1, seed of 6962b247: owner printed was the consumer itself).
 // The direct-import arm never failed and stays enrolled as the bound that keeps the class from
-// reading as "any bare data reference" (DESIGN section 4b(4): the expecting-red arm is now the
+// reading as "any bare data reference" (gunbc.design_argument::guarantee_ladder (dissolution on climb): the expecting-red arm is now the
 // regression control). Both are compiled through the real emitter, so a hard diagnostic refuses.
 
 fn v_reexported_rows_resolve_to_their_declarer() -> Bool {

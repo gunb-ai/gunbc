@@ -130,7 +130,7 @@ fn admit_did_not_reach_auth_guard() -> ProcessExit {
         // real blob of DESIGN.md in frozen #500, so the comparison refuses here. Asserting THIS token, not
         // merely "not the auth refusal", means a degenerate early `return PublisherRunRefused { ... }` at
         // the top of the observation, or one that never consults the fetched tree, would FAIL this control.
-        // This is the DESIGN section 3 "the ROUTE, not only the answer" requirement on the one control that
+        // This is the gunbc.design_argument::single_authority "the ROUTE, not only the answer" requirement on the one control that
         // reaches the real public repository.
         record_exit(verdict: "VERDICT:BaseBlobDisagreed", code: ExitSuccess)
       } else {

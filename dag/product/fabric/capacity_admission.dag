@@ -38,7 +38,7 @@ import product.fabric.route_readiness {
 // same offers for PLANNING: fungibility, route readiness, supply evidence. Each omitted what the
 // other checked, so one offer could be admitted supply in one decision and refused in the other, in
 // both directions - an offer carrying UnobservedSupply could enter the candidate field, and an offer
-// whose provider-use admission DENIES it could still be counted as a reserve. DESIGN section 3 calls
+// whose provider-use admission DENIES it could still be counted as a reserve. gunbc.design_argument::single_authority calls
 // that a fork of one authority, and it is exactly the shape that gets consolidated later at interest.
 //
 // The repair is NOT to copy each fold's missing checks into the other - that keeps two implementations

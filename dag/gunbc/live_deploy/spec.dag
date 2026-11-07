@@ -544,7 +544,7 @@ fn gunbc_attempt_worker_slice_unit_path() -> NonEmptyStr {
 // THE BROKER'S SERVICE CONFIG IS THE SAME TYPE, NOT A PARALLEL ONE. What a served gunbc process
 // needs -- a unit name, a binary, an entry, a function, a root to run in, a principal, an address
 // and a pair of evaluation caps -- does not differ by which routes it serves, and minting a second
-// record for the second server would be one concept in two shapes (DESIGN section 2, horizontal).
+// record for the second server would be one concept in two shapes (gunbc.design_argument::minimize_redundancy, horizontal).
 // What differs is the VALUES, and every one of them that differs is a value this function supplies.
 //
 // IT REUSES THE INSTANCE'S ROOTS DELIBERATELY. The broker runs the same admitted binary out of the
@@ -1182,7 +1182,7 @@ type DeploymentSpec {
 // row about a fold shape; and the module's own header describes its precedent, ctrl-runner-
 // reclaim.timer, as 'a hand-deployed host timer with no prior .dag model'. Copying it would have
 // produced a second modeled timer that never runs — the specification-without-execution trap in
-// DESIGN section 5, reproduced while fixing an instance of it.
+// gunbc.design_argument::fail_closed, reproduced while fixing an instance of it.
 //
 // So the belt timer rides the one host-effect path this repo can show executing: this deployment.
 // That also makes its lifecycle honest rather than merely convenient — the belt drives THIS
@@ -1197,7 +1197,7 @@ type DeploymentSpec {
 // and belt_run_once_cli took no argument, so every timer actuated PRODUCTION's tree whatever
 // instance installed it. The first cut of this member papered over that by making membership
 // conditional — production got a timer, the twin got none — which is the author-side workaround
-// DESIGN §5 names: it routed around the defect instead of fixing it, and it silently broke the one-
+// gunbc.design_argument::fail_closed names: it routed around the defect instead of fixing it, and it silently broke the one-
 // for-one twin mirror that a_twin_deployment_on_one_host_collides_with_nothing asserts as its non-
 // degeneracy guard (review 46541 caught both). The spawn root is now a per-deployment parameter
 // carried to the tick through the unit's Environment= line, so every instance actuates its own tree
@@ -1218,7 +1218,7 @@ type DeploymentSpec {
 // under names the derivation would not mint, so both constructors must state them. No belt unit
 // exists on any host, so there is no live name to preserve and no silent-rename hazard
 // (the concern the annotation on DeploymentNames states); storing a value that would be identical in every
-// constructor is the second representation DESIGN section 2 forbids.
+// constructor is the second representation gunbc.design_argument::minimize_redundancy forbids.
 fn deployment_owned_steps(
   instance: HostDashboardInstance,
   names: DeploymentNames,
@@ -1255,7 +1255,7 @@ fn deployment_owned_steps(
 // unit and its root service replace the attempt-system-unit launcher grant, which was installed only
 // when the plan selected the system-manager launcher; a deployment whose plan does not select it has
 // nothing that enqueues on the attempt-unit spool, so a root service there would be a member nothing
-// consumes (DESIGN 3c) and a root surface for nothing. The selector is read once, in lab_host_plan.
+// consumes (gunbc.design_argument::consumption) and a root surface for nothing. The selector is read once, in lab_host_plan.
 fn deployment_attempt_unit_drain_steps(names: DeploymentNames, lab_plan: LabDeployPlan) -> List<DeploymentArtifactStep> {
   match lab_plan_worker_sandbox_choice(plan: lab_plan) {
     Present { value: SystemManagerLauncherSelected } => [
@@ -1459,7 +1459,7 @@ fn deployment_steps_apply_order(
 // root moved to the ensured side, where converged-on-apply and never-torn-down are what the
 // category already means, and neither claim was edited. The rejected alternative was to narrow
 // those two claims to per-instance ownership so a host-shared resource fell outside them; it was
-// refused because editing a safety claim to accommodate a change is the DESIGN section 5 tell, and
+// refused because editing a safety claim to accommodate a change is the gunbc.design_argument::fail_closed tell, and
 // a claim that has just caught a real hazard is not the thing to weaken (operator ruling,
 // 2026-08-08).\n\nThe service still runs git init --bare itself, which remains correct and is not
 // made redundant: the deploy ensures the DIRECTORY exists and is owned, and only the service can
@@ -1588,7 +1588,7 @@ fn deployment_tailnet_door_directories(instance: HostDashboardInstance, names: D
 // model has any more.
 //
 // Recorded rather than silently dropped because a scaffold row that vanishes with its subject
-// leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution
+// leaves no evidence the obligation was DISCHARGED as opposed to forgotten (gunbc.design_argument::guarantee_ladder: dissolution
 // on climb deletes the production machinery, never the receipt).
 //
 // Retirement classification went with it. RetirementDisposition and

@@ -53,7 +53,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // attempt an observation belongs to, whether a lookup ran at all, and the binding of
 // profile+observation into one solve input are WORKFLOW standings and live in
 // gunbc.machine_intake.access. Concrete profile rows live in the board and implementation
-// modules that cite them, and observations are receipts in the workflow layer (DESIGN §3:
+// modules that cite them, and observations are receipts in the workflow layer (gunbc.design_argument::single_authority:
 // observations are never authored inside an upstream module).
 // The surfaces intake asks a BMC about. Each is a thing an endpoint either
 // served or did not when probed; none is a promise. SurfaceBmcShell is the

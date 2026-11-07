@@ -74,7 +74,7 @@ import std.pareto {
 // REALIZATION SELECTION (policy-bound choose-one) lives in this same module as the consumer path
 // over Pareto assessment. std.pareto computes the frontier; a front of two is not a winner.
 //
-// Completeness remains a closed subject (DESIGN §3d): scalarization, Pareto assessment, feasibility
+// Completeness remains a closed subject (gunbc.design_argument::selection_precedes_convergence): scalarization, Pareto assessment, feasibility
 // and enumeration do not mint the subject and may not silently drop a term, variable, constraint or
 // candidate the subject still owns. Completeness is a bidirectional identity join over required
 // (objective-term × decision-variable) cells, derived from named authorities — never from the
@@ -82,7 +82,7 @@ import std.pareto {
 //
 // std.pareto.SelectionAxis stays a criterion for ordering candidate readings. It is not widened
 // here: DecisionVariable / ContextParameter / DecisionConstraint / ObjectiveTerm are the split
-// that prevents that meaning fork (DESIGN section 3).
+// that prevents that meaning fork (gunbc.design_argument::single_authority).
 
 type DecisionVariable {
   identity: DeclarationRef
@@ -1203,7 +1203,7 @@ fn valued_measure_eq(a: ValuedObjectiveMeasure, b: ValuedObjectiveMeasure) -> Bo
 // The TermValuation total order is the SINGLE source for both ordering and equality of a valuation: the
 // structural DeclarationRef order, then scale_micro (nat_compare), then the AxisGoal order (which lives
 // in std.pareto, beside the type). term_valuation_eq is defined from it, so order-equality and equality
-// are one fact (DESIGN 3) and the multiset comparison below is correct by construction, not by a comment.
+// are one fact (gunbc.design_argument::single_authority) and the multiset comparison below is correct by construction, not by a comment.
 fn term_valuation_compare(a: TermValuation, b: TermValuation) -> Ordering {
   let t = declaration_ref_compare(a: a.term, b: b.term)
   match t {

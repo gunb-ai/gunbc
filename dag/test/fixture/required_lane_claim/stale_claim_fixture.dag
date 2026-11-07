@@ -23,7 +23,7 @@ data stale_fixture_document: ProjectedDocument = ProjectedDocument {
 
 // CONTROL A -- the negation is present and the lane it names is NOT rostered. A ledger is allowed to
 // say a non-required job is not required; that sentence is TRUE. Refusing it would make this check
-// fire on correct documentation, which is the widening DESIGN section 5 refuses.
+// fire on correct documentation, which is the widening gunbc.design_argument::fail_closed refuses.
 data unrostered_negation_document: ProjectedDocument = ProjectedDocument {
   document: "fixture/unrostered.md",
   text: "`fixture-non-required-lane` is not a `needs` of the required aggregate, and that is deliberate."

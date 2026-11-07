@@ -6,13 +6,13 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 
 // ============================================================================================
 // THE DECLARED RUNG DROP for a located data path whose jurisdiction upstream does not document
-// (DESIGN 4b(3)).
+// (gunbc.design_argument::guarantee_ladder (no silent regression)).
 // ============================================================================================
 //
 // WHY THIS ROW EXISTS AT ALL. The departure stood as an ANNOTATION for exactly one revision, and an
-// annotation cannot discharge it -- DESIGN 4c is explicit that no Accepted program reads one, so a
+// annotation cannot discharge it -- gunbc.design_argument::source_annotations is explicit that no Accepted program reads one, so a
 // machine claim living only in prose is a claim nothing checks. Review 63995 named it: a next-rung
-// trigger written in a comment is invisible to 4b(2)'s no-untracked-stall and to the drop roster
+// trigger written in a comment is invisible to gunbc.design_argument::guarantee_ladder (no untracked stall)'s no-untracked-stall and to the drop roster
 // that exists to count exactly this.
 //
 // WHAT THE DROP IS. product.fabric.provider_route ProviderPathLocated carries operator, jurisdiction
@@ -47,7 +47,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // located arm and the row admits nothing today. The arm is retained and reachable; it is GATED on
 // the attribution evidence named at spark_serving_usage_stats_declared_environment_obligation.
 //
-// SO THIS ROW IS NOT RETIRED AND IS NOT DISSOLVED. Not retired, because DESIGN 4b(3) retires a drop
+// SO THIS ROW IS NOT RETIRED AND IS NOT DISSOLVED. Not retired, because gunbc.design_argument::guarantee_ladder (no silent regression) retires a drop
 // by its restoration trigger and by nothing else, and that trigger -- a jurisdiction standing on
 // ProviderPathStanding -- does not exist. Not dissolved by subject deletion either, which an earlier
 // draft of this paragraph claimed: the admitting path was not deleted, and recording it as deleted
@@ -129,7 +129,7 @@ import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 // A fabricated plausible value is worse than an uninformative one, which is why this is [].
 //
 // WHAT THE EMPTY LIST COSTS, DECLARED RATHER THAN DISCOVERED: the projection renders
-// "Population: " and stops, and DESIGN 4c means this annotation is unreadable to any consumer,
+// "Population: " and stops, and gunbc.design_argument::source_annotations means this annotation is unreadable to any consumer,
 // so the REASON the population is zero does not reach docs/design-rung-drops.md. That is
 // uninformative rather than wrong -- nothing plausible is asserted. It is not the
 // bottom-as-answer conflation gunbc.guarantee_stall warns about either: that warning is about

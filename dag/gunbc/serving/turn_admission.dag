@@ -278,7 +278,7 @@ fn serving_admission_on_counts(
 // --enable-prompt-tokens-details (modelled in extdeps.vllm.engine_args), and an absent field is TurnReuseUnread, never zero).
 //
 // EVEN AN ATTRIBUTED HIT IS REUSE AT THAT TURN, NOT CURRENT RESIDENCY: nothing guarantees retention
-// after the response, so the standing is a typed bet (DESIGN.md 4d) carrying its evidence --
+// after the response, so the standing is a typed bet (gunbc.design_argument::epistemic_humility) carrying its evidence --
 // ReusedAtTurn names cached_tokens, the launch it was observed on and the turn -- and no arm claims
 // the prefix is resident now. A lifetime-counter ratio is likewise refused (prefix_cache_verdict).
 type ServingTurnReuse
@@ -289,7 +289,7 @@ type ServingTurnReuse
 // production caller supplies NoSessionRecord and every session reads unread -- warmth is never
 // assumed for a session nobody recorded.
 //
-// DECLARED FRONTIER (DESIGN.md 3c): the consumer of SessionRecord is the harness session store, which
+// DECLARED FRONTIER (gunbc.design_argument::consumption): the consumer of SessionRecord is the harness session store, which
 // records, per session, the owner launch key, the usage.prompt_tokens_details.cached_tokens of the
 // session's own last response with the launch and turn it was served on (last_turn), and prefix_intact
 // (whether the next turn's token prefix extends the last). Trigger: the first harness path that
@@ -321,7 +321,7 @@ type ServingHostTierStanding
 // emptiness is not that fact. PrefixMissedAndNotRetained is reached only when this observation
 // coincides with HostTierEmpty. HostTierRetains is HostRestorable; HostTierUnread is unread.
 //
-// DECLARED FRONTIER (DESIGN.md 3c): production passes GpuPrefixUnread (harness_note_owner_standing).
+// DECLARED FRONTIER (gunbc.design_argument::consumption): production passes GpuPrefixUnread (harness_note_owner_standing).
 // The consumer of GpuPrefixCurrentlyEvicted is serving_session_residency. Trigger: the first
 // harness path that observes current prefix absence independently of last_turn.cached_tokens.
 type ServingGpuPrefixStanding
@@ -499,7 +499,7 @@ fn serving_opportunity_cost() -> OpportunityCostObservation {
 // those gauges cannot enumerate the other fabric demands that might have wanted this group.
 //
 // AND THE DEPARTURE IS A DECLARED RUNG DROP, NOT THIS ANNOTATION. Prose cannot discharge a machine
-// claim -- no Accepted program reads it (DESIGN 4c) -- so the two asserting axes are declared at
+// claim -- no Accepted program reads it (gunbc.design_argument::source_annotations) -- so the two asserting axes are declared at
 // gunbc.rung_drop.serving_cost_axes_asserted_unmeasured, rostered with the others, carrying their
 // population and the capability that retires them: a selection policy instantiation that decides an
 // admission-only placement from what such a placement knows, and refuses to require an economic axis

@@ -15,7 +15,7 @@ import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 // Generation identity is INDEPENDENT AXES, never one scalar. A single opaque
 // compiler_identity digest can report THAT a generation went stale and cannot report
 // WHICH fact moved, so every per-axis invalidation control collapses into one
-// indistinguishable refusal — the state-space conflation DESIGN §5 forbids, and an
+// indistinguishable refusal — the state-space conflation gunbc.design_argument::fail_closed forbids, and an
 // absorbing fallback wearing a diagnostic. No composite digest is stored anywhere in
 // this module: a composite is always a projection derived on demand, so an identity
 // that disagrees with its own axes is unrepresentable rather than lens-caught.
@@ -73,7 +73,7 @@ type GenerationAxis
 //
 // The mint takes an already-validated Sha512Digest rather than any particular
 // observation record, deliberately. Binding it to one tool's observation coproduct
-// would fuse the transport into the interface (DESIGN §3): the observer is a
+// would fuse the transport into the interface (gunbc.design_argument::single_authority): the observer is a
 // realization handler, one of N. Any observer that produces a Sha512Digest can mint —
 // the sha512sum file path yields exactly that on its observed arm — and none can
 // shortcut the validation, because Sha512Digest itself is reachable only through the
@@ -133,7 +133,7 @@ type GenerationIdentity {
 // key would let a caller author the very fact the build is supposed to produce.
 //
 // It lives HERE because this module is the sole authority for what a generation's identity IS
-// (DESIGN section 3). A consumer that re-listed the axes would fork that fact, and the fork is not
+// (gunbc.design_argument::single_authority). A consumer that re-listed the axes would fork that fact, and the fork is not
 // hypothetical: a key over only {source closure, toolchain, target} leaves a changed PRODUCER
 // COMPILER or BUILD CONFIGURATION invisible, so two different generations read as one computation
 // and the differing artifact reads as a same-key content conflict rather than a changed input.
@@ -219,7 +219,7 @@ type SourceClosureRoster {
 // report as a different generation. The roster is therefore required to arrive in
 // canonical ascending member-identity order and REFUSES otherwise, rather than being
 // silently re-sorted. Refusing is the stronger arm on three counts: it is linear
-// where an in-carrier sort would be quadratic (DESIGN §6 bare-minimum cost — a
+// where an in-carrier sort would be quadratic (gunbc.design_argument::how_to_work bare-minimum cost — a
 // cost-shape defect is fixed regardless of realized n); a silent re-sort would also
 // launder a producer emitting DUPLICATE members, which strict ascent catches here;
 // and normalizing someone else's disorder hides that their enumeration is

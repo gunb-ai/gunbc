@@ -1698,7 +1698,7 @@ fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
 //
 // NO COMPATIBILITY RE-EXPORT WAS LEFT BEHIND, deliberately. A generic wrapper preserving the old
 // `choose_serving_candidate` spelling would retain exactly the misleading public surface this cut
-// removes; the compile failures at old import sites ARE the census (DESIGN section 3's delete-first
+// removes; the compile failures at old import sites ARE the census (gunbc.design_argument::replacement_migration's delete-first
 // rule -- in a fail-closed substrate the deletion is what makes every real dependent refuse loudly).
 //
 // WHAT THE EXTRACTION DID NOT DO. It did not make a vLLM path exist. A second realization still owes
