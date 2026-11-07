@@ -26,5 +26,5 @@ import std.measure { BitWidth, bit_width_count }
 // is a VALID machine width is a separate question, left to the declaration that names MachineWidth<0>
 // (std.machine_word's WordWidth has no zero member); this function answers only membership.
 fn machine_width_admits(signedness: Signedness, bits: BitWidth, value: Int) -> Bool {
-  integer_extent_admits(extent: integer_machine_interval_spec(signedness: signedness, width_bits: bit_width_count(b: bits)), value: value)
+  integer_extent_admits(extent: integer_machine_interval_spec(signedness: signedness, width: bits), value: value)
 }

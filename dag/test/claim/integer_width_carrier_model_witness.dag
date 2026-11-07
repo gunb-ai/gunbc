@@ -1,6 +1,7 @@
 module test.claim.integer_width_carrier_model_witness
 
 import std.types { Bool, String, Int }
+import std.measure { BitWidth, bit_width }
 import std.integer { Signedness, Signed, Unsigned }
 import std.integer_interval { StandardIntegerType, Int8, Int16, Int64, Int128, UInt8, UInt16, UInt64, UInt128, integer_standard_type_from_width, integer_extent_admits, uint8_interval_spec, uint64_interval_spec, int128_interval_spec, uint128_interval_spec, BoundedIntegerInterval, integer_width_host_realization, WidthValueFitsHostInt, WidthValueNeedsExactRealization }
 import std.literal_elaboration { KernelGrounding, kernel_grounding_crossing, kernel_grounding_pair_crossing, integer_width_grounding, carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CrossingTotalWidening, CrossingRefused }
@@ -28,7 +29,7 @@ test fn signed_and_unsigned_widths_select_existing_target_rows() -> Bool {
     && primitive_named(width: Int128, expected: "i128") && primitive_named(width: UInt128, expected: "u128")
 }
 
-fn width_reading(signedness: Signedness, bits: Int) -> KernelGrounding {
+fn width_reading(signedness: Signedness, bits: BitWidth) -> KernelGrounding {
   integer_width_grounding(source: decl_ref(module_path: "std.machine_constraints", decl_name: "Compose"), signedness: signedness, bits: bits)
 }
 
@@ -42,15 +43,15 @@ fn pair_admits(source: KernelGrounding, target: KernelGrounding) -> Bool {
 // RED: remove sign policy or reverse inclusion. Readings deliberately have the
 // same Compose head, so keying the pair by head alone cannot discriminate. Unrun.
 test fn only_same_signedness_widening_is_implicit() -> Bool {
-  pair_admits(source: width_reading(signedness: Unsigned, bits: 8), target: width_reading(signedness: Unsigned, bits: 16))
-    && pair_admits(source: width_reading(signedness: Signed, bits: 8), target: width_reading(signedness: Signed, bits: 16))
-    && !pair_admits(source: width_reading(signedness: Unsigned, bits: 16), target: width_reading(signedness: Unsigned, bits: 8))
-    && !pair_admits(source: width_reading(signedness: Unsigned, bits: 8), target: width_reading(signedness: Signed, bits: 16))
-    && !pair_admits(source: width_reading(signedness: Signed, bits: 8), target: width_reading(signedness: Unsigned, bits: 16))
+  pair_admits(source: width_reading(signedness: Unsigned, bits: bit_width(count: 8)), target: width_reading(signedness: Unsigned, bits: bit_width(count: 16)))
+    && pair_admits(source: width_reading(signedness: Signed, bits: bit_width(count: 8)), target: width_reading(signedness: Signed, bits: bit_width(count: 16)))
+    && !pair_admits(source: width_reading(signedness: Unsigned, bits: bit_width(count: 16)), target: width_reading(signedness: Unsigned, bits: bit_width(count: 8)))
+    && !pair_admits(source: width_reading(signedness: Unsigned, bits: bit_width(count: 8)), target: width_reading(signedness: Signed, bits: bit_width(count: 16)))
+    && !pair_admits(source: width_reading(signedness: Signed, bits: bit_width(count: 8)), target: width_reading(signedness: Unsigned, bits: bit_width(count: 16)))
 }
 
 fn binding_preserves_source(source: DeclarationRef) -> Bool {
-  match rust_integer_width_source_binding(source: source, signedness: Unsigned, bits: 8) {
+  match rust_integer_width_source_binding(source: source, signedness: Unsigned, bits: bit_width(count: 8)) {
     Absent => false
     Present { value: binding } => declaration_ref_eq(a: binding.source, b: source)
   }
@@ -70,9 +71,9 @@ test fn width_arithmetic_does_not_inherit_target_wrapping() -> Bool {
 
 // RED: select by bits alone or choose the first standard width on no match.
 test fn standard_width_selection_reads_signedness_and_refuses_unknown_widths() -> Bool {
-  (match integer_standard_type_from_width(signedness: Signed, bits: 8) { Present { value: Int8 } => true _ => false })
-    && (match integer_standard_type_from_width(signedness: Unsigned, bits: 8) { Present { value: UInt8 } => true _ => false })
-    && (match integer_standard_type_from_width(signedness: Unsigned, bits: 7) { Absent => true _ => false })
+  (match integer_standard_type_from_width(signedness: Signed, bits: bit_width(count: 8)) { Present { value: Int8 } => true _ => false })
+    && (match integer_standard_type_from_width(signedness: Unsigned, bits: bit_width(count: 8)) { Present { value: UInt8 } => true _ => false })
+    && (match integer_standard_type_from_width(signedness: Unsigned, bits: bit_width(count: 7)) { Absent => true _ => false })
 }
 
 // RED: make membership unconditional. Not executed.
@@ -91,9 +92,9 @@ test fn mixed_crossings_and_existing_unbounded_crossings_use_one_rule() -> Bool 
     CarrierGroundingFound { row: n } => match carrier_grounding(rows: kernel_grounding_rows, carrier: integer) {
       CarrierGroundingRefused { cause: _ } => false
       CarrierGroundingFound { row: i } =>
-        pair_admits(source: width_reading(signedness: Unsigned, bits: 8), target: n)
-        && pair_admits(source: width_reading(signedness: Signed, bits: 32), target: i)
-        && !pair_admits(source: n, target: width_reading(signedness: Unsigned, bits: 64))
+        pair_admits(source: width_reading(signedness: Unsigned, bits: bit_width(count: 8)), target: n)
+        && pair_admits(source: width_reading(signedness: Signed, bits: bit_width(count: 32)), target: i)
+        && !pair_admits(source: n, target: width_reading(signedness: Unsigned, bits: bit_width(count: 64)))
         && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: nat, to: integer) { CrossingTotalWidening => true _ => false })
         && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: integer, to: nat) { CrossingRefused { cause: _ } => true _ => false })
         && (match kernel_grounding_crossing(rows: kernel_grounding_rows, from: nat, to: decl_ref(module_path: "std.types", decl_name: "Int")) { CrossingRefused { cause: _ } => true _ => false })

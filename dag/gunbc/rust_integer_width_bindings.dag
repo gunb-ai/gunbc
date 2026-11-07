@@ -2,6 +2,7 @@ module gunbc.rust_integer_width_bindings
 
 import std.integer_interval { integer_standard_type_from_width, integer_standard_integer_type_interval_spec, BoundedIntegerInterval, integer_bound_decimal_spelling }
 import std.types { Int, Bool, String }
+import std.measure { BitWidth, bit_width_count }
 import std.decl_ref { DeclarationRef }
 import std.optional { Present, Absent }
 import std.integer { Signedness, Signed, Unsigned }
@@ -30,7 +31,7 @@ fn rust_integer_primitive_matches_width(primitive: RustPrimitive, width: Standar
       match rust_integer_carrier_width(carrier: c) {
         Absent => false
         Present { value: bits } =>
-          bits == integer_standard_integer_type_width_bits(standard_integer_type: width)
+          bit_width_count(b: bits) == bit_width_count(b: integer_standard_integer_type_width_bits(standard_integer_type: width))
           && rust_integer_range_matches_width(width: width, lower: lo, upper: hi)
           && (match integer_standard_integer_type_signedness(standard_integer_type: width) {
             Signed => match a {
@@ -54,7 +55,7 @@ fn rust_integer_width_primitive(width: StandardIntegerType) -> RustPrimitive? {
 
 // A resolved source reading supplies identity, signedness and bits. In particular,
 // alias names are not an independently maintained authority for the source type.
-fn rust_integer_width_source_binding(source: DeclarationRef, signedness: Signedness, bits: Int) -> SourceTypeTargetBinding<RustPrimitive>? {
+fn rust_integer_width_source_binding(source: DeclarationRef, signedness: Signedness, bits: BitWidth) -> SourceTypeTargetBinding<RustPrimitive>? {
   match integer_standard_type_from_width(signedness: signedness, bits: bits) {
     Absent => Absent
     Present { value: width } => match rust_integer_width_primitive(width: width) {
