@@ -1,10 +1,24 @@
 module test.claim.repository_ci_profile_witness
 
-import gunbc.heal_workflow { heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused }
+import gunbc.heal_workflow {
+  heal_workflow_yml_for, HealWorkflowGenerated, HealWorkflowGenerationRefused,
+  heal_workflow_bound_steps, heal_candidate_step, heal_candidate_upload_step, heal_round_outcome_seed_step,
+  heal_round_outcome_write_step, heal_round_outcome_upload_step, heal_round_outcome_producer_directory,
+  heal_round_outcome_seed_line,
+  heal_round_outcome_rendered, heal_round_outcome_render_refused_poison,
+}
 import gunbc.heal_publication { heal_publication_candidate_directory_env }
-import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+import gunbc.heal_publication_boundary {
+  heal_repair_candidate_artifact_name, heal_repair_candidate_blob_file_prefix, heal_round_outcome_artifact_name,
+  heal_round_outcome_directory_name, heal_round_outcome_file_name, heal_round_outcome_blobs_field,
+  heal_round_outcome_not_closed_marker,
+}
 import gunbc.heal_publisher_workflow {
-  heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,
+  heal_publisher_workflow_yml_for, HealPublisherWorkflowGenerated, HealPublisherWorkflowGenerationRefused,  heal_publisher_round_outcome_download_step, heal_publisher_round_outcome_decision_step,
+  heal_publisher_round_outcome_decision_statements, heal_publisher_round_outcome_directory,
+  heal_publisher_trigger_conclusion_env_name,
+  heal_publisher_round_outcome_file, heal_publisher_round_outcome_rendered,
+  heal_publisher_round_outcome_render_refused_poison,
   heal_publisher_route_steps, heal_publisher_resolved_steps, heal_publisher_steps_refusal_reason,
   heal_publisher_candidate_directory, HealPublisherBoundStep, HealPublisherPolicy,
   heal_publisher_download_step, heal_publisher_admit_step, heal_publisher_publish_step,
@@ -30,7 +44,7 @@ import gunbc.witness.witness_floor_workflow { WitnessFloorGenerated, WitnessFloo
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import std.measure { byte_size, Minute, minute }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_head }
+import std.algebra { list_head, list_map, for_all }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.roster_frontier { FrontierRow, FrontierSubject, PathSubject, DeclSubject, frontier_rows_well_formed }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -78,6 +92,9 @@ import gunbc.ci.repository_seed_steps {
   seed_pin_verification_statements, seed_pin_verifier_job,
 }
 import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build { bash_build_stmt_list_from_nodes }
+import gunbc.ci.workflow_artifact_upload { ArtifactAbsence, AbsenceRefused, artifact_absence_behavior }
+import extdeps.github.action.upload_artifact { missing_files_behavior_wire }
 import extdeps.github.expressions { ContextAccess, Expression, ExpressionContext, Needs, Steps, interpolate }
 import gunbc.ci.repository_projection_drift_workflow {
   DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
@@ -86,6 +103,7 @@ import gunbc.ci.repository_projection_drift_workflow {
 import gunbc.witness.repository_witness_workflow {
   RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
   repository_witnesses_yml_emission, yaml_emission_admitted, repository_witness_triggers,
+  enforced_rows_need_an_aggregate_refusal, lane_admission,
 }
 
 // WHAT THESE CLAIMS HOLD.
@@ -2071,6 +2089,226 @@ fn publisher_row_with_unfoldable_seed_build() -> RepositoryCiProfile {
         publisher: base.publisher
       }
   }
+}
+
+
+// ── THE ROUND'S OUTCOME SURVIVES THE ROUND, AND A GREEN HAS TO SAY WHAT IT SAW ────────
+// WHY THESE ROWS EXIST, MEASURED. Between 2026-11-04 21:06Z and 2026-11-05 the heal publisher reported
+// SUCCESS with its Admit and Publish steps SKIPPED on thirteen consecutive runs; the last Admit that
+// EXECUTED was run 41909205210 at 20:42:51Z. Two silent greens were stacked. The producer wrote no
+// candidate for a round that stopped, so nothing survived the runner -- the shape
+// gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost names -- and
+// the publisher's candidate gate then closed over every step that could have said so. The triggering
+// run's CONCLUSION was present in every one of those runs and read by nobody: `actions/download-artifact`
+// logged "Found 0 artifact(s) ... Total of 0 artifact(s) downloaded ... finished successfully" (job
+// 126921178053 of run 41929113822), and the job went green on the strength of a zero it never read.
+//
+// THE FIX, IN ONE ROUTE. The heal round writes a one-file record of how many candidate blobs it had
+// written, outside the checkout, and uploads it under its own artifact name with `if: always()`; the
+// publisher fetches it UNGATED and says which kind of nothing it is looking at, refusing the two kinds
+// that hurt. Same job, same artifact actions, same candidate gate -- publication still requires the
+// candidate artifact and its blob files under their own names, so the record can inform and cannot
+// publish.
+//
+// THE MUTATIONS THAT MAKE THESE ROWS CONTROLS, each naming the row it reddens:
+//   drop `if: always()` from the record's write step or its upload step
+//     -> `the_round_records_its_outcome_whatever_the_round_did`
+//   put the publisher's two record steps behind the repair-owed gate (or delete either)
+//     -> `the_publisher_reads_the_round_outcome_before_any_credential_is_spent`
+//   delete the lost-emission branch, the no-record branch, or the never-closed branch of the decision step
+//     -> `a_lost_emission_is_a_red_not_a_green`
+//   rename the record into the candidate's namespace, or widen the gate so the record could satisfy it
+//     -> `the_round_outcome_record_is_never_a_publishable_candidate`
+//   route the record through any transport other than the candidate's own artifact actions
+//     -> `the_record_travels_the_same_transport_as_the_candidate`
+//   answer a record-script render refusal with an empty or no-op script, or drop the reasons that ride
+//   behind the marker
+//     -> `a_refused_record_script_is_a_loud_marker_never_an_empty_script`
+//   let the record upload warn instead of refuse when it finds no record (the hand-spelled
+//   if-no-files-found: warn that this route replaced)
+//     -> `the_record_travels_the_same_transport_as_the_candidate`
+
+// THE GATE A STEP CARRIES, rendered, or the empty string for a step that carries none. Read from the step
+// itself: a witness that re-derived the gate from the step's NAME would keep passing when the gate moved.
+fn step_gate_condition(step: Step) -> String {
+  match step {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: gate, continue_on_error: _, timeout_minutes: _ } =>
+      match gate {
+        Present { value: v } => v
+        Absent => ""
+      }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: gate, continue_on_error: _, timeout_minutes: _ } =>
+      match gate {
+        Present { value: v } => v
+        Absent => ""
+      }
+    _ => ""
+  }
+}
+
+// THE ACTION A STEP USES, by repository, or the empty string for a step that uses none.
+fn step_action_repo(step: Step) -> String {
+  match step {
+    UsesStep { name: _, id: _, uses: uses, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => uses.repo as String
+    _ => ""
+  }
+}
+
+// ORDER IS THE CLAIM, so this walks the job's own step list as a state machine rather than asking `any`:
+// a record opened AFTER the round cannot record a round that died, and a record closed BEFORE the
+// candidate upload cannot know whether that upload happened. Two `always()` gates are asserted from the
+// steps themselves -- the gate that makes the record survive a failed round is the whole point, and a
+// step list that carried these steps WITHOUT it would satisfy a name-only check.
+test fn the_round_records_its_outcome_whatever_the_round_did() -> Bool {
+  let reached = fold(heal_workflow_bound_steps(), init: 0, f: fn(state, bound) {
+    if state == 0 && step_display_name(s: bound.step) == step_display_name(s: heal_round_outcome_seed_step()) {
+      1
+    } else if state == 1 && step_display_name(s: bound.step) == step_display_name(s: heal_candidate_step()) {
+      2
+    } else if state == 2 && step_display_name(s: bound.step) == step_display_name(s: heal_candidate_upload_step()) {
+      3
+    } else if state == 3 && step_display_name(s: bound.step) == step_display_name(s: heal_round_outcome_write_step()) {
+      4
+    } else {
+      state
+    }
+  })
+  reached == 4
+    && step_gate_condition(step: heal_round_outcome_write_step()) == "always()"
+    && step_gate_condition(step: heal_round_outcome_upload_step()) == "always()"
+    // CLOSED MEANS THE FIELD LINE EXISTS, so the seed must not carry it: a seed that did would make a
+    // record from a round killed before its finalisation read as a closed one, and the lost emission
+    // would be reported as a clean tree. Zero is a fact about the tree; "never closed" is a fact about
+    // the round, and one value must not spell both.
+    && string_contains(s: heal_round_outcome_producer_directory, pattern: heal_round_outcome_directory_name as String)
+    && !string_contains(s: heal_round_outcome_seed_line, pattern: heal_round_outcome_blobs_field as String)
+    && heal_round_outcome_blobs_field as String != ""
+}
+
+// BEFORE ANY CREDENTIALED STEP, AND UNGATED. The repair-owed gate is right for spending a credential and
+// wrong for knowing what happened, which is exactly the pair that produced thirteen green runs that
+// admitted nothing. The state machine walks the resolved step list this row's own route renders, so the
+// claim is about the workflow that ships, not about a step list assembled for the test.
+test fn the_publisher_reads_the_round_outcome_before_any_credential_is_spent() -> Bool {
+  let row = gunbc_repository_ci_profile()
+  match row.publisher {
+    Absent => false
+    Present { value: job } =>
+      match publisher_source_of(row: row) {
+        Absent => false
+        Present { value: source } =>
+          match heal_publisher_resolved_steps(profile: row, job: job, source: source) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: steps, diagnostics: _ } =>
+              let reached = fold(steps, init: 0, f: fn(state, bound) {
+                if state == 0 && step_display_name(s: bound.step) == step_display_name(s: heal_publisher_round_outcome_download_step()) {
+                  1
+                } else if state == 1 && step_display_name(s: bound.step) == step_display_name(s: heal_publisher_round_outcome_decision_step()) {
+                  2
+                } else if state == 2 && step_gate_condition(step: bound.step) != "" {
+                  // the first gated step: every record step had to come before it
+                  3
+                } else {
+                  state
+                }
+              })
+              reached == 3
+                && step_gate_condition(step: heal_publisher_round_outcome_download_step()) == ""
+                && step_gate_condition(step: heal_publisher_round_outcome_decision_step()) == ""
+                // fetched by run id, like the candidate, so a record cannot be read off the wrong round
+                && step_with_entry(step: heal_publisher_round_outcome_download_step(), key: "run-id")
+                  == step_with_entry(step: heal_publisher_download_step(), key: "run-id")
+          }
+      }
+  }
+}
+
+// THE DECISION STEP'S OWN SCRIPT, as the emitter renders it. Every case is named, because the row must go
+// red if any ONE of them is deleted: a publisher that keeps three of five answers still reports a green
+// that asserts less than it claims to. Refusals must be `::error::` plus a non-zero exit -- an annotation
+// on a step that then exits zero is the same silent green in another font.
+test fn a_lost_emission_is_a_red_not_a_green() -> Bool {
+  let script = match bash_emit_stmts(statements: heal_publisher_round_outcome_decision_statements(), set_e: false) {
+    Accepted { value: rendered, diagnostics: _ } => rendered
+    Rejected { diagnostics: _ } => ""
+  }
+  script != ""
+    // the refusal that used to be a green: blobs were written, none arrived
+    && string_contains(s: script, pattern: "LOST EMISSION")
+    // the refusal for having no record at all, with its dissolution named
+    && string_contains(s: script, pattern: "NO RECORD")
+    && string_contains(s: script, pattern: "2026-11-05")
+    // the refusal for a record the round never closed
+    && string_contains(s: script, pattern: "without closing its own record")
+    // the two greens, each named so a green asserts one of them
+    && string_contains(s: script, pattern: "clean tree")
+    && string_contains(s: script, pattern: "stopped before producing a candidate")
+    // the ordinary route, unchanged
+    && string_contains(s: script, pattern: "candidate blob files present")
+    // every refusal exits non-zero: an annotation on a step that then exits zero is the same silent
+    // green in another font
+    && string_contains(s: script, pattern: "exit 1")
+    // read through the one field name, the one record path and the one conclusion name -- the script, the
+    // record and the step's env block must not spell these separately
+    && string_contains(s: script, pattern: heal_round_outcome_blobs_field as String)
+    && string_contains(s: script, pattern: heal_publisher_round_outcome_file)
+    && string_contains(s: script, pattern: heal_publisher_trigger_conclusion_env_name)
+    // CLOSEDNESS IS FIELD ABSENCE, NOT A WORD: the script decides from whether the field line exists, so
+    // it must not branch on the seed's text. A script that did would report a record whose field line was
+    // truncated or garbled as a closed, clean round.
+    && !string_contains(s: script, pattern: heal_round_outcome_not_closed_marker as String)
+}
+
+// A SECOND TRANSPORT MUST STAY UNPUBLISHABLE. The candidate gate is the only thing between an artifact and
+// a pull-request write, so the record's names must never satisfy it -- and the gate itself must stay
+// narrow, which is why this row reads the gate expression and not just the names.
+test fn the_round_outcome_record_is_never_a_publishable_candidate() -> Bool {
+  heal_round_outcome_artifact_name as String != heal_repair_candidate_artifact_name as String
+    && heal_publisher_round_outcome_directory != heal_publisher_candidate_directory
+    && !string_contains(s: heal_round_outcome_file_name as String, pattern: heal_repair_candidate_blob_file_prefix as String)
+    && step_with_entry(step: heal_publisher_round_outcome_download_step(), key: "path") == heal_publisher_round_outcome_directory
+    && step_with_entry(step: heal_publisher_round_outcome_download_step(), key: "pattern") == heal_round_outcome_artifact_name as String
+    // the candidate download still names ONLY the candidate
+    && step_with_entry(step: heal_publisher_download_step(), key: "pattern") == heal_repair_candidate_artifact_name as String
+    // and the record's name appears nowhere in the publisher's generated file as a gate input
+    && match heal_publisher_workflow_yml_for(profile: gunbc_repository_ci_profile()) {
+      HealPublisherWorkflowGenerated { content: yml } =>
+        !string_contains(s: yml, pattern: "hashFiles('" + heal_round_outcome_directory_name as String)
+      HealPublisherWorkflowGenerationRefused { reason: _ } => false
+    }
+}
+
+// ONE ROUTE, NOT A PARALLEL ONE. The record rides the SAME pinned artifact actions the candidate rides:
+// same upload action for the producer, same download action for the publisher, addressed by the same run
+// id. A second transport -- a curl, a `gh run download`, a job output -- would be a second path beside the
+// modeled route, and the pairing that makes the record trustworthy would not exist.
+test fn the_record_travels_the_same_transport_as_the_candidate() -> Bool {
+  step_action_repo(step: heal_round_outcome_upload_step()) == step_action_repo(step: heal_candidate_upload_step())
+    && step_action_repo(step: heal_publisher_round_outcome_download_step()) == step_action_repo(step: heal_publisher_download_step())
+    && step_action_repo(step: heal_round_outcome_upload_step()) != ""
+    // AND IT REFUSES TO UPLOAD NOTHING, through the one absence authority. The record is seeded first and
+    // ungated, so an upload that finds no record means the record route broke -- "warn" there is how a
+    // missing record becomes invisible again, and this step may not spell that input by hand.
+    && step_with_entry(step: heal_round_outcome_upload_step(), key: "if-no-files-found")
+      == missing_files_behavior_wire(behavior: artifact_absence_behavior(absence: AbsenceRefused))
+}
+
+// A REFUSED RECORD SCRIPT IS A LOUD MARKER, NEVER AN EMPTY SCRIPT. Both record scripts go through a
+// String seam, because a step's `run:` field is a String; a seam is exactly where a `bash_emit` refusal
+// could quietly become "a step that runs nothing", which is a green that asserts nothing. The input is the
+// one construction the emitter refuses by rule -- `bash_build_stmt_list_from_nodes([])`, which plants
+// ^bash_build_refused_empty_stmt_list instead of a statement. A seam that answered a refusal with "" or
+// with a no-op, or that dropped the reasons that ride behind the marker, turns this red. The seam class is
+// the one gunbc.shell_command_text names in its next-rung trigger (carry a typed refusal Outcome through
+// the seam so no artifact is ever written carrying a marker), so the limit is recorded, not remembered.
+test fn a_refused_record_script_is_a_loud_marker_never_an_empty_script() -> Bool {
+  let refused = [bash_build_stmt_list_from_nodes(stmts: [])]
+  let producer = heal_round_outcome_rendered(statements: refused, set_e: false)
+  let publisher = heal_publisher_round_outcome_rendered(statements: refused, set_e: false)
+  starts_with(s: producer, prefix: heal_round_outcome_render_refused_poison)
+    && starts_with(s: publisher, prefix: heal_publisher_round_outcome_render_refused_poison)
+    && string_length(s: producer) > string_length(s: heal_round_outcome_render_refused_poison)
+    && string_length(s: publisher) > string_length(s: heal_publisher_round_outcome_render_refused_poison)
 }
 
 // THE PUBLISHER'S REFUSAL CARRIES THE IDENTITY OF WHAT REFUSED, AT THE ENTRYPOINT THE CALLER USES. The row is

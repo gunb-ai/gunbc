@@ -36,6 +36,22 @@ jobs:
           merge-multiple: true
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
+      - name: Download the round outcome record the triggering heal run left
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: heal-round-outcome
+          path: heal-round-outcome
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+        continue-on-error: true
+      - name: Say what the triggering heal round left behind, and refuse what was lost
+        run: |
+          outcome_record='heal-round-outcome/heal-round-outcome.txt'
+          round_blobs=$('find' 'heal-candidate' '-maxdepth' '1' '-name' 'heal-repair-candidate-blob-*' '-print' '-quit' 2>/dev/null)
+          recorded_blobs=$('sed' '-n' 's/^''blobs=''/p' '$outcome_record' 2>/dev/null)
+          if '[' '-n' "$round_blobs" ']'; then 'echo' '::notice::gunbc.heal_publisher_workflow: the triggering heal round delivered candidate blob files present in the workspace; the gated build, admit, federation and publication steps go on'; else if '[' '!' '-f' '$outcome_record' ']'; then 'echo' '::error::gunbc.heal_publisher_workflow: NO RECORD of the triggering heal round: the round left no candidate and no round outcome record, so nothing here can say what it did (the record route was added 2026-11-05; a round from before it cannot be told apart from a lost one). Publication refuses rather than reporting a green that admits nothing'; exit 1; else if '[' '-z' "$recorded_blobs" ']'; then 'echo' '::error::gunbc.heal_publisher_workflow: the round outcome record exists but never received its blobs= line, so the round ended without closing its own record (killed, or its finalisation step failed). Publication refuses rather than reading an unclosed record as a clean tree'; exit 1; else if '[' "$recorded_blobs" '!=' '0' ']'; then 'echo' '::error::gunbc.heal_publisher_workflow: LOST EMISSION -- the round outcome record says blobs='"$recorded_blobs"' but the candidate artifact delivered none: the emission died with the runner. Publication refuses; a refused round that uploads nothing must not become a green'; exit 1; else if '[' "$HEAL_TRIGGER_RUN_CONCLUSION" '=' 'success' ']'; then 'echo' '::notice::gunbc.heal_publisher_workflow: the round closed its record with blobs=0 and the triggering run succeeded: there was no repair to publish. This is a clean tree, and the gated steps below are skipped by that fact'; else 'echo' '::notice::gunbc.heal_publisher_workflow: the round closed its record with blobs=0 while the triggering run concluded '"$HEAL_TRIGGER_RUN_CONCLUSION"': it stopped before producing a candidate. Nothing was lost; nothing is published'; fi; fi; fi; fi; fi
+        env:
+          HEAL_TRIGGER_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
       - name: Isolate toolchain homes
         run: |-
           # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not

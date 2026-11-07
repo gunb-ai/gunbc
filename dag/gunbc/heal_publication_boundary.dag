@@ -120,6 +120,36 @@ data heal_repair_candidate_manifest_file_name: NonEmptyStr = "heal-repair-candid
 
 data heal_repair_candidate_blob_file_prefix: NonEmptyStr = "heal-repair-candidate-blob-"
 
+// THE ROUND'S OUTCOME IS A SECOND TRANSPORT, BESIDE THE PUBLISHABLE ONE AND NEVER PUBLISHABLE ITSELF.
+// A heal round can write a whole candidate and then refuse at a later phase; the upload that would have
+// carried that candidate out is correctly gated on the round having produced one -- publishing a refused
+// round's candidate would be wrong -- so it never runs, and the bytes die with the runner. That is
+// gunbc.recurring_failure_mode.a_refused_round_uploads_no_candidate_and_its_emission_is_lost. The
+// mitigation is a one-file record, uploaded unconditionally, saying how many candidate blob files the
+// round had written when it terminated. The publisher READS it to say which kind of nothing it is
+// looking at; it can never publish from it, because publication still requires the candidate artifact
+// under its own name and blob files under theirs. Two transports, two names, one obligation: what a
+// round did must survive the round.
+data heal_round_outcome_artifact_name: NonEmptyStr = "heal-round-outcome"
+
+// One directory name, used on both sides: the producer writes it under runner.temp, the publisher
+// downloads the artifact into a directory of the same name in its own checkout.
+data heal_round_outcome_directory_name: NonEmptyStr = "heal-round-outcome"
+
+data heal_round_outcome_file_name: NonEmptyStr = "heal-round-outcome.txt"
+
+// The record's only field, named where both halves read and write it: how many candidate blob files the
+// round left when it closed the record. CLOSED MEANS A LINE BEGINNING WITH THIS FIELD EXISTS. The record
+// is seeded before the round runs, with `heal_round_outcome_not_closed_marker` and no field line at all,
+// and only the round's own finalisation step writes the field -- so an unreadable field means the round
+// ended without closing its record (a killed or truncated record reads the same way, which is the safe
+// direction: it is refused, not reported as a clean tree). How the round TERMINATED is not carried here:
+// the publisher reads that from the triggering run's conclusion, which is what the round's own gated steps
+// already act on.
+data heal_round_outcome_blobs_field: NonEmptyStr = "blobs="
+
+data heal_round_outcome_not_closed_marker: NonEmptyStr = "round outcome opened; not closed"
+
 // A blob travels under its own identity, so the name the publisher reads is derived from a decoded
 // object id and can never carry a path component the candidate chose.
 fn candidate_blob_file_name(blob: GitObjectId) -> String {
