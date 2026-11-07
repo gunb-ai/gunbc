@@ -4,7 +4,7 @@ import gunbc.ci.workflow_artifact_upload { workflow_artifact_upload_with, Absenc
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { byte_size_count, minute_count }
 import std.optional { Optional, Present, Absent }
-import std.algebra { list_map }
+import std.algebra { list_map, fold_list }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -596,4 +596,56 @@ fn expected_projection_drift_workflow_yml(
 
 fn drift_row(profile: RepositoryCiProfile) -> Optional<ProjectionDrift> {
   profile.drift
+}
+
+
+// MEASUREMENT-ONLY -- NEVER LAND. Plants for the emit-time cast wall of drift-watch run
+// 41758290962 (head 4d378020a5f): 19 hard diagnostics, each "cast cannot be emitted for target
+// 'rust' -- no declared conversion route from X to Y ... name a declared conversion (a checked
+// constructor or a conversion function) instead of `as`". Three shapes, one control, so an
+// inference-side fix can be measured rather than argued about.
+//
+// G1 and G2 are the two ways an element type reaches a cast without ever being stated: an
+// accumulator whose empty carries no element type, and a match whose Absent arm carries none.
+// G3 is the third: the cast is on an input element while the accumulator is typed. The control
+// is the pair that IS admitted today -- NonEmptyStr to String is admitted at
+// dag/gunbc/github_effect_perform.dag:378 (owner: NonEmptyStr cast to String, not in the refused
+// set), while the same printed carrier pair refuses when the target is a nominal_opaque carrier
+// (jwt as Secret, dag/gunbc/github_effect_perform.dag:239). A fix that refuses the control has
+// widened behaviour, not narrowed it, and this file is where that would show.
+//
+// Each plant is reached from measurement_plant_receipts, which nothing calls. That is the first
+// thing this run measures: src/v1/05_emit.dag contains no reachability or dead-code pass (its
+// four "unreachable" mentions are comments about dispatch arms), so an uncalled function should
+// still be inferred and emitted. If the refusal list names measurement_plant_*, emit reached them
+// and the before-endpoint is real; if it does not name them, emit prunes unreferenced functions,
+// the plants measured nothing, and that is the result I report rather than the silence.
+fn measurement_plant_g1_empty_init_accumulator(names: List<String>) -> List<String> {
+  let acc = fold_list(xs: names, empty: [], cons: (a, p) => concat(a, [p]))
+  list_map(xs: acc, f: (p) => p as String)
+}
+
+fn measurement_plant_g2_absent_arm(noisy: Optional<List<String>>) -> List<String> {
+  match noisy {
+    Absent => []
+    Present { value: v } => list_map(xs: v, f: (p) => p as String)
+  }
+}
+
+fn measurement_plant_g3_typed_init_input_cast(items: List<String>) -> String {
+  fold_list(xs: items, empty: "", cons: (a, r) => join([a, r as String], ""))
+}
+
+fn measurement_plant_control_admitted_pair(subject: NonEmptyStr) -> String {
+  subject as String
+}
+
+fn measurement_plant_receipts(names: List<String>, noisy: Optional<List<String>>) -> List<String> {
+  concat(
+    measurement_plant_g1_empty_init_accumulator(names: names),
+    concat(
+      measurement_plant_g2_absent_arm(noisy: noisy),
+      concat(list_map(xs: [], f: (u) => u), concat(list_map(xs: [], f: (u) => u), [measurement_plant_g3_typed_init_input_cast(items: names), measurement_plant_control_admitted_pair(subject: "measurement")]))
+    )
+  )
 }
