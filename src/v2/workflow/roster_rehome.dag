@@ -2,7 +2,7 @@ module v2.workflow.roster_rehome
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.parse { parse_artifact_span_index, PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.lexical_scope { ModuleRootBinding, module_root_bindings }
 import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, SiteHeadBinding, collect_scoped_module_reference_sites }
@@ -302,7 +302,8 @@ fn rehome_contract_from_text(home: String, name: String, path: String, text: Str
       match parse_module_prepared(tokens: stream, prepared: prepared) {
         Rejected { diagnostics: _ } => RehomeContractUnestablished { cause: "parse " + path }
         Accepted { value: artifact, diagnostics: _ } =>
-          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+          let parsed_spans = parse_artifact_span_index(artifact: artifact)
+          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: parsed_spans) {
             Rejected { diagnostics: _ } => RehomeContractUnestablished { cause: "normalize " + path }
             Accepted { value: scoped, diagnostics: _ } => rehome_contract_in(home: home, name: name, root: scoped.tree.root, imported: scoped.tree.import_bindings)
           }
@@ -419,10 +420,11 @@ fn rehome_text(path: String, text: String, prepared: PreparedGrammar, lex: Prepa
       match parse_module_prepared(tokens: stream, prepared: prepared) {
         Rejected { diagnostics: d } => RehomeRefused { reason: RehomeParseRefused { diagnostic: roster_stage_diagnostic(d: d) } }
         Accepted { value: artifact, diagnostics: _ } =>
-          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
+          let parsed_spans = parse_artifact_span_index(artifact: artifact)
+          match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: parsed_spans) {
             Rejected { diagnostics: d } => RehomeRefused { reason: RehomeNormalizeRefused { diagnostic: roster_stage_diagnostic(d: d) } }
             Accepted { value: scoped, diagnostics: _ } =>
-              rehome_parsed(text: text, tokens: stream.all, parse_root: artifact.tree, spans: artifact.span_index, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
+              rehome_parsed(text: text, tokens: stream.all, parse_root: artifact.tree, spans: parsed_spans, imported: scoped.tree.import_bindings, row: row, pair: pair, closures: closures)
           }
       }
   }

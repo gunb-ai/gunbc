@@ -1,5 +1,6 @@
 module v2.test.claim.namespace_xl0.reference_conservation
 
+import v2.compiler.parse { parse_artifact_span_index }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.compiler.reference_conservation {
   AuthoredAtom,
@@ -377,7 +378,7 @@ fn nth_authored_atom(subject: ReferenceConservationSubject, identity: Symbol, n:
     Rejected { diagnostics: _ } => Absent
     Accepted { value: artifact, diagnostics: _ } =>
       fold_list(
-        xs: authored_atom_population(artifact: artifact, token_classes: dag_declared_token_classes()).atoms,
+        xs: authored_atom_population(artifact: artifact, span_index: parse_artifact_span_index(artifact: artifact), token_classes: dag_declared_token_classes()).atoms,
         empty: AtomPick { seen: 0, found: Absent },
         cons: fn(acc, atom) {
           if atom.identity == identity {

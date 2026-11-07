@@ -16,7 +16,7 @@ import v2.compiler.source_authority {
 import std.content_hash { Fnv1a64Structural }
 import std.occurrence_identity { scoped_occurrence_allocator }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize, tokenize_prepared }
-import v2.compiler.parse {
+import v2.compiler.parse { parse_artifact_span_index,
   ParseArtifact,
   parse_module_prepared_seeded,
   PreparedGrammar,
@@ -271,18 +271,19 @@ fn program_assembly_phase_normalize_seeded(
   match parsed {
     Rejected { diagnostics: d } => ProgramAssemblyNormalizedPhase { outcome: Rejected { diagnostics: d }, alloc: seed, spans: span_index_empty() }
     Accepted { value: artifact, diagnostics: od } =>
-      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope), spans: artifact.span_index) {
+      let parsed_spans = parse_artifact_span_index(artifact: artifact)
+      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: seed, scope: scope), spans: parsed_spans) {
         Rejected { diagnostics: d } =>
           ProgramAssemblyNormalizedPhase {
             outcome: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d }),
             alloc: seed,
-            spans: span_index_in_scope(index: artifact.span_index, scope: scope)
+            spans: span_index_in_scope(index: parsed_spans, scope: scope)
           }
         Accepted { value: scoped, diagnostics: nd } =>
           ProgramAssemblyNormalizedPhase {
             outcome: bind_outcome_accepted(od: od, inner: Accepted { value: scoped.tree, diagnostics: nd }),
             alloc: scoped.allocator.alloc,
-            spans: span_index_in_scope(index: artifact.span_index, scope: scope)
+            spans: span_index_in_scope(index: parsed_spans, scope: scope)
           }
       }
   }
@@ -372,17 +373,18 @@ fn program_assembly_read_to_normalized_root_seeded(
         produced: Rejected { diagnostics: d }
       }
     Accepted { value: artifact, diagnostics: od } =>
-      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: artifact.span_index) {
+      let parsed_spans = parse_artifact_span_index(artifact: artifact)
+      match normalize_scoped(parse_tree: artifact.tree, allocator: scoped_occurrence_allocator(alloc: artifact.alloc, scope: scope), spans: parsed_spans) {
         Rejected { diagnostics: d } =>
           ProgramAssemblySeededReadResult {
             alloc: artifact.alloc,
-            spans: span_index_in_scope(index: artifact.span_index, scope: scope),
+            spans: span_index_in_scope(index: parsed_spans, scope: scope),
             produced: bind_outcome_accepted(od: od, inner: Rejected { diagnostics: d })
           }
         Accepted { value: scoped, diagnostics: nd } =>
           ProgramAssemblySeededReadResult {
             alloc: scoped.allocator.alloc,
-            spans: span_index_in_scope(index: artifact.span_index, scope: scope),
+            spans: span_index_in_scope(index: parsed_spans, scope: scope),
             produced: bind_outcome_accepted(od: od, inner: Accepted { value: scoped.tree, diagnostics: nd })
           }
       }

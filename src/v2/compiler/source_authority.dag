@@ -5,7 +5,7 @@ import v2.std.language_model { LanguageModel }
 import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderRead, ModuleHeaderReader, ModuleHeaderRefused, module_header_read }
 import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse, parse_module, parse_module_prepared, prepare_grammar }
+import v2.compiler.parse { parse_artifact_span_index, ParseArtifact, PreparedGrammar, parse, parse_module, parse_module_prepared, prepare_grammar }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import std.coercion { unicode_scalar_unfold }
 import std.unicode.scalar { ascii_lowercase }
@@ -624,7 +624,7 @@ fn source_ir_artifact_provenance_from_model(
                 value: SourceIrArtifactProvenance {
                   node: artifact.tree,
                   artifact: source_read.artifact,
-                  span_index: artifact.span_index
+                  span_index: parse_artifact_span_index(artifact: artifact)
                 }
               )
             }
@@ -703,7 +703,7 @@ fn module_storage_binding_from_parse_artifact(
     prov: SourceIrArtifactProvenance {
       node: artifact.tree,
       artifact: source_read.artifact,
-      span_index: artifact.span_index
+      span_index: parse_artifact_span_index(artifact: artifact)
     },
     source_root: source_read.source_root
   )
