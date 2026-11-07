@@ -665,6 +665,15 @@ fn witness_claim_locus_dir(instance: HostDashboardInstance, revision: ReleaseRev
   helper_locus_dir(locus: witness_claim_helper_locus(instance: instance), revision: revision)
 }
 
+// WHAT A HELPER LOCUS MUST CARRY, in the names the fold is handed. ONE list, two consumers: the install
+// route above passes it to `approval_broker_tree_install_at`, and `the_plant_leaves_the_executables_the_fold_
+// contract_requires` requires a staged file for every name in it. A plant that stages half of it is caught
+// by the claim instead of by an `install: cannot stat` on a host that can elevate -- which is how srv2 found
+// it (fold-cost-small died at `install: cannot stat '<root>/source/target/release/gunbc'`, 3.1M steps of
+// setup before file 0) while no local run could, because the local host has no sudo and the fold refuses on
+// the elevation probe BEFORE it ever reaches a stat.
+data witness_locus_executables: List<String> = [gunbc_release_bin_name]
+
 // THE BINARY THE FOLD INSTALLS IS READ FROM CARGO'S OWN RELEASE DIR UNDER THE SOURCE ROOT
 // (`cargo_default_release_dir(build_root: source_root)`, joined with `gunbc_release_bin_name`), so the
 // stage is where the fold looks and nowhere else. Staging is a copy of the SAME image the row's serve
@@ -732,7 +741,7 @@ fn witness_locus_install(
       source_root: instance.repo_root as String,
       locus: witness_claim_locus_dir(instance: instance, revision: revision),
       revision: revision,
-      executables: [gunbc_release_bin_name],
+      executables: witness_locus_executables,
       transport: one_transport_route(transport: LocalShell),
     )
   }
@@ -791,6 +800,55 @@ fn witness_file_sha256_hex(path: String) -> String {
   }
 }
 
+// EVERY WRITE INTO A LOCUS TREE GOES THROUGH HERE, because the fold installs that tree as the ROOT
+// principal (`approval_broker_helper_root_principal`, above) and an unprivileged `Filesystem.Write` into a
+// root-owned directory fails. srv2 measured exactly that: three launch legs refused with "the install fold
+// converged but its receipt could not be sealed", and the freshness arm failed the same way one step later --
+// by then the same revision's locus existed root-owned in the run-keyed base, so `mkdir -p` no-opped and the
+// hand stage's own receipt write died, which is what `fresh(b1)=1` actually was. No sudo-less host can see
+// this: the fold refuses on the elevation probe before installing anything, so the unprivileged arm below is
+// precisely the one the local batch exercises, and the local batch has been green for days on a route srv2
+// cannot reach.
+//
+// FIVE CONSUMERS, ONE BOUNDARY (the seal, the three receipt arms of
+// `an_unsealed_or_altered_helper_locus_receipt_is_not_read_as_installed`, and the hand stage), so ownership
+// and write route cannot drift apart again. THE VERDICT IS THE READBACK, never the exit code: the bytes must
+// come back identical, elevated or not, or the caller is told it failed.
+fn witness_write_locus_file(instance: HostDashboardInstance, destination: String, content: String, stage_key: String) -> Bool {
+  let written = if witness_sudo_elevation_available() {
+    // Stage where the claim principal can write (its own root, off the live host by the supplied-root guard),
+    // then copy it in through the SAME elevated route the install used, at the mode the fold installs at.
+    let stage = join([instance.instance_root as String, "/.gunbc-locus-write-", stage_key], "")
+    Filesystem.Write(path: stage, content: content).success
+      && wet_argv_ok(
+        program: sudo_elevate_command(command: ["/usr/bin/install", "-m", "0444", "--", stage, destination]).program.invocation as NonEmptyStr,
+        arguments: sudo_elevate_command(command: ["/usr/bin/install", "-m", "0444", "--", stage, destination]).arguments,
+      )
+  } else {
+    Filesystem.Write(path: destination, content: content).success
+  }
+  let back = Filesystem.Read(path: destination)
+  written && back.success && back.content == content
+}
+
+// THE SAME BOUNDARY FOR A FILE THAT ALREADY EXISTS ON DISK rather than bytes in hand: the hand stage puts the
+// locus binary in with `install_file_mode_command`, which is unprivileged and therefore fails on a locus the
+// fold made root-owned. Elevated install, mode preserved, readback by DIGEST -- the bytes are an image, not
+// text, and a truncated copy must not pass.
+fn witness_install_locus_file(instance: HostDashboardInstance, source: String, destination: String, mode: NonEmptyStr) -> Bool {
+  if !witness_sudo_elevation_available() {
+    wet_ok(command: install_file_mode_command(source: source, destination: destination, mode: mode))
+      && wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", destination])
+  } else {
+    wet_argv_ok(
+      program: sudo_elevate_command(command: ["/usr/bin/install", "-m", mode as String, "--", source, destination]).program.invocation as NonEmptyStr,
+      arguments: sudo_elevate_command(command: ["/usr/bin/install", "-m", mode as String, "--", source, destination]).arguments,
+    )
+      && wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", destination])
+      && witness_file_sha256_hex(path: source) == witness_file_sha256_hex(path: destination)
+  }
+}
+
 // SEAL IT. A fold that cannot seal its receipt has not delivered a locus the batch may reuse.
 fn witness_seal_locus_receipt(instance: HostDashboardInstance, revision_text: String) -> Bool {
   let hex = witness_file_sha256_hex(path: witness_locus_receipt_path(instance: instance, revision_text: revision_text))
@@ -798,7 +856,12 @@ fn witness_seal_locus_receipt(instance: HostDashboardInstance, revision_text: St
   if hex == "" {
     false
   } else {
-    Filesystem.Write(path: witness_locus_receipt_seal_path(instance: instance, revision_text: revision_text), content: join([hex, "\n"], "")).success
+    witness_write_locus_file(
+      instance: instance,
+      destination: witness_locus_receipt_seal_path(instance: instance, revision_text: revision_text),
+      content: join([hex, "\n"], ""),
+      stage_key: join(["seal-", revision_text], ""),
+    )
   }
 }
 

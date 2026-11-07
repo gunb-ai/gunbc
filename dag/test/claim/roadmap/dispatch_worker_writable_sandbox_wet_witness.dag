@@ -93,6 +93,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_locus_receipt_seal_path, witness_seal_locus_receipt, witness_file_sha256_hex,
   witness_batch_locus_base, witness_batch_locus_env_var,
   witness_release_stage_dir, witness_release_stage_member, witness_stage_release_binary,
+  witness_write_locus_file, witness_install_locus_file, witness_locus_executables,
   witness_guest_tree_revision, witness_locus_install, witness_locus_install_converged,
   witness_locus_install_refusal_cause, witness_sudo_elevation_available,
 }
@@ -302,10 +303,22 @@ fn wet_label_is_admissible(label: String) -> Bool {
 // per-claim tag so two claims in one batch can never share a tree. An empty answer is the
 // refusal -- never a fallback to a fixed path, which is how a witness ends up writing the
 // same directory on every host and calling the agreement evidence.
+// THE CLAIM'S WHOLE WRITABLE WORLD HANGS OFF THIS PATH, so it is also the thing a killed claim leaves behind.
+// srv2 twice found litter here after a timeout -- a root its own cleanup never reached, holding a bin/gunbc and
+// (harmlessly, as it turns out) a zero-byte file named like a credstore key. Cleanup by HEURISTIC -- "any
+// /tmp/gunbc-sandbox-* owned by me and touched after I started" -- is not identity: a sibling run started later
+// by the SAME user matches it and would be swept out from under its own batch. So the parent is an input: a
+// runner that wants ownership of the litter exports GUNBC_WITNESS_SANDBOX_BASE at a path IT created and removes
+// exactly that path, and the claims keep mktemp's uniqueness inside it. Unset, the prefix is the historical one
+// and nothing about a claim changes.
+data wet_sandbox_base_env_var: NonEmptyStr = "GUNBC_WITNESS_SANDBOX_BASE" as NonEmptyStr
+
 fn wet_claim_root(tag: NonEmptyStr) -> String {
+  let base = wet_environment_value(name: wet_sandbox_base_env_var)
+  let parent = if base == "" { witness_scratch_prefix as String } else { base }
   wet_out(
     command: mktemp_directory_command(
-      template: join([witness_scratch_prefix as String, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
+      template: join([parent, "/gunbc-sandbox-", tag, "-XXXXXX"], "") as NonEmptyStr,
     ),
   )
 }
@@ -652,10 +665,12 @@ fn wet_locus_receipt_is_sealed_by_the_fold(instance: HostDashboardInstance, revi
 // RECEIPT BYTES THE WAY A FOLD WOULD NOT PRODUCE THEM: lines that look exactly like a receipt, with no
 // seal beside them. This is the input that an existence check, a shape check, or a line count accepts.
 fn wet_write_unsealed_receipt(instance: HostDashboardInstance, revision_text: String, lines: Int) -> Bool {
-  Filesystem.Write(
-    path: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
+  witness_write_locus_file(
+    instance: instance,
+    destination: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
     content: repeat_string(s: "0000000000000000000000000000000000000000000000000000000000000000  dag/line.dag\n", n: lines),
-  ).success
+    stage_key: join(["unsealed-", revision_text], ""),
+  )
 }
 
 // REWRITE A SEALED RECEIPT WITH ITS FIRST LINE REPLACED AND ITS LINE COUNT INTACT: the case a count and
@@ -679,7 +694,12 @@ fn wet_rewrite_receipt_line(instance: HostDashboardInstance, revision_text: Stri
           acc
         },
     )
-    Filesystem.Write(path: receipt, content: join(kept, "\n")).success
+    witness_write_locus_file(
+      instance: instance,
+      destination: receipt,
+      content: join(kept, "\n"),
+      stage_key: join(["receipt-edit-", revision_text], ""),
+    )
   }
 }
 
@@ -698,7 +718,12 @@ fn wet_truncate_receipt(instance: HostDashboardInstance, revision_text: String) 
       init: [],
       f: (acc, line) => if count(acc) < count(lines) - 1 { concat(acc, [line]) } else { acc },
     )
-    Filesystem.Write(path: receipt, content: join(kept, "\n")).success
+    witness_write_locus_file(
+      instance: instance,
+      destination: receipt,
+      content: join(kept, "\n"),
+      stage_key: join(["receipt-edit-", revision_text], ""),
+    )
   }
 }
 
@@ -1112,6 +1137,28 @@ fn wet_stage(stage: String, ok: Bool) -> Bool {
     stdin_payload: join([note, "\n"], ""),
   )
   ok
+}
+
+// NOT OBSERVED IS NOT A GREEN. A wet claim returns Bool, and the lane has no third verdict today, so a claim
+// that could not exercise the thing it set out to measure had two bad options: print PASS with a note (what the
+// fold-cost claims did here -- 430k steps and a green on a host where the install phase never ran), or print a
+// bare FAIL that hides why. It gets a third thing instead, as close to a typed verdict as this lane allows: the
+// claim FAILS, and the stage trail carries a line a runner can tally on its own.
+//
+// `claim` is passed in rather than derived, so the tally line names the claim even when several claims share the
+// helper -- the runner's NOT_OBSERVED count is only meaningful if it can be joined back to names. On a host that
+// HAS the capability, a claim reaching this line is a defect, not a host fact: the S1 script treats any
+// not-observed line on an elevating host as a failed run.
+//
+// THE CEILING IS A TYPED VERDICT ON THIS LANE. The target-invocation lane already has it (`ClaimRouteVerdict`,
+// whose `NotAttempted` route prints UNOBSERVED); the wet lane's claims return Bool, so this marker is a
+// convention, and a convention can be dropped by an edit that nobody notices. The filed
+// recurring-failure-mode row names the structural fix: the wet runner accepting ClaimRouteVerdict.
+fn wet_not_observed(claim: NonEmptyStr, capability: NonEmptyStr) -> Bool {
+  wet_stage(
+    stage: join(["[witness] not-observed: ", claim as String, " capability=", capability as String], ""),
+    ok: false,
+  )
 }
 
 // EVERY WRITABLE PATH THE UNIT IS HANDED MUST SIT IN THE ROOT THIS CLAIM MADE — manager condition on
@@ -3352,16 +3399,31 @@ fn wet_suffixed_label_is_refused(root: FilePath, suffix: String) -> Bool {
 // accepts THAT refusal by name -- it reports the observation it made and the answer the fold gave, and
 // never claims an install it did not perform. On srv2 the second arm is the real fold, and that is where
 // the per-size step counts come from.
-fn wet_fold_cost_probe(tag: String, subdirs: List<String>, at_least: Int, at_most: Int) -> Bool {
+// ONE PHASE PER MEASUREMENT WHERE THE MEASUREMENT IS THE POINT. `install_only` exists because srv2's
+// numbers must attribute: a claim that plants, observes AND installs reports ONE eval_steps total, and a
+// claim that observes twice (once here, once inside the fold) cannot tell a linear fold from a superlinear
+// one. Three siblings -- plant+observe, plant+install (`the_install_fold_alone_over_the_whole_tree_reports_
+// its_cost`), and the plant alone (`the_plant_leaves_the_executables_the_fold_contract_requires`) -- give the
+// three phases separate numbers.
+fn wet_fold_cost_probe(tag: String, subdirs: List<String>, at_least: Int, at_most: Int, install_only: Bool) -> Bool {
   let root = wet_claim_root(tag: tag as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let named = wet_environment_value(name: wet_served_binary_env_var)
   let verdict = wet_claim_is_confined(instance: inst, root: root)
     && wet_plant_confined_tree_sized(instance: inst, subdirs: subdirs)
+    // THE IMAGE MUST BE IN PLACE BEFORE THE FOLD RUNS. srv2's fold-cost-small died at
+    // `install: cannot stat '<root>/source/target/release/gunbc'` after 3.1M steps of setup: the sized plant
+    // staged the tree but not the binary, and the fold's first executable IS that binary. No local run could
+    // see it -- with no sudo the fold refuses on the elevation probe before any stat -- so only the install
+    // half reaches the plant's completeness, and only on a host that can elevate.
+    && wet_stage(stage: join(["fold-cost-image:", tag, ":", named], ""), ok: named != "")
+    && (named == "" || witness_stage_release_binary(instance: inst, image: named))
     // (a) THE OBSERVATION THE FOLD BEGINS WITH, counted through production's own accessor. The bounds
     // are what makes this non-vacuous: the small tree really is small and the whole tree really is the
     // whole tree, so a plant that ignored `subdirs`, or an observation that dropped entries, fails here
     // rather than producing two indistinguishable numbers.
-    && (match observe_tree_hashes(
+    && (install_only
+      || (match observe_tree_hashes(
          root: inst.repo_root as String,
          subs: release_locus_tree_subdirs,
          transport: one_transport_route(transport: LocalShell),
@@ -3374,7 +3436,7 @@ fn wet_fold_cost_probe(tag: String, subdirs: List<String>, at_least: Int, at_mos
            stage: join(["fold-cost-observe-failed:", tag, ":", reason], ""),
            ok: false,
          )
-       })
+       }))
     // (b) THE FOLD ITSELF. `files_installed` is the host's count of what it put in place, staged beside
     // the observation so a reader can see the two agree; a refusal other than the documented one is a
     // real failure of the fold, not a host limitation.
@@ -3384,8 +3446,22 @@ fn wet_fold_cost_probe(tag: String, subdirs: List<String>, at_least: Int, at_mos
            ok: files >= at_least && files <= at_most,
          )
          TreeInstallRefused { step: step, reason: reason } => wet_stage(
-           stage: join(["fold-cost-refused:", tag, ":fold:", to_string(count([])), ":", reason], ""),
-           ok: reason == witness_locus_needs_elevation_cause as String,
+           // THE REFUSAL IS ONLY A HOST FACT WHEN THE HOST REALLY LACKS THE ELEVATION. On a host that HAS it
+           // -- srv2 -- a refusal here is a defect in the fold, and this claim must go red rather than hand
+           // the packet a cost number produced by a fold that never installed anything. `install_only` claims
+           // exist to be the measurement, so a measured refusal on an elevating host is not a measurement.
+           stage: join([
+             "fold-cost-refused:", tag, ":fold:", reason,
+             ":elevation_available:", to_string(witness_sudo_elevation_available()),
+             ], ""),
+           // A REFUSAL WITH NO ELEVATION ON THE HOST IS NOT OBSERVATION, NOT A GREEN. The claim fails and says
+           // which capability it needed, so the runner counts it apart from a real FAIL instead of adding it to
+           // the PASS column. A refusal when elevation IS available stays a plain defect: the conjunct below is
+           // false either way, and only the no-elevation case earns the not-observed line.
+           ok: wet_not_observed(
+             claim: join(["wet_fold_cost_probe(", tag, ")"], "") as NonEmptyStr,
+             capability: "sudo-elevation-for-the-install-fold" as NonEmptyStr,
+           ) && reason == witness_locus_needs_elevation_cause as String && !witness_sudo_elevation_available(),
          )
        })
   wet_claim_verdict_with_root_readback(verdict: verdict, root: root as NonEmptyStr)
@@ -3398,6 +3474,7 @@ test fn the_install_fold_over_a_thousand_planted_files_reports_its_cost() -> Boo
   wet_fold_cost_probe(
     tag: "fold-cost-small",
     subdirs: ["dag/extdeps", "dag/std", "src/v2/std", "src/v2/workflow"],
+    install_only: false,
     at_least: 900,
     at_most: 3000,
   )
@@ -3406,7 +3483,115 @@ test fn the_install_fold_over_a_thousand_planted_files_reports_its_cost() -> Boo
 test fn the_install_fold_over_the_whole_planted_tree_reports_its_cost() -> Bool {
   // THE SAME FOLD, THE TREE EVERY LAUNCHING LEG PLANTS: the two release subtrees, 10,117 files measured
   // at this head. Compare the two claims' eval_steps to settle linear-or-worse.
-  wet_fold_cost_probe(tag: "fold-cost-whole", subdirs: ["dag", "src/v2"], at_least: 9000, at_most: 14000)
+  wet_fold_cost_probe(tag: "fold-cost-whole", subdirs: ["dag", "src/v2"], at_least: 9000, at_most: 14000, install_only: false)
+}
+
+
+// THE SEAL IS PART OF THE INSTALL CONTRACT, SO ITS FAILURE MUST BE VISIBLE.
+//
+// srv2's three launch legs died exactly here: the fold converged and the seal could not be written into the
+// root-owned locus, so every leg refused -- the CORRECT verdict, but nothing here could tell "the seal write
+// was refused" from "the seal code was loosened to keep going". `witness_write_locus_file` is the boundary
+// that owns that write (the fold installs the locus as the root principal, so an unprivileged write into it
+// fails wherever the fold actually ran), and this claim is its red: obstruct the seal path, and the writer
+// must say no and be believed by the reuse arm.
+//
+// THE OBSTRUCTION IS A DIRECTORY WHERE THE SEAL FILE MUST BE -- `install` cannot replace a directory with a
+// regular file, elevated or not, so the refusal has a cause nobody can argue with. The claim then REMOVES the
+// obstruction and requires the seal to land, so a writer stuck false cannot print this green either:
+// acceptance, refusal, acceptance again, same root, same bytes.
+// THE GATE, SAID AS A PREDICATE. `wet_locus_gate` is what the legs call; wrapping it keeps this claim's
+// phases readable and, more importantly, keeps the WANT explicit -- asking for the served revision and asking
+// for a refusal are two different questions and the claim must say which it is asking at each step.
+fn wet_locus_gate_serves(instance: HostDashboardInstance, label: String, revision_text: String, want_served: Bool) -> Bool {
+  match wet_locus_gate(instance: instance, label: label) {
+    Present { value: read } => want_served && read == revision_text
+    Absent => !want_served
+  }
+}
+
+test fn a_locus_whose_seal_cannot_be_written_is_not_read_as_installed() -> Bool {
+  // THE SEAL IS PART OF THE INSTALL CONTRACT, so its failure has to be visible as a REFUSAL rather than as a
+  // locus that reads as installed. srv2's three launch legs died exactly here -- "the install fold converged
+  // but its receipt could not be sealed ..., so no leg may reuse this locus" -- which is the reuse arm refusing
+  // CORRECTLY; what the corpus lacked was any way to tell "the seal write was refused" apart from "the seal
+  // code was loosened so the batch could keep going". `witness_write_locus_file` is the boundary that owns the
+  // write (the fold installs the locus through the broker as the root principal, so an unprivileged write into
+  // that directory fails on exactly the hosts where the fold ran), and this claim is its red.
+  //
+  // THE OBSTRUCTION IS A DIRECTORY WHERE THE SEAL FILE MUST BE: `install` cannot replace a directory with a
+  // regular file, elevated or not, so the refusal has a cause nobody can argue with. The claim then REMOVES the
+  // obstruction and requires the seal to land, so a writer stuck at false cannot print this green either:
+  // acceptance, refusal, acceptance again -- same root, same revision, same bytes. Every step is ordered inside
+  // ONE expression, because `let` is evaluated where it is written and the gate must be asked between the
+  // phases, not before them.
+  //
+  // THE READER IS `wet_locus_gate`, the call the legs actually make: it is the only reader that trusts the
+  // seal. Asserting against the three-path existence readback instead would prove nothing about the seal, and
+  // an earlier draft of this claim did exactly that and stayed green for the wrong reason.
+  let root = wet_claim_root(tag: "seal-unwritable" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+  // A revision needs a committed guest tree -- the plant route commits one -- and the hand stage installs the
+  // binary FROM the instance's release stage directory, so the image has to be staged there first.
+  let planted = wet_plant_confined_tree(instance: inst)
+  let revision = witness_guest_tree_revision(instance: inst)
+  let seal = witness_locus_receipt_seal_path(instance: inst, revision_text: revision)
+  let verdict = planted
+    && named != ""
+    && revision != ""
+    && wet_stage(stage: join(["seal-unwritable:image:", named], ""), ok: witness_stage_release_binary(instance: inst, image: named))
+    && wet_stage_locus_by_hand(instance: inst, revision_text: revision, image: named)
+    // THE CONTROL FIRST: with nothing in its way the seal lands and the gate serves the locus. Without this
+    // arm the claim could be green because nothing in it ever worked.
+    && wet_stage(stage: "seal-unwritable:control-accepts", ok: witness_seal_locus_receipt(instance: inst, revision_text: revision))
+    && wet_stage(stage: "seal-unwritable:control-gate", ok: wet_locus_gate_serves(instance: inst, label: "seal-control", revision_text: revision, want_served: true))
+    && wet_ok(command: rm_recursive_force_command(path: seal))
+    && wet_ok(command: mkdir_parents_command(path: seal))
+    // THE SEAL MUST REFUSE, and the gate must then refuse the locus: an unsealed locus is not installed.
+    && wet_stage(stage: "seal-unwritable:seal-must-refuse", ok: !witness_seal_locus_receipt(instance: inst, revision_text: revision))
+    && wet_stage(stage: "seal-unwritable:gate-must-refuse", ok: wet_locus_gate_serves(instance: inst, label: "seal-obstructed", revision_text: revision, want_served: false))
+    // AND IT RETURNS when the obstruction is gone -- the refusal was the obstruction, not a stuck writer.
+    && wet_ok(command: rm_recursive_force_command(path: seal))
+    && wet_stage(stage: "seal-unwritable:seal-returns", ok: witness_seal_locus_receipt(instance: inst, revision_text: revision))
+    && wet_stage(stage: "seal-unwritable:gate-returns", ok: wet_locus_gate_serves(instance: inst, label: "seal-cleared", revision_text: revision, want_served: true))
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root as NonEmptyStr)
+}
+
+test fn the_plant_leaves_the_executables_the_fold_contract_requires() -> Bool {
+  let root = wet_claim_root(tag: "plant-exe" as NonEmptyStr)
+  let inst = wet_supplied_lab_instance(scratch_parent: root)
+  let named = wet_environment_value(name: wet_served_binary_env_var)
+  let planted = wet_plant_confined_tree(instance: inst)
+  let stage_dir = witness_release_stage_dir(instance: inst)
+  let verdict = wet_claim_is_confined(instance: inst, root: root)
+    && planted
+    // An image must be NAMED, or "every name present" is satisfied by never being asked.
+    && wet_stage(stage: join(["plant-exe:image-named:", named], ""), ok: named != "")
+    && (named == "" || witness_stage_release_binary(instance: inst, image: named))
+    && wet_stage(
+      stage: join(["plant-exe:names:", to_string(count(witness_locus_executables))], ""),
+      ok: count(witness_locus_executables) > 0,
+    )
+    && count(filter(witness_locus_executables, name => wet_path_exists(path: join([stage_dir, "/", name], "")))) == count(witness_locus_executables)
+    // THE STAGED BYTES ARE THE IMAGE, not a stub that would merely exist.
+    && witness_file_sha256_hex(path: witness_release_stage_member(instance: inst)) == witness_file_sha256_hex(path: named)
+    // AND IT IS THE PATH THE INSTALL ROUTE DERIVES, both sides from accessors.
+    && path_parent_directory(path: witness_release_stage_member(instance: inst)) == stage_dir
+  wet_claim_verdict_with_root_readback(verdict: verdict, root: root as NonEmptyStr)
+}
+
+// THE INSTALL HALF, ALONE. The whole-tree sibling minus the separate observation pass, so its eval_steps are
+// plant + fold and nothing else. This is the number that says whether the fold's cost is linear in files:
+// the both-phases claim cannot answer it, because it pays for an observation here AND one inside the fold.
+test fn the_install_fold_alone_over_the_whole_tree_reports_its_cost() -> Bool {
+  wet_fold_cost_probe(
+    tag: "fold-install-alone",
+    subdirs: ["dag", "src/v2"],
+    at_least: 9000,
+    at_most: 14000,
+    install_only: true,
+  )
 }
 
 test fn the_planted_paths_and_the_launch_property_set_name_one_attempt() -> Bool {
@@ -3629,18 +3814,21 @@ fn wet_stage_locus_by_hand(instance: HostDashboardInstance, revision_text: Strin
     // it once sealed. The digests here are a constant and nothing under the locus was digested; the
     // claims that use this say so. It is the reuse arm's READBACK that is under test on a sudo-less
     // host, never the fold's verification.
-    && Filesystem.Write(
-      path: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
+    && witness_write_locus_file(
+      instance: instance,
+      destination: witness_locus_receipt_path(instance: instance, revision_text: revision_text),
       content: repeat_string(
         s: "0000000000000000000000000000000000000000000000000000000000000000  dag/line.dag\n",
         n: 64,
       ),
-    ).success
-    && wet_ok(command: install_file_mode_command(
+      stage_key: join(["hand-receipt-", revision_text], ""),
+    )
+    && witness_install_locus_file(
+      instance: instance,
       source: image,
       destination: witness_locus_binary_path(instance: instance, revision_text: revision_text),
       mode: "0755" as NonEmptyStr,
-    ))
+    )
 }
 
 // THE DISCRIMINATION FOR THE REUSE ARM, IN BOTH DIRECTIONS. Every arm is the reason the one before it
