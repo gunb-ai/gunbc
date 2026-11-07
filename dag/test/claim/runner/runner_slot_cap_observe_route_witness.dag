@@ -140,7 +140,7 @@ fn host_at_desired_legs() -> List<ScriptedCommand> {
     Absent => []
     Present { value: s } => flat_map(s.desired_units, u => [
       show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-      grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+      grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
     ])
   }
 }
@@ -152,7 +152,7 @@ fn cap_population() -> RunnerSlotPopulation {
   match cap_featured_unit() {
     Absent => SlotPopulationObserved { units: [] }
     Present { value: u } => SlotPopulationObserved {
-      units: [RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending, reach: ReachesLiveCgroup }],
+      units: [RunnerSlotUnitResult { unit: u, standing: SlotTeardownEffective, reload: SlotReloadNotPending, reach: ReachesLiveCgroup, active_state: "inactive" }],
     }
   }
 }
@@ -243,11 +243,12 @@ fn show_block(memory_max: String, swap_max: String, high: String, tasks: String,
 }
 
 // grep -H prints `<filename>:<value>`, the filename mount point + the unit's cgroup path.
-fn grep_rows(control_group: String, memory_max: String, swap_max: String) -> String {
+fn grep_rows(control_group: String, memory_max: String, swap_max: String, high: String) -> String {
   let base = join([cgroup_v2_mount_point as String, control_group], "")
   join([
     join([base, "/memory.max:", memory_max], ""),
     join([base, "/memory.swap.max:", swap_max], ""),
+    join([base, "/memory.high:", high], ""),
   ], "\n")
 }
 
@@ -255,8 +256,8 @@ fn show_leg(unit: NonEmptyStr, memory_max: String, swap_max: String, high: Strin
   ScriptedCommand { remote_command: show_command(unit: unit), answer: shell_ok(stdout: show_block(memory_max: memory_max, swap_max: swap_max, high: high, tasks: tasks, control_group: control_group)) }
 }
 
-fn grep_leg(unit: NonEmptyStr, control_group: String, memory_max: String, swap_max: String) -> ScriptedCommand {
-  ScriptedCommand { remote_command: grep_command(control_group: control_group), answer: shell_ok(stdout: grep_rows(control_group: control_group, memory_max: memory_max, swap_max: swap_max)) }
+fn grep_leg(unit: NonEmptyStr, control_group: String, memory_max: String, swap_max: String, high: String) -> ScriptedCommand {
+  ScriptedCommand { remote_command: grep_command(control_group: control_group), answer: shell_ok(stdout: grep_rows(control_group: control_group, memory_max: memory_max, swap_max: swap_max, high: high)) }
 }
 
 // The featured slot's own cgroup path, as systemd prints it for a live runner unit.
@@ -268,7 +269,7 @@ fn cap_cgroup(unit: NonEmptyStr) -> String {
 fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
   [
     show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group),
-    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
   ]
 }
 
@@ -277,7 +278,7 @@ fn at_desired_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCom
 fn owed_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
   [
     show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: control_group),
-    grep_leg(unit: unit, control_group: control_group, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text),
+    grep_leg(unit: unit, control_group: control_group, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max"),
   ]
 }
 
@@ -286,7 +287,7 @@ fn owed_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> 
 fn drifted_legs(unit: NonEmptyStr, control_group: String) -> List<ScriptedCommand> {
   [
     show_leg(unit: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text(), control_group: control_group),
-    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+    grep_leg(unit: unit, control_group: control_group, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
   ]
 }
 
@@ -544,7 +545,7 @@ test fn observe_mode_yields_unreadable_when_the_cgroup_value_is_malformed() -> B
       let cg = cap_cgroup(unit: unit)
       let run = observe(legs: [
         show_leg(unit: unit, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cg),
-        grep_leg(unit: unit, control_group: cg, memory_max: "not-a-byte-count", swap_max: desired_swap_text()),
+        grep_leg(unit: unit, control_group: cg, memory_max: "not-a-byte-count", swap_max: desired_swap_text(), high: desired_high_text()),
       ])
       match standing_of(r: run, unit: unit) {
         Present { value: s } => match s {
@@ -743,6 +744,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
           outcome: HostFileNotAppliedObserveOnly,
         }),
         withheld: [],
+        retiree_drain: [],
         pre_actuation_reload: ManagerReloadNotOwed,
         actuation_admission: ActuationAdmitted,
         actuations: [],
@@ -796,25 +798,25 @@ fn host_legs_varying_featured(featured: NonEmptyStr, featured_grep_answer: Shell
       } else {
         [
           show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
         ]
       })
   }
 }
 
-fn host_legs_featuring(featured: NonEmptyStr, memory_max: String, swap_max: String) -> List<ScriptedCommand> {
+fn host_legs_featuring(featured: NonEmptyStr, memory_max: String, swap_max: String, high: String) -> List<ScriptedCommand> {
   match cap_subject() {
     Absent => []
     Present { value: s } => flat_map(s.desired_units, u =>
       if (u as String) == (featured as String) {
         [
           show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: memory_max, swap_max: swap_max),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: memory_max, swap_max: swap_max, high: high),
         ]
       } else {
         [
           show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
         ]
       })
   }
@@ -829,12 +831,12 @@ fn host_drifted_legs(featured: NonEmptyStr) -> List<ScriptedCommand> {
       if (u as String) == (featured as String) {
         [
           show_leg(unit: u, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max", tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
         ]
       } else {
         [
           show_leg(unit: u, memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text(), tasks: desired_tasks_text(), control_group: cap_cgroup(unit: u)),
-          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text()),
+          grep_leg(unit: u, control_group: cap_cgroup(unit: u), memory_max: desired_memory_text(), swap_max: desired_swap_text(), high: desired_high_text()),
         ]
       })
   }
@@ -881,7 +883,7 @@ test fn a_malformed_memory_max_refuses_the_observe_run_with_its_own_cause() -> B
   match cap_featured_unit() {
     Absent => false
     Present { value: unit } => {
-      let phase = observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: "not-a-byte-count", swap_max: desired_swap_text()))
+      let phase = observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: "not-a-byte-count", swap_max: desired_swap_text(), high: desired_high_text()))
       let text = observe_run_text(phase: phase)
       observe_run_succeeded(phase: phase) == false
         && string_contains(s: text, pattern: "terminal=REFUSED")
@@ -899,7 +901,7 @@ test fn a_fully_read_owed_or_drifted_observe_run_succeeds() -> Bool {
   match cap_featured_unit() {
     Absent => false
     Present { value: unit } => {
-      observe_run_succeeded(phase: observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text)))
+      observe_run_succeeded(phase: observed_cap_phase(legs: host_legs_featuring(featured: unit, memory_max: pre_fix_memory_text, swap_max: pre_fix_swap_text, high: "max")))
         && observe_run_succeeded(phase: observed_cap_phase(legs: host_drifted_legs(featured: unit)))
     }
   }

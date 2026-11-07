@@ -3,7 +3,7 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import std.algebra { list_flat_map, trim, list_head, FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list, string_contains }
+import std.algebra { list_flat_map, trim, list_head, take_prefix, FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list, string_contains }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd.unit_file { SystemdKillMode, SystemdExitType, systemd_kill_mode_wire, systemd_exit_type_wire }
@@ -155,7 +155,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command, TarNoOverwriteDir }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
-  SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunningLeftUnmasked, drain_runner_slot_under_over, NeverMaskARunningUnit, slot_drain_pending_cause_wire,
+  SlotActuationOutcome, SlotActuationRefused, SlotActuationSkippedThermal, SlotDrainPending, SlotActivated, DrainPendingJobRunningLeftUnmasked, drain_runner_slot_under_over, NeverMaskARunningUnit, slot_drain_pending_cause_wire,
   activate_runner_slot_over, drain_and_mask_runner_slot_over,
   slot_actuation_settled, slot_actuation_outcome_wire,
 }
@@ -163,6 +163,7 @@ import gunbc.runner.runner_slot_allocation { fabric_execution_slot_identities, d
 import gunbc.runner.runner_unit { runner_slot_unit_name, runner_slot_unit_dropin_path }
 import extdeps.systemd { systemd_memory_max_property, systemd_memory_high_property, systemd_memory_swap_max_property }
 import std.measure { byte_size_count }
+import gunbc.plans.host_thermal_operating_point { thermal_admitted_concurrency }
 import gunbc.runner.runner_width_transition {
   required_retirees_for_host,
   RequiredRetirees, RetireesKnown, RetireesUnresolved,
@@ -1082,6 +1083,7 @@ type RunnerSlotUnitReading {
   exit_type: String
   cpu_quota_per_sec: String
   environment: String
+  active_state: String
 }
 
 // WHAT A SLOT MUST CARRY BEYOND ITS TEARDOWN: the derived CPU ceiling, always; CARGO_BUILD_JOBS at
@@ -1281,6 +1283,14 @@ type RunnerSlotUnitResult {
   standing: RunnerSlotUnitStanding
   reload: SlotReloadStatus
   reach: SlotReloadReach
+  active_state: String
+}
+
+fn slot_active_state_for(unit: NonEmptyStr, show_stdout: String) -> String {
+  match parse_runner_slot_reading_for(unit: unit, show_stdout: show_stdout) {
+    Absent => ""
+    Present { value: rd } => rd.active_state
+  }
 }
 
 fn slot_reload_status_for(unit: NonEmptyStr, show_stdout: String) -> SlotReloadStatus {
@@ -1426,8 +1436,12 @@ fn parse_runner_slot_show_block(block: String) -> RunnerSlotUnitReading? {
                           match show_block_value(lines: lines, property: EnvironmentProperty) {
                             Absent => none
                             Present { value: env } =>
-                              if id == "" { none } else {
-                                Present { value: RunnerSlotUnitReading { unit: id as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit, cpu_quota_per_sec: cpu, environment: env } }
+                              match show_block_value(lines: lines, property: ActiveState) {
+                                Absent => none
+                                Present { value: act } =>
+                                  if id == "" { none } else {
+                                    Present { value: RunnerSlotUnitReading { unit: id as NonEmptyStr, load_state: load, need_daemon_reload: reload, kill_mode: kill, exit_type: exit, cpu_quota_per_sec: cpu, environment: env, active_state: act } }
+                                  }
                               }
                           }
                       }
@@ -1459,6 +1473,7 @@ fn classify_runner_slot_population_with_fabric(units: List<NonEmptyStr>, fabric:
         },
         reload: r.reload,
         reach: r.reach,
+        active_state: r.active_state,
       }
     } else { r })
 }
@@ -1482,6 +1497,7 @@ fn classify_runner_slot_population(units: List<NonEmptyStr>, retirements: List<R
         if (r.unit as String) == (u as String) { classify_runner_slot_unit_against_retirement(reading: r, expect: expect, retirements: retirements) } else { acc }),
       reload: slot_reload_status_for(unit: u, show_stdout: show_stdout),
       reach: slot_reload_reach_for(unit: u, show_stdout: show_stdout),
+      active_state: slot_active_state_for(unit: u, show_stdout: show_stdout),
     })
 }
 
@@ -2439,6 +2455,7 @@ fn converge_runner_slot_tree(
         SlotActuationRefused { unit: _, step: st, reason: why } => RunnerSlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
         SlotActivated { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
         SlotNotInstalled { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the slot's unit is not installed, so there is no drained slot whose tree this run may remove" as NonEmptyStr }
+        SlotActuationSkippedThermal { unit: _ } => RunnerSlotTreeRefused { unit: unit, cause: "the drain answered thermal-skip, which is not a drain outcome" as NonEmptyStr }
         // drain_and_mask_runner_slot_over answers Noop only for DrainAlreadyMasked: an earlier run masked
         // the slot while a job ran, and it has since stopped. That is the pending drain settling, so the
         // slot is as drained as SlotDrainedAndMasked and its tree is rebuilt.
@@ -3178,6 +3195,7 @@ type RunnerHostFileRun {
   privilege: FleetHostPrivilegeStanding
   results: List<FleetHostFileResult>
   withheld: List<RunnerHostFileWithheld>
+  retiree_drain: List<SlotActuationOutcome>
   pre_actuation_reload: RunnerHostManagerReload
   actuation_admission: RunnerHostActuationAdmission
   actuations: List<SlotActuationOutcome>
@@ -3226,6 +3244,43 @@ fn runner_host_manager_reload_step(
   }
 }
 
+// THE THERMAL ADMISSION GATE: a concurrency limit, not a slot-index limit. The 2026-11-05 thermal
+// operating point caps srv3/srv4 at 12 live runners (the declared width is 18; the fleet may run ANY
+// subset of instances — e.g. srv4 runs 01-05 and 08-14 because 06/07 are masked fabric members).
+// The converge must not perform an activation that would take the host's ACTIVE runner count above
+// the admitted concurrency. Fabric members and retirees are excluded from the count.
+//
+// Counting: from the post-reload population, count desired units whose active_state is "active" AND
+// are not fabric members. The budget (admitted - active) is how many MORE activations this pass may
+// perform. Already-active units are always passed to activation (they return SlotActuationNoop — no
+// start is performed), so they don't consume budget. Units NOT yet active consume one budget slot
+// each; once budget is exhausted, further non-active units get SlotActuationSkippedThermal.
+
+fn runner_host_thermal_budget(host: HostIdentity, active_runner_count: Int) -> Int {
+  match thermal_admitted_concurrency(host: host) {
+    Absent => 9999
+    Present { value: a } => if a > active_runner_count { a - active_runner_count } else { 0 }
+  }
+}
+
+// THE SINGLE THERMAL ADMISSION DECISION (gunbc.plans.host_thermal_operating_point). A unit is permitted to
+// be UP after this converge iff it is ALREADY ACTIVE (its running state is restored, never newly started)
+// or it is the admitted-prefix of the currently-inactive desired units -- the host's live active runner
+// count (fabric members excluded) must never be taken above the admitted concurrency by this converge. This
+// is the ONE place that predicate lives; the activation step and the cap bracket both consume it, so an
+// intervention-disabled slot cannot be started by the one and silently drained-then-restarted by the other
+// (DESIGN §3 one place; §2 the same fact cannot disagree across two callers).
+fn runner_host_thermal_activated_units(host: HostIdentity, population: RunnerSlotPopulation, desired: List<NonEmptyStr>, fabric: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  let active_names = match population {
+    SlotPopulationUnobservable { reason: _ } => []
+    SlotPopulationObserved { units: us } => map(filter(us, r => r.active_state == "active"), r => r.unit as String),
+  }
+  let already_active = filter(desired, u => any(active_names, n => n == (u as String)))
+  let not_active = filter(desired, u => !any(active_names, n => n == (u as String)))
+  let budget = runner_host_thermal_budget(host: host, active_runner_count: length(already_active))
+  concat(already_active, take_prefix(not_active, budget))
+}
+
 // THE SLOT POPULATION IS BROUGHT TO THE COMMITTED WIDTH BEFORE ITS CPU CEILING IS WRITTEN. Apply mode
 // activates every desired runner slot (gunbc.runner.runner_slot_actuation activate_runner_slot_over) and
 // drains and masks every fabric member and required retiree (drain_and_mask_runner_slot_over) over the
@@ -3238,6 +3293,7 @@ fn runner_host_slot_actuations(
   mode: FleetHostFileConvergeMode,
   privilege: FleetHostPrivilegeStanding,
   trees: List<RunnerSlotTreeStanding>,
+  population: RunnerSlotPopulation,
 ) -> List<SlotActuationOutcome>
 {
   match mode {
@@ -3247,14 +3303,20 @@ fn runner_host_slot_actuations(
         AdministratorPrivilegeRefused { reason: why } =>
           map(concat(subject.desired_units, runner_host_drain_units(subject: subject)), u => SlotActuationRefused { unit: u, step: "privilege", reason: why })
         AdministratorPrivilegeAvailable =>
-          concat(
-            map(subject.desired_units, u =>
+          // The single thermal decision (runner_host_thermal_activated_units): already-active units are
+          // restored (activation is a noop, no start); non-active units are brought up only up to the
+          // admitted concurrency. Anything the plan holds stays held -- it is never started by this converge.
+          let activatable = runner_host_thermal_activated_units(host: subject.host, population: population, desired: subject.desired_units, fabric: subject.fabric_units)
+          let activation_results = concat(
+            map(activatable, u =>
               match list_head(xs: list_flat_map(filter(trees, t => (runner_slot_tree_unit(standing: t) as String) == (u as String)), t => match runner_slot_tree_actuation(standing: t) { Present { value: o } => [o] Absent => [] })) {
                 Present { value: held_back } => held_back
                 Absent => activate_runner_slot_over(target: subject.target, context: context, unit: u)
               }),
-            map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u)),
+            map(filter(subject.desired_units, u => !any(activatable, a => (a as String) == (u as String))), u => SlotActuationSkippedThermal { unit: u }),
           )
+          let drain_outcomes = map(runner_host_drain_units(subject: subject), u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u))
+          concat(activation_results, drain_outcomes)
       }
   }
 }
@@ -3652,7 +3714,7 @@ fn run_runner_host_cap_phase(
                     Present { value: seconds } =>
                       match bracket_start_over(policy: runner_host_cap_drain_policy, given: second(count: seconds)) {
                         BracketStartRefused { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
-                        BracketStartAt { started: started } => run_runner_host_cap_bracket(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started)
+                        BracketStartAt { started: started } => run_runner_host_cap_bracket(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, population: population)
                       }
                   }
               }
@@ -3791,6 +3853,7 @@ fn run_runner_host_cap_bracket(
   privilege: FleetHostPrivilegeStanding,
   desired: RunnerSlotDesired,
   started: EpochMs,
+  population: RunnerSlotPopulation,
 ) -> RunnerHostCapPhase
 {
   match bracket_holder_identify(target: subject.target, context: context, units: subject.desired_units) {
@@ -3806,8 +3869,8 @@ fn run_runner_host_cap_bracket(
     // desired unit is bracketed exactly as before the holder work existed. Refusing here would silently
     // narrow the target -- a host could then only ever be converged from one of its own slots -- with no
     // safety to show for it (DESIGN §5: a decidable case gets its full answer, not a refusal).
-    HolderNotOnSubject { why: w } => run_cap_bracket_excluding(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, holder: HolderNotOnSubject { why: w })
-    HolderIdentified { unit: holder } => run_cap_bracket_excluding(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, holder: HolderIdentified { unit: holder })
+    HolderNotOnSubject { why: w } => run_cap_bracket_excluding(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, holder: HolderNotOnSubject { why: w }, population: population)
+    HolderIdentified { unit: holder } => run_cap_bracket_excluding(subject: subject, context: context, mode: mode, privilege: privilege, desired: desired, started: started, holder: HolderIdentified { unit: holder }, population: population)
   }
 }
 
@@ -3822,9 +3885,18 @@ fn run_cap_bracket_excluding(
   desired: RunnerSlotDesired,
   started: EpochMs,
   holder: BracketHolder,
+  population: RunnerSlotPopulation,
 ) -> RunnerHostCapPhase
 {
-  let to_bracket = bracket_units_to_bracket(units: subject.desired_units, holder: holder)
+  // THE BRACKET DRAINS ONLY UNITS THIS CONVERGE MAY BRING UP. A cooling-held slot (an intervention-disabled
+  // unit beyond the admitted concurrency) is idle and gets its memory shape from the TEMPLATE drop-in, so it
+  // need not be masked-and-drained -- and MUST NOT be, because draining a unit puts it on the bracket's owned
+  // list, which the post-write re-admit and the release finalizer then START (release_slot_over activates).
+  // Excluding it here is the gate that covers the restart and release paths: a unit never bracketed is never
+  // owned, so it is never re-admitted or released-up. The same predicate the activation step uses.
+  let activatable = runner_host_thermal_activated_units(host: subject.host, population: population, desired: subject.desired_units, fabric: subject.fabric_units)
+  let bracketable = filter(subject.desired_units, u => any(activatable, a => (a as String) == (u as String)))
+  let to_bracket = bracket_units_to_bracket(units: bracketable, holder: holder)
   match acquire_bracket_over(target: subject.target, context: context, host: subject.host as String, units: to_bracket) {
     BracketNotAcquired { refusal: rf } => CapPhaseWithheld { cause: join(["host untouched, nothing masked: ", bracket_refusal_wire(r: rf)], "") }
     BracketAcquired { owned: owned } =>
@@ -4109,6 +4181,17 @@ fn run_runner_host_files_admitted(
   // Observe reads per-slot standings and writes nothing — a mode that answered "caps not owed" without
   // looking was a two-valued answer hiding "could not look" (§5). The population fold is read once here and
   // shared by both arms; apply's behavior is byte-equal (same reads, same order).
+  // THE PRE-CAP RETIREE DRAIN: retiree units must reach SlotRetiredAsDeclared (masked) BEFORE the cap
+  // phase reads the population, because the cap gate's retirement precondition requires them masked.
+  // Mask + stop do not need a daemon-reload to take effect, so this drain is not gated by the cap phase.
+  // This is the retirement route (existing: drain_and_mask_runner_slot_over), reordered to satisfy its
+  // own precondition. Fabric drain remains in the actuation step (it needs the reload to restart workers
+  // with new config). See: the ordering defect where cap WITHHELD barred reload which barred actuations
+  // which included the drain — a deadlock that prevented retirement from ever completing.
+  let retiree_drain = match mode {
+    FleetHostFilesApply => map(subject.retired_units, u => drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: u))
+    FleetHostFilesObserveOnly => []
+  }
   let early_population = observe_runner_slot_population(subject: subject, context: context, expect: early_expect)
   let cap_phase = match mode {
     FleetHostFilesObserveOnly => observe_runner_host_cap_phase(subject: subject, context: context, population: early_population)
@@ -4127,7 +4210,7 @@ fn run_runner_host_files_admitted(
     FleetHostFilesApply => runner_host_actuation_admission(results: unit_results, pre_reload: pre_reload)
   }
   let actuations = match admission {
-    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees)
+    ActuationAdmitted => runner_host_slot_actuations(subject: subject, context: context, mode: mode, privilege: privilege, trees: trees, population: before)
     ActuationSkipped { cause: _ } => []
   }
   let gated = runner_host_cpu_dropin_gate(files: files, withheld: withheld, actuations: actuations, admission: admission)
@@ -4161,6 +4244,7 @@ fn run_runner_host_files_admitted(
     privilege: privilege,
     results: results,
     withheld: gated.withheld,
+    retiree_drain: retiree_drain,
     pre_actuation_reload: pre_reload,
     actuation_admission: admission,
     actuations: actuations,
@@ -4278,6 +4362,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     join(map(run.superseded, r => concat(superseded_dropin_line(r: r), "\n")), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
+    "pre-cap-retiree-drain=", join(map(run.retiree_drain, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",
     match run.actuation_admission { ActuationAdmitted => "" ActuationSkipped { cause: c } => join(["actuations SKIPPED ", c, "\n"], "") },
     join(map(run.actuations, a => concat(slot_actuation_outcome_wire(o: a), "\n")), ""),

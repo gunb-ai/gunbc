@@ -5,7 +5,44 @@ import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
-import std.types { List, String }
+import std.types { List, String, Bool, Int }
+import std.algebra { list_head }
+import product.host_identity { HostIdentity }
+
+// THE ADMISSION GATE: the thermal operating point is an ADMISSION CONDITION on the runner converge,
+// not a file left unmanaged. The 2026-11-05 incident (19 CI runners + Strata engines pushed DIMMs to
+// 110 °C and SoCs to 105 °C) led to a cooling cap: srv3/srv4 admitted concurrency reduced from the
+// declared width (18) to 12 live runners, enforced by hand-placed per-unit drop-ins (Restart=no,
+// 95-overnight-cap.conf) + disabled units. The converge MUST NOT perform an activation that would
+// take the host's active runner count above the admitted concurrency; doing so starts cooling-held
+// runners and recreates the thermal event.
+//
+// This is a CONCURRENCY limit (12 runners), not a slot-index limit: the live fleet may run any subset
+// of instances (e.g. srv4 runs 01-05 and 08-14 because 06/07 are masked fabric members). Fabric
+// execution members are excluded from the count (they are not CI runner slots).
+//
+// The gate covers activation (first start), restart (cap bracket), and release (obligation release) —
+// any actuation path that would perform systemctl start on a runner unit.
+
+type ThermalAdmittedConcurrency sole_constructor {
+  host: HostIdentity
+  admitted: Int
+}
+
+// The admitted concurrency per host, from the 2026-11-05 operating point. A host not listed here has
+// no thermal gate: the converge activates all desired units without a concurrency limit.
+data fleet_thermal_admitted_runner_concurrency: List<ThermalAdmittedConcurrency> = [
+  ThermalAdmittedConcurrency { host: "srv3" as HostIdentity, admitted: 12 },
+  ThermalAdmittedConcurrency { host: "srv4" as HostIdentity, admitted: 12 },
+]
+
+// The admitted concurrency for a host, or none if the host has no thermal gate.
+fn thermal_admitted_concurrency(host: HostIdentity) -> Int? {
+  match list_head(filter(fleet_thermal_admitted_runner_concurrency, e => e.host == host)) {
+    Absent => none
+    Present { value: e } => Present { value: e.admitted }
+  }
+}
 
 // THE WORKING DESIGN FOR "srv3 AND srv4 RUN TOO HOT" (gunbc-private#287, 2026-11-05), worked from that
 // one sentence forward: what the fleet must know before anyone touches a fan, the defects found on the

@@ -129,6 +129,7 @@ type SlotActuationOutcome
   | SlotDrainedAndMasked { unit: NonEmptyStr }
   | SlotDrainPending { unit: NonEmptyStr, cause: SlotDrainPendingCause }
   | SlotActuationRefused { unit: NonEmptyStr, step: String, reason: String }
+  | SlotActuationSkippedThermal { unit: NonEmptyStr }
 
 fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
   match o {
@@ -138,6 +139,7 @@ fn slot_actuation_settled(o: SlotActuationOutcome) -> Bool {
     SlotDrainedAndMasked { unit: _ } => true
     SlotDrainPending { unit: _, cause: _ } => false
     SlotActuationRefused { unit: _, step: _, reason: _ } => false
+    SlotActuationSkippedThermal { unit: _ } => true
   }
 }
 
@@ -149,6 +151,7 @@ fn slot_actuation_outcome_wire(o: SlotActuationOutcome) -> String {
     SlotDrainedAndMasked { unit: u } => join(["actuation ", u as String, " drained-masked-and-read-back"], "")
     SlotDrainPending { unit: u, cause: c } => join(["actuation ", u as String, " DRAIN-PENDING ", slot_drain_pending_cause_wire(c: c)], "")
     SlotActuationRefused { unit: u, step: st, reason: r } => join(["actuation ", u as String, " REFUSED step=", st, " ", r], "")
+    SlotActuationSkippedThermal { unit: u } => join(["actuation ", u as String, " SKIPPED-THERMAL (above admitted concurrency, gunbc.plans.host_thermal_operating_point)"], "")
   }
 }
 
