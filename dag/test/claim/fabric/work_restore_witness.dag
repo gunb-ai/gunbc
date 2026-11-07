@@ -19,14 +19,17 @@ import product.fabric.isolation { shared_kernel_sandbox_profile }
 import product.fabric.work {
   Work, WorkContract, ExecutionRequirements, MaterializedProgram, OfferedService, WorkStep, ReceiptSatisfiable, IdempotentUnderKey,
   OpaqueEffects, ControlPlaneCapacity, Shape, HardRequirements, WarmResidencyRequired, declared_terminal_obligations,
-  derive_work_key, work_for,
+  derive_work_key, work_for, CustomerExecutableCapacity, RevocationAccepted, OutputObligation, DeclaredOutputObligations, output_obligation_id, CapacityClass, RevocationStanding, OutputObligationKind, TerminalResultObligation,
 }
 import gunbc.serving.turn_demand { serving_turn_work, ServingTurnRequest }
 import product.fabric.work_restore {
   work_persist, work_restore, work_wire_fields, WorkPersistence, WorkPersisted, WorkPersistRefused, WorkRestoration, WorkRestored, WorkRestoreRefused,
   WorkRestoreRefusal, RestoreTruncated, RestoreNotCanonical, RestoreSchemaUnknown, RestoreFieldInvalid, RestoreTrailingFields,
   RestoreUnsupportedAxes, RestorePrincipalMismatch, RestoreKeyMismatch, UnsupportedAxis, GpuAxis, StorageAxis, NetworkAxis,
+  all_capacity_classes, all_revocation_standings, all_obligation_kinds, all_isolation_guarantees, all_architectures,
 }
+import product.fabric.isolation { IsolationProfile, IsolationGuarantee }
+import extdeps.toolchain.types { Architecture }
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -186,6 +189,60 @@ test fn trailing_bytes_refuse() -> Bool {
 // field is caught by both, so removing the tokenizer guard alone leaves it refused. A COMPLETE valid wire
 // followed by a partial frame ("5#ab" has two scalars where five are declared) isolates the tokenizer guard:
 // every field is present, the only defect is the truncated trailing frame.
+// (7c) The decoder lists the closed variants it accepts (all_* in work_restore). A variant missing from a
+// list would make a Work the writer accepted unrestorable. Each test below persists and restores a Work
+// carrying EVERY listed variant, so a decoder list that cannot read what the writer emits goes red here.
+// LIMIT: a variant ADDED to a source type but absent from the list is not detected by these tests (the
+// substrate offers no variant enumeration; the writer's exhaustive matches fail to compile on the new
+// variant, which is what forces the author to this file). Trigger: a variant-enumeration capability.
+fn requirements_full(cap: CapacityClass, rev: RevocationStanding, guarantees: List<IsolationGuarantee>, arch: Architecture?) -> ExecutionRequirements {
+  ExecutionRequirements {
+    capacity_class: cap,
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(8) },
+      envelope: ResourceEnvelope { cpu: Present { value: CpuRequirement { min_threads: hardware_thread_count(8), architecture: arch } }, gpu: none, memory: none, storage: none, network: none },
+    },
+    capabilities: "linux-arm64",
+    trust_domain: "fleet-owned",
+    isolation: IsolationProfile { guarantees: guarantees },
+    revocation: rev,
+  }
+}
+
+fn contract_with_kind(kind: OutputObligationKind) -> WorkContract {
+  WorkContract {
+    execution: MaterializedProgram { program: "gunbc-required-floor", source: "sha256:tree-abc", runtime_closure: "toolchain-rust-1.89" },
+    steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+    inputs: "manifest-inputs-1",
+    effect_contract: "effects-read-only",
+    output_contract: "outputs-verdict",
+    output_obligations: DeclaredOutputObligations { required: [OutputObligation { id: output_obligation_id(raw: "outputs-verdict"), kind: kind }] },
+  }
+}
+
+fn work_round_trips(w: Work<NonEmptyStr>) -> Bool {
+  match work_persist(work: w) {
+    WorkPersistRefused { axes: _ } => false
+    WorkPersisted { wire } => match work_restore(wire: wire, expected_principal: principal) { WorkRestored { work } => same_work(a: work, b: w)  _ => false }
+  }
+}
+
+test fn every_listed_architecture_round_trips() -> Bool {
+  all(all_architectures, a => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: TerminalResultObligation {}), requirements: requirements_full(cap: ControlPlaneCapacity, rev: WarmResidencyRequired, guarantees: [], arch: Present { value: a }))))
+}
+
+test fn every_listed_isolation_guarantee_round_trips() -> Bool {
+  all(all_isolation_guarantees, g => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: TerminalResultObligation {}), requirements: requirements_full(cap: ControlPlaneCapacity, rev: WarmResidencyRequired, guarantees: [g], arch: none))))
+}
+
+test fn every_listed_capacity_class_and_revocation_round_trips() -> Bool {
+  all(all_capacity_classes, c => all(all_revocation_standings, r => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: TerminalResultObligation {}), requirements: requirements_full(cap: c, rev: r, guarantees: [], arch: none)))))
+}
+
+test fn every_listed_obligation_kind_round_trips() -> Bool {
+  all(all_obligation_kinds, k => work_round_trips(w: work_for(principal: principal, contract: contract_with_kind(kind: k), requirements: requirements_full(cap: ControlPlaneCapacity, rev: WarmResidencyRequired, guarantees: [], arch: none))))
+}
+
 test fn a_partial_trailing_frame_is_exactly_truncated() -> Bool {
   refused_with(r: work_restore(wire: base_wire() + "5#ab", expected_principal: principal), want: is_truncated)
 }
