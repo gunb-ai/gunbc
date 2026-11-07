@@ -4078,6 +4078,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_install_fold_alone_over_a_thousand_planted_files_reports_its_cost" },
+      entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
+      function: "the_install_fold_alone_over_a_thousand_planted_files_reports_its_cost",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness", function: "the_unit_grants_the_attempt_private_git_dir_the_commit_writes_into" },
       entry: "dag/test/claim/roadmap/dispatch_worker_writable_sandbox_wet_witness.dag",
       function: "the_unit_grants_the_attempt_private_git_dir_the_commit_writes_into",

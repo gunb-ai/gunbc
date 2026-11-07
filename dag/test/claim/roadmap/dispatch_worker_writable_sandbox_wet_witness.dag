@@ -3489,7 +3489,14 @@ fn wet_suffixed_label_is_refused(root: FilePath, suffix: String) -> Bool {
 // one. Three siblings -- plant+observe, plant+install (`the_install_fold_alone_over_the_whole_tree_reports_
 // its_cost`), and the plant alone (`the_plant_leaves_the_executables_the_fold_contract_requires`) -- give the
 // three phases separate numbers.
-fn wet_fold_cost_probe(tag: String, subdirs: List<String>, at_least: Int, at_most: Int, install_only: Bool) -> Bool {
+fn wet_fold_cost_probe(
+  tag: String,
+  subdirs: List<String>,
+  at_least: Int,
+  at_most: Int,
+  install_only: Bool,
+  claim: String,
+) -> Bool {
   let root = wet_claim_root(tag: tag as NonEmptyStr)
   let inst = wet_supplied_lab_instance(scratch_parent: root)
   let named = wet_environment_value(name: wet_served_binary_env_var)
@@ -3543,7 +3550,7 @@ fn wet_fold_cost_probe(tag: String, subdirs: List<String>, at_least: Int, at_mos
            // the PASS column. A refusal when elevation IS available stays a plain defect: the conjunct below is
            // false either way, and only the no-elevation case earns the not-observed line.
            ok: wet_not_observed(
-             claim: join(["wet_fold_cost_probe(", tag, ")"], "") as NonEmptyStr,
+             claim: claim as NonEmptyStr,
              capability: "sudo-elevation-for-the-install-fold" as NonEmptyStr,
            ) && reason == witness_locus_needs_elevation_cause as String && !witness_sudo_elevation_available(),
          )
@@ -3561,13 +3568,15 @@ test fn the_install_fold_over_a_thousand_planted_files_reports_its_cost() -> Boo
     install_only: false,
     at_least: 900,
     at_most: 3000,
+    claim: "the_install_fold_over_a_thousand_planted_files_reports_its_cost",
   )
 }
 
 test fn the_install_fold_over_the_whole_planted_tree_reports_its_cost() -> Bool {
   // THE SAME FOLD, THE TREE EVERY LAUNCHING LEG PLANTS: the two release subtrees, 10,117 files measured
   // at this head. Compare the two claims' eval_steps to settle linear-or-worse.
-  wet_fold_cost_probe(tag: "fold-cost-whole", subdirs: ["dag", "src/v2"], at_least: 9000, at_most: 14000, install_only: false)
+  wet_fold_cost_probe(tag: "fold-cost-whole", subdirs: ["dag", "src/v2"], at_least: 9000, at_most: 14000, install_only: false, claim: "the_install_fold_over_the_whole_planted_tree_reports_its_cost",
+  )
 }
 
 
@@ -3675,6 +3684,22 @@ test fn the_install_fold_alone_over_the_whole_tree_reports_its_cost() -> Bool {
     at_least: 9000,
     at_most: 14000,
     install_only: true,
+    claim: "the_install_fold_alone_over_the_whole_tree_reports_its_cost",
+  )
+}
+
+// THE SAME INSTALL HALF, AT THE SMALL SIZE. A rate comes from one size; a SHAPE needs
+// two sizes of the same work. Paired with the whole-tree arm (about ten thousand
+// planted files), the pair is what decides whether the install half is linear in the
+// file count or worse, which is the question the srv2 run exists to answer.
+test fn the_install_fold_alone_over_a_thousand_planted_files_reports_its_cost() -> Bool {
+  wet_fold_cost_probe(
+    tag: "fold-install-alone-small",
+    subdirs: ["dag/extdeps", "dag/std", "src/v2/std", "src/v2/workflow"],
+    at_least: 900,
+    at_most: 3000,
+    install_only: true,
+    claim: "the_install_fold_alone_over_a_thousand_planted_files_reports_its_cost",
   )
 }
 
