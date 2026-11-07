@@ -73,8 +73,25 @@ fn body_unavailable_count_of(facts: List<DeclFact>) -> Int {
   })
 }
 
+// COUNTED BY ITS OWN PREDICATE, NOT AS fn_items MINUS UNAVAILABLE. The two arms are meant to be
+// two independent readings of the same subjects, so that their sum can be checked against the
+// population instead of being defined equal to it. Derived from the subtraction, this counter
+// would satisfy that sum by construction and the check would measure nothing.
+fn subject_is_body_judged(fact: DeclFact) -> Bool {
+  match judge_subject_node(n: fact.node) {
+    BodyJudged { verdict: _ } => true
+    BodyUnavailable => false
+  }
+}
+
 fn body_judged_count_of(facts: List<DeclFact>) -> Int {
-  fn_item_count_of(facts: facts) - body_unavailable_count_of(facts: facts)
+  fold(facts, init: 0, f: fn(acc, fact) {
+    if decl_facts_is_fn_like(kind: fact.kind) && subject_is_body_judged(fact: fact) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
 }
 
 fn subject_qn_of(fact: DeclFact) -> QualifiedName {

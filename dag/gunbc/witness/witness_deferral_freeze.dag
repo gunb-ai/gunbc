@@ -505,7 +505,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
       "red_control_of_red_control_flips", "only_cost_contract_carries_red_control_probe",
       "self_application_liveness_discriminates", "skeleton_only_fact_lands_body_unavailable",
       "totality_judged_plus_unavailable_equals_fn_items", "per_root_sentinels_hold_in_one_walk",
-      "live_corpus_is_currently_all_body_unavailable", "unbound_contracts_remain_enumerable",
+      "live_corpus_body_judgment_partitions_the_population", "unbound_contracts_remain_enumerable",
       "bound_contracts_derive_live_receipts", "unbound_contracts_omit_semantic_receipts"
     ]
   },
