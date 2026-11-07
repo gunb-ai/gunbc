@@ -49,7 +49,7 @@ fn p4_home_serving_power_semantics_body() -> List<MarkdownBlock> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════════════
-// THE STATUS HALF OF THE DECISION, TYPED (§4c: an event, a status, a count or a dissolution
+// THE STATUS HALF OF THE DECISION, TYPED (gunbc.design_argument::source_annotations: an event, a status, a count or a dissolution
 // condition belongs in a carrier, not in prose). Three paragraphs here used to be narrative, and
 // each was a snapshot that went false on its own schedule: the head of a branch under push, the
 // merge state of a PR, and whether the operator had answered an ask. gunbc.design_argument::how_to_work — "name the

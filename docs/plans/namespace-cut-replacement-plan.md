@@ -80,7 +80,7 @@ Method (post-retraction): instrument **real specimens** of the failures a change
   with the grammar it parses**, making it presumed scaffold. It landed anyway as
   an explicit operator override on **cost, not principle**: it was already built,
   approved, regenerated and executing, and swapping it for an equal-strength
-  fixture over a population of one is the churn §6 warns about as loudly as
+  fixture over a population of one is the churn gunbc.design_argument::how_to_work warns about as loudly as
   scaffolds. **The condition of that override is this entry.** It sits in Step
   5's deletion list rather than carrying a "temporary" note, so the grammar
   deletion removes it *by the census* — a row someone must execute — instead of
@@ -96,7 +96,7 @@ Method (post-retraction): instrument **real specimens** of the failures a change
 
 **Declared mid-loop gap (2026-08-15):** `regen_stage0` cannot run while the corpus does not resolve, so every `.dag` → `.rs` mirror edit is hand-written and verified by a real build for the lane's duration — a declared rung-drop carried openly.
 
-**Restoration trigger is ORDER-DEPENDENT (corrected 2026-08-15).** `integration/v1-cut` (gunbc#8293) deletes `regen_stage0` and its 142-entry roster outright, so "regen green on the branch" can fire **only if this cut reaches main first**. If the v1 cut lands first, this obligation **retires with its mechanism, carrying a receipt** — not restored, and not left standing as a trigger whose subject no longer exists. That is §3 step 6 (evidence whose only subject is retired is retired with it), not a §4b stall: a class below its ceiling must name a trigger that *can* fire, and an unfireable one is worse than none because it reads as tracked. The same order-dependency governs step 2's two regen mentions (the `emit_imports` seed-regrowth warning and the regen fixed-point trap) and the green-bar item below; it is stated once here. The banked import-semantics properties (`docs/plans/import-deletion-recovered-behaviors.md`, branch-local) need a reachability edge before cutover.
+**Restoration trigger is ORDER-DEPENDENT (corrected 2026-08-15).** `integration/v1-cut` (gunbc#8293) deletes `regen_stage0` and its 142-entry roster outright, so "regen green on the branch" can fire **only if this cut reaches main first**. If the v1 cut lands first, this obligation **retires with its mechanism, carrying a receipt** — not restored, and not left standing as a trigger whose subject no longer exists. That is §3 step 6 (evidence whose only subject is retired is retired with it), not a gunbc.design_argument::guarantee_ladder stall: a class below its ceiling must name a trigger that *can* fire, and an unfireable one is worse than none because it reads as tracked. The same order-dependency governs step 2's two regen mentions (the `emit_imports` seed-regrowth warning and the regen fixed-point trap) and the green-bar item below; it is stated once here. The banked import-semantics properties (`docs/plans/import-deletion-recovered-behaviors.md`, branch-local) need a reachability edge before cutover.
 
 ## Green bar / cutover
 

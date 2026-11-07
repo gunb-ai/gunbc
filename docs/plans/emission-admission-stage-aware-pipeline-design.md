@@ -362,7 +362,7 @@ the carrier for this document's headline cost: a stage-local failure has no rece
 another.
 
 **Before minting anything: check whether `gunbc.guarantee_measurement` extends to carry this.**
-A parallel receipt beside it would be the §3 fork §2 exists to avoid.
+A parallel receipt beside it would be the gunbc.design_argument::single_authority fork gunbc.design_argument::minimize_redundancy exists to avoid.
 
 ```
 StageExecutionSubject {
@@ -567,7 +567,7 @@ duplication refusal (roadmap red_control, made executable).
 
 ---
 
-## 8. Witness / RED discipline (§4b, §5)
+## 8. Witness / RED discipline (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed)
 
 **Correction 9 — the first revision's table was wrong in kind, not merely incomplete.** It
 labelled *observing a refusal* a GREEN control, inverting what a control is: a fixture whose
@@ -671,7 +671,7 @@ first, so a lineage root exists before anything is stated relative to one.
 
 Guarantee-path measurement rows (the first revision's stage 9) are not a separate stage: stage
 1's stage-execution receipt is that measurement, and a second one beside
-`gunbc.guarantee_measurement` is the fork §2 exists to prevent.
+`gunbc.guarantee_measurement` is the fork gunbc.design_argument::minimize_redundancy exists to prevent.
 
 ---
 

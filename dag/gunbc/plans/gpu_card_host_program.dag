@@ -13,7 +13,7 @@ import std.nat { Nat }
 //
 // Two conventions it holds itself to: every code reference names a module and symbol, never a
 // file:line (gunbc.design_argument::single_authority), and a measured figure is stated together with its standing -- measured,
-// estimated, or read off a hand-written script -- because §4d forbids a bet being consumed as a fact.
+// estimated, or read off a hand-written script -- because gunbc.design_argument::epistemic_humility forbids a bet being consumed as a fact.
 // The figures in section 3 are RECEIPTS this repository took. None of them is an upstream fact, so none
 // of them may land in extdeps.
 

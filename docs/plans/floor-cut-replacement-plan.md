@@ -14,7 +14,7 @@ Fleet operations are excluded unless the operator rules otherwise: `.github/work
 
 Selection deletion: `cb9277a4fe..c741d64204` (2026-08-15), end-to-end removal across model, plan, receipts, workflow jobs and seed paths, with projections regenerated. Wipe: `3a6398276f`, accepted at the operator boundary; no wipe-induced compile errors, regeneration completed and CI stopped because the merge ref had no workflow.
 
-The wipe also removes artifact expectation rows, carries the §4b rung drop (previous/temporary rung, reason, bounded population, restoration trigger), and makes its orphaned obligations the re-add queue. Reachability determines the remaining dead floor models, binaries, fixtures and witnesses. Remove release-bin registrations with their producers. `ci_workflow`/`ci_spec` vocabulary needed by fleet convergence moves to a fleet-owned home before those remnants die; retaining gutted CI authorities is not the endpoint.
+The wipe also removes artifact expectation rows, carries the gunbc.design_argument::guarantee_ladder rung drop (previous/temporary rung, reason, bounded population, restoration trigger), and makes its orphaned obligations the re-add queue. Reachability determines the remaining dead floor models, binaries, fixtures and witnesses. Remove release-bin registrations with their producers. `ci_workflow`/`ci_spec` vocabulary needed by fleet convergence moves to a fleet-owned home before those remnants die; retaining gutted CI authorities is not the endpoint.
 
 ## What deletion cannot census
 

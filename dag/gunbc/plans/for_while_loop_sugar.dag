@@ -286,12 +286,12 @@ fn section_12_open() -> List<MarkdownBlock> {
     table2(
       header: r2("before…", "read"),
       rows: [
-        r2("S0", "§4, *the closed, grounded substrate* (six behaviors; sugar adds no power), and §3, *replacement migrations cut over at the root* (for S3)"),
-        r2("writing any refusal", "§5, *fail-closed*: the absorbing fallback and the workaround are the traps this design is most exposed to"),
+        r2("S0", "gunbc.design_argument::closed_grounded_substrate, *the closed, grounded substrate* (six behaviors; sugar adds no power), and §3, *replacement migrations cut over at the root* (for S3)"),
+        r2("writing any refusal", "gunbc.design_argument::fail_closed, *fail-closed*: the absorbing fallback and the workaround are the traps this design is most exposed to"),
         r2("writing a check", "§4b: ask whether its red is authorable before writing it"),
-        r2("claiming a loop is parallel", "§4b rung honesty, and §3d, *selection precedes convergence*"),
+        r2("claiming a loop is parallel", "gunbc.design_argument::guarantee_ladder rung honesty, and gunbc.design_argument::selection_precedes_convergence, *selection precedes convergence*"),
         r2("touching `EffectPlanStep`", "§3b, conformance, and §3 on one name across distinct scopes"),
-        r2("your first claim", "§3, *a witness discriminates at one interface*"),
+        r2("your first claim", "gunbc.design_argument::witness_one_interface, *a witness discriminates at one interface*"),
       ]
     ),
   ]
