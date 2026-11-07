@@ -32,7 +32,7 @@ import std.measure { Second, second, second_count }
 type HarnessTransportRetryPolicy {
   first_delay: Second
   max_delay: Second
-  offset_spread: Int
+  offset_spread: Second
 }
 
 // THE OPERATOR ENGINE IS EXPECTED TO RESTART AND TO RUN SLOW (operator, 2026-10-12): the lab's empty
@@ -45,7 +45,7 @@ type HarnessTransportRetryPolicy {
 data harness_transport_retry_policy_now: HarnessTransportRetryPolicy = HarnessTransportRetryPolicy {
   first_delay: second(count: 15),
   max_delay: second(count: 300),
-  offset_spread: 7,
+  offset_spread: second(count: 7),
 }
 
 // THE GAP BEFORE THE NEXT RE-DELIVERY, before its offset: first_delay doubled once per re-delivery
@@ -82,10 +82,11 @@ fn transport_retry_gap_after(gap: Int, cap: Int, doublings_left: Int) -> Int {
 
 // THE SESSION'S OFFSET: small, stable for one session, different across sessions.
 fn transport_retry_offset_seconds(policy: HarnessTransportRetryPolicy, session_key: String) -> Int {
-  if policy.offset_spread <= 1 {
+  let spread = second_count(s: policy.offset_spread) as Int
+  if spread <= 1 {
     0
   } else {
-    fold(chars(s: session_key), init: 0, f: (acc, c) => (acc + c) % policy.offset_spread)
+    fold(chars(s: session_key), init: 0, f: (acc, c) => (acc + c) % spread)
   }
 }
 
