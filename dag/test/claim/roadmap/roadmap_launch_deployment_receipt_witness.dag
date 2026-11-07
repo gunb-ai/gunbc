@@ -2,6 +2,10 @@ module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 import std.optional { Absent, Optional, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_head }
+import std.measure { second, second_count }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberFound, JsonMemberNotAnObject, json_object_unique_member, parse_json_document }
 
 
 import gunbc.roadmap.roadmap_launch_deployment_cli { rlm1_merge_commit }
