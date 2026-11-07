@@ -4,7 +4,8 @@ import v2.compiler.infer { infer }
 import v2.compiler.resolve { ResolvedTree }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_list_peers }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, DeclaredTypePosition, PositionDeclaredReturn, diagnostics_has_reason, diagnostics_inhabitance_position }
+import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, String }
 import v2.std.node { Symbol }
@@ -48,7 +49,11 @@ fn drs_infer(src: String) -> Outcome<Bool> {
 fn drs_refused_at_return(src: String) -> Bool {
   match drs_infer(src: src) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^arrow_body_does_not_inhabit_declared_return)
+    Rejected { diagnostics: d } =>
+      diagnostics_has_reason(d: Some { diagnostics: d }, reason: ^inhabitance_structural_roots_differ)
+        // The position is asserted as its own typed fact, not folded back into the reason name.
+        && diagnostics_inhabitance_position(d: Some { diagnostics: d })
+          == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
   }
 }
 
