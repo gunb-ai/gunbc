@@ -221,6 +221,7 @@ data job_cancelled: WorkflowJobRun = WorkflowJobRun {
   created_at: Present { value: "2026-09-01T00:01:00Z" },
   started_at: Present { value: "2026-09-01T00:10:00Z" },
   completed_at: Present { value: "2026-09-01T00:20:00Z" },
+  steps: none,
 }
 
 data job_failed: WorkflowJobRun = WorkflowJobRun {
@@ -236,6 +237,7 @@ data job_failed: WorkflowJobRun = WorkflowJobRun {
   created_at: Present { value: "2026-09-01T00:00:00Z" },
   started_at: Present { value: "2026-09-01T00:00:00Z" },
   completed_at: Present { value: "2026-09-01T00:15:00Z" },
+  steps: none,
 }
 
 data job_success: WorkflowJobRun = WorkflowJobRun {
@@ -251,6 +253,7 @@ data job_success: WorkflowJobRun = WorkflowJobRun {
   created_at: Present { value: "2026-09-01T00:02:00Z" },
   started_at: Present { value: "2026-09-01T00:05:00Z" },
   completed_at: Present { value: "2026-09-01T00:10:00Z" },
+  steps: none,
 }
 
 data job_queued: WorkflowJobRun = WorkflowJobRun {
@@ -266,6 +269,7 @@ data job_queued: WorkflowJobRun = WorkflowJobRun {
   created_at: Present { value: "2026-09-01T00:03:00Z" },
   started_at: none,
   completed_at: none,
+  steps: none,
 }
 
 data job_in_progress: WorkflowJobRun = WorkflowJobRun {
@@ -281,6 +285,7 @@ data job_in_progress: WorkflowJobRun = WorkflowJobRun {
   created_at: Present { value: "2026-09-01T00:04:00Z" },
   started_at: Present { value: "2026-09-01T00:30:00Z" },
   completed_at: none,
+  steps: none,
 }
 
 test fn count_jobs_counts_all_jobs() -> Bool {
@@ -357,6 +362,7 @@ test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
     created_at: none,
     started_at: none,
     completed_at: none,
+    steps: none,
   }
   match earliest_created_at(jobs: [job_no_created]) {
     Present { value: _ } => false
