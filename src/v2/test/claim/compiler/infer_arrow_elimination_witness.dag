@@ -12,7 +12,7 @@ import v2.compiler.eval { outcome_runtime_value_equality, eval, inputs_root_only
 import v2.compiler.refinement_discharge { discharge_refinement_obligations }
 import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
 import v2.extdeps.languages.dag { dag_arrow_with_body_node, dag_int_literal_fixture_one, dag_type_atom_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, Some, diagnostics_has_reason , DeclaredTypePosition, PositionDeclaredReturn, diagnostics_inhabitance_position }
 import v2.std.integer { integer_int_type_node }
 import v2.std.logic { bool_node }
 import std.optional { Absent, Present }
@@ -77,10 +77,15 @@ fn ae_refuses_body_return(tree: Node) -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: tree)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: nds } =>
+      // Two facts, two assertions: the reason names the decision that answered no (the fold found no
+      // candidate and the comparison decided at the two roots), and the position is the refusal's own
+      // typed field -- the body is refused AT the declared return, which no longer rides inside the name.
       diagnostics_has_reason(
         d: Some { diagnostics: nds },
-        reason: ^arrow_body_does_not_inhabit_declared_return
+        reason: ^inhabitance_structural_roots_differ
       )
+        && diagnostics_inhabitance_position(d: Some { diagnostics: nds })
+          == Present { value: PositionDeclaredReturn { argument_ordinal_path: [] } }
   }
 }
 
