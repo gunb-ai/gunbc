@@ -46,6 +46,17 @@ enum RetainedCommands {
         measured_root_demands: Option<String>,
     },
 
+    /// Run a target named by an absolute label or a bazel-style target PATTERN, and
+    /// report the standing its own producer answers in. An exact label routes to its
+    /// bound producer. A set form is admitted and refused with status 2: it runs only
+    /// through the native test route, never the interpreter. An unadmitted form or an
+    /// unknown target refuses.
+    Test {
+        /// Absolute label of one target, or a pattern denoting a set.
+        #[arg(value_name = "TARGET_PATTERN")]
+        target: String,
+    },
+
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -398,14 +409,8 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         )
     }
 
-    // THE RETAINED TERMINAL VERDICT BOUNDARY, and nothing else: the generated `test` arm runs the
-    // bound producer and decides the status from the emitted
-    // `gunbc.target_invocation` `invocation_exit_status`; this body only prints the message and
-    // the invocation receipt and ends the process without teardown (`Verdict::apply`). It is a
-    // still-retained body whose end state is unchanged (emitted, behind an emitted boundary, or
-    // removed); its missing fact is a modeled process-termination carrier.
-    fn end_process_with_verdict(&self, status: i32, message: Option<String>) -> ! {
-        Verdict { status, message }.apply()
+    fn invoke_bound_target_producer(&self, target: String) -> ! {
+        retained_dispatch(RetainedCommands::Test { target }, self.dry_run)
     }
 }
 
@@ -733,10 +738,34 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             &args,
         )
         .apply(),
-        // `test` and `converge` are no longer retained verbs. `test` is a generated arm of the
-        // dispatch (CliInvokesBoundTargetProducer) whose status is the emitted
-        // gunbc.target_invocation invocation_exit_status. `converge` is a bootstrap .dag operation
-        // on the same dispatch, the route `build` takes, so no arm here can answer for it.
+
+        // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
+        //
+        // Deliberately no mode switch and no arm per instrument: which producer a label names is
+        // decided by the registry in `target_invocation_host`, mirroring
+        // `gunbc.instrument_targets`, and the realization is selected one level below. A second
+        // instrument adds a row there and nothing here. A set PATTERN (`//pkg:all`, `//pkg/...`)
+        // is admitted by the same host's `parse_target_pattern` mirror and executed by the route
+        // whose universe contains it -- the native test route (`//v2/...`) or the claim
+        // route (`//test/claim/...`); outside both it is refused with status 2, never widened.
+        //
+        // The status is the producer's own termination, not an aggregate verdict: 0 the reading
+        // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
+        // `test_standing_verdict` and the Blaze status export are deliberately NOT consulted --
+        // each refuses instrument producers by design, so either would answer a question this
+        // verb is not asking.
+        RetainedCommands::Test { target } => {
+            let outcome = cli_run::target_invocation_host::test_verb_checked(&target);
+            Verdict {
+                status: cli_run::target_invocation_host::invocation_exit_status(
+                    outcome.termination,
+                ),
+                message: Some(outcome.message),
+            }
+            .apply()
+        } // `converge` is no longer a retained verb. It is a bootstrap .dag operation on the
+          // generated dispatch (gunbc.cli_dispatch_surface gunbc_fleet_converge_operation_binding),
+          // the same route `build` takes, so no arm here can answer for it.
     };
     std::process::exit(0)
 }
