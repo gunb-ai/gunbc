@@ -49,24 +49,13 @@ data printer_workflow_receipt_path: String = "printer-workflow-receipt.json"
 // block a sudoers install on the LIVE parent's owner/mode. The live parent is still gunbc-fleet 2770 on srv1,
 // and the re-own to root:root 0755 is a CROSS-USER change neither group_adoption posture adopts
 // (owned_directory_present_owner_is_foreign refuses a different USER, so the apply will not silently claim it),
-// yet none of that ORDERS the sudoers leg against the parent re-own. THE RE-OWN AND ITS ORDERING ARE A
-// MODELLED LEG, NOT AN OPERATOR'S HAND -- this comment called it a manual step, and a hand step is no more a
-// refusal than a comment is: gunbc.fleet.printer_state_parent_reown owns the ONE declared transition from that
-// prior to this target, as a compare-and-set on the directory's identity that refuses every owner, group, mode,
-// file type or unreadable state other than the pinned prior, and the printer pass runs it ahead of every
-// state-root effect and every read below (gunbc.fleet.print_converge ensure_printer_state_directories). Its
-// privileged effect is this item's own install lowered through the single grant projection
-// (executor_privileged_operation_elevated_command), so the words it runs are the words this artifact already
-// grants -- `/usr/bin/install -d -m 00755 -o root -g root /var/lib/gunbc/printer-starts` -- and GNU install -d
-// re-owns AND re-modes an EXISTING named directory (the citation is in that module), which is why that grant
-// is sufficient and why the leg reads and compares the prior BEFORE it runs the verb: install -d follows a
-// symlink at its final component, the one shape the leg refuses instead of acting on. THE READ-BACK IS PART OF
-// THE LEG, not a step a person takes: the transition refuses unless its own second read of the path reports
-// the declared target root:root 0755. ORDER (operator-accepted, quick-newt-573 msg_6afc4c8c): this item lands,
-// its sudoers deploys, the leg runs IMMEDIATELY after -- same maintenance window, before anything prints --
-// and a refusal from the leg stops the pass, so nothing prints. The re-own is itself safe: its own parent
-// /var/lib/gunbc is already root:root 0755 (host_state_tree_root). printer_state_directories lists the parent
-// FIRST so a host that converges the whole ordered set does not leave a window.
+// yet none of that ORDERS the sudoers leg against the parent re-own. So the re-own and its ordering is the
+// OPERATOR'S MANUAL STEP (the host change this item deliberately leaves to the operator), and it MUST hold:
+// `install -d -o root -g root -m 0755 /var/lib/gunbc/printer-starts` and a readback of root:root 0755 land and
+// read back BEFORE any sudoers carrying a grant beneath it is installed. The re-own is itself safe: its own
+// parent /var/lib/gunbc is already root:root 0755 (host_state_tree_root). printer_state_directories lists the
+// parent FIRST so a host that converges the whole ordered set does not leave a window; a partial apply that
+// installs members before the parent re-own is the case the operator rule above forbids.
 type PrinterStartsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
 
 data printer_starts: PrinterStartsDeclaration = PrinterStartsDeclaration {
