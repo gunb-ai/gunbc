@@ -1,6 +1,11 @@
 module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 import std.optional { Absent, Optional, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_head }
+import std.measure { second, second_count }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberFound, JsonMemberNotAnObject, json_object_unique_member, parse_json_document }
 
 
 import gunbc.roadmap.roadmap_launch_deployment_cli { rlm1_merge_commit }
@@ -128,6 +133,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt {
   roadmap_launch_deployment_verdict,
   verdict_receipt_identity,
 }
+import gunbc.spool_queue { RolePending }
 import std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -786,7 +792,7 @@ fn with_backlog(f: RoadmapLaunchDeploymentFacts, b: EventBacklogFact) -> Roadmap
 }
 
 test fn witness_stale_backlog_is_incomplete_and_names_its_oldest_entry() -> Bool {
-  let stale = StaleBacklog { stage: AttemptExitInbox, entry: "n+k+worker+inv+success+exited+0", age: second(count: second_count(s: event_backlog_drain_bound) + 60), bound: event_backlog_drain_bound }
+  let stale = StaleBacklog { stage: RolePending, entry: "n+k+worker+inv+success+exited+0", age: second(count: second_count(s: event_backlog_drain_bound) + 60), bound: event_backlog_drain_bound }
   incomplete_at(facts: with_backlog(f: rlm_complete_facts(), b: stale), member: "event_backlog")
 }
 
