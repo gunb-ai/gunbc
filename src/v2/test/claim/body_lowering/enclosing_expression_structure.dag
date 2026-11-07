@@ -4,7 +4,7 @@ import v2.compiler.body_lowering_fold { body_lower_body_subtree_lower, body_lowe
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected , diagnostics_fatal_reason}
 import v2.std.grammar { node_atom_identity_optional, parse_production_emitted_identity_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Match, Node, Symbol, Transform }
@@ -100,12 +100,12 @@ fn ees_route_value(source: String, route: EesRoute) -> EesValue {
               match route {
                 EesValueReader =>
                   match body_lower_value_read(value: expr) {
-                    Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+                    Rejected { diagnostics: ds } => EesRefused { reason: diagnostics_fatal_reason(d: ds) }
                     Accepted { value: v, diagnostics: _ } => EesLowered { value: v }
                   }
                 EesBodyWalker =>
                   match body_lower_body_subtree_lower(captured: expr) {
-                    Rejected { diagnostics: ds } => EesRefused { reason: ds.head.reason }
+                    Rejected { diagnostics: ds } => EesRefused { reason: diagnostics_fatal_reason(d: ds) }
                     Accepted { value: Absent, diagnostics: _ } => EesNotRead
                     Accepted { value: Present { value: v }, diagnostics: _ } => EesLowered { value: v }
                   }
