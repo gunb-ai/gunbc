@@ -44,7 +44,7 @@ import std.measure { ByteSize, byte_size, byte_size_count, Second, second, secon
 // encoder can render them and no local encoder is needed.
 import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, qualified_octet_members, uint8_octets_of_ints }
 import extdeps.numeric.base16 { base16_decode_any, base16_encode_lower }
-import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from }
+import extdeps.whatwg.html_attribute_tokenization { HtmlAttributeReference, HtmlAttributeQuoting, AttributeValueDoubleQuoted, AttributeValueSingleQuoted, AttributeValueUnquoted, html_attribute_references_folded, html_attribute_references, html_fold_ascii_octet, html_octet_at, html_octets_match_at, html_octets_index_from, html_octets_count_walk }
 import std.optional { Absent, Present }
 
 import extdeps.bmc.megarac
@@ -866,7 +866,7 @@ fn ui_captured_text_of(body: String, session_values: List<List<Int>>) -> MegaRac
                   hex: hex,
                   hex_sha256: hex_digest,
                   first_text_octet: ui_first_text_octet_of(octets: octets),
-                  replacement_characters: ui_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0),
+                  replacement_characters: html_octets_count_walk(octets, megarac_ui_replacement_sequence_octets, 3, length, 0, 0, 0),
                 }
               }
             }
@@ -956,18 +956,7 @@ type MegaRacUiPageShape {
 
 fn ui_count_token(folded: List<Int>, folded_length: Int, token: String) -> Int {
   let needle = ui_octets_of(token)
-  ui_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0)
-}
-
-// Non-overlapping occurrences. `at` only increases, so no input loops.
-fn ui_octets_count_walk(hay: List<Int>, needle: List<Int>, needle_length: Int, haystack_length: Int, at: Int, acc: Int) -> Int {
-  if needle_length == 0 || at + needle_length > haystack_length {
-    acc
-  } else if html_octets_match_at(hay, needle, needle_length, at, 0) {
-    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + needle_length, acc + 1)
-  } else {
-    ui_octets_count_walk(hay, needle, needle_length, haystack_length, at + 1, acc)
-  }
+  html_octets_count_walk(folded, needle, count(needle), folded_length, 0, 0, 0)
 }
 
 fn ui_refs_with_style(refs: List<HtmlAttributeReference>, quoting: HtmlAttributeQuoting) -> Int {

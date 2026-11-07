@@ -3,7 +3,7 @@ module v2.compiler.reference_conservation_admission
 import v2.compiler.tokenize { prepare_lex_rules }
 import v2.compiler.normalize { import_binding_capture }
 import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse { ParseArtifact }
+import v2.compiler.parse { parse_artifact_span_index, ParseArtifact }
 import v2.std.namespace_alias { AliasBindingRow, CapturedImports }
 import v2.std.node { node_subtree_nodes, symbol_intern_lexeme }
 import v2.compiler.program_assembly { dag_prepared_grammar }
@@ -177,7 +177,7 @@ fn subject_scope_membership(subject: ReferenceConservationSubject) -> ScopeMembe
   match subject.parsed {
     Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
     Accepted { value: artifact, diagnostics: _ } =>
-      match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree), spans: artifact.span_index) {
+      match import_binding_capture(tree: artifact.tree, nodes: node_subtree_nodes(root: artifact.tree), spans: parse_artifact_span_index(artifact: artifact)) {
         Rejected { diagnostics: d } => MembershipUnreadable { diagnostics: d }
         Accepted { value: CapturedImports { bindings: bindings, modules: _ }, diagnostics: _ } =>
           if parse_module_is_body_lowering_root(artifact: artifact) || imports_reach_body_lowering_root(rows: bindings) {

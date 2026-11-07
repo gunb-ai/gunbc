@@ -25,7 +25,7 @@ import v2.compiler.name_resolve {
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.normalize { normalize_scoped }
 import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_binding_sources }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
+import v2.compiler.parse { parse_artifact_span_index, PreparedGrammar, parse_module_prepared_seeded, prepare_grammar }
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
 import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferencesOwned, reference_closure_ownership }
@@ -181,13 +181,14 @@ fn closure_parse_loop(
       ) {
         Rejected { diagnostics: d } => ClosureParseRefused { diagnostics: d, spans: spans }
         Accepted { value: artifact, diagnostics: _ } =>
+          let parsed_spans = parse_artifact_span_index(artifact: artifact)
           closure_parse_loop(
             rest: remaining,
             lex: lex,
             prepared: prepared,
-            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root, span_index: artifact.span_index }, tail: files },
+            files: Cons { head: ClosureParsedFile { parse_tree: artifact.tree, source_root: read.source_root, span_index: parsed_spans }, tail: files },
             alloc: artifact.alloc,
-            spans: span_index_merge(base: spans, incoming: artifact.span_index)
+            spans: span_index_merge(base: spans, incoming: parsed_spans)
           )
       }
   }
