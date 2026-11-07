@@ -602,14 +602,14 @@ fn compiler_gate_parse_verdict_restore_bound_steps() -> List<CompilerGateBoundSt
         acc,
         [
           CompilerGateBoundStep {
-            step: parse_verdict_identity_restore_step(ordinal: ordinal),
-            role: capability_neutral,
-            step_name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
-          },
-          CompilerGateBoundStep {
             step: parse_verdict_receipts_restore_step(ordinal: ordinal),
             role: capability_neutral,
             step_name: parse_verdict_receipts_restore_step_name(ordinal: ordinal),
+          },
+          CompilerGateBoundStep {
+            step: parse_verdict_identity_restore_step(ordinal: ordinal),
+            role: capability_neutral,
+            step_name: parse_verdict_identity_restore_step_name(ordinal: ordinal),
           },
         ],
       )
