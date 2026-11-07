@@ -34,9 +34,12 @@ import gunbc.serving.srv1_serving_launch { srv1_serving_wrapper }
 // (gunbc.serving.srv1_serving_launch srv1_serving_unmodeled_frontier_rows); this unit only covers a boot,
 // when nothing is bound. A shutdown stops the container through docker.
 //
-// The wrapper is installed from the model, not from the host's hand copy: its bytes are
-// srv1_serving_wrapper.body, whose sha256 the launch witness pins to the startup receipt's reading of the
-// script the running container was launched from.
+// The wrapper is installed FROM THE MODEL: its bytes are srv1_serving_wrapper.body, whose `--device` flags are
+// the declared GPU group's per-device selectors (the deploy refuses to install it unless
+// srv1_serving_device_gate admits that, gunbc.live_deploy.apply_legs deploy_apply_srv1_serving_engine_plan).
+// The startup receipt pins the sha of the script the RUNNING container was launched from; when the installed
+// body is ahead of it (a group change not yet relaunched into) srv1_serving_wrapper_adoption types the gap as
+// a PendingOperatorRelaunch — declared, not auto-applied, and never a red witness.
 
 data srv1_serving_engine_unit_name: NonEmptyStr = "gunbc-srv1-serving-engine.service"
 

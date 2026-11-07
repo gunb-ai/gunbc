@@ -19,9 +19,6 @@ import extdeps.crypto.sha2 { sha256_hex }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_flags }
 import std.measure { token_count_value }
-import std.measure { Watt, watt, milliwatt }
-import extdeps.nvidia.system_management_interface { PersistenceEnabled, PersistenceDisabled }
-import gunbc.fleet.gpu_power_cap_converge { GpuCapReading, GpuCapRead, GpuCapUnread, reading_holds }
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04 }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.serving.srv1_serving_launch {
@@ -29,7 +26,9 @@ import gunbc.serving.srv1_serving_launch {
   srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
   srv1_serving_unmodeled_frontier_rows,
   srv1_serving_gpu_group, Srv1ServingGpuGroup, srv1_serving_docker_device_words,
-  srv1_serving_group_selection, srv1_serving_group_readiness, srv1_serving_route_device_index,
+  srv1_serving_group_selection, srv1_serving_served_device_rank, srv1_serving_wrapper_running_body,
+  srv1_serving_device_gate, Srv1ServingDeviceGate, Srv1ServingDevicesAdmitted, Srv1ServingDeviceGateRefused,
+  srv1_serving_wrapper_adoption, Srv1ServingWrapperAdoption, Srv1ServingWrapperAdopted, Srv1ServingWrapperPendingOperatorRelaunch,
   Srv1ServingDeviceSelection, Srv1ServingDevicesSelected, Srv1ServingDevicesRefused,
   Srv1ServingDeviceMember, Srv1ServingDeviceSelected, Srv1ServingDevicePending,
 }
@@ -168,9 +167,18 @@ test fn the_launch_exports_the_observed_authorities() -> Bool {
 // the cap, or the host file without the others turns this red.
 data host_wrapper_sha256_read: String = "b8b73d186a43d56c54eae5985ef0b8d1751b06af08dbf7f7013b885ba49e62bd"
 
-test fn the_retained_body_hashes_to_the_host_copy() -> Bool {
-  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper.body))) == host_wrapper_sha256_read
+test fn the_retained_running_body_hashes_to_the_host_copy() -> Bool {
+  // The RUNNING container's wrapper body (retained as history) hashes to the host reading the receipt pins.
+  sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: srv1_serving_wrapper_running_body))) == host_wrapper_sha256_read
     && host_wrapper_sha256_read == (srv1_serving_startup_reading.wrapper_sha256_hex as String)
+    // The INSTALLED body is ahead of the running copy (it carries the declared per-device group, not `all`),
+    // so the sha divergence is the DECLARED pending relaunch — never a red equality.
+    && match srv1_serving_wrapper_adoption() {
+      Srv1ServingWrapperPendingOperatorRelaunch { running_sha256_hex: rs, installed_sha256_hex: ins } =>
+        rs == srv1_serving_startup_reading.wrapper_sha256_hex
+          && ins != srv1_serving_startup_reading.wrapper_sha256_hex   // installed != running: the relaunch obligation
+      _ => false
+    }
 }
 
 // THE ROUTER'S LAUNCH FACTS READ THE LAUNCH: the port is the launch's listen port, the advertised model
@@ -333,25 +341,37 @@ fn has_row_naming(needle: String, capability: String) -> Bool {
 // ── the declared GPU group replaces the `--device nvidia.com/gpu=all` bypass ───────────────────
 // (fleet hardware-fact consumption #16045, deliverable 3)
 //
-// These read the new authority end to end: the device UUID comes from gunbc.fleet.gpu_device_observation,
-// the admission from gunbc.fleet.gpu_power_state_policy, and the run-qualification from
-// gunbc.fleet.gpu_power_cap_converge. Removing any of those imports breaks this file (a control on the
-// real launch path goes red), which is the point: the launch no longer carries the `all` wildcard or the
-// literal route index — it reads the declared group.
+// These read the new authority end to end: the device UUID comes from gunbc.fleet.gpu_device_observation and
+// the admission from gunbc.fleet.gpu_power_state_policy. Removing either import breaks this file (a control on
+// the real launch/apply path goes red), which is the point: the launch no longer carries the `all` wildcard or
+// the literal route index — it reads the declared group. The power-limit READBACK that lets a qualified device
+// run is NOT restated here; it is owned by gunbc.fleet.gpu_power_cap_converge and enforced on the real path by
+// the engine unit's Requires= on the cap unit (gunbc.live_deploy.srv1_gpu_power_cap_unit).
 
 // The Max-Q's GPU UUID, read from gunbc.fleet.gpu_device_observation on srv1 2026-11-07 (a LITERAL here on
 // purpose: it is the reading these renderings are checked against, not derived from them).
 data maxq_uuid: NonEmptyStr = "GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr
 
 // The launch renders ONE `--device nvidia.com/gpu=<UUID>` for the one member of the declared group — the
-// Max-Q's observed UUID — and NOT the `all` wildcard. The retained wrapper keeps its `all` verbatim as host
-// history (sha-pinned in gunbc.host.srv1_serving_startup_receipt): the historical reading stays, the bypass
-// is gone from the launch.
+// Max-Q's observed UUID — and NOT the `all` wildcard, and the INSTALLED wrapper body carries exactly that:
+// the `all` wildcard is removed from the install authority, not left to be reinterpreted. The host copy the
+// running container was launched from still says `all` and is kept as history in srv1_serving_wrapper_running_body.
 test fn srv1_serving_launch_renders_per_device_flags_not_the_all_wildcard() -> Bool {
   srv1_serving_docker_device_words == ["--device" as NonEmptyStr, "nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as NonEmptyStr]
-    && !string_contains(s: "nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3" as String, pattern: "all")
-    // history stays: the retained wrapper body still says `all` (this is the value the launch supersedes).
-    && string_contains(s: srv1_serving_wrapper.body as String, pattern: "--device nvidia.com/gpu=all")
+    // the installed wrapper the deploy installs for the next boot names the selected UUID, and not `all`
+    && string_contains(s: srv1_serving_wrapper.body as String, pattern: "--device nvidia.com/gpu=GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3")
+    && !string_contains(s: srv1_serving_wrapper.body as String, pattern: "nvidia.com/gpu=all")
+}
+
+// THE CONTROL ON THE REAL DEPLOY PATH (the acceptance bar: removing the integration fails a control on the
+// real path). The device gate admits the engine-wrapper install only because the installed body names exactly
+// the declared group's admitted devices; the group resolves (one admitted card) and the body carries it.
+// Reverting the body to `all`, or diverging it from the group, turns srv1_serving_device_gate to Refused.
+test fn srv1_serving_device_gate_admits_the_declared_group_and_the_installed_wrapper() -> Bool {
+  match srv1_serving_device_gate() {
+    Srv1ServingDevicesAdmitted {} => true
+    Srv1ServingDeviceGateRefused { reason: _ } => false
+  }
 }
 
 // The one-card configuration is evaluated against ITS OWN member only, so it resolves (and the route
@@ -362,7 +382,7 @@ test fn srv1_serving_one_card_group_is_evaluable_while_the_workstation_is_pendin
     Srv1ServingDevicesSelected { tensor_parallel: tp, members: ms } =>
       match tp { Succ { prev: z } => match z { Zero => true _ => false } _ => false }
       && match ms.first() {
-        Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: r, cap: _ } } =>
+        Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: u, rank: r } } =>
           u == maxq_uuid && match r { Zero => true _ => false }
         _ => false
       }
@@ -388,29 +408,19 @@ test fn srv1_serving_tensor_parallel_two_refuses_rather_than_degrading_to_one() 
   }
 }
 
-// A member admits to RUN only when its power-limit readback qualifies (gunbc.fleet.gpu_power_cap_converge
-// reading_holds: the read limit equals the decided 300 W cap AND persistence is on). A wrong limit, an
-// off persistence mode, or an unread device all hold the engine back.
-test fn srv1_serving_member_admits_only_when_its_cap_readback_qualifies() -> Bool {
-  let sel = srv1_serving_group_selection(group: srv1_serving_gpu_group)
-  let holds = srv1_serving_group_readiness(selection: sel, readback: fn(_u) { GpuCapRead { limit: milliwatt(count: 300000), persistence: PersistenceEnabled } })
-  let wrong_limit = srv1_serving_group_readiness(selection: sel, readback: fn(_u) { GpuCapRead { limit: milliwatt(count: 250000), persistence: PersistenceEnabled } })
-  let persistence_off = srv1_serving_group_readiness(selection: sel, readback: fn(_u) { GpuCapRead { limit: milliwatt(count: 300000), persistence: PersistenceDisabled } })
-  let unread = srv1_serving_group_readiness(selection: sel, readback: fn(_u) { GpuCapUnread { cause: "nvidia-smi unavailable" } })
-  holds && !wrong_limit && !persistence_off && !unread
-}
-
-// The served route's device_index is DERIVED from the declared group (the served member's rank), not the
-// old literal `0` that did not track which device the engine runs on. Today the one-card group's served
-// member is at rank Zero, so the value is unchanged — but it now reads the group.
-test fn srv1_serving_route_device_index_is_derived_from_the_declared_group() -> Bool {
+// The route's served device rank is DERIVED from the declared group (the served member's position), not the
+// old literal `0` that did not track which device the engine runs on. It is the served device's ordinal within
+// the devices the INSTALLED wrapper passes via per-device CDI selectors — which the container re-enumerates
+// from zero — so it stays correct when a second card is later powered. Today the one-card group's served member
+// is at rank Zero, so the value is unchanged — but it now reads the group, not a literal.
+test fn srv1_serving_served_device_rank_is_derived_from_the_declared_group() -> Bool {
   let group_rank = match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
     Srv1ServingDevicesSelected { tensor_parallel: _, members: ms } => match ms.first() {
-      Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r, cap: _ } } => r
+      Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r } } => r
       _ => Succ { prev: Zero }   // no served member: cannot equal the derived Zero below → red
     }
     Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => Succ { prev: Zero }
   }
-  srv1_serving_route_device_index() == group_rank
-    && (match srv1_serving_route_device_index() { Zero => true _ => false })
+  srv1_serving_served_device_rank() == group_rank
+    && (match srv1_serving_served_device_rank() { Zero => true _ => false })
 }
