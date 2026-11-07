@@ -93,6 +93,8 @@ import gunbc.machine_intake.mtcollins1_ui_status_asset_observation {
   FirstTextOctetMarkup,
   FirstTextOctetOther,
   ui_first_text_octet_of,
+  ui_first_text_octet_text,
+  ui_octets_text,
   ui_cookie_values_of_jar,
   ui_captured_text_of,
   ui_page_text_lines,
@@ -1475,7 +1477,7 @@ test fn w_the_written_text_decodes_back_to_the_captured_text_octets() -> Bool {
           qualified_octet_members(q: decoded) == ui_octets_of(body) &&
             byte_size_count(b: n) == count(ui_octets_of(body)) &&
             r == 0 &&
-            first == FirstTextOctetMarkup &&
+            ui_first_text_octet_text(first: first) == "markup_3c" &&
             (match sha256_hex_digest(hex: sha256_hex_of_text(text: hex)) {
               Absent => false
               Present { value: recomputed } => recomputed == hex_digest
@@ -1545,8 +1547,8 @@ test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool 
   let valid_http = "#HttpOnly_192.168.1.228\tFALSE\t/\tFALSE\t0\tSID\thttponlyvalue1"
   let valid_plain = "192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2"
   let jar = concat("# Netscape HTTP Cookie File\n", concat(valid_http, concat("\n", concat(valid_plain, "\n# comment\n\n"))))
-  witness_jar_values(jar: jar) == Present { value: [ui_octets_of("httponlyvalue1"), ui_octets_of("plainvalue2")] } &&
-    witness_jar_values(jar: "") == Present { value: [] }
+  witness_jar_summary(jar: jar) == "httponlyvalue1,plainvalue2" &&
+    witness_jar_summary(jar: "") == ""
 }
 
 // FAIL CLOSED: a malformed row beside a valid one makes the jar refuse (Absent), and the reading built
@@ -1554,15 +1556,14 @@ test fn w_the_cookie_jar_parser_reads_cookie_lines_and_skips_comments() -> Bool 
 test fn w_a_malformed_jar_row_beside_a_valid_one_writes_nothing() -> Bool {
   let valid_plain = "192.168.1.228\tFALSE\t/\tFALSE\t0\tOTHER\tplainvalue2"
   let bad = concat(valid_plain, "\nshort\tline\n")
-  let control = witness_jar_values(jar: concat(valid_plain, "\n"))
   let refused = witness_jar_values(jar: bad)
   let session_values = match refused {
     Absent => []
     Present { value: values } => values
   }
   let reading = witness_body_reading(body: "<html><body>x</body></html>", session_values: session_values)
-  control == Present { value: [ui_octets_of("plainvalue2")] } &&
-    refused == none &&
+  witness_jar_summary(jar: concat(valid_plain, "\n")) == "plainvalue2" &&
+    witness_jar_summary(jar: bad) == "REFUSED" &&
     witness_body_kind(o: reading.captured_text) == "nothing_to_check" &&
     !string_contains(s: witness_lines_text(reading: reading), pattern: " text_hex=")
 }
@@ -1571,12 +1572,25 @@ fn witness_jar_values(jar: String) -> List<List<Int>>? {
   ui_cookie_values_of_jar(jar_text: jar)
 }
 
+// The jar's values as one comma-joined String, or REFUSED: compared as a String because the seed cannot
+// admit == on an Optional<List<List<Int>>> literal.
+fn witness_jar_summary(jar: String) -> String {
+  match witness_jar_values(jar: jar) {
+    Absent => "REFUSED"
+    Present { value: values } => join(map(values, v => ui_octets_text(octets: v)), ",")
+  }
+}
+
 test fn w_the_first_octet_classes_are_distinguished() -> Bool {
-  ui_first_text_octet_of(octets: []) == FirstTextOctetNone &&
-    ui_first_text_octet_of(octets: [31, 239, 191, 189]) == FirstTextOctetControl1f &&
-    ui_first_text_octet_of(octets: [239, 187, 191, 60]) == FirstTextOctetByteOrderMark &&
-    ui_first_text_octet_of(octets: [60, 104]) == FirstTextOctetMarkup &&
-    ui_first_text_octet_of(octets: [123]) == FirstTextOctetOther
+  witness_first_class(octets: []) == "none" &&
+    witness_first_class(octets: [31, 239, 191, 189]) == "control_1f_not_a_compression_verdict" &&
+    witness_first_class(octets: [239, 187, 191, 60]) == "byte_order_mark_efbbbf" &&
+    witness_first_class(octets: [60, 104]) == "markup_3c" &&
+    witness_first_class(octets: [123]) == "other"
+}
+
+fn witness_first_class(octets: List<Int>) -> String {
+  ui_first_text_octet_text(first: ui_first_text_octet_of(octets: octets))
 }
 
 // The receipt names its basis: every captured-text line says the wire bytes are not established, and
